@@ -40,7 +40,7 @@ attempt_once() {
   cp -R "$project/.concordia/journal" "$out/" 2>/dev/null || true
   echo "attempt $n: project $project, artifacts $out" >&2
   M0_LIVE_PROJECT="$project" M0_LIVE_RESULT="$out/result.json" \
-    cargo nextest run -q -p concordia-tests --manifest-path "$ROOT/Cargo.toml" \
+    cargo nextest run -p concordia-tests --manifest-path "$ROOT/Cargo.toml" \
     --run-ignored only -E 'binary(m0_live_check) & test(m0_live_outcome_check)'
 }
 
