@@ -1,5 +1,5 @@
 [package]
-name = "concordia-ecs"
+name = "concordia-terra"
 description = "Concordia ECS: archetype storage, queries, schedules, fixed-step loop and world hashing."
 version.workspace = true
 edition.workspace = true

@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use common::{A, B, C, ids};
 use concordia_core::id::EntityId;
-use concordia_ecs::World;
+use concordia_terra::World;
 use proptest::prelude::*;
 
 type Model = BTreeMap<EntityId, (Option<A>, Option<B>, Option<C>)>;
@@ -63,7 +63,7 @@ fn apply(world: &mut World, model: &mut Model, pool: &[EntityId], op: Op) {
 
 type Slot<T> = fn(&mut (Option<A>, Option<B>, Option<C>)) -> &mut Option<T>;
 
-fn set<T: concordia_ecs::Component + std::fmt::Debug>(
+fn set<T: concordia_terra::Component + std::fmt::Debug>(
     world: &mut World,
     model: &mut Model,
     id: EntityId,
@@ -77,7 +77,7 @@ fn set<T: concordia_ecs::Component + std::fmt::Debug>(
     }
 }
 
-fn unset<T: concordia_ecs::Component + std::fmt::Debug>(
+fn unset<T: concordia_terra::Component + std::fmt::Debug>(
     world: &mut World,
     model: &mut Model,
     id: EntityId,

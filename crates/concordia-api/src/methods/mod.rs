@@ -14,8 +14,8 @@ use std::sync::OnceLock;
 
 use concordia_command::{Author, EditOp};
 use concordia_core::id::{EntityId, TxnId};
-use concordia_ecs::World;
 use concordia_reflect::{Primitive, Reflect, Shape, TypeInfo};
+use concordia_terra::World;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 

@@ -6,8 +6,8 @@ use std::num::NonZeroUsize;
 
 use concordia_core::id::{DeterministicIdGen, EntityId, IdSource};
 use concordia_core::jobs::JobSystem;
-use concordia_ecs::World;
 use concordia_reflect::Reflect;
+use concordia_terra::World;
 use criterion::{Criterion, criterion_group, criterion_main};
 use serde::{Deserialize, Serialize};
 

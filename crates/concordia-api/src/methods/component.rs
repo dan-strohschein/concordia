@@ -2,8 +2,8 @@
 
 use concordia_command::{Actor, EditOp};
 use concordia_core::id::EntityId;
-use concordia_ecs::World;
 use concordia_reflect::Reflect;
+use concordia_terra::World;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 

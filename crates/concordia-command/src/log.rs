@@ -3,8 +3,8 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use concordia_core::id::{IdSource, TxnId};
-use concordia_ecs::{World, WorldHash};
 use concordia_reflect::TypeRegistry;
+use concordia_terra::{World, WorldHash};
 
 use crate::actor::Author;
 use crate::apply::{apply, reapply, revert};

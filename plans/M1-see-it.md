@@ -44,7 +44,7 @@ The first real game is the **reference port** (an isometric ARPG in Godot 4.6 Fo
 | M-1 | Workspace, `rust-toolchain.toml`, `justfile` (`just test`, `just lint`, `just gate`), CI workflow skeleton, Xcode Metal toolchain, Node 24 + pnpm, `cargo-deny`, the `tests/` cross-crate test package (see *Proposed convention additions* for the name `concordia-tests`) |
 | M0 `concordia-core` | glam math, `EntityId` (UUIDv7), fixed-step time, tracing, job system |
 | M0 `concordia-reflect` | `#[derive(Reflect)]`, type registry, JSON Schema export (drives MCP schemas and the inspector) |
-| M0 `concordia-ecs` | archetype ECS, schedules, fixed-step deterministic loop (`FixedUpdate` at 60 Hz by default), resources, events |
+| M0 `concordia-terra` | archetype ECS, schedules, fixed-step deterministic loop (`FixedUpdate` at 60 Hz by default), resources, events |
 | M0 `concordia-command` | command log, transactions, undo/redo, `Actor` |
 | M0 `concordia-scene` | `.scene.ron` / `.prefab.ron` read/write, canonical formatting |
 | M0 `concordia-api` | JSON-RPC server (stdio + WebSocket), method registry, sessions, `sim.play/pause/step`, `component.get/set`, `schema.get`, `log.tail`, and a change-notification mechanism (if M0 shipped none, Phase 1.9 adds `events.subscribe`; see Proposed convention additions) |
@@ -72,7 +72,7 @@ crates/
   concordia-api              TOUCH  capture.screenshot, input.inject, asset.import, asset.list, physics.raycast handlers
   concordia-mcp              TOUCH  MCP image content for capture_screenshot
   concordia-cli              TOUCH  `concordia run` (windowed), `concordia import`, `concordia headless --gpu`
-  concordia-ecs / concordia-scene  TOUCH  new reflected components registered; no format changes expected
+  concordia-terra / concordia-scene  TOUCH  new reflected components registered; no format changes expected
 third_party/
   JoltPhysics/            NEW  vendored Jolt (MIT), pinned tag, LICENSE kept
   joltc/                  NEW  vendored Amer Koleci's joltc C API (MIT), pinned commit, LICENSE kept

@@ -25,7 +25,7 @@ concordia-api = { path = "crates/concordia-api" }
 concordia-mcp = { path = "crates/concordia-mcp" }
 concordia-command = { path = "crates/concordia-command" }
 concordia-core = { path = "crates/concordia-core" }
-concordia-ecs = { path = "crates/concordia-ecs" }
+concordia-terra = { path = "crates/concordia-terra" }
 concordia-scene = { path = "crates/concordia-scene" }
 concordia-reflect = { path = "crates/concordia-reflect" }
 concordia-reflect-derive = { path = "crates/concordia-reflect-derive" }

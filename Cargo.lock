@@ -427,9 +427,9 @@ version = "0.0.0"
 dependencies = [
  "concordia-command",
  "concordia-core",
- "concordia-ecs",
  "concordia-reflect",
  "concordia-scene",
+ "concordia-terra",
  "futures",
  "insta",
  "jsonschema",
@@ -465,8 +465,8 @@ name = "concordia-command"
 version = "0.0.0"
 dependencies = [
  "concordia-core",
- "concordia-ecs",
  "concordia-reflect",
+ "concordia-terra",
  "insta",
  "proptest",
  "regex",
@@ -491,20 +491,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
-]
-
-[[package]]
-name = "concordia-ecs"
-version = "0.0.0"
-dependencies = [
- "blake3",
- "concordia-core",
- "concordia-reflect",
- "criterion",
- "proptest",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -556,11 +542,25 @@ version = "0.0.0"
 dependencies = [
  "concordia-command",
  "concordia-core",
- "concordia-ecs",
  "concordia-reflect",
+ "concordia-terra",
  "insta",
  "proptest",
  "ryu",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "concordia-terra"
+version = "0.0.0"
+dependencies = [
+ "blake3",
+ "concordia-core",
+ "concordia-reflect",
+ "criterion",
+ "proptest",
  "serde",
  "serde_json",
  "thiserror 2.0.21",

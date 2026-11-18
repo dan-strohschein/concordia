@@ -1,7 +1,7 @@
-# concordia-ecs benchmark baseline
+# concordia-terra benchmark baseline
 
 Recorded 2026-11-17 (M0 phase 0.3) on the reference machine (Apple M3 Pro, 18 GB), Rust 1.100.0, release profile.
-Command: `just bench -p concordia-ecs --bench iter -- --warm-up-time 1 --measurement-time 3`. Median of criterion's estimate.
+Command: `just bench -p concordia-terra --bench iter -- --warm-up-time 1 --measurement-time 3`. Median of criterion's estimate.
 
 | Benchmark | Time |
 |---|---|

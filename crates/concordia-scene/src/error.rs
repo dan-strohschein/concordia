@@ -1,8 +1,8 @@
 //! Scene errors: positions are 1-based line and column (in characters).
 
 use concordia_core::id::{EntityId, IdError};
-use concordia_ecs::EcsError;
 use concordia_reflect::ReflectError;
+use concordia_terra::EcsError;
 
 /// A scene or prefab could not be read, written or loaded.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]

@@ -4,8 +4,8 @@
 use std::collections::BTreeMap;
 
 use concordia_core::math::{Vec2, Vec3};
-use concordia_ecs::register_component;
 use concordia_reflect::{Reflect, TypeRegistry};
+use concordia_terra::register_component;
 use serde::{Deserialize, Serialize};
 
 /// Movement mode.

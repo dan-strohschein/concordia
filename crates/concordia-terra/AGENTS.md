@@ -1,7 +1,7 @@
-# concordia-ecs: agent guide
+# concordia-terra: agent guide
 
 ## Purpose
-Our own archetype ECS (ADR-0030): entities keyed by stable `EntityId`, typed and by-name component access, typed queries (sequential and parallel), resources, sequential schedules, a deterministic fixed-step `SimLoop` and layout-independent world hashing.
+**Terra**, Concordia's entity system (ADR-0010): our own archetype ECS (ADR-0030): entities keyed by stable `EntityId`, typed and by-name component access, typed queries (sequential and parallel), resources, sequential schedules, a deterministic fixed-step `SimLoop` and layout-independent world hashing. It grows Mass-style large-scale simulation features in M7 (`plans/M7-terra.md`).
 
 ## Public entry points
 - `World` (`spawn`, `spawn_with_id`, `despawn`, `insert`, `remove`, `get`, `get_mut`, resources, `state_hash`, `Clone` for play worlds)
@@ -21,7 +21,7 @@ Our own archetype ECS (ADR-0030): entities keyed by stable `EntityId`, typed and
 - Archetype moves never drop component values; despawn and remove drop or return them exactly once.
 
 ## How to test
-`cargo nextest run -p concordia-ecs` (debug), `just perf-smoke` (release perf guard), `just bench -p concordia-ecs` (criterion; update `benches/BASELINE.md` when numbers move meaningfully).
+`cargo nextest run -p concordia-terra` (debug), `just perf-smoke` (release perf guard), `just bench -p concordia-terra` (criterion; update `benches/BASELINE.md` when numbers move meaningfully).
 
 ## Common tasks
 - **Add a component:** derive `Clone, PartialEq, Serialize, Deserialize, Reflect` with doc comments; call `register_component::<T>(&mut registry)` so the API and scenes can use it by name.
@@ -43,7 +43,7 @@ Our own archetype ECS (ADR-0030): entities keyed by stable `EntityId`, typed and
 - Glenn Fiedler, "Fix Your Timestep!" and "Floating Point Determinism" (Gaffer on Games).
 
 ## Status
-M0 phase 0.3 complete.
+M0 phase 0.3 complete; renamed to Terra in M7 Phase 7.0 (2026-11-18).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

@@ -2,9 +2,9 @@
 
 use concordia_command::CommandError;
 use concordia_core::suggest::did_you_mean;
-use concordia_ecs::{EcsError, ReflectComponent, World};
 use concordia_reflect::{ReflectError, TypeInfo, TypeRegistry, example_json, schema_for};
 use concordia_scene::SceneError;
+use concordia_terra::{EcsError, ReflectComponent, World};
 use serde_json::{Value, json};
 
 use crate::error::{ApiError, ApiErrorKind};

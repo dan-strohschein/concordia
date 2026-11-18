@@ -11,7 +11,7 @@ publish.workspace = true
 [dependencies]
 concordia-command.workspace = true
 concordia-core.workspace = true
-concordia-ecs.workspace = true
+concordia-terra.workspace = true
 concordia-reflect.workspace = true
 ryu.workspace = true
 serde.workspace = true

@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 
 use concordia_core::id::TxnId;
-use concordia_ecs::{World, WorldHash};
 use concordia_reflect::TypeRegistry;
+use concordia_terra::{World, WorldHash};
 
 use crate::apply::{reapply, revert};
 use crate::error::CommandError;

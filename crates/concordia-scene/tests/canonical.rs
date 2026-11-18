@@ -5,8 +5,8 @@ mod common;
 use common::{Gadget, Health, Inner, Mode, fixture, registry};
 use concordia_core::id::{DeterministicIdGen, IdSource};
 use concordia_core::math::Vec3;
-use concordia_ecs::World;
 use concordia_scene::{SceneError, SceneMeta, format, read_scene, snapshot_world, write_scene};
+use concordia_terra::World;
 
 fn gadget(mode: Mode) -> Gadget {
     Gadget {

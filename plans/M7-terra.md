@@ -1,5 +1,5 @@
 # M7: Terra (large-scale entity simulation)
-Status: Planned (Phase 7.0 runs right after the M0 PR merges, before M1) · Depends on: M0 (ECS), M1 (render instancing), M2 (nav and Detour crowds), M4 (runtime AI, virtualized geometry) · Detail level: **Needs refinement after M4** · Estimated effort: ~12 weeks (range 10–16) after 7.0, author plus agents
+Status: Phase 7.0 done (2026-11-18); phases 7.1–7.9 planned after M4 · Depends on: M0 (ECS), M1 (render instancing), M2 (nav and Detour crowds), M4 (runtime AI, virtualized geometry) · Detail level: **Needs refinement after M4** · Estimated effort: ~12 weeks (range 10–16) after 7.0, author plus agents
 
 > Outline plan. Phase 7.0 (the rename) is small and fully specified; phases 7.1–7.9 are refined when M4 lands, because representation and behavior depend on M1/M4 rendering and M4 runtime AI.
 
@@ -48,6 +48,7 @@ crates/concordia-api/          terra.* methods
 - **Tests first:** the existing `concordia-ecs` suite (31 tests, model proptest, determinism, perf smoke) passes unchanged under the new crate name; a hygiene test asserts no `concordia-ecs` / `concordia_ecs` references remain outside ADRs and plan history.
 - **Implementation notes:** `git mv crates/concordia-ecs crates/concordia-terra`; update the workspace, dependents (`concordia-command`, `concordia-scene`, `concordia-api`, `concordia-mcp`), `AGENTS.md`/README, `plans/README.md` and the M1–M5 plans (the consistency pass replaces `concordia-ecs` with `concordia-terra`). No API changes. The ECS benchmark baseline moves with the crate.
 - **Done criteria:** `just gate M0` green; all docs say Terra.
+- **Done (2026-11-18):** `git mv` keeps history; the hygiene test `ecs_is_called_terra_everywhere` allows the old name only in ADRs and plan history (M0 plan, M7 plan, `plans/README.md`).
 
 ### Phase 7.1: Processors, access declarations & parallel scheduling
 - **Tests first:** `conflicting_processors_never_run_concurrently`; `independent_processors_run_in_parallel`; `declared_order_constraints_are_respected`; `schedule_cycle_is_an_error_naming_the_cycle`; `world_hash_identical_for_1_and_8_threads_with_parallel_processors`.

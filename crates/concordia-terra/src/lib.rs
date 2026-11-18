@@ -5,7 +5,7 @@
 //!
 //! ```
 //! use concordia_core::id::DeterministicIdGen;
-//! use concordia_ecs::World;
+//! use concordia_terra::World;
 //! use concordia_reflect::Reflect;
 //! use serde::{Deserialize, Serialize};
 //!

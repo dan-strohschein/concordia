@@ -4,8 +4,8 @@ use std::num::NonZeroUsize;
 
 use concordia_core::id::EntityId;
 use concordia_core::math::{Quat, Vec3};
-use concordia_ecs::{Schedule, SystemCtx, World, register_component, system};
 use concordia_reflect::{Reflect, RegistryError, TypeRegistry};
+use concordia_terra::{Schedule, SystemCtx, World, register_component, system};
 use serde::{Deserialize, Serialize};
 
 /// Human-readable entity name. Not required to be unique.

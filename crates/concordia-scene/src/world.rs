@@ -2,8 +2,8 @@
 
 use std::collections::BTreeMap;
 
-use concordia_ecs::World;
 use concordia_reflect::TypeRegistry;
+use concordia_terra::World;
 
 use crate::error::SceneError;
 use crate::model::{EntityDoc, FORMAT_VERSION, SceneDoc, SceneMeta};

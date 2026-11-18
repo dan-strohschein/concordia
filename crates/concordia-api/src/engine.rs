@@ -11,9 +11,9 @@ use concordia_core::id::{DeterministicIdGen, IdError, IdSource, SessionId, Syste
 use concordia_core::jobs::JobSystem;
 use concordia_core::log::{LogConfig, LogRing};
 use concordia_core::time::TickRate;
-use concordia_ecs::{SimLoop, World};
 use concordia_reflect::TypeRegistry;
 use concordia_scene::SceneMeta;
+use concordia_terra::{SimLoop, World};
 use serde_json::Value;
 
 use crate::error::{ApiError, ApiErrorKind};

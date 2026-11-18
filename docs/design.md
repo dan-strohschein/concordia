@@ -61,7 +61,7 @@ Dual MIT/Apache-2.0. Written clean-room policy and DCO sign-off from day one. Fo
 - **M4: Unreal-class visuals.** Virtualized geometry, virtual shadow maps, dynamic GI; visual graphs; runtime AI.
 - **M5: Bring your game.** Unity importer, Unreal exporter plugin and interchange format. *Gate:* a sample Unity project and a sample Unreal project round-trip into playable scenes.
 - **M6: Evolve (plugins).** After M2, in parallel with M3. Manifest, resolution and lockfile; native and WASM plugin hosts; extension points; unknown-component preservation. *Gate:* sample native and WASM plugins add components, systems and MCP tools; an agent uses them; disabling them keeps scenes intact.
-- **M7: Terra (large-scale simulation).** Renaming `concordia-ecs` to `concordia-terra` happens right after M0; the Mass-style features come after M4. *Gate:* 100,000 crowd agents from text templates at 60 Hz on the reference machine, deterministic across thread counts.
+- **M7: Terra (large-scale simulation).** The M0 ECS was renamed `concordia-terra` right after M0 (Phase 7.0); the Mass-style features come after M4. *Gate:* 100,000 crowd agents from text templates at 60 Hz on the reference machine, deterministic across thread counts.
 - **Later:** world streaming, multiplayer/replication, consoles, AA team workflows.
 
 ## Plan hierarchy

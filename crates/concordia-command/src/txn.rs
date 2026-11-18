@@ -1,7 +1,7 @@
 //! Transactions: attributed, atomic groups of applied ops.
 
 use concordia_core::id::TxnId;
-use concordia_ecs::WorldHash;
+use concordia_terra::WorldHash;
 
 use crate::actor::Author;
 use crate::op::AppliedOp;

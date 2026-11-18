@@ -8,7 +8,7 @@ use common::{A, B, Pos, Vel, ids, moving_world};
 use concordia_core::jobs::JobSystem;
 use concordia_core::rng::SimRng;
 use concordia_core::time::{Tick, TickRate};
-use concordia_ecs::{Schedule, SimClock, SimLoop, SystemCtx, World, system};
+use concordia_terra::{Schedule, SimClock, SimLoop, SystemCtx, World, system};
 
 const CHUNK: NonZeroUsize = NonZeroUsize::new(1024).unwrap();
 
@@ -32,7 +32,7 @@ fn schedule() -> Schedule {
     schedule
 }
 
-fn simulate(threads: usize, ticks: &[u32]) -> Vec<concordia_ecs::WorldHash> {
+fn simulate(threads: usize, ticks: &[u32]) -> Vec<concordia_terra::WorldHash> {
     let mut world = moving_world(5_000);
     world.insert_resource(SimRng::new(77));
     let jobs = JobSystem::new(NonZeroUsize::new(threads).unwrap()).unwrap();
@@ -150,12 +150,12 @@ fn world_hash_hex_and_serde_roundtrip() {
     let hash = moving_world(3).state_hash().unwrap();
     let hex = hash.to_string();
     assert_eq!(hex.len(), 64);
-    assert_eq!(hex.parse::<concordia_ecs::WorldHash>().unwrap(), hash);
+    assert_eq!(hex.parse::<concordia_terra::WorldHash>().unwrap(), hash);
     let json = serde_json::to_string(&hash).unwrap();
     assert_eq!(json, format!("\"{hex}\""));
     assert_eq!(
-        serde_json::from_str::<concordia_ecs::WorldHash>(&json).unwrap(),
+        serde_json::from_str::<concordia_terra::WorldHash>(&json).unwrap(),
         hash
     );
-    assert!("zz".parse::<concordia_ecs::WorldHash>().is_err());
+    assert!("zz".parse::<concordia_terra::WorldHash>().is_err());
 }
