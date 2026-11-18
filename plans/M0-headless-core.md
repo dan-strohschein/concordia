@@ -1,5 +1,5 @@
 # M0: Headless Core
-Status: In progress (phase 0.3; phases 0.0–0.2 done 2026-11-17) · Depends on: M-1 · Detail level: Ready to execute · Estimated effort: ~9–11 weeks (author + agents), 8 phases
+Status: In progress (phase 0.4; phases 0.0–0.3 done 2026-11-17) · Depends on: M-1 · Detail level: Ready to execute · Estimated effort: ~9–11 weeks (author + agents), 8 phases
 
 ## Goal & context
 
@@ -88,7 +88,7 @@ examples/m0-sandbox/              # tiny project: concordia.toml, scenes/main.sc
 docs/adr/0009-scene-text-format.md
 docs/guides/agents-engine-api.md  # human/agent guide; also served as an MCP resource
 .mcp.json                         # repo root: registers concordia-mcp for this Claude Code session
-justfile                          # + gate-live, perf-smoke, bench, miri recipes
+justfile                          # + gate-live, perf-smoke, bench recipes (no miri: ADR-0030)
 .config/nextest.toml              # default-filter excludes m0_ gates from 0.7 until 0.8
 ```
 
@@ -347,12 +347,19 @@ Every crate's `AGENTS.md` has these headings: **Purpose** (2–3 sentences), **P
   impl SimLoop { pub fn step(&mut self, world: &mut World, jobs: &JobSystem, n: u32);
                  pub fn advance(&mut self, world: &mut World, jobs: &JobSystem, real: Duration) -> Steps; }
   ```
-  - Storage: one `Table` per archetype; columns are type-erased `BlobColumn { layout, drop: Option<unsafe fn(*mut u8)>, ptr, len, cap }`; swap-remove on despawn with entity-location fix-up; archetype graph edges cache add/remove transitions. All `unsafe` lives in `storage/` with `// SAFETY:` comments; `#![deny(unsafe_op_in_unsafe_fn)]`. `just miri` runs the storage tests under Miri: `cargo +nightly miri test -p concordia-ecs --test world --test model_proptest` (nightly + `miri` component installed locally in this phase, with the author's OK; not a required CI check).
+  - Storage (superseded by ADR-0030, see As built): one `Table` per archetype; swap-remove on despawn with entity-location fix-up; archetype graph edges cache add/remove transitions.
   - `WorldHash`: iterate `entity_ids_sorted()`, for each id hash the id bytes then each component sorted by stable name, via `concordia_reflect::canonical_hash`; also hash `SimClock` and `SimRng` state. Independent of archetype layout and thread count by construction.
   - Parallelism: `QueryState::par_for_each_mut(&mut world, jobs, CHUNK = 4096, f)`; chunks are per-table row ranges, fixed size.
   - **ADR-0030** (own archetype ECS) is written in this phase.
   - References (published designs, no code copied): Sander Mertens, "Building an ECS" article series (flecs author); Michele Caini, "ECS back and forth" (EnTT author); Bevy ECS documentation and RFCs (design concepts only); Timothy Ford, "Overwatch Gameplay Architecture and Netcode" (GDC 2017); Richard Fabian, *Data-Oriented Design*; Fiedler, "Fix Your Timestep!" and "Floating Point Determinism".
-- **Done criteria:** tests green in debug and release; `just perf-smoke` passes; `just bench` produces a baseline committed to `crates/concordia-ecs/benches/BASELINE.md` (numbers + machine); Miri run clean (or documented exception); `AGENTS.md` lists storage invariants.
+- **As built (0.3):**
+  - **Safe storage (ADR-0030):** columns are `Vec<T>` behind a `Column` trait object; queries borrow columns with `get_disjoint_mut`. The crate has no `unsafe`, so the Miri step is dropped (no nightly install). Module layout: `storage/{column,table,archetype}.rs`, `query/{mod,data,filter}.rs`, `dynamic.rs`, `resource.rs`, `entity.rs`, `component.rs`, `schedule.rs`, `sim.rs`, `hash.rs`.
+  - API: `spawn` returns `Result<EntityId>`; `spawn_with_id` returns `Result<EntityWorldMut>`. Queries take `&mut World` and use closures: `QueryState::for_each(world, |id, item| ..)` and `par_for_each(world, jobs, chunk, ..)`; the entity id is always passed. `QueryState::new` returns `Result` and rejects any repeated component. Query data: `&T`, `&mut T`, tuples up to 4; filters `With`, `Without`, `()`, tuples.
+  - `state_hash()` and `clone()` need no registry (columns know their types); `World: Clone` replaces `clone_with`. `component_names(id)` needs no registry.
+  - Dynamic access: `get_dyn`, `get_json`, `set_json` (validates via the registry), `insert_dyn`, `remove_dyn`; `ReflectComponent` carries only `insert` (remove/get are by name inside the world). Resources must be `Clone + Send + Sync`; added `resource_scope`.
+  - Extended earlier crates: `DynReflect::into_any` (reflect) and `SimRng::seed` (core), each test-first.
+  - Extra tests: `spawn_assigns_ids_from_source`, `operations_on_missing_entity_are_errors`, `get_mut_edits_in_place`, `component_names_are_sorted_stable_names`, `cloned_world_is_independent`, `query_on_unknown_component_matches_nothing`, `hash_covers_clock_and_rng`, `systems_run_in_declared_order`.
+- **Done criteria:** tests green in debug and release; `just perf-smoke` passes; `just bench` produces a baseline committed to `crates/concordia-ecs/benches/BASELINE.md` (numbers + machine); Miri dropped: no `unsafe` (ADR-0030); `AGENTS.md` lists storage invariants.
 
 ### Phase 0.4: concordia-command
 
@@ -703,7 +710,7 @@ With the repo-root `.mcp.json` registering `concordia` (via `tools/mcp/concordia
 
 | Risk | Mitigation |
 |---|---|
-| `unsafe` bugs in ECS storage | All `unsafe` confined to `storage/`; stateful proptest against a model; drop-count tests; Miri job. |
+| ~~`unsafe` bugs in ECS storage~~ | Retired: storage is safe Rust (ADR-0030); stateful proptest against a model and drop-count tests remain. |
 | `rmcp` API churn (major versions move fast) | Pin exact version; isolate in `concordia-mcp/src/{tools,resources}.rs`; the gate tests catch breakage on upgrade. |
 | Schema/serde drift (schema says one shape, serde emits another) | Derive forbids shape-changing serde attrs; proptest validates serialized values against generated schemas. |
 | stdout pollution breaks MCP stdio | Logging to stderr only from `concordia-core`; `stdout_contains_only_jsonrpc_frames` test. |
@@ -760,7 +767,7 @@ With the repo-root `.mcp.json` registering `concordia` (via `tools/mcp/concordia
 - **Headless connection file:** `<project>/.concordia/headless.json`.
 - **Component stable names:** registry names default to the Rust ident (`Transform`), overridable with `#[reflect(name = "...")]`; scene files key components by stable name, not Rust path.
 - **CLI:** `concordia fmt [--check] [paths]`; `concordia schema [NAME] [--method M] [--out DIR]`; global flag `--deterministic-ids <seed>` (tests only).
-- **Justfile recipes:** `just gate-live M<n>`, `just perf-smoke`, `just bench`, `just miri`.
+- **Justfile recipes:** `just gate-live M<n>`, `just perf-smoke`, `just bench`.
 - **Cross-crate test package:** `tests/Cargo.toml` package `concordia-tests`; shared helpers in `tests/src/`; live-gate checkers in `tests/gates/m<n>_live_check.rs` marked `#[ignore]`; live scripts in `tools/gates/`.
 - **Env vars:** `CONCORDIA_LOG` (tracing filter), `CONCORDIA_PROJECT` (wrapper default project).
 - **Docs:** `docs/guides/agents-engine-api.md` (also served as `concordia://docs/agent-guide`).

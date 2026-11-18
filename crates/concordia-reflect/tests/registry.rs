@@ -159,3 +159,10 @@ fn dyn_clone_and_eq() {
     assert!(!a.eq_dyn(c.as_ref()));
     assert_eq!(a.info().name, "Health");
 }
+
+#[test]
+fn dyn_into_any_downcasts_by_value() {
+    let boxed: Box<dyn DynReflect> = Box::new(Health { hp: 1.0, max: 2.0 });
+    let health = boxed.into_any().downcast::<Health>().unwrap();
+    assert_eq!(*health, Health { hp: 1.0, max: 2.0 });
+}

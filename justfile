@@ -51,6 +51,14 @@ gate milestone: ci
 bless:
     CONCORDIA_BLESS=1 cargo insta test --workspace --accept --test-runner nextest
 
+# Release-only perf smoke tests (fail on pathological regressions)
+perf-smoke:
+    cargo nextest run --workspace --release -E 'test(/^perf_smoke_/)'
+
+# Criterion benchmarks (record results in crates/<crate>/benches/BASELINE.md)
+bench *args:
+    cargo bench --workspace {{args}}
+
 # Everything CI runs
 ci: lint test deny
 

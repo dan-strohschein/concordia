@@ -14,6 +14,8 @@ pub trait DynReflect: Any + Send + Sync {
     fn as_any(&self) -> &dyn Any;
     /// Mutable upcast for downcasting.
     fn as_any_mut(&mut self) -> &mut dyn Any;
+    /// Owned upcast for downcasting by value.
+    fn into_any(self: Box<Self>) -> Box<dyn Any>;
     /// Boxed clone.
     fn clone_dyn(&self) -> Box<dyn DynReflect>;
     /// Equality with another value of possibly different type.
@@ -32,6 +34,10 @@ impl<T: Reflect> DynReflect for T {
     }
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn into_any(self: Box<Self>) -> Box<dyn Any> {
         self
     }
 

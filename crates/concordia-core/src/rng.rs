@@ -41,6 +41,11 @@ impl SimRng {
         (self.next_u32() >> 8) as f32 / (1u32 << 24) as f32
     }
 
+    /// The 32-byte ChaCha key (identifies the seed; for state hashing).
+    pub fn seed(&self) -> [u8; 32] {
+        self.0.get_seed()
+    }
+
     /// Current stream id.
     pub fn stream(&self) -> u64 {
         self.0.get_stream()
@@ -78,6 +83,16 @@ mod tests {
         );
         assert_ne!(take(&mut parent.fork(2), 16), before);
         assert_eq!(parent.fork(3).stream(), 3);
+    }
+
+    #[test]
+    fn seed_identifies_the_key_not_the_position() {
+        let mut a = SimRng::new(3);
+        let seed = a.seed();
+        a.next_u64();
+        assert_eq!(a.seed(), seed);
+        assert_ne!(SimRng::new(4).seed(), seed);
+        assert_eq!(a.fork(2).seed(), seed);
     }
 
     #[test]
