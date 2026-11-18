@@ -56,7 +56,10 @@ impl EngineModule for RenderModule {
     }
 
     fn methods(&self) -> Vec<MethodInfo> {
-        vec![MethodInfo::of::<CaptureScreenshot>()]
+        vec![
+            MethodInfo::of::<CaptureScreenshot>(),
+            MethodInfo::of::<ViewportPick>(),
+        ]
     }
 
     fn engine_state(&self) -> Option<Box<dyn std::any::Any + Send>> {
@@ -78,6 +81,9 @@ pub struct CaptureScreenshotParams {
     /// Camera entity; default: the highest-priority Camera.
     #[serde(default)]
     pub camera: Option<EntityRef>,
+    /// Render from this viewpoint instead of a camera entity (the editor's view).
+    #[serde(default)]
+    pub view: Option<crate::View>,
     /// Width in pixels.
     #[serde(default = "default_width")]
     #[reflect(default = 1280, range(min = 1.0, max = 8192.0))]
@@ -128,6 +134,14 @@ impl Method for CaptureScreenshot {
         ctx: &CallCtx,
         p: CaptureScreenshotParams,
     ) -> Result<CaptureScreenshotResult, ApiError> {
+        if p.camera.is_some() && p.view.is_some() {
+            return Err(ApiError::new(
+                ApiErrorKind::InvalidParams,
+                "pass either camera or view, not both",
+            )
+            .at("/view"));
+        }
+        p.view.as_ref().map(check_view).transpose()?;
         let world = engine.world(p.world.unwrap_or_default())?;
         let camera = p.camera.as_ref().map(|c| c.resolve(world)).transpose()?;
         let sim_tick = world.resource::<SimClock>().map_or(0, |c| c.tick.0);
@@ -135,6 +149,7 @@ impl Method for CaptureScreenshot {
         let mut renderer = take_renderer(engine)?;
         let request = RenderRequest {
             camera,
+            view: p.view.clone(),
             width: p.width,
             height: p.height,
         };
@@ -218,4 +233,97 @@ fn api_error(error: RenderError) -> ApiError {
         }
         _ => ApiError::new(ApiErrorKind::Internal, message),
     }
+}
+
+/// The entity whose mesh is under pixel (x, y) of a width×height image rendered from `view` (nearest first; bounds-based).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ViewportPick;
+
+/// `viewport.pick` params.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportPickParams {
+    /// The viewpoint.
+    pub view: crate::View,
+    /// Pixel column (0 = left).
+    pub x: u32,
+    /// Pixel row (0 = top).
+    pub y: u32,
+    /// Image width in pixels.
+    #[reflect(range(min = 1.0, max = 8192.0))]
+    pub width: u32,
+    /// Image height in pixels.
+    #[reflect(range(min = 1.0, max = 8192.0))]
+    pub height: u32,
+    /// Which world: edit (default) or play.
+    #[serde(default)]
+    pub world: Option<WorldSel>,
+}
+
+/// `viewport.pick` result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ViewportPickResult {
+    /// The entity hit, or null.
+    pub entity: Option<String>,
+    /// Its depth along the view direction from the eye.
+    pub distance: Option<f32>,
+}
+
+impl Method for ViewportPick {
+    const NAME: &'static str = "viewport.pick";
+    const MUTATES: bool = false;
+    type Params = ViewportPickParams;
+    type Result = ViewportPickResult;
+
+    fn call(
+        engine: &mut Engine,
+        _: &CallCtx,
+        p: ViewportPickParams,
+    ) -> Result<ViewportPickResult, ApiError> {
+        check_view(&p.view)?;
+        if p.x >= p.width || p.y >= p.height {
+            return Err(ApiError::new(
+                ApiErrorKind::InvalidParams,
+                format!(
+                    "pixel ({}, {}) is outside the {}×{} image",
+                    p.x, p.y, p.width, p.height
+                ),
+            )
+            .at("/x"));
+        }
+        let snapshot = RenderWorld::extract(engine.world(p.world.unwrap_or_default())?);
+        let mut memory = MemoryAssets::default();
+        let mut bounds = |mesh: &concordia_assets::AssetRef| {
+            let data = match engine.state_mut::<AssetDb>() {
+                Some(db) => crate::AssetSource::mesh(db, mesh),
+                None => crate::AssetSource::mesh(&mut memory, mesh),
+            };
+            data.ok().map(|m| {
+                (
+                    concordia_core::math::Vec3::from_array(m.aabb.0),
+                    concordia_core::math::Vec3::from_array(m.aabb.1),
+                )
+            })
+        };
+        let hit = crate::pick(
+            &snapshot,
+            &p.view,
+            (p.x, p.y),
+            (p.width, p.height),
+            &mut bounds,
+        )
+        .map_err(api_error)?;
+        Ok(ViewportPickResult {
+            entity: hit.map(|h| h.entity.to_string()),
+            distance: hit.map(|h| h.depth),
+        })
+    }
+}
+
+/// A view that cannot be used is a parameter error at `/view`.
+fn check_view(view: &crate::View) -> Result<(), ApiError> {
+    view.world_matrix()
+        .and_then(|_| view.projection.matrix(1.0))
+        .map(|_| ())
+        .map_err(|e| ApiError::new(ApiErrorKind::InvalidParams, e.to_string()).at("/view"))
 }

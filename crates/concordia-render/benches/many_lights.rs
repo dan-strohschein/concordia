@@ -116,6 +116,7 @@ fn main() {
     let rw = RenderWorld::extract(&world);
     let request = RenderRequest {
         camera: None,
+        view: None,
         width: 1920,
         height: 1080,
     };

@@ -37,10 +37,13 @@ use crate::{CameraView, Msaa, RenderError, RenderWorld, Tonemap};
 pub const MAX_SIZE: u32 = 8192;
 
 /// What to render.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RenderRequest {
     /// Camera entity, or the highest-priority camera.
     pub camera: Option<EntityId>,
+    /// Render from this viewpoint instead (the editor's camera); exposure, tonemap and clear
+    /// color still come from the scene's camera when there is one.
+    pub view: Option<crate::View>,
     /// Width in pixels (1..=8192).
     pub width: u32,
     /// Height in pixels (1..=8192).
@@ -156,7 +159,14 @@ impl Renderer {
         request: &RenderRequest,
     ) -> Result<Image, RenderError> {
         let (width, height) = check_size(request)?;
-        let view = world.camera(request.camera)?;
+        let editor_view;
+        let view = match &request.view {
+            Some(v) => {
+                editor_view = editor_camera(world, v)?;
+                &editor_view
+            }
+            None => world.camera(request.camera)?,
+        };
         let aspect = width.get() as f32 / height.get() as f32;
         let grid = ClusterGrid::new(self.clusters, &view.camera.projection, aspect)?;
         let mut frame = FrameResources::default();
@@ -622,6 +632,27 @@ impl Drop for Renderer {
         self.environments.destroy(self.device.as_ref());
     }
 }
+
+/// A camera at `view`, with the scene camera's settings (or defaults) and the view's projection.
+fn editor_camera(world: &RenderWorld, view: &crate::View) -> Result<CameraView, RenderError> {
+    let scene = world.camera(None).ok();
+    let mut camera = scene.map(|c| c.camera.clone()).unwrap_or_default();
+    camera.projection = view.projection;
+    let entity = match scene {
+        Some(c) => c.entity,
+        None => EDITOR_VIEW
+            .parse()
+            .map_err(|e| RenderError::InvalidCamera(format!("editor view id: {e}")))?,
+    };
+    Ok(CameraView {
+        entity,
+        world: view.world_matrix()?,
+        camera,
+    })
+}
+
+/// Stands in for an entity id when an editor view renders a scene without cameras.
+const EDITOR_VIEW: &str = "0193a1c2-7e40-7000-8000-00000000ed17";
 
 fn check_size(request: &RenderRequest) -> Result<(NonZeroU32, NonZeroU32), RenderError> {
     let bad = || RenderError::InvalidSize {

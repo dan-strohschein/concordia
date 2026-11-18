@@ -90,7 +90,7 @@ export function Editor({ session }: { session: EditorSession }) {
         </section>
       </div>
       <main style={{ minHeight: 0 }}>
-        <Viewport session={session} world={world} />
+        <Viewport session={session} world={world} selected={selected} onSelect={setSelected} />
       </main>
       <section style={dock} aria-label="Inspector dock">
         <div style={title}>Inspector</div>

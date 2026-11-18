@@ -46,7 +46,8 @@ test("editing_transform_x_updates_engine_and_is_logged_with_human_actor", async 
     "log.tail",
     {},
   );
-  expect(log.records.some((r) => JSON.stringify(r).includes("human:local"))).toBe(true);
+  const edits = log.records.filter((r) => r.message === "edit committed").map((r) => r.fields?.["actor"]);
+  expect(edits).toContain("human:local");
 });
 
 test("undo_shortcut_calls_txn_undo_and_restores_value", async ({ page, engine }) => {
@@ -88,4 +89,65 @@ test("step_button_advances_sim_and_viewport_image_changes", async ({ page, engin
   await expect.poll(async () => image.getAttribute("src"), { timeout: 20_000 }).not.toBe(before);
   const info = await engine.agent.call<{ tick: number }>("sim.pause", {});
   expect(info.tick).toBeGreaterThanOrEqual(30);
+});
+
+async function viewportPixel(page: Page, engine: Engine, name: string): Promise<{ x: number; y: number; id: string }> {
+  const { DEFAULT_CAMERA, OrbitCamera, project } = await import("../../src/viewport/camera");
+  const id = (await engine.idsByName())[name] ?? "";
+  const t = await engine.agent.call<{ value: { translation: [number, number, number] } }>("component.get", {
+    entity: id,
+    component: "Transform",
+  });
+  const box = await page.getByTestId("viewport").boundingBox();
+  if (!box) throw new Error("no viewport");
+  const p = project(
+    new OrbitCamera(DEFAULT_CAMERA).view(),
+    t.value.translation,
+    Math.round(box.width),
+    Math.round(box.height),
+  );
+  if (!p) throw new Error(`${name} is not in view`);
+  return { x: box.x + p[0], y: box.y + p[1], id };
+}
+
+test("viewport_click_selects_box_under_cursor", async ({ page, engine }) => {
+  await openEditor(page, engine);
+  await expect(page.getByRole("img", { name: "Viewport" })).toBeVisible({ timeout: 20_000 });
+  const { x, y } = await viewportPixel(page, engine, "Dropped 1");
+  await page.mouse.click(x, y);
+  await expect(page.getByRole("treeitem", { name: "Dropped 1", exact: true })).toHaveAttribute("aria-selected", "true");
+});
+
+test("gizmo_drag_moves_along_its_axis_as_one_undo_step", async ({ page, engine }) => {
+  await openEditor(page, engine);
+  const { x, y, id } = await viewportPixel(page, engine, "Dropped 0");
+  await page.mouse.click(x, y);
+  await expect(page.getByRole("treeitem", { name: "Dropped 0", exact: true })).toHaveAttribute("aria-selected", "true");
+  const before = await translationX(engine, id);
+  await page.getByRole("button", { name: "Move", exact: true }).click();
+  const handle = page.getByRole("button", { name: "Move x" }).locator("circle");
+  const start = await handle.boundingBox();
+  if (!start) throw new Error("no x handle");
+  await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+  await page.mouse.down();
+  for (let i = 1; i <= 8; i++) await page.mouse.move(start.x + start.width / 2 + i * 10, start.y + start.height / 2);
+  await page.mouse.up();
+  await expect.poll(() => translationX(engine, id)).not.toBeCloseTo(before, 1);
+  await page.getByRole("tree", { name: "Scene" }).click();
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect.poll(() => translationX(engine, id)).toBeCloseTo(before, 4);
+});
+
+test("orbiting with the middle button changes the view", async ({ page, engine }) => {
+  await openEditor(page, engine);
+  const image = page.getByRole("img", { name: "Viewport" });
+  await expect(image).toBeVisible({ timeout: 20_000 });
+  const before = await image.getAttribute("src");
+  const box = await page.getByTestId("viewport").boundingBox();
+  if (!box) throw new Error("no viewport");
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down({ button: "middle" });
+  await page.mouse.move(box.x + box.width / 2 + 120, box.y + box.height / 2, { steps: 6 });
+  await page.mouse.up({ button: "middle" });
+  await expect.poll(() => image.getAttribute("src"), { timeout: 20_000 }).not.toBe(before);
 });

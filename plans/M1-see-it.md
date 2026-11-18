@@ -154,6 +154,21 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 
 **Installs needing approval:** cmake (1.7a), Slang into `target/` (1.3), the Tauri CLI (1.8), and git-lfs only if D5 changes.
 
+### Phase 1.9b: Editor camera, picking, gizmo, edit log (done)
+- **`View` (eye, target, projection):** `capture.screenshot {view}` renders the editor's own camera, reusing the scene camera's exposure, tonemap and clear colour (no scene camera needed). Passing both `camera` and `view` is `InvalidParams`.
+- **`viewport.pick {view, x, y, width, height}`:** the nearest mesh under a pixel, via ray tests against each mesh's object-space bounds. CPU-only; handles rotation and scale.
+- **Edits are logged:** `edit committed`, `edit undone` and `edit redone` (target `concordia::edit`) with the transaction's actor, label and op count. Previously only scene, sim and capture lines reached `log.tail`. The e2e attribution test had been passing on capture log lines, and is now exact.
+- **UI:**
+  - a Godot-style orbit camera: middle-drag orbits, Shift+middle-drag pans, the wheel zooms, Alt+left-drag emulates the middle button; numpad 1/3/7 views, 5 toggles ortho, F focuses, plus an isometric preset and a View menu;
+  - click-to-select through `viewport.pick`;
+  - the Move gizmo (an SVG axis-arrow overlay; a drag is one transaction, so one undo restores it);
+  - coalesced streamed captures (one in flight, newest queued).
+- **Tests:** 24 Vitest tests and 9 Playwright tests, including `viewport_click_selects_box_under_cursor`, the one-step-undo gizmo drag and orbiting.
+- **Deviations:**
+  - Picking is bounds-based (no per-triangle test or GPU id pass).
+  - The gizmo uses the local translation, which is exact for unparented entities.
+  - Rotate and scale gizmos come later, as the plan says.
+
 ### Phase 1.9a: Events and editor UI (done)
 - **`events.subscribe` / `events.unsubscribe`** (core API; 27 methods). M0 had no change feed.
   - `edit` events carry the actor, label and entities per commit, undo or redo; `scene` covers opened, new and saved; `sim` covers `sim.*`.

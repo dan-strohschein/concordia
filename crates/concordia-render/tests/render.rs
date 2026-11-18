@@ -379,6 +379,7 @@ fn invalid_sizes_and_cameras_are_errors() {
                 &mut s.assets,
                 &RenderRequest {
                     camera: None,
+                    view: None,
                     width,
                     height,
                 },
@@ -392,6 +393,7 @@ fn invalid_sizes_and_cameras_are_errors() {
             &mut s.assets,
             &RenderRequest {
                 camera: None,
+                view: None,
                 width: 8,
                 height: 8,
             },
@@ -416,6 +418,7 @@ fn missing_assets_name_the_reference() {
             &mut s.assets,
             &RenderRequest {
                 camera: None,
+                view: None,
                 width: 8,
                 height: 8,
             },

@@ -19,6 +19,7 @@ mod renderer;
 pub mod shadow;
 mod shadow_pass;
 pub mod tonemap;
+mod view;
 
 pub use assets::{AssetSource, MemoryAssets};
 pub use camera::view_matrix;
@@ -36,6 +37,7 @@ pub use module::{
 pub use pipelines::shader_dir;
 pub use renderer::{Image, MAX_SIZE, RenderRequest, RenderStats, Renderer};
 pub use shadow_pass::ShadowPush;
+pub use view::{Pick, View, pick};
 
 /// Registers the render components.
 pub fn register_types(

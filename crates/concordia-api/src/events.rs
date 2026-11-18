@@ -112,12 +112,11 @@ pub(crate) fn publish_after(engine: &mut Engine, method: &str, before: &Marker, 
             );
         }
         "scene.open" | "scene.new" => {}
-        _ if engine.events.wants(Topic::edit) => publish_edit(engine, method, before),
-        _ => {}
+        _ => publish_edit(engine, method, before),
     }
 }
 
-/// An edit event if the call committed, undid or redid a transaction.
+/// Logs, and publishes as an edit event, a transaction the call committed, undid or redid.
 fn publish_edit(engine: &mut Engine, method: &str, before: &Marker) {
     let Some(scene) = engine.scene.as_ref() else {
         return;
@@ -133,7 +132,25 @@ fn publish_edit(engine: &mut Engine, method: &str, before: &Marker) {
     };
     let Some(txn) = txn else { return };
     let params = edit_params(method, txn, undo);
-    engine.events.publish(Topic::edit, params);
+    let (actor, label, ops) = (
+        txn.author.actor.to_string(),
+        txn.label.clone(),
+        txn.ops.len(),
+    );
+    match (undo, method) {
+        (true, _) => {
+            tracing::info!(target: "concordia::edit", actor, label, ops, method, "edit undone")
+        }
+        (false, "txn.redo") => {
+            tracing::info!(target: "concordia::edit", actor, label, ops, method, "edit redone")
+        }
+        (false, _) => {
+            tracing::info!(target: "concordia::edit", actor, label, ops, method, "edit committed")
+        }
+    }
+    if engine.events.wants(Topic::edit) {
+        engine.events.publish(Topic::edit, params);
+    }
 }
 
 fn edit_params(method: &str, txn: &Transaction, undo: bool) -> Value {

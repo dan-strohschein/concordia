@@ -41,7 +41,8 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `txn.history` | | `{limit?}` → `{entries}` |
 | `sim.play` / `sim.pause` / `sim.stop` | | `{rate_hz?}` / `{}` → `{state, tick}` |
 | `sim.step` | | `{ticks}` → `{tick, world_hash}` |
-| `capture.screenshot` | | `{width?, height?, camera?, world?}` → `{image, width, height, sim_tick, frame}` (projects with `[render]`) |
+| `capture.screenshot` | | `{width?, height?, camera? \| view?, world?}` → `{image, width, height, sim_tick, frame}` (projects with `[render]`) |
+| `viewport.pick` | | `{view, x, y, width, height, world?}` → `{entity, distance}` (projects with `[render]`) |
 | `log.tail` | | `{since?, level?, limit?}` → `{records, next}` |
 | `events.subscribe` / `events.unsubscribe` | | `{topics: ["edit" \| "scene" \| "sim"]}` → `{topics}` (WebSocket only; not an MCP tool) |
 

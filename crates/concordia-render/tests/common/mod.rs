@@ -129,6 +129,7 @@ impl Scene {
                 &mut self.assets,
                 &RenderRequest {
                     camera: None,
+                    view: None,
                     width,
                     height,
                 },
