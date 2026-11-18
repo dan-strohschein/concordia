@@ -10,6 +10,8 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # Line tables keep panic backtraces readable while cutting compile/link time and cache size.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
 jobs:
   gate:
@@ -31,8 +33,6 @@ jobs:
         run: just lint
       - name: Build WASM fixtures
         run: just wasm
-      - name: Build binaries used by the gate tests
-        run: cargo build -p concordia-mcp --bin concordia-mcp && cargo build -p concordia-cli --bin concordia
       - name: Tests
         run: cargo nextest run --workspace --profile ci --no-tests=fail
       - name: Doc tests

@@ -1,8 +1,8 @@
 [profile.default]
 slow-timeout = { period = "30s", terminate-after = 4 }
 
-# Tests that compile code themselves (trybuild cases; the M0 gate builds concordia-mcp)
-# get a longer limit on cold CI runners; everything else keeps the 2-minute hang guard.
+# Tests that may compile code themselves (trybuild cases; the M0 gate when run outside a
+# workspace test build) get a longer limit; everything else keeps the 2-minute hang guard.
 [[profile.default.overrides]]
 filter = "test(=derive_rejects_unsupported_input) | binary(m0_headless_mcp)"
 slow-timeout = { period = "60s", terminate-after = 10 }

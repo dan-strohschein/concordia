@@ -46,10 +46,11 @@ deny:
 gate milestone: ci
     just gate-tests {{milestone}}
 
-# Only the milestone's gate tests (CI runs these after its own lint/test/deny steps)
+# Only the milestone's gate tests (CI runs these after its own lint/test/deny steps).
+# --workspace keeps feature unification identical to `just test`, so nothing recompiles.
 gate-tests milestone:
     prefix=$(echo "{{milestone}}" | tr '[:upper:]' '[:lower:]' | sed 's/-/_minus/'); \
-    cargo nextest run -p concordia-tests --no-tests=fail -E "binary(/^${prefix}_/)"
+    cargo nextest run --workspace --no-tests=fail -E "binary(/^${prefix}_/)"
 
 # Live-agent gate: a real Claude Code session on your subscription (no API key), outcomes asserted
 gate-live milestone:
