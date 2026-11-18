@@ -1,29 +1,33 @@
 # concordia-testkit: agent guide
 
 ## Purpose
-Dev-dependency-only test helpers: GPU test guards now, FLIP golden-image comparison and blessing from phase 1.5a.
+Dev-dependency-only test helpers: GPU test guards and golden images compared with NVIDIA FLIP.
 
 ## Public entry points
-- `gpu_required()` / `gpu_required_from(value)` and `REQUIRE_GPU_ENV` (`CONCORDIA_REQUIRE_GPU`)
+- `gpu_required()` / `gpu_required_from(value)` and `REQUIRE_GPU_ENV`
+- `golden::{assert_golden, Golden, RgbaImage, Tolerance, FlipScore, flip_score, GoldenError}`
 
 ## Invariants
-- Only ever a `[dev-dependencies]` entry; no engine crate depends on it at runtime.
-- `CONCORDIA_REQUIRE_GPU=1` (exactly) makes GPU tests fail instead of skipping when no device exists.
+- Only ever a `[dev-dependencies]` entry.
+- Goldens live at `tests/golden/<suite>/<name>.png`. Blessing needs `CONCORDIA_BLESS=1` and is refused when `CI=true`. Failures write `<name>.{actual,expected,flip}.png` to `target/golden-failures/<suite>/`.
+- FLIP is LDR (RGB, alpha ignored) at the default pixels-per-degree; the default tolerance is mean ≤ 0.01, p99 ≤ 0.25.
+- Golden names are `[A-Za-z0-9_@-]+` (no path escapes).
 
 ## How to test
 `cargo nextest run -p concordia-testkit`
 
 ## Common tasks
-- **Write a GPU test:** probe the device; on `RhiError::NoDevice`, assert `!gpu_required()` and return, otherwise run the test.
+- **Add a golden test:** render, then call `assert_golden(suite, name, &image, Tolerance::mean(x))`; run `just bless`, check the PNG by eye, and commit it.
 
 ## Don'ts
-- Don't let a GPU test silently pass on a machine that should have a GPU: always check `gpu_required()`.
+- Don't let a GPU test silently pass on a machine that should have a GPU: check `gpu_required()`.
+- Don't commit goldens you have not looked at.
 
 ## References
-- None yet (NVIDIA FLIP from phase 1.5a).
+- NVIDIA FLIP (BSD-3-Clause) through the `nv-flip` crate (MIT/Apache/Zlib); Andersson et al., "FLIP: A Difference Evaluator for Alternating Images" (HPG 2020).
 
 ## Status
-M1 phase 1.2a: GPU guard.
+M1 phase 1.2b (golden harness moved up from 1.5a).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

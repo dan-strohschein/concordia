@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (phase 1.2b; 1.0, 1.2a, 1.1 and 1.7 done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (phase 1.3; 1.0, 1.2a, 1.1, 1.7 and 1.2b done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -153,6 +153,19 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 - the gate agent demo.
 
 **Installs needing approval:** cmake (1.7a), Slang into `target/` (1.3), the Tauri CLI (1.8), and git-lfs only if D5 changes.
+
+### Phase 1.2b: RHI and Metal backend (done locally; CI on hosted macos-26 pending)
+- **`concordia-rhi`:** validated descriptors, generation-checked handles (`Slots<T>`), `CommandList` as data with `validate`, sync2 barriers, bindless indices, an object-safe `Device`, and the `conformance` suite (14 cases, run through `conformance_tests!`, goldens through `GoldenCheck`). ADR-0040 is written.
+- **`concordia-rhi-metal`:** `MetalDevice` (Metal 3 API), bindless argument-buffer tables (`gpuAddress` / `gpuResourceID`; slots 0 buffers, 1 textures, 2 storage textures, 3 push constants), tracked hazards, shared-event timelines, placed textures in tracked heaps, and a device-lost test hook. The full conformance suite passes on the M3 Pro.
+- **`concordia-testkit` golden harness** (moved up from 1.5a): FLIP via `nv-flip` (builds on macOS; Linux is checked in CI), bless rules, and failure artifacts. Goldens `tests/golden/rhi/{triangle,msaa_edge}.png` were blessed and checked by eye.
+- **CI:** the macOS gate job moves to `macos-26` with `CONCORDIA_REQUIRE_GPU=1`; the probe output is logged and golden failures are uploaded. The separate probe job is gone.
+- **Hosted probe (PR #5):** an "Apple Paravirtual device" with families common3 and mac2 only (no `metal3`), argument buffers tier 2, MSAA 1/2/4. It meets `Requirement::M1`, but the Metal 3 bindless path is untested there until this branch's CI runs. If it fails, D2 goes back to the author.
+- **Deviations from the plan:**
+  - Hazards are tracked on Metal; RHI barriers only end encoders (ADR-0040).
+  - `ComputePipelineDesc` gains `threads_per_group`.
+  - Mesh pipelines and `R64Uint` are `Unsupported` on Metal until M4.
+  - `CAMetalLayer` surfaces move to 1.5, with presentation.
+  - A golden size-cap hygiene test is added (D5).
 
 ### Phase 1.7b: concordia-physics (done)
 - **The crate:**

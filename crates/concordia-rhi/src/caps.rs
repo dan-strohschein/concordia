@@ -73,6 +73,10 @@ pub struct DeviceCaps {
     pub ray_tracing: bool,
     /// Largest single buffer in bytes.
     pub max_buffer_bytes: u64,
+    /// Bindless table capacity for textures.
+    pub max_bindless_textures: u32,
+    /// Bindless table capacity for buffers.
+    pub max_bindless_buffers: u32,
     /// Backend feature-set names (e.g. Metal GPU families `apple9`, `metal3`), sorted.
     pub feature_sets: Vec<String>,
 }

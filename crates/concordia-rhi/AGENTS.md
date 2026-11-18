@@ -1,32 +1,39 @@
 # concordia-rhi: agent guide
 
 ## Purpose
-Backend-neutral GPU vocabulary: device capabilities and errors now, plus devices, resources, barriers and pipelines from phase 1.2b (ADR-0040). Nothing in it depends on a graphics API.
+Backend-neutral GPU vocabulary and the `Device` trait (ADR-0040): validated descriptors, typed handles, command lists as data, sync2-style barriers, bindless indices, capabilities, and the conformance suite every backend runs.
 
 ## Public entry points
-- `DeviceCaps` (what a device can do) and `DeviceCaps::missing(Requirement)`
-- `Backend`, `SampleCount` (1/2/4/8 only), `Requirement::M1`
-- `RhiError`
+- `Device` (object-safe), `Submit`, `QueueKind`
+- `CommandList` (`push`, `validate`) and `Command`, `RenderPassDesc`, `ColorAttachment`, `DepthAttachment`, `LoadOp`, `StoreOp`, `ClearValue`
+- Descriptors: `BufferDesc`, `TextureDesc`, `HeapDesc` (`validate`), `ComputePipelineDesc`, `GraphicsPipelineDesc`, `MeshPipelineDesc`, `ShaderSource`
+- Handles: `Buffer`, `Texture`, `Pipeline`, `Heap`, `Timeline`, `BindlessIndex`; `Slots<T>` for backends
+- `Access`, `BufferBarrier`, `TextureBarrier`, `Format`, `DeviceCaps`, `Requirement`, `RhiError`
+- `conformance` (feature `conformance`): `conformance_tests!` and `GoldenCheck`
 
 ## Invariants
-- No graphics-API types or crates here; backends translate.
-- `DeviceCaps::feature_sets` is sorted, so reports diff cleanly.
-- `SampleCount` can only hold 1, 2, 4 or 8, including when deserialized.
+- No graphics-API types here; backends translate.
+- Every descriptor and command list is validated before a backend sees it; public APIs return `RhiError` and never panic on bad input.
+- Handles are generation-checked: a destroyed resource's handle is `StaleHandle`, never another resource.
+- Shaders see resources only through bindless indices (buffer table, texture table) and ≤ 128 bytes of push constants.
+- `DeviceCaps::feature_sets` is sorted; `SampleCount` holds only 1/2/4/8.
 
 ## How to test
-`cargo nextest run -p concordia-rhi`
+`cargo nextest run -p concordia-rhi` (GPU-free unit tests). The conformance cases run in each backend's `tests/conformance.rs`.
 
 ## Common tasks
-- **Add a capability:** add the field to `DeviceCaps`, fill it in every backend's probe, and add it to `missing_for_m1` if M1 needs it, with a test in `tests/caps.rs`.
+- **Add a command:** add a `Command` variant, extend `CommandList::validate`, translate it in every backend, and add a conformance case.
+- **Add a conformance case:** write `pub fn case(device, golden)` in `src/conformance/cases.rs` and add its name to `conformance_tests!`.
 
 ## Don'ts
-- Don't add backend-specific enums; express them as capabilities or `feature_sets` names.
+- Don't add backend-specific enums; express them as capabilities.
+- Don't make the conformance suite depend on testkit; goldens come in through `GoldenCheck`.
 
 ## References
-- Apple *Metal Feature Set Tables*; Vulkan specification (capability vocabulary).
+- Vulkan synchronization2 chapter; Microsoft "Enhanced Barriers" (D3D12) for the barrier vocabulary; Apple WWDC 2022 "Go bindless with Metal 3"; Apple *Metal Feature Set Tables*.
 
 ## Status
-M1 phase 1.2a: capabilities and probe types.
+M1 phase 1.2b.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

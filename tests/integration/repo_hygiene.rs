@@ -551,3 +551,32 @@ fn ecs_is_called_terra_everywhere() {
         "rename concordia-terra to concordia-terra in: {offenders:?}"
     );
 }
+
+/// Goldens stay in plain git (decision D5, ADR-0042): small files, bounded total.
+#[test]
+fn golden_images_stay_small() {
+    const MAX_FILE: u64 = 1 << 20;
+    const MAX_TOTAL: u64 = 50 << 20;
+    let mut total = 0;
+    let mut stack = vec![repo_root().join("tests/golden")];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).unwrap().filter_map(Result::ok) {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().is_some_and(|e| e == "png") {
+                let size = entry.metadata().unwrap().len();
+                assert!(
+                    size <= MAX_FILE,
+                    "{} is {size} bytes (limit {MAX_FILE})",
+                    path.display()
+                );
+                total += size;
+            }
+        }
+    }
+    assert!(
+        total <= MAX_TOTAL,
+        "goldens total {total} bytes (limit {MAX_TOTAL}); time for Git LFS?"
+    );
+}

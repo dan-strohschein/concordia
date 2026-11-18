@@ -12,6 +12,8 @@ fn metal_caps() -> DeviceCaps {
         mesh_shaders: true,
         ray_tracing: true,
         max_buffer_bytes: 1 << 30,
+        max_bindless_textures: 16_384,
+        max_bindless_buffers: 16_384,
         feature_sets: vec!["apple9".into(), "metal3".into()],
     }
 }
