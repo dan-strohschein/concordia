@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{run, stdout};
+use common::{run, stderr, stdout};
 
 const MESSY: &str = r#"Scene(id: "0193a1c2-7e40-7000-8000-000000000001", format: 1, name: "S",
   entities: [Entity(components: {"Name": "A"}, id: "0193a1c2-7e40-7000-8000-000000000002")])"#;
@@ -58,4 +58,30 @@ fn fmt_reports_parse_errors_with_position() {
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+#[test]
+fn fmt_knows_the_project_module_components() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("concordia.toml"),
+        "[physics]\ngravity = [0.0, -9.81, 0.0]\n",
+    )
+    .unwrap();
+    let scene = r#"Scene(id: "0193a1c2-7e40-7000-8000-000000000001", format: 1, name: "P", entities: [
+        Entity(id: "0193a1c2-7e40-7000-8000-000000000002", components: {"RigidBody": (kind: Static), "Collider": (shape: Sphere(radius: 1.0))}),
+    ])"#;
+    std::fs::write(dir.path().join("p.scene.ron"), scene).unwrap();
+    let output = run(
+        &[
+            "fmt",
+            "--project",
+            dir.path().to_str().unwrap(),
+            dir.path().to_str().unwrap(),
+        ],
+        dir.path(),
+    );
+    assert!(output.status.success(), "{}", stderr(&output));
+    let canonical = std::fs::read_to_string(dir.path().join("p.scene.ron")).unwrap();
+    assert!(canonical.contains("\"RigidBody\": ("), "{canonical}");
 }

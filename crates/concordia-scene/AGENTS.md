@@ -5,6 +5,7 @@ The text source of truth: canonical RON scenes and prefabs (ADR-0009) with stabl
 
 ## Public entry points
 - `read_scene`, `read_prefab`, `write_scene`, `write_prefab`, `format`
+- `read_document::<T>` / `write_document` for other typed RON files (input maps, later materials and sidecars): schema-validated, canonical (sorted fields, root named after the type)
 - `SceneDoc`, `PrefabDoc`, `EntityDoc`, `SceneMeta`, `FORMAT_VERSION`
 - `load_into_world`, `snapshot_world`, `instantiate_prefab` (returns `EditOp`s for `concordia-command`)
 - `builtin::{Name, Transform, Parent, Velocity, register, integrate_velocity, headless_schedule}`

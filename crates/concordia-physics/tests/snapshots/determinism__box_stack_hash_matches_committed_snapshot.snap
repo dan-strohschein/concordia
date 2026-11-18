@@ -1,0 +1,6 @@
+---
+source: crates/concordia-physics/tests/determinism.rs
+assertion_line: 111
+expression: sim.physics.state_hash().to_string()
+---
+42c63de1c43b4e91f831f42e9417262f20a8036bd56cf4b37fac0ea57087a4ff

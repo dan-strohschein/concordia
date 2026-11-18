@@ -1,6 +1,6 @@
 //! Runs an [`Engine`] on its own thread; transports talk to it through a cloneable async handle.
 
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 use std::thread::JoinHandle;
 use std::time::Instant;
 
@@ -10,6 +10,7 @@ use tokio::sync::oneshot;
 
 use crate::engine::{Engine, internal};
 use crate::error::ApiError;
+use crate::method::MethodRegistry;
 
 enum Request {
     Open(oneshot::Sender<SessionId>),
@@ -32,6 +33,7 @@ enum Request {
 #[derive(Debug, Clone)]
 pub struct EngineHandle {
     tx: mpsc::Sender<Request>,
+    methods: Arc<MethodRegistry>,
 }
 
 impl std::fmt::Debug for Request {
@@ -49,11 +51,12 @@ impl Engine {
     /// Like [`Engine::spawn`], also returning the thread's join handle.
     pub fn spawn_with_thread(self) -> (EngineHandle, JoinHandle<()>) {
         let (tx, rx) = mpsc::channel();
+        let methods = Arc::clone(&self.methods);
         let thread = std::thread::Builder::new()
             .name("concordia-engine".into())
             .spawn(move || run(self, &rx))
             .expect("the OS can start the engine thread");
-        (EngineHandle { tx }, thread)
+        (EngineHandle { tx, methods }, thread)
     }
 }
 
@@ -109,6 +112,11 @@ impl EngineHandle {
         self.tx
             .send(request)
             .map_err(|_| internal("the engine thread has stopped"))
+    }
+
+    /// Every method the engine serves (fixed for the engine's lifetime).
+    pub fn methods(&self) -> &MethodRegistry {
+        &self.methods
     }
 
     /// Starts a session.

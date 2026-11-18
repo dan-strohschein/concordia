@@ -1,0 +1,270 @@
+//! Deterministic sampling: queued events become action states once per fixed tick.
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::time::Duration;
+
+use concordia_core::math::Vec2;
+use concordia_core::time::TickRate;
+
+use crate::device::{KeyCode, MouseButton};
+use crate::error::InputError;
+use crate::event::InputEvent;
+use crate::map::{ActionDef, ActionKind, Binding, InputMap};
+use crate::value::{ActionState, ActionStates, ActionValue};
+
+/// The tick an OS event at `since_start` belongs to: events in (N, N+1] tick times apply at tick N+1.
+pub fn tick_for_time(since_start: Duration, rate: TickRate) -> u64 {
+    let nanos = since_start.as_nanos() * u128::from(rate.hz());
+    u64::try_from(nanos.div_ceil(1_000_000_000)).unwrap_or(u64::MAX)
+}
+
+/// Held keys and buttons, pointer position, and this tick's motion and scroll.
+#[derive(Debug, Clone, Default, PartialEq)]
+struct Devices {
+    keys: BTreeSet<KeyCode>,
+    buttons: BTreeSet<MouseButton>,
+    pointer: Vec2,
+    motion: Vec2,
+    scroll: Vec2,
+}
+
+/// Turns queued events into [`ActionStates`] once per tick; a play-world resource.
+#[derive(Debug, Clone, PartialEq)]
+pub struct InputSampler {
+    map: InputMap,
+    devices: Devices,
+    forced: BTreeMap<String, ActionValue>,
+    queue: BTreeMap<u64, Vec<InputEvent>>,
+    states: ActionStates,
+    next_tick: u64,
+}
+
+impl InputSampler {
+    /// A sampler for a validated map, before tick 0.
+    pub fn new(map: InputMap) -> Self {
+        let states = ActionStates {
+            actions: map
+                .actions
+                .iter()
+                .map(|(name, def)| (name.clone(), idle(def.kind)))
+                .collect(),
+        };
+        Self {
+            map,
+            devices: Devices::default(),
+            forced: BTreeMap::new(),
+            queue: BTreeMap::new(),
+            states,
+            next_tick: 0,
+        }
+    }
+
+    /// The input map.
+    pub fn map(&self) -> &InputMap {
+        &self.map
+    }
+
+    /// The first tick that can still take input.
+    pub fn next_tick(&self) -> u64 {
+        self.next_tick
+    }
+
+    /// The states computed by the last [`sample`](Self::sample).
+    pub fn states(&self) -> &ActionStates {
+        &self.states
+    }
+
+    /// Checks that `event` could be queued for `tick`, without queuing it.
+    pub fn check(&self, tick: u64, event: &InputEvent) -> Result<(), InputError> {
+        if tick < self.next_tick {
+            return Err(InputError::TickInPast {
+                tick,
+                next: self.next_tick,
+            });
+        }
+        match event {
+            InputEvent::Action { action, value } => self.check_action(action, *value),
+            _ => Ok(()),
+        }
+    }
+
+    /// Queues `event` for `tick` (events of one tick apply in push order).
+    pub fn push(&mut self, tick: u64, event: InputEvent) -> Result<(), InputError> {
+        self.check(tick, &event)?;
+        self.queue.entry(tick).or_default().push(event);
+        Ok(())
+    }
+
+    /// Applies every event queued up to `tick` and returns the tick's action states.
+    pub fn sample(&mut self, tick: u64) -> &ActionStates {
+        let before: BTreeMap<String, bool> = self.active_now();
+        let mut rose = BTreeSet::new();
+        let mut fell = BTreeSet::new();
+        self.devices.motion = Vec2::ZERO;
+        self.devices.scroll = Vec2::ZERO;
+        let due: Vec<u64> = self.queue.range(..=tick).map(|(t, _)| *t).collect();
+        let events: Vec<InputEvent> = due
+            .into_iter()
+            .flat_map(|t| self.queue.remove(&t).unwrap_or_default())
+            .collect();
+        for event in events {
+            let was = self.active_now();
+            self.apply(event);
+            for (name, now) in self.active_now() {
+                match (was.get(&name).copied().unwrap_or(false), now) {
+                    (false, true) => rose.insert(name),
+                    (true, false) => fell.insert(name),
+                    _ => false,
+                };
+            }
+        }
+        self.states = self.compute(&before, &rose, &fell);
+        self.next_tick = self.next_tick.max(tick.saturating_add(1));
+        &self.states
+    }
+
+    fn check_action(&self, action: &str, value: ActionValue) -> Result<(), InputError> {
+        let def = self
+            .map
+            .action(action)
+            .ok_or_else(|| InputError::UnknownAction {
+                action: action.to_owned(),
+                known: self.map.action_names().map(str::to_owned).collect(),
+            })?;
+        match value.kind() == def.kind {
+            true => Ok(()),
+            false => Err(InputError::ValueKind {
+                action: action.to_owned(),
+                kind: format!("{:?}", def.kind),
+            }),
+        }
+    }
+
+    fn apply(&mut self, event: InputEvent) {
+        let d = &mut self.devices;
+        match event {
+            InputEvent::Key { key, pressed } => toggle(&mut d.keys, key, pressed),
+            InputEvent::MouseButton { button, pressed } => toggle(&mut d.buttons, button, pressed),
+            InputEvent::PointerMove { x, y } => d.pointer = Vec2::new(x, y),
+            InputEvent::MouseMotion { dx, dy } => d.motion += Vec2::new(dx, dy),
+            InputEvent::Scroll { dx, dy } => d.scroll += Vec2::new(dx, dy),
+            InputEvent::Action { action, value } => {
+                self.forced.insert(action, value);
+            }
+        }
+    }
+
+    fn active_now(&self) -> BTreeMap<String, bool> {
+        self.map
+            .actions
+            .iter()
+            .map(|(name, def)| (name.clone(), self.value(name, def).is_active()))
+            .collect()
+    }
+
+    fn compute(
+        &self,
+        before: &BTreeMap<String, bool>,
+        rose: &BTreeSet<String>,
+        fell: &BTreeSet<String>,
+    ) -> ActionStates {
+        let actions = self
+            .map
+            .actions
+            .iter()
+            .map(|(name, def)| {
+                let value = self.value(name, def);
+                let pressed = value.is_active();
+                let was = before.get(name).copied().unwrap_or(false);
+                let state = ActionState {
+                    pressed,
+                    just_pressed: rose.contains(name) || (!was && pressed),
+                    just_released: fell.contains(name) || (was && !pressed),
+                    value,
+                };
+                (name.clone(), state)
+            })
+            .collect();
+        ActionStates { actions }
+    }
+
+    fn value(&self, name: &str, def: &ActionDef) -> ActionValue {
+        let bound = bound_value(&self.devices, def);
+        match self.forced.get(name) {
+            Some(forced) => merge(bound, *forced),
+            None => bound,
+        }
+    }
+}
+
+fn idle(kind: ActionKind) -> ActionState {
+    ActionState {
+        pressed: false,
+        just_pressed: false,
+        just_released: false,
+        value: ActionValue::zero(kind),
+    }
+}
+
+fn toggle<T: Ord>(set: &mut BTreeSet<T>, item: T, on: bool) {
+    match on {
+        true => set.insert(item),
+        false => set.remove(&item),
+    };
+}
+
+fn bound_value(d: &Devices, def: &ActionDef) -> ActionValue {
+    match def.kind {
+        ActionKind::Button => ActionValue::Button(def.bindings.iter().any(|b| held(d, b))),
+        ActionKind::Axis1d => ActionValue::Axis1d(def.bindings.iter().map(|b| axis1d(d, b)).sum()),
+        ActionKind::Axis2d => ActionValue::Axis2d(def.bindings.iter().map(|b| axis2d(d, b)).sum()),
+    }
+}
+
+fn held(d: &Devices, binding: &Binding) -> bool {
+    match binding {
+        Binding::Key(k) => d.keys.contains(k),
+        Binding::MouseButton(b) => d.buttons.contains(b),
+        Binding::Chord { modifiers, key } => {
+            d.keys.contains(key)
+                && modifiers
+                    .iter()
+                    .all(|m| d.keys.iter().any(|k| k.modifier() == Some(*m)))
+        }
+        _ => false,
+    }
+}
+
+fn axis1d(d: &Devices, binding: &Binding) -> f32 {
+    let key = |k: &KeyCode| if d.keys.contains(k) { 1.0 } else { 0.0 };
+    match binding {
+        Binding::Key(k) => key(k),
+        Binding::KeyAxis { negative, positive } => key(positive) - key(negative),
+        Binding::Scroll => d.scroll.y,
+        _ => 0.0,
+    }
+}
+
+fn axis2d(d: &Devices, binding: &Binding) -> Vec2 {
+    let key = |k: &KeyCode| if d.keys.contains(k) { 1.0 } else { 0.0 };
+    match binding {
+        Binding::KeyAxis2d {
+            up,
+            down,
+            left,
+            right,
+        } => Vec2::new(key(right) - key(left), key(up) - key(down)).clamp_length_max(1.0),
+        Binding::PointerPosition => d.pointer,
+        Binding::MouseDelta => d.motion,
+        Binding::Scroll => d.scroll,
+        _ => Vec2::ZERO,
+    }
+}
+
+/// A forced value wins for buttons when pressed and replaces axis values.
+fn merge(bound: ActionValue, forced: ActionValue) -> ActionValue {
+    match (bound, forced) {
+        (ActionValue::Button(a), ActionValue::Button(b)) => ActionValue::Button(a || b),
+        (_, forced) => forced,
+    }
+}

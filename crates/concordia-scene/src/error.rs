@@ -80,6 +80,14 @@ pub enum SceneError {
         /// JSON Pointer inside the component.
         pointer: String,
     },
+    /// A document value is NaN or infinite (RON has no spelling for it).
+    #[error("{document}: non-finite number at {pointer}")]
+    NonFiniteValue {
+        /// Document type name.
+        document: String,
+        /// JSON Pointer of the value.
+        pointer: String,
+    },
     /// A world operation failed while loading.
     #[error(transparent)]
     World(#[from] EcsError),

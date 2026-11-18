@@ -1,6 +1,6 @@
 //! rmcp adapter, part 2: `concordia://` resources (schemas, docs, the current scene).
 
-use concordia_api::{ApiError, ApiErrorKind, methods};
+use concordia_api::{ApiError, ApiErrorKind};
 use rmcp::ErrorData as McpError;
 use rmcp::model::{
     ListResourceTemplatesResult, ListResourcesResult, ReadResourceResult, Resource,
@@ -78,12 +78,12 @@ pub(crate) async fn read(
         "concordia://docs/errors" => errors_markdown(),
         "concordia://scene/current" => server.scene_text().await.map_err(not_found)?,
         _ => match (uri.strip_prefix(COMPONENT), uri.strip_prefix(METHOD)) {
-            (Some(name), _) if methods().get(name).is_none() => json_text(
+            (Some(name), _) if server.methods().get(name).is_none() => json_text(
                 server
                     .engine_call("schema.get", json!({ "name": name }))
                     .await,
             )?,
-            (_, Some(name)) if methods().get(name).is_some() => json_text(
+            (_, Some(name)) if server.methods().get(name).is_some() => json_text(
                 server
                     .engine_call("schema.get", json!({ "name": name }))
                     .await,

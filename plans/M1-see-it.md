@@ -1,5 +1,5 @@
 # M1: See it
-Status: Planned · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (phase 1.2b; 1.0, 1.2a, 1.1 and 1.7 done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -75,7 +75,6 @@ crates/
   concordia-terra / concordia-scene  TOUCH  new reflected components registered; no format changes expected
 third_party/
   JoltPhysics/            NEW  vendored Jolt (MIT), pinned tag, LICENSE kept
-  joltc/                  NEW  vendored Amer Koleci's joltc C API (MIT), pinned commit, LICENSE kept
 editor/
   src-tauri/              NEW  Tauri v2 app (Rust) linking engine crates; viewport host
   ui/                     NEW  React + Vite + TS; panels: Outliner, Inspector, Viewport, Log
@@ -95,6 +94,139 @@ tools/
 .github/workflows/ci.yml  TOUCH  macOS GPU job, Linux lavapipe job (stretch), editor UI job
 justfile                  TOUCH  slang-fetch, bless, gate M1, editor-dev, editor-test, gltf-assets
 ```
+
+## Execution notes (2026-11-18)
+Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions checked on 2026-11-18. The text below these notes already includes the changes.
+
+**Author decisions**
+| # | Decision | Recorded in |
+|---|---|---|
+| D1 | `EngineModule` trait seam (new Phase 1.0); the precursor M6 Evolve generalizes | ADR-0046 |
+| D2 | Probe hosted `macos-26` first (Phase 1.2a). If it is short of features, ask again: a self-hosted runner gated to main, dispatch and labels (the repo is public, so never fork PRs), or local-only | ADR-0042 |
+| D3 | Metal 3 API now; a Metal 4 path is evaluated in M2/M4 | ADR-0040 |
+| D4 | The viewport spike tries A, then C; D is always built; B is skipped | ADR-0043 |
+| D5 | Goldens in plain git, size-capped by a hygiene test; revisit LFS before M2 | ADR-0042 |
+| D6 | Vulkan and lavapipe (1.10) stay a stretch, off the gate | this plan |
+| D7 | `slangc` subprocess primary, pinned at Slang v2026.22 | ADR-0045 |
+| D8 | The gate prop is our own CC0 `.glb`; BoomBox only in fetched conformance tests | this plan |
+| D9 | `asset.import` is attributed and idempotent, not undoable in M1 | ADR-0044 |
+| — | OpenGL rejected (see ADR-0040 below) | ADR-0040 |
+
+**M0 as built, and how M1 uses it**
+- Simulation, physics and injected input act only on the play world and are never journaled (ADR-0032). `sim.*` take an attribution-only `actor`.
+- Read methods, including `capture.screenshot` and `physics.raycast`, take `world: edit|play`.
+- `sim.step` returns `world_hash`; the gate snapshots it.
+- Reuse the built-in `Name`, `Transform`, `Parent` and `Velocity`. Add computed `GlobalTransform` propagation in `concordia-scene::builtin` (1.5).
+- Terra gains `Events<T>` (1.7). The API gains `events.subscribe` push (1.9).
+- The CLI gains `concordia run` and a `concordia.toml` reader (1.1).
+- MCP image content is keyed on the `EncodedImage` result type, with no new derive attribute.
+- Feature crates plug in as `EngineModule`s; non-`Clone` runtime objects live in module play state, not `World` resources.
+- A composition root listing the default modules arrives with the first real module (1.1).
+- CI speed (PR #3):
+  - gates run with `just gate-tests M1` (`--workspace`);
+  - `editor/src-tauri` stays outside the root workspace, with a path-filtered job;
+  - Metal dependencies are `cfg(target_os = "macos")`;
+  - the Jolt and Slang builds are cached.
+
+**Dependency drift (2026-11-18)**
+- objc2 0.6.5, objc2-* 0.3.2 (MTL4 and residency sets exposed), block2 0.6.2, raw-window-handle 0.6.2, winit 0.30.13 (0.31 still beta).
+- notify 8.2 with notify-debouncer-full **0.7**.
+- Slang **v2026.22**; the `shader-slang` crate is stale (2025-07).
+- Jolt **v5.7.0**; joltc has no tags (pin a SHA).
+- gltf 1.4.1 (quiet but stable), bevy_mikktspace 1.0, image 0.25.10, postcard 1.1.3, blake3 1.8.7, bindgen 0.73, cmake 0.1.58.
+- nv-flip 0.1.2 is from 2023 and bundles the BSD-3 C++. Smoke-build it first; the fallback is our own LDR-FLIP.
+- Tauri 2.12 (multiwebview still `unstable`; no macOS tauri-driver).
+- Web: React 19.3, Vite 8, TypeScript 7, vitest 5, pnpm 12, Node 26 LTS. Pin at the start of 1.9.
+- `macos-26` arm64 is GA, and wgpu runs its Metal tests there. The paravirtual device's feature set is unverified until the probe runs.
+- Ubuntu 24.04 ships Mesa 25.2; ash 0.38, gpu-allocator 0.28.
+- glTF sample licenses confirmed (Fox is mixed; BoomBox excludes its logo). Poly Haven is still CC0.
+
+**PR order** (one branch per PR, `m1/<phase>-<slug>`, tests committed failing first, CI green on macOS and Ubuntu)
+1.0 modules → 1.2a GPU probe → 1.1 platform and input → 1.7a `jolt-sys` → 1.7b physics → 1.2b RHI and Metal → 1.3 Slang → 1.4a assets → 1.4b glTF → 1.5a testkit and render graph (gate tests written failing) → 1.5b PBR and capture → 1.6a clustering and CSM → 1.6b IBL, tonemapping and glTF goldens → 1.8 spike → 1.9a events and UI → 1.9b e2e and shell → gate → 1.10 (stretch).
+
+**Needs the author's Mac:**
+- blessing every golden on the M3 Pro;
+- the local GPU probe;
+- the window and `capture_screenshot` checks;
+- the 1.8 measurements;
+- perf smoke numbers;
+- the gate agent demo.
+
+**Installs needing approval:** cmake (1.7a), Slang into `target/` (1.3), the Tauri CLI (1.8), and git-lfs only if D5 changes.
+
+### Phase 1.7b: concordia-physics (done)
+- **The crate:**
+  - components `RigidBody`, `Collider` (box, sphere, capsule, cylinder; 16 layers), `CharacterController`, `CharacterMotion`;
+  - `PhysicsRuntime` (sync in, step, characters, write back, sorted `CollisionEvents`);
+  - `raycast`, `state_hash`, `save_state` / `restore_state`;
+  - `PhysicsModule` with `physics.raycast` (edit world via a temporary snapshot, play world via the session runtime).
+- **Wiring:** a `[physics]` manifest section enables the module. `concordia fmt --project` uses the project's modules' components.
+- `examples/m1-physics-stack/scenes/stack.scene.ron`: ground, a 4-3-2-1 pyramid (1 cm gaps) and three dropped boxes. It settles within 180 ticks (checked by a test).
+- **Deviations from the plan:**
+  - Collision events are a per-tick `CollisionEvents` resource, not a generic Terra `Events<T>`; nothing else needs one yet.
+  - No `Velocity` duplicate: dynamic bodies are written back after `integrate_velocity`.
+  - Convex-hull, triangle-mesh and height-field colliders wait for mesh assets (1.4).
+  - Collider edits apply to the next play session (ADR-0032), and undo restores them (tested).
+  - The gravity test checks Jolt's semi-implicit integration exactly, and ½gt² within 2%. The plan's 1% can't hold at 60 Hz, because the discrete error is 1/n = 1.7%.
+  - "10-box stack stable" means less than 1 mm of creep after settling. Boxes spawned exactly touching keep sliding for a while, so the stack is authored with 1 cm gaps.
+  - The dropped boxes land beside the pyramid; dropped onto it, they were still rolling at 3 s.
+- The `box_stack_hash_matches_committed_snapshot` snapshot was blessed on macOS arm64. CI's Ubuntu x86_64 job checks cross-platform determinism.
+
+### Phase 1.7a: jolt-sys (done)
+- Vendored Jolt v5.7.0 under `third_party/JoltPhysics`, unmodified, with VENDOR.md.
+- **joltc dropped (ADR-0041 revised):** it hides the `JPH::PhysicsSystem` that state save/restore and deterministic contact batching need. The plan's fallback, "grow our own shim", is now the design.
+- `shim/concordia_jolt_ext.{h,cpp}` is a C API shaped for Concordia: worlds with 16 user layers, a collide matrix and a thread count; bodies from descriptors; stepping; batched begin/end contact events; raycasts with layer masks; save/restore; virtual characters; counted allocations.
+- `jolt-sys` builds with CMake (Release, `CROSS_PLATFORM_DETERMINISTIC=ON`).
+- Bindings (179 lines) are generated by `tools/jolt-bindgen` (its own workspace; `just jolt-bindgen`) and committed. A test checks a blake3 of the shim header instead of regenerating in CI, which keeps libclang out of CI.
+- About 11 s cold build on the M3 Pro. ADR-0041 is written.
+
+### Phase 1.1: Platform and input (done)
+- **New crates:**
+  - `concordia-input` (`InputMap` from `.input.ron`, `InputSampler`, `ActionStates`, `InputFrame`, `pointer_ray`, `InputModule` with `input.inject`);
+  - `concordia-platform` (`run_window` over winit 0.30, `WindowDesc`, engine-owned `WindowEvent`, `FileWatcher`);
+  - `concordia-app` (the composition root: `Project::load`, `concordia.toml` sections, `Project::modules`).
+- **Added to existing crates:**
+  - `concordia-scene` gained `read_document` / `write_document` for any typed RON file, so no `ron` crate is needed;
+  - `concordia-reflect` gained `NonZeroU32` / `NonZeroU64`;
+  - `concordia-core` gained `math::Ray` and re-exports `glam::camera`. glam 0.34.3 moved its projection constructors there; Metal uses `rh::proj::directx`.
+- **API:**
+  - `EngineModule::start_play` now takes `&mut World`, so a module can prepare the play world;
+  - `Engine::play_world_mut()` creates a paused play world if there is none (ADR-0046 updated).
+- **CLI and MCP:**
+  - `concordia run` opens the manifest's window. `--exit-after-ms` exists for smoke tests; the real-window test is `#[ignore]` and passed locally.
+  - `concordia headless` and `concordia-mcp` load the project's modules.
+  - A module is included only when the manifest configures it (input needs `[input] map`), so M0 projects keep the M0 gate's 24 tools.
+- **Deviations from the plan:**
+  - `headless_platform_creates_no_window` is dropped: headless never calls `run_window`, so it has no window by construction.
+  - `concordia run` doesn't feed window input to the simulation yet; that's wired with rendering (1.5).
+  - File changes are judged by modification time and size, because macOS FSEvents mislabels and replays events.
+  - winit is built without `wayland-csd-adwaita` (it pulls the unmaintained `ttf-parser`, RUSTSEC-2026-0192).
+- `examples/m1-physics-stack` has `concordia.toml` and the canonical `input/default.input.ron`; its scenes come in 1.7 and 1.5.
+
+### Phase 1.2a: GPU probe (done)
+- New crates: `concordia-rhi` (`DeviceCaps`, `SampleCount`, `Requirement::M1`, `RhiError`), `concordia-rhi-metal` (`probe()`; stubs off macOS) and `concordia-testkit` (`gpu_required`, started early so GPU tests share one guard).
+- `concordia gpu-probe [--require-m1]` prints `DeviceCaps` as JSON.
+- CI job `gpu-probe (macos-26)` is informational: it never fails the run, and it writes the JSON to the step summary and an artifact.
+- Author's M3 Pro: families apple6–9, common3, mac2, metal3, metal4; MSAA 1/2/4; argument buffers tier 2; meets M1.
+- ADR-0042 is written once the hosted runner's result is in (first push).
+
+### Phase 1.0: Engine-module seam (done in PR `m1/1.0-modules`)
+- **Objective:** let M1's crates add types, methods, play systems and runtime state without editing the API crate's callers.
+- **Deliverables:**
+  - `EngineModule` and `PlaySetup`, with the built-ins as `CoreModule`;
+  - `EngineConfig::modules`;
+  - a per-engine `MethodRegistry` (`Engine::methods`, `EngineHandle::methods`) used by dispatch, `schema.get` and MCP;
+  - `Engine::world` and `Engine::play_state`;
+  - `SimLoop::set_rate` and `Schedule::append` in Terra;
+  - `ConcordiaServer` `Options::modules`;
+  - an attribution-only `actor` on `sim.*` and a `sim stepped` log record;
+  - ADR-0046.
+- **Tests first:**
+  - `concordia-api/tests/modules.rs`: `module_types_are_registered_and_schema_visible`, `module_methods_dispatch_and_appear_in_schema_index`, `core_methods_are_unchanged_without_modules`, `duplicate_method_name_across_modules_is_an_error`, `duplicate_module_name_is_an_error`, `module_systems_run_after_core_systems_in_declared_order`, `play_state_is_created_on_play_and_dropped_on_stop_and_scene_open`, `module_method_reads_play_state`;
+  - `concordia-api/tests/sim.rs`: `sim_step_accepts_optional_actor_and_logs_attribution`, `sim_step_without_actor_uses_session_default`;
+  - Terra: `set_rate_changes_dt_and_clock_without_resetting_tick`, `appended_schedule_runs_after_existing_systems_in_order`;
+  - MCP: `tool_list_includes_module_methods`.
+- **Done criteria:** `just gate M0` is green, and every M0 test is unchanged.
 
 ## Phases
 Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering dependency and can run in parallel with 1.2–1.6.
@@ -132,19 +264,20 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
     - `press_and_release_within_one_tick_still_registers_just_pressed`: no lost taps.
     - `injected_click_produces_same_action_state_as_os_click`: an `input.inject` `mouse_button` event yields an `ActionState` identical to the OS path.
     - `inject_at_future_tick_is_applied_at_that_tick`: `{"tick": 10}` has no effect at tick 9 and takes effect at tick 10.
-    - `inject_is_attributed_in_command_log`: the injection appears in `log.tail` with the caller's `actor` and is marked non-undoable.
+    - `inject_is_attributed_in_log_tail_and_not_journaled`: the injection appears in `log.tail` with the caller's `actor`; `txn.history` is unchanged (ADR-0032: input acts on the play world).
+    - `input_inject_creates_paused_play_world`: like `sim.step`, injecting without a play world creates one, paused.
     - `ortho_pointer_ray_is_parallel_to_camera_forward`: for an orthographic camera every pointer ray has the camera's forward direction; the origin moves with the cursor.
     - `perspective_pointer_ray_passes_through_cursor_pixel_center`.
   - `concordia-api` integration (`crates/concordia-api/tests/input_inject.rs`)
     - `input_inject_schema_is_generated_from_reflect`: `schema.get` for `InputInjectParams` matches an insta snapshot; no hand-written schema exists.
     - `input_inject_rejects_unknown_action_with_invalid_params`: JSON-RPC error `-32602` with the list of known actions in `data`.
 - **Implementation notes**
-  - Crates (verify versions at execution time): `winit` 0.30.x (`ApplicationHandler` API), `raw-window-handle` 0.6, `notify` 8.x + `notify-debouncer-full` 0.5.x, `globset` 0.4. Gamepads via `gilrs` 0.11 only if time allows (stretch).
+  - Crates (verify versions at execution time): `winit` 0.30.x (`ApplicationHandler` API), `raw-window-handle` 0.6, `notify` 8.x + `notify-debouncer-full` 0.7.x, `globset` 0.4. Gamepads via `gilrs` 0.11 only if time allows (stretch).
   - Threading: on macOS, winit must own the main thread. The engine's simulation runs on a worker thread fed through a channel; the render thread submits on its own thread. `concordia-platform` documents this in `AGENTS.md` as an invariant.
   - Input sampling: OS events are pushed into an `InputQueue` with a monotonic timestamp; the fixed-step loop drains events with `t <= tick_time` at the start of each `FixedUpdate`. Injected events carry an explicit tick (or "next"), so headless runs are deterministic. M3's replay records the post-mapping `InputFrame` per tick; design the `InputFrame` type now (`Vec<(ActionId, ActionValue)>` sorted by `ActionId`) and keep it reflectable.
   - `input.inject` params (reflected Rust type, schema generated):
     ```rust
-    #[derive(Reflect)] pub struct InputInjectParams { pub actor: Actor, pub events: Vec<InjectedEvent> }
+    #[derive(Reflect)] pub struct InputInjectParams { pub actor: Option<Actor>, pub events: Vec<InjectedEvent> }
     #[derive(Reflect)] pub struct InjectedEvent { pub tick: TickSpec /* Next | At(u64) */, pub kind: InjectedKind }
     #[derive(Reflect)] pub enum InjectedKind {
         Action { action: String, value: ActionValue },      // bypasses bindings
@@ -154,7 +287,7 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
         Scroll { dx: f32, dy: f32 },
     }
     ```
-  - Command-log policy: input is not a world mutation, but every injection is logged as an attribution-only, non-undoable entry so reviewers see what an agent "pressed". (Flagged in Open questions for M0 alignment.)
+  - Command-log policy (resolved by ADR-0032): input acts on the play world, so it is never journaled. Each injection is logged to the log ring (`log.tail`) with the actor, so reviewers see what an agent "pressed"; M3's `concordia-replay` records it.
 - **Done criteria:** all tests above pass on macOS and Linux CI (input tests are headless); `concordia run examples/m1-physics-stack` opens a window that closes cleanly; `AGENTS.md` and `README.md` for both crates exist.
 
 ---
@@ -244,7 +377,7 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
   - `hot_reload_keeps_last_good_pipeline_on_error` (GPU): a broken edit leaves output unchanged and emits a diagnostic visible through `log.tail`.
 - **Implementation notes**
   - **Obtaining Slang:** prebuilt release archives from `github.com/shader-slang/slang/releases` (Apache-2.0 WITH LLVM-exception, which is permissive and compatible). Pin a 2026.x release current at execution time and record its SHA-256 per platform. Building from source (CMake) is the fallback for unsupported hosts. The LunarG Vulkan SDK also bundles Slang, but we do not depend on it for macOS.
-  - **Binding:** use the `shader-slang` crate (0.1.x, Rust bindings to Slang's COM-style API; verify maturity at execution time). It needs `SLANG_DIR` (or `SLANG_INCLUDE_DIR`/`SLANG_LIB_DIR`). If it lacks reflection coverage we need, fall back to invoking `slangc` as a subprocess with `-reflection-json` and parsing that JSON. Keep the dependency behind `ShaderCompiler` so either path works.
+  - **Binding (decided 2026-11-18, D7):** the primary path invokes the pinned `slangc` as a subprocess, with `-reflection-json` for reflection. The `shader-slang` crate (0.1.0, last released 2025-07, with fixes only on git main) is an optional alternative behind `ShaderCompiler`. `deny.toml` forbids git dependencies, so it is not used until a release catches up. Pin Slang **v2026.22** (Apache-2.0 WITH LLVM-exception; record it in `third_party/README.md`, because cargo-deny doesn't see binaries).
   - **Targets:** `metal` (MSL source) for Metal, `spirv` for Vulkan. On Metal, MSL is compiled at load time with `newLibraryWithSource`, and the resulting pipeline is cached by Metal's own cache. Precompiling to `.metallib` (via `xcrun metal`) for shipped games is a later optimization.
   - **Bindless in Slang:** use Slang's `DescriptorHandle<T>` / bindless resource support where it maps cleanly to Metal argument buffers and Vulkan descriptor indexing (verify current Slang support for the Metal target); otherwise a small `bindless.slang` module that indexes global arrays (`Texture2D g_textures[]`, `ByteAddressBuffer g_buffers[]`).
   - **Cache key:** `blake3(slang_version, target, entry, defines (sorted), compiler options, transitive include contents (sorted by path))`. Artifacts live in `.concordia/ddc/shaders/<k0k1>/<key>` (via `concordia-assets::Ddc`, built in 1.4; until then a local `DiskCache` with the same layout, swapped in 1.4).
@@ -275,7 +408,7 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
     - `missing_ddc_entry_triggers_reimport_not_error`: deleting `.concordia/ddc` entirely is always safe.
     - `asset_ref_serializes_as_string_and_schema_is_string_with_pattern`: JSON Schema has `"pattern": "^asset:"` so MCP/inspector can validate.
     - `hot_reload_bumps_handle_generation_on_source_change`: editing a PNG on disk updates the handle's generation within 1 s and emits `AssetReloaded`.
-    - `asset_import_via_api_is_attributed`: `asset.import` with `actor: agent:tech-artist#1` creates the sidecar as a command (undo removes the sidecar it created).
+    - `asset_import_is_attributed_and_idempotent`: `asset.import` with `actor: agent:tech-artist#1` logs the actor in `log.tail`; importing again changes nothing (D9: imports are file operations, not undoable in M1).
   - `concordia-import-gltf` (fixtures under `target/gltf-sample-assets`, see license policy below; small hand-made fixtures in `crates/concordia-import-gltf/tests/fixtures/`)
     - `imports_box_glb_with_24_vertices_and_36_indices` (`Box`).
     - `imports_binary_and_embedded_and_separate_variants_identically`: `.glb`, `.gltf` + `.bin`, data-URI variants produce identical mesh data hashes.
@@ -289,7 +422,7 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
     - `import_is_deterministic`: importing twice produces byte-identical DDC blobs.
     - Golden renders of conformance models are in Phase 1.6 (they need the lighting).
 - **Implementation notes**
-  - **Crates (verify versions):** `gltf` 1.4.x (MIT/Apache), `image` 0.25.x (PNG/JPEG/Radiance HDR), `blake3` 1.x, `uuid` 1.x (`v5`, `v7`), `mikktspace` 0.3 (Zlib; or `bevy_mikktspace` if the original is unmaintained, verify), `fast_image_resize` or a box filter for mips (own code is fine), `tempfile` for atomic writes.
+  - **Crates (verify versions):** `gltf` 1.4.x (MIT/Apache), `image` 0.25.x (PNG/JPEG/Radiance HDR), `blake3` 1.x, `uuid` 1.x (`v5`, `v7`), `bevy_mikktspace` 1.0 (Zlib AND MIT/Apache; `mikktspace` 0.3 is unmaintained), `fast_image_resize` or a box filter for mips (own code is fine), `tempfile` for atomic writes.
   - **Sidecar format** (`crate.png.import.ron`):
     ```ron
     (
@@ -361,6 +494,7 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
         pub width: u32, pub height: u32,    // default 1280×720, max 8192
         pub target: CaptureTarget,          // Offscreen (default) | Viewport (editor/window as displayed)
         pub format: ImageFormat,            // Png (M1 only)
+        pub world: Option<WorldSel>,        // edit (default) | play, as on every read method (ADR-0032)
     }
     #[derive(Reflect)] pub struct CaptureScreenshotResult {
         #[reflect(mcp_content = "image")] pub image: EncodedImage, // { mime_type, data_base64 }
@@ -420,12 +554,12 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
 ### Phase 1.7: Physics (Jolt)
 - **Objective:** Deterministic rigid-body physics, character controller and scene queries through Jolt, synchronized with the ECS and driven by the fixed-step loop.
 - **Deliverables**
-  - `third_party/JoltPhysics` (pinned release tag, MIT) and `third_party/joltc` (pinned commit of Amer Koleci's `joltc`, MIT), each with LICENSE.
-  - `jolt-sys`: CMake build of Jolt + joltc + our small shim `shim/concordia_jolt_ext.{h,cpp}`, `bindgen`-generated bindings committed to `src/bindings.rs` (regenerated by `just jolt-bindgen`, checked in CI for drift).
-  - `concordia-physics`: `PhysicsWorld` resource, components `RigidBody { kind: Static|Dynamic|Kinematic, mass_override, friction, restitution, linear_damping, angular_damping, gravity_scale, ccd }`, `Collider { shape: ColliderShape, layer: PhysicsLayer, is_sensor, offset }`, `ColliderShape::{Box, Sphere, Capsule, Cylinder, ConvexHull(AssetRef<Mesh>), TriangleMesh(AssetRef<Mesh>), HeightField(..)}`, `CharacterController { height, radius, max_slope_deg, step_height, ... }`, `Velocity { linear, angular }`; events `CollisionStarted/Ended`, `SensorEntered/Exited`.
+  - `third_party/JoltPhysics` (tag **v5.7.0**, MIT) with LICENSE and VENDOR.md. joltc was evaluated and dropped (ADR-0041); Concordia's C++ shim is the C API.
+  - `jolt-sys`: CMake build of Jolt + Concordia's C++ shim `shim/concordia_jolt_ext.{h,cpp}`, `bindgen`-generated bindings committed to `src/bindings.rs` (regenerated by `just jolt-bindgen`, drift-checked by a header-hash test).
+  - `concordia-physics`: a physics `EngineModule` (ADR-0046) whose `PhysicsRuntime` (the Jolt system) lives in play-time module state, not in a `World` resource (resources must be `Clone`); components `RigidBody { kind: Static|Dynamic|Kinematic, mass_override, friction, restitution, linear_damping, angular_damping, gravity_scale, ccd }`, `Collider { shape: ColliderShape, layer: PhysicsLayer, is_sensor, offset }`, `ColliderShape::{Box, Sphere, Capsule, Cylinder, ConvexHull(AssetRef<Mesh>), TriangleMesh(AssetRef<Mesh>), HeightField(..)}`, `CharacterController { height, radius, max_slope_deg, step_height, ... }`; the built-in `Velocity` (M0) is reused, and `integrate_velocity` skips physics bodies (test `integrate_velocity_skips_rigid_bodies`); events (via a new Terra `Events<T>`) `CollisionStarted/Ended`, `SensorEntered/Exited`.
   - Systems in `FixedUpdate`: `sync_ecs_to_jolt` (create/destroy/update bodies, ordered by `EntityId`), `step_physics`, `sync_jolt_to_ecs` (write `Transform`, `Velocity`), `move_characters`. Render-side transform interpolation between fixed steps (`PreviousTransform`).
   - Queries: `raycast`, `raycast_all`, `shape_cast`, `overlap` with layer filters. Engine API `physics.raycast` (new method; useful for agents and click-to-move debugging).
-  - `PhysicsWorld::state_hash()` and `save_state()/restore_state()` (Jolt `StateRecorder`), prepared for M3 replay and rollback.
+  - `PhysicsRuntime::state_hash()` and `save_state()/restore_state()` (Jolt `StateRecorder`), prepared for M3 replay and rollback.
 - **Tests first** (no GPU needed; run on macOS and Linux)
   - `jolt-sys`
     - `jolt_version_matches_pinned_tag`.
@@ -456,13 +590,13 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
     1. **Amer Koleci's `joltc`** (MIT; C API from the JoltPhysicsSharp project; `JPH_` prefix; CMake; broad coverage including CharacterVirtual and narrow-phase queries; also used by Odin and Dart bindings and by the `oxijolt-sys` crate, which tracks Jolt 5.6).
     2. **SecondHalfGames `JoltC`** (MIT/Apache-2.0; C wrapper of Jolt 5.6.0, self-described as work in progress) with the `joltc-sys`/`rolt` Rust crates (published crates lag at Jolt 5.0).
     3. **Our own thin C shim** covering only what we use.
-    **Decision:** vendor (1) at a pinned commit together with the matching Jolt release, generate our own bindings in `jolt-sys`, and add a small own shim (`concordia_jolt_ext.cpp`) for anything missing or engine-specific (state save/restore to a byte buffer, determinism configuration, allocation hooks, contact listener batching into a ring buffer rather than per-contact callbacks into Rust). We do not depend on `rolt`/`oxijolt` because the safe API should be ours and match the ECS. If `joltc` lags a needed Jolt version, fall back to (3) by growing the shim; the `concordia-physics` API does not change.
+    **Decision (revised in phase 1.7a, ADR-0041):** option (3). joltc hides the `JPH::PhysicsSystem` that state recording and deterministic contact batching need, so Concordia's C++ shim is the C API over vendored Jolt. *Original decision, kept for history:* vendor (1) at a pinned commit together with the matching Jolt release, generate our own bindings in `jolt-sys`, and add a small own shim (`concordia_jolt_ext.cpp`) for anything missing or engine-specific (state save/restore to a byte buffer, determinism configuration, allocation hooks, contact listener batching into a ring buffer rather than per-contact callbacks into Rust). We do not depend on `rolt`/`oxijolt` because the safe API should be ours and match the ECS. If `joltc` lags a needed Jolt version, fall back to (3) by growing the shim; the `concordia-physics` API does not change.
   - **Build:** `jolt-sys/build.rs` uses the `cmake` crate (0.1.x) with `CROSS_PLATFORM_DETERMINISTIC=ON`, `DOUBLE_PRECISION=OFF` (single precision is enough for ARPG zones; revisit for world streaming), `OBJECT_LAYER_BITS=16`, `USE_ASSERTS` in debug, interprocedural optimization off for faster builds, and `-ffp-contract=off` (Jolt's documented requirement for cross-platform determinism; verify flags against the pinned Jolt's `Docs/` at execution time). `bindgen` 0.71+ (verify) runs in `just jolt-bindgen`, not on every build, so contributors need no libclang.
   - **Determinism rules** (documented in `concordia-physics/AGENTS.md`): fixed Δt only; bodies added in `EntityId` order; no `HashMap` iteration in sync code (use `BTreeMap` or sorted `Vec`); contact events sorted by `(EntityId, EntityId)` before being exposed to the ECS; Jolt's job system replaced by a shim job system backed by `concordia-core`'s job system (Jolt's design is deterministic regardless of thread count, which the tests verify).
   - **ECS/commands:** authoring changes (adding a `RigidBody`, editing a `Collider`) go through `concordia-command` with an actor. Simulation output (transforms written by `sync_jolt_to_ecs` while the sim is playing) is *simulation state*, not command-log entries; `sim.step`/`sim.play` themselves are logged commands. This matches M0's sim model (confirm, see Open questions).
   - **Hash:** `state_hash = blake3` over entities sorted by `EntityId` of `(id, position.to_bits(), rotation.to_bits(), linvel.to_bits(), angvel.to_bits())`.
   - **References:** Jolt Physics documentation and architecture notes (jrouwe.github.io/JoltPhysics), Jorrit Rouwé's GDC 2022 talk "Architecting Jolt Physics for Horizon Forbidden West"; Erin Catto's GDC physics talks for character/contact background.
-- **Done criteria:** tests green on macOS arm64 and Linux x86_64; `cargo deny` passes with Jolt and joltc licenses recorded; `examples/m1-physics-stack` simulates in `concordia run` and in `concordia headless`.
+- **Done criteria:** tests green on macOS arm64 and Linux x86_64; `cargo deny` passes and the Jolt license is recorded in `third_party/`; `examples/m1-physics-stack` simulates in `concordia run` and in `concordia headless`.
 
 ---
 
@@ -472,7 +606,7 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
   - `editor/spikes/viewport/` (throwaway, deleted after the decision, which is recorded in ADR-0043): a Tauri v2 app with a React panel layout and a rectangular "viewport slot" whose bounds are reported from the DOM (`ResizeObserver`) to Rust.
   - Candidate approaches, tried in order:
     - **A. Native subview under/over the webview.** Get the `NSWindow` from Tauri (`WebviewWindow::ns_window()`), insert an `NSView` backed by a `CAMetalLayer` into the content view hierarchy, positioned to the slot rect, with the webview above it and transparent in the slot (`transparent: true` + `macOSPrivateApi`), or the Metal view above the webview (input routing then goes to Rust directly).
-    - **B. Tauri multi-webview.** Use Tauri v2's multiple-webviews-per-window (behind the `unstable` feature) to lay out panel webviews around a native region holding the Metal view.
+    - **B. Tauri multi-webview.** Use Tauri v2's multiple-webviews-per-window (behind the `unstable` feature) to lay out panel webviews around a native region holding the Metal view. **Skipped in M1 (D4):** it is still `unstable` in Tauri 2.12. The spike tries A, then C; D is always built.
     - **C. Docked child window (ADR-0004's stated fallback).** A borderless `NSWindow` attached with `addChildWindow:ordered:`, tracking the slot rect on move/resize.
     - **D. Universal fallback: streamed viewport.** The engine renders offscreen and streams frames into an `<img>`/`<canvas>` (PNG/JPEG or raw RGBA over the WebSocket API, or a Tauri custom protocol). Always works, including in a plain browser (which Phase 1.9's Playwright tests rely on), but adds latency.
   - A decision table with measurements, committed in ADR-0043.
@@ -542,15 +676,14 @@ just gate M1
 ```
 which runs (recipe added to the `justfile`):
 ```
-CONCORDIA_REQUIRE_GPU=1 cargo nextest run -p concordia-tests --no-fail-fast \
-    --test m1_physics_golden --test m1_mcp_screenshot
+CONCORDIA_REQUIRE_GPU=1 just gate-tests M1   # --workspace + binary filter (PR #3: one feature set)
 ```
 It must pass on CI's macOS GPU job (`macos-26` arm64, or the `self-hosted-macos-gpu` fallback from Phase 1.2), and `m1_physics_golden`'s physics-hash assertion must also pass on Linux x86_64 (run with `CONCORDIA_REQUIRE_GPU=0`, which skips only the image comparisons there unless 1.10 landed).
 
 **Gate scene:** `examples/m1-physics-stack/scenes/stack.scene.ron`
 - static ground: a 30×0.5×30 m box collider with a `MeshRenderer` (default grey material);
 - a 4-3-2-1 pyramid of ten 1 m dynamic boxes plus three boxes dropped from 4–6 m with slight rotations, so they topple and collide; three materials (`red_painted.material.ron` rough dielectric, `brushed_steel.material.ron` metallic, `emissive_glow.material.ron` with emission);
-- a static glTF prop (`BoomBox`, CC0, from the fetched sample assets) to put an imported asset in the shot;
+- a static glTF prop: our own hand-made CC0 `.glb` (e.g. a crate or barrel from Blender), committed under `examples/m1-physics-stack/assets/` with a LICENSE.md. Committed goldens must not contain third-party marks (D8). BoomBox's license excludes its logo, so it stays in fetched conformance tests only;
 - `DirectionalLight` with 3 stabilized cascades, `Environment` with the fixture HDRI;
 - 16 colored `PointLight`s in a ring (exercises clustered lighting);
 - camera `gate_cam`: orthographic isometric (yaw 45°, pitch −35.264°, height 18), MSAA 4×, AgX tonemap, fixed EV100.
@@ -558,9 +691,9 @@ It must pass on CI's macOS GPU job (`macos-26` arm64, or the `self-hosted-macos-
 **`tests/gates/m1_physics_golden.rs`**
 - `m1_gate_physics_scene_golden`
   1. Start an in-process `EngineHost` in headless GPU mode with project `examples/m1-physics-stack`.
-  2. Through the Engine API (in-process transport, same request types as JSON-RPC): `scene.open`, then `sim.step { ticks: 180, actor: "agent:gate" }` (3 s at 60 Hz).
-  3. Assert physics really ran: the three dropped boxes have y below their start height; every dynamic body's linear speed < 0.05 m/s (settled); `PhysicsWorld::state_hash()` equals the insta snapshot `m1_gate_state_hash`.
-  4. `capture.screenshot { camera: "gate_cam", width: 1280, height: 720 }`.
+  2. Through the Engine API (in-process transport, same request types as JSON-RPC): `scene.open`, then `sim.step { ticks: 180, actor: "agent:gate" }` (3 s at 60 Hz; `actor` is attribution-only since phase 1.0).
+  3. Assert physics really ran: the three dropped boxes have y below their start height; every dynamic body's linear speed < 0.05 m/s (settled), read with `component.get { world: "play" }`; `sim.step`'s `world_hash` (which covers the `Transform` and `Velocity` that physics writes) equals the insta snapshot `m1_gate_state_hash`.
+  4. `capture.screenshot { camera: "gate_cam", width: 1280, height: 720, world: "play" }`.
   5. Assert FLIP vs `tests/golden/gates/m1_physics_stack.png`: mean ≤ 0.015, p99 ≤ 0.25.
   6. Assert the image is not degenerate (guards against blessing a broken frame): luminance in a fixed region of the known shadow cast by the pyramid is at least 30% lower than an adjacent sunlit ground region; at least one pixel near each of three point lights has the light's hue dominant.
   7. Re-run steps 1–4 in a fresh `EngineHost`; assert the PNG bytes are identical to the first run (render + physics determinism on one device).
@@ -571,9 +704,9 @@ It must pass on CI's macOS GPU job (`macos-26` arm64, or the `self-hosted-macos-
   1. Spawn the real `concordia-mcp` binary over stdio exactly as `.mcp.json` registers it (`concordia-mcp --project examples/m1-physics-stack --gpu`), with the environment **cleared** except `PATH`, `HOME`, `SLANG_DIR` and `CONCORDIA_*` (proves no LLM API key is needed or read).
   2. MCP `initialize` / `notifications/initialized`; `tools/list` contains `capture_screenshot`, `scene_open`, `sim_step`, `input_inject`; `capture_screenshot`'s `inputSchema` equals the reflect-generated schema (insta snapshot).
   3. `tools/call scene_open`, then `tools/call sim_step { ticks: 180, actor: "agent:gate" }`.
-  4. `tools/call capture_screenshot { camera: "gate_cam", width: 1280, height: 720 }`.
+  4. `tools/call capture_screenshot { camera: "gate_cam", width: 1280, height: 720, world: "play" }`.
   5. Assert the result has `isError: false` and a content item `{ "type": "image", "mimeType": "image/png", "data": <base64> }`; base64-decode → valid PNG 1280×720; FLIP vs the same golden `m1_physics_stack.png` within the same tolerance.
-  6. `tools/call log_tail` shows the `sim.step` entry attributed to `agent:gate`.
+  6. `tools/call log_tail` shows the `sim stepped` record with `actor` = `agent:gate` (emitted since phase 1.0).
 
 **Agent demonstration (sign-off, recorded, not CI):** in this repo's Claude Code session (subscription, no API key) with `concordia-mcp` registered in `.mcp.json`, ask the agent to open the stack scene, step 180 ticks and call `capture_screenshot`; the agent describes the image it received (boxes, shadows, colored lights). Paste the transcript excerpt into the PR that flips M1's status to "Gate passed".
 
@@ -584,7 +717,7 @@ It must pass on CI's macOS GPU job (`macos-26` arm64, or the `self-hosted-macos-
 | Golden images differ between paravirtual and physical Apple GPUs | FLIP tolerances; golden class variants (`@<class>`) allowed only with PR justification; avoid non-deterministic features (no TAA, fixed sample patterns, no atomics-ordered blending in goldens). |
 | `shader-slang` crate immature or lags Slang releases | `ShaderCompiler` trait hides it; `slangc` subprocess + `-reflection-json` fallback. |
 | Slang MSL output gaps for bindless/argument buffers | Small `bindless.slang` abstraction with explicit global arrays; conformance test `compute_reads_bindless_buffer_by_index` catches it in Phase 1.2/1.3. |
-| `joltc` lags Jolt or misses an API | Own shim grows to cover it; pinned versions; bindings committed. |
+| The shim must grow for every new physics feature | A narrow C API shaped for Concordia; pinned Jolt; bindings committed with a drift test (ADR-0041). |
 | Jolt cross-platform determinism differs between arm64 and x86_64 | `CROSS_PLATFORM_DETERMINISTIC`, `-ffp-contract=off`; if still different, per-platform hash snapshots and an ADR (same-platform determinism is what M3 replay requires first). |
 | Tauri webview + native viewport compositing fails (ADR-0004 risk) | Timeboxed spike with 4 approaches; streamed viewport (D) always exists. |
 | Render graph over-engineering delays visible results | Phase 1.5 limits the graph to features the M1 passes need; async compute and multi-queue are modeled but not executed. |
@@ -593,23 +726,30 @@ It must pass on CI's macOS GPU job (`macos-26` arm64, or the `self-hosted-macos-
 | macOS main-thread requirements (winit, AppKit) conflict with engine threading | Documented invariant in `concordia-platform`: main thread = platform loop only; sim and render on their own threads. |
 
 ## Open questions
-1. **Input injection and the command log:** M1 logs injections as attribution-only, non-undoable entries. Confirm this fits M0's command-log model, or whether M0 already defines a non-command "event" log.
-2. **Simulation output vs commands:** physics writes transforms as simulation state outside the command log, while `sim.step` is a logged command. Confirm against M0's design of `sim.*`.
-3. **Metal 4:** add a Metal 4 code path (MTL4 command allocators, argument tables) in M2/M4, or require macOS 26 and target only Metal 4? M1 targets the Metal 3 API.
+1. ~~Input injection and the command log~~ **Resolved (ADR-0032):** input acts on the play world and is attributed in `log.tail`, never journaled.
+2. ~~Simulation output vs commands~~ **Resolved (ADR-0032):** `sim.*` are not journaled. Physics output is play-world state. `sim.*` take an attribution-only `actor`, and `sim.step` logs `sim stepped` (phase 1.0).
+3. **Metal 4 (D3, decided):** M1 targets the Metal 3 API (macOS 14+, and likely the hosted runner's paravirtual device). A Metal 4 path (MTL4 command allocators, argument tables; `objc2-metal` 0.3.2 already exposes them) is evaluated in M2/M4.
 4. **Texture compression:** BC vs ASTC on Apple Silicon (both supported on macOS) and KTX2/Basis for shipping; decide in M2 with the reference port's real texture volume.
 5. **Point/spot light shadows** for spells: shadow atlas in M2, or wait for M4 virtual shadow maps? the reference port's light usage should decide (count shadowed `OmniLight3D`s in its scenes during M2 planning).
 6. **Picking:** raycast against colliders/AABBs (M1) vs a GPU entity-id pass; the latter is needed once skinned characters arrive (M2).
-7. **New crate `concordia-testkit`** (dev-only golden/GPU test helpers) and the gate test package name `concordia-tests`; both need adding to `plans/README.md` in the consistency pass.
-8. **Golden storage size:** if `tests/golden/` grows large, move to Git LFS (decide before M2).
+7. ~~New crate `concordia-testkit` and the `concordia-tests` package~~ **Resolved:** both are in `plans/README.md`.
+8. **Golden storage size (D5):** plain git, with a hygiene test capping per-file and total size; revisit Git LFS before M2.
 
 ## ADRs to write
-- **ADR-0040: RHI design**: bindless-first, explicit sync2-style barriers, placed resources for aliasing, capability flags for mesh shaders and 64-bit atomics; Metal via `objc2-metal`, Vulkan via `ash`.
-- **ADR-0041: Jolt integration**: vendored Jolt + `joltc` + own shim, bindgen committed, determinism flags, single precision.
+- **ADR-0040: RHI design**: bindless-first, explicit sync2-style barriers, placed resources for aliasing, capability flags for mesh shaders and 64-bit atomics; Metal via `objc2-metal`, Vulkan via `ash`. Backend roadmap: Metal (M1), Vulkan (M1 stretch / M2; also the first Windows path), D3D12 later, WebGPU as an optional browser backend (both in `later-backlog.md`). **OpenGL is rejected** (author decision, 2026-11-18), and the ADR's *Alternatives considered* records why:
+  - macOS freezes it at 4.1, with no compute shaders;
+  - it has no portable bindless resources or explicit barriers, so it doesn't fit the RHI model;
+  - it lacks mesh shaders and 64-bit atomics, which M4 needs;
+  - driver variance would undermine golden images;
+  - its one gain, legacy hardware, is not a goal: Vulkan covers 2016+ GPUs, and lavapipe covers software rendering in CI.
+
+  Unreal Engine 5 made the same choice: D3D12, Vulkan and Metal, with no desktop OpenGL.
+- **ADR-0041: Jolt integration** (written): vendored Jolt + Concordia's C++ shim (joltc evaluated and dropped), bindgen committed, determinism flags, single precision.
 - **ADR-0042: GPU testing in CI**: macOS GPU runner choice (hosted paravirtual vs self-hosted), lavapipe for Linux, FLIP tolerances, golden classes, blessing rules.
 - **ADR-0043: Editor viewport embedding**: the spike's results and decision; updates ADR-0004's status.
 - **ADR-0044: Asset ids and DDC**: sidecar ids, sub-asset id stability, DDC key composition, postcard blobs.
-- **ADR-0045: Slang toolchain distribution**: pinned prebuilt releases fetched by `just slang-fetch`, `shader-slang` crate vs `slangc` fallback.
-(Numbers follow M0's ADR-0009; renumber in the consistency pass if M0 used more.)
+- **ADR-0045: Slang toolchain distribution**: pinned prebuilt releases fetched by `just slang-fetch`; `slangc` subprocess primary, `shader-slang` crate optional (D7).
+- **ADR-0046: Engine modules** (written, phase 1.0): the `EngineModule` seam for types, methods, play systems and play-time state.
 
 ## Effort estimate
 | Phase | Estimate |

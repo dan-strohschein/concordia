@@ -104,6 +104,16 @@ fn component(entity: EntityId, name: &str, value: &dyn DynReflect) -> Result<Str
     Ok(Writer { indent: 4 }.value(&value.to_json()?, value.info()))
 }
 
+/// Renders a document value as canonical RON, naming the root struct after its type.
+pub(crate) fn document(json: &Value, info: &TypeInfo) -> String {
+    let writer = Writer { indent: 0 };
+    let text = match &info.shape {
+        Shape::Struct { fields, .. } => writer.structure(Some(info.name), json, fields),
+        _ => writer.value(json, info),
+    };
+    format!("{text}\n")
+}
+
 /// Renders one value; the first line is unindented, closing brackets sit at `indent`.
 #[derive(Clone, Copy)]
 struct Writer {

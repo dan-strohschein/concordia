@@ -26,6 +26,7 @@ mod handle;
 mod map;
 mod method;
 mod methods;
+mod module;
 mod patch;
 mod rpc;
 pub mod transport;
@@ -37,6 +38,7 @@ pub use method::{
     CallCtx, Method, MethodInfo, MethodRegistry, methods, params_schema, result_schema,
 };
 pub use methods::{EntityRef, WorldSel};
+pub use module::{EngineModule, PlaySetup};
 pub use patch::merge_patch;
 
 /// Engine API protocol version reported by `session.open`.

@@ -52,3 +52,22 @@ fn registry_index_schema_lists_all_types_sorted() {
 fn unknown_name_has_no_schema() {
     assert!(zoo_registry().schema_for("Nope").is_none());
 }
+
+#[test]
+fn non_zero_integers_have_minimum_one_and_reject_zero() {
+    use std::num::{NonZeroU32, NonZeroU64};
+
+    let schema = concordia_reflect::schema_for(NonZeroU32::type_info());
+    assert_eq!(schema["type"], "integer");
+    assert_eq!(schema["minimum"], 1);
+    assert_eq!(schema["maximum"], u32::MAX);
+    let err = concordia_reflect::validate_json(&serde_json::json!(0), NonZeroU32::type_info());
+    assert!(err.is_err());
+    assert!(
+        concordia_reflect::validate_json(&serde_json::json!(5), NonZeroU64::type_info()).is_ok()
+    );
+    assert_eq!(
+        concordia_reflect::example_json(NonZeroU32::type_info()),
+        serde_json::json!(1)
+    );
+}

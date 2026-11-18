@@ -1,0 +1,27 @@
+[package]
+name = "concordia-platform"
+description = "Concordia platform layer: winit windowing and debounced file watching behind engine-owned types."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+concordia-input.workspace = true
+concordia-reflect.workspace = true
+globset = "0.4.21"
+notify-debouncer-full = "0.7.0"
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+# No wayland-csd-adwaita: it pulls the unmaintained ttf-parser (RUSTSEC-2026-0192); Linux windowing is not an M1 goal.
+winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"] }
+
+[dev-dependencies]
+concordia-scene.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

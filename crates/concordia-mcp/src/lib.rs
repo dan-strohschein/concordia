@@ -11,7 +11,7 @@ use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use concordia_api::{ApiError, Engine, EngineConfig, EngineHandle};
+use concordia_api::{ApiError, Engine, EngineConfig, EngineHandle, EngineModule, MethodRegistry};
 use concordia_command::Actor;
 use concordia_core::id::SessionId;
 use concordia_core::log::{LogConfig, LogError, LogRing};
@@ -32,6 +32,8 @@ pub struct Options {
     pub threads: Option<NonZeroUsize>,
     /// Log ring served by `log_tail`.
     pub log_ring: Option<Arc<LogRing>>,
+    /// Engine modules after the core module; their methods become tools (ADR-0046).
+    pub modules: Vec<Arc<dyn EngineModule>>,
 }
 
 impl Options {
@@ -44,6 +46,7 @@ impl Options {
             deterministic_ids: None,
             threads: None,
             log_ring: None,
+            modules: Vec::new(),
         }
     }
 }
@@ -77,6 +80,7 @@ impl ConcordiaServer {
         let mut config = EngineConfig::new(&options.project);
         config.deterministic_ids = options.deterministic_ids;
         config.log_ring = options.log_ring;
+        config.modules = options.modules;
         if let Some(threads) = options.threads {
             config.threads = threads;
         }
@@ -90,6 +94,11 @@ impl ConcordiaServer {
                 .await?;
         }
         Ok(Self { handle, session })
+    }
+
+    /// Every method the engine serves; one tool each, except `session.open`.
+    pub(crate) fn methods(&self) -> &MethodRegistry {
+        self.handle.methods()
     }
 }
 
@@ -113,13 +122,15 @@ pub struct Args {
     pub threads: Option<NonZeroUsize>,
 }
 
-/// Runs the server on stdio until the client disconnects. Logs go to stderr only.
+/// Runs the server on stdio until the client disconnects, with the project's modules. Logs go to stderr only.
 pub async fn run(args: Args) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let ring = match concordia_core::log::init(&LogConfig::from_env()) {
         Ok(handle) => Some(Arc::clone(handle.ring())),
         Err(LogError::AlreadyInitialized) => None,
         Err(e) => return Err(e.into()),
     };
+    let modules =
+        concordia_app::Project::load(&args.project).and_then(|project| project.modules())?;
     let options = Options {
         project: args.project,
         actor: args.actor,
@@ -127,6 +138,7 @@ pub async fn run(args: Args) -> Result<(), Box<dyn std::error::Error + Send + Sy
         deterministic_ids: args.deterministic_ids,
         threads: args.threads,
         log_ring: ring,
+        modules,
     };
     let server = ConcordiaServer::start(options).await?;
     tracing::info!(target: "concordia::mcp", "MCP server ready on stdio");

@@ -93,3 +93,23 @@ fn runs_with_empty_environment() {
         frames[2]
     );
 }
+
+#[test]
+fn binary_serves_tools_of_the_project_modules() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("concordia.toml"),
+        "[input]\nmap = \"default.input.ron\"\n",
+    )
+    .unwrap();
+    let map = include_str!("../../../examples/m1-physics-stack/input/default.input.ron");
+    std::fs::write(dir.path().join("default.input.ron"), map).unwrap();
+    let mut child = spawn(&dir, false);
+    let (frames, _) = session(&mut child);
+    let tools = frames[1]["result"]["tools"].as_array().unwrap();
+    assert_eq!(tools.len(), 25);
+    assert!(
+        tools.iter().any(|t| t["name"] == "input_inject"),
+        "{tools:?}"
+    );
+}

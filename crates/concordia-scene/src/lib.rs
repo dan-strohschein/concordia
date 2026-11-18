@@ -18,6 +18,7 @@
 
 pub mod builtin;
 mod convert;
+mod document;
 mod error;
 mod model;
 mod prefab;
@@ -26,6 +27,7 @@ mod syntax;
 mod world;
 mod write;
 
+pub use document::{read_document, write_document};
 pub use error::SceneError;
 pub use model::{EntityDoc, FORMAT_VERSION, PrefabDoc, SceneDoc, SceneMeta};
 pub use prefab::instantiate_prefab;

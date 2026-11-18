@@ -233,7 +233,7 @@ fn component_value(
         .map_err(|e| reflect_error(name, &e, &converter))
 }
 
-fn convert_error(component: &str, e: ConvertError) -> SceneError {
+pub(crate) fn convert_error(component: &str, e: ConvertError) -> SceneError {
     SceneError::InvalidValue {
         component: component.to_owned(),
         pointer: e.pointer,
@@ -244,7 +244,11 @@ fn convert_error(component: &str, e: ConvertError) -> SceneError {
     }
 }
 
-fn reflect_error(component: &str, e: &ReflectError, converter: &Converter) -> SceneError {
+pub(crate) fn reflect_error(
+    component: &str,
+    e: &ReflectError,
+    converter: &Converter,
+) -> SceneError {
     let (pointer, at, expected, found) = match e {
         ReflectError::Invalid {
             pointer,
@@ -308,7 +312,7 @@ fn sorted(names: &[&'static str]) -> Vec<&'static str> {
     names
 }
 
-fn syntax(e: SyntaxError) -> SceneError {
+pub(crate) fn syntax(e: SyntaxError) -> SceneError {
     parse_error(e.pos, &e.message)
 }
 

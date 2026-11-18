@@ -34,6 +34,18 @@ impl SimLoop {
         }
     }
 
+    /// The fixed rate.
+    pub fn rate(&self) -> TickRate {
+        self.rate
+    }
+
+    /// Changes the fixed rate, keeping the schedule and the tick count; the world's clock follows.
+    pub fn set_rate(&mut self, world: &mut World, rate: TickRate) {
+        self.rate = rate;
+        self.acc = Accumulator::new(rate);
+        self.clock(world).rate = rate;
+    }
+
     /// The schedule, for adding systems.
     pub fn schedule_mut(&mut self) -> &mut Schedule {
         &mut self.schedule

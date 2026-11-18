@@ -69,6 +69,11 @@ perf-smoke:
 bench *args:
     cargo bench --workspace {{args}}
 
+# Regenerate jolt-sys bindings from the shim header (needs libclang, e.g. from Xcode)
+jolt-bindgen:
+    cargo run --quiet --manifest-path tools/jolt-bindgen/Cargo.toml --target-dir target/jolt-bindgen
+    rustfmt --edition 2024 crates/jolt-sys/src/bindings.rs
+
 # Everything CI runs
 ci: lint test deny
 

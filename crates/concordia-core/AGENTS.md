@@ -10,7 +10,7 @@ The root of the dependency graph: typed UUID ids and generators, glam math re-ex
 - `rng::SimRng` (`new`, `fork`, `seed`/`stream`/`word_pos` for state hashing)
 - `suggest::did_you_mean` (Jaro-Winkler ≥ 0.8, top 3; used by scene and API errors)
 - `log::{init, LogConfig, LogRing, LogRecord}`
-- `math::{Vec2, Vec3, Vec4, Quat, Mat4, Affine3A}`
+- `math::{Vec2, Vec3, Vec4, Quat, Mat4, Affine3A}`, `math::Ray` (validated, unit direction; `intersect_plane`), `math::camera` (glam view/projection constructors; Metal uses `rh::proj::directx`)
 
 ## Invariants
 - No dependencies on other Concordia crates.

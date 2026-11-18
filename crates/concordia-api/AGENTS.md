@@ -4,9 +4,10 @@
 The one Engine API: typed `domain.verb` methods with generated schemas, JSON-RPC 2.0 over stdio and localhost WebSocket, sessions with default actors, transaction ownership, edit and play worlds, and agent-actionable errors. The MCP server and CLI are thin adapters over it.
 
 ## Public entry points
-- `Engine` (`new`, `open_session`, `call`, `handle_jsonrpc`, `close_session`, `poll`, `spawn`, `scene_text`) and `EngineConfig`
-- `EngineHandle` (async `open_session`, `handle_jsonrpc`, `call`, `close_session`)
-- `methods()` → `MethodRegistry` of `MethodInfo`; `params_schema`, `result_schema`; the `Method` trait
+- `Engine` (`new`, `open_session`, `call`, `handle_jsonrpc`, `close_session`, `poll`, `spawn`, `scene_text`, `methods`, `world`, `play_state`) and `EngineConfig` (`modules`)
+- `EngineHandle` (async `open_session`, `handle_jsonrpc`, `call`, `close_session`; `methods`)
+- `EngineModule` and `PlaySetup` (ADR-0046): how other crates add types, methods, play systems and play-time state
+- `methods()` → the core `MethodRegistry`; `Engine::methods()` is the full set. `MethodRegistry::build`, `params_schema`, `result_schema`, the `Method` trait
 - `ApiError`, `ApiErrorKind`, `ErrorData`
 - `transport::stdio::serve`, `transport::ws::{serve, WsConfig, WsServer, write_connection_file}`
 
@@ -18,12 +19,15 @@ The one Engine API: typed `domain.verb` methods with generated schemas, JSON-RPC
 - Method docs (the marker type's doc comment) and param/result field docs are agent-facing: they become tool descriptions and schemas. Params and results are `#[derive(Reflect)]`; nothing is hand-written.
 - Scene paths are project-relative `.scene.ron` paths without `..`. WebSocket binds to loopback only, requires the token, and rejects non-local Origins.
 - All engine state lives on one thread; transports only forward messages.
+- Modules run in order: core first, then `EngineConfig::modules`. Module and method names are unique (`Engine::new` fails otherwise). `start_play` runs once per new play world; its state is dropped with the play world (`sim.stop`, `scene.open`, `scene.new`). Non-`Clone` runtime objects (physics, GPU) live in play state or in systems, never in `World` resources.
+- `sim.*` accept an attribution-only `actor`; `sim.step` logs `sim stepped` (actor, ticks, world_hash). Nothing in `sim.*` is journaled.
 
 ## How to test
 `cargo nextest run -p concordia-api` (dispatch, errors, sessions, sim, transports, log, schema snapshots).
 
 ## Common tasks
 - **Add a method:** create a doc-commented marker struct, `Params` and `Result` types (`#[derive(Reflect)]`, doc comments on every field, `actor: Option<Actor>` if it mutates) in `src/methods/<domain>.rs`; implement `Method`; add it to that module's `methods()`; mutate only via `edit` or `CommandLog`; add tests; accept the `method_index_snapshot` change. MCP picks it up automatically.
+- **Add a module:** implement `EngineModule` in your crate (types via `register_component`, methods via `MethodInfo::of`, play systems and state in `start_play`); read worlds with `Engine::world` and state with `Engine::play_state`; add it to the engine's `EngineConfig::modules`. Its methods become MCP tools automatically.
 - **Add an error kind:** add it to `ApiErrorKind` and `ALL` with a code, name, message and suggestion; map the source error in `src/map.rs`; update `docs/guides/agents-engine-api.md`.
 
 ## Don'ts
@@ -36,7 +40,7 @@ The one Engine API: typed `domain.verb` methods with generated schemas, JSON-RPC
 - OWASP guidance on cross-site WebSocket hijacking (Origin checks, tokens).
 
 ## Status
-M0 phase 0.6 complete.
+M0 phase 0.6 complete. M1 phase 1.0: engine modules.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

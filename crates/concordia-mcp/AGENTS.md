@@ -6,11 +6,11 @@ The MCP server (`concordia-mcp`, also `concordia mcp`): a thin rmcp adapter that
 ## Public entry points
 - `run(Args)`: logging to stderr, then serve MCP on stdio (shared by both binaries)
 - `ConcordiaServer::start(Options)` and its rmcp `ServerHandler` impl (in-process tests serve it over a duplex pipe)
-- `Options`, `Args`, `StartError`
+- `Options` (incl. `modules`), `Args`, `StartError`
 
 ## Invariants
 - No hand-written schemas: tool `inputSchema`/`outputSchema` equal `params_schema`/`result_schema` byte for byte.
-- Tools map 1:1 to API methods (`.` → `_`), minus `session.open`.
+- Tools map 1:1 to the engine's methods (`.` → `_`), minus `session.open`, including methods from `Options::modules` (ADR-0046).
 - stdout is protocol-only; logs go to stderr.
 - rmcp is used only in `src/tools.rs` and `src/resources.rs`.
 - Engine errors are tool errors; unknown tools are protocol errors.
