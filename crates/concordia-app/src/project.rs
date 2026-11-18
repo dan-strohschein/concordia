@@ -4,7 +4,9 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 use concordia_api::EngineModule;
+use concordia_core::math::Vec3;
 use concordia_input::{InputMap, InputModule};
+use concordia_physics::{PhysicsModule, PhysicsSettings};
 
 use crate::error::AppError;
 use crate::manifest::Manifest;
@@ -55,6 +57,12 @@ impl Project {
         let mut modules: Vec<Arc<dyn EngineModule>> = Vec::new();
         if self.manifest.input.map.is_some() {
             modules.push(Arc::new(InputModule::new(self.input_map()?)));
+        }
+        if let Some(physics) = &self.manifest.physics {
+            let mut settings = PhysicsSettings::default();
+            settings.gravity = Vec3::from_array(physics.gravity);
+            settings.max_bodies = physics.max_bodies;
+            modules.push(Arc::new(PhysicsModule::new(settings)));
         }
         Ok(modules)
     }

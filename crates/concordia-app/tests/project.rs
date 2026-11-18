@@ -62,7 +62,7 @@ fn broken_input_map_is_reported_with_its_path() {
 }
 
 #[test]
-fn default_modules_are_input_after_core() {
+fn m1_example_has_input_and_physics_modules_after_core() {
     let project = Project::load(&examples().join("m1-physics-stack")).unwrap();
     let names: Vec<&str> = project
         .modules()
@@ -70,7 +70,45 @@ fn default_modules_are_input_after_core() {
         .iter()
         .map(|m| m.name())
         .collect();
-    assert_eq!(names, ["input"]);
+    assert_eq!(names, ["input", "physics"]);
+    assert_eq!(
+        project.manifest.physics.as_ref().unwrap().gravity,
+        [0.0, -9.81, 0.0]
+    );
+}
+
+#[test]
+fn m1_stack_scene_settles_in_a_headless_engine() {
+    use concordia_api::{Engine, EngineConfig, WorldSel};
+    use serde_json::json;
+
+    let root = examples().join("m1-physics-stack");
+    let project = Project::load(&root).unwrap();
+    let mut config = EngineConfig::new(&root);
+    config.modules = project.modules().unwrap();
+    config.threads = std::num::NonZeroUsize::MIN;
+    let mut engine = Engine::new(config).unwrap();
+    let session = engine.open_session();
+    let main = project.manifest.scene.main.clone().unwrap();
+    engine
+        .call(session, "scene.open", json!({ "path": main }))
+        .unwrap();
+    engine
+        .call(session, "sim.step", json!({"ticks": 180}))
+        .unwrap();
+    let play = engine.world(WorldSel::play).unwrap();
+    let moving: Vec<f32> = play
+        .entity_ids_sorted()
+        .into_iter()
+        .filter_map(|id| play.get::<concordia_scene::builtin::Velocity>(id))
+        .map(|v| v.linear.length())
+        .collect();
+    assert_eq!(
+        moving.len(),
+        13,
+        "ten pyramid boxes and three dropped boxes are dynamic"
+    );
+    assert!(moving.iter().all(|s| *s < 0.05), "settled: {moving:?}");
 }
 
 #[test]

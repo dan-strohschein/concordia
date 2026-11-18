@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (phase 1.7b; 1.0, 1.2a, 1.1 and 1.7a done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (phase 1.2b; 1.0, 1.2a, 1.1 and 1.7 done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -153,6 +153,24 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 - the gate agent demo.
 
 **Installs needing approval:** cmake (1.7a), Slang into `target/` (1.3), the Tauri CLI (1.8), and git-lfs only if D5 changes.
+
+### Phase 1.7b: concordia-physics (done)
+- **The crate:**
+  - components `RigidBody`, `Collider` (box, sphere, capsule, cylinder; 16 layers), `CharacterController`, `CharacterMotion`;
+  - `PhysicsRuntime` (sync in, step, characters, write back, sorted `CollisionEvents`);
+  - `raycast`, `state_hash`, `save_state` / `restore_state`;
+  - `PhysicsModule` with `physics.raycast` (edit world via a temporary snapshot, play world via the session runtime).
+- **Wiring:** a `[physics]` manifest section enables the module. `concordia fmt --project` uses the project's modules' components.
+- `examples/m1-physics-stack/scenes/stack.scene.ron`: ground, a 4-3-2-1 pyramid (1 cm gaps) and three dropped boxes. It settles within 180 ticks (checked by a test).
+- **Deviations from the plan:**
+  - Collision events are a per-tick `CollisionEvents` resource, not a generic Terra `Events<T>`; nothing else needs one yet.
+  - No `Velocity` duplicate: dynamic bodies are written back after `integrate_velocity`.
+  - Convex-hull, triangle-mesh and height-field colliders wait for mesh assets (1.4).
+  - Collider edits apply to the next play session (ADR-0032), and undo restores them (tested).
+  - The gravity test checks Jolt's semi-implicit integration exactly, and ½gt² within 2%. The plan's 1% can't hold at 60 Hz, because the discrete error is 1/n = 1.7%.
+  - "10-box stack stable" means less than 1 mm of creep after settling. Boxes spawned exactly touching keep sliding for a while, so the stack is authored with 1 cm gaps.
+  - The dropped boxes land beside the pyramid; dropped onto it, they were still rolling at 3 s.
+- The `box_stack_hash_matches_committed_snapshot` snapshot was blessed on macOS arm64. CI's Ubuntu x86_64 job checks cross-platform determinism.
 
 ### Phase 1.7a: jolt-sys (done)
 - Vendored Jolt v5.7.0 under `third_party/JoltPhysics`, unmodified, with VENDOR.md.

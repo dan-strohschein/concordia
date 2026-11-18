@@ -19,6 +19,8 @@ pub struct Manifest {
     pub window: WindowDesc,
     /// `[input]`.
     pub input: InputSection,
+    /// `[physics]`; the physics module runs only if this section exists.
+    pub physics: Option<PhysicsSection>,
 }
 
 /// `[project]`.
@@ -67,6 +69,25 @@ pub struct JournalSection {
 impl Default for JournalSection {
     fn default() -> Self {
         Self { sync: true }
+    }
+}
+
+/// `[physics]`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct PhysicsSection {
+    /// Gravity in m/s².
+    pub gravity: [f32; 3],
+    /// Most bodies per world (1..=65536).
+    pub max_bodies: u32,
+}
+
+impl Default for PhysicsSection {
+    fn default() -> Self {
+        Self {
+            gravity: [0.0, -9.81, 0.0],
+            max_bodies: 16_384,
+        }
     }
 }
 

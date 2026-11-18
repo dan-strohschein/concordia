@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
+use concordia_api::{Engine, EngineConfig};
 use concordia_reflect::TypeRegistry;
 
 use crate::Failure;
@@ -12,15 +13,28 @@ pub(crate) struct Args {
     /// Report files that are not canonical (exit 1) instead of rewriting them.
     #[arg(long)]
     check: bool,
+    /// Project whose modules define the components (default: the current directory).
+    #[arg(long, default_value = ".")]
+    project: PathBuf,
     /// Files or directories (default: the current directory).
     paths: Vec<PathBuf>,
 }
 
 const EXTENSIONS: [&str; 2] = [".scene.ron", ".prefab.ron"];
 
+/// An engine with the project's modules, for its type registry.
+fn project_engine(root: &Path) -> Result<Engine, Failure> {
+    let project = concordia_app::Project::load(root).map_err(|e| Failure::usage(e.to_string()))?;
+    let mut config = EngineConfig::new(root);
+    config.modules = project
+        .modules()
+        .map_err(|e| Failure::usage(e.to_string()))?;
+    Engine::new(config).map_err(|e| Failure::usage(e.message))
+}
+
 pub(crate) fn run(args: &Args) -> Result<(), Failure> {
-    let mut registry = TypeRegistry::new();
-    concordia_scene::builtin::register(&mut registry).map_err(|e| Failure::usage(e.to_string()))?;
+    let engine = project_engine(&args.project)?;
+    let registry = engine.registry();
     let roots = if args.paths.is_empty() {
         vec![PathBuf::from(".")]
     } else {
@@ -34,7 +48,7 @@ pub(crate) fn run(args: &Args) -> Result<(), Failure> {
     files.sort();
     let (mut changed, mut broken) = (Vec::new(), 0);
     for file in &files {
-        match format_file(file, &registry, args.check) {
+        match format_file(file, registry, args.check) {
             Ok(true) => changed.push(file),
             Ok(false) => {}
             Err(message) => {

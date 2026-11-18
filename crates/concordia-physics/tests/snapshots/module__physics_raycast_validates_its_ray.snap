@@ -1,0 +1,88 @@
+---
+source: crates/concordia-physics/tests/module.rs
+assertion_line: 137
+expression: params_schema(method)
+---
+{
+  "$defs": {
+    "WorldSel": {
+      "description": "Which world to read.",
+      "oneOf": [
+        {
+          "const": "edit",
+          "description": "The scene being edited (default)."
+        },
+        {
+          "const": "play",
+          "description": "The running simulation (exists after sim.play or sim.step)."
+        }
+      ],
+      "title": "WorldSel",
+      "x-concordia-type": "WorldSel"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`physics.raycast` params.",
+  "properties": {
+    "direction": {
+      "description": "Ray direction (any non-zero length).\n\n3D vector as [x, y, z].",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array"
+    },
+    "layers": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "items": {
+            "maximum": 255,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      ],
+      "description": "Layers to hit (default: all)."
+    },
+    "max_distance": {
+      "description": "Longest hit distance in meters.",
+      "maximum": 1000000.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "origin": {
+      "description": "Ray start, world space.\n\n3D vector as [x, y, z].",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array"
+    },
+    "world": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/WorldSel"
+        }
+      ],
+      "description": "Which world (default edit; play uses the running simulation)."
+    }
+  },
+  "required": [
+    "origin",
+    "direction",
+    "max_distance"
+  ],
+  "title": "RaycastParams",
+  "type": "object",
+  "x-concordia-type": "RaycastParams"
+}

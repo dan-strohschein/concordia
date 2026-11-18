@@ -5,13 +5,13 @@ The composition root: loads a project's `concordia.toml` and builds the engine m
 
 ## Public entry points
 - `Project::load(root)`, `Project::modules()`, `Project::input_map()`
-- `Manifest` and its sections (`[project]`, `[scene]`, `[sim]`, `[journal]`, `[window]`, `[input]`)
+- `Manifest` and its sections (`[project]`, `[scene]`, `[sim]`, `[journal]`, `[window]`, `[input]`, `[physics]`)
 - `AppError`
 
 ## Invariants
 - Unknown manifest keys are errors; a missing `concordia.toml` means all defaults.
 - Paths in the manifest are project-relative and may not escape the project.
-- A module is included only if the manifest configures it (input needs `[input] map`), so M0 projects keep the M0 tool set.
+- A module is included only if the manifest configures it (input needs `[input] map`, physics needs a `[physics]` section), so M0 projects keep the M0 tool set.
 
 ## How to test
 `cargo nextest run -p concordia-app`

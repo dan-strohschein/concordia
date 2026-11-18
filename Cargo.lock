@@ -562,9 +562,13 @@ name = "concordia-app"
 version = "0.0.0"
 dependencies = [
  "concordia-api",
+ "concordia-core",
  "concordia-input",
+ "concordia-physics",
  "concordia-platform",
+ "concordia-scene",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.21",
  "toml",
@@ -658,6 +662,27 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "concordia-physics"
+version = "0.0.0"
+dependencies = [
+ "blake3",
+ "concordia-api",
+ "concordia-command",
+ "concordia-core",
+ "concordia-input",
+ "concordia-reflect",
+ "concordia-scene",
+ "concordia-terra",
+ "insta",
+ "jolt-sys",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
  "tracing",
 ]
 

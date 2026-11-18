@@ -9,6 +9,7 @@ mod project;
 
 pub use error::AppError;
 pub use manifest::{
-    InputSection, JournalSection, Manifest, ProjectSection, SceneSection, SimSection,
+    InputSection, JournalSection, Manifest, PhysicsSection, ProjectSection, SceneSection,
+    SimSection,
 };
 pub use project::Project;
