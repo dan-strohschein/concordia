@@ -1,0 +1,208 @@
+//! Typed methods, the method registry and dispatch.
+
+use std::sync::OnceLock;
+use std::time::Instant;
+
+use concordia_command::Actor;
+use concordia_core::id::SessionId;
+use concordia_core::suggest::did_you_mean;
+use concordia_reflect::{Reflect, TypeInfo, schema_for, validate_json};
+use serde_json::{Value, json};
+
+use crate::engine::Engine;
+use crate::error::{ApiError, ApiErrorKind};
+
+/// One Engine API method. The marker type's doc comment is the method's agent-facing description.
+pub trait Method: Reflect {
+    /// Wire name, `domain.verb`.
+    const NAME: &'static str;
+    /// True if the method changes the edit world (requires an actor).
+    const MUTATES: bool;
+    /// Params.
+    type Params: Reflect;
+    /// Result.
+    type Result: Reflect;
+    /// Runs the method.
+    fn call(
+        engine: &mut Engine,
+        ctx: &CallCtx,
+        params: Self::Params,
+    ) -> Result<Self::Result, ApiError>;
+}
+
+/// Who is calling.
+#[derive(Debug, Clone)]
+pub struct CallCtx {
+    /// The session.
+    pub session: SessionId,
+    /// The resolved actor (explicit param or session default); always set for mutating methods.
+    pub actor: Option<Actor>,
+    /// When the call started.
+    pub now: Instant,
+}
+
+impl CallCtx {
+    /// The actor; mutating methods can rely on it.
+    pub fn actor(&self) -> Result<&Actor, ApiError> {
+        self.actor
+            .as_ref()
+            .ok_or_else(|| ApiError::from_kind(ApiErrorKind::ActorRequired))
+    }
+}
+
+type Invoke = fn(&mut Engine, &CallCtx, Value) -> Result<Value, ApiError>;
+
+/// A registered method.
+#[derive(Clone, Copy)]
+pub struct MethodInfo {
+    /// Wire name.
+    pub name: &'static str,
+    /// Requires an actor.
+    pub mutates: bool,
+    /// Agent-facing description.
+    pub docs: &'static str,
+    /// Params type.
+    pub params: &'static TypeInfo,
+    /// Result type.
+    pub result: &'static TypeInfo,
+    invoke: Invoke,
+}
+
+impl std::fmt::Debug for MethodInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MethodInfo")
+            .field("name", &self.name)
+            .field("mutates", &self.mutates)
+            .finish()
+    }
+}
+
+impl MethodInfo {
+    /// Describes method `M`.
+    pub fn of<M: Method>() -> Self {
+        Self {
+            name: M::NAME,
+            mutates: M::MUTATES,
+            docs: M::type_info().docs,
+            params: M::Params::type_info(),
+            result: M::Result::type_info(),
+            invoke: invoke::<M>,
+        }
+    }
+}
+
+/// All methods, sorted by name.
+#[derive(Debug)]
+pub struct MethodRegistry {
+    methods: Vec<MethodInfo>,
+}
+
+impl MethodRegistry {
+    /// Looks up a method.
+    pub fn get(&self, name: &str) -> Option<&MethodInfo> {
+        self.methods
+            .binary_search_by(|m| m.name.cmp(name))
+            .ok()
+            .map(|i| &self.methods[i])
+    }
+
+    /// Methods in name order.
+    pub fn iter(&self) -> impl Iterator<Item = &MethodInfo> {
+        self.methods.iter()
+    }
+
+    /// Method names in order.
+    pub fn names(&self) -> impl Iterator<Item = &'static str> + '_ {
+        self.methods.iter().map(|m| m.name)
+    }
+}
+
+/// The M0 method registry.
+pub fn methods() -> &'static MethodRegistry {
+    static REGISTRY: OnceLock<MethodRegistry> = OnceLock::new();
+    REGISTRY.get_or_init(|| {
+        let mut methods = crate::methods::all();
+        methods.sort_by_key(|m| m.name);
+        MethodRegistry { methods }
+    })
+}
+
+/// JSON Schema of a method's params (generated, never hand-written).
+pub fn params_schema(method: &MethodInfo) -> Value {
+    schema_for(method.params)
+}
+
+/// JSON Schema of a method's result.
+pub fn result_schema(method: &MethodInfo) -> Value {
+    schema_for(method.result)
+}
+
+/// Resolves `method` and runs it.
+pub(crate) fn dispatch(
+    engine: &mut Engine,
+    session: SessionId,
+    method: &str,
+    params: Value,
+) -> Result<Value, ApiError> {
+    let info = methods().get(method).ok_or_else(|| {
+        let similar = did_you_mean(method, methods().names())
+            .into_iter()
+            .map(|m| format!("did you mean {m}?"));
+        ApiError::new(
+            ApiErrorKind::MethodNotFound,
+            format!("no method named {method:?}"),
+        )
+        .suggest(similar)
+        .see("concordia://docs/agent-guide")
+    })?;
+    let params = if params.is_null() { json!({}) } else { params };
+    let explicit = explicit_actor(&params)?;
+    let default = engine.sessions.get(&session).and_then(|s| s.actor.clone());
+    let actor = explicit.or(default);
+    if info.mutates && actor.is_none() {
+        return Err(ApiError::from_kind(ApiErrorKind::ActorRequired));
+    }
+    let ctx = CallCtx {
+        session,
+        actor,
+        now: Instant::now(),
+    };
+    (info.invoke)(engine, &ctx, params)
+}
+
+fn explicit_actor(params: &Value) -> Result<Option<Actor>, ApiError> {
+    match params.get("actor") {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(text)) => {
+            text.parse()
+                .map(Some)
+                .map_err(|e: concordia_command::ActorError| {
+                    let concordia_command::ActorError::Malformed { hint, .. } = &e;
+                    ApiError::new(ApiErrorKind::ActorMalformed, e.to_string())
+                        .suggest([hint.clone()])
+                        .at("/actor")
+                })
+        }
+        Some(_) => {
+            Err(ApiError::new(ApiErrorKind::ActorMalformed, "actor must be a string").at("/actor"))
+        }
+    }
+}
+
+fn invoke<M: Method>(engine: &mut Engine, ctx: &CallCtx, params: Value) -> Result<Value, ApiError> {
+    let params = decode::<M::Params>(params, M::NAME)?;
+    let result = M::call(engine, ctx, params)?;
+    serde_json::to_value(result).map_err(crate::engine::internal)
+}
+
+fn decode<P: Reflect>(params: Value, method: &str) -> Result<P, ApiError> {
+    validate_json(&params, P::type_info())
+        .map_err(|e| crate::map::invalid_params(&e, P::type_info(), method))?;
+    serde_json::from_value(params).map_err(|e| {
+        ApiError::new(
+            ApiErrorKind::InvalidParams,
+            format!("invalid params for {method}: {e}"),
+        )
+        .see(format!("concordia://schema/method/{method}"))
+    })
+}

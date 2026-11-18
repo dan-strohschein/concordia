@@ -1,5 +1,5 @@
 # M0: Headless Core
-Status: In progress (phase 0.6; phases 0.0–0.5 done 2026-11-17) · Depends on: M-1 · Detail level: Ready to execute · Estimated effort: ~9–11 weeks (author + agents), 8 phases
+Status: In progress (phase 0.7; phases 0.0–0.6 done 2026-11-17) · Depends on: M-1 · Detail level: Ready to execute · Estimated effort: ~9–11 weeks (author + agents), 8 phases
 
 ## Goal & context
 
@@ -607,6 +607,16 @@ Every crate's `AGENTS.md` has these headings: **Purpose** (2–3 sentences), **P
   - stdio framing: newline-delimited JSON (same as MCP stdio). WebSocket: one session per connection; token generated at startup, printed to stderr and written to `<project>/.concordia/headless.json` (`{ "url", "token", "pid" }`), mode 0600.
   - References: JSON-RPC 2.0 specification; RFC 7396 (JSON Merge Patch); RFC 6901 (JSON Pointer); RFC 6455 (WebSocket); OWASP notes on cross-site WebSocket hijacking.
 - **ADRs:** ADR-0031 (Engine API error model) and ADR-0032 (edit world vs play world) are written in this phase.
+- **As built (0.6):**
+  - `Engine` is synchronous (`call`, `handle_jsonrpc`, `poll`); `Engine::spawn()` moves it to a dedicated thread behind a cloneable `EngineHandle` (std mpsc in, tokio oneshot out). The thread wakes for real-time play and transaction timeouts.
+  - Method marker types carry the doc comment (`#[derive(Reflect)]` unit structs); `MethodInfo::of::<M>()` builds the registry; `CallCtx { session, actor, now }` holds the resolved actor (explicit param, else session default; `ActorRequired` for mutating methods without one). Mutating methods all take `actor: Option<Actor>`.
+  - Params decode via `concordia_reflect::validate_json` (pointer errors → `InvalidParams` with `expected` and `example`), then serde. Entity references are strings (`EntityRef`) so a name given as an id yields `EntityNotFound` with the matching id suggested.
+  - `ApiError { kind, message, data: Box<ErrorData> }` (boxed for small `Result`s); kind-specific fields go in `data.extra` (`holder`, `line`, `col`). `ComponentMissing` maps to `ValueInvalid`.
+  - Merge patch is in-house (`merge_patch`, RFC 7396 appendix vectors). Results are always objects (e.g. `txn.history` → `{entries}`, `schema.get` → `{schema}`), so MCP structured output works.
+  - `scene.save` refuses while a transaction is open; `scene.new` refuses an existing file; scenes write via temp file + rename. `scene.new`/`scene.open` discard the play world.
+  - Extended earlier crates test-first: reflect `Primitive::Pattern`, `validate_json`, `example_json`, raw-identifier field names; command `ACTOR_PATTERN` and `Reflect for Actor` (the regex test found and fixed `#01` being accepted).
+  - `.config/nextest.toml`: `terminate-after = 4` so a hung test fails instead of stalling CI.
+  - Extra tests: `explicit_transactions_group_ops`, `scene_new_refuses_dirty_scene_unless_discard`, `scene_paths_must_stay_inside_the_project`, `schema_get_returns_types_methods_and_index`, `no_scene_open_suggests_scene_new`, `errors_serialize_as_jsonrpc_error_objects`, `sim_play_and_pause_report_state`, `connection_file_is_private_and_complete`, `log_tail_returns_ring_records_and_scene_saved`.
 - **Done criteria:** all tests green; `docs/guides/agents-engine-api.md` written (workflow, method table, error table, examples); no method mutates outside `CommandLog`.
 
 ### Phase 0.7: concordia-mcp + concordia-cli

@@ -18,7 +18,7 @@ pub fn shape(data: &DataEnum) -> syn::Result<TokenStream> {
 
 fn variant(variant: &Variant) -> syn::Result<TokenStream> {
     attrs::variant(&variant.attrs)?;
-    let name = variant.ident.to_string();
+    let name = syn::ext::IdentExt::unraw(&variant.ident).to_string();
     let docs = attrs::docs(&variant.attrs);
     let shape = match &variant.fields {
         Fields::Unit => quote! { ::concordia_reflect::VariantShape::Unit },

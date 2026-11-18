@@ -285,16 +285,17 @@ fn primitive(node: &Node, p: Primitive, at: &str) -> Result<Value> {
     let expected = match p {
         Primitive::Bool => "a boolean",
         Primitive::F32 | Primitive::F64 => "a number",
-        Primitive::String | Primitive::Char | Primitive::Uuid => "a string",
+        Primitive::String | Primitive::Char | Primitive::Uuid | Primitive::Pattern(_) => "a string",
         _ => "an integer",
     };
     let value = match (&node.kind, p) {
         (Kind::Ident(i), Primitive::Bool) if i == "true" || i == "false" => {
             Some(Value::Bool(i == "true"))
         }
-        (Kind::Str(s), Primitive::String | Primitive::Char | Primitive::Uuid) => {
-            Some(Value::String(s.clone()))
-        }
+        (
+            Kind::Str(s),
+            Primitive::String | Primitive::Char | Primitive::Uuid | Primitive::Pattern(_),
+        ) => Some(Value::String(s.clone())),
         (Kind::Num(text), Primitive::F32) => text
             .parse::<f32>()
             .ok()

@@ -22,6 +22,7 @@
 
 mod dynamic;
 mod error;
+mod example;
 mod finite;
 mod hash;
 mod impls;
@@ -34,12 +35,14 @@ mod validate;
 pub use concordia_reflect_derive::Reflect;
 pub use dynamic::DynReflect;
 pub use error::ReflectError;
+pub use example::example_json;
 pub use finite::find_non_finite;
 pub use hash::canonical_hash;
 pub use info::{FieldInfo, Primitive, Range, Shape, TypeInfo, TypeRef, VariantInfo, VariantShape};
 pub use reflect::Reflect;
 pub use registry::{RegistryError, TypeRegistration, TypeRegistry};
 pub use schema::{DRAFT, schema_for};
+pub use validate::validate_json;
 
 /// Support code for `#[derive(Reflect)]`; not a public API.
 #[doc(hidden)]

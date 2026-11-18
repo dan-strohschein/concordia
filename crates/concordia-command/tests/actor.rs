@@ -77,3 +77,36 @@ fn actor_serde_is_its_string_form() {
     assert!(!actor.is_human());
     assert!("human:local".parse::<Actor>().unwrap().is_human());
 }
+
+#[test]
+fn actor_reflects_as_a_patterned_string_that_agrees_with_the_parser() {
+    use concordia_reflect::{Reflect, schema_for};
+    let schema = schema_for(Actor::type_info());
+    assert_eq!(schema["type"], "string");
+    assert_eq!(schema["pattern"], concordia_command::ACTOR_PATTERN);
+    let regex = regex::Regex::new(concordia_command::ACTOR_PATTERN).unwrap();
+    let long = format!("agent:{}", "a".repeat(65));
+    let cases = [
+        "agent:claude-code",
+        "human:local",
+        "script:x#2",
+        "tool:a.b_c-d",
+        "system:9lives#10",
+        "claude",
+        "agent:X",
+        "agent:x#0",
+        "robot:x",
+        "agent:",
+        "agent:-x",
+        "agent:x#",
+        "agent:x#01",
+        long.as_str(),
+    ];
+    for case in cases {
+        assert_eq!(
+            regex.is_match(case),
+            case.parse::<Actor>().is_ok(),
+            "{case:?}"
+        );
+    }
+}

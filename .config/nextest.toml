@@ -1,5 +1,5 @@
 [profile.default]
-slow-timeout = { period = "30s" }
+slow-timeout = { period = "30s", terminate-after = 4 }
 
 [profile.ci]
 fail-fast = false

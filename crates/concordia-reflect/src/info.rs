@@ -146,6 +146,8 @@ pub enum Primitive {
     Char,
     /// A UUID string.
     Uuid,
+    /// A string matching a regular expression (ECMA-262, as in JSON Schema).
+    Pattern(&'static str),
 }
 
 impl Primitive {

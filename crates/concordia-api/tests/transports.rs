@@ -1,0 +1,150 @@
+//! stdio and WebSocket transports (M0 phase 0.6).
+
+mod common;
+
+use std::net::SocketAddr;
+
+use concordia_api::transport::{stdio, ws};
+use concordia_api::{Engine, EngineHandle};
+use futures::{SinkExt, StreamExt};
+use serde_json::{Value, json};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+
+fn engine() -> (tempfile::TempDir, EngineHandle) {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::new(common::config(&dir)).unwrap();
+    (dir, engine.spawn())
+}
+
+#[tokio::test]
+async fn stdio_transport_handles_ndjson_requests() {
+    let (_dir, handle) = engine();
+    let (client, server) = tokio::io::duplex(64 * 1024);
+    let (server_read, server_write) = tokio::io::split(server);
+    let task = tokio::spawn(async move { stdio::serve(&handle, server_read, server_write).await });
+    let (client_read, mut client_write) = tokio::io::split(client);
+    let mut lines = BufReader::new(client_read).lines();
+
+    for (id, method) in [(1, "session.open"), (2, "schema.get")] {
+        let params = if method == "session.open" {
+            json!({"client": "t", "actor": "agent:t"})
+        } else {
+            json!({"name": "Name"})
+        };
+        let request = json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params});
+        client_write
+            .write_all(format!("{request}\n").as_bytes())
+            .await
+            .unwrap();
+        let response: Value =
+            serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+        assert_eq!(response["id"], id, "{response}");
+        assert!(response.get("result").is_some(), "{response}");
+    }
+    client_write
+        .write_all(b"\n{\"jsonrpc\":\"2.0\",\"method\":\"scene.info\"}\n")
+        .await
+        .unwrap();
+    client_write.shutdown().await.unwrap();
+    assert!(
+        lines.next_line().await.unwrap().is_none(),
+        "blank lines and notifications produce no output"
+    );
+    task.await.unwrap().unwrap();
+}
+
+async fn ws_server() -> (tempfile::TempDir, ws::WsServer) {
+    let (dir, handle) = engine();
+    let server = ws::serve(handle, ws::WsConfig::localhost(0)).await.unwrap();
+    (dir, server)
+}
+
+#[tokio::test]
+async fn ws_transport_serves_jsonrpc() {
+    let (_dir, server) = ws_server().await;
+    let url = format!("{}?token={}", server.url(), server.token);
+    let (mut socket, _) = tokio_tungstenite::connect_async(url).await.unwrap();
+    let request =
+        json!({"jsonrpc": "2.0", "id": 7, "method": "schema.get", "params": {"name": "Transform"}});
+    socket
+        .send(Message::text(request.to_string()))
+        .await
+        .unwrap();
+    let reply = socket.next().await.unwrap().unwrap();
+    let response: Value = serde_json::from_str(reply.to_text().unwrap()).unwrap();
+    assert_eq!(response["id"], 7);
+    assert_eq!(response["result"]["schema"]["title"], "Transform");
+}
+
+#[tokio::test]
+async fn ws_rejects_missing_token_and_foreign_origin() {
+    let (_dir, server) = ws_server().await;
+    let status = |result: Result<_, tokio_tungstenite::tungstenite::Error>| match result {
+        Err(tokio_tungstenite::tungstenite::Error::Http(response)) => response.status().as_u16(),
+        Err(other) => panic!("unexpected error {other}"),
+        Ok(_) => panic!("connection should be refused"),
+    };
+    assert_eq!(
+        status(
+            tokio_tungstenite::connect_async(server.url())
+                .await
+                .map(|_| ())
+        ),
+        401
+    );
+    let wrong = format!("{}?token=wrong", server.url());
+    assert_eq!(
+        status(tokio_tungstenite::connect_async(wrong).await.map(|_| ())),
+        401
+    );
+
+    let mut request = format!("{}?token={}", server.url(), server.token)
+        .into_client_request()
+        .unwrap();
+    request
+        .headers_mut()
+        .insert("Origin", "https://evil.example".parse().unwrap());
+    assert_eq!(
+        status(tokio_tungstenite::connect_async(request).await.map(|_| ())),
+        403
+    );
+
+    let mut local = format!("{}?token={}", server.url(), server.token)
+        .into_client_request()
+        .unwrap();
+    local
+        .headers_mut()
+        .insert("Origin", "http://localhost:5173".parse().unwrap());
+    assert!(
+        tokio_tungstenite::connect_async(local).await.is_ok(),
+        "localhost origins are allowed"
+    );
+}
+
+#[tokio::test]
+async fn ws_binds_localhost_only() {
+    let (_dir, handle) = engine();
+    let mut config = ws::WsConfig::localhost(0);
+    config.addr = "0.0.0.0:0".parse::<SocketAddr>().unwrap();
+    assert!(ws::serve(handle, config).await.is_err());
+}
+
+#[tokio::test]
+async fn connection_file_is_private_and_complete() {
+    let (dir, server) = ws_server().await;
+    let path = ws::write_connection_file(dir.path(), &server).unwrap();
+    let info: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(info["url"], server.url());
+    assert_eq!(info["token"], server.token);
+    assert_eq!(info["pid"], std::process::id());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+}

@@ -224,6 +224,9 @@ fn primitive(p: Primitive) -> Map<String, Value> {
             ("maxLength", json!(1)),
         ]),
         Primitive::Uuid => object([("type", json!("string")), ("format", json!("uuid"))]),
+        Primitive::Pattern(pattern) => {
+            object([("type", json!("string")), ("pattern", json!(pattern))])
+        }
         _ => object([("type", json!("string"))]),
     }
 }

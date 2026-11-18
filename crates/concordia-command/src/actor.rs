@@ -6,6 +6,10 @@ use std::str::FromStr;
 
 use concordia_core::id::SessionId;
 
+/// JSON Schema pattern for actor strings (instances above `u32::MAX` are rejected by the parser only).
+pub const ACTOR_PATTERN: &str =
+    "^(human|agent|system|tool|script):[a-z0-9][a-z0-9._-]{0,63}(#[1-9][0-9]*)?$";
+
 const GRAMMAR_HINT: &str = "expected <kind>:<name>[#n], e.g. agent:claude-code";
 const MAX_NAME: usize = 64;
 
@@ -143,11 +147,10 @@ impl FromStr for Actor {
     }
 }
 
+/// A positive integer without leading zeros (so `Display` round-trips).
 fn parse_instance(text: &str) -> Option<NonZeroU32> {
-    text.bytes()
-        .all(|b| b.is_ascii_digit())
-        .then(|| text.parse().ok())
-        .flatten()
+    let canonical = text.bytes().all(|b| b.is_ascii_digit()) && !text.starts_with('0');
+    canonical.then(|| text.parse().ok()).flatten()
 }
 
 fn validate_name(name: &str) -> Result<(), &'static str> {
@@ -185,6 +188,17 @@ impl<'de> serde::Deserialize<'de> for Actor {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let text = <std::borrow::Cow<'de, str>>::deserialize(d)?;
         text.parse().map_err(serde::de::Error::custom)
+    }
+}
+
+impl concordia_reflect::Reflect for Actor {
+    fn type_info() -> &'static concordia_reflect::TypeInfo {
+        use concordia_reflect::{Primitive, Shape, TypeInfo};
+        static INFO: std::sync::OnceLock<TypeInfo> = std::sync::OnceLock::new();
+        INFO.get_or_init(|| {
+            let docs = "Who makes a change: <human|agent|system|tool|script>:<name>[#n], e.g. agent:claude-code.";
+            TypeInfo::named("Actor", "concordia_command::Actor", docs, Shape::Primitive(Primitive::Pattern(ACTOR_PATTERN)))
+        })
     }
 }
 

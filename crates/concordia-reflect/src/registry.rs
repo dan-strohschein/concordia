@@ -91,7 +91,7 @@ impl std::fmt::Debug for TypeRegistration {
 }
 
 fn from_json_impl<T: Reflect>(value: Value) -> Result<Box<dyn DynReflect>, ReflectError> {
-    validate::check(&value, T::type_info())?;
+    validate::validate_json(&value, T::type_info())?;
     serde_json::from_value::<T>(value)
         .map(|v| Box::new(v) as Box<dyn DynReflect>)
         .map_err(|e| ReflectError::Deserialize {

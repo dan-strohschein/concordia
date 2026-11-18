@@ -2,6 +2,7 @@
 
 use proc_macro2::TokenStream;
 use quote::quote;
+use syn::ext::IdentExt;
 use syn::{Field, FieldsNamed, FieldsUnnamed};
 
 use crate::attrs;
@@ -46,7 +47,7 @@ fn field_info(field: &Field, all_optional: bool) -> syn::Result<Option<TokenStre
     let name = field
         .ident
         .as_ref()
-        .map(ToString::to_string)
+        .map(|i| i.unraw().to_string())
         .unwrap_or_default();
     let ty = &field.ty;
     let ty_ref = type_ref(ty);

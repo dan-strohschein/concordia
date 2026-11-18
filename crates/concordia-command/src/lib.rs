@@ -28,7 +28,7 @@ mod op;
 mod replay;
 mod txn;
 
-pub use actor::{Actor, ActorError, ActorKind, Author};
+pub use actor::{ACTOR_PATTERN, Actor, ActorError, ActorKind, Author};
 pub use error::CommandError;
 pub use journal::{
     Event, JOURNAL_VERSION, Journal, JournalConfig, JournalEntry, JournalError, JournalWarning,

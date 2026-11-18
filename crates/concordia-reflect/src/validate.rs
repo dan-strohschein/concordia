@@ -7,8 +7,10 @@ use crate::info::{
     FieldInfo, Primitive, Range, Shape, TypeInfo, TypeRef, VariantInfo, VariantShape,
 };
 
-/// Checks that `value` has the shape `info` describes (and respects declared ranges).
-pub fn check(value: &Value, info: &TypeInfo) -> Result<(), ReflectError> {
+/// Checks that `value` has the shape `info` describes and respects declared ranges.
+///
+/// Patterns are checked only as strings; the owning type's parser enforces them.
+pub fn validate_json(value: &Value, info: &TypeInfo) -> Result<(), ReflectError> {
     check_shape(value, &info.shape, "")
 }
 
@@ -37,7 +39,9 @@ fn check_primitive(value: &Value, p: Primitive, at: &str) -> Result<(), ReflectE
     match p {
         Primitive::Bool => expect(value.is_boolean(), "boolean", value, at),
         Primitive::F32 | Primitive::F64 => expect(value.is_number(), "number", value, at),
-        Primitive::String | Primitive::Uuid => expect(value.is_string(), "string", value, at),
+        Primitive::String | Primitive::Uuid | Primitive::Pattern(_) => {
+            expect(value.is_string(), "string", value, at)
+        }
         Primitive::Char => {
             let ok = value.as_str().is_some_and(|s| s.chars().count() == 1);
             expect(ok, "a one-character string", value, at)
