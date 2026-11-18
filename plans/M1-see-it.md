@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (phase 1.4; 1.0, 1.2a, 1.1, 1.7, 1.2b and 1.3 done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (phase 1.5; 1.0, 1.2a, 1.1, 1.7, 1.2b, 1.3 and 1.4 done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -154,12 +154,39 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 
 **Installs needing approval:** cmake (1.7a), Slang into `target/` (1.3), the Tauri CLI (1.8), and git-lfs only if D5 changes.
 
+### Phase 1.4: Assets, DDC, glTF (done)
+- **`concordia_core::ddc::Ddc`:** the one DDC store (sharded, atomic, safe to delete), used by shaders and assets.
+- **`concordia-assets`:**
+  - sidecars with stable ids that survive re-imports and moves;
+  - `Importer` and `SubIds` (UUIDv5, recorded in the sidecar);
+  - an import key over importer, version, platform, settings and source;
+  - `AssetDb` (re-imports on a DDC miss; hot-reload generations);
+  - `AssetRef` with a schema pattern, and built-ins;
+  - the image importer (sRGB or linear RGBA8 with mips; HDR as RGBA16F);
+  - `MaterialData` (`.material.ron`), and `MeshRenderer`, skin, clip, light and camera data;
+  - `AssetsModule` with `asset.import` (attributed, idempotent, D9) and `asset.list`.
+- **`concordia-import-gltf`:**
+  - meshes, with normals and MikkTSpace tangents generated (V flipped for glTF; the test caught an all-inverted `w`);
+  - materials and textures (color space by usage);
+  - the prefab with name-derived entity ids (stable under reordering);
+  - skins and clips, lights and cameras;
+  - unsupported required extensions are errors that name the extension.
+- **Samples:** `just gltf-assets` fetches 11 license-checked samples (34 files, about 74 MB) from a pinned commit, SHA-256-verified, with attribution in `tests/fixtures/gltf-sample-assets/manifest.ron`; CI caches them.
+- **Wiring:** a `[assets]` manifest section enables the module with the glTF importer; `concordia import <paths>` is added. `EngineModule::engine_state` gives engine-lifetime state. ADR-0044 is written.
+- **Deviations from the plan:**
+  - `MeshRenderer` lives in `concordia-assets` (asset-binding data), so the importer doesn't depend on the renderer.
+  - glTF lights and cameras are stored as data and become components in 1.5/1.6.
+  - The material test uses 98 materials (the real count, not the plan's 49).
+  - `KHR_texture_transform` is accepted but not yet applied.
+  - Meshes keep f32 normals and tangents; oct-encoding is a later optimization.
+  - Handles are generation counters on `AssetDb`.
+
 ### Phase 1.3: Slang shaders (done)
 - Slang **v2026.22** is pinned in `tools/slang/slang.toml` with SHA-256s and fetched by `just slang-fetch` into `target/toolchain/slang/`; CI caches it (`actions/cache`).
 - **`concordia-shaders`:**
   - `SlangcCompiler` (diagnostics parsed to file, line and column);
   - reflection: thread group size, bindings, push layout;
-  - `cache_key` over every import and include, `CachedCompiler`, `DirCache` (DDC layout);
+  - `cache_key` over every import and include, `CachedCompiler` over the shared `concordia_core::ddc::Ddc` (moved to core in 1.4);
   - `shader_struct!` and `check_layout`;
   - `ShaderLibrary` with keep-last-good hot reload (GPU-tested).
 - **Shader ABI (ADR-0045):** `import bindless;` and `uniform push` as an entry-point parameter. Global push declarations land on slot 0, ahead of the imported tables, so they're out.

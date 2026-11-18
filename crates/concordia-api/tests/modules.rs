@@ -256,3 +256,54 @@ fn play_world_mut_creates_a_paused_play_world() {
     assert_eq!(world.resource::<Prepared>(), Some(&Prepared(1)));
     assert_eq!(h.ok("sim.pause", json!({}))["state"], "paused");
 }
+
+/// Engine-lifetime state of the counter module.
+#[derive(Debug, Default)]
+struct Counter(u32);
+
+/// Increments the counter module's engine state.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+struct Bump;
+
+impl Method for Bump {
+    const NAME: &'static str = "counter.bump";
+    const MUTATES: bool = false;
+    type Params = ProbeParams;
+    type Result = ProbeResult;
+
+    fn call(engine: &mut Engine, _: &CallCtx, _: ProbeParams) -> Result<ProbeResult, ApiError> {
+        let counter = engine
+            .state_mut::<Counter>()
+            .ok_or_else(|| ApiError::from_kind(ApiErrorKind::Internal))?;
+        counter.0 += 1;
+        Ok(ProbeResult { value: counter.0 })
+    }
+}
+
+#[derive(Debug)]
+struct CounterModule;
+
+impl EngineModule for CounterModule {
+    fn name(&self) -> &'static str {
+        "counter"
+    }
+
+    fn methods(&self) -> Vec<MethodInfo> {
+        vec![MethodInfo::of::<Bump>()]
+    }
+
+    fn engine_state(&self) -> Option<Box<dyn std::any::Any + Send>> {
+        Some(Box::new(Counter::default()))
+    }
+}
+
+#[test]
+fn engine_state_lives_for_the_engine_and_survives_play_sessions() {
+    let mut h = with_modules(vec![Arc::new(CounterModule)]);
+    assert_eq!(h.ok("counter.bump", json!({}))["value"], 1);
+    h.ok("sim.step", json!({"ticks": 1}));
+    h.ok("sim.stop", json!({}));
+    assert_eq!(h.ok("counter.bump", json!({}))["value"], 2);
+    assert!(h.engine.state::<Counter>().is_some());
+    assert!(h.engine.state::<Seen>().is_none());
+}

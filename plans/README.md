@@ -10,7 +10,7 @@ The top-level design is in [`../docs/design.md`](../docs/design.md). This folder
 |---|---|---|---|---|
 | M-1 Toolchain & scaffold | [M-1-toolchain-and-scaffold.md](M-1-toolchain-and-scaffold.md) | none | Ready to execute | Gate passed |
 | M0 Headless core | [M0-headless-core.md](M0-headless-core.md) | M-1 | Ready to execute | Gate passed |
-| M1 See it | [M1-see-it.md](M1-see-it.md) | M0 | Ready to execute | In progress (phase 1.4) |
+| M1 See it | [M1-see-it.md](M1-see-it.md) | M0 | Ready to execute | In progress (phase 1.5) |
 | M2 Port begins | [M2-port-begins.md](M2-port-begins.md) | M1 | Needs refinement after M1 | Planned |
 | M3 Closed loop & Studio v1 | [M3-closed-loop-and-studio.md](M3-closed-loop-and-studio.md) | M2 (Studio phases may start after M0) | Needs refinement after M2 | Planned |
 | M4 Unreal-class visuals | [M4-unreal-class-visuals.md](M4-unreal-class-visuals.md) | M1 (render), M2 (graphs) | Needs refinement after M3 | Planned |
@@ -175,7 +175,7 @@ To avoid collisions, each milestone draws ADR numbers from its own block. Use th
 | 0010–0019 | Design additions | 0010 Terra entity system · 0011 Evolve plugin system |
 | 0020–0029 | M-1 | 0020 toolchain pinning · 0021 WASM guest build path · 0022 CI and supply chain |
 | 0030–0039 | M0 | 0030 own archetype ECS (written: safe column storage) · 0031 Engine API error model (written) · 0032 edit world vs play world (written) · 0033 MCP adapter (written: rmcp pin, protocol versions) |
-| 0040–0059 | M1 | 0040–0045 as named in M1's plan (0040, 0041, 0042, 0045 written) · 0046 engine modules (written) |
+| 0040–0059 | M1 | 0040–0045 as named in M1's plan (0040, 0041, 0042, 0044, 0045 written) · 0046 engine modules (written) |
 | 0060–0079 | M2 | |
 | 0080–0099 | M3 | (incl. YAML-frontmatter exception for Studio files) |
 | 0100–0119 | M4 | (incl. perf testing on reference hardware) |

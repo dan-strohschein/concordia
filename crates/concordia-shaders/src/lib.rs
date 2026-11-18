@@ -15,7 +15,7 @@ mod toolchain;
 
 use std::path::PathBuf;
 
-pub use cache::{CachedCompiler, DirCache, ShaderCache, cache_key};
+pub use cache::{CachedCompiler, ShaderCache, cache_key};
 pub use deps::dependencies;
 pub use error::{Diagnostic, ShaderError};
 pub use layout::{Layout, ShaderStruct, check_layout};

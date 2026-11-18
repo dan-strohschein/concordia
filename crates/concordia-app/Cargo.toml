@@ -10,6 +10,8 @@ publish.workspace = true
 
 [dependencies]
 concordia-api.workspace = true
+concordia-assets.workspace = true
+concordia-import-gltf.workspace = true
 concordia-core.workspace = true
 concordia-input.workspace = true
 concordia-physics.workspace = true

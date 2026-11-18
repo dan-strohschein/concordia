@@ -25,6 +25,11 @@ pub trait EngineModule: Send + Sync + fmt::Debug {
         Vec::new()
     }
 
+    /// State that lives as long as the engine (e.g. an asset database), reachable through `Engine::state`.
+    fn engine_state(&self) -> Option<Box<dyn Any + Send>> {
+        None
+    }
+
     /// Called once per new play world (which it may prepare, e.g. insert resources): systems to run after earlier modules', and state kept until the play world is discarded.
     fn start_play(&self, _world: &mut World) -> Result<PlaySetup, ApiError> {
         Ok(PlaySetup::default())

@@ -26,6 +26,8 @@ enum Command {
     Headless(cmd::headless::Args),
     /// Run the MCP server on stdio (what .mcp.json launches).
     Mcp(concordia_mcp::Args),
+    /// Import source files (images, glTF) into the project's derived-data cache, writing sidecars.
+    Import(cmd::import::Args),
     /// Print JSON Schemas of types and methods.
     Schema(cmd::schema::Args),
     /// Rewrite scene and prefab files in canonical form (or check them with --check).
@@ -61,6 +63,7 @@ fn main() -> ExitCode {
                 .await
                 .map_err(|e| Failure::usage(e.to_string()))
         }),
+        Command::Import(args) => cmd::import::run(&args),
         Command::Schema(args) => cmd::schema::run(&args),
         Command::Fmt(args) => cmd::fmt::run(&args),
         Command::GpuProbe(args) => cmd::gpu_probe::run(&args),

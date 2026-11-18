@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use common::{request, toolchain};
 use concordia_shaders::{
-    CachedCompiler, CompileRequest, DirCache, ShaderCompiler, ShaderError, ShaderModule,
-    SlangcCompiler, Stage, Target, cache_key,
+    CachedCompiler, CompileRequest, ShaderCompiler, ShaderError, ShaderModule, SlangcCompiler,
+    Stage, Target, cache_key,
 };
 
 /// Counts calls to the real compiler.
@@ -74,7 +74,7 @@ fn cache_hit_skips_compiler() {
         inner: SlangcCompiler::new(toolchain()),
         calls: AtomicUsize::new(0),
     };
-    let cached = CachedCompiler::new(counting, DirCache::new(&cache_dir));
+    let cached = CachedCompiler::new(counting, concordia_core::ddc::Ddc::new(cache_dir.clone()));
     let first = cached.compile(&req).unwrap();
     let second = cached.compile(&req).unwrap();
     assert_eq!(first, second);

@@ -73,6 +73,10 @@ bench *args:
 slang-fetch:
     tools/slang/fetch.sh
 
+# Fetch the license-checked glTF sample models into target/gltf-sample-assets/ (prints its directory)
+gltf-assets:
+    tools/gltf/fetch.sh
+
 # Regenerate jolt-sys bindings from the shim header (needs libclang, e.g. from Xcode)
 jolt-bindgen:
     cargo run --quiet --manifest-path tools/jolt-bindgen/Cargo.toml --target-dir target/jolt-bindgen

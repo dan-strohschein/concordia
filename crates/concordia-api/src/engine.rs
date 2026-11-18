@@ -118,6 +118,7 @@ pub struct Engine {
     pub(crate) registry: TypeRegistry,
     pub(crate) modules: Vec<Arc<dyn EngineModule>>,
     pub(crate) methods: Arc<MethodRegistry>,
+    pub(crate) states: Vec<Box<dyn Any + Send>>,
     pub(crate) ids: Ids,
     pub(crate) jobs: JobSystem,
     pub(crate) sessions: HashMap<SessionId, Session>,
@@ -146,6 +147,7 @@ impl Engine {
         require_unique_names(&modules)?;
         let registry = register_types(&modules)?;
         let methods = Arc::new(MethodRegistry::build(&modules)?);
+        let states = modules.iter().filter_map(|m| m.engine_state()).collect();
         let jobs = JobSystem::new(config.threads).map_err(internal)?;
         let ids = match config.deterministic_ids {
             Some(seed) => Ids::Deterministic(DeterministicIdGen::new(seed)),
@@ -160,6 +162,7 @@ impl Engine {
             registry,
             modules,
             methods,
+            states,
             ids,
             jobs,
             sessions: HashMap::new(),
@@ -187,6 +190,16 @@ impl Engine {
     /// The play world for writing (e.g. injected input), created paused from the edit world if there is none.
     pub fn play_world_mut(&mut self) -> Result<&mut World, ApiError> {
         crate::methods::sim::ensure_play(self, None).map(|play| &mut play.world)
+    }
+
+    /// A module's engine-lifetime state of type `T`, if any.
+    pub fn state<T: Any>(&self) -> Option<&T> {
+        self.states.iter().find_map(|s| s.downcast_ref::<T>())
+    }
+
+    /// A module's engine-lifetime state of type `T`, mutable.
+    pub fn state_mut<T: Any>(&mut self) -> Option<&mut T> {
+        self.states.iter_mut().find_map(|s| s.downcast_mut::<T>())
     }
 
     /// The state of type `T` a module created for the current play session, if any.

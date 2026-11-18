@@ -21,7 +21,14 @@ pub struct Manifest {
     pub input: InputSection,
     /// `[physics]`; the physics module runs only if this section exists.
     pub physics: Option<PhysicsSection>,
+    /// `[assets]`; the asset database (image and glTF importers) runs only if this section exists.
+    pub assets: Option<AssetsSection>,
 }
+
+/// `[assets]` (no settings yet).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AssetsSection {}
 
 /// `[project]`.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

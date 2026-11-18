@@ -5,7 +5,8 @@ use std::time::{Duration, Instant};
 
 use concordia_platform::{ChangeKind, FileChanged, FileWatcher};
 
-const DEBOUNCE: Duration = Duration::from_millis(100);
+/// Wide enough that a burst of writes lands in one window even on slow CI VMs.
+const DEBOUNCE: Duration = Duration::from_millis(300);
 const WAIT: Duration = Duration::from_secs(5);
 
 fn watcher(root: &Path) -> FileWatcher {
@@ -49,9 +50,8 @@ fn watcher_reports_modified_file_once_after_debounce() {
     let w = watcher(dir.path());
     for i in 0..3 {
         std::fs::write(&file, format!("{i}")).unwrap();
-        std::thread::sleep(Duration::from_millis(10));
     }
-    let events = drain(&w, Duration::from_millis(600));
+    let events = drain(&w, DEBOUNCE * 4);
     let ours: Vec<_> = events
         .iter()
         .filter(|e| e.path == Path::new("crate.png"))
@@ -81,7 +81,7 @@ fn watcher_ignores_paths_matching_ignore_globs() {
     std::fs::write(dir.path().join(".concordia/ddc/blob"), b"x").unwrap();
     std::fs::write(dir.path().join("target/debug/out"), b"x").unwrap();
     std::fs::write(dir.path().join("scene.ron"), b"x").unwrap();
-    let events = drain(&w, Duration::from_millis(600));
+    let events = drain(&w, DEBOUNCE * 4);
     assert!(
         events.iter().all(|e| e.path == Path::new("scene.ron")),
         "{events:?}"

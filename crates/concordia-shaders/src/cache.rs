@@ -1,13 +1,13 @@
-//! A content-addressed cache of compiled modules in the DDC layout `<root>/<2 hex>/<64 hex>`.
+//! Compiled modules cached by content in the DDC (`concordia_core::ddc::Ddc`).
 
-use std::path::{Path, PathBuf};
+use concordia_core::ddc::{Ddc, DdcKey};
 
 use crate::ShaderCompiler;
 use crate::deps::dependencies;
 use crate::error::{ShaderError, io};
 use crate::request::{CompileRequest, ShaderModule};
 
-/// Stores compiled modules by key (the asset DDC implements this from phase 1.4).
+/// Stores compiled modules by key (implemented by the project DDC).
 pub trait ShaderCache: Send + Sync {
     /// Bytes stored under `key`, if any.
     fn get(&self, key: &str) -> Option<Vec<u8>>;
@@ -15,40 +15,16 @@ pub trait ShaderCache: Send + Sync {
     fn put(&self, key: &str, bytes: &[u8]) -> Result<(), ShaderError>;
 }
 
-/// A cache directory (`.concordia/ddc` by convention).
-#[derive(Debug, Clone)]
-pub struct DirCache {
-    root: PathBuf,
-}
-
-impl DirCache {
-    /// A cache rooted at `root` (created on first write).
-    pub fn new(root: &Path) -> Self {
-        Self {
-            root: root.to_path_buf(),
-        }
-    }
-
-    fn path(&self, key: &str) -> Option<PathBuf> {
-        let valid = key.len() == 64 && key.bytes().all(|b| b.is_ascii_hexdigit());
-        valid.then(|| self.root.join(&key[..2]).join(key))
-    }
-}
-
-impl ShaderCache for DirCache {
+impl ShaderCache for Ddc {
     fn get(&self, key: &str) -> Option<Vec<u8>> {
-        std::fs::read(self.path(key)?).ok()
+        Ddc::get(self, &key.parse::<DdcKey>().ok()?).ok().flatten()
     }
 
     fn put(&self, key: &str, bytes: &[u8]) -> Result<(), ShaderError> {
-        let path = self
-            .path(key)
-            .ok_or_else(|| ShaderError::Io(format!("cache key {key:?} is not 64 hex digits")))?;
-        let dir = path.parent().unwrap_or(&self.root);
-        std::fs::create_dir_all(dir).map_err(|e| io(dir, e))?;
-        let tmp = dir.join(format!("{key}.tmp-{}", std::process::id()));
-        std::fs::write(&tmp, bytes).map_err(|e| io(&tmp, e))?;
-        std::fs::rename(&tmp, &path).map_err(|e| io(&path, e))
+        let key: DdcKey = key
+            .parse()
+            .map_err(|e: concordia_core::ddc::DdcError| ShaderError::Io(e.to_string()))?;
+        Ddc::put(self, &key, bytes).map_err(|e| ShaderError::Io(e.to_string()))
     }
 }
 

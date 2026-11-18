@@ -4,7 +4,9 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 use concordia_api::EngineModule;
+use concordia_assets::AssetsModule;
 use concordia_core::math::Vec3;
+use concordia_import_gltf::GltfImporter;
 use concordia_input::{InputMap, InputModule};
 use concordia_physics::{PhysicsModule, PhysicsSettings};
 
@@ -63,6 +65,11 @@ impl Project {
             settings.gravity = Vec3::from_array(physics.gravity);
             settings.max_bodies = physics.max_bodies;
             modules.push(Arc::new(PhysicsModule::new(settings)));
+        }
+        if self.manifest.assets.is_some() {
+            modules.push(Arc::new(
+                AssetsModule::new(&self.root).with_importer(Arc::new(GltfImporter)),
+            ));
         }
         Ok(modules)
     }
