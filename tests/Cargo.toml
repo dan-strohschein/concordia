@@ -10,10 +10,18 @@ publish.workspace = true
 autotests = false
 
 [dependencies]
+rmcp.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
 toml.workspace = true
 
 [dev-dependencies]
+concordia-api.workspace = true
 concordia-core.workspace = true
+concordia-reflect.workspace = true
+concordia-scene.workspace = true
+insta.workspace = true
+tempfile.workspace = true
 regex.workspace = true
 serde_json.workspace = true
 wasmparser.workspace = true
@@ -27,6 +35,10 @@ path = "integration/repo_hygiene.rs"
 [[test]]
 name = "m_minus1_scaffold"
 path = "gates/m_minus1_scaffold.rs"
+
+[[test]]
+name = "m0_headless_mcp"
+path = "gates/m0_headless_mcp.rs"
 
 [lints]
 workspace = true

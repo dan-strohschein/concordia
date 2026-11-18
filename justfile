@@ -45,7 +45,7 @@ deny:
 # Full CI, then the milestone's gate tests (tests/gates/<prefix>_*.rs)
 gate milestone: ci
     prefix=$(echo "{{milestone}}" | tr '[:upper:]' '[:lower:]' | sed 's/-/_minus/'); \
-    cargo nextest run -p concordia-tests --no-tests=fail -E "binary(/^${prefix}_/)"
+    cargo nextest run -p concordia-tests --no-tests=fail --ignore-default-filter -E "binary(/^${prefix}_/)"
 
 # Accept new snapshots and golden images
 bless:
