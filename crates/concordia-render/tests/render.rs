@@ -466,3 +466,85 @@ fn gpu_tonemappers_match_the_cpu_reference() {
         }
     }
 }
+
+fn translucent(color: [f32; 3], alpha: f32) -> MaterialData {
+    MaterialData {
+        base_color: [color[0], color[1], color[2], alpha],
+        alpha_mode: concordia_assets::AlphaMode::Blend,
+        unlit: true,
+        ..MaterialData::default()
+    }
+}
+
+/// Two half-transparent quads over black: red in front of blue, spawned in either order.
+fn layered(red_first: bool) -> concordia_render::Image {
+    let Some(mut r) = renderer() else {
+        panic!("checked by the caller")
+    };
+    let mut s = Scene::new();
+    let red = s.material("red", translucent([1.0, 0.0, 0.0], 0.5));
+    let blue = s.material("blue", translucent([0.0, 0.0, 1.0], 0.5));
+    let facing = Quat::from_rotation_x(std::f32::consts::FRAC_PI_2);
+    let quads = [(red, 0.5), (blue, -0.5)];
+    let order: Vec<_> = if red_first {
+        quads.to_vec()
+    } else {
+        quads.iter().rev().cloned().collect()
+    };
+    for (m, z) in order {
+        s.mesh("plane", m, Vec3::new(0.0, 0.0, z), facing, Vec3::splat(2.0));
+    }
+    s.camera(
+        Vec3::new(0.0, 0.0, 4.0),
+        Vec3::ZERO,
+        clamp_camera(Projection::default(), Msaa::Off),
+    );
+    s.render(&mut r, 32, 32)
+}
+
+#[test]
+fn alpha_blend_sorts_back_to_front() {
+    if renderer().is_none() {
+        return;
+    }
+    let (a, b) = (layered(true), layered(false));
+    assert_eq!(a.rgba, b.rgba, "spawn order does not matter");
+    let p = pixel(&a, 16, 16);
+    // Over black: blue·0.5 first, then red·0.5 over it → linear (0.5, 0, 0.25 + ~0.02 clear).
+    assert!(
+        p[0] > 170 && p[2] > 120 && p[2] < 150,
+        "red over blue: {p:?}"
+    );
+}
+
+#[test]
+fn alpha_mask_discards_below_cutoff() {
+    let Some(mut r) = renderer() else { return };
+    let mut s = Scene::new();
+    let masked = s.material(
+        "masked",
+        MaterialData {
+            base_color: [1.0, 1.0, 1.0, 0.3],
+            alpha_mode: concordia_assets::AlphaMode::Mask { cutoff: 0.5 },
+            unlit: true,
+            ..MaterialData::default()
+        },
+    );
+    s.mesh(
+        "plane",
+        masked,
+        Vec3::ZERO,
+        Quat::from_rotation_x(std::f32::consts::FRAC_PI_2),
+        Vec3::splat(2.0),
+    );
+    s.camera(
+        Vec3::new(0.0, 0.0, 4.0),
+        Vec3::ZERO,
+        clamp_camera(Projection::default(), Msaa::Off),
+    );
+    let p = pixel(&s.render(&mut r, 16, 16), 8, 8);
+    assert!(
+        p[0] < 60,
+        "alpha 0.3 < cutoff 0.5 is discarded, leaving the clear color (white would be 255): {p:?}"
+    );
+}

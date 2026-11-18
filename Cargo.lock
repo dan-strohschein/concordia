@@ -834,6 +834,7 @@ dependencies = [
  "concordia-assets",
  "concordia-command",
  "concordia-core",
+ "concordia-import-gltf",
  "concordia-reflect",
  "concordia-rhi",
  "concordia-rhi-metal",

@@ -6,6 +6,12 @@ static const float PI = 3.14159265;
 static const uint NO_TEXTURE = 0xffffffff;
 static const uint FLAG_UNLIT = 1;
 static const uint FLAG_MASK = 2;
+static const uint FLAG_BLEND = 4;
+
+// Blended materials output premultiplied alpha; everything else is opaque.
+float4 finish(Material m, float3 color, float alpha) {
+    return (m.tex1.y & FLAG_BLEND) != 0 ? float4(color * alpha, alpha) : float4(color, 1.0);
+}
 
 // Columns of 4×4 matrices are float4s: the layout is identical on every backend.
 // eye, sun direction and exposed radiance; cluster_depth = (near, far, ortho?, ln(far/near));
@@ -259,7 +265,7 @@ float4 fs(VsOut i, bool front : SV_IsFrontFace, uniform DrawPush push) : SV_Targ
     float4 base = m.base_color * sample_or(m.tex0.x, i.uv, float4(1.0));
     if ((m.tex1.y & FLAG_MASK) != 0 && base.a < m.emissive_cutoff.w) { discard; }
     float3 emissive = m.emissive_cutoff.xyz * sample_or(m.tex1.x, i.uv, float4(1.0)).rgb;
-    if ((m.tex1.y & FLAG_UNLIT) != 0) { return float4(base.rgb + emissive, 1.0); }
+    if ((m.tex1.y & FLAG_UNLIT) != 0) { return finish(m, base.rgb + emissive, base.a); }
 
     float3 n = shading_normal(i, m) * (front ? 1.0 : -1.0);
     float3 v = normalize(frame.eye.xyz - i.world);
@@ -272,5 +278,5 @@ float4 fs(VsOut i, bool front : SV_IsFrontFace, uniform DrawPush push) : SV_Targ
     float3 geometric = normalize(i.normal) * (front ? 1.0 : -1.0);
     float3 sun = brdf(n, v, -normalize(frame.light_dir.xyz), base.rgb, metallic, a) * frame.light_radiance.rgb * sun_shadow(frame, i.world, geometric, -normalize(frame.light_dir.xyz));
     float3 lit = (sun + punctual(frame, i.position, i.world, n, v, base.rgb, metallic, a) + ambient(frame, n, v, base.rgb, metallic, roughness)) * occlusion;
-    return float4(lit + emissive, 1.0);
+    return finish(m, lit + emissive, base.a);
 }

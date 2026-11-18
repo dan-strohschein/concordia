@@ -4,9 +4,9 @@ use std::collections::BTreeMap;
 use std::num::{NonZeroU32, NonZeroU64};
 use std::sync::Arc;
 
-use concordia_assets::{AssetRef, MaterialData};
+use concordia_assets::{AlphaMode, AssetRef, MaterialData};
 use concordia_core::id::EntityId;
-use concordia_core::math::Vec3;
+use concordia_core::math::{Mat4, Vec3};
 use concordia_rhi::{
     Access, AccessFlags, Buffer, BufferDesc, BufferUsage, ClearValue, ColorAttachment, Command,
     CommandList, DepthAttachment, Device, HeapDesc, Layout, LoadOp, MemoryLocation, Pipeline,
@@ -76,6 +76,7 @@ struct DrawOrder {
     item: usize,
     material: u32,
     double_sided: bool,
+    blend: bool,
 }
 
 /// Per-frame instance and material bytes, and the draw order.
@@ -265,7 +266,7 @@ impl Renderer {
             instances,
             materials: material_bytes,
             order,
-        } = self.instance_data(world, &materials);
+        } = self.instance_data(world, &materials, &view_m);
         let inst_buf = frame.keep(up.buffer(device, &instances, "instances")?);
         let mat_buf = frame.keep(up.buffer(device, &material_bytes, "materials")?);
         up.flush(device)?;
@@ -278,6 +279,7 @@ impl Renderer {
                 item,
                 material: material_index,
                 double_sided,
+                blend,
             },
         ) in order.into_iter().enumerate()
         {
@@ -307,7 +309,9 @@ impl Renderer {
                 tangents: mesh.tangents,
                 uvs: mesh.uvs,
             };
-            let pipeline = self.pipelines.forward(device, samples, double_sided)?;
+            let pipeline = self
+                .pipelines
+                .forward(device, samples, double_sided, blend)?;
             draws.push(Draw {
                 pipeline,
                 push: push.bytes(),
@@ -423,11 +427,13 @@ impl Renderer {
         Ok(materials)
     }
 
-    /// Instance and material blocks plus the draw order (culled pipelines first, then entity id).
+    /// Instance and material blocks plus the draw order: opaque draws (culled pipelines first, then
+    /// entity id), then blended draws back to front by the view depth of their bounds' center.
     fn instance_data(
         &self,
         world: &RenderWorld,
         materials: &BTreeMap<AssetRef, MaterialData>,
+        view: &Mat4,
     ) -> FrameBlocks {
         let textures: BTreeMap<AssetRef, u32> = self
             .assets
@@ -452,9 +458,20 @@ impl Renderer {
                 item,
                 material: indices[&d.material],
                 double_sided: materials[&d.material].double_sided,
+                blend: materials[&d.material].alpha_mode == AlphaMode::Blend,
             })
             .collect();
-        order.sort_by_key(|d| (d.double_sided, d.item));
+        let depth = |d: &DrawOrder| {
+            let draw = &world.draws[d.item];
+            let (lo, hi) = self.assets.meshes[&draw.mesh].aabb;
+            view.transform_point3(draw.world.transform_point3((lo + hi) / 2.0))
+                .z
+        };
+        order.sort_by(|a, b| match (a.blend, b.blend) {
+            (false, false) => (a.double_sided, a.item).cmp(&(b.double_sided, b.item)),
+            (true, true) => depth(a).total_cmp(&depth(b)).then(a.item.cmp(&b.item)),
+            (x, y) => x.cmp(&y),
+        });
         let mut instances = Vec::new();
         order
             .iter()

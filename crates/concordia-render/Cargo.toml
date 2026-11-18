@@ -31,8 +31,13 @@ tracing.workspace = true
 
 [dev-dependencies]
 base64.workspace = true
+concordia-import-gltf.workspace = true
 concordia-rhi-metal.workspace = true
 tempfile.workspace = true
 concordia-testkit.workspace = true
 insta.workspace = true
 proptest.workspace = true
+
+[[bench]]
+name = "many_lights"
+harness = false

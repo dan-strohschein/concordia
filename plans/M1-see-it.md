@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (phase 1.6d; 1.0, 1.2a, 1.1, 1.7, 1.2b, 1.3, 1.4, 1.5, 1.6a, 1.6b and 1.6c done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (phase 1.8; 1.0, 1.2a, 1.1, 1.7, 1.2b, 1.3, 1.4, 1.5 and 1.6 done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -153,6 +153,17 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 - the gate agent demo.
 
 **Installs needing approval:** cmake (1.7a), Slang into `target/` (1.3), the Tauri CLI (1.8), and git-lfs only if D5 changes.
+
+### Phase 1.6d: Transparency, glTF goldens, perf smoke (done)
+- **Transparency:**
+  - `AlphaMode::Blend` uses premultiplied alpha and no depth write, drawn after opaques back to front;
+  - the result doesn't depend on spawn order (tested);
+  - `Mask` cutoff is tested.
+- **glTF conformance goldens:**
+  - all eight listed models are imported, instantiated through the command log, framed by their bounds and lit by the HDRI plus a weak sun, at FLIP mean ≤ 0.02;
+  - each was checked by eye against what the model is designed to show (label orientation, identical left and right tangent-space shading, alpha cutoffs at 0.25/0.5/0.75, readable text on BoomBox);
+  - not compared side by side with Khronos screenshots: the author should do that in the PR review.
+- **Perf smoke:** `cargo bench -p concordia-render --bench many_lights` gives a median of 6.5 ms wall clock (CPU, submit and an 8 MB readback included) for 1,024 lights at 1080p ortho on the M3 Pro. GPU-only time isn't measured, since the RHI has no timestamp queries; adding them is follow-up work for checking the < 4 ms target.
 
 ### Phase 1.6c: Image-based lighting (done)
 - **HDRI fixture:** Poly Haven "Kloofendal 48d Partly Cloudy (Pure Sky)", CC0 (author approved the download). Fetched via the Poly Haven API, MD5-verified, downsampled 2×2 in linear light to 512×256 flat RGBE (524 KB), and committed in `tests/fixtures/hdri/` with `LICENSE.md` (source, authors, changes, SHA-256).

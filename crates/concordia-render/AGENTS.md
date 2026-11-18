@@ -22,11 +22,15 @@ The renderer (ADR-0040): render graph, forward PBR, cameras, headless capture, a
 - IBL: diffuse from SH9 irradiance; specular = lerp of two prefiltered equirect levels (roughness × 5) × (F0·A + B) from the split-sum table; both scaled by intensity × exposure and by occlusion. The sky is drawn first in the forward pass (no depth test or write); its rays come from unprojecting each pixel at two depths, which works for ortho too. Equirect u = 0.5 at -Z, increasing toward +X; v = 0 straight up.
 - Shadows: reverse-Z depth; filtered PCF (a box of bilinear compares, kernel radius 1 or 2); bias = constant + normal offset (texels) + slope-scaled ((radius + 1) texels × tan θ, capped at 10), so the whole PCF footprint clears the receiver. Stabilized cascades move in whole texels (the shimmer test pans one pixel per frame: 0 changed pixels when stabilized vs ~900 without).
 - Punctual lights: intensity = lumens / 4π cd (spots are not concentrated by their cone); inverse-square falloff windowed to zero at `range`. Clusters hold at most `max_per_cluster` lights, in ascending index order; dropped assignments are counted (`RenderStats::cluster_overflow`) and logged, never silent.
+- Transparency: `AlphaMode::Blend` draws after the opaque ones, back to front by the view depth of their bounds' center, with premultiplied alpha and no depth write; `Mask` discards below the cutoff.
 - Rendering is deterministic on one device (same scene → same bytes); draws are ordered by pipeline, then entity id.
 - The device and shaders are created on the first capture, so engines start without a GPU. A missing device is `GpuUnavailable`.
 
 ## How to test
-`cargo nextest run --workspace -E 'package(concordia-render)'`. The graph, camera and extraction tests are CPU-only. Render and capture tests skip without a GPU unless `CONCORDIA_REQUIRE_GPU=1`. Goldens live in `tests/golden/render/`: inspect a new image by eye, then run `CONCORDIA_BLESS=1` (never in CI).
+`cargo nextest run --workspace -E 'package(concordia-render)'`. The graph, camera and extraction tests are CPU-only. Render and capture tests skip without a GPU unless `CONCORDIA_REQUIRE_GPU=1`. glTF conformance goldens (`tests/gltf.rs`) need `just gltf-assets`. Goldens live in `tests/golden/render/`: inspect a new image by eye, then run `CONCORDIA_BLESS=1` (never in CI).
+
+## Performance
+- `cargo bench -p concordia-render --bench many_lights` (M3 Pro, 2026-11-18): 1,024 point lights at 1920×1080 ortho, median **6.5 ms per frame wall clock**. That includes CPU work, a synchronous submit and an 8 MB readback. GPU-only time needs timestamp queries, which the RHI doesn't have yet; the plan's target is < 4 ms GPU.
 
 ## Common tasks
 - **Inspect a frame:** `compiled.to_dot(&graph)` gives Graphviz text; `memory_plan()` lists transient placements.
@@ -48,7 +52,7 @@ The renderer (ADR-0040): render graph, forward PBR, cameras, headless capture, a
 - Olsson, Billeter & Assarsson, "Clustered Deferred and Forward Shading" (HPG 2012); Emil Persson, "Practical Clustered Shading" (SIGGRAPH 2015).
 
 ## Status
-M1 phases 1.6a (tonemappers, clustered lights), 1.6b (cascaded shadows) and 1.6c (IBL). Next: transparency and glTF goldens (1.6d).
+M1 phase 1.6 complete: tonemappers, clustered lights, cascaded shadows, IBL, transparency and glTF goldens.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

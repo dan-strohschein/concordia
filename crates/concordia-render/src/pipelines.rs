@@ -55,7 +55,7 @@ pub(crate) struct Pipelines {
     shadow: Pipeline,
     sky: (ShaderSource, ShaderSource),
     skies: BTreeMap<u8, Pipeline>,
-    variants: BTreeMap<(u8, bool), Pipeline>,
+    variants: BTreeMap<(u8, bool, bool), Pipeline>,
 }
 
 impl Pipelines {
@@ -144,14 +144,16 @@ impl Pipelines {
         self.shadow
     }
 
-    /// The forward pipeline for a sample count and face culling.
+    /// The forward pipeline for a sample count, face culling and blending (premultiplied alpha,
+    /// no depth write).
     pub(crate) fn forward(
         &mut self,
         device: &dyn Device,
         samples: SampleCount,
         double_sided: bool,
+        blend: bool,
     ) -> Result<Pipeline, RenderError> {
-        let key = (samples.get(), double_sided);
+        let key = (samples.get(), double_sided, blend);
         if let Some(p) = self.variants.get(&key) {
             return Ok(*p);
         }
@@ -162,7 +164,7 @@ impl Pipelines {
             depth: Some(DepthState {
                 format: DEPTH,
                 compare: CompareOp::GreaterEqual,
-                write: true,
+                write: !blend,
             }),
             samples,
             cull: if double_sided {
@@ -170,15 +172,16 @@ impl Pipelines {
             } else {
                 CullMode::Back
             },
-            blend: BlendMode::Opaque,
+            blend: if blend {
+                BlendMode::PremultipliedAlpha
+            } else {
+                BlendMode::Opaque
+            },
             label: format!(
-                "forward x{} {}",
+                "forward x{}{}{}",
                 samples.get(),
-                if double_sided {
-                    "double-sided"
-                } else {
-                    "culled"
-                }
+                if double_sided { " double-sided" } else { "" },
+                if blend { " blended" } else { "" }
             ),
         })?;
         self.variants.insert(key, pipeline);

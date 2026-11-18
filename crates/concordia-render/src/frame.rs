@@ -13,6 +13,7 @@ use crate::shadow::{Cascade, CascadeSettings};
 pub(crate) const NO_TEXTURE: u32 = u32::MAX;
 const FLAG_UNLIT: u32 = 1;
 const FLAG_MASK: u32 = 2;
+const FLAG_BLEND: u32 = 4;
 
 /// Push constants for one forward draw (mirrors `DrawPush` in `forward.slang`).
 #[repr(C)]
@@ -232,6 +233,9 @@ pub(crate) fn material_block(
     if let AlphaMode::Mask { cutoff: c } = material.alpha_mode {
         flags |= FLAG_MASK;
         cutoff = c;
+    }
+    if material.alpha_mode == AlphaMode::Blend {
+        flags |= FLAG_BLEND;
     }
     let e = material.emissive.map(|c| c * material.emissive_strength);
     push_rows(
