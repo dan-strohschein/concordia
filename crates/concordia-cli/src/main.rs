@@ -1,4 +1,4 @@
-//! `concordia`: create projects, run the engine headless or as an MCP server, print schemas, format scenes.
+//! `concordia`: create projects, run the engine headless or as an MCP server, print schemas, format scenes, probe the GPU.
 //!
 //! Every subcommand is a thin wrapper over `concordia-api`, `concordia-scene` or `concordia-mcp`.
 
@@ -28,6 +28,8 @@ enum Command {
     Schema(cmd::schema::Args),
     /// Rewrite scene and prefab files in canonical form (or check them with --check).
     Fmt(cmd::fmt::Args),
+    /// Print the GPU's capabilities as JSON (--require-m1 fails if they fall short of M1).
+    GpuProbe(cmd::gpu_probe::Args),
 }
 
 /// A failure with a process exit code.
@@ -58,6 +60,7 @@ fn main() -> ExitCode {
         }),
         Command::Schema(args) => cmd::schema::run(&args),
         Command::Fmt(args) => cmd::fmt::run(&args),
+        Command::GpuProbe(args) => cmd::gpu_probe::run(&args),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

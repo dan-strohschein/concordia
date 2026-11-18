@@ -18,6 +18,8 @@ concordia-api.workspace = true
 concordia-core.workspace = true
 concordia-mcp.workspace = true
 concordia-reflect.workspace = true
+concordia-rhi.workspace = true
+concordia-rhi-metal.workspace = true
 concordia-scene.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["signal"] }

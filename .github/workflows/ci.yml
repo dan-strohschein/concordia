@@ -49,3 +49,27 @@ jobs:
           name: junit-${{ matrix.os }}
           path: target/nextest/ci/junit.xml
           if-no-files-found: ignore
+
+  # Phase 1.2a: what GPU do hosted macOS runners expose? Informational until ADR-0042
+  # decides where GPU tests run; never fails the run.
+  gpu-probe:
+    name: gpu-probe (macos-26)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Build concordia
+        run: cargo build --locked -p concordia-cli --bin concordia
+      - name: Probe
+        run: |
+          target/debug/concordia gpu-probe | tee gpu-probe.json
+          { echo '### GPU probe (macos-26)'; echo '```json'; cat gpu-probe.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Meets M1 requirements?
+        continue-on-error: true
+        run: target/debug/concordia gpu-probe --require-m1 > /dev/null
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gpu-probe-macos-26
+          path: gpu-probe.json

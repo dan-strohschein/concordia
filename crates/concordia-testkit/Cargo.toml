@@ -1,0 +1,12 @@
+[package]
+name = "concordia-testkit"
+description = "Concordia dev-only test helpers: GPU guards and golden-image comparison."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

@@ -1,6 +1,7 @@
 //! Subcommands.
 
 pub(crate) mod fmt;
+pub(crate) mod gpu_probe;
 pub(crate) mod headless;
 pub(crate) mod new;
 pub(crate) mod schema;

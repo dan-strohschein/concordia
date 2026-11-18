@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (phase 1.0) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (phase 1.1; 1.0 and 1.2a done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -154,6 +154,13 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 - the gate agent demo.
 
 **Installs needing approval:** cmake (1.7a), Slang into `target/` (1.3), the Tauri CLI (1.8), and git-lfs only if D5 changes.
+
+### Phase 1.2a: GPU probe (done)
+- New crates: `concordia-rhi` (`DeviceCaps`, `SampleCount`, `Requirement::M1`, `RhiError`), `concordia-rhi-metal` (`probe()`; stubs off macOS) and `concordia-testkit` (`gpu_required`, started early so GPU tests share one guard).
+- `concordia gpu-probe [--require-m1]` prints `DeviceCaps` as JSON.
+- CI job `gpu-probe (macos-26)` is informational: it never fails the run, and it writes the JSON to the step summary and an artifact.
+- Author's M3 Pro: families apple6–9, common3, mac2, metal3, metal4; MSAA 1/2/4; argument buffers tier 2; meets M1.
+- ADR-0042 is written once the hosted runner's result is in (first push).
 
 ### Phase 1.0: Engine-module seam (done in PR `m1/1.0-modules`)
 - **Objective:** let M1's crates add types, methods, play systems and runtime state without editing the API crate's callers.
