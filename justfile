@@ -44,8 +44,17 @@ deny:
 
 # Full CI, then the milestone's gate tests (tests/gates/<prefix>_*.rs)
 gate milestone: ci
+    just gate-tests {{milestone}}
+
+# Only the milestone's gate tests (CI runs these after its own lint/test/deny steps)
+gate-tests milestone:
     prefix=$(echo "{{milestone}}" | tr '[:upper:]' '[:lower:]' | sed 's/-/_minus/'); \
-    cargo nextest run -p concordia-tests --no-tests=fail --ignore-default-filter -E "binary(/^${prefix}_/)"
+    cargo nextest run -p concordia-tests --no-tests=fail -E "binary(/^${prefix}_/)"
+
+# Live-agent gate: a real Claude Code session on your subscription (no API key), outcomes asserted
+gate-live milestone:
+    prefix=$(echo "{{milestone}}" | tr '[:upper:]' '[:lower:]' | sed 's/-/_minus/'); \
+    tools/gates/${prefix}_live.sh
 
 # Accept new snapshots and golden images
 bless:

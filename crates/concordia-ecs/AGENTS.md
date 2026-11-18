@@ -8,7 +8,8 @@ Our own archetype ECS (ADR-0030): entities keyed by stable `EntityId`, typed and
 - `World::query` / `query_filtered` → `QueryState` (`for_each`, `par_for_each`) with `With` / `Without`
 - `World::{get_dyn, get_json, set_json, insert_dyn, remove_dyn}` and `DynamicQuery` (by stable name, through the `TypeRegistry`)
 - `register_component::<T>(&mut TypeRegistry)` and `ReflectComponent`
-- `Schedule`, `system(name, closure)`, `SystemCtx`, `SimLoop`, `SimClock`, `WorldHash`
+- `Schedule`, `system(name, closure)`, `SystemCtx`, `SimLoop`, `SimClock`, `WorldHash` (hex `Display`/`FromStr`, serde)
+- `component_from_json(&TypeRegistry, name, json)` (validate a component value without a world)
 
 ## Invariants
 - No `unsafe` in this crate. Columns are `Vec<T>` behind the `Column` trait; keep it that way unless an ADR says otherwise.

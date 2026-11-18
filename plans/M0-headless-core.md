@@ -1,5 +1,5 @@
 # M0: Headless Core
-Status: In progress (phase 0.8; phases 0.0–0.7 done 2026-11-17 except the `claude mcp list` check, pending the author's approval of the project server; layer-1 gate green locally) · Depends on: M-1 · Detail level: Ready to execute · Estimated effort: ~9–11 weeks (author + agents), 8 phases
+Status: In progress (phase 0.8: layer-1 gate green locally, CI pending push; layer 2 `just gate-live M0` and layer 3 in-session check pending the author; phase 0.7's `claude mcp list` check pending approval of the project server) · Depends on: M-1 · Detail level: Ready to execute · Estimated effort: ~9–11 weeks (author + agents), 8 phases
 
 ## Goal & context
 
@@ -683,6 +683,11 @@ Every crate's `AGENTS.md` has these headings: **Purpose** (2–3 sentences), **P
   - `tests/gates/m0_live_check.rs::m0_live_outcome_check` — `#[ignore = "run via just gate-live M0"]`; reads `M0_LIVE_PROJECT` and `M0_LIVE_RESULT` (claude JSON output) and asserts outcomes (below).
   - `tests/gates/m0_live_check.rs::m0_scene_is_valid` — `#[ignore]`; lighter check for the in-session run (layer 3): every `*.scene.ron` under `M0_LIVE_PROJECT/scenes` parses and is canonical, and its journal has at least one commit attributed to an `agent:` actor.
 - **Implementation notes:** `tests/src/bins.rs::concordia_mcp_bin()` builds once (`OnceLock`) with `cargo build -p concordia-mcp` and returns `target/<profile>/concordia-mcp` (respecting `CARGO_TARGET_DIR`). `tests/src/mcp_client.rs` wraps an `rmcp` client over `TokioChildProcess` with helpers `call(tool, json) -> Result<Value, ToolError>`.
+- **As built (0.8):**
+  - New recipe `just gate-tests M<n>` runs only a milestone's gate tests; `just gate M<n>` = `just ci` + `gate-tests`. CI runs `just gate-tests M-1` and `just gate-tests M0` after its own lint/test/deny steps (instead of re-running `ci` per gate). The nextest default filter is gone, so the M0 gate also runs in the normal suite.
+  - `tools/gates/m0_live.sh` strips every `*_API_KEY` / `*_AUTH_TOKEN` variable by pattern (the hygiene test forbids naming specific key variables in tracked scripts), never uses `--bare`, and bounds each attempt with `timeout 900` instead of `--max-turns` (absent from `claude --help` in 2.1.327). Attempts default to 3 (`M0_LIVE_ATTEMPTS`); artifacts go to `target/gate-live/M0/<stamp>-<n>/`.
+  - `m0_live_outcome_check` additionally asserts that the RESULT line does not name the Lamp and that trees sit at y = 0.
+  - Root `AGENTS.md` lists the new recipes; crate `AGENTS.md` entry points were refreshed for items added in later phases.
 - **Done criteria:** `just gate M0` green locally and in CI; `just gate-live M0` passes at least 2 of 3 consecutive runs on the author's machine (result recorded in this plan's Status line with date and Claude Code version); manual check in this session done (see gate layer 3).
 
 ## Milestone gate (the executable acceptance test: exact command and what it asserts)

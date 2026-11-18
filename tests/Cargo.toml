@@ -40,5 +40,9 @@ path = "gates/m_minus1_scaffold.rs"
 name = "m0_headless_mcp"
 path = "gates/m0_headless_mcp.rs"
 
+[[test]]
+name = "m0_live_check"
+path = "gates/m0_live_check.rs"
+
 [lints]
 workspace = true

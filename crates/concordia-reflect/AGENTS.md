@@ -8,6 +8,8 @@ Every engine type describes itself: wire shape, doc comments, defaults and range
 - `TypeRegistry` (`register`, `get`, `get_by_name`, `from_json`, `schema_for`, `schema_index`) and `TypeRegistration` (type-data slots, `deserialize`)
 - `DynReflect` (`to_json`, `clone_dyn`, `eq_dyn`, downcasting)
 - `schema_for(&TypeInfo)`, `canonical_hash(&dyn DynReflect, &mut blake3::Hasher)`
+- `validate_json(&Value, &TypeInfo)` (JSON Pointer errors), `example_json(&TypeInfo)` (schema-valid examples), `find_non_finite(&dyn DynReflect)`
+- `Primitive::Pattern` for regex-constrained strings (e.g. actors)
 - `ReflectError` (JSON Pointer errors), `RegistryError`
 
 ## Invariants

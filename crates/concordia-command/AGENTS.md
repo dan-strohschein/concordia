@@ -6,7 +6,7 @@ The single path for mutating an edit world. Every change is an `EditOp` (data, n
 ## Public entry points
 - `CommandLog` (`begin`, `apply`, `commit`, `abort`, `apply_one`, `undo`, `redo`, `record_save`, `history`, `resume`, `attach_journal`)
 - `EditOp` (`Spawn`, `Despawn`, `SetComponent`, `RemoveComponent`) and `AppliedOp`
-- `Actor` (`<human|agent|system|tool|script>:<name>[#n]`) and `Author` (actor + session)
+- `Actor` (`<human|agent|system|tool|script>:<name>[#n]`, reflected as a string with `ACTOR_PATTERN`) and `Author` (actor + session)
 - `Journal` (`open`, `load`, `append`), `JournalEntry`, `Event`, `replay_journal`
 - `CommandError`, `History`, `HistoryEntry`
 

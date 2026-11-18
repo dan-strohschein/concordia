@@ -350,6 +350,10 @@ fn justfile_defines_required_recipes() {
         "wasm",
         "deny",
         "gate",
+        "gate-tests",
+        "gate-live",
+        "perf-smoke",
+        "bench",
         "bless",
         "ci",
         "new-crate",
@@ -425,7 +429,8 @@ fn ci_workflow_covers_required_checks_and_platforms() {
             "--doc",
             "cargo deny",
             "just wasm",
-            "just gate M-1",
+            "just gate-tests M-1",
+            "just gate-tests M0",
         ],
     );
 }

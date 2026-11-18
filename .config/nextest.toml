@@ -1,6 +1,4 @@
 [profile.default]
-# M0 gate tests are red until phase 0.8; `just gate M0` runs them with --ignore-default-filter.
-default-filter = "not binary(/^m0_/)"
 slow-timeout = { period = "30s", terminate-after = 4 }
 
 [profile.ci]

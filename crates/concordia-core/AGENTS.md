@@ -7,7 +7,8 @@ The root of the dependency graph: typed UUID ids and generators, glam math re-ex
 - `id::{EntityId, SceneId, TxnId, SessionId, PrefabId, AssetId}`, `id::IdSource`, `id::SystemIdGen`, `id::DeterministicIdGen`
 - `time::{TickRate, Tick, Accumulator, Steps}`
 - `jobs::JobSystem` (`par_chunks_mut`, `par_map_reduce`)
-- `rng::SimRng` (`new`, `fork`)
+- `rng::SimRng` (`new`, `fork`, `seed`/`stream`/`word_pos` for state hashing)
+- `suggest::did_you_mean` (Jaro-Winkler ≥ 0.8, top 3; used by scene and API errors)
 - `log::{init, LogConfig, LogRing, LogRecord}`
 - `math::{Vec2, Vec3, Vec4, Quat, Mat4, Affine3A}`
 

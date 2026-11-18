@@ -4,7 +4,7 @@
 The one Engine API: typed `domain.verb` methods with generated schemas, JSON-RPC 2.0 over stdio and localhost WebSocket, sessions with default actors, transaction ownership, edit and play worlds, and agent-actionable errors. The MCP server and CLI are thin adapters over it.
 
 ## Public entry points
-- `Engine` (`new`, `open_session`, `call`, `handle_jsonrpc`, `close_session`, `poll`, `spawn`) and `EngineConfig`
+- `Engine` (`new`, `open_session`, `call`, `handle_jsonrpc`, `close_session`, `poll`, `spawn`, `scene_text`) and `EngineConfig`
 - `EngineHandle` (async `open_session`, `handle_jsonrpc`, `call`, `close_session`)
 - `methods()` → `MethodRegistry` of `MethodInfo`; `params_schema`, `result_schema`; the `Method` trait
 - `ApiError`, `ApiErrorKind`, `ErrorData`
