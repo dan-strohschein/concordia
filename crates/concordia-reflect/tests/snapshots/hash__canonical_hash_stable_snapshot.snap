@@ -1,0 +1,5 @@
+---
+source: crates/concordia-reflect/tests/hash.rs
+expression: digest(&value)
+---
+82cbecf2590bb59a52690ad835277e5ff93ef567472aa21ab12046672728ed4d

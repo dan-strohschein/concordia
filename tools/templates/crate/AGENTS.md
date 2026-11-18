@@ -3,11 +3,20 @@
 ## Purpose
 <!-- One or two sentences: the single responsibility of this crate. -->
 
+## Public entry points
+<!-- The 3-8 types or functions an agent should start from. -->
+
 ## Invariants
 <!-- Rules this crate must always uphold. -->
 
 ## How to test
 `cargo nextest run -p {{name}}`
+
+## Common tasks
+<!-- Step lists for frequent changes, e.g. "add a component". -->
+
+## Don'ts
+<!-- Mistakes to avoid in this crate. -->
 
 ## References
 <!-- Papers, talks and permissively licensed sources used (clean-room provenance, see docs/clean-room.md). -->

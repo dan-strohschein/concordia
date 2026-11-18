@@ -17,7 +17,7 @@ Unreal 6 is pushing engineers away. Goal: an open-source engine with Unreal-clas
 | Layer | Approach |
 |---|---|
 | Platform | Rust; macOS (Metal) first, then Windows/Linux. Consoles later, behind a private NDA layer. |
-| Core | Job system, data-oriented ECS, fixed-step deterministic simulation, **reflection/type registry** (every type self-describes its schema and docs). |
+| Core | Job system, **Terra** (data-oriented archetype ECS growing into a Mass-class large-scale simulation framework, ADR-0010), fixed-step deterministic simulation, **reflection/type registry** (every type self-describes its schema and docs). |
 | World & Commands | Command log and transactions, stable entity UUIDs, actor attribution. |
 | Engine API | Typed RPC (IPC/WebSocket) plus an **MCP adapter**: query, mutate, run, capture, assert. |
 | Assets | Importers → content-addressed derived-data cache; hot reload. Native formats: glTF, USD, images, audio. |
@@ -25,6 +25,7 @@ Unreal 6 is pushing engineers away. Goal: an open-source engine with Unreal-clas
 | Physics / Nav / Anim / Audio | Jolt (C bindings with a safe wrapper); Recast/Detour; own animation system (motion matching later); own mixer and spatial audio (integrating the sound-catalog tool). |
 | Scripting | (1) Rust native with hot reload; (2) WASM components on Wasmtime, with the API defined once in WIT so bindings exist for Rust, C/C++, Zig, AssemblyScript, Swift and Go, and batch-oriented APIs; (3) visual graphs stored as text (Blueprint-like), compiled to fast code. |
 | Editor | TypeScript/React panels around a native Rust viewport; both are clients of the Engine API. |
+| Plugins | **Evolve** (ADR-0011): `evolve.toml` manifests, native (trusted) and WASM (sandboxed) plugins, versioned extension points; plugin API methods become MCP tools automatically. |
 | AI modules | Agent Studio (below), generated-content provider interface (pluggable local/cloud models), runtime AI (behavior trees, utility AI, optional LLM planner/dialogue). |
 
 ## Content compatibility: Unreal & Unity
@@ -59,6 +60,8 @@ Dual MIT/Apache-2.0. Written clean-room policy and DCO sign-off from day one. Fo
 - **M3: Closed loop & Studio v1.** Record/replay, playtest assertions, Agent Studio with configurable roles, generated-content plugin. *Gate:* `studio sync` generates `.claude/agents/*` from the team config; in Claude Code (subscription only), the Director session assigns a bug to the Gameplay subagent, which fixes it; the QA subagent proves the fix via replay.
 - **M4: Unreal-class visuals.** Virtualized geometry, virtual shadow maps, dynamic GI; visual graphs; runtime AI.
 - **M5: Bring your game.** Unity importer, Unreal exporter plugin and interchange format. *Gate:* a sample Unity project and a sample Unreal project round-trip into playable scenes.
+- **M6: Evolve (plugins).** After M2, in parallel with M3. Manifest, resolution and lockfile; native and WASM plugin hosts; extension points; unknown-component preservation. *Gate:* sample native and WASM plugins add components, systems and MCP tools; an agent uses them; disabling them keeps scenes intact.
+- **M7: Terra (large-scale simulation).** Renaming `concordia-ecs` to `concordia-terra` happens right after M0; the Mass-style features come after M4. *Gate:* 100,000 crowd agents from text templates at 60 Hz on the reference machine, deterministic across thread counts.
 - **Later:** world streaming, multiplayer/replication, consoles, AA team workflows.
 
 ## Plan hierarchy

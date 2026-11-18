@@ -1,0 +1,7 @@
+// Concordia scene, format 1. Canonical form: `concordia fmt` rewrites this file.
+Scene(
+    format: 1,
+    id: "0193a1c2-7e40-7000-8000-00000000c0de",
+    name: "Sandbox",
+    entities: [],
+)

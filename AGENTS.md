@@ -32,6 +32,11 @@ These apply to every change, by humans and agents alike.
 | `just lint` | rustfmt check + clippy (warnings are errors) |
 | `just deny` | License and supply-chain checks |
 | `just gate M<n>` | Full CI, then the milestone's gate tests |
+| `just gate-tests M<n>` | Only the milestone's gate tests (what CI runs after its own checks) |
+| `just gate-live M<n>` | Live-agent gate: a real `claude -p` session on the subscription, outcomes asserted |
+| `just perf-smoke` | Release-only perf guards |
+| `just bench` | Criterion benchmarks (baselines in `crates/*/benches/BASELINE.md`) |
+| `just bless` | Accept new snapshots |
 | `just new-crate <name>` | Create a crate from the template |
 
 ## Layout

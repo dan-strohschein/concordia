@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc ce32d8210dd4a36db6d10160a68330fc4e220cf12300e19798022e4a9b8218bc # shrinks to value = Zoo { name: Name(""), health: Health { hp: -4.9352725e-28, max: 0.0 }, mode: Idle, tags: [], stats: {}, target: None, offset: None, pair: Pair(0, ""), marker: Marker, grid: [0, 0, 0], tuple: (0, false), cache: 0 }

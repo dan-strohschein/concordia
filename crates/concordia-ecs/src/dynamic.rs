@@ -1,0 +1,143 @@
+//! By-name component access and queries, for the Engine API, commands and scenes.
+
+use concordia_core::id::EntityId;
+use concordia_reflect::{DynReflect, TypeRegistration, TypeRegistry};
+use serde_json::Value;
+
+use crate::component::ReflectComponent;
+use crate::error::EcsError;
+use crate::world::World;
+
+impl World {
+    /// Borrows `id`'s component named `name`.
+    pub fn get_dyn(&self, id: EntityId, name: &str) -> Result<&dyn DynReflect, EcsError> {
+        let loc = self.entities.location(id)?;
+        let missing = || EcsError::ComponentMissing {
+            entity: id,
+            component: name.to_owned(),
+        };
+        let cid = self.components.by_name(name).ok_or_else(missing)?;
+        let arch = &self.archetypes.list[loc.archetype];
+        let col = arch.column_index(cid).ok_or_else(missing)?;
+        Ok(arch.table.columns[col].get_reflect(loc.row))
+    }
+
+    /// `id`'s component named `name`, as JSON.
+    pub fn get_json(&self, id: EntityId, name: &str) -> Result<Value, EcsError> {
+        Ok(self.get_dyn(id, name)?.to_json()?)
+    }
+
+    /// Inserts or replaces a dynamic component value; returns the previous value.
+    pub fn insert_dyn(
+        &mut self,
+        id: EntityId,
+        value: Box<dyn DynReflect>,
+        registry: &TypeRegistry,
+    ) -> Result<Option<Box<dyn DynReflect>>, EcsError> {
+        let name = value.info().name;
+        let registration = registry
+            .get_by_type_id(value.as_any().type_id())
+            .ok_or_else(|| EcsError::ComponentNotRegistered {
+                name: name.to_owned(),
+            })?;
+        reflect_component(registration)?.insert(self, id, value)
+    }
+
+    /// Validates `json` as component `name` and inserts it; returns the previous value as JSON.
+    pub fn set_json(
+        &mut self,
+        id: EntityId,
+        name: &str,
+        json: Value,
+        registry: &TypeRegistry,
+    ) -> Result<Option<Value>, EcsError> {
+        let value = component_from_json(registry, name, json)?;
+        let old = self.insert_dyn(id, value, registry)?;
+        Ok(old.map(|v| v.to_json()).transpose()?)
+    }
+
+    /// Removes the component named `name`; `None` if the entity did not have it.
+    pub fn remove_dyn(
+        &mut self,
+        id: EntityId,
+        name: &str,
+    ) -> Result<Option<Box<dyn DynReflect>>, EcsError> {
+        self.entities.location(id)?;
+        match self.components.by_name(name) {
+            Some(cid) => self.remove_component(id, cid),
+            None => Ok(None),
+        }
+    }
+}
+
+/// Builds component `name` from JSON, validating shape and ranges; never touches a world.
+pub fn component_from_json(
+    registry: &TypeRegistry,
+    name: &str,
+    json: Value,
+) -> Result<Box<dyn DynReflect>, EcsError> {
+    Ok(component_registration(registry, name)?.from_json(json)?)
+}
+
+fn component_registration<'r>(
+    registry: &'r TypeRegistry,
+    name: &str,
+) -> Result<&'r TypeRegistration, EcsError> {
+    let registration =
+        registry
+            .get_by_name(name)
+            .ok_or_else(|| EcsError::ComponentNotRegistered {
+                name: name.to_owned(),
+            })?;
+    reflect_component(registration)?;
+    Ok(registration)
+}
+
+fn reflect_component(registration: &TypeRegistration) -> Result<&ReflectComponent, EcsError> {
+    registration
+        .data::<ReflectComponent>()
+        .ok_or_else(|| EcsError::NotAComponent {
+            name: registration.info().name.to_owned(),
+        })
+}
+
+/// A query by component names; returns matching entity ids sorted ascending.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DynamicQuery {
+    /// Components every match must have.
+    pub with: Vec<String>,
+    /// Components no match may have.
+    pub without: Vec<String>,
+}
+
+impl DynamicQuery {
+    /// Runs the query; every name must be a registered component.
+    pub fn run(&self, world: &World, registry: &TypeRegistry) -> Result<Vec<EntityId>, EcsError> {
+        for name in self.with.iter().chain(&self.without) {
+            component_registration(registry, name)?;
+        }
+        let Some(with) = self
+            .with
+            .iter()
+            .map(|n| world.components.by_name(n))
+            .collect::<Option<Vec<_>>>()
+        else {
+            return Ok(Vec::new());
+        };
+        let without: Vec<_> = self
+            .without
+            .iter()
+            .filter_map(|n| world.components.by_name(n))
+            .collect();
+        let mut ids: Vec<EntityId> = world
+            .archetypes
+            .list
+            .iter()
+            .filter(|a| with.iter().all(|&c| a.column_index(c).is_some()))
+            .filter(|a| without.iter().all(|&c| a.column_index(c).is_none()))
+            .flat_map(|a| a.table.ids.iter().copied())
+            .collect();
+        ids.sort_unstable();
+        Ok(ids)
+    }
+}

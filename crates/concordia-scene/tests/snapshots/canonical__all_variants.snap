@@ -1,0 +1,30 @@
+---
+source: crates/concordia-scene/tests/canonical.rs
+expression: "one_entity_scene(gadget(Mode::Jump(1.0, 2.0)))"
+---
+// Concordia scene, format 1. Canonical form: `concordia fmt` rewrites this file.
+Scene(
+    format: 1,
+    id: "018bcfe5-6800-7001-ba7f-58127596bc87",
+    name: "S",
+    entities: [
+        Entity(
+            id: "018bcfe5-6800-7000-822d-3f6a3224ad43",
+            components: {
+                "Gadget": (
+                    count: 0,
+                    inner: (
+                        a: 0,
+                        note: "",
+                    ),
+                    label: None,
+                    mode: Jump(1.0, 2.0),
+                    offset: None,
+                    pair: (0, false),
+                    stats: {},
+                    tags: [],
+                ),
+            },
+        ),
+    ],
+)

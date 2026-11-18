@@ -1,0 +1,26 @@
+[package]
+name = "concordia-command"
+description = "Concordia commands: actors, atomic transactions, undo/redo and the persisted command journal."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+concordia-core.workspace = true
+concordia-ecs.workspace = true
+concordia-reflect.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+insta.workspace = true
+proptest.workspace = true
+regex.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -192,10 +192,13 @@ fn crate_dirs() -> Vec<std::path::PathBuf> {
         .collect()
 }
 
-const CRATE_AGENTS_SECTIONS: [&str; 5] = [
+const CRATE_AGENTS_SECTIONS: [&str; 8] = [
     "## Purpose",
+    "## Public entry points",
     "## Invariants",
     "## How to test",
+    "## Common tasks",
+    "## Don'ts",
     "## References",
     "## Status",
 ];
@@ -347,6 +350,10 @@ fn justfile_defines_required_recipes() {
         "wasm",
         "deny",
         "gate",
+        "gate-tests",
+        "gate-live",
+        "perf-smoke",
+        "bench",
         "bless",
         "ci",
         "new-crate",
@@ -422,7 +429,8 @@ fn ci_workflow_covers_required_checks_and_platforms() {
             "--doc",
             "cargo deny",
             "just wasm",
-            "just gate M-1",
+            "just gate-tests M-1",
+            "just gate-tests M0",
         ],
     );
 }

@@ -1,5 +1,5 @@
 # M-1: Toolchain & scaffold
-Status: Gate passed (local, 2026-11-17; CI pending first push) · Depends on: none · Detail level: Ready to execute · Estimated effort: 2–3 focused days (author + agent)
+Status: Gate passed (local + CI, 2026-11-17) · Depends on: none · Detail level: Ready to execute · Estimated effort: 2–3 focused days (author + agent)
 
 ## Goal & context
 Turn a folder that holds only planning documents (`CLAUDE.md`, `docs/`, `plans/`) into a working, tested, CI-checked Rust workspace that every later milestone can build on. No engine features are built here. M-1 proves three things:

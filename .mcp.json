@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "concordia": {
+      "command": "tools/mcp/concordia-mcp.sh",
+      "args": []
+    }
+  }
+}

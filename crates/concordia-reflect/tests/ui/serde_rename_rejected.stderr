@@ -1,0 +1,5 @@
+error: #[serde(rename_all)] is not supported with Reflect: serde renaming, tagging, flattening and custom (de)serializers change the wire shape; use #[reflect(name = "...")] on the type instead
+ --> tests/ui/serde_rename_rejected.rs:4:9
+  |
+4 | #[serde(rename_all = "camelCase")]
+  |         ^^^^^^^^^^

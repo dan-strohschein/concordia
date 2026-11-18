@@ -31,14 +31,18 @@ jobs:
         run: just lint
       - name: Build WASM fixtures
         run: just wasm
+      - name: Build binaries used by the gate tests
+        run: cargo build -p concordia-mcp --bin concordia-mcp && cargo build -p concordia-cli --bin concordia
       - name: Tests
         run: cargo nextest run --workspace --profile ci --no-tests=fail
       - name: Doc tests
         run: cargo test --doc --workspace
       - name: Supply chain
         run: cargo deny check
-      - name: Gate
-        run: just gate M-1
+      - name: Gates
+        run: |
+          just gate-tests M-1
+          just gate-tests M0
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

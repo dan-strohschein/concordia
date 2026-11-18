@@ -4,7 +4,12 @@ all-features = true
 
 [advisories]
 yanked = "deny"
-ignore = []
+ignore = [
+  # chrono is "unmaintained" (not a vulnerability). It is a required dependency of rmcp
+  # (and of rmcp's schemars). Re-check at every rmcp upgrade and drop this entry as soon
+  # as rmcp no longer needs chrono; fallback is rust-mcp-sdk (ADR-0033).
+  { id = "RUSTSEC-2026-0543", reason = "chrono unmaintained; required by rmcp 3.11 (ADR-0033)" },
+]
 
 [licenses]
 confidence-threshold = 0.9

@@ -1,0 +1,38 @@
+---
+source: crates/concordia-command/tests/journal.rs
+expression: entry
+---
+{
+  "actor": "agent:claude-code",
+  "hash_after": "f6253bae21de8175493d0867d56638cb2ca7ab8a175379a759eb21dff47e5907",
+  "hash_before": "456f2bf81729273e192d2c53711c185454a01d79a5c55a5899145190af571408",
+  "kind": "commit",
+  "label": "spawn",
+  "ops": [
+    {
+      "inverse": [
+        {
+          "Despawn": {
+            "id": "018bcfe5-6800-7000-8fac-bb2f240e41ff"
+          }
+        }
+      ],
+      "op": {
+        "Spawn": {
+          "components": {
+            "Name": "Player",
+            "Pos": {
+              "x": 5.0,
+              "y": 0.0
+            }
+          },
+          "id": "018bcfe5-6800-7000-8fac-bb2f240e41ff"
+        }
+      }
+    }
+  ],
+  "seq": 1,
+  "ts_ms": "[ts]",
+  "txn": "018bcfe5-6800-7001-ac51-074952f61b35",
+  "v": 1
+}

@@ -44,12 +44,29 @@ deny:
 
 # Full CI, then the milestone's gate tests (tests/gates/<prefix>_*.rs)
 gate milestone: ci
+    just gate-tests {{milestone}}
+
+# Only the milestone's gate tests (CI runs these after its own lint/test/deny steps)
+gate-tests milestone:
     prefix=$(echo "{{milestone}}" | tr '[:upper:]' '[:lower:]' | sed 's/-/_minus/'); \
     cargo nextest run -p concordia-tests --no-tests=fail -E "binary(/^${prefix}_/)"
+
+# Live-agent gate: a real Claude Code session on your subscription (no API key), outcomes asserted
+gate-live milestone:
+    prefix=$(echo "{{milestone}}" | tr '[:upper:]' '[:lower:]' | sed 's/-/_minus/'); \
+    tools/gates/${prefix}_live.sh
 
 # Accept new snapshots and golden images
 bless:
     CONCORDIA_BLESS=1 cargo insta test --workspace --accept --test-runner nextest
+
+# Release-only perf smoke tests (fail on pathological regressions)
+perf-smoke:
+    cargo nextest run --workspace --release -E 'test(/^perf_smoke_/)'
+
+# Criterion benchmarks (record results in crates/<crate>/benches/BASELINE.md)
+bench *args:
+    cargo bench --workspace {{args}}
 
 # Everything CI runs
 ci: lint test deny

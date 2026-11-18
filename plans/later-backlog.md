@@ -5,6 +5,12 @@ Work that is deliberately outside M-1…M5 but that the design must not block. E
 
 Rules that still apply to everything here: subscription-first (no item may *require* an LLM API key), clean room, TDD with an executable gate, text as source of truth, every mutation through `concordia-command` with an `Actor`.
 
+
+> **Evolve (M6):** items below described as "optional plugin crates" (Steamworks, MetalFX/DLSS, relays, local-model providers) ship as Evolve plugins once M6 lands.
+
+## 0. Plugins
+- **Evolve plugin registry** (after M6). Public index of plugins with signing, yanking, version search and license metadata; `concordia plugin add <id>` resolves through it. Needs ADR-0141 trust rules.
+- **Binary native plugin distribution** (after M6). Prebuilt plugins per platform, signed; needs a stable native ABI story beyond M2's C-ABI vtable.
 ## 1. Large worlds and streaming
 - **World partition and cell streaming** (after M4). Split scenes into spatial cells streamed by distance and budget; `.scene.ron` gains cell references. Needs the asset DDC (M1) and virtualized geometry (M4) to be worth doing at scale.
 - **Large-world coordinates** (after M1). f64 world positions with camera-relative rendering or origin rebasing; decide early because it touches `concordia-core` math types and the scene format.

@@ -1,0 +1,5 @@
+error: range min (10) must not exceed max (1)
+ --> tests/ui/range_min_greater_than_max_rejected.rs:5:15
+  |
+5 |     #[reflect(range(min = 10.0, max = 1.0))]
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^

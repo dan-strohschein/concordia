@@ -1,0 +1,13 @@
+/* hand-edited */
+Scene(
+  id: "0193a1c2-7e40-7000-8000-000000000001",
+  format: 1,
+  name: "Arena",
+  entities: [
+    Entity(components: {
+      "Transform": (translation: (5, 0, 0), scale: (1.0,1.0,1.0), rotation: (0.0, 0.0, 0.0, 1.0)),
+      "Name": "Player"
+    }, id: "0193a1c2-7e40-7000-8000-000000000002"),
+    Entity(id: "0193a1c2-7e40-7000-8000-000000000003", components: {"Name": "Sword", "Parent": "0193a1c2-7e40-7000-8000-000000000002"}) // trailing comment
+  ]
+)

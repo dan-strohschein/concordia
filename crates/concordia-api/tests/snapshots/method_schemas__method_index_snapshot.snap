@@ -1,0 +1,131 @@
+---
+source: crates/concordia-api/tests/method_schemas.rs
+expression: index
+---
+[
+  {
+    "description": "Read one component value as JSON.",
+    "mutates": false,
+    "name": "component.get"
+  },
+  {
+    "description": "Change some fields of a component with an RFC 7396 merge patch, e.g. {\"scale\": [2, 2, 2]}.",
+    "mutates": true,
+    "name": "component.patch"
+  },
+  {
+    "description": "Remove a component from an entity (undoable).",
+    "mutates": true,
+    "name": "component.remove"
+  },
+  {
+    "description": "Insert or replace a component (the whole value; use component.patch to change some fields).",
+    "mutates": true,
+    "name": "component.set"
+  },
+  {
+    "description": "Delete an entity and all its components (undoable).",
+    "mutates": true,
+    "name": "entity.despawn"
+  },
+  {
+    "description": "Read an entity's components.",
+    "mutates": false,
+    "name": "entity.get"
+  },
+  {
+    "description": "Create an entity with components (values as JSON; see concordia://schema/component/{name}).",
+    "mutates": true,
+    "name": "entity.spawn"
+  },
+  {
+    "description": "Read recent engine log records (stderr logs are also kept in memory for this).",
+    "mutates": false,
+    "name": "log.tail"
+  },
+  {
+    "description": "Find entities by components and field conditions; rows are sorted by id and paged with a cursor.",
+    "mutates": false,
+    "name": "query.run"
+  },
+  {
+    "description": "Describe the open scene.",
+    "mutates": false,
+    "name": "scene.info"
+  },
+  {
+    "description": "Create a new empty scene at a project-relative path (written on scene.save).",
+    "mutates": true,
+    "name": "scene.new"
+  },
+  {
+    "description": "Open a scene file; its undo history is restored if the journal matches the file.",
+    "mutates": false,
+    "name": "scene.open"
+  },
+  {
+    "description": "Write the open scene in canonical form (to its path, or to a new path).",
+    "mutates": false,
+    "name": "scene.save"
+  },
+  {
+    "description": "Get the JSON Schema of a component, type or method; with no name, the index of all types and methods.",
+    "mutates": false,
+    "name": "schema.get"
+  },
+  {
+    "description": "Identify the client and set this session's default actor, used when a mutating call omits \"actor\".",
+    "mutates": false,
+    "name": "session.open"
+  },
+  {
+    "description": "Pause the play world (keeps it for reads and sim.step).",
+    "mutates": false,
+    "name": "sim.pause"
+  },
+  {
+    "description": "Run the simulation in real time on a play world cloned from the edit world (the scene is never changed).",
+    "mutates": false,
+    "name": "sim.play"
+  },
+  {
+    "description": "Advance the play world by exactly N fixed ticks (creating it, paused, if needed) and return its state hash.",
+    "mutates": false,
+    "name": "sim.step"
+  },
+  {
+    "description": "Discard the play world.",
+    "mutates": false,
+    "name": "sim.stop"
+  },
+  {
+    "description": "Roll back and close this session's open transaction.",
+    "mutates": true,
+    "name": "txn.abort"
+  },
+  {
+    "description": "Start a transaction: later mutating calls from this session join it until txn.commit or txn.abort.",
+    "mutates": true,
+    "name": "txn.begin"
+  },
+  {
+    "description": "Commit this session's open transaction (one undo step).",
+    "mutates": true,
+    "name": "txn.commit"
+  },
+  {
+    "description": "List recent history events (commit, undo, redo, abort, save), oldest first.",
+    "mutates": false,
+    "name": "txn.history"
+  },
+  {
+    "description": "Redo the latest undone transaction, attributed to the caller.",
+    "mutates": true,
+    "name": "txn.redo"
+  },
+  {
+    "description": "Undo the latest committed transaction (any session's), attributed to the caller.",
+    "mutates": true,
+    "name": "txn.undo"
+  }
+]

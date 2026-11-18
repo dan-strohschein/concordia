@@ -1,5 +1,8 @@
 //! Shared helpers for Concordia's cross-crate and gate tests.
 
+pub mod bins;
+pub mod mcp_client;
+
 use std::path::PathBuf;
 use std::process::Command;
 
