@@ -22,6 +22,7 @@
 
 mod dynamic;
 mod error;
+mod finite;
 mod hash;
 mod impls;
 mod info;
@@ -33,6 +34,7 @@ mod validate;
 pub use concordia_reflect_derive::Reflect;
 pub use dynamic::DynReflect;
 pub use error::ReflectError;
+pub use finite::find_non_finite;
 pub use hash::canonical_hash;
 pub use info::{FieldInfo, Primitive, Range, Shape, TypeInfo, TypeRef, VariantInfo, VariantShape};
 pub use reflect::Reflect;

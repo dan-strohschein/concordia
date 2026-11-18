@@ -1,5 +1,5 @@
 # M0: Headless Core
-Status: In progress (phase 0.5; phases 0.0–0.4 done 2026-11-17) · Depends on: M-1 · Detail level: Ready to execute · Estimated effort: ~9–11 weeks (author + agents), 8 phases
+Status: In progress (phase 0.6; phases 0.0–0.5 done 2026-11-17) · Depends on: M-1 · Detail level: Ready to execute · Estimated effort: ~9–11 weeks (author + agents), 8 phases
 
 ## Goal & context
 
@@ -106,11 +106,11 @@ justfile                          # + gate-live, perf-smoke, bench recipes (no m
 | `syn` / `quote` / `proc-macro2` | 3.0 / 1 / 1 | reflect-derive | syn 3 chosen (verified 2026-11-17; MSRV 1.71) |
 | `blake3` | 1.8 | reflect, ecs, command | hashing |
 | `thiserror` | 2 | all | error enums |
-| `ron` | 0.12 | scene | parsing only (writing is our canonical serializer) |
+| ~~`ron`~~ | — | scene | **dropped**: own type-directed reader/writer (ADR-0009) |
 | `ryu` | 1 | scene | shortest round-trip float formatting |
 | `smallvec`, `rustc-hash`, `indexmap` | 1.16 / 2.1 / 2.14 | ecs | |
 | ~~`json-patch`~~ | — | api | **dropped**: RFC 7396 merge patch is ~20 lines in-house, tested against the RFC's appendix vectors |
-| `strsim` | 0.11 | api | did-you-mean suggestions |
+| `strsim` | 0.11 | core (`suggest`), used by scene and api | did-you-mean suggestions |
 | `tokio` | 1.54 | api, mcp, cli | `rt-multi-thread`, `macros`, `io-std`, `net`, `sync`, `time` |
 | `tokio-tungstenite` | 0.30 | api | WebSocket transport |
 | `futures` | 0.3 | api | |
@@ -507,6 +507,13 @@ Every crate's `AGENTS.md` has these headings: **Purpose** (2–3 sentences), **P
   - Writing: our `CanonicalRonSerializer` implements `serde::Serializer`, buffers struct fields/map entries and sorts keys, formats floats with `ryu`. Writing does not use `ron::ser` (it cannot sort keys).
   - **ADR-0009 content (to write in this phase):** *Decision: confirm RON with the canonical rules above.* Criteria: LLM familiarity, diff/merge friendliness, one entity per block, comments allowed, typed enums/tuples, serde support. Alternatives: JSON (highest LLM familiarity, but no comments or trailing commas, so noisier diffs and edits; also kept as the API wire format), JSON5 (weaker Rust ecosystem), YAML (indentation-sensitive merges, implicit typing pitfalls, very large spec), TOML (awkward for deep nested arrays of tables), KDL (low LLM familiarity), a custom format (no tooling). Mitigations for RON's lower LLM familiarity: agents edit through MCP rather than raw text; schemas and an annotated example served as MCP resources; `concordia fmt` normalizes hand edits; errors include line/col and suggestions. Revisit trigger: if the live gate (and M1/M2 agent work) shows agents editing raw RON incorrectly at a meaningful rate.
   - References: RON specification (ron-rs repository docs); serde data model; RFC 9562.
+- **As built (0.5):**
+  - **Own type-directed RON reader/writer instead of the `ron` crate** (ADR-0009): a positioned syntax tree (`src/syntax/`), conversion to serde's JSON form guided by `TypeInfo` (`src/convert.rs`), validation via `TypeRegistration::from_json`, and a JSON + `TypeInfo` → RON writer (`src/write.rs`). No `ron` dependency. Modules: `syntax/{lexer,parser}.rs`, `convert.rs`, `read.rs`, `write.rs`, `world.rs`, `prefab.rs`, `builtin.rs`, `model.rs`, `error.rs`.
+  - Header comment: `// Concordia scene, format 1. Canonical form: \`concordia fmt\` rewrites this file.` Floats always contain a `.` (`1.0e-7`). Arrays, tuples and glam vectors are written inline when every item fits on one line.
+  - Errors: `SceneError::{Parse, UnknownComponent{did_you_mean}, InvalidValue{component, pointer, expected, found, line, col}, DuplicateEntity, UnsupportedFormat, NonFinite, ...}`. Non-finite detection uses the new `concordia_reflect::find_non_finite` (test-first), because `serde_json` turns NaN into `null`.
+  - `snapshot_world(meta, world)` needs no registry; `instantiate_prefab` returns `(root, Vec<EditOp>)` and remaps every string equal to a prefab entity id.
+  - Added `concordia_core::suggest::did_you_mean` (strsim Jaro-Winkler ≥ 0.8, top 3), test-first, for reuse by the Engine API.
+  - Extra tests: `unknown_field_names_the_valid_fields`, `syntax_errors_report_position`, `wrong_document_kind_is_rejected`, `bad_entity_id_is_reported`, `comments_and_header_are_regenerated`, `reader_never_panics_on_mutated_scenes`, `deeply_nested_input_is_an_error_not_a_stack_overflow`, built-in registration/default/integration tests.
 - **Done criteria:** ADR-0009 Accepted; all tests green; fixtures cover every built-in; `AGENTS.md` documents the canonical rules and how to add a fixture.
 
 ### Phase 0.6: concordia-api

@@ -5,6 +5,7 @@ pub mod jobs;
 pub mod log;
 pub mod math;
 pub mod rng;
+pub mod suggest;
 pub mod time;
 
 /// The engine's name (ADR-0008).

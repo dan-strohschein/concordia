@@ -108,3 +108,21 @@ pub fn zoo_registry() -> TypeRegistry {
     reg.register::<Strict>().unwrap();
     reg
 }
+
+/// A finite sample `Zoo`.
+pub fn zoo_sample() -> Zoo {
+    Zoo {
+        name: Name("z".into()),
+        health: Health { hp: 1.0, max: 2.0 },
+        mode: Mode::Idle,
+        tags: vec![],
+        stats: BTreeMap::new(),
+        target: None,
+        offset: None,
+        pair: Pair(0, String::new()),
+        marker: Marker,
+        grid: [0; 3],
+        tuple: (0, false),
+        cache: 0,
+    }
+}

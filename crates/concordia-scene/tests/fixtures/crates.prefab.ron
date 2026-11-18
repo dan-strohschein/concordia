@@ -1,0 +1,27 @@
+// Concordia prefab, format 1. Canonical form: `concordia fmt` rewrites this file.
+Prefab(
+    format: 1,
+    id: "0193a1c2-7e40-7000-8000-0000000000b0",
+    name: "Crate Stack",
+    root: "0193a1c2-7e40-7000-8000-0000000000b1",
+    entities: [
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-0000000000b1",
+            components: {
+                "Name": "Stack",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.0, 0.0, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-0000000000b2",
+            components: {
+                "Name": "Crate",
+                "Parent": "0193a1c2-7e40-7000-8000-0000000000b1",
+            },
+        ),
+    ],
+)

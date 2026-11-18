@@ -24,6 +24,7 @@ undocumented_unsafe_blocks = "warn"
 concordia-command = { path = "crates/concordia-command" }
 concordia-core = { path = "crates/concordia-core" }
 concordia-ecs = { path = "crates/concordia-ecs" }
+concordia-scene = { path = "crates/concordia-scene" }
 concordia-reflect = { path = "crates/concordia-reflect" }
 concordia-reflect-derive = { path = "crates/concordia-reflect-derive" }
 blake3 = "1.8"
@@ -38,10 +39,12 @@ syn = { version = "3", features = ["full"] }
 tempfile = "3"
 trybuild = "1"
 glam = { version = "0.34", features = ["serde"] }
+ryu = "1"
 rand_chacha = "0.10"
 rand_core = "0.10"
 rayon = "1.12"
 serde = { version = "1", features = ["derive"] }
+strsim = "0.11"
 thiserror = "2"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["std", "fmt", "env-filter", "registry"] }

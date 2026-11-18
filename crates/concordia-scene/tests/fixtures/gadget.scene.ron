@@ -1,0 +1,93 @@
+// Concordia scene, format 1. Canonical form: `concordia fmt` rewrites this file.
+Scene(
+    format: 1,
+    id: "0193a1c2-7e40-7000-8000-0000000000a0",
+    name: "Workshop \"B\"",
+    entities: [
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-0000000000a1",
+            components: {
+                "Gadget": (
+                    count: 3,
+                    inner: (
+                        a: -7,
+                        note: "say \"hi\"\nbye\\",
+                    ),
+                    label: Some("lamp ✓"),
+                    mode: Patrol(
+                        looping: true,
+                        points: [
+                            (1.0, 2.0, 3.0),
+                            (0.1, -0.0, 1.0e-7),
+                        ],
+                    ),
+                    offset: None,
+                    pair: (-1, false),
+                    stats: {
+                        "speed": 2.5,
+                        "weight": 10.0,
+                    },
+                    tags: [
+                        "a",
+                        "b",
+                    ],
+                ),
+                "Name": "Lamp",
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-0000000000a2",
+            components: {
+                "Gadget": (
+                    count: 0,
+                    inner: (
+                        a: 9223372036854775807,
+                        note: "",
+                    ),
+                    label: None,
+                    mode: Jump(1.5, 0.25),
+                    offset: Some((0.5, -0.5)),
+                    pair: (2147483647, true),
+                    stats: {},
+                    tags: [],
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-0000000000a3",
+            components: {
+                "Gadget": (
+                    count: 4294967295,
+                    inner: (
+                        a: 0,
+                        note: "tab\there",
+                    ),
+                    label: None,
+                    mode: Walk(3.4028235e38),
+                    offset: None,
+                    pair: (0, false),
+                    stats: {},
+                    tags: [],
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-0000000000a4",
+            components: {
+                "Gadget": (
+                    count: 1,
+                    inner: (
+                        a: 1,
+                        note: "x",
+                    ),
+                    label: None,
+                    mode: Idle,
+                    offset: None,
+                    pair: (0, false),
+                    stats: {},
+                    tags: [],
+                ),
+            },
+        ),
+    ],
+)
