@@ -8,7 +8,7 @@ The top-level design is in [`../docs/design.md`](../docs/design.md). This folder
 
 | Milestone | Plan | Depends on | Detail | Status |
 |---|---|---|---|---|
-| M-1 Toolchain & scaffold | [M-1-toolchain-and-scaffold.md](M-1-toolchain-and-scaffold.md) | none | Ready to execute | Planned |
+| M-1 Toolchain & scaffold | [M-1-toolchain-and-scaffold.md](M-1-toolchain-and-scaffold.md) | none | Ready to execute | Gate passed (local) |
 | M0 Headless core | [M0-headless-core.md](M0-headless-core.md) | M-1 | Ready to execute | Planned |
 | M1 See it | [M1-see-it.md](M1-see-it.md) | M0 | Ready to execute | Planned |
 | M2 Port begins | [M2-port-begins.md](M2-port-begins.md) | M1 | Needs refinement after M1 | Planned |
@@ -166,7 +166,7 @@ To avoid collisions, each milestone draws ADR numbers from its own block. Use th
 |---|---|---|
 | 0001–0008 | Design | 0001 Rust · 0002 subscription-first · 0003 scripting tiers · 0004 editor · 0005 interchange · 0006 licensing · 0007 TDD/plans · 0008 name (Concordia) |
 | 0009 | M0 | 0009 scene text format |
-| 0020–0029 | M-1 | (e.g. WASM guest build path: plain cargo + wit-bindgen vs cargo-component) |
+| 0020–0029 | M-1 | 0020 toolchain pinning · 0021 WASM guest build path · 0022 CI and supply chain |
 | 0030–0039 | M0 | 0030–0032 as named in M0's plan |
 | 0040–0059 | M1 | 0040–0045 as named in M1's plan |
 | 0060–0079 | M2 | |

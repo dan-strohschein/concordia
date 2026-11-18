@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(cargo build:*)",
+      "Bash(cargo check:*)",
+      "Bash(cargo nextest run:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo fmt --all --check)",
+      "Bash(cargo fmt --all)",
+      "Bash(cargo deny check:*)",
+      "Bash(cargo tree:*)",
+      "Bash(cargo metadata:*)",
+      "Bash(just test)",
+      "Bash(just lint)",
+      "Bash(just fmt)",
+      "Bash(just wasm)",
+      "Bash(just deny)",
+      "Bash(just doctor)",
+      "Bash(just ci)",
+      "Bash(just gate:*)",
+      "Bash(just --list)",
+      "Bash(wasm-tools validate:*)",
+      "Bash(wasm-tools component wit:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(rustc --version)",
+      "Bash(cargo --version)"
+    ],
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(git commit:*)",
+      "Bash(just bless)",
+      "Bash(just new-crate:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)"
+    ]
+  }
+}

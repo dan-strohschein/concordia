@@ -1,0 +1,24 @@
+name: dco
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  sign-off:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Every commit has a Signed-off-by trailer
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          missing=$(git log --format='%H %(trailers:key=Signed-off-by,valueonly,separator=%x2C)' "$BASE..$HEAD" | awk 'NF < 2 {print $1}')
+          if [ -n "$missing" ]; then
+            echo "Commits missing Signed-off-by (use git commit -s):"; echo "$missing"; exit 1
+          fi

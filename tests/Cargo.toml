@@ -15,10 +15,18 @@ toml.workspace = true
 [dev-dependencies]
 concordia-core.workspace = true
 regex.workspace = true
+serde_json.workspace = true
+wasmparser.workspace = true
+wasmtime.workspace = true
+wasmtime-wasi.workspace = true
 
 [[test]]
 name = "repo_hygiene"
 path = "integration/repo_hygiene.rs"
+
+[[test]]
+name = "m_minus1_scaffold"
+path = "gates/m_minus1_scaffold.rs"
 
 [lints]
 workspace = true

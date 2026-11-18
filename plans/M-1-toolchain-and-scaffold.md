@@ -1,5 +1,5 @@
 # M-1: Toolchain & scaffold
-Status: Planned · Depends on: none · Detail level: Ready to execute · Estimated effort: 2–3 focused days (author + agent)
+Status: Gate passed (local, 2026-11-17; CI pending first push) · Depends on: none · Detail level: Ready to execute · Estimated effort: 2–3 focused days (author + agent)
 
 ## Goal & context
 Turn a folder that holds only planning documents (`CLAUDE.md`, `docs/`, `plans/`) into a working, tested, CI-checked Rust workspace that every later milestone can build on. No engine features are built here. M-1 proves three things:
@@ -445,22 +445,31 @@ Plus, outside the command: `tools/doctor.sh` exits 0 on the dev machine, and, if
 | -1.7 Claude Code setup | 0.25 day |
 | **Total** | **~2.75–3.25 days** |
 
-## Recorded versions (fill in during Phase -1.1)
+## Recorded versions (Phase -1.1, 2026-11-17)
 | Tool | Before | After | Install method |
 |---|---|---|---|
-| rustup | 1.27.0 | | |
-| rustc / cargo (pin) | 1.77.2 | | |
-| cargo-nextest | missing | | |
-| cargo-deny | missing | | |
-| cargo-insta | missing | | |
-| wasm-tools | missing | | |
-| wasmtime (CLI) | missing | | |
-| wasmtime (crate, pinned) | n/a | | |
-| wit-bindgen (crate) | n/a | | |
-| cargo-component (optional) | missing | | |
-| just | missing | | |
-| pnpm | missing | | |
-| claude | present | | |
+| rustup | 1.27.0 | 1.29.3 | `rustup self update` |
+| rustc / cargo (pin) | 1.77.2 | 1.100.0 | `rustup update stable`; pinned in `rust-toolchain.toml` |
+| cargo-nextest | missing | 0.9.152 | `cargo install --locked` |
+| cargo-deny | missing | 0.21.0 | `cargo install --locked` |
+| cargo-insta | missing | 1.49.0 | `cargo install --locked` |
+| wasm-tools | missing | 1.263.0 | `cargo install --locked` |
+| wasmtime (CLI) | missing | 50.0.2 | Homebrew |
+| wasmtime / wasmtime-wasi (crates, pinned) | n/a | =50.0.2 | workspace dependency |
+| wit-bindgen (crate) | n/a | 0.63 | guest dependency |
+| cargo-component (optional) | missing | not installed | not needed (ADR-0021) |
+| just | missing | 1.59.0 | Homebrew |
+| pnpm | missing | 12.21.0 | `corepack enable pnpm` |
+| claude | present | 2.1.327 | n/a |
+
+**Execution notes (deviations from the plan text):**
+- The engine was named Concordia before the first commit: crates are `concordia-*`, the test package is `concordia-tests`, and the bless env var is `CONCORDIA_BLESS`.
+- The Xcode 26 offline Metal compiler is a separate download (`xcodebuild -downloadComponent MetalToolchain`); it's deferred to M1. Doctor reports it as info.
+- `gate_prefix` returns `Result` (engineering rule 6), with an extra test `gate_prefix_rejects_malformed_milestones`. `wasm_fixture_path` likewise returns `Result`.
+- The guest imports 15 WASI interfaces (see the fixture README); the host links them with a closed `WasiCtx`.
+- `deny.toml` adds `allow-wildcard-paths = true` (internal path dependencies) and `unused-allowed-license = "allow"`.
+- Added hygiene tests: privacy (`private_dir_is_gitignored`, `no_home_paths_in_tracked_files`, `no_private_markers_in_tracked_files`), `claude_md_and_agents_md_contain_engineering_rules`, `dco_workflow_checks_sign_off`.
+- Public commits use the author's GitHub noreply email.
 
 ## Proposed convention additions
 - **Test-harness package:** `concordia-tests` (`publish = false`) rooted at `tests/`, with `autotests = false` and explicit `[[test]]` targets. Cross-crate tests in `tests/integration/<name>.rs`; gates in `tests/gates/<prefix>_<name>.rs`; shared helpers in `tests/src/lib.rs`.

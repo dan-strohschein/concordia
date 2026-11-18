@@ -325,3 +325,198 @@ fn adr_files_follow_numbering() {
         );
     }
 }
+
+fn justfile_recipes() -> std::collections::HashSet<String> {
+    let recipe = Regex::new(r"(?m)^@?([a-z][a-z0-9-]*)\b[^:\n=]*:([^=]|$)").unwrap();
+    let text = read_repo_file("justfile");
+    recipe
+        .captures_iter(&text)
+        .map(|c| c[1].to_owned())
+        .collect()
+}
+
+#[test]
+fn justfile_defines_required_recipes() {
+    let recipes = justfile_recipes();
+    let required = [
+        "doctor",
+        "fmt",
+        "fmt-check",
+        "lint",
+        "test",
+        "wasm",
+        "deny",
+        "gate",
+        "bless",
+        "ci",
+        "new-crate",
+    ];
+    for name in required {
+        assert!(recipes.contains(name), "justfile lacks recipe {name}");
+    }
+}
+
+#[test]
+fn gate_recipe_uses_same_mapping_as_gate_prefix() {
+    let text = read_repo_file("justfile");
+    assert!(
+        text.contains("tr '[:upper:]' '[:lower:]'"),
+        "gate recipe must lowercase"
+    );
+    assert!(
+        text.contains("sed 's/-/_minus/'"),
+        "gate recipe must map - to _minus"
+    );
+}
+
+fn string_list(table: &toml::Table, section: &str, key: &str) -> Vec<String> {
+    table[section][key]
+        .as_array()
+        .unwrap_or_else(|| panic!("{section}.{key} is a list"))
+        .iter()
+        .map(|v| v.as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[test]
+fn deny_toml_allows_only_permissive_licenses() {
+    let allow = string_list(&toml_at("deny.toml"), "licenses", "allow");
+    for required in [
+        "MIT",
+        "Apache-2.0",
+        "Apache-2.0 WITH LLVM-exception",
+        "BSD-2-Clause",
+        "BSD-3-Clause",
+        "ISC",
+        "Zlib",
+        "Unicode-3.0",
+    ] {
+        assert!(
+            allow.iter().any(|l| l == required),
+            "allow list lacks {required}"
+        );
+    }
+    let copyleft = Regex::new(r"GPL|SSPL|BUSL|MPL").unwrap();
+    assert!(
+        !allow.iter().any(|l| copyleft.is_match(l)),
+        "copyleft license allowed: {allow:?}"
+    );
+}
+
+#[test]
+fn deny_toml_denies_unknown_sources() {
+    let doc = toml_at("deny.toml");
+    assert_eq!(doc["sources"]["unknown-registry"].as_str(), Some("deny"));
+    assert_eq!(doc["sources"]["unknown-git"].as_str(), Some("deny"));
+}
+
+#[test]
+fn ci_workflow_covers_required_checks_and_platforms() {
+    assert_contains_all(
+        ".github/workflows/ci.yml",
+        &[
+            "macos-",
+            "ubuntu-24.04",
+            "just lint",
+            "nextest run",
+            "--doc",
+            "cargo deny",
+            "just wasm",
+            "just gate M-1",
+        ],
+    );
+}
+
+#[test]
+fn dco_workflow_checks_sign_off() {
+    assert_contains_all(
+        ".github/workflows/dco.yml",
+        &["pull_request", "Signed-off-by"],
+    );
+}
+
+#[test]
+fn no_config_requires_llm_api_key() {
+    let key =
+        Regex::new(r"ANTHROPIC_API_KEY|OPENAI_API_KEY|secrets\.[A-Z_]*(API|LLM|KEY)").unwrap();
+    let is_config = |f: &str| {
+        f.starts_with(".github/")
+            || f.starts_with(".claude/")
+            || f == "justfile"
+            || f == "deny.toml"
+            || f.ends_with("Cargo.toml")
+            || (f.starts_with("tools/") && f.ends_with(".sh"))
+    };
+    for file in tracked_files()
+        .into_iter()
+        .filter(|f| is_config(f) && f != "tools/doctor.sh")
+    {
+        assert!(
+            !key.is_match(&read_repo_file(&file)),
+            "{file} references an LLM API key"
+        );
+    }
+}
+
+fn claude_settings() -> serde_json::Value {
+    serde_json::from_str(&read_repo_file(".claude/settings.json"))
+        .expect(".claude/settings.json is JSON")
+}
+
+fn permission_rules(kind: &str) -> Vec<String> {
+    claude_settings()["permissions"][kind]
+        .as_array()
+        .map(|rules| {
+            rules
+                .iter()
+                .filter_map(|r| r.as_str().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[test]
+fn claude_settings_is_valid_json() {
+    assert!(claude_settings().is_object());
+}
+
+#[test]
+fn claude_settings_allows_common_read_only_and_test_commands() {
+    let allow = permission_rules("allow");
+    for rule in [
+        "Bash(cargo nextest run:*)",
+        "Bash(cargo test:*)",
+        "Bash(cargo clippy:*)",
+        "Bash(cargo fmt --all --check)",
+        "Bash(just test)",
+        "Bash(just lint)",
+        "Bash(just gate:*)",
+        "Bash(just doctor)",
+        "Bash(git status:*)",
+        "Bash(git diff:*)",
+        "Bash(git log:*)",
+    ] {
+        assert!(allow.iter().any(|r| r == rule), "allow lacks {rule}");
+    }
+}
+
+#[test]
+fn claude_settings_never_auto_allows_pushes_or_installs() {
+    let risky = Regex::new(r"git push|brew install|cargo install|rustup self|curl|rm -rf").unwrap();
+    assert!(!permission_rules("allow").iter().any(|r| risky.is_match(r)));
+    assert!(
+        permission_rules("ask")
+            .iter()
+            .any(|r| r == "Bash(git push:*)")
+    );
+}
+
+#[test]
+fn claude_settings_sets_no_api_key_env() {
+    if let Some(env) = claude_settings()["env"].as_object() {
+        assert!(
+            !env.keys().any(|k| k.contains("API_KEY")),
+            "settings env sets an API key"
+        );
+    }
+}
