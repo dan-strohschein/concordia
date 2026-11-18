@@ -13,6 +13,8 @@ mod device;
 mod encode;
 #[cfg(target_os = "macos")]
 mod probe;
+#[cfg(target_os = "macos")]
+mod surface;
 
 use concordia_rhi::{DeviceCaps, RhiError};
 

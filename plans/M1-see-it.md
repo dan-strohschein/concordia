@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (phase 1.9b; 1.0, 1.2a, 1.1, 1.7, 1.2b, 1.3, 1.4, 1.5, 1.6, 1.8 and 1.9a done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (gate; 1.0–1.9 done, 1.10 stretch pending) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -153,6 +153,31 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 - the gate agent demo.
 
 **Installs needing approval:** cmake (1.7a), Slang into `target/` (1.3), the Tauri CLI (1.8), and git-lfs only if D5 changes.
+
+### Phase 1.9c: Native editor shell (done)
+- **RHI window surfaces:** `create_surface` (unsafe; wraps a `CAMetalLayer`), `acquire`, `present` and `destroy_surface`, with Metal tests using a standalone layer (12 acquire/clear/present cycles, misuse errors).
+  - `Renderer::present` renders into a surface image: BGRA sRGB tonemap target, final Present layout, no readback. The tonemap pipeline is now per format.
+  - `concordia_render::attach_surface` plus the `viewport.present {view, width, height}` method.
+  - `EngineHandle::run` runs a closure on the engine thread, for in-process hosts.
+- **`editor/src-tauri` (Tauri 2.12.5, tauri-build 2.7.4, `@tauri-apps/api` 2.12.4; at least four weeks old; own Cargo workspace):**
+  - `EngineHost`: project modules, main scene, a token-protected WebSocket API and the connection file;
+  - the native viewport, ordered below the transparent webview;
+  - an injected engine URL;
+  - `--smoke-test`.
+- **The UI's native mode:** reports the slot through `invoke("slot_rect")` and presents with `viewport.present` at physical-pixel size, re-presenting every `requestAnimationFrame` (display-synced) while playing. The page is transparent over the slot. Overlays and all input stay in the web UI, so the camera, picking and gizmo are unchanged.
+- **Fixes:** two spike bugs found by capturing the real window (ADR-0043 amendment): the layering (below, not above) and the title-bar inset in the coordinate conversion. The spike's automated check had been tautological.
+- **Tests:**
+  - `api_server_rejects_connections_without_token`, main scene and connection file, bad project;
+  - `editor_shell_smoke_renders_native_viewport` (10 frames presented; capture with 62 colours);
+  - a visual check of the window capture, by eye.
+- **CI:** an editor shell job on macos-26 (UI build, cargo-deny with the shell's config, host and smoke tests).
+- **Licensing:** Tauri needs five MPL-2.0 crates (`cssparser`, `cssparser-macros`, `selectors`, `dtoa-short`, `option-ext`). By author decision, these are named exceptions in `editor/src-tauri/deny.toml` only; the engine stays permissive-only. RUSTSEC-2024-0370 (proc-macro-error unmaintained) is ignored there, since it's in Tauri's Linux-only GTK stack.
+- **Supply chain:** tauri 2.12.7 and tauri-build 2.7.6, used by the spike, were published the same day. The shell pins older releases.
+- **Deviations from the plan:**
+  - The display sync comes from WKWebView's `requestAnimationFrame` instead of a native display link.
+  - The smoke test checks a capture of the same view; `CaptureTarget::Viewport` (reading the presented image back) isn't needed.
+  - Window-pixel placement is verified locally by screen capture, which hosted CI can't permit.
+  - The streamed e2e tests stay the CI coverage for the UI.
 
 ### Phase 1.9b: Editor camera, picking, gizmo, edit log (done)
 - **`View` (eye, target, projection):** `capture.screenshot {view}` renders the editor's own camera, reusing the scene camera's exposure, tonemap and clear colour (no scene camera needed). Passing both `camera` and `view` is `InvalidParams`.

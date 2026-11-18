@@ -15,6 +15,7 @@ mod handle;
 mod pipeline;
 mod resource;
 mod slots;
+mod surface;
 
 #[cfg(feature = "conformance")]
 pub mod conformance;
@@ -28,10 +29,11 @@ pub use command::{
 pub use device::{Device, QueueKind, Submit};
 pub use error::RhiError;
 pub use format::Format;
-pub use handle::{BindlessIndex, Buffer, Heap, Pipeline, Texture, Timeline};
+pub use handle::{BindlessIndex, Buffer, Heap, Pipeline, Surface, Texture, Timeline};
 pub use pipeline::{
     BlendMode, CompareOp, ComputePipelineDesc, CullMode, DepthState, GraphicsPipelineDesc,
     MeshPipelineDesc, ShaderSource, StaticSampler,
 };
 pub use resource::{BufferDesc, BufferUsage, HeapDesc, MemoryLocation, TextureDesc, TextureUsage};
 pub use slots::Slots;
+pub use surface::SurfaceTarget;

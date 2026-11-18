@@ -101,3 +101,40 @@ jobs:
         with:
           name: editor-e2e-results
           path: editor/ui/test-results
+
+  shell:
+    name: editor shell (macos-26 GPU)
+    runs-on: macos-26
+    env:
+      CONCORDIA_REQUIRE_GPU: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: editor/src-tauri -> target
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        with:
+          tool: just,cargo-deny
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/toolchain/slang
+          key: slang-${{ runner.os }}-${{ hashFiles('tools/slang/slang.toml') }}
+      - name: Slang toolchain
+        run: just slang-fetch
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: editor/ui/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: editor/ui/pnpm-lock.yaml
+      - name: Build the UI
+        working-directory: editor/ui
+        run: pnpm install --frozen-lockfile --ignore-scripts && pnpm build
+      - name: Supply chain (shell; named MPL-2.0 exceptions)
+        run: cargo deny --manifest-path editor/src-tauri/Cargo.toml --config editor/src-tauri/deny.toml check
+      - name: Host tests and native smoke test
+        run: cargo test --manifest-path editor/src-tauri/Cargo.toml

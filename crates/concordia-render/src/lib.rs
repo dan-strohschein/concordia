@@ -32,7 +32,7 @@ pub use frame::DrawPush;
 pub use lighting::candela;
 pub use module::{
     CaptureScreenshot, CaptureScreenshotParams, CaptureScreenshotResult, DeviceFactory,
-    RenderModule,
+    RenderModule, attach_surface,
 };
 pub use pipelines::shader_dir;
 pub use renderer::{Image, MAX_SIZE, RenderRequest, RenderStats, Renderer};

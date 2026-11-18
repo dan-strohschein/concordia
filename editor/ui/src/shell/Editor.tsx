@@ -7,6 +7,7 @@ import { EDITOR_ACTOR, type EditorSession } from "../engine/session";
 import { Inspector } from "../inspector/Inspector";
 import { Outliner } from "../outliner/Outliner";
 import { Output } from "../output/Output";
+import { isNative } from "../viewport/native";
 import { Viewport } from "../viewport/Viewport";
 
 const dock: React.CSSProperties = { background: "#232323", overflow: "auto", minHeight: 0 };
@@ -43,7 +44,7 @@ export function Editor({ session }: { session: EditorSession }) {
         gridTemplateRows: "30px 1fr 140px",
         gridTemplateColumns: "250px 1fr 300px",
         height: "100vh",
-        background: "#1b1b1b",
+        background: isNative() ? "transparent" : "#1b1b1b",
         color: "#ddd",
         font: "13px system-ui",
       }}

@@ -108,3 +108,14 @@ editor-dev:
 # Production build of the editor UI.
 editor-build:
     cd editor/ui && pnpm build
+
+# Run the native editor on a project (builds the UI first).
+editor project="examples/m1-physics-stack":
+    cd editor/ui && pnpm build
+    cargo run --manifest-path editor/src-tauri/Cargo.toml -- --project {{project}}
+
+# The native shell's tests: engine host and the smoke test (macOS GPU, GUI session).
+editor-shell-test:
+    cd editor/ui && pnpm build
+    cargo deny --manifest-path editor/src-tauri/Cargo.toml --config editor/src-tauri/deny.toml check
+    cargo test --manifest-path editor/src-tauri/Cargo.toml

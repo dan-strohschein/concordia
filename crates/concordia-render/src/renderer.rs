@@ -10,8 +10,8 @@ use concordia_core::math::{Mat4, Vec3};
 use concordia_rhi::{
     Access, AccessFlags, Buffer, BufferDesc, BufferUsage, ClearValue, ColorAttachment, Command,
     CommandList, DepthAttachment, Device, HeapDesc, Layout, LoadOp, MemoryLocation, Pipeline,
-    QueueKind, RenderPassDesc, SampleCount, Stages, StoreOp, Submit, Texture, TextureDesc,
-    TextureUsage,
+    QueueKind, RenderPassDesc, SampleCount, Stages, StoreOp, Submit, Surface, SurfaceTarget,
+    Texture, TextureDesc, TextureUsage,
 };
 use concordia_shaders::ShaderCompiler;
 
@@ -66,6 +66,7 @@ pub struct Renderer {
     device: Arc<dyn Device>,
     pipelines: Pipelines,
     culler: ClusterCuller,
+    surfaces: Vec<Surface>,
     environments: EnvironmentCache,
     shadow_maps: ShadowMaps,
     clusters: ClusterSettings,
@@ -98,6 +99,64 @@ struct FramePlan<'a> {
     shadow: Option<ShadowJob>,
     /// Skybox pipeline and push constants, drawn first in the forward pass.
     sky: Option<(Pipeline, Vec<u8>)>,
+    output: Output,
+}
+
+/// The size and destination of one frame.
+struct FrameTarget {
+    size: (NonZeroU32, NonZeroU32),
+    output: Output,
+}
+
+/// Where a frame ends up.
+#[derive(Debug, Clone, Copy)]
+enum Output {
+    /// An owned sRGB texture, copied back to the CPU.
+    Readback,
+    /// An image acquired from a window surface, presented after the frame.
+    Surface {
+        surface: Surface,
+        texture: Texture,
+        format: concordia_rhi::Format,
+    },
+}
+
+/// Window surfaces present sRGB BGRA (what `CAMetalLayer` offers).
+const SURFACE: concordia_rhi::Format = concordia_rhi::Format::Bgra8UnormSrgb;
+
+/// A side-effect pass copying `out` into a new readback buffer.
+fn add_readback(
+    graph: &mut RenderGraph,
+    out: GraphTexture,
+    frame: &mut FrameResources,
+    device: &dyn Device,
+    size: (NonZeroU32, NonZeroU32),
+) -> Result<Buffer, RenderError> {
+    let (w, h) = (size.0.get(), size.1.get());
+    let readback = frame.keep(device.create_buffer(&BufferDesc {
+        size: NonZeroU64::new(u64::from(w) * u64::from(h) * 4).unwrap_or(NonZeroU64::MIN),
+        usage: BufferUsage::COPY_DST,
+        memory: MemoryLocation::Readback,
+        label: "readback".into(),
+    })?);
+    graph.add_pass_recorded(
+        "readback",
+        |p| {
+            p.uses(out, Use::CopySrc);
+            p.side_effect();
+        },
+        Some(Box::new(move |ctx: &mut PassContext<'_>| {
+            ctx.commands.push(Command::CopyTextureToBuffer {
+                src: ctx.texture(out),
+                mip: 0,
+                dst: readback,
+                offset: 0,
+                bytes_per_row: w * 4,
+            });
+            Ok(())
+        })),
+    );
+    Ok(readback)
 }
 
 /// The frame's light clustering, recorded before the graph.
@@ -137,6 +196,7 @@ impl Renderer {
             device,
             pipelines,
             culler,
+            surfaces: Vec::new(),
             environments: EnvironmentCache::default(),
             shadow_maps: ShadowMaps::default(),
             clusters: ClusterSettings::default(),
@@ -158,6 +218,74 @@ impl Renderer {
         assets: &mut dyn AssetSource,
         request: &RenderRequest,
     ) -> Result<Image, RenderError> {
+        self.frame(world, assets, request, Output::Readback)?
+            .ok_or_else(|| {
+                RenderError::Gpu(concordia_rhi::RhiError::invalid(
+                    "render",
+                    "no image was read back",
+                ))
+            })
+    }
+
+    /// Wraps a native window layer for [`Renderer::present`]; the renderer releases it when dropped.
+    ///
+    /// # Safety
+    /// The native object behind `target` must outlive the renderer (or [`Renderer::destroy_surface`]).
+    pub unsafe fn create_surface(&mut self, target: SurfaceTarget) -> Result<Surface, RenderError> {
+        // SAFETY: forwarded from the caller.
+        let surface = unsafe { self.device.create_surface(target, SURFACE) }?;
+        self.surfaces.push(surface);
+        Ok(surface)
+    }
+
+    /// Releases a surface made by [`Renderer::create_surface`].
+    pub fn destroy_surface(&mut self, surface: Surface) {
+        let _ = self.device.wait_idle();
+        self.surfaces.retain(|s| *s != surface);
+        self.device.destroy_surface(surface);
+    }
+
+    /// Renders `request` into the surface's next image and presents it; `false` when the display
+    /// has no free image yet (skip the frame).
+    pub fn present(
+        &mut self,
+        world: &RenderWorld,
+        assets: &mut dyn AssetSource,
+        request: &RenderRequest,
+        surface: Surface,
+    ) -> Result<bool, RenderError> {
+        let (width, height) = check_size(request)?;
+        let Some(texture) = self.device.acquire(surface, width.get(), height.get())? else {
+            return Ok(false);
+        };
+        match self.frame(
+            world,
+            assets,
+            request,
+            Output::Surface {
+                surface,
+                texture,
+                format: SURFACE,
+            },
+        ) {
+            Ok(_) => Ok(true),
+            Err(e) => {
+                // Hand the image back so the surface is not left holding it.
+                let _ = self
+                    .device
+                    .present(surface, &CommandList::new("abandoned frame"));
+                Err(e)
+            }
+        }
+    }
+
+    fn frame(
+        &mut self,
+        world: &RenderWorld,
+        assets: &mut dyn AssetSource,
+        request: &RenderRequest,
+        output: Output,
+    ) -> Result<Option<Image>, RenderError> {
         let (width, height) = check_size(request)?;
         let editor_view;
         let view = match &request.view {
@@ -170,7 +298,17 @@ impl Renderer {
         let aspect = width.get() as f32 / height.get() as f32;
         let grid = ClusterGrid::new(self.clusters, &view.camera.projection, aspect)?;
         let mut frame = FrameResources::default();
-        let result = self.render_frame(world, assets, view, &grid, (width, height), &mut frame);
+        let result = self.render_frame(
+            world,
+            assets,
+            view,
+            &grid,
+            FrameTarget {
+                size: (width, height),
+                output,
+            },
+            &mut frame,
+        );
         frame.release(self.device.as_ref());
         self.frames += 1;
         result
@@ -187,9 +325,13 @@ impl Renderer {
         assets: &mut dyn AssetSource,
         view: &CameraView,
         grid: &ClusterGrid,
-        (width, height): (NonZeroU32, NonZeroU32),
+        target: FrameTarget,
         frame: &mut FrameResources,
-    ) -> Result<Image, RenderError> {
+    ) -> Result<Option<Image>, RenderError> {
+        let FrameTarget {
+            size: (width, height),
+            output,
+        } = target;
         let aspect = width.get() as f32 / height.get() as f32;
         let view_m = view_matrix(&view.world);
         let view_proj = view.camera.projection.matrix(aspect)? * view_m;
@@ -353,6 +495,7 @@ impl Renderer {
             cluster: job,
             shadow,
             sky,
+            output,
         };
         let (image, overflow) = self.execute(view, plan, frame)?;
         self.stats = RenderStats {
@@ -493,13 +636,13 @@ impl Renderer {
         }
     }
 
-    /// Builds the frame graph, places transients, records and submits, then reads back.
+    /// Builds the frame graph, places transients, records, then reads back or presents.
     fn execute(
         &mut self,
         view: &CameraView,
         plan: FramePlan<'_>,
         frame: &mut FrameResources,
-    ) -> Result<(Image, u32), RenderError> {
+    ) -> Result<(Option<Image>, u32), RenderError> {
         let FramePlan {
             draws,
             samples,
@@ -507,9 +650,11 @@ impl Renderer {
             cluster: job,
             shadow,
             sky,
+            output,
         } = plan;
         let job = &job;
-        let device = self.device.as_ref();
+        let device = self.device.clone();
+        let device = device.as_ref();
         let (w, h) = (size.0.get(), size.1.get());
         let clusters = job.grid.len() as u64;
         let overflow_rb = frame.keep(device.create_buffer(&BufferDesc {
@@ -518,62 +663,56 @@ impl Renderer {
             memory: MemoryLocation::Readback,
             label: "cluster overflow".into(),
         })?);
-        let output = frame.texture(device.create_texture(&desc(
-            size,
-            OUTPUT,
-            SampleCount::X1,
-            TextureUsage::RENDER_TARGET | TextureUsage::COPY_SRC,
-            "output",
-        ))?);
-        let readback = frame.keep(device.create_buffer(&BufferDesc {
-            size: NonZeroU64::new(u64::from(w) * u64::from(h) * 4).unwrap_or(NonZeroU64::MIN),
-            usage: BufferUsage::COPY_DST,
-            memory: MemoryLocation::Readback,
-            label: "readback".into(),
-        })?);
+        let (texture, format, final_layout) = match output {
+            Output::Readback => {
+                let usage = TextureUsage::RENDER_TARGET | TextureUsage::COPY_SRC;
+                (
+                    frame.texture(device.create_texture(&desc(
+                        size,
+                        OUTPUT,
+                        SampleCount::X1,
+                        usage,
+                        "output",
+                    ))?),
+                    OUTPUT,
+                    Layout::CopySrc,
+                )
+            }
+            Output::Surface {
+                texture, format, ..
+            } => (texture, format, Layout::Present),
+        };
         let mut graph = RenderGraph::new();
         let out = graph.import_texture(
             "output",
-            output,
+            texture,
             desc(
                 size,
-                OUTPUT,
+                format,
                 SampleCount::X1,
                 TextureUsage::RENDER_TARGET,
                 "output",
             ),
             Layout::Undefined,
-            Some(Layout::CopySrc),
+            Some(final_layout),
         );
         let shadow_maps = shadow
             .map(|s| add_shadow_passes(&mut graph, s))
             .unwrap_or_default();
         let targets = add_forward(&mut graph, view, draws, samples, size, &shadow_maps, sky);
+        let tonemap = self.pipelines.tonemap(device, format)?;
         add_tonemap(
             &mut graph,
             targets.hdr,
             out,
-            self.pipelines.tonemap(),
+            tonemap,
             view.camera.tonemap,
             self.device.clone(),
         );
-        graph.add_pass_recorded(
-            "readback",
-            |p| {
-                p.uses(out, Use::CopySrc);
-                p.side_effect();
-            },
-            Some(Box::new(move |ctx: &mut PassContext<'_>| {
-                ctx.commands.push(Command::CopyTextureToBuffer {
-                    src: ctx.texture(out),
-                    mip: 0,
-                    dst: readback,
-                    offset: 0,
-                    bytes_per_row: w * 4,
-                });
-                Ok(())
-            })),
-        );
+        let readback = match output {
+            Output::Readback => Some(add_readback(&mut graph, out, frame, device, size)?),
+            Output::Surface { .. } => None,
+        };
         let compiled =
             graph.compile(&|d: &TextureDesc| device.texture_heap_footprint(d).unwrap_or((0, 1)))?;
         let transients = frame.place(device, &graph, &compiled)?;
@@ -598,14 +737,24 @@ impl Renderer {
             dst_offset: 0,
             size: clusters * 4,
         });
-        device.submit(Submit {
-            queue: QueueKind::Graphics,
-            commands: &list,
-            wait: &[],
-            signal: &[],
-        })?;
+        match output {
+            Output::Readback => device.submit(Submit {
+                queue: QueueKind::Graphics,
+                commands: &list,
+                wait: &[],
+                signal: &[],
+            })?,
+            Output::Surface { surface, .. } => device.present(surface, &list)?,
+        }
         device.wait_idle()?;
-        let rgba = device.read_buffer(readback, 0, u64::from(w) * u64::from(h) * 4)?;
+        let image = match readback {
+            Some(buffer) => Some(Image {
+                width: w,
+                height: h,
+                rgba: device.read_buffer(buffer, 0, u64::from(w) * u64::from(h) * 4)?,
+            }),
+            None => None,
+        };
         let dropped = device.read_buffer(overflow_rb, 0, clusters * 4)?;
         let overflow = dropped
             .as_chunks::<4>()
@@ -613,14 +762,7 @@ impl Renderer {
             .iter()
             .map(|w| u32::from_le_bytes(*w))
             .sum();
-        Ok((
-            Image {
-                width: w,
-                height: h,
-                rgba,
-            },
-            overflow,
-        ))
+        Ok((image, overflow))
     }
 }
 
@@ -630,6 +772,9 @@ impl Drop for Renderer {
         self.assets.destroy(self.device.as_ref());
         self.shadow_maps.destroy(self.device.as_ref());
         self.environments.destroy(self.device.as_ref());
+        self.surfaces
+            .drain(..)
+            .for_each(|s| self.device.destroy_surface(s));
     }
 }
 

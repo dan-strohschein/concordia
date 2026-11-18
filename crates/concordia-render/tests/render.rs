@@ -551,3 +551,42 @@ fn alpha_mask_discards_below_cutoff() {
         "alpha 0.3 < cutoff 0.5 is discarded, leaving the clear color (white would be 255): {p:?}"
     );
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn renderer_presents_frames_to_a_window_surface() {
+    let Some(mut r) = renderer() else { return };
+    let mut s = Scene::new();
+    let red = s.material("red", unlit([0.8, 0.1, 0.1, 1.0]));
+    s.mesh("cube", red, Vec3::ZERO, Quat::IDENTITY, Vec3::ONE);
+    s.camera(
+        Vec3::new(0.0, 0.0, 4.0),
+        Vec3::ZERO,
+        clamp_camera(Projection::default(), Msaa::X4),
+    );
+    let layer = objc2_quartz_core::CAMetalLayer::new();
+    // SAFETY: the layer outlives the surface, which the renderer releases when dropped.
+    let surface = unsafe {
+        r.create_surface(concordia_rhi::SurfaceTarget::MetalLayer(
+            std::ptr::NonNull::from(&*layer).cast(),
+        ))
+    }
+    .unwrap();
+    let rw = RenderWorld::extract(&s.world);
+    let request = RenderRequest {
+        camera: None,
+        view: None,
+        width: 96,
+        height: 64,
+    };
+    let presented = (0..10)
+        .filter(|_| r.present(&rw, &mut s.assets, &request, surface).unwrap())
+        .count();
+    assert!(presented >= 8, "presented {presented} of 10 frames");
+    let image = r.render(&rw, &mut s.assets, &request).unwrap();
+    assert_eq!(
+        pixel(&image, 48, 32)[..3],
+        [231, 89, 89][..],
+        "offscreen rendering still works alongside"
+    );
+}

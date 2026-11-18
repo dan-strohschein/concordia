@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { EDITOR_ACTOR, type EditorSession } from "../engine/session";
 import { DEFAULT_CAMERA, OrbitCamera, type Preset, type Vec3, type View } from "./camera";
 import { Gizmo } from "./Gizmo";
+import { isNative, reportSlot } from "./native";
 
 type Tool = "select" | "move";
 
@@ -21,8 +22,10 @@ interface Props {
   onSelect: (id: string | undefined) => void;
 }
 
-/** Captures the latest view: at most one request in flight, the newest one queued. */
+/** Renders the latest view: streamed `capture.screenshot` in a browser, `viewport.present` into the
+ * native view in the shell. At most one request in flight; the newest one queued. */
 function useStreamedView(session: EditorSession, world: "edit" | "play") {
+  const native = isNative();
   const [src, setSrc] = useState<string>();
   const [status, setStatus] = useState<string>();
   const state = useRef({ busy: false, next: undefined as undefined | { view: View; width: number; height: number } });
@@ -33,15 +36,24 @@ function useStreamedView(session: EditorSession, world: "edit" | "play") {
         const job = state.current.next;
         if (state.current.busy || job === undefined) return;
         state.current = { busy: true, next: undefined };
-        session
-          .call<Capture>("capture.screenshot", { view: job.view, width: job.width, height: job.height, world })
-          .then(
-            (c) => {
-              setSrc(`data:${c.image.mime_type};base64,${c.image.data_base64}`);
-              setStatus(undefined);
-            },
-            (e: unknown) => setStatus(String(e)),
-          )
+        const dpr = window.devicePixelRatio || 1;
+        const call = native
+          ? session
+              .call("viewport.present", {
+                view: job.view,
+                width: Math.round(job.width * dpr),
+                height: Math.round(job.height * dpr),
+                world,
+              })
+              .then(() => setStatus(undefined))
+          : session
+              .call<Capture>("capture.screenshot", { view: job.view, width: job.width, height: job.height, world })
+              .then((c) => {
+                setSrc(`data:${c.image.mime_type};base64,${c.image.data_base64}`);
+                setStatus(undefined);
+              });
+        call
+          .catch((e: unknown) => setStatus(String(e)))
           .finally(() => {
             state.current.busy = false;
             run();
@@ -49,7 +61,7 @@ function useStreamedView(session: EditorSession, world: "edit" | "play") {
       };
       run();
     },
-    [session, world],
+    [session, world, native],
   );
   return { src, status, request };
 }
@@ -75,6 +87,19 @@ export function Viewport({ session, world, selected, onSelect }: Props) {
     return () => observer.disconnect();
   }, []);
   useEffect(() => request(view, size.width, size.height), [request, view, size]);
+  // In the native shell: keep the Metal view on the slot, and present every display frame while playing.
+  useEffect(() => {
+    if (!isNative() || !slot.current) return;
+    void reportSlot(slot.current);
+  }, [size]);
+  useEffect(() => {
+    if (!isNative() || world !== "play") return;
+    let frame = requestAnimationFrame(function tick() {
+      request(view, size.width, size.height);
+      frame = requestAnimationFrame(tick);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [world, request, view, size]);
   useEffect(() => session.onEvent(() => request(view, size.width, size.height)), [session, request, view, size]);
 
   const focusSelection = useCallback(async () => {
@@ -192,7 +217,13 @@ export function Viewport({ session, world, selected, onSelect }: Props) {
         ref={slot}
         id="viewport-slot"
         data-testid="viewport"
-        style={{ position: "relative", minHeight: 0, background: "#111", overflow: "hidden", userSelect: "none" }}
+        style={{
+          position: "relative",
+          minHeight: 0,
+          background: isNative() ? "transparent" : "#111",
+          overflow: "hidden",
+          userSelect: "none",
+        }}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}

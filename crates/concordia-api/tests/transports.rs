@@ -243,3 +243,25 @@ async fn ws_subscriber_receives_another_clients_edits_as_notifications() {
         (Some("agent:test#1"), &id)
     );
 }
+
+#[tokio::test]
+async fn handle_run_executes_on_the_engine_thread_in_order() {
+    let (_dir, handle) = engine();
+    let session = handle.open_session().await.unwrap();
+    handle
+        .call(
+            session,
+            "session.open",
+            json!({"client": "t", "actor": "agent:t"}),
+        )
+        .await
+        .unwrap();
+    let seen = handle
+        .run(Box::new(|engine: &mut Engine| {
+            engine.methods().get("schema.get").is_some()
+                && std::thread::current().name() == Some("concordia-engine")
+        }))
+        .await
+        .unwrap();
+    assert!(seen, "the closure ran with the engine, on its thread");
+}

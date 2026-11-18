@@ -87,4 +87,31 @@ pub trait Device: Send + Sync {
     fn destroy_texture(&self, texture: Texture);
     /// Releases a heap once the GPU is done with it (its placed textures must be destroyed first).
     fn destroy_heap(&self, heap: Heap);
+    /// Wraps a native window layer for presenting in `format`.
+    ///
+    /// # Safety
+    /// The native object behind `target` must stay alive until [`Device::destroy_surface`].
+    unsafe fn create_surface(
+        &self,
+        target: crate::SurfaceTarget,
+        format: crate::Format,
+    ) -> Result<crate::Surface, RhiError>;
+    /// The surface's next image as a render-target texture, sized `width`×`height` pixels; `None`
+    /// when every image is still in use (skip the frame). One image at a time: present it before
+    /// acquiring again.
+    fn acquire(
+        &self,
+        surface: crate::Surface,
+        width: u32,
+        height: u32,
+    ) -> Result<Option<Texture>, RhiError>;
+    /// Submits `commands` (which draw into the acquired image) and presents the image; its
+    /// texture handle is released.
+    fn present(
+        &self,
+        surface: crate::Surface,
+        commands: &crate::CommandList,
+    ) -> Result<(), RhiError>;
+    /// Releases a surface (and any image still acquired from it).
+    fn destroy_surface(&self, surface: crate::Surface);
 }

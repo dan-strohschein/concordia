@@ -16,6 +16,7 @@ enum Request {
     Open(oneshot::Sender<SessionId>),
     Close(SessionId),
     Sink(SessionId, crate::events::EventSink),
+    Run(Box<dyn FnOnce(&mut Engine) + Send>),
     SceneText(oneshot::Sender<Result<String, ApiError>>),
     Rpc {
         session: SessionId,
@@ -88,6 +89,7 @@ fn serve(engine: &mut Engine, request: Request) {
         }
         Request::Close(session) => engine.close_session(session),
         Request::Sink(session, sink) => engine.set_event_sink(session, sink),
+        Request::Run(f) => f(engine),
         Request::SceneText(reply) => {
             let _ = reply.send(engine.scene_text());
         }
@@ -131,6 +133,19 @@ impl EngineHandle {
     /// Ends a session (aborting its open transaction).
     pub fn close_session(&self, session: SessionId) {
         let _ = self.send(Request::Close(session));
+    }
+
+    /// Runs `f` with the engine on its thread, in order with calls (for in-process hosts, e.g. the
+    /// editor shell attaching a window surface).
+    pub async fn run<T: Send + 'static>(
+        &self,
+        f: impl FnOnce(&mut Engine) -> T + Send + 'static,
+    ) -> Result<T, ApiError> {
+        let (reply, rx) = oneshot::channel();
+        self.send(Request::Run(Box::new(move |engine| {
+            let _ = reply.send(f(engine));
+        })))?;
+        rx.await.map_err(internal)
     }
 
     /// Lets `session` receive pushed events (see [`Engine::set_event_sink`]).

@@ -200,3 +200,44 @@ fn view_round_trips_as_a_reflected_type() {
     let again: View = serde_json::from_value(serde_json::to_value(&view).unwrap()).unwrap();
     assert_eq!(again, view, "f32 values survive serialization");
 }
+
+#[test]
+fn viewport_present_needs_an_attached_surface() {
+    let mut h = Harness::new();
+    let err = h
+        .call(
+            "viewport.present",
+            json!({"view": front_view(), "width": 64, "height": 64}),
+        )
+        .unwrap_err();
+    assert_eq!(err.data.kind, "InvalidRequest", "{err:?}");
+    assert!(
+        err.data
+            .suggestions
+            .iter()
+            .any(|s| s.contains("capture.screenshot")),
+        "{err:?}"
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn viewport_present_draws_into_the_attached_layer() {
+    let Some(mut h) = Harness::gpu() else { return };
+    h.two_cubes();
+    let layer = objc2_quartz_core::CAMetalLayer::new();
+    let target = concordia_rhi::SurfaceTarget::MetalLayer(std::ptr::NonNull::from(&*layer).cast());
+    // SAFETY: the layer outlives the engine (dropped at the end of the test, after `h`).
+    unsafe { concordia_render::attach_surface(&mut h.engine, target) }.unwrap();
+    let presented = (0..5)
+        .filter(|_| {
+            h.ok(
+                "viewport.present",
+                json!({"view": front_view(), "width": 64, "height": 48}),
+            )["presented"]
+                == true
+        })
+        .count();
+    assert!(presented >= 4, "{presented}");
+    drop(h);
+}

@@ -87,8 +87,10 @@ test("step_button_advances_sim_and_viewport_image_changes", async ({ page, engin
   const before = await image.getAttribute("src");
   for (let i = 0; i < 30; i++) await page.getByTitle("Step 1 tick").click();
   await expect.poll(async () => image.getAttribute("src"), { timeout: 20_000 }).not.toBe(before);
-  const info = await engine.agent.call<{ tick: number }>("sim.pause", {});
-  expect(info.tick).toBeGreaterThanOrEqual(30);
+  // The clicks' calls travel on the editor's connection; wait for the last one to land.
+  await expect
+    .poll(async () => (await engine.agent.call<{ tick: number }>("sim.pause", {})).tick)
+    .toBeGreaterThanOrEqual(30);
 });
 
 async function viewportPixel(page: Page, engine: Engine, name: string): Promise<{ x: number; y: number; id: string }> {

@@ -38,3 +38,10 @@ The editor needs `macOSPrivateApi` (a transparent webview) and the `objc2-app-ki
 - **B, Tauri multi-webview:** unstable API; revisit when it is stable.
 - **D only:** portable, but adds a copy and latency to every frame; kept as the fallback and test path.
 - **A different shell (native UI toolkit):** loses the web panel stack ADR-0004 chose for agent-friendliness.
+
+## Amendment (2026-11-18, phase 1.9c): order below a transparent webview; title-bar inset
+Building the editor showed that its viewport input (orbit, pick, gizmo drags) and its gizmo overlay live in the web UI. A Metal view *above* the webview would hide the overlay and take the mouse. A follow-up experiment (a copy of the spike, checked by capturing the window with `screencapture -l` and inspecting the image) established two things:
+- **Layering:** an `NSView` + `CAMetalLayer` ordered **below** the WKWebView, with the webview transparent (`transparent: true`, `macOSPrivateApi`), shows through the slot exactly. The page draws over it (the slot outline stayed visible) and keeps all input. **Approach A is amended to "below a transparent webview".** Child window (C) and streaming (D) remain the fallbacks.
+- **Coordinates:** the webview spans the content view *including the area under the title bar*, while the page's viewport starts below it (here 800 pt vs 768 pt). The slot rect must be converted in the webview's space, offset by `webview height − window.innerHeight`. Otherwise the native view sits one title-bar height (32 pt) too high, which the experiment showed as an uncovered strip at the bottom of the slot.
+- **The spike's automated check was tautological:** it converted the DOM rect and read the native frame back with the same flawed formula, so it passed while misaligned, and so did a visual check in approach A, where the offset hid under the header. The native shell's smoke test therefore checks pixels in a capture of the real window (locally; hosted CI cannot grant screen recording, so CI keeps the frame-count smoke test).
+

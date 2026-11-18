@@ -43,6 +43,7 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `sim.step` | | `{ticks}` → `{tick, world_hash}` |
 | `capture.screenshot` | | `{width?, height?, camera? \| view?, world?}` → `{image, width, height, sim_tick, frame}` (projects with `[render]`) |
 | `viewport.pick` | | `{view, x, y, width, height, world?}` → `{entity, distance}` (projects with `[render]`) |
+| `viewport.present` | | `{view, width, height, world?}` → `{presented}` (the editor's native viewport only) |
 | `log.tail` | | `{since?, level?, limit?}` → `{records, next}` |
 | `events.subscribe` / `events.unsubscribe` | | `{topics: ["edit" \| "scene" \| "sim"]}` → `{topics}` (WebSocket only; not an MCP tool) |
 

@@ -41,6 +41,8 @@ impl RenderModule {
 struct RenderState {
     factory: DeviceFactory,
     renderer: Option<Renderer>,
+    /// The editor's native viewport, once a host attached one.
+    surface: Option<concordia_rhi::Surface>,
 }
 
 impl EngineModule for RenderModule {
@@ -59,6 +61,7 @@ impl EngineModule for RenderModule {
         vec![
             MethodInfo::of::<CaptureScreenshot>(),
             MethodInfo::of::<ViewportPick>(),
+            MethodInfo::of::<ViewportPresent>(),
         ]
     }
 
@@ -66,6 +69,7 @@ impl EngineModule for RenderModule {
         Some(Box::new(RenderState {
             factory: self.factory.clone(),
             renderer: None,
+            surface: None,
         }))
     }
 }
@@ -326,4 +330,100 @@ fn check_view(view: &crate::View) -> Result<(), ApiError> {
         .and_then(|_| view.projection.matrix(1.0))
         .map(|_| ())
         .map_err(|e| ApiError::new(ApiErrorKind::InvalidParams, e.to_string()).at("/view"))
+}
+
+/// Attaches a native window layer as the editor viewport that `viewport.present` draws into
+/// (in-process hosts only; run it on the engine thread, e.g. through `EngineHandle::run`).
+///
+/// # Safety
+/// The native object behind `target` must outlive the engine.
+pub unsafe fn attach_surface(
+    engine: &mut Engine,
+    target: concordia_rhi::SurfaceTarget,
+) -> Result<(), ApiError> {
+    let mut renderer = take_renderer(engine)?;
+    // SAFETY: forwarded from the caller.
+    let created = unsafe { renderer.create_surface(target) };
+    let old = engine
+        .state_mut::<RenderState>()
+        .and_then(|s| s.surface.take());
+    if let Some(old) = old {
+        renderer.destroy_surface(old);
+    }
+    let surface = created.map_err(api_error);
+    put_renderer(engine, renderer);
+    let surface = surface?;
+    if let Some(state) = engine.state_mut::<RenderState>() {
+        state.surface = Some(surface);
+    }
+    Ok(())
+}
+
+/// Draw `view` into the editor's native viewport (needs a host-attached window surface; elsewhere use capture.screenshot).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ViewportPresent;
+
+/// `viewport.present` params.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportPresentParams {
+    /// The viewpoint.
+    pub view: crate::View,
+    /// Width in physical pixels.
+    #[reflect(range(min = 1.0, max = 8192.0))]
+    pub width: u32,
+    /// Height in physical pixels.
+    #[reflect(range(min = 1.0, max = 8192.0))]
+    pub height: u32,
+    /// Which world: edit (default) or play.
+    #[serde(default)]
+    pub world: Option<WorldSel>,
+}
+
+/// `viewport.present` result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ViewportPresentResult {
+    /// False when the display had no free image (the frame was skipped).
+    pub presented: bool,
+}
+
+impl Method for ViewportPresent {
+    const NAME: &'static str = "viewport.present";
+    const MUTATES: bool = false;
+    type Params = ViewportPresentParams;
+    type Result = ViewportPresentResult;
+
+    fn call(
+        engine: &mut Engine,
+        _: &CallCtx,
+        p: ViewportPresentParams,
+    ) -> Result<ViewportPresentResult, ApiError> {
+        check_view(&p.view)?;
+        let surface = engine
+            .state::<RenderState>()
+            .and_then(|s| s.surface)
+            .ok_or_else(|| {
+                ApiError::new(
+                    ApiErrorKind::InvalidRequest,
+                    "no native viewport is attached",
+                )
+                .suggest(["use capture.screenshot (the editor streams it in a browser)".to_owned()])
+            })?;
+        let snapshot = RenderWorld::extract(engine.world(p.world.unwrap_or_default())?);
+        let mut renderer = take_renderer(engine)?;
+        let request = RenderRequest {
+            camera: None,
+            view: Some(p.view.clone()),
+            width: p.width,
+            height: p.height,
+        };
+        let presented = match engine.state_mut::<AssetDb>() {
+            Some(db) => renderer.present(&snapshot, db, &request, surface),
+            None => renderer.present(&snapshot, &mut MemoryAssets::default(), &request, surface),
+        };
+        put_renderer(engine, renderer);
+        Ok(ViewportPresentResult {
+            presented: presented.map_err(api_error)?,
+        })
+    }
 }
