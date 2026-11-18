@@ -31,6 +31,8 @@ jobs:
         run: just lint
       - name: Build WASM fixtures
         run: just wasm
+      - name: Build binaries used by the gate tests
+        run: cargo build -p concordia-mcp --bin concordia-mcp && cargo build -p concordia-cli --bin concordia
       - name: Tests
         run: cargo nextest run --workspace --profile ci --no-tests=fail
       - name: Doc tests
