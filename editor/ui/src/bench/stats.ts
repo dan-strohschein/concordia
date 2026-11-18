@@ -4,8 +4,9 @@
 export interface FrameRecord {
   seq: number | null;
   input_time_ms: number | null;
+  queued_ms?: number;
   cpu_ms: number;
-  submitted_ms: number;
+  submitted_ms: number | null;
   presented_ms: number | null;
 }
 

@@ -14,6 +14,13 @@ use concordia_shaders::{SlangToolchain, SlangcCompiler};
 use concordia_terra::SimClock;
 use serde::{Deserialize, Serialize};
 
+use std::collections::BTreeSet;
+
+use concordia_assets::AssetRef;
+
+pub use crate::frame_log::FrameRecord;
+use crate::frame_log::{FrameLog, push_frame, remove_frame, unix_ms};
+use crate::thread::{RenderThread, ViewportFrame};
 use crate::{Image, MemoryAssets, RenderError, RenderRequest, RenderWorld, Renderer};
 
 /// Creates the GPU device on first use (so engines start without one).
@@ -37,49 +44,17 @@ impl RenderModule {
     }
 }
 
-/// Engine-lifetime state: the device factory and, after the first capture, the renderer.
+/// Engine-lifetime state: the device factory and, once something renders, the render thread.
 struct RenderState {
     factory: DeviceFactory,
-    renderer: Option<Renderer>,
-    /// The editor's native viewport, once a host attached one.
-    surface: Option<concordia_rhi::Surface>,
+    thread: Option<RenderThread>,
+    /// Whether a host attached the editor's native viewport.
+    surface: bool,
+    /// Meshes and textures already sent to the render thread (it keeps them).
+    shipped: BTreeSet<AssetRef>,
     /// Recent native-viewport frames (for `viewport.stats`), keyed by frame number.
     frames: FrameLog,
     next_frame: u64,
-}
-
-type FrameLog = std::sync::Arc<std::sync::Mutex<std::collections::VecDeque<(u64, FrameRecord)>>>;
-
-/// One presented native-viewport frame.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
-pub struct FrameRecord {
-    /// The caller's tag for the view this frame shows.
-    pub seq: Option<u64>,
-    /// When the input behind this view happened (Unix ms, from the caller).
-    pub input_time_ms: Option<f64>,
-    /// CPU time spent rendering and submitting the frame.
-    pub cpu_ms: f64,
-    /// When the frame was submitted (Unix ms).
-    pub submitted_ms: f64,
-    /// When it reached the display (Unix ms); null if it has not (yet), or never did.
-    pub presented_ms: Option<f64>,
-}
-
-/// Frames kept for `viewport.stats`.
-const FRAME_RECORDS: usize = 4096;
-
-fn unix_ms(time: std::time::SystemTime) -> f64 {
-    time.duration_since(std::time::UNIX_EPOCH)
-        .map_or(0.0, |d| d.as_secs_f64() * 1000.0)
-}
-
-/// Updates frame `id` in the log, if it is still there.
-fn update_frame(log: &FrameLog, id: u64, f: impl FnOnce(&mut FrameRecord)) {
-    if let Ok(mut list) = log.lock()
-        && let Some((_, record)) = list.iter_mut().rev().find(|(i, _)| *i == id)
-    {
-        f(record);
-    }
 }
 
 impl EngineModule for RenderModule {
@@ -106,8 +81,9 @@ impl EngineModule for RenderModule {
     fn engine_state(&self) -> Option<Box<dyn std::any::Any + Send>> {
         Some(Box::new(RenderState {
             factory: self.factory.clone(),
-            renderer: None,
-            surface: None,
+            thread: None,
+            surface: false,
+            shipped: BTreeSet::new(),
             frames: FrameLog::default(),
             next_frame: 0,
         }))
@@ -190,20 +166,16 @@ impl Method for CaptureScreenshot {
         let camera = p.camera.as_ref().map(|c| c.resolve(world)).transpose()?;
         let sim_tick = world.resource::<SimClock>().map_or(0, |c| c.tick.0);
         let snapshot = RenderWorld::extract(world);
-        let mut renderer = take_renderer(engine)?;
         let request = RenderRequest {
             camera,
             view: p.view.clone(),
             width: p.width,
             height: p.height,
         };
-        let rendered = match engine.state_mut::<AssetDb>() {
-            Some(db) => renderer.render(&snapshot, db, &request),
-            None => renderer.render(&snapshot, &mut MemoryAssets::default(), &request),
-        };
-        let frame = renderer.frames();
-        put_renderer(engine, renderer);
-        let image = rendered.map_err(api_error)?;
+        let assets = ship(engine, &snapshot)?;
+        let (image, frame) = render_thread(engine)?
+            .capture(snapshot, assets, request)
+            .map_err(api_error)?;
         let actor = ctx
             .actor
             .as_ref()
@@ -220,24 +192,47 @@ impl Method for CaptureScreenshot {
     }
 }
 
-/// The renderer, created on first use (taken out so assets can be borrowed alongside).
-fn take_renderer(engine: &mut Engine) -> Result<Renderer, ApiError> {
+/// The render thread, started on first use (with its device and renderer).
+fn render_thread(engine: &mut Engine) -> Result<&RenderThread, ApiError> {
     let state = engine
         .state_mut::<RenderState>()
         .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render module has no state"))?;
-    if let Some(renderer) = state.renderer.take() {
-        return Ok(renderer);
+    if state.thread.is_none() {
+        let factory = state.factory.clone();
+        state.thread =
+            Some(RenderThread::spawn(move || make_renderer(&factory)).map_err(api_error)?);
     }
-    let device = (state.factory)().map_err(|e| api_error(RenderError::Gpu(e)))?;
-    let toolchain =
-        SlangToolchain::locate().map_err(|e| api_error(RenderError::Shader(e.to_string())))?;
-    Renderer::new(Arc::from(device), Box::new(SlangcCompiler::new(toolchain))).map_err(api_error)
+    state
+        .thread
+        .as_ref()
+        .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render thread did not start"))
 }
 
-fn put_renderer(engine: &mut Engine, renderer: Renderer) {
-    if let Some(state) = engine.state_mut::<RenderState>() {
-        state.renderer = Some(renderer);
+fn make_renderer(factory: &DeviceFactory) -> Result<Renderer, RenderError> {
+    let device = factory().map_err(RenderError::Gpu)?;
+    let toolchain = SlangToolchain::locate().map_err(|e| RenderError::Shader(e.to_string()))?;
+    Renderer::new(Arc::from(device), Box::new(SlangcCompiler::new(toolchain)))
+}
+
+/// The asset data `world` needs that the render thread has not been sent yet.
+fn ship(engine: &mut Engine, world: &RenderWorld) -> Result<MemoryAssets, ApiError> {
+    let shipped = engine
+        .state_mut::<RenderState>()
+        .map(|s| std::mem::take(&mut s.shipped))
+        .unwrap_or_default();
+    let held = |r: &AssetRef| shipped.contains(r);
+    let resolved = match engine.state_mut::<AssetDb>() {
+        Some(db) => crate::resolve(world, db, &held),
+        None => crate::resolve(world, &mut MemoryAssets::default(), &held),
+    };
+    let mut shipped = shipped;
+    if let Ok(assets) = &resolved {
+        shipped.extend(assets.cached_kinds().cloned());
     }
+    if let Some(state) = engine.state_mut::<RenderState>() {
+        state.shipped = shipped;
+    }
+    resolved.map_err(api_error)
 }
 
 /// Deterministic PNG bytes (RGBA8, default compression).
@@ -381,20 +376,10 @@ pub unsafe fn attach_surface(
     engine: &mut Engine,
     target: concordia_rhi::SurfaceTarget,
 ) -> Result<(), ApiError> {
-    let mut renderer = take_renderer(engine)?;
-    // SAFETY: forwarded from the caller.
-    let created = unsafe { renderer.create_surface(target) };
-    let old = engine
-        .state_mut::<RenderState>()
-        .and_then(|s| s.surface.take());
-    if let Some(old) = old {
-        renderer.destroy_surface(old);
-    }
-    let surface = created.map_err(api_error);
-    put_renderer(engine, renderer);
-    let surface = surface?;
+    // SAFETY: forwarded from the caller (the engine owns the render thread).
+    unsafe { render_thread(engine)?.attach(target) }.map_err(api_error)?;
     if let Some(state) = engine.state_mut::<RenderState>() {
-        state.surface = Some(surface);
+        state.surface = true;
     }
     Ok(())
 }
@@ -429,7 +414,8 @@ pub struct ViewportPresentParams {
 /// `viewport.present` result.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 pub struct ViewportPresentResult {
-    /// False when the display had no free image (the frame was skipped).
+    /// The frame is queued for the render thread, which presents the newest queued view at
+    /// display pace (see `viewport.stats` for what reached the screen).
     pub presented: bool,
 }
 
@@ -445,81 +431,53 @@ impl Method for ViewportPresent {
         p: ViewportPresentParams,
     ) -> Result<ViewportPresentResult, ApiError> {
         check_view(&p.view)?;
-        let surface = engine
-            .state::<RenderState>()
-            .and_then(|s| s.surface)
-            .ok_or_else(|| {
-                ApiError::new(
-                    ApiErrorKind::InvalidRequest,
-                    "no native viewport is attached",
-                )
-                .suggest(["use capture.screenshot (the editor streams it in a browser)".to_owned()])
-            })?;
-        let snapshot = RenderWorld::extract(engine.world(p.world.unwrap_or_default())?);
-        let mut renderer = take_renderer(engine)?;
+        if !engine.state::<RenderState>().is_some_and(|s| s.surface) {
+            return Err(ApiError::new(
+                ApiErrorKind::InvalidRequest,
+                "no native viewport is attached",
+            )
+            .suggest(["use capture.screenshot (the editor streams it in a browser)".to_owned()]));
+        }
+        let world = RenderWorld::extract(engine.world(p.world.unwrap_or_default())?);
+        let assets = ship(engine, &world)?;
         let request = RenderRequest {
             camera: None,
             view: Some(p.view.clone()),
             width: p.width,
             height: p.height,
         };
-        let (log, id) = begin_frame(engine, &p);
-        let start = std::time::Instant::now();
-        let on_presented = presented_callback(log.clone(), id);
-        let presented = match engine.state_mut::<AssetDb>() {
-            Some(db) => renderer.present_with(&snapshot, db, &request, surface, Some(on_presented)),
-            None => renderer.present_with(
-                &snapshot,
-                &mut MemoryAssets::default(),
-                &request,
-                surface,
-                Some(on_presented),
-            ),
+        let (log, id) = queue_record(engine, &p);
+        let frame = ViewportFrame {
+            world,
+            assets,
+            request,
+            log: log.clone(),
+            id,
         };
-        put_renderer(engine, renderer);
-        let presented = presented.map_err(api_error);
-        if matches!(presented, Ok(true)) {
-            let cpu_ms = start.elapsed().as_secs_f64() * 1000.0;
-            update_frame(&log, id, |f| f.cpu_ms = cpu_ms);
-        } else if let Ok(mut list) = log.lock() {
-            list.retain(|(i, _)| *i != id);
+        if let Err(e) = render_thread(engine).and_then(|t| t.present(frame).map_err(api_error)) {
+            remove_frame(&log, id);
+            return Err(e);
         }
-        Ok(ViewportPresentResult {
-            presented: presented?,
-        })
+        Ok(ViewportPresentResult { presented: true })
     }
 }
 
-/// Logs a new native-viewport frame (before rendering, so a fast display callback finds it).
-fn begin_frame(engine: &mut Engine, p: &ViewportPresentParams) -> (FrameLog, u64) {
+/// Logs a newly queued native-viewport frame.
+fn queue_record(engine: &mut Engine, p: &ViewportPresentParams) -> (FrameLog, u64) {
     let Some(state) = engine.state_mut::<RenderState>() else {
         return (FrameLog::default(), 0);
     };
     state.next_frame += 1;
-    let id = state.next_frame;
-    if let Ok(mut list) = state.frames.lock() {
-        if list.len() == FRAME_RECORDS {
-            list.pop_front();
-        }
-        let record = FrameRecord {
-            seq: p.seq,
-            input_time_ms: p.input_time_ms,
-            cpu_ms: 0.0,
-            submitted_ms: unix_ms(std::time::SystemTime::now()),
-            presented_ms: None,
-        };
-        list.push_back((id, record));
-    }
-    (state.frames.clone(), id)
-}
-
-/// Records when frame `id` reached the display.
-fn presented_callback(log: FrameLog, id: u64) -> concordia_rhi::PresentedCallback {
-    Box::new(move |at| {
-        if let Some(at) = at {
-            update_frame(&log, id, |f| f.presented_ms = Some(unix_ms(at)));
-        }
-    })
+    let record = FrameRecord {
+        seq: p.seq,
+        input_time_ms: p.input_time_ms,
+        queued_ms: unix_ms(std::time::SystemTime::now()),
+        cpu_ms: 0.0,
+        submitted_ms: None,
+        presented_ms: None,
+    };
+    push_frame(&state.frames, state.next_frame, record);
+    (state.frames.clone(), state.next_frame)
 }
 
 /// Recent native-viewport frames: input tag, CPU time, submission and display times.

@@ -10,10 +10,13 @@ use concordia_rhi::{
     QueueKind, RhiError, SampleCount, Submit, Texture, TextureDesc, TextureUsage,
 };
 
-/// Copies recorded now and submitted together by [`Uploads::flush`].
+/// Copies recorded now and submitted together by [`Uploads::flush`], or recorded at the start of
+/// a frame by [`Uploads::into_commands`].
 pub(crate) struct Uploads {
     list: CommandList,
     staging: Vec<Buffer>,
+    buffers: Vec<Buffer>,
+    textures: Vec<Texture>,
 }
 
 impl Uploads {
@@ -21,6 +24,8 @@ impl Uploads {
         Self {
             list: CommandList::new("uploads"),
             staging: Vec::new(),
+            buffers: Vec::new(),
+            textures: Vec::new(),
         }
     }
 
@@ -59,6 +64,7 @@ impl Uploads {
             label: label.into(),
         })?;
         let src = self.stage(device, bytes)?;
+        self.buffers.push(gpu);
         self.list.push(Command::CopyBuffer {
             src,
             src_offset: 0,
@@ -92,6 +98,7 @@ impl Uploads {
             usage,
             label: label.into(),
         })?;
+        self.textures.push(texture);
         for (mip, bytes) in data.mips.iter().enumerate() {
             let w = (data.width >> mip).max(1);
             let src = self.stage(device, bytes)?;
@@ -105,6 +112,16 @@ impl Uploads {
             });
         }
         Ok(texture)
+    }
+
+    /// The copies followed by a barrier making them visible to shaders, and the staging buffers,
+    /// which must live until the GPU has run the commands.
+    pub(crate) fn into_commands(self) -> (CommandList, Vec<Buffer>) {
+        let mut list = self.list;
+        if !list.commands.is_empty() {
+            list.push(upload_barrier(&self.buffers, &self.textures));
+        }
+        (list, self.staging)
     }
 
     /// Submits the copies, waits, and frees the staging buffers.
@@ -211,5 +228,39 @@ impl GpuAssets {
             .for_each(|(t, _)| device.destroy_texture(*t));
         self.meshes.clear();
         self.textures.clear();
+    }
+}
+
+/// Copy writes before shader reads, for freshly uploaded buffers and textures.
+fn upload_barrier(buffers: &[Buffer], textures: &[Texture]) -> Command {
+    use concordia_rhi::{Access, AccessFlags, BufferBarrier, Layout, Stages, TextureBarrier};
+    let copied = |layout| Access {
+        stages: Stages::COPY,
+        access: AccessFlags::COPY_WRITE,
+        layout,
+    };
+    let read = |layout| Access {
+        stages: Stages::VERTEX | Stages::FRAGMENT | Stages::COMPUTE,
+        access: AccessFlags::SHADER_READ,
+        layout,
+    };
+    Command::Barrier {
+        buffers: buffers
+            .iter()
+            .map(|&buffer| BufferBarrier {
+                buffer,
+                before: copied(Layout::General),
+                after: read(Layout::General),
+            })
+            .collect(),
+        textures: textures
+            .iter()
+            .map(|&texture| TextureBarrier {
+                texture,
+                before: copied(Layout::CopyDst),
+                after: read(Layout::ShaderRead),
+                aliasing: None,
+            })
+            .collect(),
     }
 }

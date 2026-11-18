@@ -590,3 +590,59 @@ fn renderer_presents_frames_to_a_window_surface() {
         "offscreen rendering still works alongside"
     );
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn presented_frames_overlap_the_gpu_and_retire_their_memory() {
+    let Some(mut r) = renderer() else { return };
+    let mut s = Scene::new();
+    let red = s.material("red", unlit([0.8, 0.1, 0.1, 1.0]));
+    s.mesh("cube", red, Vec3::ZERO, Quat::IDENTITY, Vec3::ONE);
+    s.camera(
+        Vec3::new(0.0, 0.0, 4.0),
+        Vec3::ZERO,
+        clamp_camera(Projection::default(), Msaa::X4),
+    );
+    let layer = objc2_quartz_core::CAMetalLayer::new();
+    // SAFETY: the layer outlives the surface, which the renderer releases when dropped.
+    let surface = unsafe {
+        r.create_surface(concordia_rhi::SurfaceTarget::MetalLayer(
+            std::ptr::NonNull::from(&*layer).cast(),
+        ))
+    }
+    .unwrap();
+    let rw = RenderWorld::extract(&s.world);
+    let request = RenderRequest {
+        camera: None,
+        view: None,
+        width: 512,
+        height: 512,
+    };
+    assert!(r.present(&rw, &mut s.assets, &request, surface).unwrap());
+    assert_eq!(
+        r.frames_in_flight(),
+        1,
+        "presenting returns without waiting for the GPU"
+    );
+    for _ in 0..5 {
+        r.present(&rw, &mut s.assets, &request, surface).unwrap();
+    }
+    let warm = r.allocated_bytes().expect("Metal reports allocations");
+    for _ in 0..40 {
+        r.present(&rw, &mut s.assets, &request, surface).unwrap();
+        assert!(r.frames_in_flight() <= concordia_render::Renderer::MAX_FRAMES_IN_FLIGHT);
+    }
+    let grown = r.allocated_bytes().unwrap().saturating_sub(warm);
+    assert!(
+        grown < 64 << 20,
+        "40 more frames grew GPU memory by {} MB",
+        grown >> 20
+    );
+    let image = r.render(&rw, &mut s.assets, &request).unwrap();
+    assert_eq!(
+        r.frames_in_flight(),
+        0,
+        "a readback finishes every earlier frame"
+    );
+    assert_eq!(pixel(&image, 256, 256)[..3], [231, 89, 89][..]);
+}

@@ -10,11 +10,11 @@ export interface MethodViewportStatsResult {
   frames: FrameRecord[];
 }
 /**
- * One presented native-viewport frame.
+ * One native-viewport frame.
  */
 export interface FrameRecord {
   /**
-   * CPU time spent rendering and submitting the frame.
+   * CPU time the render thread spent rendering and submitting the frame.
    */
   cpu_ms: number;
   /**
@@ -26,11 +26,15 @@ export interface FrameRecord {
    */
   presented_ms?: null | number;
   /**
+   * When the engine queued the frame for the render thread (Unix ms).
+   */
+  queued_ms: number;
+  /**
    * The caller's tag for the view this frame shows.
    */
   seq?: null | number;
   /**
-   * When the frame was submitted (Unix ms).
+   * When the frame was submitted to the GPU (Unix ms); null until it renders.
    */
-  submitted_ms: number;
+  submitted_ms?: null | number;
 }

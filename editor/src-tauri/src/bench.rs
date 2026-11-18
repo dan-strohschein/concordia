@@ -47,3 +47,26 @@ pub fn rss_mb(pid: u32) -> Option<f64> {
     let kb: f64 = String::from_utf8_lossy(&out.stdout).trim().parse().ok()?;
     Some(kb / 1024.0)
 }
+
+/// Waits (up to 5 s) until the native viewport has rendered and submitted frame `seq`.
+pub fn wait_until_submitted(session: &crate::ShellSession<'_>, seq: u64) -> Result<(), String> {
+    let start = std::time::Instant::now();
+    while start.elapsed() < std::time::Duration::from_secs(5) {
+        let stats = session.call("viewport.stats", json!({}))?;
+        let frames = stats["frames"].as_array().cloned().unwrap_or_default();
+        if frames
+            .iter()
+            .any(|f| f["seq"] == seq && !f["submitted_ms"].is_null())
+        {
+            return Ok(());
+        }
+        if frames
+            .iter()
+            .any(|f| f["seq"].as_u64().is_some_and(|s| s > seq))
+        {
+            return Ok(()); // superseded
+        }
+        std::thread::sleep(std::time::Duration::from_micros(250));
+    }
+    Err(format!("frame {seq} was never rendered"))
+}

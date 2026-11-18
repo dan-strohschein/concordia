@@ -73,6 +73,80 @@ impl MemoryAssets {
         self.textures.insert(r.clone(), texture);
         r
     }
+
+    /// Whether any asset under `reference` is stored.
+    pub fn contains(&self, reference: &AssetRef) -> bool {
+        self.meshes.contains_key(reference)
+            || self.materials.contains_key(reference)
+            || self.textures.contains_key(reference)
+    }
+
+    /// Moves every asset of `other` in (replacing same references).
+    pub fn merge(&mut self, other: MemoryAssets) {
+        self.meshes.extend(other.meshes);
+        self.materials.extend(other.materials);
+        self.textures.extend(other.textures);
+    }
+
+    /// References of the stored meshes and textures (the GPU-cached kinds).
+    pub fn cached_kinds(&self) -> impl Iterator<Item = &AssetRef> {
+        self.meshes.keys().chain(self.textures.keys())
+    }
+
+    pub(crate) fn meshes(&self) -> impl Iterator<Item = (&AssetRef, &MeshData)> {
+        self.meshes.iter()
+    }
+
+    pub(crate) fn materials(&self) -> impl Iterator<Item = (&AssetRef, &MaterialData)> {
+        self.materials.iter()
+    }
+
+    pub(crate) fn textures(&self) -> impl Iterator<Item = (&AssetRef, &TextureData)> {
+        self.textures.iter()
+    }
+}
+
+/// The CPU asset data a frame of `world` needs: every mesh and texture (material and
+/// environment) that `held` does not report as already loaded, and every material (small, and
+/// they can change).
+pub fn resolve(
+    world: &crate::RenderWorld,
+    source: &mut dyn AssetSource,
+    held: &dyn Fn(&AssetRef) -> bool,
+) -> Result<MemoryAssets, crate::RenderError> {
+    let fail = |r: &AssetRef| {
+        let reference = r.to_string();
+        move |message: String| crate::RenderError::Asset { reference, message }
+    };
+    let mut out = MemoryAssets::default();
+    let wanted = |out: &MemoryAssets, r: &AssetRef| !held(r) && !out.contains(r);
+    for item in &world.draws {
+        if wanted(&out, &item.mesh) {
+            let data = source.mesh(&item.mesh).map_err(fail(&item.mesh))?;
+            out.meshes.insert(item.mesh.clone(), data);
+        }
+        if !out.materials.contains_key(&item.material) {
+            let material = source
+                .material(&item.material)
+                .map_err(fail(&item.material))?;
+            for t in crate::frame::material_textures(&material) {
+                if wanted(&out, t) {
+                    out.textures
+                        .insert(t.clone(), source.texture(t).map_err(fail(t))?);
+                }
+            }
+            out.materials.insert(item.material.clone(), material);
+        }
+    }
+    if let Some(env) = &world.environment
+        && wanted(&out, &env.map)
+    {
+        out.textures.insert(
+            env.map.clone(),
+            source.texture(&env.map).map_err(fail(&env.map))?,
+        );
+    }
+    Ok(out)
 }
 
 fn missing(reference: &AssetRef) -> String {

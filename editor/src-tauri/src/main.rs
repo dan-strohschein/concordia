@@ -50,6 +50,8 @@ async fn bench_native_orbit(
                 "viewport.present",
                 serde_json::json!({"view": view, "width": width, "height": height, "seq": i + 1, "input_time_ms": now.as_secs_f64() * 1000.0}),
             )?;
+            // Like a native UI: the next camera goes once the render thread has taken this one.
+            concordia_editor::bench::wait_until_submitted(&session, i as u64 + 1)?;
         }
         Ok(())
     })
@@ -271,7 +273,21 @@ fn smoke_test(host: &EngineHost, shell: &Shell) -> Result<String, String> {
         presented += usize::from(r["presented"] == true);
     }
     if presented < 10 {
-        return Err(format!("only {presented} frames presented"));
+        return Err(format!("only {presented} frames queued"));
+    }
+    let start = Instant::now();
+    let rendered = loop {
+        let stats = host.call("viewport.stats", serde_json::json!({}))?;
+        let rendered = stats["frames"].as_array().map_or(0, |f| {
+            f.iter().filter(|f| !f["submitted_ms"].is_null()).count()
+        });
+        if rendered > 0 || start.elapsed() > Duration::from_secs(10) {
+            break rendered;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    if rendered == 0 {
+        return Err("no viewport frame was rendered".into());
     }
     let capture = host.call(
         "capture.screenshot",
@@ -281,7 +297,9 @@ fn smoke_test(host: &EngineHost, shell: &Shell) -> Result<String, String> {
     if colors < 8 {
         return Err(format!("the capture is nearly uniform ({colors} colors)"));
     }
-    Ok(format!("presented={presented} capture_colors={colors}"))
+    Ok(format!(
+        "queued={presented} rendered={rendered} capture_colors={colors}"
+    ))
 }
 
 fn distinct_colors(png_base64: &str) -> Result<usize, String> {

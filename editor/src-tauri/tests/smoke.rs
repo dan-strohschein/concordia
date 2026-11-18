@@ -37,5 +37,5 @@ fn editor_shell_smoke_renders_native_viewport() {
         output.status.success(),
         "stdout:\n{stdout}\nstderr:\n{stderr}"
     );
-    assert!(stdout.contains("SMOKE ok presented=10"), "{stdout}");
+    assert!(stdout.contains("SMOKE ok queued=10 rendered="), "{stdout}");
 }

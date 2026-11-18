@@ -15,14 +15,11 @@ use concordia_rhi::{
 };
 use concordia_shaders::ShaderCompiler;
 
-use crate::assets::AssetSource;
+use crate::assets::{AssetSource, MemoryAssets};
 use crate::camera::{eye, view_matrix};
 use crate::cluster::{ClusterBuffers, ClusterCuller, ClusterGrid, ClusterSettings};
 use crate::environment::EnvironmentCache;
-use crate::frame::{
-    DrawPush, FrameParams, IblParams, frame_block, instance_block, material_block,
-    material_textures,
-};
+use crate::frame::{DrawPush, FrameParams, IblParams, frame_block, instance_block, material_block};
 use crate::gpu::{GpuAssets, GpuMesh, Uploads};
 use crate::graph::{GraphTexture, PassContext, RenderGraph, Use};
 use crate::lighting::punctual_lights;
@@ -75,6 +72,31 @@ pub struct Renderer {
     stats: RenderStats,
     assets: GpuAssets,
     frames: u64,
+    /// Signalled with a frame's number when the GPU finishes a presented frame.
+    timeline: Option<concordia_rhi::Timeline>,
+    in_flight: std::collections::VecDeque<InFlight>,
+    /// Transient heaps of retired frames, reused by later ones.
+    free_heaps: Vec<(concordia_rhi::Heap, NonZeroU64)>,
+}
+
+/// A presented frame the GPU may still be working on.
+struct InFlight {
+    /// The timeline value its commands signal.
+    value: u64,
+    resources: FrameResources,
+    /// Per-cluster overflow counts, read when the frame retires.
+    overflow: Buffer,
+    clusters: u64,
+}
+
+/// A frame's cluster overflow: read now, or once a presented frame retires.
+enum Overflow {
+    Read(u32),
+    Pending {
+        buffer: Buffer,
+        clusters: u64,
+        value: u64,
+    },
 }
 
 /// Where a draw item goes this frame.
@@ -102,6 +124,8 @@ struct FramePlan<'a> {
     /// Skybox pipeline and push constants, drawn first in the forward pass.
     sky: Option<(Pipeline, Vec<u8>)>,
     output: Output,
+    /// Upload copies (and their barrier), recorded first.
+    uploads: CommandList,
 }
 
 /// The size and destination of one frame.
@@ -206,7 +230,23 @@ impl Renderer {
             stats: RenderStats::default(),
             assets: GpuAssets::default(),
             frames: 0,
+            timeline: None,
+            in_flight: std::collections::VecDeque::new(),
+            free_heaps: Vec::new(),
         })
+    }
+
+    /// Presented frames the GPU may still be rendering, at most.
+    pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
+
+    /// Presented frames not yet known to be finished (diagnostics).
+    pub fn frames_in_flight(&self) -> usize {
+        self.in_flight.len()
+    }
+
+    /// GPU memory the device has allocated, if the backend reports it (diagnostics).
+    pub fn allocated_bytes(&self) -> Option<u64> {
+        self.device.allocated_bytes()
     }
 
     /// Frames rendered so far.
@@ -314,6 +354,11 @@ impl Renderer {
         };
         let aspect = width.get() as f32 / height.get() as f32;
         let grid = ClusterGrid::new(self.clusters, &view.camera.projection, aspect)?;
+        let keep = match output {
+            Output::Surface { .. } => Self::MAX_FRAMES_IN_FLIGHT - 1,
+            Output::Readback => 0,
+        };
+        self.retire(keep)?;
         let mut frame = FrameResources::default();
         let result = self.render_frame(
             world,
@@ -326,9 +371,35 @@ impl Renderer {
             },
             &mut frame,
         );
-        frame.release(self.device.as_ref());
         self.frames += 1;
-        result
+        match result {
+            Ok((
+                image,
+                Overflow::Pending {
+                    buffer,
+                    clusters,
+                    value,
+                },
+            )) => {
+                self.in_flight.push_back(InFlight {
+                    value,
+                    resources: frame,
+                    overflow: buffer,
+                    clusters,
+                });
+                Ok(image)
+            }
+            Ok((image, Overflow::Read(_))) => {
+                frame.release(self.device.as_ref(), &mut self.free_heaps);
+                Ok(image)
+            }
+            Err(e) => {
+                // A failed frame may have submitted nothing; wait so its resources are safe to free.
+                let _ = self.device.wait_idle();
+                frame.release(self.device.as_ref(), &mut self.free_heaps);
+                Err(e)
+            }
+        }
     }
 
     /// Light and overflow counts of the last frame.
@@ -344,7 +415,7 @@ impl Renderer {
         grid: &ClusterGrid,
         target: FrameTarget,
         frame: &mut FrameResources,
-    ) -> Result<Option<Image>, RenderError> {
+    ) -> Result<(Option<Image>, Overflow), RenderError> {
         let FrameTarget {
             size: (width, height),
             output,
@@ -357,7 +428,8 @@ impl Renderer {
             Msaa::X4 => SampleCount::X4,
         };
         let mut up = Uploads::new();
-        let materials = self.load_assets(world, assets, &mut up)?;
+        let mut resolved = crate::assets::resolve(world, assets, &|r| self.holds(r))?;
+        let materials = self.load_assets(&resolved, &mut up)?;
         let device = self.device.clone();
         let device = device.as_ref();
         let exposure = view.camera.exposure();
@@ -388,7 +460,7 @@ impl Renderer {
             Some(env) => {
                 let gpu = self
                     .environments
-                    .ensure(device, &mut up, assets, &env.map)?;
+                    .ensure(device, &mut up, &mut resolved, &env.map)?;
                 let mut levels = [0u32; 6];
                 gpu.levels
                     .iter()
@@ -438,7 +510,10 @@ impl Renderer {
         } = self.instance_data(world, &materials, &view_m);
         let inst_buf = frame.keep(up.buffer(device, &instances, "instances")?);
         let mat_buf = frame.keep(up.buffer(device, &material_bytes, "materials")?);
-        up.flush(device)?;
+        let (uploads, staging) = up.into_commands();
+        staging.into_iter().for_each(|b| {
+            frame.keep(b);
+        });
         let (frame_i, inst_i, mat_i) = (index(frame_buf)?, index(inst_buf)?, index(mat_buf)?);
         let mut draws = Vec::with_capacity(order.len());
         let mut casters = Vec::new();
@@ -513,17 +588,15 @@ impl Renderer {
             shadow,
             sky,
             output,
+            uploads,
         };
         let (image, overflow) = self.execute(view, plan, frame)?;
-        self.stats = RenderStats {
-            punctual_lights: world.punctual.len(),
-            dropped_lights: lights.dropped,
-            cluster_overflow: overflow,
-        };
-        if overflow > 0 {
-            tracing::warn!(target: "concordia::render", overflow, "clusters overflowed; raise max_per_cluster or reduce light ranges");
+        self.stats.punctual_lights = world.punctual.len();
+        self.stats.dropped_lights = lights.dropped;
+        if let Overflow::Read(count) = overflow {
+            self.record_overflow(count);
         }
-        Ok(image)
+        Ok((image, overflow))
     }
 
     /// Cascades, settings and shadow maps when the first directional light casts shadows.
@@ -560,41 +633,38 @@ impl Renderer {
     }
 
     /// Uploads missing meshes and textures; returns this frame's materials (deduplicated, in order).
+    /// Uploads the meshes and textures of `resolved` (what the GPU lacks) and returns its materials.
     fn load_assets(
         &mut self,
-        world: &RenderWorld,
-        assets: &mut dyn AssetSource,
+        resolved: &MemoryAssets,
         up: &mut Uploads,
     ) -> Result<BTreeMap<AssetRef, MaterialData>, RenderError> {
         let device = self.device.as_ref();
-        let fail = |r: &AssetRef, message: String| RenderError::Asset {
-            reference: r.to_string(),
-            message,
-        };
-        let mut materials = BTreeMap::new();
-        for item in &world.draws {
-            if !self.assets.meshes.contains_key(&item.mesh) {
-                let data = assets.mesh(&item.mesh).map_err(|m| fail(&item.mesh, m))?;
-                let mesh = GpuMesh::upload(device, up, &data, &item.mesh.to_string())?;
-                self.assets.meshes.insert(item.mesh.clone(), mesh);
-            }
-            if !materials.contains_key(&item.material) {
-                let material = assets
-                    .material(&item.material)
-                    .map_err(|m| fail(&item.material, m))?;
-                for t in material_textures(&material) {
-                    if !self.assets.textures.contains_key(t) {
-                        let data = assets.texture(t).map_err(|m| fail(t, m))?;
-                        let texture = up.texture(device, &data, &t.to_string())?;
-                        self.assets
-                            .textures
-                            .insert(t.clone(), (texture, device.texture_index(texture)?.0));
-                    }
-                }
-                materials.insert(item.material.clone(), material);
-            }
+        for (reference, data) in resolved.meshes() {
+            let mesh = GpuMesh::upload(device, up, data, &reference.to_string())?;
+            self.assets.meshes.insert(reference.clone(), mesh);
         }
-        Ok(materials)
+        for (reference, data) in resolved.textures() {
+            if self.environments.holds(reference) {
+                continue;
+            }
+            let texture = up.texture(device, data, &reference.to_string())?;
+            self.assets.textures.insert(
+                reference.clone(),
+                (texture, device.texture_index(texture)?.0),
+            );
+        }
+        Ok(resolved
+            .materials()
+            .map(|(r, m)| (r.clone(), m.clone()))
+            .collect())
+    }
+
+    /// Whether the GPU already holds the mesh, texture or environment `reference`.
+    fn holds(&self, reference: &AssetRef) -> bool {
+        self.assets.meshes.contains_key(reference)
+            || self.assets.textures.contains_key(reference)
+            || self.environments.holds(reference)
     }
 
     /// Instance and material blocks plus the draw order: opaque draws (culled pipelines first, then
@@ -659,7 +729,7 @@ impl Renderer {
         view: &CameraView,
         plan: FramePlan<'_>,
         frame: &mut FrameResources,
-    ) -> Result<(Option<Image>, u32), RenderError> {
+    ) -> Result<(Option<Image>, Overflow), RenderError> {
         let FramePlan {
             draws,
             samples,
@@ -668,6 +738,7 @@ impl Renderer {
             shadow,
             sky,
             output,
+            uploads,
         } = plan;
         let job = &job;
         let device = self.device.clone();
@@ -732,8 +803,9 @@ impl Renderer {
         };
         let compiled =
             graph.compile(&|d: &TextureDesc| device.texture_heap_footprint(d).unwrap_or((0, 1)))?;
-        let transients = frame.place(device, &graph, &compiled)?;
-        let mut list = CommandList::new("frame");
+        let transients = frame.place(device, &graph, &compiled, &mut self.free_heaps)?;
+        let mut list = uploads;
+        list.label = "frame".into();
         let fragment_read = Access {
             stages: Stages::FRAGMENT,
             access: AccessFlags::SHADER_READ,
@@ -754,25 +826,31 @@ impl Renderer {
             dst_offset: 0,
             size: clusters * 4,
         });
-        match output {
-            Output::Readback => device.submit(Submit {
-                queue: QueueKind::Graphics,
-                commands: &list,
-                wait: &[],
-                signal: &[],
-            })?,
-            Output::Surface { surface, .. } => {
-                let on_presented = self.on_presented.take();
-                device.present(
-                    surface,
-                    concordia_rhi::Present {
-                        commands: &list,
-                        signal: &[],
-                        on_presented,
-                    },
-                )?
-            }
+        if let Output::Surface { surface, .. } = output {
+            let value = self.frames + 1;
+            let timeline = self.timeline(device)?;
+            let on_presented = self.on_presented.take();
+            device.present(
+                surface,
+                concordia_rhi::Present {
+                    commands: &list,
+                    signal: &[(timeline, value)],
+                    on_presented,
+                },
+            )?;
+            let pending = Overflow::Pending {
+                buffer: overflow_rb,
+                clusters,
+                value,
+            };
+            return Ok((None, pending));
         }
+        device.submit(Submit {
+            queue: QueueKind::Graphics,
+            commands: &list,
+            wait: &[],
+            signal: &[],
+        })?;
         device.wait_idle()?;
         let image = match readback {
             Some(buffer) => Some(Image {
@@ -782,20 +860,72 @@ impl Renderer {
             }),
             None => None,
         };
-        let dropped = device.read_buffer(overflow_rb, 0, clusters * 4)?;
-        let overflow = dropped
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .map(|w| u32::from_le_bytes(*w))
-            .sum();
-        Ok((image, overflow))
+        Ok((
+            image,
+            Overflow::Read(read_overflow(device, overflow_rb, clusters)?),
+        ))
+    }
+
+    /// The presented-frame timeline (created on first use).
+    fn timeline(&mut self, device: &dyn Device) -> Result<concordia_rhi::Timeline, RenderError> {
+        match self.timeline {
+            Some(t) => Ok(t),
+            None => {
+                let t = device.create_timeline(0)?;
+                self.timeline = Some(t);
+                Ok(t)
+            }
+        }
+    }
+
+    fn record_overflow(&mut self, overflow: u32) {
+        self.stats.cluster_overflow = overflow;
+        if overflow > 0 {
+            tracing::warn!(target: "concordia::render", overflow, "clusters overflowed; raise max_per_cluster or reduce light ranges");
+        }
+    }
+
+    /// Retires finished presented frames; with `wait`, first waits until at most `keep` remain.
+    fn retire(&mut self, keep: usize) -> Result<(), RenderError> {
+        let device = self.device.clone();
+        if let (Some(timeline), Some(oldest)) = (
+            self.timeline,
+            self.in_flight
+                .len()
+                .checked_sub(keep + 1)
+                .and_then(|i| self.in_flight.get(i)),
+        ) {
+            let ready = device.wait_timeline(timeline, oldest.value, FRAME_TIMEOUT)?;
+            if !ready {
+                return Err(RenderError::Gpu(concordia_rhi::RhiError::invalid(
+                    "present",
+                    "the GPU did not finish a frame within 10 s",
+                )));
+            }
+        }
+        let done = match self.timeline {
+            Some(t) => device.timeline_value(t)?,
+            None => return Ok(()),
+        };
+        while self.in_flight.front().is_some_and(|f| f.value <= done) {
+            let Some(f) = self.in_flight.pop_front() else {
+                break;
+            };
+            let overflow = read_overflow(device.as_ref(), f.overflow, f.clusters);
+            f.resources.release(device.as_ref(), &mut self.free_heaps);
+            self.record_overflow(overflow?);
+        }
+        Ok(())
     }
 }
 
 impl Drop for Renderer {
     fn drop(&mut self) {
         let _ = self.device.wait_idle();
+        let _ = self.retire(0);
+        self.free_heaps
+            .drain(..)
+            .for_each(|(heap, _)| self.device.destroy_heap(heap));
         self.assets.destroy(self.device.as_ref());
         self.shadow_maps.destroy(self.device.as_ref());
         self.environments.destroy(self.device.as_ref());
@@ -1007,7 +1137,7 @@ fn add_tonemap(
 struct FrameResources {
     buffers: Vec<Buffer>,
     textures: Vec<Texture>,
-    heap: Option<concordia_rhi::Heap>,
+    heap: Option<(concordia_rhi::Heap, NonZeroU64)>,
 }
 
 impl FrameResources {
@@ -1027,15 +1157,26 @@ impl FrameResources {
         device: &dyn Device,
         graph: &RenderGraph,
         compiled: &crate::graph::CompiledGraph,
+        free: &mut Vec<(concordia_rhi::Heap, NonZeroU64)>,
     ) -> Result<BTreeMap<GraphTexture, Texture>, RenderError> {
         let Some(size) = NonZeroU64::new(compiled.heap_size()) else {
             return Ok(BTreeMap::new());
         };
-        let heap = device.create_heap(&HeapDesc {
-            size,
-            label: "frame transients".into(),
-        })?;
+        let heap = match free
+            .iter()
+            .position(|(_, s)| *s >= size && s.get() <= size.get() * 2)
+        {
+            Some(i) => free.swap_remove(i),
+            None => (
+                device.create_heap(&HeapDesc {
+                    size,
+                    label: "frame transients".into(),
+                })?,
+                size,
+            ),
+        };
         self.heap = Some(heap);
+        let heap = heap.0;
         let mut placed = BTreeMap::new();
         for (t, placement) in compiled.placements() {
             let texture =
@@ -1045,8 +1186,8 @@ impl FrameResources {
         Ok(placed)
     }
 
-    fn release(self, device: &dyn Device) {
-        let _ = device.wait_idle();
+    /// Frees the frame's resources (the GPU must be done with them) and recycles its heap.
+    fn release(self, device: &dyn Device, free: &mut Vec<(concordia_rhi::Heap, NonZeroU64)>) {
         self.textures
             .into_iter()
             .for_each(|t| device.destroy_texture(t));
@@ -1054,7 +1195,25 @@ impl FrameResources {
             .into_iter()
             .for_each(|b| device.destroy_buffer(b));
         if let Some(heap) = self.heap {
-            device.destroy_heap(heap);
+            free.push(heap);
+            if free.len() > Renderer::MAX_FRAMES_IN_FLIGHT + 1 {
+                let (oldest, _) = free.remove(0);
+                device.destroy_heap(oldest);
+            }
         }
     }
+}
+
+/// How long a presented frame may take before the renderer reports the GPU stuck.
+const FRAME_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Sums the per-cluster overflow counts copied into `buffer`.
+fn read_overflow(device: &dyn Device, buffer: Buffer, clusters: u64) -> Result<u32, RenderError> {
+    let dropped = device.read_buffer(buffer, 0, clusters * 4)?;
+    Ok(dropped
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|w| u32::from_le_bytes(*w))
+        .sum())
 }

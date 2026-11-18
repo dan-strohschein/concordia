@@ -185,11 +185,41 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
   - WebKit caps `requestAnimationFrame` at 60 Hz, so the web UI presents at most every other refresh on a 120 Hz display.
   - The Rust-driven baseline queues frames back to back, so its latency includes drawable queueing; read it as throughput.
 
-**b. Asynchronous frames (next).** Frames in flight with timeline-tracked resources, persistent per-frame memory, and stats read a frame late.
+**b. Engine fixes (done).**
+- **Asynchronous frames:**
+  - Presented frames signal a timeline and stay in flight, at most two (`Renderer::MAX_FRAMES_IN_FLIGHT`).
+  - Their resources free when they retire; transient heaps are recycled.
+  - Uploads are recorded into the frame's own command list behind a barrier; a separate submit and `wait_idle` was a second full stall per frame.
+  - Cluster-overflow stats are read a frame late.
+  - Readbacks still wait.
+- **Render thread** (`concordia-render::thread`):
+  - It owns the `Renderer`. `viewport.present` snapshots the world and returns at once.
+  - Queued frames coalesce, so the newest view wins.
+  - `capture.screenshot` and surface attachment are requests to the thread.
+  - Asset data reaches it through `resolve`, the same walk the renderer uses, so only new meshes and textures (plus materials) are sent.
+- **`viewport.stats`** gains `queued_ms`; `submitted_ms` is null until a frame renders.
+- **Tests:**
+  - `presented_frames_overlap_the_gpu_and_retire_their_memory`
+  - `queued_viewport_frames_coalesce_to_the_newest_view` (failed first: all 20 rendered on the engine thread)
+  - `resolve_returns_unheld_meshes_and_every_material`
+  - The stats test now waits for each frame, since back-to-back frames deliberately coalesce.
 
-**c. Render thread (next).** Rendering moves off the engine thread: snapshots in, the newest view presented at display pace; capture and pick by request.
+**c. After both fixes ("after"; same machine):**
 
-**d. Re-measure and decide.** Agree kill criteria with the author before looking at the "after" numbers.
+| | +0 | +1k | +10k |
+|---|---|---|---|
+| Web orbit: fps, input→photon p50 | 60, 29 ms | 60, 29 ms | 60, 30 ms (was 37) |
+| Rust-driven orbit (no web): fps | 120 | 120 | 120 (was 77) |
+| Agent edits while orbiting: edit→outliner p95 | 18 ms | 26 ms | 117 ms (was 220) |
+| Engine CPU per frame p50 | 1.2 ms | 0.8 ms | 0.3 ms (was ~7) |
+
+- The engine now keeps up with 120 Hz at every size.
+- What's left is web-side:
+  - **The 60 Hz cap:** WebKit's `requestAnimationFrame` limit means the web UI misses every other refresh. Input-to-photon latency stays about 29 ms.
+  - **Outliner refreshes at 10k entities:** a full refetch and re-render costs 74–117 ms per agent edit, with dropped frames while orbiting.
+- The Rust-driven baseline's 40 ms latency is queue depth (two frames in flight, plus drawables), not work. Its job is to show throughput.
+
+**d. Decide (next).** The author sets the kill criteria; then keep the web UI and fix the web-side costs, or replace it.
 
 ### Phase 1.9c: Native editor shell (done)
 - **RHI window surfaces:** `create_surface` (unsafe; wraps a `CAMetalLayer`), `acquire`, `present` and `destroy_surface`, with Metal tests using a standalone layer (12 acquire/clear/present cycles, misuse errors).
