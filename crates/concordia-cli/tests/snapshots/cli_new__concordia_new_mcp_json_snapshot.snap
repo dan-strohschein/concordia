@@ -1,0 +1,16 @@
+---
+source: crates/concordia-cli/tests/cli_new.rs
+expression: mcp
+---
+{
+  "mcpServers": {
+    "concordia": {
+      "args": [
+        "mcp",
+        "--project",
+        "."
+      ],
+      "command": "[concordia binary]"
+    }
+  }
+}

@@ -44,5 +44,15 @@ fn log_tail_returns_ring_records_and_scene_saved() {
         );
         let limited = h.ok("log.tail", json!({"limit": 1}));
         assert_eq!(limited["records"].as_array().unwrap().len(), 1);
+        h.ok("scene.open", json!({"path": "scenes/test.scene.ron"}));
+        let opened = h.ok("log.tail", json!({"since": limited["next"]}));
+        assert!(
+            opened["records"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|r| r["message"] == "scene opened"),
+            "{opened}"
+        );
     });
 }

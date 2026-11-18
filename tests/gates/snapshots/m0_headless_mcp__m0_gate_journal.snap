@@ -1,0 +1,439 @@
+---
+source: tests/gates/m0_headless_mcp.rs
+expression: entries
+---
+[
+  {
+    "actor": "agent:gate",
+    "hash_after": "c701df1ad9ce20017b66cb4158767076e6b86804c49e55a01a405fceda22a399",
+    "hash_before": "456f2bf81729273e192d2c53711c185454a01d79a5c55a5899145190af571408",
+    "kind": "commit",
+    "label": "build arena",
+    "ops": [
+      {
+        "inverse": [
+          {
+            "Despawn": {
+              "id": "018bcfe5-6800-7003-ba20-2a40ef3fd951"
+            }
+          }
+        ],
+        "op": {
+          "Spawn": {
+            "components": {
+              "Name": "Player",
+              "Transform": {
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ],
+                "scale": [
+                  1.0,
+                  1.0,
+                  1.0
+                ],
+                "translation": [
+                  0.0,
+                  0.0,
+                  0.0
+                ]
+              }
+            },
+            "id": "018bcfe5-6800-7003-ba20-2a40ef3fd951"
+          }
+        }
+      },
+      {
+        "inverse": [
+          {
+            "Despawn": {
+              "id": "018bcfe5-6800-7004-90d7-ac8c65b91ef6"
+            }
+          }
+        ],
+        "op": {
+          "Spawn": {
+            "components": {
+              "Name": "Crate 1",
+              "Transform": {
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ],
+                "scale": [
+                  1.0,
+                  1.0,
+                  1.0
+                ],
+                "translation": [
+                  -2.0,
+                  0.0,
+                  0.0
+                ]
+              },
+              "Velocity": {
+                "angular": [
+                  0.0,
+                  0.5,
+                  0.0
+                ],
+                "linear": [
+                  0.0,
+                  0.0,
+                  1.0
+                ]
+              }
+            },
+            "id": "018bcfe5-6800-7004-90d7-ac8c65b91ef6"
+          }
+        }
+      },
+      {
+        "inverse": [
+          {
+            "Despawn": {
+              "id": "018bcfe5-6800-7005-a3a9-49a6dd37b8af"
+            }
+          }
+        ],
+        "op": {
+          "Spawn": {
+            "components": {
+              "Name": "Crate 2",
+              "Transform": {
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ],
+                "scale": [
+                  1.0,
+                  1.0,
+                  1.0
+                ],
+                "translation": [
+                  -4.0,
+                  0.0,
+                  0.0
+                ]
+              },
+              "Velocity": {
+                "angular": [
+                  0.0,
+                  0.5,
+                  0.0
+                ],
+                "linear": [
+                  0.0,
+                  0.0,
+                  2.0
+                ]
+              }
+            },
+            "id": "018bcfe5-6800-7005-a3a9-49a6dd37b8af"
+          }
+        }
+      },
+      {
+        "inverse": [
+          {
+            "Despawn": {
+              "id": "018bcfe5-6800-7006-8ad0-3de17da132f8"
+            }
+          }
+        ],
+        "op": {
+          "Spawn": {
+            "components": {
+              "Name": "Crate 3",
+              "Transform": {
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ],
+                "scale": [
+                  1.0,
+                  1.0,
+                  1.0
+                ],
+                "translation": [
+                  -6.0,
+                  0.0,
+                  0.0
+                ]
+              },
+              "Velocity": {
+                "angular": [
+                  0.0,
+                  0.5,
+                  0.0
+                ],
+                "linear": [
+                  0.0,
+                  0.0,
+                  3.0
+                ]
+              }
+            },
+            "id": "018bcfe5-6800-7006-8ad0-3de17da132f8"
+          }
+        }
+      }
+    ],
+    "seq": 1,
+    "session": "[session]",
+    "ts_ms": "[ts]",
+    "txn": "018bcfe5-6800-7002-86e5-cc2fcff1778d",
+    "v": 1
+  },
+  {
+    "actor": "agent:gate",
+    "hash_after": "a26df39fd0463cb1a8bff9431cb7328d2866c1ff52dbfb82f89768dada4cff90",
+    "hash_before": "c701df1ad9ce20017b66cb4158767076e6b86804c49e55a01a405fceda22a399",
+    "kind": "commit",
+    "label": "component.set",
+    "ops": [
+      {
+        "inverse": [
+          {
+            "SetComponent": {
+              "component": "Transform",
+              "id": "018bcfe5-6800-7003-ba20-2a40ef3fd951",
+              "value": {
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ],
+                "scale": [
+                  1.0,
+                  1.0,
+                  1.0
+                ],
+                "translation": [
+                  0.0,
+                  0.0,
+                  0.0
+                ]
+              }
+            }
+          }
+        ],
+        "op": {
+          "SetComponent": {
+            "component": "Transform",
+            "id": "018bcfe5-6800-7003-ba20-2a40ef3fd951",
+            "value": {
+              "rotation": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ],
+              "scale": [
+                1.0,
+                1.0,
+                1.0
+              ],
+              "translation": [
+                5.0,
+                0.0,
+                0.0
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "seq": 2,
+    "session": "[session]",
+    "ts_ms": "[ts]",
+    "txn": "018bcfe5-6800-7007-8e8e-ff0afe5231dc",
+    "v": 1
+  },
+  {
+    "actor": "agent:gate",
+    "hash_after": "c701df1ad9ce20017b66cb4158767076e6b86804c49e55a01a405fceda22a399",
+    "kind": "undo",
+    "seq": 3,
+    "session": "[session]",
+    "target": "018bcfe5-6800-7007-8e8e-ff0afe5231dc",
+    "ts_ms": "[ts]",
+    "v": 1
+  },
+  {
+    "actor": "agent:gate",
+    "hash_after": "a26df39fd0463cb1a8bff9431cb7328d2866c1ff52dbfb82f89768dada4cff90",
+    "kind": "redo",
+    "seq": 4,
+    "session": "[session]",
+    "target": "018bcfe5-6800-7007-8e8e-ff0afe5231dc",
+    "ts_ms": "[ts]",
+    "v": 1
+  },
+  {
+    "actor": "agent:gate",
+    "hash_after": "a12ad22a30c3049f4bd0b02883cd5e0fcdbe5937ee6383c3195e77805e7b761b",
+    "hash_before": "a26df39fd0463cb1a8bff9431cb7328d2866c1ff52dbfb82f89768dada4cff90",
+    "kind": "commit",
+    "label": "entity.despawn",
+    "ops": [
+      {
+        "inverse": [
+          {
+            "Spawn": {
+              "components": {
+                "Name": "Crate 3",
+                "Transform": {
+                  "rotation": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ],
+                  "scale": [
+                    1.0,
+                    1.0,
+                    1.0
+                  ],
+                  "translation": [
+                    -6.0,
+                    0.0,
+                    0.0
+                  ]
+                },
+                "Velocity": {
+                  "angular": [
+                    0.0,
+                    0.5,
+                    0.0
+                  ],
+                  "linear": [
+                    0.0,
+                    0.0,
+                    3.0
+                  ]
+                }
+              },
+              "id": "018bcfe5-6800-7006-8ad0-3de17da132f8"
+            }
+          }
+        ],
+        "op": {
+          "Despawn": {
+            "id": "018bcfe5-6800-7006-8ad0-3de17da132f8"
+          }
+        }
+      }
+    ],
+    "seq": 5,
+    "session": "[session]",
+    "ts_ms": "[ts]",
+    "txn": "018bcfe5-6800-7008-b3d2-c59bf0da5cf6",
+    "v": 1
+  },
+  {
+    "actor": "agent:gate",
+    "hash_after": "a26df39fd0463cb1a8bff9431cb7328d2866c1ff52dbfb82f89768dada4cff90",
+    "kind": "undo",
+    "seq": 6,
+    "session": "[session]",
+    "target": "018bcfe5-6800-7008-b3d2-c59bf0da5cf6",
+    "ts_ms": "[ts]",
+    "v": 1
+  },
+  {
+    "actor": "agent:gate",
+    "hash_after": "9ff9a0883b487915bc28f7079399619d685b897874d304c15269bbc8de67006e",
+    "hash_before": "a26df39fd0463cb1a8bff9431cb7328d2866c1ff52dbfb82f89768dada4cff90",
+    "kind": "commit",
+    "label": "component.patch",
+    "ops": [
+      {
+        "inverse": [
+          {
+            "SetComponent": {
+              "component": "Transform",
+              "id": "018bcfe5-6800-7004-90d7-ac8c65b91ef6",
+              "value": {
+                "rotation": [
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.0
+                ],
+                "scale": [
+                  1.0,
+                  1.0,
+                  1.0
+                ],
+                "translation": [
+                  -2.0,
+                  0.0,
+                  0.0
+                ]
+              }
+            }
+          }
+        ],
+        "op": {
+          "SetComponent": {
+            "component": "Transform",
+            "id": "018bcfe5-6800-7004-90d7-ac8c65b91ef6",
+            "value": {
+              "rotation": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ],
+              "scale": [
+                2.0,
+                2.0,
+                2.0
+              ],
+              "translation": [
+                -2.0,
+                0.0,
+                0.0
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "seq": 7,
+    "session": "[session]",
+    "ts_ms": "[ts]",
+    "txn": "018bcfe5-6800-7009-a18a-5abdefae7c3d",
+    "v": 1
+  },
+  {
+    "actor": "agent:gate",
+    "hash": "9ff9a0883b487915bc28f7079399619d685b897874d304c15269bbc8de67006e",
+    "kind": "save",
+    "path": "scenes/arena.scene.ron",
+    "seq": 8,
+    "session": "[session]",
+    "ts_ms": "[ts]",
+    "v": 1
+  },
+  {
+    "actor": "agent:gate",
+    "hash_after": "a26df39fd0463cb1a8bff9431cb7328d2866c1ff52dbfb82f89768dada4cff90",
+    "kind": "undo",
+    "seq": 9,
+    "session": "[session]",
+    "target": "018bcfe5-6800-7009-a18a-5abdefae7c3d",
+    "ts_ms": "[ts]",
+    "v": 1
+  }
+]

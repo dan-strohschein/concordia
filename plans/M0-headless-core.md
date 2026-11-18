@@ -1,5 +1,5 @@
 # M0: Headless Core
-Status: In progress (phase 0.7; phases 0.0–0.6 done 2026-11-17) · Depends on: M-1 · Detail level: Ready to execute · Estimated effort: ~9–11 weeks (author + agents), 8 phases
+Status: In progress (phase 0.7 nearly done: repo-root `.mcp.json` and the chrono advisory await the author; phases 0.0–0.6 done 2026-11-17; layer-1 gate green locally) · Depends on: M-1 · Detail level: Ready to execute · Estimated effort: ~9–11 weeks (author + agents), 8 phases
 
 ## Goal & context
 
@@ -663,6 +663,14 @@ Every crate's `AGENTS.md` has these headings: **Purpose** (2–3 sentences), **P
     The repo-root `.mcp.json` (for *this* Claude Code session) uses `tools/mcp/concordia-mcp.sh`, which resolves the repo root from its own path, builds `concordia-mcp` if missing (`cargo build -q -p concordia-mcp 1>&2`), then `exec`s `target/debug/concordia-mcp --project "${CONCORDIA_PROJECT:-$ROOT/examples/m0-sandbox}"`. Verify that Claude Code launches relative `command` paths from the project root; otherwise use `${VAR}` expansion supported in `.mcp.json`.
   - `concordia.toml` M0 keys: `[project] name`, `[scene] main = "scenes/main.scene.ron"`, `[sim] rate_hz = 60, seed = 0`, `[journal] sync = true`.
 - **Gate first:** the opening step of this phase writes `tests/gates/m0_headless_mcp.rs` and `tests/src/{bins,mcp_client}.rs`, committed failing, with `.config/nextest.toml` `default-filter = "not binary(/^m0_/)"` so CI stays green; `just gate M0` runs it explicitly. Phase 0.8 removes the filter.
+- **As built (0.7):**
+  - Gate first: `tests/gates/m0_headless_mcp.rs` + `tests/src/{bins,mcp_client}.rs` committed red (`0f6910c`); now green. Step 13's log check looks for "scene opened" (logs are per process; "scene saved" happened in the first process). The gate also asserts the server name `concordia`.
+  - `concordia-mcp`: `ConcordiaServer::start(Options)` (engine thread + one session with the default actor; optional `--scene`), rmcp `ServerHandler` hand-written in `src/tools.rs` with resources in `src/resources.rs` (rmcp is confined there and in `tests/src/mcp_client.rs`). Tool description = doc comment + "Example arguments" (from `example_json`, nulls dropped). The `component` param stays a free string so tool schemas equal generated schemas byte for byte (ADR-0033). `concordia://docs/agent-guide` embeds `docs/guides/agents-engine-api.md`; `concordia://docs/errors` is generated.
+  - API additions (test-first): `Engine::scene_text()` / `EngineHandle::scene_text()` (shared with `scene.save`) and a "scene opened" log record.
+  - `concordia` CLI: `new`, `headless [--ws --port]`, `mcp`, `schema [NAME|--method M|--out DIR]`, `fmt [--check] [PATHS]`; exit codes 0/1/2. `concordia.toml` is written but not yet read by any command (M0).
+  - `examples/m0-sandbox` is hand-written (a generated `.mcp.json` would contain an absolute home path, which the hygiene test forbids in tracked files); `tools/mcp/concordia-mcp.sh` always runs `cargo build -q` (to stderr) so the session uses the current code.
+  - rmcp pulls `chrono`, flagged unmaintained by RUSTSEC-2026-0543 (not a vulnerability; required by rmcp and its schemars dependency).
+  - Extra tests: `unknown_tool_is_a_protocol_error`, `unknown_resources_are_not_found`, `concordia_schema_out_writes_one_sorted_file_per_type`, `mcp_subcommand_serves_mcp`, `fmt_reports_parse_errors_with_position`, `engine_exposes_current_scene_text_without_saving`.
 - **Done criteria:** all tests green; `claude mcp list` (run manually in this repo) shows `concordia` connected; `AGENTS.md` for both crates.
 
 ### Phase 0.8: Milestone gate, live-agent check & docs pass

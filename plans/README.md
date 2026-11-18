@@ -167,7 +167,7 @@ To avoid collisions, each milestone draws ADR numbers from its own block. Use th
 | 0001–0008 | Design | 0001 Rust · 0002 subscription-first · 0003 scripting tiers · 0004 editor · 0005 interchange · 0006 licensing · 0007 TDD/plans · 0008 name (Concordia) |
 | 0009 | M0 | 0009 scene text format (written: canonical RON, own reader/writer) |
 | 0020–0029 | M-1 | 0020 toolchain pinning · 0021 WASM guest build path · 0022 CI and supply chain |
-| 0030–0039 | M0 | 0030 own archetype ECS (written: safe column storage) · 0031 Engine API error model (written) · 0032 edit world vs play world (written) · 0033 MCP adapter (rmcp pin, protocol versions) |
+| 0030–0039 | M0 | 0030 own archetype ECS (written: safe column storage) · 0031 Engine API error model (written) · 0032 edit world vs play world (written) · 0033 MCP adapter (written: rmcp pin, protocol versions) |
 | 0040–0059 | M1 | 0040–0045 as named in M1's plan |
 | 0060–0079 | M2 | |
 | 0080–0099 | M3 | (incl. YAML-frontmatter exception for Studio files) |

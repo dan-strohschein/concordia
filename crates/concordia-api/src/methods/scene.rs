@@ -188,6 +188,7 @@ impl Method for SceneOpen {
             History::None => "none",
         };
         let entity_count = world.len() as u64;
+        tracing::info!(target: "concordia::scene", path = %p.path, entities = entity_count, history, "scene opened");
         engine.play = None;
         engine.scene = Some(OpenScene {
             meta: doc.meta(),
@@ -225,15 +226,9 @@ impl Method for SceneSave {
             .path
             .unwrap_or_else(|| engine.scene().map(|s| s.path.clone()).unwrap_or_default());
         let file = project_path(engine, &path)?;
-        let scene = engine.scene()?;
-        let hints = Hints {
-            registry: &engine.registry,
-            world: Some(&scene.world),
-        };
-        let doc = snapshot_world(&scene.meta, &scene.world).map_err(|e| map::scene(e, &hints))?;
-        let text = write_scene(&doc).map_err(|e| map::scene(e, &hints))?;
+        let text = engine.scene_text()?;
         write_atomically(&file, &text).map_err(|e| map::io(&path, &e))?;
-        let hash = scene.world.state_hash().map_err(internal)?;
+        let hash = engine.scene()?.world.state_hash().map_err(internal)?;
         let actor = ctx
             .actor
             .clone()
@@ -290,6 +285,19 @@ impl Method for SceneInfo {
             entity_count: scene.world.len() as u64,
             components_in_use: in_use,
         })
+    }
+}
+
+impl Engine {
+    /// The open scene in canonical RON, exactly as `scene.save` would write it.
+    pub fn scene_text(&self) -> Result<String, ApiError> {
+        let scene = self.scene()?;
+        let hints = Hints {
+            registry: &self.registry,
+            world: Some(&scene.world),
+        };
+        let doc = snapshot_world(&scene.meta, &scene.world).map_err(|e| map::scene(e, &hints))?;
+        write_scene(&doc).map_err(|e| map::scene(e, &hints))
     }
 }
 

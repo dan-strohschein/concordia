@@ -335,3 +335,21 @@ fn schema_get_returns_types_methods_and_index() {
             .contains(&json!("query.run"))
     );
 }
+
+#[test]
+fn engine_exposes_current_scene_text_without_saving() {
+    let h = Harness::new();
+    assert_eq!(h.engine.scene_text().unwrap_err().data.kind, "NoSceneOpen");
+    let mut h = h.ready();
+    h.spawn("A", 1.0);
+    let text = h.engine.scene_text().unwrap();
+    assert!(text.starts_with("// Concordia scene, format 1."), "{text}");
+    assert!(text.contains("\"Name\": \"A\""), "{text}");
+    assert!(
+        !h.dir.path().join("scenes/test.scene.ron").exists(),
+        "nothing is written"
+    );
+    h.ok("scene.save", json!({}));
+    let file = std::fs::read_to_string(h.dir.path().join("scenes/test.scene.ron")).unwrap();
+    assert_eq!(h.engine.scene_text().unwrap(), file);
+}

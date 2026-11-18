@@ -14,6 +14,7 @@ use crate::error::ApiError;
 enum Request {
     Open(oneshot::Sender<SessionId>),
     Close(SessionId),
+    SceneText(oneshot::Sender<Result<String, ApiError>>),
     Rpc {
         session: SessionId,
         text: String,
@@ -82,6 +83,9 @@ fn serve(engine: &mut Engine, request: Request) {
             let _ = reply.send(engine.open_session());
         }
         Request::Close(session) => engine.close_session(session),
+        Request::SceneText(reply) => {
+            let _ = reply.send(engine.scene_text());
+        }
         Request::Rpc {
             session,
             text,
@@ -117,6 +121,13 @@ impl EngineHandle {
     /// Ends a session (aborting its open transaction).
     pub fn close_session(&self, session: SessionId) {
         let _ = self.send(Request::Close(session));
+    }
+
+    /// The open scene as canonical RON (see [`Engine::scene_text`]).
+    pub async fn scene_text(&self) -> Result<String, ApiError> {
+        let (reply, rx) = oneshot::channel();
+        self.send(Request::SceneText(reply))?;
+        rx.await.map_err(internal)?
     }
 
     /// Handles one JSON-RPC message.

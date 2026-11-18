@@ -1,0 +1,68 @@
+---
+source: tests/gates/m0_headless_mcp.rs
+expression: text
+---
+// Concordia scene, format 1. Canonical form: `concordia fmt` rewrites this file.
+Scene(
+    format: 1,
+    id: "018bcfe5-6800-7001-9dc5-b68e72e89d6c",
+    name: "Arena",
+    entities: [
+        Entity(
+            id: "018bcfe5-6800-7003-ba20-2a40ef3fd951",
+            components: {
+                "Name": "Player",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (5.0, 0.0, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "018bcfe5-6800-7004-90d7-ac8c65b91ef6",
+            components: {
+                "Name": "Crate 1",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (2.0, 2.0, 2.0),
+                    translation: (-2.0, 0.0, 0.0),
+                ),
+                "Velocity": (
+                    angular: (0.0, 0.5, 0.0),
+                    linear: (0.0, 0.0, 1.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "018bcfe5-6800-7005-a3a9-49a6dd37b8af",
+            components: {
+                "Name": "Crate 2",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-4.0, 0.0, 0.0),
+                ),
+                "Velocity": (
+                    angular: (0.0, 0.5, 0.0),
+                    linear: (0.0, 0.0, 2.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "018bcfe5-6800-7006-8ad0-3de17da132f8",
+            components: {
+                "Name": "Crate 3",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-6.0, 0.0, 0.0),
+                ),
+                "Velocity": (
+                    angular: (0.0, 0.5, 0.0),
+                    linear: (0.0, 0.0, 3.0),
+                ),
+            },
+        ),
+    ],
+)
