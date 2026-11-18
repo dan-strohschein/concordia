@@ -73,6 +73,13 @@ pub enum WorldSel {
 pub struct Empty {}
 
 /// Resolves a client entity reference in `world`.
+impl EntityRef {
+    /// The entity this names in `world`, or `EntityNotFound` with suggestions.
+    pub fn resolve(&self, world: &World) -> Result<EntityId, ApiError> {
+        resolve(world, self)
+    }
+}
+
 pub(crate) fn resolve(world: &World, given: &EntityRef) -> Result<EntityId, ApiError> {
     match given.0.parse::<EntityId>() {
         Ok(id) if world.contains(id) => Ok(id),

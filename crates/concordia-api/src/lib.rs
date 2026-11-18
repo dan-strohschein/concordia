@@ -23,6 +23,7 @@
 mod engine;
 mod error;
 mod handle;
+mod image;
 mod map;
 mod method;
 mod methods;
@@ -34,6 +35,7 @@ pub mod transport;
 pub use engine::{Engine, EngineConfig};
 pub use error::{ApiError, ApiErrorKind, ErrorData};
 pub use handle::EngineHandle;
+pub use image::{EncodedImage, image_fields};
 pub use method::{
     CallCtx, Method, MethodInfo, MethodRegistry, methods, params_schema, result_schema,
 };

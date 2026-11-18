@@ -41,7 +41,10 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `txn.history` | | `{limit?}` → `{entries}` |
 | `sim.play` / `sim.pause` / `sim.stop` | | `{rate_hz?}` / `{}` → `{state, tick}` |
 | `sim.step` | | `{ticks}` → `{tick, world_hash}` |
+| `capture.screenshot` | | `{width?, height?, camera?, world?}` → `{image, width, height, sim_tick, frame}` (projects with `[render]`) |
 | `log.tail` | | `{since?, level?, limit?}` → `{records, next}` |
+
+`capture.screenshot` renders offscreen at the requested size (default 1280×720) from the highest-priority `Camera`, unless `camera` names one. MCP clients receive `image` as PNG image content and the other fields as text. Pass `world: "play"` after `sim.step` to see the simulation. To be visible, a scene needs a `Transform` + `Camera` entity, `MeshRenderer` entities (e.g. `{"mesh": "builtin:mesh/cube", "material": "builtin:material/default"}`) and usually a `DirectionalLight`.
 
 `query.run` `where` entries are `{"path": "Transform/translation/0", "op": "gt", "value": 4}` with `op` one of `eq ne lt le gt ge contains`. Rows are sorted by id; pass `next_cursor` back as `cursor` for the next page (default limit 100).
 
@@ -62,6 +65,7 @@ Errors are JSON-RPC errors whose `data` says what to do next (ADR-0031): `kind`,
 | −32010 | `SceneDirty` | `scene.save`, or pass `"discard": true` |
 | −32011 | `NotPlaying` | `sim.step` or `sim.play` first |
 | −32012 | `TxnNotFound` | use the id from `txn.begin`; it may have timed out |
+| −32013 | `GpuUnavailable` | run `concordia gpu-probe`; rendering needs Metal (macOS) in M1 |
 | −32602 | `InvalidParams` | match `expected` at `pointer` |
 
 ## Journal

@@ -70,7 +70,8 @@ macro_rules! conformance_tests {
             timeline_fence_signals_monotonically,
             readback_of_frame_n_does_not_block_frame_n_plus_1_submission,
             pipeline_creation_error_is_reported_not_panicked,
-            invalid_descriptors_and_stale_handles_are_errors
+            invalid_descriptors_and_stale_handles_are_errors,
+            static_samplers_filter_and_address_as_named
         );
     };
     (@cases $make:expr, $golden:expr, $shaders:expr; $($name:ident),+) => {$(

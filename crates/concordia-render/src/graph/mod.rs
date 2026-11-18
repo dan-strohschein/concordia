@@ -98,8 +98,9 @@ pub(crate) struct Resource {
     pub(crate) kind: ResourceKind,
 }
 
-/// Records what a pass does when executed.
-pub type Record = Box<dyn Fn(&mut PassContext<'_>) + Send + Sync>;
+/// Records what a pass does when executed (an error aborts `execute`, naming the pass).
+pub type Record =
+    Box<dyn Fn(&mut PassContext<'_>) -> Result<(), concordia_rhi::RhiError> + Send + Sync>;
 
 pub(crate) struct Pass {
     pub(crate) name: String,
@@ -215,6 +216,11 @@ impl RenderGraph {
         };
         setup(&mut PassBuilder { pass: &mut pass });
         self.passes.push(pass);
+    }
+
+    /// A texture's description.
+    pub fn texture_desc(&self, t: GraphTexture) -> &TextureDesc {
+        &self.resources[t.0 as usize].desc
     }
 
     pub(crate) fn name(&self, t: GraphTexture) -> &str {

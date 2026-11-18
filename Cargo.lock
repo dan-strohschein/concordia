@@ -577,6 +577,7 @@ dependencies = [
 name = "concordia-api"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
  "concordia-command",
  "concordia-core",
  "concordia-reflect",
@@ -600,6 +601,7 @@ dependencies = [
 name = "concordia-app"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
  "concordia-api",
  "concordia-assets",
  "concordia-core",
@@ -607,7 +609,12 @@ dependencies = [
  "concordia-input",
  "concordia-physics",
  "concordia-platform",
+ "concordia-render",
+ "concordia-rhi",
+ "concordia-rhi-metal",
  "concordia-scene",
+ "concordia-testkit",
+ "png",
  "serde",
  "serde_json",
  "tempfile",
@@ -653,6 +660,7 @@ dependencies = [
  "concordia-rhi",
  "concordia-rhi-metal",
  "concordia-scene",
+ "concordia-testkit",
  "insta",
  "serde_json",
  "tempfile",
@@ -738,6 +746,7 @@ dependencies = [
 name = "concordia-mcp"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
  "clap",
  "concordia-api",
  "concordia-app",
@@ -820,10 +829,26 @@ dependencies = [
 name = "concordia-render"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
+ "concordia-api",
+ "concordia-assets",
+ "concordia-command",
+ "concordia-core",
+ "concordia-reflect",
  "concordia-rhi",
+ "concordia-rhi-metal",
+ "concordia-scene",
+ "concordia-shaders",
+ "concordia-terra",
+ "concordia-testkit",
  "insta",
+ "png",
  "proptest",
+ "serde",
+ "serde_json",
+ "tempfile",
  "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]

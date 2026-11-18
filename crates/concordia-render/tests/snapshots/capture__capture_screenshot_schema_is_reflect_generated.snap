@@ -1,0 +1,82 @@
+---
+source: crates/concordia-render/tests/capture.rs
+expression: "params_schema(&MethodInfo::of::<CaptureScreenshot>())"
+---
+{
+  "$defs": {
+    "WorldSel": {
+      "description": "Which world to read.",
+      "oneOf": [
+        {
+          "const": "edit",
+          "description": "The scene being edited (default)."
+        },
+        {
+          "const": "play",
+          "description": "The running simulation (exists after sim.play or sim.step)."
+        }
+      ],
+      "title": "WorldSel",
+      "x-concordia-type": "WorldSel"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`capture.screenshot` params.",
+  "properties": {
+    "actor": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Who makes a change: <human|agent|system|tool|script>:<name>[#n], e.g. agent:claude-code.",
+          "pattern": "^(human|agent|system|tool|script):[a-z0-9][a-z0-9._-]{0,63}(#[1-9][0-9]*)?$",
+          "type": "string"
+        }
+      ],
+      "description": "Who is asking (attribution in the log only)."
+    },
+    "camera": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Entity id (UUID string). If you pass a name instead, the error suggests the matching id.",
+          "format": "uuid",
+          "type": "string"
+        }
+      ],
+      "description": "Camera entity; default: the highest-priority Camera."
+    },
+    "height": {
+      "default": 720,
+      "description": "Height in pixels.",
+      "maximum": 8192.0,
+      "minimum": 1.0,
+      "type": "integer"
+    },
+    "width": {
+      "default": 1280,
+      "description": "Width in pixels.",
+      "maximum": 8192.0,
+      "minimum": 1.0,
+      "type": "integer"
+    },
+    "world": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/WorldSel"
+        }
+      ],
+      "description": "Which world to render: edit (default) or play."
+    }
+  },
+  "title": "CaptureScreenshotParams",
+  "type": "object",
+  "x-concordia-type": "CaptureScreenshotParams"
+}

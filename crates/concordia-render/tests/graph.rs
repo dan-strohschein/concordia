@@ -270,6 +270,7 @@ mod execute {
     fn marker(tag: u8) -> concordia_render::graph::Record {
         Box::new(move |ctx| {
             ctx.commands.push(Command::PushConstants(vec![tag]));
+            Ok(())
         })
     }
 
@@ -324,6 +325,7 @@ mod execute {
             |p| p.uses(out, Use::ColorWrite),
             Some(Box::new(move |ctx| {
                 *sink.lock().unwrap() = Some(ctx.texture(out));
+                Ok(())
             })),
         );
         let compiled = g.compile(&footprint).unwrap();
@@ -349,4 +351,27 @@ mod execute {
             .unwrap_err();
         assert!(err.to_string().contains("\"hdr\""), "{err}");
     }
+}
+
+#[test]
+fn record_errors_abort_execute_and_name_the_pass() {
+    use std::collections::BTreeMap;
+    let mut g = RenderGraph::new();
+    let out = swapchain(&mut g);
+    g.add_pass_recorded(
+        "broken",
+        |p| p.uses(out, Use::ColorWrite),
+        Some(Box::new(|_| {
+            Err(concordia_rhi::RhiError::DeviceLost("test".into()))
+        })),
+    );
+    let compiled = g.compile(&footprint).unwrap();
+    let err = compiled
+        .execute(
+            &g,
+            &BTreeMap::new(),
+            &mut concordia_rhi::CommandList::new("frame"),
+        )
+        .unwrap_err();
+    assert!(err.to_string().contains("\"broken\""), "{err}");
 }

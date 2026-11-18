@@ -334,4 +334,81 @@ mod module_tools {
             .expect("module method schema resource");
         assert!(format!("{schema:?}").contains("probe.ping"));
     }
+
+    /// Return a tiny image.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+    struct Snap;
+
+    /// `probe.snap` result: an image plus metadata.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+    struct SnapResult {
+        /// The picture.
+        image: concordia_api::EncodedImage,
+        /// Width.
+        width: u32,
+    }
+
+    impl Method for Snap {
+        const NAME: &'static str = "probe.snap";
+        const MUTATES: bool = false;
+        type Params = PingParams;
+        type Result = SnapResult;
+
+        fn call(_: &mut Engine, _: &CallCtx, _: PingParams) -> Result<SnapResult, ApiError> {
+            Ok(SnapResult {
+                image: concordia_api::EncodedImage::png(b"not really a png"),
+                width: 3,
+            })
+        }
+    }
+
+    #[derive(Debug)]
+    struct Camera;
+
+    impl EngineModule for Camera {
+        fn name(&self) -> &'static str {
+            "camera"
+        }
+
+        fn methods(&self) -> Vec<MethodInfo> {
+            vec![MethodInfo::of::<Snap>()]
+        }
+    }
+
+    #[tokio::test]
+    async fn image_results_become_mcp_image_content() {
+        use base64::Engine as _;
+        let dir = tempfile::tempdir().unwrap();
+        let mut opts = options(&dir);
+        opts.modules = vec![Arc::new(Camera)];
+        let client = connect_with(opts, Default::default()).await;
+        let result = call(&client, "probe_snap", json!({})).await;
+        assert_ne!(result.is_error, Some(true), "{}", text(&result));
+        let image = result.content[0]
+            .as_image()
+            .expect("first item is an image");
+        assert_eq!(image.mime_type, "image/png");
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(&image.data)
+                .unwrap(),
+            b"not really a png"
+        );
+        let rest: serde_json::Value = serde_json::from_str(&text(&result)).unwrap();
+        assert_eq!(
+            rest,
+            json!({"width": 3}),
+            "metadata is a text item without the image"
+        );
+        assert!(
+            result.structured_content.is_none(),
+            "no duplicate base64 in structured content"
+        );
+        let tools = client.list_all_tools().await.unwrap();
+        let snap = tools.iter().find(|t| t.name == "probe_snap").unwrap();
+        assert!(
+            snap.output_schema.is_none(),
+            "image tools return content, not structured output"
+        );
+    }
 }

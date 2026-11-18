@@ -25,3 +25,5 @@ map = "input/default.input.ron"
 gravity = [0.0, -9.81, 0.0]
 
 [assets]
+
+[render]

@@ -3,7 +3,8 @@
 use std::sync::Arc;
 
 use concordia_api::{
-    ApiError, ApiErrorKind, MethodInfo, MethodRegistry, params_schema, result_schema,
+    ApiError, ApiErrorKind, EncodedImage, MethodInfo, MethodRegistry, image_fields, params_schema,
+    result_schema,
 };
 use concordia_core::suggest::did_you_mean;
 use concordia_reflect::example_json;
@@ -43,13 +44,37 @@ fn tool(method: &MethodInfo) -> Tool {
     let annotations = ToolAnnotations::new()
         .read_only(!method.mutates)
         .destructive(method.mutates && DESTRUCTIVE.contains(&name.as_str()));
-    Tool::new(
+    let tool = Tool::new(
         name,
         description(method),
         Arc::new(object(params_schema(method))),
     )
-    .with_raw_output_schema(Arc::new(object(result_schema(method))))
-    .with_annotations(annotations)
+    .with_annotations(annotations);
+    // Image results are returned as content items, so they declare no structured output.
+    match image_fields(method.result).is_empty() {
+        true => tool.with_raw_output_schema(Arc::new(object(result_schema(method)))),
+        false => tool,
+    }
+}
+
+/// A successful result: image fields become image items, the rest one JSON text item;
+/// other results are structured.
+fn tool_result(method: &MethodInfo, value: Value) -> CallToolResult {
+    let images = image_fields(method.result);
+    let Value::Object(mut fields) = value else {
+        return CallToolResult::structured(value);
+    };
+    if images.is_empty() {
+        return CallToolResult::structured(Value::Object(fields));
+    }
+    let mut content: Vec<ContentBlock> = images
+        .iter()
+        .filter_map(|name| fields.remove(*name))
+        .filter_map(|image| serde_json::from_value::<EncodedImage>(image).ok())
+        .map(|image| ContentBlock::image(image.data_base64, image.mime_type))
+        .collect();
+    content.push(ContentBlock::text(Value::Object(fields).to_string()));
+    CallToolResult::success(content)
 }
 
 /// Doc comment plus one example call (null fields omitted).
@@ -131,7 +156,7 @@ impl ConcordiaServer {
                 .call(self.session, method.name, Value::Object(arguments))
                 .await
             {
-                Ok(value) => CallToolResult::structured(value),
+                Ok(value) => tool_result(method, value),
                 Err(error) => tool_error(&error),
             },
         )

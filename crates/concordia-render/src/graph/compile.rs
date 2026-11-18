@@ -9,7 +9,7 @@ use concordia_rhi::{Command, CommandList, Texture, TextureBarrier};
 use super::{GraphTexture, PassContext, RenderGraph, ResourceKind};
 
 /// The graph cannot be compiled.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum GraphError {
     /// A transient texture is read but no pass writes it.
     #[error("texture {0:?} is read but never written")]
@@ -20,6 +20,14 @@ pub enum GraphError {
     /// `execute` was not given an RHI texture for a transient.
     #[error("no RHI texture was provided for transient texture {0:?}")]
     MissingTransient(String),
+    /// A pass's record function failed.
+    #[error("pass {pass:?} failed to record: {error}")]
+    Record {
+        /// The pass.
+        pass: String,
+        /// The device error.
+        error: concordia_rhi::RhiError,
+    },
 }
 
 /// A barrier before a pass (or after the last one).
@@ -103,7 +111,11 @@ impl CompiledGraph {
                 record(&mut PassContext {
                     commands,
                     textures: &textures,
-                });
+                })
+                .map_err(|error| GraphError::Record {
+                    pass: graph.passes[p].name.clone(),
+                    error,
+                })?;
             }
         }
         push_barriers(commands, &self.final_barriers, &textures);
