@@ -38,6 +38,12 @@ jobs:
           key: slang-${{ runner.os }}-${{ hashFiles('tools/slang/slang.toml') }}
       - name: Slang toolchain
         run: just slang-fetch
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/gltf-sample-assets
+          key: gltf-${{ hashFiles('tests/fixtures/gltf-sample-assets/manifest.ron') }}
+      - name: glTF sample assets
+        run: just gltf-assets
       - name: Lint
         run: just lint
       - name: Build WASM fixtures

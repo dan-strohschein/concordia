@@ -1,0 +1,108 @@
+// Khronos glTF sample models used by tests: fetched (never vendored) by `just gltf-assets`, verified by SHA-256.
+// Only CC0-1.0 / CC-BY-4.0 models are allowed (M1 plan, license policy); CC-BY models need attribution.
+GltfSampleAssets(
+    commit: "f0920f5b32d172a30efe3f9257e965918831e6ea",
+    models: {
+        "AlphaBlendModeTest": (
+            attribution: "Everything: Ed Mackey (2018, CC-BY-4.0)",
+            files: {
+                "Models/AlphaBlendModeTest/glTF-Binary/AlphaBlendModeTest.glb": "37c3577d143071b42dd46e9d942b157837eb25c6340112171d7faecaa987b14e",
+            },
+            license: "CC-BY-4.0",
+        ),
+        "BoomBox": (
+            attribution: "Everything: Microsoft (2017, CC0-1.0)",
+            files: {
+                "Models/BoomBox/glTF-Binary/BoomBox.glb": "f8b918445ebdd006768232205a62f5182d2208ca57f84c6ccc084943c0bc8f15",
+            },
+            license: "CC0-1.0",
+        ),
+        "Box": (
+            attribution: "Everything: Cesium (2017, CC-BY-4.0)",
+            files: {
+                "Models/Box/glTF-Binary/Box.glb": "ed52f7192b8311d700ac0ce80644e3852cd01537e4d62241b9acba023da3d54e",
+                "Models/Box/glTF-Embedded/Box.gltf": "f98a369e29ffc754cc897f78d695754ac6812ba7ddcd23705dd8d4e258f5f13b",
+                "Models/Box/glTF/Box.gltf": "4a0d69eecfce0672a50b71dc218cbacec6c53fe2445040c235c6314b1b2c41b9",
+                "Models/Box/glTF/Box0.bin": "3266a8e39b9f425b3341cbe5eec7849f44310256bfa651e6b8b40c85ce0ccafb",
+            },
+            license: "CC-BY-4.0",
+        ),
+        "FlightHelmet": (
+            attribution: "Conversion from Maya: Gary Hsu (2018, CC0-1.0)",
+            files: {
+                "Models/FlightHelmet/glTF/FlightHelmet.bin": "9e623a27f837e1cc995d1380da5fd3becf4d29586fefba882fc0ba76b49f94bf",
+                "Models/FlightHelmet/glTF/FlightHelmet.gltf": "c9c16c8b85749f62f38ec6069700e5388c6894d8e566f51a35cc270255402cd3",
+                "Models/FlightHelmet/glTF/FlightHelmet_Materials_GlassPlasticMat_BaseColor.png": "0914544aabe161046f417274051e34ecc85163cfce6698581b3e1e18c96fe4f1",
+                "Models/FlightHelmet/glTF/FlightHelmet_Materials_GlassPlasticMat_Normal.png": "c297f18f3b4259fc8b411cdc843a4a44b8cef3e3a53b21cec7b53574e5ef6872",
+                "Models/FlightHelmet/glTF/FlightHelmet_Materials_GlassPlasticMat_OcclusionRoughMetal.png": "d4519704f15395c7138421a5814b478df549a2411bc6fa97dd6d02ba62dc6c54",
+                "Models/FlightHelmet/glTF/FlightHelmet_Materials_LeatherPartsMat_BaseColor.png": "c9346ac6daa3ad34d0b36c1e7cf311ccbcc298710ea453cdf3b6ad40dc60013f",
+                "Models/FlightHelmet/glTF/FlightHelmet_Materials_LeatherPartsMat_Normal.png": "7fb69b26f80c67df41e87d7344bde9d24dda0be77546b0a6acabc4040694872a",
+                "Models/FlightHelmet/glTF/FlightHelmet_Materials_LeatherPartsMat_OcclusionRoughMetal.png": "b77e60f175e4632cd3d892bc9f0e748f522c9288a469585d5cb90270cd68910e",
+                "Models/FlightHelmet/glTF/FlightHelmet_Materials_LensesMat_BaseColor.png": "b55f6561f8adabc907360443aab010f3effaf05074fdccea46d8c2d66247cf16",
+                "Models/FlightHelmet/glTF/FlightHelmet_Materials_LensesMat_Normal.png": "430775894001933044c89070b1bfd4f9b8489f74780b1ab7079efb0afca95d8d",
+                "Models/FlightHelmet/glTF/FlightHelmet_Materials_LensesMat_OcclusionRoughMetal.png": "35d81a71ab184f9b50f63ff8f3e0f90cfb6c99f9b2d9ed9d9887a902c16a458d",
+                "Models/FlightHelmet/glTF/FlightHelmet_Materials_MetalPartsMat_BaseColor.png": "8e26add3ad1b2398d58638580bb1fe56f2fbae3572b4a682b6595a5a26fb1b40",
+                "Models/FlightHelmet/glTF/FlightHelmet_Materials_MetalPartsMat_Normal.png": "a833fcc12718c02bcba97cbc9760d06c4a711ce7f36c23076e7cf6d4393a80e7",
+                "Models/FlightHelmet/glTF/FlightHelmet_Materials_MetalPartsMat_OcclusionRoughMetal.png": "17f3e27b51011b8f98751dae25958e2b850fcf1467f1019bec812553e0e5eb1d",
+                "Models/FlightHelmet/glTF/FlightHelmet_Materials_RubberWoodMat_BaseColor.png": "f751d643d1f220b300705d9ad57ed284a883eb7d3788469199b752f4381dcc37",
+                "Models/FlightHelmet/glTF/FlightHelmet_Materials_RubberWoodMat_Normal.png": "bb70753c836c59db7e245e5fe2c9db8eee833d29d67e03da348f6adb1e95142a",
+                "Models/FlightHelmet/glTF/FlightHelmet_Materials_RubberWoodMat_OcclusionRoughMetal.png": "2727d4638514f75fcbd29777bf03db6bd2f0f1ad926e2976cf2346aa22c0bd19",
+            },
+            license: "CC0-1.0",
+        ),
+        "Fox": (
+            attribution: "Model: PixelMannen (2014, CC0-1.0); Rigging & Animation: tomkranis (2014, CC-BY-4.0); Conversion to glTF: @AsoboStudio and @scurest (2017, CC-BY-4.0)",
+            files: {
+                "Models/Fox/glTF-Binary/Fox.glb": "d97044e701822bac5a62696459b27d7b375aada5de8574ed4362edbba94771f7",
+            },
+            license: "CC-BY-4.0 AND CC0-1.0",
+        ),
+        "MetalRoughSpheres": (
+            attribution: "Everything: Ed Mackey (2017, CC-BY-4.0)",
+            files: {
+                "Models/MetalRoughSpheres/glTF-Binary/MetalRoughSpheres.glb": "450c05557b0823a10835e32c05caf77a7b175eba94516555c1c9bb084f563f01",
+            },
+            license: "CC-BY-4.0",
+        ),
+        "MetalRoughSpheresNoTextures": (
+            attribution: "Everything: Krill Gavrilov (2019, CC0-1.0); Everything: CAD Model generated by Draw Harness script using Open CASCADE Technology (2019, CC0-1.0)",
+            files: {
+                "Models/MetalRoughSpheresNoTextures/glTF-Binary/MetalRoughSpheresNoTextures.glb": "5e677f260ec0f366967a6e9545de2f3dab2a160e307b9bcb9d050cd2028f63f8",
+            },
+            license: "CC0-1.0",
+        ),
+        "NormalTangentMirrorTest": (
+            attribution: "Everything: Ed Mackey (2018, CC-BY-4.0)",
+            files: {
+                "Models/NormalTangentMirrorTest/glTF-Binary/NormalTangentMirrorTest.glb": "31ce5f3c873fc55531a17ccacf001e3d1d482a508695aa826fa79cc196e0ce78",
+            },
+            license: "CC-BY-4.0",
+        ),
+        "NormalTangentTest": (
+            attribution: "Everything: Ed Mackey (2018, CC0-1.0)",
+            files: {
+                "Models/NormalTangentTest/glTF-Binary/NormalTangentTest.glb": "5ac0932355ae1ea05a7485eeddcc3f1fbe56c678e00b519075feced80e9e9d6a",
+            },
+            license: "CC0-1.0",
+        ),
+        "OrientationTest": (
+            attribution: "Everything: Khronos (2017, CC-BY-4.0)",
+            files: {
+                "Models/OrientationTest/glTF-Binary/OrientationTest.glb": "a91cf448f37de06ab61bc615e123692dd29ac185e6c69e1fdbf1cf53e41045b2",
+            },
+            license: "CC-BY-4.0",
+        ),
+        "SimpleSkin": (
+            attribution: "Everything: Marco Hutter (https://github.com/javagl/) (2017, CC0-1.0)",
+            files: {
+                "Models/SimpleSkin/glTF/SimpleSkin.gltf": "8d92e9888340eb98e82a65a1f8b037d9a1d9f09e5fd0b6ba6d40fd93700b3239",
+                "Models/SimpleSkin/glTF/SimpleSkin_animation.bin": "ff21b1bc3d0abbe53f7665060ec6c22d873b6e85a7669171a2b6b8ae01c39347",
+                "Models/SimpleSkin/glTF/SimpleSkin_geometry.bin": "35f0ca6bc07976c0aadc163d4737758989cfcc9870a99800004c4478fe698b63",
+                "Models/SimpleSkin/glTF/SimpleSkin_inverseBindMatrices.bin": "5844ab221cd2ad367420a248f6387b46e5f8498604427730a37ee96b4d4ec599",
+                "Models/SimpleSkin/glTF/SimpleSkin_skinningData.bin": "413bc8a8c0da673df767874e6f05f0b00c9261756a08586b9d555bd5535414b5",
+            },
+            license: "CC0-1.0",
+        ),
+    },
+    repository: "https://github.com/KhronosGroup/glTF-Sample-Assets",
+)

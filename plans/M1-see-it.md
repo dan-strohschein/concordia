@@ -159,7 +159,7 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 - **`concordia-shaders`:**
   - `SlangcCompiler` (diagnostics parsed to file, line and column);
   - reflection: thread group size, bindings, push layout;
-  - `cache_key` over every import and include, `CachedCompiler`, `DirCache` (DDC layout);
+  - `cache_key` over every import and include, `CachedCompiler` over the shared `concordia_core::ddc::Ddc` (moved to core in 1.4);
   - `shader_struct!` and `check_layout`;
   - `ShaderLibrary` with keep-last-good hot reload (GPU-tested).
 - **Shader ABI (ADR-0045):** `import bindless;` and `uniform push` as an entry-point parameter. Global push declarations land on slot 0, ahead of the imported tables, so they're out.

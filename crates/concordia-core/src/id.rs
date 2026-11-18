@@ -150,7 +150,10 @@ pub trait IdSource {
     fn next_uuid(&mut self) -> Result<Uuid, IdError>;
 
     /// Returns the next UUID as a typed id.
-    fn next_id<I: TypedId>(&mut self) -> Result<I, IdError> {
+    fn next_id<I: TypedId>(&mut self) -> Result<I, IdError>
+    where
+        Self: Sized,
+    {
         self.next_uuid().and_then(I::try_from_uuid)
     }
 }

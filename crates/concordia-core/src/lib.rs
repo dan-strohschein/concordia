@@ -1,5 +1,6 @@
-//! Concordia core: ids, math, fixed-step time, logging, jobs and deterministic RNG.
+//! Concordia core: ids, math, fixed-step time, logging, jobs, deterministic RNG and the DDC store.
 
+pub mod ddc;
 pub mod id;
 pub mod jobs;
 pub mod log;

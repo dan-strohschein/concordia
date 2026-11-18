@@ -7,7 +7,7 @@ Compiles Slang shaders to MSL or SPIR-V with the pinned toolchain (ADR-0045), ex
 - `ShaderCompiler` (trait), `SlangcCompiler`, `SlangToolchain::locate()` (`SLANG_DIR` or `target/toolchain/slang/<pin>`)
 - `CompileRequest`, `Stage`, `Target`, `ShaderModule` (`source()` → `concordia_rhi::ShaderSource`), `ShaderCode`
 - `ShaderReflection` (`threads_per_group`, `bindings`, `push`), `StructLayout`, `FieldLayout`
-- `CachedCompiler`, `ShaderCache`, `DirCache`, `cache_key`, `dependencies`
+- `CachedCompiler`, `ShaderCache` (implemented by `concordia_core::ddc::Ddc`), `cache_key`, `dependencies`
 - `shader_struct!`, `ShaderStruct`, `check_layout`
 - `ShaderLibrary` (`load`, `get`, `on_files_changed` → `ReloadOutcome`)
 - `builtin_dir()` (`shaders/bindless.slang`)
