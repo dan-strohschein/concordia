@@ -144,3 +144,18 @@ fn systems_run_in_declared_order() {
         &vec!["first", "second"]
     );
 }
+
+#[test]
+fn world_hash_hex_and_serde_roundtrip() {
+    let hash = moving_world(3).state_hash().unwrap();
+    let hex = hash.to_string();
+    assert_eq!(hex.len(), 64);
+    assert_eq!(hex.parse::<concordia_ecs::WorldHash>().unwrap(), hash);
+    let json = serde_json::to_string(&hash).unwrap();
+    assert_eq!(json, format!("\"{hex}\""));
+    assert_eq!(
+        serde_json::from_str::<concordia_ecs::WorldHash>(&json).unwrap(),
+        hash
+    );
+    assert!("zz".parse::<concordia_ecs::WorldHash>().is_err());
+}

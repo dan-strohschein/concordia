@@ -1,5 +1,5 @@
 # M0: Headless Core
-Status: In progress (phase 0.4; phases 0.0–0.3 done 2026-11-17) · Depends on: M-1 · Detail level: Ready to execute · Estimated effort: ~9–11 weeks (author + agents), 8 phases
+Status: In progress (phase 0.5; phases 0.0–0.4 done 2026-11-17) · Depends on: M-1 · Detail level: Ready to execute · Estimated effort: ~9–11 weeks (author + agents), 8 phases
 
 ## Goal & context
 
@@ -419,6 +419,15 @@ Every crate's `AGENTS.md` has these headings: **Purpose** (2–3 sentences), **P
   - Ops apply **immediately** to the world (so reads inside a txn see its writes); inverses are applied in reverse on abort/failure/undo. Values are JSON at this layer (agent-facing), converted through `TypeRegistration::from_json` so invalid values fail before touching the world.
   - Journal: `<project>/.concordia/journal/<scene-id>.cmdlog.jsonl`, one line per event: `{"v":1,"seq":12,"kind":"commit","txn":"…","actor":"agent:claude-code","session":"…","label":"…","ops":[…],"hash_before":"…","hash_after":"…","ts":"…"}`. `fsync` on commit by default (`JournalConfig::sync`). `ts` is wall clock and excluded from snapshots via insta redaction.
   - References: Command pattern (Gamma et al.; Nystrom, *Game Programming Patterns*, "Command"); write-ahead logging concepts; JSON Lines.
+- **As built (0.4):**
+  - One error type, `CommandError` (no separate `TxnError`); `ActorError::Malformed { input, hint }` for every parse failure.
+  - `Actor` is a struct (`kind`, `name`, `instance`); names are `[a-z0-9][a-z0-9._-]*`, at most 64 characters. `Author { actor, session }` carries the session into the journal.
+  - Signatures: `begin(world, author, label, ids)` (needs the world for `hash_before`); `commit(world, reg)` and `abort(world, reg, reason)` (need the registry to roll back); `apply_one(world, reg, author, label, op, ids)`; `undo/redo(world, reg, author)`; `record_save(author, path, hash)`; `resume(entries, current_hash) -> (CommandLog, History)`.
+  - Commit/undo/redo are journaled before they count; a journal write failure rolls the world back. Empty commits are not recorded. `RemoveComponent` on a missing component is an error. Undo/redo are rejected while a transaction is open.
+  - Journal: `ts_ms` (Unix ms integer) instead of an RFC 3339 `ts` string; commit entries store `ops: [{op, inverse}]` so resume needs no replay; `Journal::open` cuts a truncated tail; unknown `v` is an error. Replay also checks each commit's `hash_before`.
+  - No separate `CommandStack` facade: `CommandLog` is the facade `concordia-api` uses.
+  - Extended earlier crates test-first: `WorldHash` hex `FromStr`/serde and `component_from_json` (ecs).
+  - Extra tests: `ops_apply_immediately_inside_a_txn`, `invalid_value_fails_before_touching_world`, `apply_and_commit_without_open_txn_fail`, `remove_missing_component_is_an_error`, `undo_of_set_on_missing_component_removes_it`, `undo_is_rejected_while_a_txn_is_open`, `journal_rejects_unknown_version`, `replay_detects_divergence`, plus actor serde and validation cases.
 - **Done criteria:** tests green; journal format documented in `AGENTS.md` and `docs/guides/agents-engine-api.md`; no API exists to mutate the world in `concordia-api` except through `CommandLog`.
 
 ### Phase 0.5: concordia-scene (+ ADR-0009)

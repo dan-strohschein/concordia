@@ -25,6 +25,40 @@ impl fmt::Debug for WorldHash {
     }
 }
 
+/// A hash string was not 64 hex digits.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("invalid world hash {0:?}: expected 64 hex digits")]
+pub struct ParseHashError(pub String);
+
+impl std::str::FromStr for WorldHash {
+    type Err = ParseHashError;
+
+    fn from_str(s: &str) -> Result<Self, ParseHashError> {
+        let err = || ParseHashError(s.to_owned());
+        if s.len() != 64 || !s.is_ascii() {
+            return Err(err());
+        }
+        let mut bytes = [0u8; 32];
+        for (i, byte) in bytes.iter_mut().enumerate() {
+            *byte = u8::from_str_radix(&s[2 * i..2 * i + 2], 16).map_err(|_| err())?;
+        }
+        Ok(Self(bytes))
+    }
+}
+
+impl serde::Serialize for WorldHash {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_str(self)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for WorldHash {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let text = <std::borrow::Cow<'de, str>>::deserialize(d)?;
+        text.parse().map_err(serde::de::Error::custom)
+    }
+}
+
 const DOMAIN: &[u8] = b"concordia-world-hash-v1";
 
 impl World {

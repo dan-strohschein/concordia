@@ -51,9 +51,8 @@ impl World {
         json: Value,
         registry: &TypeRegistry,
     ) -> Result<Option<Value>, EcsError> {
-        let registration = component_registration(registry, name)?;
-        let value = registration.from_json(json)?;
-        let old = reflect_component(registration)?.insert(self, id, value)?;
+        let value = component_from_json(registry, name, json)?;
+        let old = self.insert_dyn(id, value, registry)?;
         Ok(old.map(|v| v.to_json()).transpose()?)
     }
 
@@ -69,6 +68,15 @@ impl World {
             None => Ok(None),
         }
     }
+}
+
+/// Builds component `name` from JSON, validating shape and ranges; never touches a world.
+pub fn component_from_json(
+    registry: &TypeRegistry,
+    name: &str,
+    json: Value,
+) -> Result<Box<dyn DynReflect>, EcsError> {
+    Ok(component_registration(registry, name)?.from_json(json)?)
 }
 
 fn component_registration<'r>(

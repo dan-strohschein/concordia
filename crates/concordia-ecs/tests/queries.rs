@@ -176,3 +176,19 @@ fn dynamic_get_set_json_roundtrip() {
         Err(EcsError::ComponentMissing { .. })
     ));
 }
+
+#[test]
+fn component_from_json_validates_and_requires_a_component() {
+    let mut reg = registry();
+    let value = concordia_ecs::component_from_json(&reg, "B", json!(1.5)).unwrap();
+    assert_eq!(value.to_json().unwrap(), json!(1.5));
+    assert!(matches!(
+        concordia_ecs::component_from_json(&reg, "B", json!("x")),
+        Err(EcsError::Reflect(_))
+    ));
+    reg.register::<u8>().unwrap();
+    assert!(matches!(
+        concordia_ecs::component_from_json(&reg, "u8", json!(1)),
+        Err(EcsError::NotAComponent { .. })
+    ));
+}

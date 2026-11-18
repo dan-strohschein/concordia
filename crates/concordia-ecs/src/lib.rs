@@ -35,10 +35,10 @@ mod storage;
 mod world;
 
 pub use component::{Component, ReflectComponent, register_component};
-pub use dynamic::DynamicQuery;
+pub use dynamic::{DynamicQuery, component_from_json};
 pub use entity::Entity;
 pub use error::{EcsError, QueryError};
-pub use hash::WorldHash;
+pub use hash::{ParseHashError, WorldHash};
 pub use query::{ElemAccess, QueryData, QueryElem, QueryFilter, QueryState, With, Without};
 pub use resource::Resource;
 pub use schedule::{FnSystem, Schedule, System, SystemCtx, system};

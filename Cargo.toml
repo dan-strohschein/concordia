@@ -21,6 +21,7 @@ all = { level = "warn", priority = -1 }
 undocumented_unsafe_blocks = "warn"
 
 [workspace.dependencies]
+concordia-command = { path = "crates/concordia-command" }
 concordia-core = { path = "crates/concordia-core" }
 concordia-ecs = { path = "crates/concordia-ecs" }
 concordia-reflect = { path = "crates/concordia-reflect" }
@@ -28,12 +29,13 @@ concordia-reflect-derive = { path = "crates/concordia-reflect-derive" }
 blake3 = "1.8"
 criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
 erased-serde = "0.4"
-insta = { version = "1.49", features = ["json"] }
+insta = { version = "1.49", features = ["json", "redactions"] }
 jsonschema = { version = "0.61", default-features = false }
 proc-macro2 = "1"
 proptest = "1.12"
 quote = "1"
 syn = { version = "3", features = ["full"] }
+tempfile = "3"
 trybuild = "1"
 glam = { version = "0.34", features = ["serde"] }
 rand_chacha = "0.10"
