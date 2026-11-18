@@ -120,6 +120,15 @@ pub fn window_number() -> Option<isize> {
     NATIVE.with(|n| n.borrow().as_ref().map(|n| n.window.windowNumber()))
 }
 
+/// The maximum refresh rate of the window's display, in Hz.
+pub fn display_hz() -> Option<f64> {
+    NATIVE.with(|n| {
+        let n = n.borrow();
+        let hz = n.as_ref()?.window.screen()?.maximumFramesPerSecond();
+        (hz > 0).then_some(hz as f64)
+    })
+}
+
 /// Moves and sizes the Metal view to the slot.
 pub fn place(rect: SlotRect) {
     NATIVE.with(|n| {

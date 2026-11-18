@@ -241,3 +241,46 @@ fn viewport_present_draws_into_the_attached_layer() {
     assert!(presented >= 4, "{presented}");
     drop(h);
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn viewport_stats_record_each_presented_frame_with_its_input_tag() {
+    let Some(mut h) = Harness::gpu() else { return };
+    h.two_cubes();
+    let layer = objc2_quartz_core::CAMetalLayer::new();
+    let target = concordia_rhi::SurfaceTarget::MetalLayer(std::ptr::NonNull::from(&*layer).cast());
+    // SAFETY: the layer outlives the engine (dropped after `h`).
+    unsafe { concordia_render::attach_surface(&mut h.engine, target) }.unwrap();
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64()
+        * 1000.0;
+    for seq in 1..=3u64 {
+        h.ok("viewport.present", json!({"view": front_view(), "width": 64, "height": 48, "seq": seq, "input_time_ms": now_ms}));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let stats = h.ok("viewport.stats", json!({"clear": true}));
+    let frames = stats["frames"].as_array().unwrap();
+    assert_eq!(
+        frames
+            .iter()
+            .map(|f| f["seq"].as_u64().unwrap())
+            .collect::<Vec<_>>(),
+        [1, 2, 3],
+        "{stats}"
+    );
+    for f in frames {
+        assert!(f["cpu_ms"].as_f64().unwrap() > 0.0, "{f}");
+        assert!(f["submitted_ms"].as_f64().unwrap() >= now_ms, "{f}");
+        assert_eq!(f["input_time_ms"].as_f64(), Some(now_ms));
+    }
+    assert!(
+        h.ok("viewport.stats", json!({}))["frames"]
+            .as_array()
+            .unwrap()
+            .is_empty(),
+        "clear empties the record"
+    );
+    drop(h);
+}

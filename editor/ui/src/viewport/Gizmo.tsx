@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { EditorSession } from "../engine/session";
 import { project, type Vec3, type View } from "./camera";
+import { inputTags } from "./latency";
 
 interface Props {
   session: EditorSession;
@@ -76,6 +77,7 @@ export function Gizmo({ session, entity, view, width, height, actor }: Props) {
       () => undefined,
     );
     const move = (m: MouseEvent) => {
+      inputTags.mark(m.timeStamp);
       const t = axisDelta(
         view,
         state.start.translation,

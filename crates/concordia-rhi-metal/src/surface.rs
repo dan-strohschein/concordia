@@ -122,3 +122,28 @@ impl SurfaceEntry {
         self.current.take()
     }
 }
+
+/// Calls `callback` with the wall-clock time the drawable reached the display (`None` if it
+/// never did). Metal reports `presentedTime` on the `CACurrentMediaTime` clock; it is mapped to
+/// `SystemTime` by the offset between the two clocks when the handler runs.
+pub(crate) fn on_presented(drawable: &Drawable, callback: concordia_rhi::PresentedCallback) {
+    use objc2_metal::MTLDrawable;
+    let slot = std::sync::Mutex::new(Some(callback));
+    let block = block2::RcBlock::new(
+        move |presented: std::ptr::NonNull<ProtocolObject<dyn MTLDrawable>>| {
+            // SAFETY: Metal passes the live drawable for the duration of the handler.
+            let seconds = unsafe { presented.as_ref() }.presentedTime();
+            let time = (seconds > 0.0).then(|| {
+                let age = (objc2_quartz_core::CACurrentMediaTime() - seconds).max(0.0);
+                std::time::SystemTime::now() - std::time::Duration::from_secs_f64(age)
+            });
+            if let Some(callback) = slot.lock().ok().and_then(|mut c| c.take()) {
+                callback(time);
+            }
+        },
+    );
+    let as_drawable: &ProtocolObject<dyn MTLDrawable> = ProtocolObject::from_ref(&**drawable);
+    // SAFETY: the block is retained by Metal for the handler's lifetime; it is Send-safe because
+    // its only state is a Mutex around a Send callback.
+    unsafe { as_drawable.addPresentedHandler(&*block as *const _ as *mut _) };
+}

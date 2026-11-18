@@ -24,6 +24,8 @@ pub enum Topic {
     scene,
     /// Simulation state and tick after `sim.*` calls.
     sim,
+    /// Uncommitted edits inside open transactions (`pending: true`), and aborts (`aborted: true`).
+    pending,
 }
 
 /// Sinks and subscriptions by session.
@@ -79,19 +81,37 @@ impl EventHub {
 pub(crate) struct Marker {
     done: usize,
     undone: usize,
+    /// The open transaction's id and op count.
+    open: Option<(concordia_core::id::TxnId, usize)>,
+    /// Entities of the open transaction (only collected before `txn.abort`).
+    open_entities: Vec<String>,
 }
 
 impl Marker {
-    pub(crate) fn of(engine: &Engine) -> Self {
-        let (done, undone) = engine
-            .scene
-            .as_ref()
-            .map_or((0, 0), |s| (s.log.done().len(), s.log.undone().len()));
-        Self { done, undone }
+    /// The edit log's position before `method` runs.
+    pub(crate) fn of(engine: &Engine, method: &str) -> Self {
+        let Some(scene) = engine.scene.as_ref() else {
+            return Self {
+                done: 0,
+                undone: 0,
+                open: None,
+                open_entities: Vec::new(),
+            };
+        };
+        let open = scene.log.open_txn();
+        let open_entities = match (method, open) {
+            ("txn.abort", Some(txn)) => entities_of(txn.ops()),
+            _ => Vec::new(),
+        };
+        Self {
+            done: scene.log.done().len(),
+            undone: scene.log.undone().len(),
+            open: open.map(|t| (t.id, t.op_count())),
+            open_entities,
+        }
     }
 }
 
-/// Publishes the events a successful `method` call produced.
 pub(crate) fn publish_after(engine: &mut Engine, method: &str, before: &Marker, result: &Value) {
     let path = engine.scene.as_ref().map(|s| s.path.clone());
     match method {
@@ -112,8 +132,47 @@ pub(crate) fn publish_after(engine: &mut Engine, method: &str, before: &Marker, 
             );
         }
         "scene.open" | "scene.new" => {}
-        _ => publish_edit(engine, method, before),
+        _ => {
+            publish_edit(engine, method, before);
+            if engine.events.wants(Topic::pending) {
+                publish_pending(engine, method, before);
+            }
+        }
     }
+}
+
+/// Publishes ops a call added to the open transaction, or the abort that reverted it.
+fn publish_pending(engine: &mut Engine, method: &str, before: &Marker) {
+    let Some(scene) = engine.scene.as_ref() else {
+        return;
+    };
+    let params = match (scene.log.open_txn(), before.open) {
+        (Some(txn), Some((id, ops))) if txn.id == id && txn.op_count() > ops => json!({
+            "method": method,
+            "txn": txn.id.to_string(),
+            "label": txn.label,
+            "actor": txn.author.actor.to_string(),
+            "entities": entities_of(&txn.ops()[ops..]),
+            "pending": true,
+        }),
+        (Some(txn), None) if txn.op_count() > 0 => json!({
+            "method": method,
+            "txn": txn.id.to_string(),
+            "label": txn.label,
+            "actor": txn.author.actor.to_string(),
+            "entities": entities_of(txn.ops()),
+            "pending": true,
+        }),
+        (None, Some((id, _))) if method == "txn.abort" => json!({
+            "method": method,
+            "txn": id.to_string(),
+            "entities": before.open_entities,
+            "pending": true,
+            "aborted": true,
+        }),
+        _ => return,
+    };
+    engine.events.publish(Topic::pending, params);
 }
 
 /// Logs, and publishes as an edit event, a transaction the call committed, undid or redid.
@@ -154,8 +213,21 @@ fn publish_edit(engine: &mut Engine, method: &str, before: &Marker) {
 }
 
 fn edit_params(method: &str, txn: &Transaction, undo: bool) -> Value {
+    let entities = entities_of(&txn.ops);
+    json!({
+        "method": method,
+        "txn": txn.id.to_string(),
+        "label": txn.label,
+        "actor": txn.author.actor.to_string(),
+        "entities": entities,
+        "undo": undo,
+    })
+}
+
+/// The distinct entities `ops` touch, in first-touched order.
+fn entities_of(ops: &[concordia_command::AppliedOp]) -> Vec<String> {
     let mut entities: Vec<String> = Vec::new();
-    for applied in &txn.ops {
+    for applied in ops {
         let id = match &applied.op {
             EditOp::Spawn { id, .. }
             | EditOp::Despawn { id, .. }
@@ -166,12 +238,5 @@ fn edit_params(method: &str, txn: &Transaction, undo: bool) -> Value {
             entities.push(id);
         }
     }
-    json!({
-        "method": method,
-        "txn": txn.id.to_string(),
-        "label": txn.label,
-        "actor": txn.author.actor.to_string(),
-        "entities": entities,
-        "undo": undo,
-    })
+    entities
 }

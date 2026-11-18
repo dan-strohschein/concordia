@@ -132,7 +132,11 @@ test("gizmo_drag_moves_along_its_axis_as_one_undo_step", async ({ page, engine }
   if (!start) throw new Error("no x handle");
   await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
   await page.mouse.down();
+  const image = page.getByRole("img", { name: "Viewport" });
+  const still = await image.getAttribute("src");
   for (let i = 1; i <= 8; i++) await page.mouse.move(start.x + start.width / 2 + i * 10, start.y + start.height / 2);
+  // The viewport follows the drag live, before the transaction commits.
+  await expect.poll(() => image.getAttribute("src")).not.toBe(still);
   await page.mouse.up();
   await expect.poll(() => translationX(engine, id)).not.toBeCloseTo(before, 1);
   await page.getByRole("tree", { name: "Scene" }).click();

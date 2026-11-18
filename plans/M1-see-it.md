@@ -154,6 +154,43 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 
 **Installs needing approval:** cmake (1.7a), Slang into `target/` (1.3), the Tauri CLI (1.8), and git-lfs only if D5 changes.
 
+### Phase 1.9d: Editor performance review (in progress; author request 2026-11-18)
+**Goal.** Decide whether the web-based editor UI can keep up, on numbers. First fix the two engine-side bottlenecks (a synchronous renderer, and one thread for both the API and rendering), so what remains is the web layer's true cost.
+
+**a. Bench harness (done).**
+- **RHI:**
+  - `Present {commands, signal, on_presented}` (timeline signals and the display's presented time);
+  - `Device::allocated_bytes`.
+- **`viewport.present`** takes `seq` and `input_time_ms`; `viewport.stats` returns per-frame CPU time and submit and display times.
+- **UI:** input tags on every camera and gizmo input; a bench driver with synthetic mouse events paced by `requestAnimationFrame`.
+- **Shell:**
+  - `--bench <out.json> [--bench-entities N] [--bench-frames N]`, with the window kept on top, since WebKit pauses rAF in occluded windows;
+  - a Rust-driven orbit with no web layer as the baseline;
+  - the display's real refresh rate.
+- **Running it:** `just editor-bench <label>` builds release and runs +0, +1k and +10k entity scenes; `tools/bench/summary.py` prints the table.
+- **Bugs the harness found, each fixed test-first:**
+  - **Metal objects leaked on the long-lived engine thread.** No autorelease pool was ever drained, so each frame's command buffer kept its ~125 MB of transients alive: about 7 GB/s during play. Fixed with per-call pools; test `frame_resources_are_freed_on_a_long_lived_thread`.
+  - **Gizmo drags weren't live.** In-transaction edits emitted no events, so the viewport froze until mouse-up. Fixed with the new `pending` event topic; the `edit` topic is unchanged.
+  - **The outliner silently stopped at 1,000 entities.** It now follows query cursors.
+  - **The shell host never captured logs,** so the Output panel was empty. Fixed with `EngineHost::start_with_log`.
+- **Baseline ("before"; M3 Pro, 120 Hz ProMotion, 2× scale):**
+
+  | | +0 | +1k | +10k |
+  |---|---|---|---|
+  | Web orbit: fps, input→photon p50 | 60, 28 ms | 60, 28 ms | 60, 37 ms |
+  | Rust-driven orbit (no web): fps | 120 | 118 | 77 |
+  | Agent edits while orbiting: edit→outliner p95 | 43 ms | 65 ms | 220 ms |
+  | CPU per frame p50 (render + GPU wait) | 7.0 ms | 6.6 ms | 6.9 ms |
+
+  - WebKit caps `requestAnimationFrame` at 60 Hz, so the web UI presents at most every other refresh on a 120 Hz display.
+  - The Rust-driven baseline queues frames back to back, so its latency includes drawable queueing; read it as throughput.
+
+**b. Asynchronous frames (next).** Frames in flight with timeline-tracked resources, persistent per-frame memory, and stats read a frame late.
+
+**c. Render thread (next).** Rendering moves off the engine thread: snapshots in, the newest view presented at display pace; capture and pick by request.
+
+**d. Re-measure and decide.** Agree kill criteria with the author before looking at the "after" numbers.
+
 ### Phase 1.9c: Native editor shell (done)
 - **RHI window surfaces:** `create_surface` (unsafe; wraps a `CAMetalLayer`), `acquire`, `present` and `destroy_surface`, with Metal tests using a standalone layer (12 acquire/clear/present cycles, misuse errors).
   - `Renderer::present` renders into a surface image: BGRA sRGB tonemap target, final Present layout, no readback. The tonemap pipeline is now per format.

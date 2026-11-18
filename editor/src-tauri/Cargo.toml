@@ -24,6 +24,7 @@ tauri-build = { version = "=2.7.4", features = [] }
 [dependencies]
 concordia-api = { path = "../../crates/concordia-api" }
 concordia-app = { path = "../../crates/concordia-app" }
+concordia-core = { path = "../../crates/concordia-core" }
 concordia-render = { path = "../../crates/concordia-render" }
 concordia-rhi = { path = "../../crates/concordia-rhi" }
 serde = { version = "1", features = ["derive"] }

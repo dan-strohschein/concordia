@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { EDITOR_ACTOR, type EditorSession } from "../engine/session";
 import { DEFAULT_CAMERA, OrbitCamera, type Preset, type Vec3, type View } from "./camera";
 import { Gizmo } from "./Gizmo";
+import { inputTags } from "./latency";
 import { isNative, reportSlot } from "./native";
 
 type Tool = "select" | "move";
@@ -44,6 +45,7 @@ function useStreamedView(session: EditorSession, world: "edit" | "play") {
                 width: Math.round(job.width * dpr),
                 height: Math.round(job.height * dpr),
                 world,
+                ...inputTags.current(),
               })
               .then(() => setStatus(undefined))
           : session
@@ -164,6 +166,7 @@ export function Viewport({ session, world, selected, onSelect }: Props) {
     const [dx, dy] = [e.clientX - d.x, e.clientY - d.y];
     if (Math.abs(dx) + Math.abs(dy) > 3) d.moved = true;
     if (d.button !== 1) return;
+    inputTags.mark(e.timeStamp);
     if (d.shift) camera.pan(dx, dy, size.height);
     else camera.orbit(dx, dy);
     [d.x, d.y] = [e.clientX, e.clientY];
@@ -178,6 +181,7 @@ export function Viewport({ session, world, selected, onSelect }: Props) {
     }
   };
   const onWheel = (e: React.WheelEvent) => {
+    inputTags.mark(e.timeStamp);
     camera.zoom(Math.sign(e.deltaY));
     update();
   };

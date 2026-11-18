@@ -612,6 +612,7 @@ dependencies = [
  "base64 0.22.1",
  "concordia-api",
  "concordia-app",
+ "concordia-core",
  "concordia-render",
  "concordia-rhi",
  "futures",
@@ -753,6 +754,7 @@ dependencies = [
 name = "concordia-rhi-metal"
 version = "0.0.0"
 dependencies = [
+ "block2 0.6.2",
  "concordia-rhi",
  "objc2 0.6.5",
  "objc2-foundation 0.3.2",

@@ -5,9 +5,9 @@ use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
 use concordia_rhi::{
-    BindlessIndex, Buffer, BufferDesc, BufferUsage, CommandList, ComputePipelineDesc, Device,
-    DeviceCaps, Format, GraphicsPipelineDesc, Heap, HeapDesc, MemoryLocation, MeshPipelineDesc,
-    Pipeline, RhiError, SampleCount, ShaderSource, Slots, StaticSampler, Submit, Surface,
+    BindlessIndex, Buffer, BufferDesc, BufferUsage, ComputePipelineDesc, Device, DeviceCaps,
+    Format, GraphicsPipelineDesc, Heap, HeapDesc, MemoryLocation, MeshPipelineDesc, Pipeline,
+    Present, RhiError, SampleCount, ShaderSource, Slots, StaticSampler, Submit, Surface,
     SurfaceTarget, Texture, TextureDesc, TextureUsage, Timeline,
 };
 use objc2::rc::Retained;
@@ -228,6 +228,11 @@ impl MetalDevice {
 impl Device for MetalDevice {
     fn caps(&self) -> &DeviceCaps {
         &self.caps
+    }
+
+    fn allocated_bytes(&self) -> Option<u64> {
+        let inner = self.lock().ok()?;
+        u64::try_from(inner.device.currentAllocatedSize()).ok()
     }
 
     fn create_buffer(&self, desc: &BufferDesc) -> Result<Buffer, RhiError> {
@@ -512,17 +517,21 @@ impl Device for MetalDevice {
     }
 
     fn submit(&self, submit: Submit<'_>) -> Result<(), RhiError> {
-        submit.commands.validate()?;
-        if self.lost.load(Ordering::SeqCst) {
-            return Err(RhiError::DeviceLost(
-                "simulated device loss (test hook)".into(),
-            ));
-        }
-        let mut inner = self.lock()?;
-        let command_buffer = crate::encode::record(&inner, &submit)?;
-        command_buffer.commit();
-        inner.last = Some(command_buffer);
-        Ok(())
+        // Metal returns autoreleased objects (command buffers, encoders, drawables) that retain
+        // every resource they touch; drain them per call, as the engine thread never exits.
+        objc2::rc::autoreleasepool(|_| {
+            submit.commands.validate()?;
+            if self.lost.load(Ordering::SeqCst) {
+                return Err(RhiError::DeviceLost(
+                    "simulated device loss (test hook)".into(),
+                ));
+            }
+            let mut inner = self.lock()?;
+            let command_buffer = crate::encode::record(&inner, &submit)?;
+            command_buffer.commit();
+            inner.last = Some(command_buffer);
+            Ok(())
+        })
     }
 
     fn wait_idle(&self) -> Result<(), RhiError> {
@@ -578,48 +587,59 @@ impl Device for MetalDevice {
         width: u32,
         height: u32,
     ) -> Result<Option<Texture>, RhiError> {
-        let inner = &mut *self.lock()?;
-        let entry = inner
-            .surfaces
-            .get_mut(surface.index(), surface.generation())
-            .ok_or_else(|| stale("surface", surface.index(), surface.generation()))?;
-        let Some((drawable, desc)) = entry.next(width, height)? else {
-            return Ok(None);
-        };
-        let texture = self.register_texture(inner, drawable.texture(), &desc)?;
-        if let Some(entry) = inner
-            .surfaces
-            .get_mut(surface.index(), surface.generation())
-        {
-            entry.hold(drawable, texture);
-        }
-        Ok(Some(texture))
+        // Metal returns autoreleased objects (command buffers, encoders, drawables) that retain
+        // every resource they touch; drain them per call, as the engine thread never exits.
+        objc2::rc::autoreleasepool(|_| {
+            let inner = &mut *self.lock()?;
+            let entry = inner
+                .surfaces
+                .get_mut(surface.index(), surface.generation())
+                .ok_or_else(|| stale("surface", surface.index(), surface.generation()))?;
+            let Some((drawable, desc)) = entry.next(width, height)? else {
+                return Ok(None);
+            };
+            let texture = self.register_texture(inner, drawable.texture(), &desc)?;
+            if let Some(entry) = inner
+                .surfaces
+                .get_mut(surface.index(), surface.generation())
+            {
+                entry.hold(drawable, texture);
+            }
+            Ok(Some(texture))
+        })
     }
 
-    fn present(&self, surface: Surface, commands: &CommandList) -> Result<(), RhiError> {
-        commands.validate()?;
-        let mut inner = self.lock()?;
-        let (drawable, texture) = inner
-            .surfaces
-            .get_mut(surface.index(), surface.generation())
-            .ok_or_else(|| stale("surface", surface.index(), surface.generation()))?
-            .take()
-            .ok_or_else(|| {
-                RhiError::invalid("present", "acquire an image from the surface first")
-            })?;
-        let submit = Submit {
-            queue: concordia_rhi::QueueKind::Graphics,
-            commands,
-            wait: &[],
-            signal: &[],
-        };
-        let recorded = crate::encode::record(&inner, &submit);
-        inner.textures.remove(texture.index(), texture.generation());
-        let command_buffer = recorded?;
-        command_buffer.presentDrawable(objc2::runtime::ProtocolObject::from_ref(&*drawable));
-        command_buffer.commit();
-        inner.last = Some(command_buffer);
-        Ok(())
+    fn present(&self, surface: Surface, present: Present<'_>) -> Result<(), RhiError> {
+        // Metal returns autoreleased objects (command buffers, encoders, drawables) that retain
+        // every resource they touch; drain them per call, as the engine thread never exits.
+        objc2::rc::autoreleasepool(|_| {
+            present.commands.validate()?;
+            let mut inner = self.lock()?;
+            let (drawable, texture) = inner
+                .surfaces
+                .get_mut(surface.index(), surface.generation())
+                .ok_or_else(|| stale("surface", surface.index(), surface.generation()))?
+                .take()
+                .ok_or_else(|| {
+                    RhiError::invalid("present", "acquire an image from the surface first")
+                })?;
+            let submit = Submit {
+                queue: concordia_rhi::QueueKind::Graphics,
+                commands: present.commands,
+                wait: &[],
+                signal: present.signal,
+            };
+            let recorded = crate::encode::record(&inner, &submit);
+            inner.textures.remove(texture.index(), texture.generation());
+            let command_buffer = recorded?;
+            if let Some(callback) = present.on_presented {
+                crate::surface::on_presented(&drawable, callback);
+            }
+            command_buffer.presentDrawable(objc2::runtime::ProtocolObject::from_ref(&*drawable));
+            command_buffer.commit();
+            inner.last = Some(command_buffer);
+            Ok(())
+        })
     }
 
     fn destroy_surface(&self, surface: Surface) {

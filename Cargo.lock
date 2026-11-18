@@ -869,6 +869,7 @@ dependencies = [
 name = "concordia-rhi-metal"
 version = "0.0.0"
 dependencies = [
+ "block2 0.6.2",
  "concordia-rhi",
  "concordia-shaders",
  "concordia-testkit",

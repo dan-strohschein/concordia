@@ -166,3 +166,68 @@ fn closing_a_session_drops_its_sink() {
     h.spawn("Crate", 1.0);
     assert!(events(&seen).is_empty());
 }
+
+#[test]
+fn pending_topic_reports_each_edit_inside_an_open_transaction() {
+    let mut h = Harness::new().ready();
+    let session = h.session;
+    let seen = sink(&mut h, session);
+    h.ok("events.subscribe", json!({"topics": ["pending"]}));
+    let txn = h.ok("txn.begin", json!({"label": "drag"}))["txn"].clone();
+    let a = h.spawn("A", 1.0);
+    h.ok(
+        "component.patch",
+        json!({"entity": a, "component": "Transform", "patch": {"scale": [2.0, 2.0, 2.0]}}),
+    );
+    let got = events(&seen);
+    assert_eq!(got.len(), 2, "{got:?}");
+    for (event, method) in got.iter().zip(["entity.spawn", "component.patch"]) {
+        let p = &event["params"];
+        assert_eq!(
+            (p["topic"].as_str(), p["method"].as_str()),
+            (Some("pending"), Some(method))
+        );
+        assert_eq!(
+            (&p["txn"], &p["label"], &p["entities"]),
+            (&txn, &json!("drag"), &json!([a]))
+        );
+        assert_eq!(p["actor"], "agent:test");
+    }
+    h.ok("txn.commit", json!({"txn": txn}));
+    assert!(
+        events(&seen).is_empty(),
+        "commits go to the edit topic, not pending"
+    );
+}
+
+#[test]
+fn pending_topic_reports_an_abort_with_the_reverted_entities() {
+    let mut h = Harness::new().ready();
+    let session = h.session;
+    let seen = sink(&mut h, session);
+    let txn = h.ok("txn.begin", json!({"label": "drag"}))["txn"].clone();
+    let a = h.spawn("A", 1.0);
+    h.ok("events.subscribe", json!({"topics": ["pending"]}));
+    h.ok("txn.abort", json!({"txn": txn}));
+    let got = events(&seen);
+    assert_eq!(got.len(), 1, "{got:?}");
+    let p = &got[0]["params"];
+    assert_eq!(
+        (p["method"].as_str(), p["aborted"].as_bool()),
+        (Some("txn.abort"), Some(true))
+    );
+    assert_eq!(p["entities"], json!([a]));
+}
+
+#[test]
+fn edits_outside_transactions_are_not_pending() {
+    let mut h = Harness::new().ready();
+    let session = h.session;
+    let seen = sink(&mut h, session);
+    h.ok("events.subscribe", json!({"topics": ["pending"]}));
+    h.spawn("A", 1.0);
+    assert!(
+        events(&seen).is_empty(),
+        "an auto-committed edit is never pending"
+    );
+}

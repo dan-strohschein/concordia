@@ -41,6 +41,11 @@ impl OpenTxn {
     pub fn op_count(&self) -> usize {
         self.ops.len()
     }
+
+    /// The ops applied so far, in order.
+    pub fn ops(&self) -> &[AppliedOp] {
+        &self.ops
+    }
 }
 
 /// Kind of a history entry.

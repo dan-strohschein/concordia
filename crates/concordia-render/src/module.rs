@@ -43,6 +43,43 @@ struct RenderState {
     renderer: Option<Renderer>,
     /// The editor's native viewport, once a host attached one.
     surface: Option<concordia_rhi::Surface>,
+    /// Recent native-viewport frames (for `viewport.stats`), keyed by frame number.
+    frames: FrameLog,
+    next_frame: u64,
+}
+
+type FrameLog = std::sync::Arc<std::sync::Mutex<std::collections::VecDeque<(u64, FrameRecord)>>>;
+
+/// One presented native-viewport frame.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct FrameRecord {
+    /// The caller's tag for the view this frame shows.
+    pub seq: Option<u64>,
+    /// When the input behind this view happened (Unix ms, from the caller).
+    pub input_time_ms: Option<f64>,
+    /// CPU time spent rendering and submitting the frame.
+    pub cpu_ms: f64,
+    /// When the frame was submitted (Unix ms).
+    pub submitted_ms: f64,
+    /// When it reached the display (Unix ms); null if it has not (yet), or never did.
+    pub presented_ms: Option<f64>,
+}
+
+/// Frames kept for `viewport.stats`.
+const FRAME_RECORDS: usize = 4096;
+
+fn unix_ms(time: std::time::SystemTime) -> f64 {
+    time.duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |d| d.as_secs_f64() * 1000.0)
+}
+
+/// Updates frame `id` in the log, if it is still there.
+fn update_frame(log: &FrameLog, id: u64, f: impl FnOnce(&mut FrameRecord)) {
+    if let Ok(mut list) = log.lock()
+        && let Some((_, record)) = list.iter_mut().rev().find(|(i, _)| *i == id)
+    {
+        f(record);
+    }
 }
 
 impl EngineModule for RenderModule {
@@ -62,6 +99,7 @@ impl EngineModule for RenderModule {
             MethodInfo::of::<CaptureScreenshot>(),
             MethodInfo::of::<ViewportPick>(),
             MethodInfo::of::<ViewportPresent>(),
+            MethodInfo::of::<ViewportStats>(),
         ]
     }
 
@@ -70,6 +108,8 @@ impl EngineModule for RenderModule {
             factory: self.factory.clone(),
             renderer: None,
             surface: None,
+            frames: FrameLog::default(),
+            next_frame: 0,
         }))
     }
 }
@@ -378,6 +418,12 @@ pub struct ViewportPresentParams {
     /// Which world: edit (default) or play.
     #[serde(default)]
     pub world: Option<WorldSel>,
+    /// Caller's tag for this view, echoed in `viewport.stats`.
+    #[serde(default)]
+    pub seq: Option<u64>,
+    /// When the input behind this view happened (Unix ms), for input-to-photon latency.
+    #[serde(default)]
+    pub input_time_ms: Option<f64>,
 }
 
 /// `viewport.present` result.
@@ -417,13 +463,107 @@ impl Method for ViewportPresent {
             width: p.width,
             height: p.height,
         };
+        let (log, id) = begin_frame(engine, &p);
+        let start = std::time::Instant::now();
+        let on_presented = presented_callback(log.clone(), id);
         let presented = match engine.state_mut::<AssetDb>() {
-            Some(db) => renderer.present(&snapshot, db, &request, surface),
-            None => renderer.present(&snapshot, &mut MemoryAssets::default(), &request, surface),
+            Some(db) => renderer.present_with(&snapshot, db, &request, surface, Some(on_presented)),
+            None => renderer.present_with(
+                &snapshot,
+                &mut MemoryAssets::default(),
+                &request,
+                surface,
+                Some(on_presented),
+            ),
         };
         put_renderer(engine, renderer);
+        let presented = presented.map_err(api_error);
+        if matches!(presented, Ok(true)) {
+            let cpu_ms = start.elapsed().as_secs_f64() * 1000.0;
+            update_frame(&log, id, |f| f.cpu_ms = cpu_ms);
+        } else if let Ok(mut list) = log.lock() {
+            list.retain(|(i, _)| *i != id);
+        }
         Ok(ViewportPresentResult {
-            presented: presented.map_err(api_error)?,
+            presented: presented?,
         })
+    }
+}
+
+/// Logs a new native-viewport frame (before rendering, so a fast display callback finds it).
+fn begin_frame(engine: &mut Engine, p: &ViewportPresentParams) -> (FrameLog, u64) {
+    let Some(state) = engine.state_mut::<RenderState>() else {
+        return (FrameLog::default(), 0);
+    };
+    state.next_frame += 1;
+    let id = state.next_frame;
+    if let Ok(mut list) = state.frames.lock() {
+        if list.len() == FRAME_RECORDS {
+            list.pop_front();
+        }
+        let record = FrameRecord {
+            seq: p.seq,
+            input_time_ms: p.input_time_ms,
+            cpu_ms: 0.0,
+            submitted_ms: unix_ms(std::time::SystemTime::now()),
+            presented_ms: None,
+        };
+        list.push_back((id, record));
+    }
+    (state.frames.clone(), id)
+}
+
+/// Records when frame `id` reached the display.
+fn presented_callback(log: FrameLog, id: u64) -> concordia_rhi::PresentedCallback {
+    Box::new(move |at| {
+        if let Some(at) = at {
+            update_frame(&log, id, |f| f.presented_ms = Some(unix_ms(at)));
+        }
+    })
+}
+
+/// Recent native-viewport frames: input tag, CPU time, submission and display times.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ViewportStats;
+
+/// `viewport.stats` params.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportStatsParams {
+    /// Empty the record after reading it.
+    #[serde(default)]
+    pub clear: Option<bool>,
+}
+
+/// `viewport.stats` result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ViewportStatsResult {
+    /// Oldest first (at most 4096).
+    pub frames: Vec<FrameRecord>,
+}
+
+impl Method for ViewportStats {
+    const NAME: &'static str = "viewport.stats";
+    const MUTATES: bool = false;
+    type Params = ViewportStatsParams;
+    type Result = ViewportStatsResult;
+
+    fn call(
+        engine: &mut Engine,
+        _: &CallCtx,
+        p: ViewportStatsParams,
+    ) -> Result<ViewportStatsResult, ApiError> {
+        let log = engine
+            .state::<RenderState>()
+            .map(|s| s.frames.clone())
+            .unwrap_or_default();
+        let mut list = log
+            .lock()
+            .map_err(|_| ApiError::new(ApiErrorKind::Internal, "viewport frame log poisoned"))?;
+        let frames = list.iter().map(|(_, f)| f.clone()).collect();
+        if p.clear == Some(true) {
+            list.clear();
+        }
+        Ok(ViewportStatsResult { frames })
     }
 }

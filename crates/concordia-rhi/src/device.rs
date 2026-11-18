@@ -37,6 +37,10 @@ pub struct Submit<'a> {
 pub trait Device: Send + Sync {
     /// Capabilities.
     fn caps(&self) -> &DeviceCaps;
+    /// GPU memory this device currently has allocated, in bytes, if the backend can tell.
+    fn allocated_bytes(&self) -> Option<u64> {
+        None
+    }
     /// Creates a buffer.
     fn create_buffer(&self, desc: &BufferDesc) -> Result<Buffer, RhiError>;
     /// Creates a texture.
@@ -105,13 +109,10 @@ pub trait Device: Send + Sync {
         width: u32,
         height: u32,
     ) -> Result<Option<Texture>, RhiError>;
-    /// Submits `commands` (which draw into the acquired image) and presents the image; its
-    /// texture handle is released.
-    fn present(
-        &self,
-        surface: crate::Surface,
-        commands: &crate::CommandList,
-    ) -> Result<(), RhiError>;
+    /// Submits the commands (which draw into the acquired image), signals the timelines when
+    /// they finish, and presents the image; its texture handle is released.
+    fn present(&self, surface: crate::Surface, present: crate::Present<'_>)
+    -> Result<(), RhiError>;
     /// Releases a surface (and any image still acquired from it).
     fn destroy_surface(&self, surface: crate::Surface);
 }

@@ -243,7 +243,7 @@ impl Engine {
         params: Value,
     ) -> Result<Value, ApiError> {
         self.poll(Instant::now());
-        let before = crate::events::Marker::of(self);
+        let before = crate::events::Marker::of(self, method);
         let result = crate::method::dispatch(self, session, method, params);
         if let Ok(value) = &result {
             crate::events::publish_after(self, method, &before, value);

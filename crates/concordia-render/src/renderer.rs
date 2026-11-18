@@ -67,6 +67,8 @@ pub struct Renderer {
     pipelines: Pipelines,
     culler: ClusterCuller,
     surfaces: Vec<Surface>,
+    /// Called when the frame being rendered reaches the display (set by `present_with`).
+    on_presented: Option<concordia_rhi::PresentedCallback>,
     environments: EnvironmentCache,
     shadow_maps: ShadowMaps,
     clusters: ClusterSettings,
@@ -197,6 +199,7 @@ impl Renderer {
             pipelines,
             culler,
             surfaces: Vec::new(),
+            on_presented: None,
             environments: EnvironmentCache::default(),
             shadow_maps: ShadowMaps::default(),
             clusters: ClusterSettings::default(),
@@ -254,6 +257,19 @@ impl Renderer {
         request: &RenderRequest,
         surface: Surface,
     ) -> Result<bool, RenderError> {
+        self.present_with(world, assets, request, surface, None)
+    }
+
+    /// [`Renderer::present`], calling `on_presented` when the frame reaches the display.
+    pub fn present_with(
+        &mut self,
+        world: &RenderWorld,
+        assets: &mut dyn AssetSource,
+        request: &RenderRequest,
+        surface: Surface,
+        on_presented: Option<concordia_rhi::PresentedCallback>,
+    ) -> Result<bool, RenderError> {
+        self.on_presented = on_presented;
         let (width, height) = check_size(request)?;
         let Some(texture) = self.device.acquire(surface, width.get(), height.get())? else {
             return Ok(false);
@@ -271,9 +287,10 @@ impl Renderer {
             Ok(_) => Ok(true),
             Err(e) => {
                 // Hand the image back so the surface is not left holding it.
-                let _ = self
-                    .device
-                    .present(surface, &CommandList::new("abandoned frame"));
+                let _ = self.device.present(
+                    surface,
+                    concordia_rhi::Present::new(&CommandList::new("abandoned frame")),
+                );
                 Err(e)
             }
         }
@@ -744,7 +761,17 @@ impl Renderer {
                 wait: &[],
                 signal: &[],
             })?,
-            Output::Surface { surface, .. } => device.present(surface, &list)?,
+            Output::Surface { surface, .. } => {
+                let on_presented = self.on_presented.take();
+                device.present(
+                    surface,
+                    concordia_rhi::Present {
+                        commands: &list,
+                        signal: &[],
+                        on_presented,
+                    },
+                )?
+            }
         }
         device.wait_idle()?;
         let image = match readback {

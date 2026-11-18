@@ -31,7 +31,11 @@ async function waitForFile(path: string, ms: number): Promise<void> {
 export const test = base.extend<{ engine: Engine }>({
   engine: async ({}, use) => {
     const dir = mkdtempSync(join(tmpdir(), "concordia-e2e-"));
-    cpSync(join(repo, "examples/m1-physics-stack"), dir, { recursive: true });
+    // Skip local engine state (a stale connection file would be read before ours is written).
+    cpSync(join(repo, "examples/m1-physics-stack"), dir, {
+      recursive: true,
+      filter: (source) => !source.split(/[\\/]/).includes(".concordia"),
+    });
     const binary = join(repo, "target/debug/concordia");
     const child: ChildProcess = spawn(binary, ["headless", "--ws", "--port", "0", "--project", dir], {
       stdio: "ignore",
