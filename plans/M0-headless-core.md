@@ -1,5 +1,5 @@
 # M0: Headless Core
-Status: In progress (phase 0.2; phases 0.0–0.1 done 2026-11-17) · Depends on: M-1 · Detail level: Ready to execute · Estimated effort: ~9–11 weeks (author + agents), 8 phases
+Status: In progress (phase 0.3; phases 0.0–0.2 done 2026-11-17) · Depends on: M-1 · Detail level: Ready to execute · Estimated effort: ~9–11 weeks (author + agents), 8 phases
 
 ## Goal & context
 
@@ -267,6 +267,15 @@ Every crate's `AGENTS.md` has these headings: **Purpose** (2–3 sentences), **P
   - Schema export: `$schema: https://json-schema.org/draft/2020-12/schema`, `$defs` for referenced types, `title` = stable name, `description` = docs, `additionalProperties: false` for structs, enums as `oneOf` of externally-tagged forms (serde default), glam `Vec3` as `{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3,"description":"[x, y, z]"}`, ids as `{"type":"string","format":"uuid"}`.
   - Derive written with `syn`/`quote` from scratch; we read Bevy's public reflection *docs* for the problem space but write our own design (clean room is about Unreal/source-available engines; Bevy is MIT/Apache, but we still don't copy).
   - References: JSON Schema 2020-12 spec; serde data model docs; `erased-serde` docs; Rust Reference on proc macros and `#[doc]` attributes.
+- **As built (0.2):**
+  - `Reflect` has no `register_dependencies`: `TypeRef` carries `info` and `register` fn pointers, and the registry walks `Shape::refs()` (recursive types terminate because a type is marked before its fields are walked).
+  - `TypeInfo` has a `structural` flag instead of `attrs`; structural types (`Option`, `Vec`, `BTreeMap<String,_>`, arrays, tuples) are inlined and not registered by name. Generic impls cache their info per `TypeId` (statics in generic fns are shared).
+  - `FieldInfo` has `optional` (serde `default`, `skip_serializing_if`, or `Option`) instead of `skip`; `#[serde(skip)]` fields are omitted. There is no `#[reflect(skip)]` (it would let schema and serde diverge).
+  - The derive uses a serde attribute **allow-list** (listed in `concordia-reflect/AGENTS.md`), not a deny-list.
+  - `TypeRegistration::from_json` validates shape and declared ranges first (`ReflectError::{Invalid, MissingField, UnknownField, OutOfRange}` with JSON Pointers), then deserializes. Added `TypeRegistry::from_json(name, value)` (`UnknownType`).
+  - Schemas: structs and enums go in `$defs`, the root is inlined, recursion to the root is `{"$ref": "#"}`; a field's docs are combined with an inlined type's docs.
+  - `canonical_hash` returns `Result`; integers are widened to `i128`, type names are excluded, struct fields and map keys sorted.
+  - Extra tests: `serde_skip_fields_are_not_reflected`, `deny_unknown_fields_is_recorded`, `dyn_from_json_reports_missing_unknown_and_out_of_range`, `erased_deserialize_builds_value`, `dyn_clone_and_eq`, `unknown_name_has_no_schema`, `canonical_hash_distinguishes_variants_and_one_ulp`, trybuild `serde_flatten_rejected`. Hash tests live in `tests/hash.rs`.
 - **Done criteria:** all tests green including trybuild; schema snapshots reviewed; `cargo doc` shows examples; `AGENTS.md` documents "how to make a type reflectable" and the forbidden-serde-attrs rule.
 
 ### Phase 0.3: concordia-ecs

@@ -1,0 +1,46 @@
+---
+source: crates/concordia-reflect/tests/schema.rs
+expression: "schema_for(Transform::type_info())"
+---
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Local transform.\n\nRelative to the parent.",
+  "properties": {
+    "rotation": {
+      "description": "Orientation.\n\nRotation quaternion as [x, y, z, w]; identity is [0, 0, 0, 1].",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 4,
+      "minItems": 4,
+      "type": "array"
+    },
+    "scale": {
+      "description": "Per-axis scale.\n\n3D vector as [x, y, z].",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array"
+    },
+    "translation": {
+      "description": "Position.\n\n3D vector as [x, y, z].",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array"
+    }
+  },
+  "required": [
+    "translation",
+    "rotation",
+    "scale"
+  ],
+  "title": "Transform",
+  "type": "object",
+  "x-concordia-type": "Transform"
+}

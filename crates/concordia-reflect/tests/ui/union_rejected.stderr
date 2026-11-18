@@ -1,0 +1,5 @@
+error: Reflect does not support unions; use a struct or an enum
+ --> tests/ui/union_rejected.rs:4:7
+  |
+4 | union Bits {
+  |       ^^^^

@@ -1,0 +1,90 @@
+---
+source: crates/concordia-reflect/tests/schema.rs
+expression: "schema_for(Mode::type_info())"
+---
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Movement mode.",
+  "oneOf": [
+    {
+      "const": "Idle",
+      "description": "Standing still."
+    },
+    {
+      "additionalProperties": false,
+      "description": "Walking at a speed.",
+      "properties": {
+        "Walk": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "Walk"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Jump height and duration.",
+      "properties": {
+        "Jump": {
+          "items": false,
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "type": "array"
+        }
+      },
+      "required": [
+        "Jump"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Patrol a route.",
+      "properties": {
+        "Patrol": {
+          "additionalProperties": false,
+          "properties": {
+            "looping": {
+              "description": "Loop back to the start.",
+              "type": "boolean"
+            },
+            "points": {
+              "description": "Waypoints.",
+              "items": {
+                "description": "3D vector as [x, y, z].",
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 3,
+                "minItems": 3,
+                "type": "array"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "points",
+            "looping"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "Patrol"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "Mode",
+  "x-concordia-type": "Mode"
+}

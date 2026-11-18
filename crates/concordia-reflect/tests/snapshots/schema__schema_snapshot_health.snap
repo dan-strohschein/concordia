@@ -1,0 +1,29 @@
+---
+source: crates/concordia-reflect/tests/schema.rs
+expression: "schema_for(Health::type_info())"
+---
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A health pool.",
+  "properties": {
+    "hp": {
+      "default": 100.0,
+      "description": "Current hit points.",
+      "maximum": 1000.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "max": {
+      "description": "Maximum hit points.",
+      "type": "number"
+    }
+  },
+  "required": [
+    "hp",
+    "max"
+  ],
+  "title": "Health",
+  "type": "object",
+  "x-concordia-type": "Health"
+}

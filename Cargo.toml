@@ -22,6 +22,17 @@ undocumented_unsafe_blocks = "warn"
 
 [workspace.dependencies]
 concordia-core = { path = "crates/concordia-core" }
+concordia-reflect = { path = "crates/concordia-reflect" }
+concordia-reflect-derive = { path = "crates/concordia-reflect-derive" }
+blake3 = "1.8"
+erased-serde = "0.4"
+insta = { version = "1.49", features = ["json"] }
+jsonschema = { version = "0.61", default-features = false }
+proc-macro2 = "1"
+proptest = "1.12"
+quote = "1"
+syn = { version = "3", features = ["full"] }
+trybuild = "1"
 glam = { version = "0.34", features = ["serde"] }
 rand_chacha = "0.10"
 rand_core = "0.10"

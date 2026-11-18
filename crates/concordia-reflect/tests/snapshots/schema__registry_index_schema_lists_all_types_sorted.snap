@@ -1,0 +1,99 @@
+---
+source: crates/concordia-reflect/tests/schema.rs
+expression: index
+---
+{
+  "title": "Concordia type index",
+  "types": [
+    {
+      "description": "Stable entity id (UUID string).",
+      "kind": "primitive",
+      "name": "EntityId"
+    },
+    {
+      "description": "A health pool.",
+      "kind": "struct",
+      "name": "Health"
+    },
+    {
+      "description": "A tag with no data.",
+      "kind": "struct",
+      "name": "Marker"
+    },
+    {
+      "description": "Movement mode.",
+      "kind": "enum",
+      "name": "Mode"
+    },
+    {
+      "description": "Display name.",
+      "kind": "struct",
+      "name": "Name"
+    },
+    {
+      "description": "A numbered label.",
+      "kind": "struct",
+      "name": "Pair"
+    },
+    {
+      "description": "Rotation quaternion as [x, y, z, w]; identity is [0, 0, 0, 1].",
+      "kind": "array",
+      "name": "Quat"
+    },
+    {
+      "description": "Rejects unknown fields.",
+      "kind": "struct",
+      "name": "Strict"
+    },
+    {
+      "description": "",
+      "kind": "primitive",
+      "name": "String"
+    },
+    {
+      "description": "Local transform.",
+      "kind": "struct",
+      "name": "Transform"
+    },
+    {
+      "description": "2D vector as [x, y].",
+      "kind": "array",
+      "name": "Vec2"
+    },
+    {
+      "description": "3D vector as [x, y, z].",
+      "kind": "array",
+      "name": "Vec3"
+    },
+    {
+      "description": "Every supported shape at once.",
+      "kind": "struct",
+      "name": "Zoo"
+    },
+    {
+      "description": "",
+      "kind": "primitive",
+      "name": "bool"
+    },
+    {
+      "description": "",
+      "kind": "primitive",
+      "name": "f32"
+    },
+    {
+      "description": "",
+      "kind": "primitive",
+      "name": "f64"
+    },
+    {
+      "description": "",
+      "kind": "primitive",
+      "name": "i32"
+    },
+    {
+      "description": "",
+      "kind": "primitive",
+      "name": "u8"
+    }
+  ]
+}
