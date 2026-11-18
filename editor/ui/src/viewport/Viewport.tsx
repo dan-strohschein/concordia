@@ -5,10 +5,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { EDITOR_ACTOR, type EditorSession } from "../engine/session";
-import { DEFAULT_CAMERA, OrbitCamera, type Preset, type Vec3, type View } from "./camera";
+import { type Preset, type Vec3, type View } from "./camera";
 import { Gizmo } from "./Gizmo";
 import { inputTags } from "./latency";
-import { isNative, reportSlot } from "./native";
+import { isNative, onNativeView, reportSlot } from "./native";
+import { type NavParams, useNavigate } from "./navigate";
 
 type Tool = "select" | "move";
 
@@ -69,15 +70,19 @@ function useStreamedView(session: EditorSession, world: "edit" | "play") {
 }
 
 export function Viewport({ session, world, selected, onSelect }: Props) {
+  const native = isNative();
   const [tool, setTool] = useState<Tool>("select");
-  const [camera] = useState(() => new OrbitCamera(DEFAULT_CAMERA));
-  const [view, setView] = useState<View>(() => camera.view());
+  const [view, setView] = useState<View>();
   const [size, setSize] = useState({ width: 640, height: 360 });
   const slot = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; button: number; shift: boolean; moved: boolean } | undefined>(undefined);
   const { src, status, request } = useStreamedView(session, world);
+  const navigate = useNavigate(session, setView);
+  const latest = useRef({ view, size });
+  latest.current = { view, size };
 
-  const update = useCallback(() => setView(camera.view()), [camera]);
+  useEffect(() => navigate({}), [navigate]);
+  useEffect(() => (native ? onNativeView(setView) : undefined), [native]);
   useEffect(() => {
     const element = slot.current;
     if (!element) return;
@@ -88,58 +93,60 @@ export function Viewport({ session, world, selected, onSelect }: Props) {
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  useEffect(() => request(view, size.width, size.height), [request, view, size]);
-  // In the native shell: keep the Metal view on the slot, and present every display frame while playing.
+  // Redraw on resize, world changes and, in a browser, camera moves. Natively the engine redraws
+  // camera moves itself (`viewport.navigate`).
+  const redraw = useCallback(() => {
+    const { view: v, size: s } = latest.current;
+    if (v) request(v, s.width, s.height);
+  }, [request]);
+  const hasView = view !== undefined;
+  useEffect(redraw, [redraw, size, hasView]);
   useEffect(() => {
-    if (!isNative() || !slot.current) return;
+    if (!native) redraw();
+  }, [native, redraw, view]);
+  useEffect(() => session.onEvent(redraw), [session, redraw]);
+  // In the native shell: keep the Metal view on the slot, and redraw every display frame while playing.
+  useEffect(() => {
+    if (!native || !slot.current) return;
     void reportSlot(slot.current);
-  }, [size]);
+  }, [native, size]);
   useEffect(() => {
-    if (!isNative() || world !== "play") return;
+    if (!native || world !== "play") return;
     let frame = requestAnimationFrame(function tick() {
-      request(view, size.width, size.height);
+      redraw();
       frame = requestAnimationFrame(tick);
     });
     return () => cancelAnimationFrame(frame);
-  }, [world, request, view, size]);
-  useEffect(() => session.onEvent(() => request(view, size.width, size.height)), [session, request, view, size]);
+  }, [native, world, redraw]);
 
   const focusSelection = useCallback(async () => {
     if (selected === undefined) return;
     const data = await session.entity(selected);
     const t = (data.components["Transform"] as { translation?: Vec3 } | undefined)?.translation;
-    if (t) {
-      camera.focus(t);
-      update();
-    }
-  }, [session, selected, camera, update]);
+    if (t) navigate({ focus: t });
+  }, [session, selected, navigate]);
 
-  const preset = (name: Preset) => {
-    camera.preset(name);
-    update();
-  };
   useEffect(() => {
     const keys = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
       if (e.key === "q") setTool("select");
       if (e.key === "w") setTool("move");
       if (e.key === "f") void focusSelection();
-      const byCode: Record<string, () => void> = {
-        Numpad1: () => preset("front"),
-        Numpad3: () => preset("right"),
-        Numpad7: () => preset("top"),
-        Numpad5: () => {
-          camera.toggleOrtho();
-          update();
-        },
+      const byCode: Record<string, NavParams> = {
+        Numpad1: { preset: "front" },
+        Numpad3: { preset: "right" },
+        Numpad7: { preset: "top" },
+        Numpad5: { toggle_ortho: true },
       };
-      byCode[e.code]?.();
+      const move = byCode[e.code];
+      if (move) navigate(move);
     };
     window.addEventListener("keydown", keys);
     return () => window.removeEventListener("keydown", keys);
-  });
+  }, [focusSelection, navigate]);
 
   const pick = (x: number, y: number) => {
+    if (!view) return;
     session
       .call<{ entity: string | null }>("viewport.pick", { view, x, y, width: size.width, height: size.height, world })
       .then(
@@ -166,11 +173,8 @@ export function Viewport({ session, world, selected, onSelect }: Props) {
     const [dx, dy] = [e.clientX - d.x, e.clientY - d.y];
     if (Math.abs(dx) + Math.abs(dy) > 3) d.moved = true;
     if (d.button !== 1) return;
-    inputTags.mark(e.timeStamp);
-    if (d.shift) camera.pan(dx, dy, size.height);
-    else camera.orbit(dx, dy);
+    navigate(d.shift ? { pan: [dx, dy], height: size.height } : { orbit: [dx, dy] });
     [d.x, d.y] = [e.clientX, e.clientY];
-    update();
   };
   const onMouseUp = (e: React.MouseEvent) => {
     const d = drag.current;
@@ -180,17 +184,11 @@ export function Viewport({ session, world, selected, onSelect }: Props) {
       if (p.x >= 0 && p.y >= 0 && p.x < size.width && p.y < size.height) pick(p.x, p.y);
     }
   };
-  const onWheel = (e: React.WheelEvent) => {
-    inputTags.mark(e.timeStamp);
-    camera.zoom(Math.sign(e.deltaY));
-    update();
-  };
+  const onWheel = (e: React.WheelEvent) => navigate({ zoom: Math.sign(e.deltaY) });
   const onViewMenu = (choice: string) => {
-    if (choice === "ortho") {
-      camera.toggleOrtho();
-      update();
-    } else if (choice === "focus") void focusSelection();
-    else if (choice !== "") preset(choice as Preset);
+    if (choice === "ortho") navigate({ toggle_ortho: true });
+    else if (choice === "focus") void focusSelection();
+    else if (choice !== "") navigate({ preset: choice as Preset });
   };
 
   return (
@@ -243,7 +241,7 @@ export function Viewport({ session, world, selected, onSelect }: Props) {
             style={{ width: "100%", height: "100%", display: "block", pointerEvents: "none" }}
           />
         )}
-        {tool === "move" && selected !== undefined && (
+        {tool === "move" && selected !== undefined && view && (
           <Gizmo
             session={session}
             entity={selected}
@@ -256,7 +254,7 @@ export function Viewport({ session, world, selected, onSelect }: Props) {
         {status && <p style={{ position: "absolute", bottom: 4, left: 8, color: "#f88" }}>{status}</p>}
         <span style={{ position: "absolute", top: 6, left: 8, opacity: 0.7 }}>
           {world === "play" ? "Playing · " : ""}
-          {camera.ortho ? "Orthographic" : "Perspective"}
+          {view && "Orthographic" in view.projection ? "Orthographic" : "Perspective"}
         </span>
       </div>
     </div>

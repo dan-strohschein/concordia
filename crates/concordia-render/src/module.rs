@@ -20,6 +20,7 @@ use concordia_assets::AssetRef;
 
 pub use crate::frame_log::FrameRecord;
 use crate::frame_log::{FrameLog, push_frame, remove_frame, unix_ms};
+use crate::orbit::{OrbitCamera, Preset};
 use crate::thread::{RenderThread, ViewportFrame};
 use crate::{Image, MemoryAssets, RenderError, RenderRequest, RenderWorld, Renderer};
 
@@ -55,6 +56,10 @@ struct RenderState {
     /// Recent native-viewport frames (for `viewport.stats`), keyed by frame number.
     frames: FrameLog,
     next_frame: u64,
+    /// The editor's camera (`viewport.navigate`).
+    camera: OrbitCamera,
+    /// The native viewport's last size and world, so navigation can re-present it.
+    viewport: Option<(u32, u32, Option<WorldSel>)>,
 }
 
 impl EngineModule for RenderModule {
@@ -75,6 +80,7 @@ impl EngineModule for RenderModule {
             MethodInfo::of::<ViewportPick>(),
             MethodInfo::of::<ViewportPresent>(),
             MethodInfo::of::<ViewportStats>(),
+            MethodInfo::of::<ViewportNavigate>(),
         ]
     }
 
@@ -86,6 +92,8 @@ impl EngineModule for RenderModule {
             shipped: BTreeSet::new(),
             frames: FrameLog::default(),
             next_frame: 0,
+            camera: OrbitCamera::default(),
+            viewport: None,
         }))
     }
 }
@@ -438,32 +446,57 @@ impl Method for ViewportPresent {
             )
             .suggest(["use capture.screenshot (the editor streams it in a browser)".to_owned()]));
         }
-        let world = RenderWorld::extract(engine.world(p.world.unwrap_or_default())?);
-        let assets = ship(engine, &world)?;
-        let request = RenderRequest {
-            camera: None,
-            view: Some(p.view.clone()),
+        let target = PresentTarget {
             width: p.width,
             height: p.height,
+            world: p.world,
+            seq: p.seq,
+            input_time_ms: p.input_time_ms,
         };
-        let (log, id) = queue_record(engine, &p);
-        let frame = ViewportFrame {
-            world,
-            assets,
-            request,
-            log: log.clone(),
-            id,
-        };
-        if let Err(e) = render_thread(engine).and_then(|t| t.present(frame).map_err(api_error)) {
-            remove_frame(&log, id);
-            return Err(e);
-        }
+        queue_present(engine, p.view, target)?;
         Ok(ViewportPresentResult { presented: true })
     }
 }
 
+/// Where and why a native-viewport frame is drawn.
+struct PresentTarget {
+    width: u32,
+    height: u32,
+    world: Option<WorldSel>,
+    seq: Option<u64>,
+    input_time_ms: Option<f64>,
+}
+
+/// Snapshots the world and queues a frame of `view` on the render thread.
+fn queue_present(engine: &mut Engine, view: crate::View, t: PresentTarget) -> Result<(), ApiError> {
+    let world = RenderWorld::extract(engine.world(t.world.unwrap_or_default())?);
+    let assets = ship(engine, &world)?;
+    let request = RenderRequest {
+        camera: None,
+        view: Some(view),
+        width: t.width,
+        height: t.height,
+    };
+    let (log, id) = queue_record(engine, &t);
+    if let Some(state) = engine.state_mut::<RenderState>() {
+        state.viewport = Some((t.width, t.height, t.world));
+    }
+    let frame = ViewportFrame {
+        world,
+        assets,
+        request,
+        log: log.clone(),
+        id,
+    };
+    if let Err(e) = render_thread(engine).and_then(|t| t.present(frame).map_err(api_error)) {
+        remove_frame(&log, id);
+        return Err(e);
+    }
+    Ok(())
+}
+
 /// Logs a newly queued native-viewport frame.
-fn queue_record(engine: &mut Engine, p: &ViewportPresentParams) -> (FrameLog, u64) {
+fn queue_record(engine: &mut Engine, p: &PresentTarget) -> (FrameLog, u64) {
     let Some(state) = engine.state_mut::<RenderState>() else {
         return (FrameLog::default(), 0);
     };
@@ -524,4 +557,118 @@ impl Method for ViewportStats {
         }
         Ok(ViewportStatsResult { frames })
     }
+}
+
+/// Move the editor's camera (orbit, pan, zoom, presets, focus) and return its view; the native
+/// viewport, if attached, is redrawn. Pass no fields to read the current view.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ViewportNavigate;
+
+/// `viewport.navigate` params (applied in order: preset, toggle_ortho, focus, orbit, pan, zoom).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportNavigateParams {
+    /// Jump to a named view.
+    #[serde(default)]
+    pub preset: Option<Preset>,
+    /// Switch between perspective and orthographic.
+    #[serde(default)]
+    pub toggle_ortho: Option<bool>,
+    /// Orbit around this point from now on.
+    #[serde(default)]
+    pub focus: Option<concordia_core::math::Vec3>,
+    /// Orbit by a pointer drag of [dx, dy] pixels.
+    #[serde(default)]
+    pub orbit: Option<[f32; 2]>,
+    /// Pan by a pointer drag of [dx, dy] pixels (needs `height`).
+    #[serde(default)]
+    pub pan: Option<[f32; 2]>,
+    /// Viewport height in pixels, for panning.
+    #[serde(default)]
+    #[reflect(range(min = 1.0, max = 16384.0))]
+    pub height: Option<f32>,
+    /// Zoom steps: positive zooms out.
+    #[serde(default)]
+    pub zoom: Option<f32>,
+    /// Caller's input tag, echoed in `viewport.stats` for the redrawn frame.
+    #[serde(default)]
+    pub seq: Option<u64>,
+    /// When the input happened (Unix ms).
+    #[serde(default)]
+    pub input_time_ms: Option<f64>,
+}
+
+/// `viewport.navigate` result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ViewportNavigateResult {
+    /// The camera's view after the move.
+    pub view: crate::View,
+}
+
+impl Method for ViewportNavigate {
+    const NAME: &'static str = "viewport.navigate";
+    const MUTATES: bool = false;
+    type Params = ViewportNavigateParams;
+    type Result = ViewportNavigateResult;
+
+    fn call(
+        engine: &mut Engine,
+        _: &CallCtx,
+        p: ViewportNavigateParams,
+    ) -> Result<ViewportNavigateResult, ApiError> {
+        Ok(ViewportNavigateResult {
+            view: navigate(engine, &p)?,
+        })
+    }
+}
+
+/// Applies `p` to the editor camera, redraws the native viewport if one is attached, and returns
+/// the new view (for in-process hosts' native input, and `viewport.navigate`).
+pub fn navigate(engine: &mut Engine, p: &ViewportNavigateParams) -> Result<crate::View, ApiError> {
+    let pan_height = match (p.pan, p.height) {
+        (Some(_), Some(h)) if h.is_finite() && h >= 1.0 => h,
+        (Some(_), _) => {
+            return Err(ApiError::new(
+                ApiErrorKind::InvalidParams,
+                "pan needs the viewport height in pixels (≥ 1)",
+            )
+            .at("/height"));
+        }
+        _ => 1.0,
+    };
+    let state = engine
+        .state_mut::<RenderState>()
+        .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render module has no state"))?;
+    let camera = &mut state.camera;
+    if let Some(preset) = p.preset {
+        camera.preset(preset);
+    }
+    if p.toggle_ortho == Some(true) {
+        camera.ortho = !camera.ortho;
+    }
+    if let Some(point) = p.focus.filter(|v| v.is_finite()) {
+        camera.target = point;
+    }
+    if let Some([dx, dy]) = p.orbit {
+        camera.orbit(dx, dy);
+    }
+    if let Some([dx, dy]) = p.pan {
+        camera.pan(dx, dy, pan_height);
+    }
+    if let Some(steps) = p.zoom {
+        camera.zoom(steps);
+    }
+    let view = camera.view();
+    let redraw = state.surface.then_some(state.viewport).flatten();
+    if let Some((width, height, world)) = redraw {
+        let target = PresentTarget {
+            width,
+            height,
+            world,
+            seq: p.seq,
+            input_time_ms: p.input_time_ms,
+        };
+        queue_present(engine, view.clone(), target)?;
+    }
+    Ok(view)
 }

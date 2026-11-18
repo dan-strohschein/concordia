@@ -353,3 +353,25 @@ fn wait_until_submitted(h: &mut Harness, seq: u64) {
     }
     panic!("frame {seq} never rendered");
 }
+
+#[test]
+fn viewport_navigate_moves_the_engine_side_editor_camera() {
+    let mut h = Harness::new();
+    let start = h.ok("viewport.navigate", json!({}))["view"].clone();
+    let orbited = h.ok("viewport.navigate", json!({"orbit": [40.0, 0.0]}))["view"].clone();
+    assert_ne!(start["eye"], orbited["eye"], "orbiting moves the eye");
+    assert_eq!(start["target"], orbited["target"]);
+    let top = h.ok("viewport.navigate", json!({"preset": "top"}))["view"].clone();
+    assert!(top["eye"][1].as_f64().unwrap() > top["target"][1].as_f64().unwrap());
+    let iso = h.ok("viewport.navigate", json!({"preset": "iso"}));
+    assert!(
+        iso["view"]["projection"]["Orthographic"].is_object(),
+        "{iso}"
+    );
+    let focused = h.ok("viewport.navigate", json!({"focus": [3.0, 0.0, 0.0]}))["view"].clone();
+    assert_eq!(focused["target"], json!([3.0, 0.0, 0.0]));
+    let err = h
+        .call("viewport.navigate", json!({"pan": [1.0, 1.0], "height": 0}))
+        .unwrap_err();
+    assert_eq!(err.kind, concordia_api::ApiErrorKind::InvalidParams);
+}

@@ -2,6 +2,7 @@
 //! The UI is just another Engine API client; this crate holds no editing logic.
 
 pub mod bench;
+pub mod input;
 #[cfg(target_os = "macos")]
 pub mod native;
 

@@ -15,6 +15,7 @@ pub mod graph;
 pub mod ibl;
 mod lighting;
 mod module;
+mod orbit;
 mod pipelines;
 mod renderer;
 pub mod shadow;
@@ -34,8 +35,9 @@ pub use frame::DrawPush;
 pub use lighting::candela;
 pub use module::{
     CaptureScreenshot, CaptureScreenshotParams, CaptureScreenshotResult, DeviceFactory,
-    RenderModule, attach_surface,
+    RenderModule, ViewportNavigateParams, attach_surface, navigate,
 };
+pub use orbit::{OrbitCamera, Preset};
 pub use pipelines::shader_dir;
 pub use renderer::{Image, MAX_SIZE, RenderRequest, RenderStats, Renderer};
 pub use shadow_pass::ShadowPush;

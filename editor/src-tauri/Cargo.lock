@@ -610,6 +610,7 @@ name = "concordia-editor"
 version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
+ "block2 0.6.2",
  "concordia-api",
  "concordia-app",
  "concordia-core",

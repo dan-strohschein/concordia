@@ -25,3 +25,19 @@ export async function reportSlot(element: HTMLElement): Promise<void> {
   };
   if (Object.values(rect).every((v) => Number.isFinite(v))) await invoke("slot_rect", { rect });
 }
+
+/** Calls `onView` with each editor-camera view the shell's native input produces. */
+export function onNativeView(onView: (view: import("./camera").View) => void): () => void {
+  let stop: (() => void) | undefined;
+  let stopped = false;
+  void import("@tauri-apps/api/event").then(({ listen }) =>
+    listen<import("./camera").View>("viewport-view", (e) => onView(e.payload)).then((unlisten) => {
+      if (stopped) unlisten();
+      else stop = unlisten;
+    }),
+  );
+  return () => {
+    stopped = true;
+    stop?.();
+  };
+}

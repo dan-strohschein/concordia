@@ -219,7 +219,39 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
   - **Outliner refreshes at 10k entities:** a full refetch and re-render costs 74–117 ms per agent edit, with dropped frames while orbiting.
 - The Rust-driven baseline's 40 ms latency is queue depth (two frames in flight, plus drawables), not work. Its job is to show throughput.
 
-**d. Decide (next).** The author sets the kill criteria; then keep the web UI and fix the web-side costs, or replace it.
+**d. Kill criteria (approved by the author on 2026-11-18).** The web UI is replaced if any of these still fail after reasonable web-side fixes:
+- orbit and gizmo drag at the display's full rate (120 fps here), or within 10% of the Rust-driven baseline;
+- input→photon p95 under 25 ms;
+- an agent's edit visible in the outliner within 50 ms at 10k entities, with no dropped viewport frames;
+- the inspector following a moving entity during play without dropping viewport frames;
+- the author's hands-on feel check.
+
+**e. Web-side fixes (done; bench label `webfix`):**
+- **Native viewport input.**
+  - The editor camera moved into the engine (`OrbitCamera`, `viewport.navigate`, one implementation; the UI's camera tests moved with it to `tests/orbit.rs`).
+  - An AppKit event monitor sends viewport gestures to it from Rust, before the page sees them; the engine redraws.
+  - The page gets each new view for its overlays.
+- **Outliner.**
+  - Edit events re-fetch only the entities they name; edits touching more than 200 entities, and scene changes, refresh everything.
+  - Only the visible rows are rendered (a flat tree with `aria-level`).
+
+**Results against the criteria** (+0 / +1k / +10k entities):
+
+| Criterion | Result | Verdict |
+|---|---|---|
+| Orbit at full rate (≥108 fps, within 10% of the 120 fps baseline) | 99 / 99 / 98 fps, up from 60 | fail (close) |
+| Gizmo drag at full rate | 60 fps (still page-driven) | fail |
+| Input→photon p95 < 25 ms | orbit 34 / 38 / 35 ms; gizmo 30 / 30 / 38 ms | fail |
+| Agent edit → outliner within 50 ms at 10k, no dropped frames | p50 50, p95 79 ms (was 117); orbit unaffected | fail (close) |
+| Play without dropped viewport frames | 60 fps (presents are page-driven) | fail |
+| Author's feel check | — | pending |
+
+**Analysis.**
+- **Orbit and latency.** These don't touch the page any more. The Rust-only baseline shows the same latency floor (about 40 ms when it queues frames back to back), so the latency is the engine's presentation queue: two frames in flight plus three drawables at 120 Hz. A native UI would share it.
+- **The orbit rate** is partly the bench's synthetic-input injector, which posts on a timer.
+- **The gizmo and play** are still paced by the page's 60 Hz `requestAnimationFrame`.
+- **The outliner** rebuilds and sorts the whole 10k-entity tree on every change.
+
 
 ### Phase 1.9c: Native editor shell (done)
 - **RHI window surfaces:** `create_surface` (unsafe; wraps a `CAMetalLayer`), `acquire`, `present` and `destroy_surface`, with Metal tests using a standalone layer (12 acquire/clear/present cycles, misuse errors).

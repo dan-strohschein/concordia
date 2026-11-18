@@ -45,6 +45,22 @@ export class EditorSession {
     return rows;
   }
 
+  /** The Outliner rows (Name and Parent) of `ids`; `undefined` for entities that are gone. */
+  async entityRows(ids: readonly string[]): Promise<{ id: string; row: Row | undefined }[]> {
+    return Promise.all(
+      ids.map(async (id) => {
+        try {
+          const e = await this.entity(id);
+          const { Name, Parent } = e.components;
+          const components = { ...(Name === undefined ? {} : { Name }), ...(Parent === undefined ? {} : { Parent }) };
+          return { id, row: { id, components } };
+        } catch {
+          return { id, row: undefined };
+        }
+      }),
+    );
+  }
+
   entity(id: string): Promise<EntityData> {
     return this.client.call<EntityData>("entity.get", { id });
   }

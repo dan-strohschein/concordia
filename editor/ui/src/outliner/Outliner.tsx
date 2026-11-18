@@ -1,8 +1,10 @@
 // The Scene dock (Godot) / Outliner: the entity tree; click selects, F2 renames, Delete despawns.
-import { useCallback, useEffect, useState } from "react";
+// Edits patch only the entities they touched, and only the rows in view are rendered.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { EDITOR_ACTOR, type EditorSession } from "../engine/session";
-import { buildTree, type TreeNode } from "./tree";
+import { flatten, rowWindow, withUpdates, type FlatRow } from "./rows";
+import { buildTree, type EntityRow } from "./tree";
 
 interface Props {
   session: EditorSession;
@@ -10,20 +12,68 @@ interface Props {
   onSelect: (id: string | undefined) => void;
 }
 
-export function Outliner({ session, selected, onSelect }: Props) {
-  const [roots, setRoots] = useState<TreeNode[]>([]);
-  const [renaming, setRenaming] = useState<string>();
-  const refresh = useCallback(() => {
-    session.entities().then(
-      (rows) => setRoots(buildTree(rows)),
-      () => setRoots([]),
-    );
-  }, [session]);
+const ROW_HEIGHT = 20;
+const OVERSCAN = 10;
+/** Edits touching more entities than this refresh the whole list instead. */
+const PATCH_LIMIT = 200;
+
+/** The scene's rows, kept current from edit and scene events (updates applied in order). */
+function useEntityRows(session: EditorSession): Map<string, EntityRow> {
+  const [rows, setRows] = useState(() => new Map<string, EntityRow>());
+  const queue = useRef(Promise.resolve());
+  const enqueue = useCallback((work: () => Promise<void>) => {
+    queue.current = queue.current.then(work, work);
+  }, []);
+  const refresh = useCallback(
+    () =>
+      enqueue(() =>
+        session.entities().then(
+          (all) => setRows(new Map(all.map((r) => [r.id, r]))),
+          () => setRows(new Map()),
+        ),
+      ),
+    [session, enqueue],
+  );
   useEffect(refresh, [refresh]);
   useEffect(
-    () => session.onEvent((e) => (e.topic === "edit" || e.topic === "scene" ? refresh() : undefined)),
-    [session, refresh],
+    () =>
+      session.onEvent((e) => {
+        if (e.topic === "scene") return refresh();
+        if (e.topic !== "edit") return;
+        const ids = e["entities"];
+        if (!Array.isArray(ids) || ids.length > PATCH_LIMIT) return refresh();
+        const changed = ids.filter((id): id is string => typeof id === "string");
+        enqueue(() => session.entityRows(changed).then((updates) => setRows((prev) => withUpdates(prev, updates))));
+      }),
+    [session, refresh, enqueue],
   );
+  return rows;
+}
+
+/** The list's scroll position and height, for rendering only the rows in view. */
+function useScrollWindow(count: number) {
+  const box = useRef<HTMLDivElement>(null);
+  const [view, setView] = useState({ scrollTop: 0, height: 800 });
+  useEffect(() => {
+    const element = box.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setView((v) => ({ ...v, height: element.clientHeight || v.height })));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const scrollTop = e.currentTarget.scrollTop;
+    setView((v) => ({ ...v, scrollTop }));
+  };
+  const range = rowWindow({ count, ...view, rowHeight: ROW_HEIGHT, overscan: OVERSCAN });
+  return { box, onScroll, range };
+}
+
+export function Outliner({ session, selected, onSelect }: Props) {
+  const rows = useEntityRows(session);
+  const flat = useMemo(() => flatten(buildTree([...rows.values()])), [rows]);
+  const { box, onScroll, range } = useScrollWindow(flat.length);
+  const [renaming, setRenaming] = useState<string>();
 
   const rename = (id: string, name: string) => {
     setRenaming(undefined);
@@ -37,48 +87,61 @@ export function Outliner({ session, selected, onSelect }: Props) {
       onSelect(undefined);
     }
   };
-  const node = (n: TreeNode, depth: number): React.ReactNode => (
-    <li key={n.id} role="treeitem" aria-selected={n.id === selected}>
+  const item = ({ node, depth }: FlatRow) => (
+    <li key={node.id} role="treeitem" aria-level={depth + 1} aria-selected={node.id === selected}>
       <div
-        onClick={() => onSelect(n.id)}
-        onDoubleClick={() => setRenaming(n.id)}
+        onClick={() => onSelect(node.id)}
+        onDoubleClick={() => setRenaming(node.id)}
         style={{
+          height: ROW_HEIGHT,
+          lineHeight: `${ROW_HEIGHT}px`,
           paddingLeft: 6 + depth * 14,
-          background: n.id === selected ? "#3d5a80" : undefined,
+          background: node.id === selected ? "#3d5a80" : undefined,
           cursor: "default",
+          whiteSpace: "nowrap",
         }}
       >
-        {renaming === n.id ? (
+        {renaming === node.id ? (
           <input
             autoFocus
             aria-label="Rename"
-            defaultValue={n.label}
-            onBlur={(e) => rename(n.id, e.target.value)}
+            defaultValue={node.label}
+            onBlur={(e) => rename(node.id, e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") rename(n.id, e.currentTarget.value);
+              if (e.key === "Enter") rename(node.id, e.currentTarget.value);
               if (e.key === "Escape") setRenaming(undefined);
             }}
           />
         ) : (
-          n.label
+          node.label
         )}
       </div>
-      {n.children.length > 0 && (
-        <ul role="group" style={{ listStyle: "none", margin: 0, padding: 0 }}>
-          {n.children.map((c) => node(c, depth + 1))}
-        </ul>
-      )}
     </li>
   );
   return (
-    <ul
-      role="tree"
-      aria-label="Scene"
-      tabIndex={0}
-      onKeyDown={onKey}
-      style={{ listStyle: "none", margin: 0, padding: 0, outline: "none" }}
+    <div
+      ref={box}
+      onScroll={onScroll}
+      data-testid="outliner-scroll"
+      style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
     >
-      {roots.map((n) => node(n, 0))}
-    </ul>
+      <ul
+        role="tree"
+        aria-label="Scene"
+        tabIndex={0}
+        onKeyDown={onKey}
+        style={{
+          listStyle: "none",
+          margin: 0,
+          outline: "none",
+          paddingTop: range.start * ROW_HEIGHT,
+          paddingBottom: (flat.length - range.end) * ROW_HEIGHT,
+          paddingLeft: 0,
+          paddingRight: 0,
+        }}
+      >
+        {flat.slice(range.start, range.end).map(item)}
+      </ul>
+    </div>
   );
 }

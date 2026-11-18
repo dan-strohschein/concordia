@@ -15,6 +15,8 @@ struct Shell {
     slot_seen: AtomicBool,
     /// The latest slot, in physical pixels (width, height).
     slot_px: std::sync::Mutex<(u32, u32)>,
+    /// The latest slot height in points (for panning).
+    slot_height: std::sync::Mutex<f64>,
     /// Where `--bench` writes its report.
     bench_out: Option<PathBuf>,
     bench_entities: usize,
@@ -57,6 +59,90 @@ async fn bench_native_orbit(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// Native input's `viewport.stats` tags start here, apart from the page's.
+const NATIVE_SEQ_BASE: u64 = 1 << 32;
+
+/// Applies viewport gestures to the editor camera in order (merging any that queued up) and
+/// sends each new view to the page for its overlays.
+#[cfg(target_os = "macos")]
+fn navigation_worker(
+    host: &EngineHost,
+    shell: &Shell,
+    app: &tauri::AppHandle,
+    queue: &std::sync::mpsc::Receiver<(concordia_editor::input::Nav, f64)>,
+) {
+    use tauri::Emitter;
+    let mut seq = NATIVE_SEQ_BASE;
+    while let Ok((mut nav, mut earliest)) = queue.recv() {
+        while let Ok((more, at)) = queue.try_recv() {
+            nav = nav.merge(more);
+            earliest = earliest.min(at);
+        }
+        seq += 1;
+        let height = shell.slot_height.lock().map_or(360.0, |h| *h).max(1.0) as f32;
+        let params = concordia_render::ViewportNavigateParams {
+            orbit: nav.orbit,
+            pan: nav.pan,
+            zoom: nav.zoom,
+            height: Some(height),
+            seq: Some(seq),
+            input_time_ms: Some(concordia_editor::native::uptime_to_unix_ms(earliest)),
+            ..Default::default()
+        };
+        let moved = host.runtime().block_on(
+            host.handle()
+                .run(move |engine| concordia_render::navigate(engine, &params)),
+        );
+        match moved {
+            Ok(Ok(view)) => {
+                let _ = app.emit("viewport-view", view);
+            }
+            Ok(Err(e)) | Err(e) => eprintln!("concordia-editor: navigation: {}", e.message),
+        }
+    }
+}
+
+/// Drags across the viewport with synthetic native mouse events, one step per display refresh
+/// (the native-input bench).
+#[cfg(target_os = "macos")]
+#[tauri::command]
+async fn bench_native_drag(
+    frames: usize,
+    shell: tauri::State<'_, Arc<Shell>>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    use concordia_editor::native::{DragStep, post_drag};
+    if !(1..=10_000).contains(&frames) {
+        return Err(format!("frames must be 1..=10000, got {frames}"));
+    }
+    let hz = shell
+        .display_hz
+        .lock()
+        .ok()
+        .and_then(|h| *h)
+        .unwrap_or(60.0);
+    tauri::async_runtime::spawn_blocking(move || {
+        let post = |step| {
+            app.run_on_main_thread(move || post_drag(step))
+                .map_err(|e| e.to_string())
+        };
+        post(DragStep::Down)?;
+        for i in 1..=frames {
+            std::thread::sleep(Duration::from_secs_f64(1.0 / hz));
+            post(DragStep::Move(3.0 * i as f64))?;
+        }
+        post(DragStep::Up(3.0 * frames as f64))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn bench_native_drag() -> Result<(), String> {
+    Err("native viewport input is macOS-only in M1".into())
 }
 
 /// Prints the bench's current stage (progress for whoever runs it).
@@ -106,6 +192,9 @@ fn slot_rect(
     shell: tauri::State<'_, Arc<Shell>>,
 ) -> Result<(), String> {
     rect.validate()?;
+    if let Ok(mut h) = shell.slot_height.lock() {
+        *h = rect.height;
+    }
     if let Ok(mut px) = shell.slot_px.lock() {
         *px = (
             (rect.width * rect.scale).round() as u32,
@@ -170,6 +259,7 @@ fn main() {
     let shell = Arc::new(Shell {
         slot_seen: AtomicBool::new(false),
         slot_px: std::sync::Mutex::new((640, 360)),
+        slot_height: std::sync::Mutex::new(360.0),
         bench_out,
         bench_entities,
         display_hz: std::sync::Mutex::new(None),
@@ -182,6 +272,7 @@ fn main() {
             slot_rect,
             bench_native_orbit,
             bench_progress,
+            bench_native_drag,
             bench_display_hz,
             bench_report
         ])
@@ -196,6 +287,18 @@ fn main() {
             #[cfg(target_os = "macos")]
             {
                 let target = concordia_editor::native::install(&window)?;
+                let (moves, queue) = std::sync::mpsc::channel();
+                concordia_editor::native::install_input(move |nav, at| {
+                    let _ = moves.send((nav, at));
+                });
+                let (host, shell, app) = (
+                    host_setup.clone(),
+                    shell_setup.clone(),
+                    app.handle().clone(),
+                );
+                std::thread::Builder::new()
+                    .name("concordia-navigation".into())
+                    .spawn(move || navigation_worker(&host, &shell, &app, &queue))?;
                 if let Ok(mut hz) = shell_setup.display_hz.lock() {
                     *hz = concordia_editor::native::display_hz();
                 }

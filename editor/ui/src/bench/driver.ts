@@ -40,6 +40,26 @@ async function waitFor<T>(find: () => T | null | undefined, what: string, ms = 2
 const treeItem = (name: string) =>
   [...document.querySelectorAll<HTMLElement>('[role="treeitem"]')].find((e) => e.textContent?.trim() === name);
 
+/** Scrolls the virtualized outliner until a row starting with `prefix` is rendered. */
+async function revealRow(prefix: string): Promise<void> {
+  const scroller = await waitFor(
+    () => document.querySelector<HTMLElement>('[data-testid="outliner-scroll"]'),
+    "outliner",
+  );
+  const found = () =>
+    [...document.querySelectorAll<HTMLElement>('[role="treeitem"]')].find((e) =>
+      e.textContent?.trim().startsWith(prefix),
+    );
+  for (let top = 0; top <= scroller.scrollHeight; top += Math.max(100, scroller.clientHeight / 2)) {
+    scroller.scrollTop = top;
+    scroller.dispatchEvent(new Event("scroll"));
+    await nextFrame();
+    const row = found();
+    if (row) return row.scrollIntoView({ block: "center" });
+  }
+  throw new Error(`bench: no outliner row starts with ${prefix}`);
+}
+
 function mouse(target: EventTarget, type: string, x: number, y: number, button: number) {
   target.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button, buttons: 1 << button }));
 }
@@ -82,23 +102,20 @@ class Bench {
     return this.result(await this.stats(), intervals);
   }
 
-  /** Middle-drag orbit, 3 px per display frame; `during(i)` runs alongside each frame. */
+  /** Orbit through native input (synthetic AppKit drags, one per display refresh); `during(i)`
+   * runs alongside each page frame. */
   async orbit(during: (i: number) => void = () => undefined): Promise<ScenarioResult> {
-    const slot = await waitFor(() => document.getElementById("viewport-slot"), "viewport");
-    const box = slot.getBoundingClientRect();
-    const [x, y] = [box.left + box.width / 2, box.top + box.height / 2];
+    const { invoke } = await import("@tauri-apps/api/core");
     await this.stats();
-    mouse(slot, "mousedown", x, y, 1);
-    const intervals = await paced(this.frames, (i) => {
-      mouse(slot, "mousemove", x + 3 * (i + 1), y, 1);
-      during(i);
-    });
-    mouse(slot, "mouseup", x + 3 * this.frames, y, 1);
+    const drag = invoke("bench_native_drag", { frames: this.frames * 2 });
+    const intervals = await paced(this.frames, during);
+    await drag;
     return this.result(await this.stats(), intervals);
   }
 
   /** Orbits while an agent renames an entity every 15 frames; times each rename to the outliner. */
   async orbitWithEdits(probe: string): Promise<ScenarioResult> {
+    await revealRow("Bench probe");
     const panel: Promise<number>[] = [];
     const result = await this.orbit((i) => {
       if (i % 15 === 0) panel.push(this.renameToPanel(probe, `Bench probe ${i}`));
@@ -116,6 +133,7 @@ class Bench {
 
   /** Drags the selected entity's Move-x handle 1 px per display frame. */
   async gizmo(probeName: string): Promise<ScenarioResult> {
+    await revealRow(probeName);
     (await waitFor(() => treeItem(probeName)?.querySelector<HTMLElement>(":scope > div"), "probe row")).click();
     (await waitFor(() => document.querySelector<HTMLElement>('button[title="Move (W)"]'), "Move tool")).click();
     const handle = await waitFor(() => document.querySelector('[aria-label="Move x"] circle'), "Move x handle");
