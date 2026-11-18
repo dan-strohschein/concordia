@@ -3,11 +3,20 @@
 ## Purpose
 Math, ids, time, logging and the job system (M0). Currently a seed stub exposing the engine name and version.
 
+## Public entry points
+- `NAME`, `version()` (seed; ids, time, logging and jobs arrive in M0 phase 0.1).
+
 ## Invariants
 - No dependencies on other Concordia crates; it is the root of the dependency graph.
 
 ## How to test
 `cargo nextest run -p concordia-core`
+
+## Common tasks
+None yet (filled in by M0 phase 0.1).
+
+## Don'ts
+- Don't depend on other Concordia crates.
 
 ## References
 None yet.

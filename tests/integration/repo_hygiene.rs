@@ -192,10 +192,13 @@ fn crate_dirs() -> Vec<std::path::PathBuf> {
         .collect()
 }
 
-const CRATE_AGENTS_SECTIONS: [&str; 5] = [
+const CRATE_AGENTS_SECTIONS: [&str; 8] = [
     "## Purpose",
+    "## Public entry points",
     "## Invariants",
     "## How to test",
+    "## Common tasks",
+    "## Don'ts",
     "## References",
     "## Status",
 ];
