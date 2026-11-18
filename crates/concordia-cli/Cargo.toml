@@ -29,6 +29,9 @@ serde_json.workspace = true
 tokio = { workspace = true, features = ["signal"] }
 
 [dev-dependencies]
+concordia-rhi.workspace = true
+concordia-rhi-metal.workspace = true
+concordia-testkit.workspace = true
 insta.workspace = true
 tempfile.workspace = true
 

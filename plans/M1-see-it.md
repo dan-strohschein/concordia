@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (phase 1.5; 1.0, 1.2a, 1.1, 1.7, 1.2b, 1.3 and 1.4 done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (phase 1.6; 1.0, 1.2a, 1.1, 1.7, 1.2b, 1.3, 1.4 and 1.5 done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -153,6 +153,36 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 - the gate agent demo.
 
 **Installs needing approval:** cmake (1.7a), Slang into `target/` (1.3), the Tauri CLI (1.8), and git-lfs only if D5 changes.
+
+### Phase 1.5b: Forward PBR, capture, MCP image (done)
+- **RHI additions:**
+  - static samplers (linear/nearest × repeat/clamp), appended to the texture argument buffer, so no new slot; a conformance test covers them;
+  - `Device::destroy_heap`;
+  - record functions may fail (`GraphError::Record`).
+- **`concordia-render`:**
+  - `Camera`/`Projection`/`DirectionalLight` components, reverse-Z with glam's `directx` (Y-up NDC, depth [0, 1]);
+  - `RenderWorld::extract`, `Renderer` and `AssetSource` (`AssetDb`, `MemoryAssets`);
+  - a forward PBR shader (GGX, height-correlated Smith, Schlick, Lambert; normal, occlusion and emissive maps; alpha mask) and a tonemap pass (Khronos PBR Neutral or clamp, ahead of 1.6);
+  - goldens `unlit_cube`, `pbr_sphere_grid_directional`, `orthographic_isometric` and `msaa_resolve`, checked by eye;
+  - invariant tests: reverse-Z at 5 km, ortho and perspective agreeing at the center, sRGB decoding, texture orientation, determinism.
+- **`capture.screenshot`:** in `RenderModule`, enabled by a `[render]` manifest section. The device is created on first capture; with no device the error is `GpuUnavailable` (−32013, a new code).
+- **Images in results:** `concordia_api::EncodedImage`. MCP returns fields of that type as image content plus a JSON text item, and image tools declare no output schema. This is keyed on the type rather than a reflect attribute, and needs no derive change.
+- **End-to-end tests:** `concordia mcp` on `examples/m1-physics-stack` returns PNG image content. The example scene now has a camera, a sun and mesh visuals; its settled capture was checked by eye.
+- **Deviations from the plan:**
+  - `CaptureTarget::Viewport` and `format` are deferred until a viewport exists (1.8/1.9); only offscreen PNG for now.
+  - "Independent of window size" is covered by requested-size tests, since M1 headless has no window.
+  - `concordia headless --gpu` isn't needed (the device is lazy).
+  - Only the first `DirectionalLight` is used (clustered lights come in 1.6).
+  - `AlphaMode::Blend` draws opaque until transparency sorting lands.
+  - Meshes and textures are cached by reference, with no invalidation on asset hot-reload yet.
+  - Readback is synchronous, and each capture places its transients in a fresh heap.
+  - Not yet done: the manual check that `capture_screenshot` works from Claude Code through `.mcp.json`. The end-to-end MCP test covers the protocol path, and the manual check is part of the gate demo.
+
+### Phase 1.5a: World transforms and render graph (done)
+- `concordia_scene::builtin::world_transforms(&World)` computes world matrices from the `Parent` chain in id order. Missing parents and cycles are reported and treated as roots. It's a computed snapshot, not a stored `GlobalTransform` component, so there's nothing to keep in sync and nothing that can drift.
+- `concordia-render::graph` covers culling, ordering, barriers, aliasing, DOT output and `execute` (recording into an RHI `CommandList`). Every listed CPU test passes, plus the execute tests. Writing them caught a missing `Undefined →` first-use transition for transients.
+- `GraphBuffer` waits until a pass needs it; buffers are persistent in M1.
+- The gate tests are written with the gate, not committed failing here (author's commit rule).
 
 ### Phase 1.4: Assets, DDC, glTF (done)
 - **`concordia_core::ddc::Ddc`:** the one DDC store (sharded, atomic, safe to delete), used by shaders and assets.

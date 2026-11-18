@@ -85,4 +85,6 @@ pub trait Device: Send + Sync {
     fn destroy_buffer(&self, buffer: Buffer);
     /// Releases a texture once the GPU is done with it.
     fn destroy_texture(&self, texture: Texture);
+    /// Releases a heap once the GPU is done with it (its placed textures must be destroyed first).
+    fn destroy_heap(&self, heap: Heap);
 }

@@ -44,6 +44,11 @@ Scene(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
                 ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
                 "Name": "Pyramid 0.0",
                 "RigidBody": (
                     angular_damping: 0.05,
@@ -72,6 +77,11 @@ Scene(
                     shape: Box(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
                 ),
                 "Name": "Pyramid 0.1",
                 "RigidBody": (
@@ -102,6 +112,11 @@ Scene(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
                 ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
                 "Name": "Pyramid 0.2",
                 "RigidBody": (
                     angular_damping: 0.05,
@@ -130,6 +145,11 @@ Scene(
                     shape: Box(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
                 ),
                 "Name": "Pyramid 0.3",
                 "RigidBody": (
@@ -160,6 +180,11 @@ Scene(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
                 ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
                 "Name": "Pyramid 1.0",
                 "RigidBody": (
                     angular_damping: 0.05,
@@ -188,6 +213,11 @@ Scene(
                     shape: Box(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
                 ),
                 "Name": "Pyramid 1.1",
                 "RigidBody": (
@@ -218,6 +248,11 @@ Scene(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
                 ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
                 "Name": "Pyramid 1.2",
                 "RigidBody": (
                     angular_damping: 0.05,
@@ -246,6 +281,11 @@ Scene(
                     shape: Box(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
                 ),
                 "Name": "Pyramid 2.0",
                 "RigidBody": (
@@ -276,6 +316,11 @@ Scene(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
                 ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
                 "Name": "Pyramid 2.1",
                 "RigidBody": (
                     angular_damping: 0.05,
@@ -304,6 +349,11 @@ Scene(
                     shape: Box(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
                 ),
                 "Name": "Pyramid 3.0",
                 "RigidBody": (
@@ -334,6 +384,11 @@ Scene(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
                 ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
                 "Name": "Dropped 0",
                 "RigidBody": (
                     angular_damping: 0.05,
@@ -362,6 +417,11 @@ Scene(
                     shape: Box(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
                 ),
                 "Name": "Dropped 1",
                 "RigidBody": (
@@ -392,6 +452,11 @@ Scene(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
                 ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
                 "Name": "Dropped 2",
                 "RigidBody": (
                     angular_damping: 0.05,
@@ -407,6 +472,61 @@ Scene(
                     rotation: (0.140378, -0.339047, 0.051242, 0.928825),
                     scale: (1.0, 1.0, 1.0),
                     translation: (0.1, 6.0, 1.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-000000000200",
+            components: {
+                "Camera": (
+                    clear: (0.25, 0.35, 0.5, 1.0),
+                    exposure_ev100: 15.0,
+                    msaa: X4,
+                    priority: 0,
+                    projection: Perspective(
+                        far: 200.0,
+                        fov_y: 0.9,
+                        near: 0.1,
+                    ),
+                    tonemap: Neutral,
+                ),
+                "Name": "Camera",
+                "Transform": (
+                    rotation: (-0.150378, 0.296879, 0.047402, 0.941808),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (7.0, 5.5, 10.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-000000000201",
+            components: {
+                "DirectionalLight": (
+                    color: (1.0, 0.96, 0.9),
+                    illuminance_lux: 100000.0,
+                ),
+                "Name": "Sun",
+                "Transform": (
+                    rotation: (-0.561583, 0.224633, 0.0, 0.796344),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.0, 10.0, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-000000000202",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Ground visual",
+                "Parent": "0193a1c2-7e40-7000-8000-000000000101",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (30.0, 0.5, 30.0),
+                    translation: (0.0, 0.0, 0.0),
                 ),
             },
         ),

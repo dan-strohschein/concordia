@@ -10,7 +10,7 @@ The top-level design is in [`../docs/design.md`](../docs/design.md). This folder
 |---|---|---|---|---|
 | M-1 Toolchain & scaffold | [M-1-toolchain-and-scaffold.md](M-1-toolchain-and-scaffold.md) | none | Ready to execute | Gate passed |
 | M0 Headless core | [M0-headless-core.md](M0-headless-core.md) | M-1 | Ready to execute | Gate passed |
-| M1 See it | [M1-see-it.md](M1-see-it.md) | M0 | Ready to execute | In progress (phase 1.5) |
+| M1 See it | [M1-see-it.md](M1-see-it.md) | M0 | Ready to execute | In progress (phase 1.6) |
 | M2 Port begins | [M2-port-begins.md](M2-port-begins.md) | M1 | Needs refinement after M1 | Planned |
 | M3 Closed loop & Studio v1 | [M3-closed-loop-and-studio.md](M3-closed-loop-and-studio.md) | M2 (Studio phases may start after M0) | Needs refinement after M2 | Planned |
 | M4 Unreal-class visuals | [M4-unreal-class-visuals.md](M4-unreal-class-visuals.md) | M1 (render), M2 (graphs) | Needs refinement after M3 | Planned |

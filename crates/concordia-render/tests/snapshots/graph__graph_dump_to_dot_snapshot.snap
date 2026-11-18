@@ -1,0 +1,18 @@
+---
+source: crates/concordia-render/tests/graph.rs
+expression: compile(&g).to_dot(&g)
+---
+digraph frame {
+  rankdir=LR;
+  p0 [label="0: depth_prepass" shape=ellipse];
+  p1 [label="1: forward" shape=ellipse];
+  p2 [label="2: tonemap" shape=ellipse];
+  t0 [label="swapchain" shape=box];
+  t1 [label="hdr" shape=box];
+  t2 [label="depth" shape=box];
+  p0 -> t2 [label="depth write"];
+  t2 -> p1 [label="depth read"];
+  p1 -> t1 [label="color"];
+  t1 -> p2 [label="sampled"];
+  p2 -> t0 [label="color"];
+}

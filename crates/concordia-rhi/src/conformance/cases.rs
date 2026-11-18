@@ -10,7 +10,7 @@ use crate::device::{Device, QueueKind, Submit};
 use crate::error::RhiError;
 use crate::format::Format;
 use crate::handle::{Buffer, Texture};
-use crate::pipeline::{CompareOp, ComputePipelineDesc, DepthState, ShaderSource};
+use crate::pipeline::{CompareOp, ComputePipelineDesc, DepthState, ShaderSource, StaticSampler};
 use crate::resource::{BufferUsage, HeapDesc, MemoryLocation, TextureUsage};
 
 use super::Harness;
@@ -537,6 +537,23 @@ pub fn invalid_descriptors_and_stale_handles_are_errors(device: &dyn Device, _: 
         device.read_buffer(b, 0, 4),
         Err(RhiError::StaleHandle { .. })
     ));
+    let heap = device
+        .create_heap(&HeapDesc {
+            size: std::num::NonZeroU64::new(1 << 16).unwrap(),
+            label: "destroyed".into(),
+        })
+        .unwrap();
+    device.destroy_heap(heap);
+    let placed = texture_desc(
+        8,
+        Format::Rgba8Unorm,
+        SampleCount::X1,
+        TextureUsage::SAMPLED,
+    );
+    assert!(matches!(
+        device.create_placed_texture(heap, 0, &placed),
+        Err(RhiError::StaleHandle { .. })
+    ));
     let mut list = CommandList::new("bad");
     list.push(Command::Draw {
         vertices: 0..3,
@@ -552,4 +569,92 @@ pub fn invalid_descriptors_and_stale_handles_are_errors(device: &dyn Device, _: 
         device.submit(submit),
         Err(RhiError::Invalid { .. })
     ));
+}
+
+/// Uploads a 2×2 RGBA8 texture whose left column is black and right column white.
+fn black_white_texture(device: &dyn Device) -> u32 {
+    let usage = TextureUsage::SAMPLED | TextureUsage::COPY_DST | TextureUsage::BINDLESS;
+    let texture = device
+        .create_texture(&texture_desc(2, Format::Rgba8Unorm, SampleCount::X1, usage))
+        .expect("create texture");
+    let texels = [[0u8, 0, 0, 255], [255, 255, 255, 255]].repeat(2).concat();
+    let staging = buffer(
+        device,
+        texels.len() as u64,
+        BufferUsage::COPY_SRC,
+        MemoryLocation::Upload,
+    );
+    device
+        .write_buffer(staging, 0, &texels)
+        .expect("write staging");
+    let mut list = CommandList::new("upload texture");
+    list.push(Command::CopyBufferToTexture {
+        src: staging,
+        offset: 0,
+        bytes_per_row: 8,
+        dst: texture,
+        mip: 0,
+    });
+    run(device, &list);
+    device.texture_index(texture).expect("bindless index").0
+}
+
+/// Every static sampler filters and addresses as named (and buffer-to-texture uploads land).
+pub fn static_samplers_filter_and_address_as_named(device: &dyn Device, h: &Harness<'_>) {
+    let source = black_white_texture(device);
+    let pipeline = graphics(
+        device,
+        h,
+        "sample_texture",
+        ("fullscreen", "sample_with_sampler"),
+        SampleCount::X1,
+        None,
+    );
+    let color = target(device, SIZE, SampleCount::X1);
+    let sample = |sampler: StaticSampler, u: f32| {
+        let mut list = CommandList::new("sample");
+        list.push(pass(color, LoadOp::DontCare, None, None))
+            .push(Command::SetPipeline(pipeline))
+            .push(push(&[source, sampler.index()], &[u, 0.5]))
+            .push(Command::Draw {
+                vertices: 0..3,
+                instances: 0..1,
+            })
+            .push(Command::EndRenderPass);
+        run(device, &list);
+        pixel(&read_texture(device, color, SIZE), 10, 10)[0]
+    };
+    let near = |got: u8, want: u8| got.abs_diff(want) <= 2;
+    assert_eq!(
+        sample(StaticSampler::NearestClamp, 0.3),
+        0,
+        "nearest picks the left texel"
+    );
+    assert_eq!(
+        sample(StaticSampler::NearestClamp, 0.7),
+        255,
+        "nearest picks the right texel"
+    );
+    assert_eq!(
+        sample(StaticSampler::NearestClamp, 1.3),
+        255,
+        "clamp holds the edge"
+    );
+    assert_eq!(
+        sample(StaticSampler::NearestRepeat, 1.3),
+        0,
+        "repeat wraps 1.3 to 0.3"
+    );
+    let mid = sample(StaticSampler::LinearClamp, 0.5);
+    assert!(near(mid, 128), "linear blends the two texels: {mid}");
+    assert_eq!(
+        sample(StaticSampler::LinearClamp, 0.0),
+        0,
+        "linear clamp at the edge"
+    );
+    let wrapped = sample(StaticSampler::LinearRepeat, 0.0);
+    assert!(
+        near(wrapped, 128),
+        "linear repeat blends across the wrap: {wrapped}"
+    );
 }

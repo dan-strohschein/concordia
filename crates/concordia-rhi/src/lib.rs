@@ -31,7 +31,7 @@ pub use format::Format;
 pub use handle::{BindlessIndex, Buffer, Heap, Pipeline, Texture, Timeline};
 pub use pipeline::{
     BlendMode, CompareOp, ComputePipelineDesc, CullMode, DepthState, GraphicsPipelineDesc,
-    MeshPipelineDesc, ShaderSource,
+    MeshPipelineDesc, ShaderSource, StaticSampler,
 };
 pub use resource::{BufferDesc, BufferUsage, HeapDesc, MemoryLocation, TextureDesc, TextureUsage};
 pub use slots::Slots;

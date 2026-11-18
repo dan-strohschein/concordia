@@ -44,11 +44,13 @@ pub enum ApiErrorKind {
     NotPlaying,
     /// The transaction id is not open.
     TxnNotFound,
+    /// No GPU device is available for rendering.
+    GpuUnavailable,
 }
 
 impl ApiErrorKind {
     /// Every kind (for exhaustive tests and docs).
-    pub const ALL: [Self; 19] = [
+    pub const ALL: [Self; 20] = [
         Self::ParseError,
         Self::InvalidRequest,
         Self::MethodNotFound,
@@ -68,6 +70,7 @@ impl ApiErrorKind {
         Self::SceneDirty,
         Self::NotPlaying,
         Self::TxnNotFound,
+        Self::GpuUnavailable,
     ];
 
     /// The JSON-RPC error code.
@@ -90,6 +93,7 @@ impl ApiErrorKind {
             Self::SceneDirty => -32010,
             Self::NotPlaying => -32011,
             Self::TxnNotFound => -32012,
+            Self::GpuUnavailable => -32013,
         }
     }
 
@@ -115,6 +119,7 @@ impl ApiErrorKind {
             Self::SceneDirty => "SceneDirty",
             Self::NotPlaying => "NotPlaying",
             Self::TxnNotFound => "TxnNotFound",
+            Self::GpuUnavailable => "GpuUnavailable",
         }
     }
 
@@ -139,6 +144,7 @@ impl ApiErrorKind {
             Self::SceneDirty => "the open scene has unsaved changes",
             Self::NotPlaying => "there is no play world",
             Self::TxnNotFound => "that transaction is not open",
+            Self::GpuUnavailable => "no GPU device is available for rendering",
         }
     }
 
@@ -174,6 +180,9 @@ impl ApiErrorKind {
             Self::SceneDirty => "call scene.save first, or pass \"discard\": true",
             Self::NotPlaying => "call sim.step or sim.play to create a play world",
             Self::TxnNotFound => "use the txn id returned by txn.begin; open transactions time out",
+            Self::GpuUnavailable => {
+                "run `concordia gpu-probe`; rendering needs Metal (macOS) in M1"
+            }
         }
     }
 }

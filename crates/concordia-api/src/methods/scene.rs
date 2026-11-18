@@ -353,12 +353,11 @@ fn open_journal(
 
 /// Writes via a temporary file and rename, so a crash never leaves a half-written scene.
 fn write_atomically(file: &Path, text: &str) -> std::io::Result<()> {
-    if let Some(dir) = file.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    let tmp = file.with_extension("ron.tmp");
-    std::fs::write(&tmp, text)?;
-    std::fs::rename(&tmp, file)
+    concordia_core::fs::write_atomically(
+        file,
+        text.as_bytes(),
+        concordia_core::fs::Visibility::Default,
+    )
 }
 
 pub(crate) fn methods() -> Vec<MethodInfo> {

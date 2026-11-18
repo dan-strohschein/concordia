@@ -161,17 +161,16 @@ fn local_origin(origin: &str) -> bool {
         && matches!(host, "localhost" | "127.0.0.1" | "[::1]")
 }
 
-/// Writes `<project>/.concordia/headless.json` (`url`, `token`, `pid`), readable only by the owner.
+/// Writes `<project>/.concordia/headless.json` (`url`, `token`, `pid`) atomically, readable only by the owner.
 pub fn write_connection_file(project: &Path, server: &WsServer) -> std::io::Result<PathBuf> {
     let dir = project.join(".concordia");
     std::fs::create_dir_all(&dir)?;
     let path = dir.join("headless.json");
     let body = serde_json::json!({ "url": server.url(), "token": server.token, "pid": std::process::id() });
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    let mut file = options.open(&path)?;
-    std::io::Write::write_all(&mut file, body.to_string().as_bytes())?;
+    concordia_core::fs::write_atomically(
+        &path,
+        body.to_string().as_bytes(),
+        concordia_core::fs::Visibility::OwnerOnly,
+    )?;
     Ok(path)
 }

@@ -7,7 +7,8 @@ use std::time::Duration;
 use concordia_rhi::{
     BindlessIndex, Buffer, BufferDesc, BufferUsage, ComputePipelineDesc, Device, DeviceCaps,
     GraphicsPipelineDesc, Heap, HeapDesc, MemoryLocation, MeshPipelineDesc, Pipeline, RhiError,
-    SampleCount, ShaderSource, Slots, Submit, Texture, TextureDesc, TextureUsage, Timeline,
+    SampleCount, ShaderSource, Slots, StaticSampler, Submit, Texture, TextureDesc, TextureUsage,
+    Timeline,
 };
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
@@ -20,7 +21,9 @@ use objc2_metal::{
     MTLTextureDescriptor, MTLTextureType,
 };
 
-use crate::bindless::{MtlBuffer, MtlTexture, Table, buffer_entry, texture_entry};
+use crate::bindless::{
+    MtlBuffer, MtlSampler, MtlTexture, Table, buffer_entry, install_static_samplers, texture_entry,
+};
 use crate::convert;
 use crate::probe::{self, Device as MtlDevice};
 
@@ -66,6 +69,8 @@ pub(crate) struct Inner {
     pub(crate) timelines: Slots<Retained<MtlEvent>>,
     pub(crate) buffer_table: Table,
     pub(crate) texture_table: Table,
+    /// Static samplers referenced from the texture table (kept alive here).
+    _samplers: Vec<Retained<MtlSampler>>,
     pub(crate) last: Option<Retained<ProtocolObject<dyn MTLCommandBuffer>>>,
 }
 
@@ -96,9 +101,12 @@ impl MetalDevice {
         let queue = device.newCommandQueue().ok_or_else(|| RhiError::NoDevice {
             reason: "could not create a command queue".into(),
         })?;
+        let texture_table = Table::new(&device, "texture", StaticSampler::ALL.len())?;
+        let samplers = install_static_samplers(&device, &texture_table)?;
         let inner = Inner {
-            buffer_table: Table::new(&device, "buffer")?,
-            texture_table: Table::new(&device, "texture")?,
+            buffer_table: Table::new(&device, "buffer", 0)?,
+            texture_table,
+            _samplers: samplers,
             device,
             queue,
             buffers: Slots::default(),
@@ -547,6 +555,11 @@ impl Device for MetalDevice {
         {
             inner.texture_table.release(slot);
         }
+    }
+
+    fn destroy_heap(&self, heap: Heap) {
+        let Ok(mut inner) = self.lock() else { return };
+        inner.heaps.remove(heap.index(), heap.generation());
     }
 }
 

@@ -118,3 +118,52 @@ pub struct MeshPipelineDesc {
     /// Debug label.
     pub label: String,
 }
+
+/// The fixed sampler set every backend provides after the bindless textures (ADR-0040);
+/// shaders index `g_textures.samplers[...]` with the `SAMPLER_*` constants of `bindless.slang`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum StaticSampler {
+    /// Trilinear, 8× anisotropic, repeat (material textures).
+    LinearRepeat,
+    /// Trilinear, clamp to edge (post-processing, LUTs).
+    LinearClamp,
+    /// Point sampling, clamp to edge (exact texel reads).
+    NearestClamp,
+    /// Point sampling, repeat (pixel art, tiling masks).
+    NearestRepeat,
+}
+
+impl StaticSampler {
+    /// Every sampler, in index order.
+    pub const ALL: [Self; 4] = [
+        Self::LinearRepeat,
+        Self::LinearClamp,
+        Self::NearestClamp,
+        Self::NearestRepeat,
+    ];
+
+    /// Index into the sampler array.
+    pub const fn index(self) -> u32 {
+        self as u32
+    }
+
+    /// The constant naming it in `bindless.slang`.
+    pub const fn slang_name(self) -> &'static str {
+        match self {
+            Self::LinearRepeat => "SAMPLER_LINEAR_REPEAT",
+            Self::LinearClamp => "SAMPLER_LINEAR_CLAMP",
+            Self::NearestClamp => "SAMPLER_NEAREST_CLAMP",
+            Self::NearestRepeat => "SAMPLER_NEAREST_REPEAT",
+        }
+    }
+
+    /// True for linear (trilinear) filtering.
+    pub const fn is_linear(self) -> bool {
+        matches!(self, Self::LinearRepeat | Self::LinearClamp)
+    }
+
+    /// True for repeat addressing.
+    pub const fn repeats(self) -> bool {
+        matches!(self, Self::LinearRepeat | Self::NearestRepeat)
+    }
+}

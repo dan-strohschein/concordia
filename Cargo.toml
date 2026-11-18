@@ -36,6 +36,7 @@ concordia-scene = { path = "crates/concordia-scene" }
 concordia-shaders = { path = "crates/concordia-shaders" }
 concordia-reflect = { path = "crates/concordia-reflect" }
 concordia-reflect-derive = { path = "crates/concordia-reflect-derive" }
+concordia-render = { path = "crates/concordia-render" }
 concordia-rhi = { path = "crates/concordia-rhi" }
 concordia-rhi-metal = { path = "crates/concordia-rhi-metal" }
 concordia-testkit = { path = "crates/concordia-testkit" }
@@ -62,6 +63,7 @@ rayon = "1.12"
 serde = { version = "1", features = ["derive"] }
 strsim = "0.11"
 thiserror = "2"
+base64 = "0.22.1"
 tokio = { version = "1.54", features = ["rt-multi-thread", "macros", "io-std", "io-util", "net", "sync", "time"] }
 tokio-tungstenite = "0.30"
 tracing = "0.1.44"

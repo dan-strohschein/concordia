@@ -135,3 +135,14 @@ fn errors_serialize_as_jsonrpc_error_objects() {
     assert_eq!(json["data"]["kind"], "NotPlaying");
     assert!(json["data"]["suggestions"].is_array());
 }
+
+#[test]
+fn gpu_unavailable_has_its_own_code_and_hint() {
+    let err = ApiError::from_kind(ApiErrorKind::GpuUnavailable);
+    assert_eq!((err.code(), err.data.kind), (-32013, "GpuUnavailable"));
+    assert!(
+        err.data.suggestions.iter().any(|s| s.contains("gpu-probe")),
+        "{:?}",
+        err.data.suggestions
+    );
+}

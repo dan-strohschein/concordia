@@ -62,7 +62,7 @@ fn broken_input_map_is_reported_with_its_path() {
 }
 
 #[test]
-fn m1_example_has_input_and_physics_modules_after_core() {
+fn m1_example_modules_follow_core_in_manifest_order() {
     let project = Project::load(&examples().join("m1-physics-stack")).unwrap();
     let names: Vec<&str> = project
         .modules()
@@ -70,7 +70,7 @@ fn m1_example_has_input_and_physics_modules_after_core() {
         .iter()
         .map(|m| m.name())
         .collect();
-    assert_eq!(names, ["input", "physics", "assets"]);
+    assert_eq!(names, ["input", "physics", "assets", "render"]);
     assert_eq!(
         project.manifest.physics.as_ref().unwrap().gravity,
         [0.0, -9.81, 0.0]
@@ -147,4 +147,65 @@ fn assets_module_imports_gltf_through_the_api() {
         .call(s, "schema.get", json!({"name": "MeshRenderer"}))
         .unwrap();
     assert_eq!(schema["schema"]["title"], "MeshRenderer");
+}
+
+#[test]
+fn m1_stack_scene_capture_shows_the_settled_stack() {
+    use base64::Engine as _;
+    use concordia_api::{Engine, EngineConfig};
+    use serde_json::json;
+
+    if let Err(concordia_rhi::RhiError::NoDevice { reason }) = concordia_rhi_metal::new_headless() {
+        assert!(
+            !concordia_testkit::gpu_required(),
+            "CONCORDIA_REQUIRE_GPU=1 but no device: {reason}"
+        );
+        return;
+    }
+    let root = examples().join("m1-physics-stack");
+    let project = Project::load(&root).unwrap();
+    let mut config = EngineConfig::new(&root);
+    config.modules = project.modules().unwrap();
+    let mut engine = Engine::new(config).unwrap();
+    let session = engine.open_session();
+    let main = project.manifest.scene.main.clone().unwrap();
+    engine
+        .call(session, "scene.open", json!({ "path": main }))
+        .unwrap();
+    engine
+        .call(session, "sim.step", json!({"ticks": 180}))
+        .unwrap();
+    let shot = engine
+        .call(
+            session,
+            "capture.screenshot",
+            json!({"world": "play", "width": 640, "height": 360}),
+        )
+        .unwrap();
+    assert_eq!(shot["sim_tick"], 180);
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(shot["image"]["data_base64"].as_str().unwrap())
+        .unwrap();
+    if let Some(path) = std::env::var_os("CONCORDIA_KEEP_CAPTURE") {
+        std::fs::write(path, &bytes).unwrap();
+    }
+    let mut reader = png::Decoder::new(std::io::Cursor::new(bytes))
+        .read_info()
+        .unwrap();
+    let mut rgba = vec![0; reader.output_buffer_size().unwrap()];
+    reader.next_frame(&mut rgba).unwrap();
+    let pixels = rgba.as_chunks::<4>().0;
+    let covered = pixels.iter().filter(|p| **p != pixels[0]).count() * 100 / pixels.len();
+    assert!(
+        covered > 30,
+        "ground and boxes cover the view, not just the clear color: {covered}%"
+    );
+    let mut colors: Vec<&[u8; 4]> = pixels.iter().collect();
+    colors.sort_unstable();
+    colors.dedup();
+    assert!(
+        colors.len() > 10,
+        "lit faces have distinct shades: {} colors",
+        colors.len()
+    );
 }

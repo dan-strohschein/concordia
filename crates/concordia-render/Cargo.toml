@@ -1,0 +1,37 @@
+[package]
+name = "concordia-render"
+description = "Concordia renderer: render graph, forward PBR, cameras, headless capture and capture.screenshot."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+base64.workspace = true
+concordia-api.workspace = true
+concordia-assets.workspace = true
+concordia-command.workspace = true
+concordia-core.workspace = true
+concordia-reflect.workspace = true
+concordia-rhi.workspace = true
+concordia-scene.workspace = true
+concordia-shaders.workspace = true
+concordia-terra.workspace = true
+png = "0.18.1"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+base64.workspace = true
+concordia-rhi-metal.workspace = true
+tempfile.workspace = true
+concordia-testkit.workspace = true
+insta.workspace = true
+proptest.workspace = true
