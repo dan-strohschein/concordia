@@ -22,6 +22,7 @@ concordia-rhi.workspace = true
 concordia-scene.workspace = true
 concordia-shaders.workspace = true
 concordia-terra.workspace = true
+half = "2.7.1"
 png = "0.18.1"
 serde.workspace = true
 serde_json.workspace = true

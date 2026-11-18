@@ -8,6 +8,7 @@ The renderer (ADR-0040): render graph, forward PBR, cameras, headless capture, a
 - Components: `Camera` (`Projection` perspective/orthographic, reverse-Z; `Msaa`; `exposure_ev100`; `Tonemap`; `priority`), `DirectionalLight`, and `PointLight` / `SpotLight` (lumens, range, cone half-angles).
 - `tonemap::apply` gives CPU references for AgX (default), Khronos PBR Neutral, ACES fitted and Linear; the shader must match them (tested).
 - `cluster::{ClusterGrid, ClusterSettings, ClusterCuller}`: the froxel grid (16×9×24; exponential slices for perspective, linear for ortho), the CPU reference `assign`, and the GPU culler (`cull` reads back). `Renderer::stats()` reports light counts and cluster overflow.
+- `Environment` (HDR equirect `map`, `intensity`, `skybox`) and `ibl::{Equirect, sh9_irradiance, eval_sh9, prefilter, integrate_brdf, brdf_lut}`: image-based lighting computed on the CPU (deterministic, tested). The renderer caches six prefiltered levels and SH9 per map, plus one BRDF table per renderer, built on first use.
 - `shadow::{CascadeSettings, fit_cascades, split_distances}`: `DirectionalLight.shadows` enables cascaded shadows. Cascades are fitted on the CPU (practical splits, bounding spheres snapped to the texel grid, light depth covering all casters).
 - `RenderWorld::extract(&World)` copies draws, lights and cameras with world transforms, in entity-id order. `camera(Option<EntityId>)` picks the requested camera, or else the highest priority.
 - `Renderer::new(Arc<dyn Device>, Box<dyn ShaderCompiler>)` and `render(&RenderWorld, &mut dyn AssetSource, &RenderRequest) -> Image` (sRGB RGBA8).
@@ -18,6 +19,7 @@ The renderer (ADR-0040): render graph, forward PBR, cameras, headless capture, a
 - Frame: light clustering (compute) → one depth pass per shadow cascade (persistent maps imported into the graph) → forward pass (HDR `Rgba16Float`, depth `Depth32Float` cleared to 0 with `GreaterEqual`, optional 4× MSAA resolved into HDR) → tonemap (Khronos PBR Neutral or clamp) → sRGB output → readback. All of it is scheduled by the render graph, with transients placed in one heap per frame.
 - Shader data read through pointers uses only `float4`/`uint4` rows (identical layout on every backend). Push constants are mirrored with `shader_struct!` and checked by `check_layout`.
 - Unlit and emissive output are display-referred; exposure scales only light.
+- IBL: diffuse from SH9 irradiance; specular = lerp of two prefiltered equirect levels (roughness × 5) × (F0·A + B) from the split-sum table; both scaled by intensity × exposure and by occlusion. The sky is drawn first in the forward pass (no depth test or write); its rays come from unprojecting each pixel at two depths, which works for ortho too. Equirect u = 0.5 at -Z, increasing toward +X; v = 0 straight up.
 - Shadows: reverse-Z depth; filtered PCF (a box of bilinear compares, kernel radius 1 or 2); bias = constant + normal offset (texels) + slope-scaled ((radius + 1) texels × tan θ, capped at 10), so the whole PCF footprint clears the receiver. Stabilized cascades move in whole texels (the shimmer test pans one pixel per frame: 0 changed pixels when stabilized vs ~900 without).
 - Punctual lights: intensity = lumens / 4π cd (spots are not concentrated by their cone); inverse-square falloff windowed to zero at `range`. Clusters hold at most `max_per_cluster` lights, in ascending index order; dropped assignments are counted (`RenderStats::cluster_overflow`) and logged, never silent.
 - Rendering is deterministic on one device (same scene → same bytes); draws are ordered by pipeline, then entity id.
@@ -41,11 +43,12 @@ The renderer (ADR-0040): render graph, forward PBR, cameras, headless capture, a
 - glTF 2.0 specification, Appendix B (BRDF); Google Filament material documentation (Apache-2.0); Brian Karis, "Real Shading in Unreal Engine 4" (SIGGRAPH 2013 course notes; a public talk, no code consulted).
 - Lagarde & de Rousiers, "Moving Frostbite to PBR" (SIGGRAPH 2014): EV100 exposure.
 - Khronos PBR Neutral Tone Mapper specification; AgX after Troy Sobotka, using the minimal analytic fit (Benjamin Wrensch 2023; Godot 4.4, MIT); ACES fitted after Krzysztof Narkowicz (2015).
+- Karis 2013 (split sum); Ramamoorthi & Hanrahan, "An Efficient Representation for Irradiance Environment Maps" (SIGGRAPH 2001); Colbert & Křivánek, "GPU-Based Importance Sampling" (GPU Gems 3, ch. 20).
 - Zhang et al., "Parallel-Split Shadow Maps" (2006); Michal Valient, "Stable Rendering of Cascaded Shadow Maps" (ShaderX6); Holbert, "Saying goodbye to shadow acne" (GDC 2011 poster).
 - Olsson, Billeter & Assarsson, "Clustered Deferred and Forward Shading" (HPG 2012); Emil Persson, "Practical Clustered Shading" (SIGGRAPH 2015).
 
 ## Status
-M1 phases 1.6a (tonemappers, clustered lights) and 1.6b (cascaded shadows). Next: IBL (1.6c), transparency and glTF goldens (1.6d).
+M1 phases 1.6a (tonemappers, clustered lights), 1.6b (cascaded shadows) and 1.6c (IBL). Next: transparency and glTF goldens (1.6d).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

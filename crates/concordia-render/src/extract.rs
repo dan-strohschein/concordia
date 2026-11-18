@@ -6,7 +6,7 @@ use concordia_core::math::{Mat4, Vec3};
 use concordia_scene::builtin::world_transforms;
 use concordia_terra::World;
 
-use crate::{Camera, DirectionalLight, PointLight, RenderError, SpotLight};
+use crate::{Camera, DirectionalLight, Environment, PointLight, RenderError, SpotLight};
 
 /// A mesh to draw.
 #[derive(Debug, Clone, PartialEq)]
@@ -87,6 +87,8 @@ pub struct RenderWorld {
     pub lights: Vec<LightView>,
     /// Point and spot lights.
     pub punctual: Vec<PunctualLight>,
+    /// The first environment (sky light and background).
+    pub environment: Option<Environment>,
     /// Cameras.
     pub cameras: Vec<CameraView>,
 }
@@ -145,6 +147,9 @@ impl RenderWorld {
                     intensity_lumens: s.intensity_lumens,
                     range: s.range,
                 });
+            }
+            if out.environment.is_none() {
+                out.environment = world.get::<Environment>(entity).cloned();
             }
             if let Some(camera) = world.get::<Camera>(entity) {
                 out.cameras.push(CameraView {

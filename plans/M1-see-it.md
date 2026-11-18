@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (phase 1.6c; 1.0, 1.2a, 1.1, 1.7, 1.2b, 1.3, 1.4, 1.5, 1.6a and 1.6b done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (phase 1.6d; 1.0, 1.2a, 1.1, 1.7, 1.2b, 1.3, 1.4, 1.5, 1.6a, 1.6b and 1.6c done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -153,6 +153,21 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 - the gate agent demo.
 
 **Installs needing approval:** cmake (1.7a), Slang into `target/` (1.3), the Tauri CLI (1.8), and git-lfs only if D5 changes.
+
+### Phase 1.6c: Image-based lighting (done)
+- **HDRI fixture:** Poly Haven "Kloofendal 48d Partly Cloudy (Pure Sky)", CC0 (author approved the download). Fetched via the Poly Haven API, MD5-verified, downsampled 2×2 in linear light to 512×256 flat RGBE (524 KB), and committed in `tests/fixtures/hdri/` with `LICENSE.md` (source, authors, changes, SHA-256).
+- **`ibl` module (CPU):**
+  - equirect mapping and SH9 irradiance (exact row solid angles over eight sub-bands; band terms of a uniform map < 1e-4);
+  - GGX prefiltering with filtered importance sampling (roughness 0 = source; energy conserved);
+  - the split-sum BRDF table at 4,096 samples, within 1e-3 of a 16k-sample reference (measured: 1,024 samples gives 4e-3, too coarse).
+- **`Environment` component:** diffuse from SH9, specular from two lerped levels with the BRDF table, and a skybox drawn first in the forward pass (works for ortho).
+- **Tests:** golden `pbr_spheres_ibl`, checked by eye (mirror metal reflects the sky the right way up); sky light reaches the sun-shadowed side; a missing map names its reference.
+- **Deviations from the plan:**
+  - Environments are equirect levels, not cubemaps: the RHI has no cube or array textures yet.
+  - Prefiltering runs on the CPU when an environment is first rendered and is cached per renderer, not computed on the GPU and stored in the DDC. It's deterministic and testable; moving it to the GPU and DDC is follow-up work if import time matters.
+  - `Environment` has a single `map` plus a `skybox` flag, rather than separate skybox and IBL references.
+  - The BRDF table uses Schlick-GGX visibility (k = α/2, as Karis), while direct lights use height-correlated Smith.
+  - Rough levels are stored at 1/4 of the source width and below; the BRDF table is built lazily, so renderers without environments don't pay for it.
 
 ### Phase 1.6b: Cascaded shadows (done)
 - **Cascade fitting (`shadow` module, CPU-tested):**

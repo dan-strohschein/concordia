@@ -18,8 +18,10 @@ use concordia_shaders::ShaderCompiler;
 use crate::assets::AssetSource;
 use crate::camera::{eye, view_matrix};
 use crate::cluster::{ClusterBuffers, ClusterCuller, ClusterGrid, ClusterSettings};
+use crate::environment::EnvironmentCache;
 use crate::frame::{
-    DrawPush, FrameParams, frame_block, instance_block, material_block, material_textures,
+    DrawPush, FrameParams, IblParams, frame_block, instance_block, material_block,
+    material_textures,
 };
 use crate::gpu::{GpuAssets, GpuMesh, Uploads};
 use crate::graph::{GraphTexture, PassContext, RenderGraph, Use};
@@ -61,6 +63,7 @@ pub struct Renderer {
     device: Arc<dyn Device>,
     pipelines: Pipelines,
     culler: ClusterCuller,
+    environments: EnvironmentCache,
     shadow_maps: ShadowMaps,
     clusters: ClusterSettings,
     stats: RenderStats,
@@ -89,6 +92,8 @@ struct FramePlan<'a> {
     size: (NonZeroU32, NonZeroU32),
     cluster: ClusterJob<'a>,
     shadow: Option<ShadowJob>,
+    /// Skybox pipeline and push constants, drawn first in the forward pass.
+    sky: Option<(Pipeline, Vec<u8>)>,
 }
 
 /// The frame's light clustering, recorded before the graph.
@@ -128,6 +133,7 @@ impl Renderer {
             device,
             pipelines,
             culler,
+            environments: EnvironmentCache::default(),
             shadow_maps: ShadowMaps::default(),
             clusters: ClusterSettings::default(),
             stats: RenderStats::default(),
@@ -208,6 +214,21 @@ impl Renderer {
         });
         let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
         let shadows = self.prepare_shadows(world, view, aspect, dir)?;
+        let environment = match &world.environment {
+            Some(env) => {
+                let gpu = self
+                    .environments
+                    .ensure(device, &mut up, assets, &env.map)?;
+                let mut levels = [0u32; 6];
+                gpu.levels
+                    .iter()
+                    .take(6)
+                    .enumerate()
+                    .for_each(|(i, (_, index))| levels[i] = *index);
+                Some((gpu.sh, levels, env.skybox))
+            }
+            None => None,
+        };
         let shadow_params = shadows.as_ref().map(|(cascades, settings, maps)| {
             let mut indices = [0u32; 4];
             maps.iter()
@@ -231,6 +252,13 @@ impl Renderer {
                 cluster.indices_index,
             ],
             shadow: shadow_params,
+            ibl: environment.as_ref().map(|(sh, levels, skybox)| IblParams {
+                sh,
+                scale: world.environment.as_ref().map_or(0.0, |e| e.intensity) * exposure,
+                skybox: *skybox,
+                levels: *levels,
+            }),
+            lut: self.environments.lut_index(),
         });
         let frame_buf = frame.keep(up.buffer(device, &block, "frame")?);
         let FrameBlocks {
@@ -291,6 +319,13 @@ impl Renderer {
             grid,
             light_count: lights.bounds.len(),
         };
+        let sky = match environment.as_ref().is_some_and(|(_, _, skybox)| *skybox) {
+            true => Some((
+                self.pipelines.sky(device, samples)?,
+                frame_i.to_le_bytes().to_vec(),
+            )),
+            false => None,
+        };
         let shadow = shadows.map(|(_, settings, maps)| ShadowJob {
             maps,
             resolution: settings.resolution,
@@ -303,6 +338,7 @@ impl Renderer {
             size: (width, height),
             cluster: job,
             shadow,
+            sky,
         };
         let (image, overflow) = self.execute(view, plan, frame)?;
         self.stats = RenderStats {
@@ -443,6 +479,7 @@ impl Renderer {
             size,
             cluster: job,
             shadow,
+            sky,
         } = plan;
         let job = &job;
         let device = self.device.as_ref();
@@ -484,7 +521,7 @@ impl Renderer {
         let shadow_maps = shadow
             .map(|s| add_shadow_passes(&mut graph, s))
             .unwrap_or_default();
-        let targets = add_forward(&mut graph, view, draws, samples, size, &shadow_maps);
+        let targets = add_forward(&mut graph, view, draws, samples, size, &shadow_maps, sky);
         add_tonemap(
             &mut graph,
             targets.hdr,
@@ -565,6 +602,7 @@ impl Drop for Renderer {
         let _ = self.device.wait_idle();
         self.assets.destroy(self.device.as_ref());
         self.shadow_maps.destroy(self.device.as_ref());
+        self.environments.destroy(self.device.as_ref());
     }
 }
 
@@ -614,6 +652,7 @@ fn add_forward(
     samples: SampleCount,
     size: (NonZeroU32, NonZeroU32),
     shadow_maps: &[GraphTexture],
+    sky: Option<(Pipeline, Vec<u8>)>,
 ) -> ForwardTargets {
     let shadow_maps = shadow_maps.to_vec();
     let hdr = graph.create_texture(desc(
@@ -675,6 +714,14 @@ fn add_forward(
                     store: StoreOp::DontCare,
                 }),
             }));
+            if let Some((pipeline, push)) = &sky {
+                ctx.commands.push(Command::SetPipeline(*pipeline));
+                ctx.commands.push(Command::PushConstants(push.clone()));
+                ctx.commands.push(Command::Draw {
+                    vertices: 0..3,
+                    instances: 0..1,
+                });
+            }
             let mut bound = None;
             for draw in &draws {
                 if bound != Some(draw.pipeline) {

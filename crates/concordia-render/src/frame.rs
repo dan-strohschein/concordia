@@ -102,6 +102,19 @@ pub(crate) struct FrameParams<'a> {
     pub(crate) buffers: [u32; 3],
     /// Fitted cascades, their settings and shadow-map indices (None: no shadows).
     pub(crate) shadow: Option<(&'a [Cascade], &'a CascadeSettings, [u32; 4])>,
+    /// Image-based lighting (None: no environment).
+    pub(crate) ibl: Option<IblParams<'a>>,
+    /// Bindless index of the BRDF table.
+    pub(crate) lut: u32,
+}
+
+/// The environment as the shader sees it.
+pub(crate) struct IblParams<'a> {
+    pub(crate) sh: &'a [[f32; 3]; 9],
+    /// Intensity × exposure.
+    pub(crate) scale: f32,
+    pub(crate) skybox: bool,
+    pub(crate) levels: [u32; 6],
 }
 
 /// `Frame` (mirrors `forward.slang`): matrices, eye, sun, cluster depth range, screen, then two
@@ -134,7 +147,30 @@ pub(crate) fn frame_block(p: &FrameParams<'_>) -> Vec<u8> {
     ];
     out.extend(words.iter().flat_map(|w| w.to_le_bytes()));
     shadow_rows(&mut out, p.shadow);
+    ibl_rows(&mut out, p);
     out
+}
+
+/// Inverse view-projection, SH9, IBL parameters and level / table indices (zeros: off).
+fn ibl_rows(out: &mut Vec<u8>, p: &FrameParams<'_>) {
+    push_rows(out, &columns(&p.view_proj.inverse()));
+    let (mut sh, mut params, mut levels) = ([Vec4::ZERO; 9], Vec4::ZERO, [0u32; 6]);
+    if let Some(ibl) = &p.ibl {
+        sh = ibl.sh.map(|c| Vec4::new(c[0], c[1], c[2], 0.0));
+        params = Vec4::new(
+            ibl.scale,
+            ibl.levels.len() as f32,
+            if ibl.skybox { 1.0 } else { 0.0 },
+            1.0,
+        );
+        levels = ibl.levels;
+    }
+    push_rows(out, &sh);
+    push_rows(out, &[params]);
+    let words = [
+        levels[0], levels[1], levels[2], levels[3], levels[4], levels[5], p.lut, 0,
+    ];
+    out.extend(words.iter().flat_map(|w| w.to_le_bytes()));
 }
 
 /// Cascade matrices, splits, texel sizes, depth ranges, parameters and map indices (zeros: off).

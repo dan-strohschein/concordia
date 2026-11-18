@@ -841,6 +841,7 @@ dependencies = [
  "concordia-shaders",
  "concordia-terra",
  "concordia-testkit",
+ "half",
  "insta",
  "png",
  "proptest",

@@ -189,3 +189,26 @@ impl Default for SpotLight {
         }
     }
 }
+
+/// Sky light and background from an HDR equirectangular texture (the first one in the world is used).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct Environment {
+    /// HDR equirectangular texture (an imported `.hdr`).
+    pub map: concordia_assets::AssetRef,
+    /// Radiance multiplier (nits per texel unit; exposure applies as for lights).
+    #[serde(default = "one")]
+    #[reflect(range(min = 0.0, max = 1000000.0))]
+    pub intensity: f32,
+    /// Draw the map behind everything.
+    #[serde(default = "yes")]
+    pub skybox: bool,
+}
+
+fn one() -> f32 {
+    1.0
+}
+
+fn yes() -> bool {
+    true
+}

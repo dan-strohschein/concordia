@@ -5,11 +5,13 @@ mod assets;
 mod camera;
 pub mod cluster;
 mod components;
+mod environment;
 mod error;
 mod extract;
 mod frame;
 mod gpu;
 pub mod graph;
+pub mod ibl;
 mod lighting;
 mod module;
 mod pipelines;
@@ -20,7 +22,9 @@ pub mod tonemap;
 
 pub use assets::{AssetSource, MemoryAssets};
 pub use camera::view_matrix;
-pub use components::{Camera, DirectionalLight, Msaa, PointLight, Projection, SpotLight, Tonemap};
+pub use components::{
+    Camera, DirectionalLight, Environment, Msaa, PointLight, Projection, SpotLight, Tonemap,
+};
 pub use error::RenderError;
 pub use extract::{CameraView, DrawItem, LightView, PunctualKind, PunctualLight, RenderWorld};
 pub use frame::DrawPush;
@@ -40,5 +44,6 @@ pub fn register_types(
     concordia_terra::register_component::<Camera>(registry)?;
     concordia_terra::register_component::<DirectionalLight>(registry)?;
     concordia_terra::register_component::<PointLight>(registry)?;
-    concordia_terra::register_component::<SpotLight>(registry)
+    concordia_terra::register_component::<SpotLight>(registry)?;
+    concordia_terra::register_component::<Environment>(registry)
 }

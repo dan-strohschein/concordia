@@ -20,6 +20,11 @@ struct Frame {
     // cascade count); shadow_res.x = map resolution; shadow_tex = bindless indices.
     float4 cascade_vp[16]; float4 splits; float4 texel; float4 depth_range; float4 shadow; float4 shadow_res;
     uint4 shadow_tex;
+    // Image-based lighting: inverse view-projection (sky directions), SH9 irradiance,
+    // ibl = (intensity × exposure, level count, skybox?, enabled?), env_a/env_b = specular level
+    // indices 0..5, then the BRDF table.
+    float4 inv_view_proj[4]; float4 sh[9]; float4 ibl;
+    uint4 env_a; uint4 env_b;
 };
 // Per light: position+range, direction, exposed radiance, spot (scale, offset).
 struct Light { float4 position_range; float4 direction; float4 radiance; float4 spot; };
@@ -109,6 +114,60 @@ float sun_shadow(Frame* frame, float3 world, float3 n, float3 to_light) {
     }
     float side = float(2 * k + 1);
     return lit / (side * side);
+}
+
+uint env_level(Frame* frame, uint i) { return i < 4 ? frame.env_a[i] : frame.env_b[i - 4]; }
+
+float3 env_sample(Frame* frame, uint level, float3 dir) {
+    float2 uv = float2(0.5 + atan2(dir.x, -dir.z) / (2.0 * PI), acos(clamp(dir.y, -1.0, 1.0)) / PI);
+    return g_textures.tex[NonUniformResourceIndex(env_level(frame, level))].SampleLevel(g_textures.samplers[SAMPLER_LINEAR_REPEAT], uv, 0).rgb;
+}
+
+float3 sh_irradiance(Frame* frame, float3 n) {
+    float3 e = frame.sh[0].rgb * 0.282095
+        + frame.sh[1].rgb * 0.488603 * n.y + frame.sh[2].rgb * 0.488603 * n.z + frame.sh[3].rgb * 0.488603 * n.x
+        + frame.sh[4].rgb * 1.092548 * n.x * n.y + frame.sh[5].rgb * 1.092548 * n.y * n.z
+        + frame.sh[6].rgb * 0.315392 * (3.0 * n.z * n.z - 1.0) + frame.sh[7].rgb * 1.092548 * n.x * n.z
+        + frame.sh[8].rgb * 0.546274 * (n.x * n.x - n.y * n.y);
+    return max(e, 0.0);
+}
+
+// Split-sum image-based lighting (Karis 2013): SH diffuse plus prefiltered specular × BRDF table.
+float3 ambient(Frame* frame, float3 n, float3 v, float3 base, float metallic, float roughness) {
+    if (frame.ibl.w < 0.5) { return float3(0.0); }
+    float nov = saturate(dot(n, v));
+    float3 f0 = lerp(float3(0.04), base, metallic);
+    float2 ab = g_textures.tex[frame.env_b.z].SampleLevel(g_textures.samplers[SAMPLER_LINEAR_CLAMP], float2(nov, roughness), 0).rg;
+    float3 r = reflect(-v, n);
+    float lod = roughness * (frame.ibl.y - 1.0);
+    uint lo = uint(floor(lod));
+    uint hi = min(lo + 1, uint(frame.ibl.y) - 1);
+    float3 prefiltered = lerp(env_sample(frame, lo, r), env_sample(frame, hi, r), lod - floor(lod));
+    float3 specular = prefiltered * (f0 * ab.x + ab.y);
+    float3 diffuse = (1.0 - metallic) * base / PI * sh_irradiance(frame, n);
+    return (diffuse + specular) * frame.ibl.x;
+}
+
+struct SkyPush { uint frame; };
+struct SkyOut { float4 position : SV_Position; float2 ndc : NDC; };
+
+[shader("vertex")]
+SkyOut sky_vs(uint vid : SV_VertexID) {
+    float2 uv = float2((vid << 1) & 2, vid & 2);
+    SkyOut o;
+    o.ndc = uv * 2.0 - 1.0;
+    o.position = float4(o.ndc, 0.0, 1.0);
+    return o;
+}
+
+// The view ray through each pixel, from unprojecting it at two depths (perspective or ortho).
+[shader("fragment")]
+float4 sky_fs(SkyOut i, uniform SkyPush push) : SV_Target {
+    Frame* frame = (Frame*)g_buffers.ptr[push.frame];
+    float4 near = xform(frame.inv_view_proj, float4(i.ndc, 1.0, 1.0));
+    float4 far = xform(frame.inv_view_proj, float4(i.ndc, 0.5, 1.0));
+    float3 dir = normalize(far.xyz / far.w - near.xyz / near.w);
+    return float4(env_sample(frame, 0, dir) * frame.ibl.x, 1.0);
 }
 
 float4 sample_or(uint tex, float2 uv, float4 fallback) {
@@ -206,11 +265,12 @@ float4 fs(VsOut i, bool front : SV_IsFrontFace, uniform DrawPush push) : SV_Targ
     float3 v = normalize(frame.eye.xyz - i.world);
     float4 mr = sample_or(m.tex0.y, i.uv, float4(1.0));
     float metallic = saturate(m.factors.x * mr.b);
-    float a = max(m.factors.y * mr.g, 0.045);
+    float roughness = saturate(m.factors.y * mr.g);
+    float a = max(roughness, 0.045);
     a = a * a;
     float occlusion = lerp(1.0, sample_or(m.tex0.w, i.uv, float4(1.0)).r, m.factors.w);
     float3 geometric = normalize(i.normal) * (front ? 1.0 : -1.0);
     float3 sun = brdf(n, v, -normalize(frame.light_dir.xyz), base.rgb, metallic, a) * frame.light_radiance.rgb * sun_shadow(frame, i.world, geometric, -normalize(frame.light_dir.xyz));
-    float3 lit = (sun + punctual(frame, i.position, i.world, n, v, base.rgb, metallic, a)) * occlusion;
+    float3 lit = (sun + punctual(frame, i.position, i.world, n, v, base.rgb, metallic, a) + ambient(frame, n, v, base.rgb, metallic, roughness)) * occlusion;
     return float4(lit + emissive, 1.0);
 }

@@ -53,6 +53,8 @@ pub(crate) struct Pipelines {
     forward: (ShaderSource, ShaderSource),
     tonemap: Pipeline,
     shadow: Pipeline,
+    sky: (ShaderSource, ShaderSource),
+    skies: BTreeMap<u8, Pipeline>,
     variants: BTreeMap<(u8, bool), Pipeline>,
 }
 
@@ -92,16 +94,49 @@ impl Pipelines {
             blend: BlendMode::Opaque,
             label: "shadow depth".into(),
         })?;
+        let sky = (
+            compile("forward.slang", "sky_vs", Stage::Vertex)?,
+            compile("forward.slang", "sky_fs", Stage::Fragment)?,
+        );
         Ok(Self {
             forward,
             tonemap,
             shadow,
+            sky,
+            skies: BTreeMap::new(),
             variants: BTreeMap::new(),
         })
     }
 
     pub(crate) fn tonemap(&self) -> Pipeline {
         self.tonemap
+    }
+
+    /// The skybox pipeline for a sample count (drawn first, no depth test or write).
+    pub(crate) fn sky(
+        &mut self,
+        device: &dyn Device,
+        samples: SampleCount,
+    ) -> Result<Pipeline, RenderError> {
+        if let Some(p) = self.skies.get(&samples.get()) {
+            return Ok(*p);
+        }
+        let pipeline = device.create_graphics_pipeline(&GraphicsPipelineDesc {
+            vertex: self.sky.0.clone(),
+            fragment: Some(self.sky.1.clone()),
+            color_formats: vec![HDR],
+            depth: Some(DepthState {
+                format: DEPTH,
+                compare: CompareOp::Always,
+                write: false,
+            }),
+            samples,
+            cull: CullMode::None,
+            blend: BlendMode::Opaque,
+            label: format!("sky x{}", samples.get()),
+        })?;
+        self.skies.insert(samples.get(), pipeline);
+        Ok(pipeline)
     }
 
     /// Depth-only pipeline for shadow casters.
