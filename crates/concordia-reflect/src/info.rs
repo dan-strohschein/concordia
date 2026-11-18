@@ -136,6 +136,10 @@ pub enum Primitive {
     U32,
     /// `u64`.
     U64,
+    /// `NonZeroU32` (1..=u32::MAX).
+    NonZeroU32,
+    /// `NonZeroU64` (1..=u64::MAX).
+    NonZeroU64,
     /// `f32`.
     F32,
     /// `f64`.
@@ -162,6 +166,8 @@ impl Primitive {
             Self::U16 => (0, u16::MAX.into()),
             Self::U32 => (0, u32::MAX.into()),
             Self::U64 => (0, u64::MAX.into()),
+            Self::NonZeroU32 => (1, u32::MAX.into()),
+            Self::NonZeroU64 => (1, u64::MAX.into()),
             _ => return None,
         };
         Some(bounds)

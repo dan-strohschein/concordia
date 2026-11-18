@@ -1,0 +1,60 @@
+---
+source: crates/concordia-input/tests/map.rs
+assertion_line: 15
+expression: map.to_ron().unwrap()
+---
+InputMap(
+    actions: {
+        "camera_pan": (
+            bindings: [
+                KeyAxis2d(
+                    down: S,
+                    left: A,
+                    right: D,
+                    up: W,
+                ),
+                KeyAxis2d(
+                    down: ArrowDown,
+                    left: ArrowLeft,
+                    right: ArrowRight,
+                    up: ArrowUp,
+                ),
+            ],
+            kind: Axis2d,
+        ),
+        "camera_zoom": (
+            bindings: [
+                Scroll,
+                KeyAxis(
+                    negative: Minus,
+                    positive: Equal,
+                ),
+            ],
+            kind: Axis1d,
+        ),
+        "pointer": (
+            bindings: [
+                PointerPosition,
+            ],
+            kind: Axis2d,
+        ),
+        "select": (
+            bindings: [
+                MouseButton(Left),
+            ],
+            kind: Button,
+        ),
+        "spawn_box": (
+            bindings: [
+                Key(Space),
+                Chord(
+                    key: B,
+                    modifiers: [
+                        Shift,
+                    ],
+                ),
+            ],
+            kind: Button,
+        ),
+    },
+)

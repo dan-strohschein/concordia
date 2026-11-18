@@ -26,6 +26,8 @@ primitive! {
     u16 => "u16", U16;
     u32 => "u32", U32;
     u64 => "u64", U64;
+    std::num::NonZeroU32 => "NonZeroU32", NonZeroU32;
+    std::num::NonZeroU64 => "NonZeroU64", NonZeroU64;
     f32 => "f32", F32;
     f64 => "f64", F64;
     char => "char", Char;

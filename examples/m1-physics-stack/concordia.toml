@@ -1,0 +1,22 @@
+# Concordia project manifest.
+[project]
+name = "m1-physics-stack"
+
+[scene]
+main = "scenes/stack.scene.ron"
+
+[sim]
+rate_hz = 60
+seed = 0
+
+[journal]
+sync = true
+
+[window]
+title = "Concordia: physics stack"
+width = 1280
+height = 720
+resizable = true
+
+[input]
+map = "input/default.input.ron"

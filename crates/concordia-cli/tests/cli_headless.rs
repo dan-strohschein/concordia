@@ -92,3 +92,46 @@ fn mcp_subcommand_serves_mcp() {
     assert_eq!(response["result"]["serverInfo"]["name"], "concordia");
     assert!(child.wait().unwrap().success());
 }
+
+fn example(name: &str) -> String {
+    format!("{}/../../examples/{name}", env!("CARGO_MANIFEST_DIR"))
+}
+
+#[test]
+fn headless_serves_the_project_modules() {
+    let mut child = concordia()
+        .args(["headless", "--project", &example("m1-physics-stack")])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    let request = json!({"jsonrpc": "2.0", "id": 1, "method": "schema.get", "params": {}});
+    writeln!(stdin, "{request}").unwrap();
+    let mut line = String::new();
+    stdout.read_line(&mut line).unwrap();
+    let response: Value = serde_json::from_str(&line).unwrap();
+    let methods = response["result"]["schema"]["methods"].to_string();
+    assert!(methods.contains("input.inject"), "{methods}");
+    drop(stdin);
+    assert!(child.wait().unwrap().success());
+}
+
+#[test]
+fn headless_rejects_an_invalid_manifest() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("concordia.toml"),
+        "[project]\nnmae = \"x\"\n",
+    )
+    .unwrap();
+    let output = concordia()
+        .args(["headless", "--project", dir.path().to_str().unwrap()])
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("nmae"));
+}

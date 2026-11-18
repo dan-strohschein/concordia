@@ -25,8 +25,8 @@ pub trait EngineModule: Send + Sync + fmt::Debug {
         Vec::new()
     }
 
-    /// Called once per new play world: systems to run after earlier modules', and state kept until the play world is discarded.
-    fn start_play(&self, _world: &World) -> Result<PlaySetup, ApiError> {
+    /// Called once per new play world (which it may prepare, e.g. insert resources): systems to run after earlier modules', and state kept until the play world is discarded.
+    fn start_play(&self, _world: &mut World) -> Result<PlaySetup, ApiError> {
         Ok(PlaySetup::default())
     }
 }
@@ -66,7 +66,7 @@ impl EngineModule for CoreModule {
         crate::methods::all()
     }
 
-    fn start_play(&self, _: &World) -> Result<PlaySetup, ApiError> {
+    fn start_play(&self, _: &mut World) -> Result<PlaySetup, ApiError> {
         Ok(PlaySetup {
             schedule: builtin::headless_schedule(),
             state: None,

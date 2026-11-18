@@ -1,0 +1,543 @@
+---
+source: crates/concordia-input/tests/inject.rs
+assertion_line: 71
+expression: params_schema(method)
+---
+{
+  "$defs": {
+    "ActionValue": {
+      "description": "An action's value, shaped by its kind.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Button state.",
+          "properties": {
+            "Button": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "Button"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One axis.",
+          "properties": {
+            "Axis1d": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "Axis1d"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Two axes.",
+          "properties": {
+            "Axis2d": {
+              "description": "2D vector as [x, y].",
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            }
+          },
+          "required": [
+            "Axis2d"
+          ],
+          "type": "object"
+        }
+      ],
+      "title": "ActionValue",
+      "x-concordia-type": "ActionValue"
+    },
+    "InjectedEvent": {
+      "additionalProperties": false,
+      "description": "One event and the tick it applies at.",
+      "properties": {
+        "event": {
+          "$ref": "#/$defs/InputEvent",
+          "description": "The event."
+        },
+        "tick": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "maximum": 18446744073709551615,
+              "minimum": 0,
+              "type": "integer"
+            }
+          ],
+          "description": "Tick to apply at (default: the next tick to simulate)."
+        }
+      },
+      "required": [
+        "event"
+      ],
+      "title": "InjectedEvent",
+      "type": "object",
+      "x-concordia-type": "InjectedEvent"
+    },
+    "InputEvent": {
+      "description": "One input event, from the OS or injected through `input.inject`.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A key changed.",
+          "properties": {
+            "Key": {
+              "additionalProperties": false,
+              "properties": {
+                "key": {
+                  "$ref": "#/$defs/KeyCode",
+                  "description": "The key."
+                },
+                "pressed": {
+                  "description": "Down (true) or up.",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "key",
+                "pressed"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Key"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A mouse button changed.",
+          "properties": {
+            "MouseButton": {
+              "additionalProperties": false,
+              "properties": {
+                "button": {
+                  "$ref": "#/$defs/MouseButton",
+                  "description": "The button."
+                },
+                "pressed": {
+                  "description": "Down (true) or up.",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "button",
+                "pressed"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "MouseButton"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The pointer moved to a position in logical pixels (origin top-left of the viewport).",
+          "properties": {
+            "PointerMove": {
+              "additionalProperties": false,
+              "properties": {
+                "x": {
+                  "description": "X in logical pixels.",
+                  "type": "number"
+                },
+                "y": {
+                  "description": "Y in logical pixels.",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "x",
+                "y"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "PointerMove"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Relative mouse motion.",
+          "properties": {
+            "MouseMotion": {
+              "additionalProperties": false,
+              "properties": {
+                "dx": {
+                  "description": "Horizontal motion.",
+                  "type": "number"
+                },
+                "dy": {
+                  "description": "Vertical motion.",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "dx",
+                "dy"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "MouseMotion"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Scroll wheel or trackpad scroll.",
+          "properties": {
+            "Scroll": {
+              "additionalProperties": false,
+              "properties": {
+                "dx": {
+                  "description": "Horizontal scroll.",
+                  "type": "number"
+                },
+                "dy": {
+                  "description": "Vertical scroll.",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "dx",
+                "dy"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Scroll"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Set an action's value directly, bypassing bindings (it holds until set again).",
+          "properties": {
+            "Action": {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "description": "Action name.",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/$defs/ActionValue",
+                  "description": "New value (must match the action's kind)."
+                }
+              },
+              "required": [
+                "action",
+                "value"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Action"
+          ],
+          "type": "object"
+        }
+      ],
+      "title": "InputEvent",
+      "x-concordia-type": "InputEvent"
+    },
+    "KeyCode": {
+      "description": "A physical key, named by its US-layout position.",
+      "oneOf": [
+        {
+          "const": "A"
+        },
+        {
+          "const": "B"
+        },
+        {
+          "const": "C"
+        },
+        {
+          "const": "D"
+        },
+        {
+          "const": "E"
+        },
+        {
+          "const": "F"
+        },
+        {
+          "const": "G"
+        },
+        {
+          "const": "H"
+        },
+        {
+          "const": "I"
+        },
+        {
+          "const": "J"
+        },
+        {
+          "const": "K"
+        },
+        {
+          "const": "L"
+        },
+        {
+          "const": "M"
+        },
+        {
+          "const": "N"
+        },
+        {
+          "const": "O"
+        },
+        {
+          "const": "P"
+        },
+        {
+          "const": "Q"
+        },
+        {
+          "const": "R"
+        },
+        {
+          "const": "S"
+        },
+        {
+          "const": "T"
+        },
+        {
+          "const": "U"
+        },
+        {
+          "const": "V"
+        },
+        {
+          "const": "W"
+        },
+        {
+          "const": "X"
+        },
+        {
+          "const": "Y"
+        },
+        {
+          "const": "Z"
+        },
+        {
+          "const": "Digit0"
+        },
+        {
+          "const": "Digit1"
+        },
+        {
+          "const": "Digit2"
+        },
+        {
+          "const": "Digit3"
+        },
+        {
+          "const": "Digit4"
+        },
+        {
+          "const": "Digit5"
+        },
+        {
+          "const": "Digit6"
+        },
+        {
+          "const": "Digit7"
+        },
+        {
+          "const": "Digit8"
+        },
+        {
+          "const": "Digit9"
+        },
+        {
+          "const": "F1"
+        },
+        {
+          "const": "F2"
+        },
+        {
+          "const": "F3"
+        },
+        {
+          "const": "F4"
+        },
+        {
+          "const": "F5"
+        },
+        {
+          "const": "F6"
+        },
+        {
+          "const": "F7"
+        },
+        {
+          "const": "F8"
+        },
+        {
+          "const": "F9"
+        },
+        {
+          "const": "F10"
+        },
+        {
+          "const": "F11"
+        },
+        {
+          "const": "F12"
+        },
+        {
+          "const": "Space"
+        },
+        {
+          "const": "Enter"
+        },
+        {
+          "const": "Escape"
+        },
+        {
+          "const": "Tab"
+        },
+        {
+          "const": "Backspace"
+        },
+        {
+          "const": "Delete"
+        },
+        {
+          "const": "Minus"
+        },
+        {
+          "const": "Equal"
+        },
+        {
+          "const": "Comma"
+        },
+        {
+          "const": "Period"
+        },
+        {
+          "const": "Slash"
+        },
+        {
+          "const": "ArrowUp"
+        },
+        {
+          "const": "ArrowDown"
+        },
+        {
+          "const": "ArrowLeft"
+        },
+        {
+          "const": "ArrowRight"
+        },
+        {
+          "const": "ShiftLeft"
+        },
+        {
+          "const": "ShiftRight"
+        },
+        {
+          "const": "ControlLeft"
+        },
+        {
+          "const": "ControlRight"
+        },
+        {
+          "const": "AltLeft"
+        },
+        {
+          "const": "AltRight"
+        },
+        {
+          "const": "SuperLeft"
+        },
+        {
+          "const": "SuperRight"
+        }
+      ],
+      "title": "KeyCode",
+      "x-concordia-type": "KeyCode"
+    },
+    "MouseButton": {
+      "description": "A mouse button.",
+      "oneOf": [
+        {
+          "const": "Left",
+          "description": "Primary button."
+        },
+        {
+          "const": "Right",
+          "description": "Secondary button."
+        },
+        {
+          "const": "Middle",
+          "description": "Wheel button."
+        },
+        {
+          "const": "Back",
+          "description": "Back side button."
+        },
+        {
+          "const": "Forward",
+          "description": "Forward side button."
+        }
+      ],
+      "title": "MouseButton",
+      "x-concordia-type": "MouseButton"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`input.inject` params.",
+  "properties": {
+    "actor": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Who makes a change: <human|agent|system|tool|script>:<name>[#n], e.g. agent:claude-code.",
+          "pattern": "^(human|agent|system|tool|script):[a-z0-9][a-z0-9._-]{0,63}(#[1-9][0-9]*)?$",
+          "type": "string"
+        }
+      ],
+      "description": "Who is pressing (attribution in the log only)."
+    },
+    "events": {
+      "description": "Events, applied in order within a tick.",
+      "items": {
+        "$ref": "#/$defs/InjectedEvent"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "events"
+  ],
+  "title": "InputInjectParams",
+  "type": "object",
+  "x-concordia-type": "InputInjectParams"
+}

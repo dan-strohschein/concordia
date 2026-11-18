@@ -157,11 +157,14 @@ impl Method for SimStep {
 }
 
 /// The play world, cloned from the edit world on first use; `rate` changes the tick rate in place.
-fn ensure_play(engine: &mut Engine, rate: Option<TickRate>) -> Result<&mut Play, ApiError> {
+pub(crate) fn ensure_play(
+    engine: &mut Engine,
+    rate: Option<TickRate>,
+) -> Result<&mut Play, ApiError> {
     if engine.play.is_none() {
         let mut world = engine.scene()?.world.clone();
         world.insert_resource(SimRng::new(engine.config.sim_seed));
-        let (schedule, states) = start_modules(engine, &world)?;
+        let (schedule, states) = start_modules(engine, &mut world)?;
         let rate = rate.unwrap_or(engine.config.sim_rate);
         engine.play = Some(Play {
             world,
@@ -182,7 +185,10 @@ fn ensure_play(engine: &mut Engine, rate: Option<TickRate>) -> Result<&mut Play,
 }
 
 /// Every module's systems (in module order) and play-time state for a new play world.
-fn start_modules(engine: &Engine, world: &World) -> Result<(Schedule, Vec<PlayState>), ApiError> {
+fn start_modules(
+    engine: &Engine,
+    world: &mut World,
+) -> Result<(Schedule, Vec<PlayState>), ApiError> {
     let mut schedule = Schedule::new();
     let mut states = Vec::new();
     for module in &engine.modules {

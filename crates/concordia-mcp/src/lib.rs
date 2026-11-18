@@ -122,13 +122,15 @@ pub struct Args {
     pub threads: Option<NonZeroUsize>,
 }
 
-/// Runs the server on stdio until the client disconnects. Logs go to stderr only.
+/// Runs the server on stdio until the client disconnects, with the project's modules. Logs go to stderr only.
 pub async fn run(args: Args) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let ring = match concordia_core::log::init(&LogConfig::from_env()) {
         Ok(handle) => Some(Arc::clone(handle.ring())),
         Err(LogError::AlreadyInitialized) => None,
         Err(e) => return Err(e.into()),
     };
+    let modules =
+        concordia_app::Project::load(&args.project).and_then(|project| project.modules())?;
     let options = Options {
         project: args.project,
         actor: args.actor,
@@ -136,7 +138,7 @@ pub async fn run(args: Args) -> Result<(), Box<dyn std::error::Error + Send + Sy
         deterministic_ids: args.deterministic_ids,
         threads: args.threads,
         log_ring: ring,
-        modules: Vec::new(),
+        modules,
     };
     let server = ConcordiaServer::start(options).await?;
     tracing::info!(target: "concordia::mcp", "MCP server ready on stdio");

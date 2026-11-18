@@ -184,6 +184,11 @@ impl Engine {
         world_of(self, Some(which))
     }
 
+    /// The play world for writing (e.g. injected input), created paused from the edit world if there is none.
+    pub fn play_world_mut(&mut self) -> Result<&mut World, ApiError> {
+        crate::methods::sim::ensure_play(self, None).map(|play| &mut play.world)
+    }
+
     /// The state of type `T` a module created for the current play session, if any.
     pub fn play_state<T: Any>(&self) -> Option<&T> {
         self.play

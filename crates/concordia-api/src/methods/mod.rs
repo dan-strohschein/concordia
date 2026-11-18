@@ -7,7 +7,7 @@ mod query;
 mod scene;
 mod schema;
 mod session;
-mod sim;
+pub(crate) mod sim;
 mod txn;
 
 use std::sync::OnceLock;

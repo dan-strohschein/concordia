@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (phase 1.1; 1.0 and 1.2a done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (phase 1.7; 1.0, 1.2a and 1.1 done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -154,6 +154,29 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 - the gate agent demo.
 
 **Installs needing approval:** cmake (1.7a), Slang into `target/` (1.3), the Tauri CLI (1.8), and git-lfs only if D5 changes.
+
+### Phase 1.1: Platform and input (done)
+- **New crates:**
+  - `concordia-input` (`InputMap` from `.input.ron`, `InputSampler`, `ActionStates`, `InputFrame`, `pointer_ray`, `InputModule` with `input.inject`);
+  - `concordia-platform` (`run_window` over winit 0.30, `WindowDesc`, engine-owned `WindowEvent`, `FileWatcher`);
+  - `concordia-app` (the composition root: `Project::load`, `concordia.toml` sections, `Project::modules`).
+- **Added to existing crates:**
+  - `concordia-scene` gained `read_document` / `write_document` for any typed RON file, so no `ron` crate is needed;
+  - `concordia-reflect` gained `NonZeroU32` / `NonZeroU64`;
+  - `concordia-core` gained `math::Ray` and re-exports `glam::camera`. glam 0.34.3 moved its projection constructors there; Metal uses `rh::proj::directx`.
+- **API:**
+  - `EngineModule::start_play` now takes `&mut World`, so a module can prepare the play world;
+  - `Engine::play_world_mut()` creates a paused play world if there is none (ADR-0046 updated).
+- **CLI and MCP:**
+  - `concordia run` opens the manifest's window. `--exit-after-ms` exists for smoke tests; the real-window test is `#[ignore]` and passed locally.
+  - `concordia headless` and `concordia-mcp` load the project's modules.
+  - A module is included only when the manifest configures it (input needs `[input] map`), so M0 projects keep the M0 gate's 24 tools.
+- **Deviations from the plan:**
+  - `headless_platform_creates_no_window` is dropped: headless never calls `run_window`, so it has no window by construction.
+  - `concordia run` doesn't feed window input to the simulation yet; that's wired with rendering (1.5).
+  - File changes are judged by modification time and size, because macOS FSEvents mislabels and replays events.
+  - winit is built without `wayland-csd-adwaita` (it pulls the unmaintained `ttf-parser`, RUSTSEC-2026-0192).
+- `examples/m1-physics-stack` has `concordia.toml` and the canonical `input/default.input.ron`; its scenes come in 1.7 and 1.5.
 
 ### Phase 1.2a: GPU probe (done)
 - New crates: `concordia-rhi` (`DeviceCaps`, `SampleCount`, `Requirement::M1`, `RhiError`), `concordia-rhi-metal` (`probe()`; stubs off macOS) and `concordia-testkit` (`gpu_required`, started early so GPU tests share one guard).

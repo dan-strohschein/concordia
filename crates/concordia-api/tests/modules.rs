@@ -37,6 +37,10 @@ impl Drop for ProbeState {
 #[derive(Debug, Clone, Default, PartialEq)]
 struct Seen(Vec<f32>);
 
+/// Marker a module puts into each new play world.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Prepared(usize);
+
 /// Return the probe module's play state value.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 struct ProbeValue;
@@ -86,8 +90,9 @@ impl EngineModule for Probe {
         vec![MethodInfo::of::<ProbeValue>()]
     }
 
-    fn start_play(&self, _: &World) -> Result<PlaySetup, ApiError> {
+    fn start_play(&self, world: &mut World) -> Result<PlaySetup, ApiError> {
         let n = self.started.fetch_add(1, Ordering::SeqCst) + 1;
+        world.insert_resource(Prepared(n));
         let record = system("probe.record", |world: &mut World, _: &SystemCtx<'_>| {
             let mut xs = Vec::new();
             if let Ok(mut q) = world.query::<&Transform>() {
@@ -231,4 +236,23 @@ fn module_method_reads_play_state() {
     assert_eq!(err.data.kind, "NotPlaying");
     h.ok("sim.step", json!({"ticks": 1}));
     assert_eq!(h.ok("probe.value", json!({}))["value"], 41);
+}
+
+#[test]
+fn start_play_can_prepare_the_play_world_but_not_the_edit_world() {
+    let mut h = with_modules(vec![Arc::new(Probe::default())]);
+    h.ok("sim.step", json!({"ticks": 1}));
+    let play = h.engine.world(WorldSel::play).unwrap();
+    assert_eq!(play.resource::<Prepared>(), Some(&Prepared(1)));
+    let edit = h.engine.world(WorldSel::edit).unwrap();
+    assert_eq!(edit.resource::<Prepared>(), None);
+}
+
+#[test]
+fn play_world_mut_creates_a_paused_play_world() {
+    let mut h = with_modules(vec![Arc::new(Probe::default())]);
+    assert!(h.engine.world(WorldSel::play).is_err());
+    let world = h.engine.play_world_mut().unwrap();
+    assert_eq!(world.resource::<Prepared>(), Some(&Prepared(1)));
+    assert_eq!(h.ok("sim.pause", json!({}))["state"], "paused");
 }

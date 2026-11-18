@@ -68,6 +68,7 @@ fn primitive(p: Primitive) -> Value {
         Primitive::Char => json!("a"),
         Primitive::Uuid => json!("01900000-0000-7000-8000-000000000000"),
         Primitive::Pattern(_) => json!(""),
+        Primitive::NonZeroU32 | Primitive::NonZeroU64 => json!(1),
         _ => json!(0),
     }
 }

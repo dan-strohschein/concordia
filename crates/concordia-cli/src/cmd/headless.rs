@@ -33,7 +33,12 @@ pub(crate) struct Args {
 
 pub(crate) async fn run(args: Args) -> Result<(), Failure> {
     let log = init(&LogConfig::from_env()).map_err(|e| Failure::usage(e.to_string()))?;
+    let project =
+        concordia_app::Project::load(&args.project).map_err(|e| Failure::usage(e.to_string()))?;
     let mut config = EngineConfig::new(&args.project);
+    config.modules = project
+        .modules()
+        .map_err(|e| Failure::usage(e.to_string()))?;
     config.deterministic_ids = args.deterministic_ids;
     config.log_ring = Some(Arc::clone(log.ring()));
     if let Some(threads) = args.threads {
