@@ -49,11 +49,27 @@ pub enum Msaa {
 /// Maps HDR scene color to the display.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Reflect)]
 pub enum Tonemap {
-    /// Khronos PBR Neutral: keeps base colors faithful, compresses highlights.
+    /// AgX: filmic, hue-stable highlight roll-off (Godot 4.4+ offers the same curve).
     #[default]
-    Neutral,
+    AgX,
+    /// Khronos PBR Neutral: keeps base colors faithful, compresses only highlights.
+    KhronosPbrNeutral,
+    /// ACES fitted curve (Narkowicz): punchy contrast.
+    AcesFitted,
     /// Clamp to [0, 1] (exact colors for tests and unlit UI-like scenes).
-    Clamp,
+    Linear,
+}
+
+impl Tonemap {
+    /// The mode index `tonemap.slang` switches on.
+    pub(crate) fn shader_mode(self) -> u32 {
+        match self {
+            Self::AgX => 0,
+            Self::KhronosPbrNeutral => 1,
+            Self::AcesFitted => 2,
+            Self::Linear => 3,
+        }
+    }
 }
 
 /// A view into the world (the entity's `Transform` places it; it looks down its -Z).
@@ -111,6 +127,62 @@ impl Default for DirectionalLight {
         Self {
             color: [1.0; 3],
             illuminance_lux: 100_000.0,
+        }
+    }
+}
+
+/// Omnidirectional light at the entity's position.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(default, deny_unknown_fields)]
+pub struct PointLight {
+    /// Linear color.
+    pub color: [f32; 3],
+    /// Luminous power in lumens (a 60 W bulb ≈ 800).
+    #[reflect(range(min = 0.0, max = 1000000.0))]
+    pub intensity_lumens: f32,
+    /// Distance where the light fades to zero (also its clustering bound).
+    #[reflect(range(min = 0.01, max = 1000.0))]
+    pub range: f32,
+}
+
+impl Default for PointLight {
+    fn default() -> Self {
+        Self {
+            color: [1.0; 3],
+            intensity_lumens: 800.0,
+            range: 10.0,
+        }
+    }
+}
+
+/// Cone light along the entity's -Z.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(default, deny_unknown_fields)]
+pub struct SpotLight {
+    /// Linear color.
+    pub color: [f32; 3],
+    /// Luminous power in lumens (as if unshielded; the cone does not concentrate it).
+    #[reflect(range(min = 0.0, max = 1000000.0))]
+    pub intensity_lumens: f32,
+    /// Distance where the light fades to zero.
+    #[reflect(range(min = 0.01, max = 1000.0))]
+    pub range: f32,
+    /// Half-angle (radians) of full intensity.
+    #[reflect(range(min = 0.0, max = 1.57))]
+    pub inner_angle: f32,
+    /// Half-angle (radians) where the light reaches zero (≥ inner).
+    #[reflect(range(min = 0.0, max = 1.57))]
+    pub outer_angle: f32,
+}
+
+impl Default for SpotLight {
+    fn default() -> Self {
+        Self {
+            color: [1.0; 3],
+            intensity_lumens: 800.0,
+            range: 10.0,
+            inner_angle: 0.3,
+            outer_angle: 0.5,
         }
     }
 }

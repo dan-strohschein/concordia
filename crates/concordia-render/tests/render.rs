@@ -16,7 +16,7 @@ fn clamp_camera(projection: Projection, msaa: Msaa) -> Camera {
     Camera {
         projection,
         msaa,
-        tonemap: Tonemap::Clamp,
+        tonemap: Tonemap::Linear,
         clear: [0.02, 0.02, 0.03, 1.0],
         ..Camera::default()
     }
@@ -422,4 +422,47 @@ fn missing_assets_name_the_reference() {
         )
         .unwrap_err();
     assert!(err.to_string().contains("00000000beef"), "{err}");
+}
+
+#[test]
+fn gpu_tonemappers_match_the_cpu_reference() {
+    let Some(mut r) = renderer() else { return };
+    for tonemap in [
+        Tonemap::AgX,
+        Tonemap::KhronosPbrNeutral,
+        Tonemap::AcesFitted,
+        Tonemap::Linear,
+    ] {
+        for value in [0.02f32, 0.18, 0.6, 0.95] {
+            let mut s = Scene::new();
+            // Unlit output is display-referred, so the tonemapper sees exactly `value`.
+            let m = s.material("v", unlit([value, value * 0.5, value * 0.25, 1.0]));
+            s.mesh(
+                "plane",
+                m,
+                Vec3::ZERO,
+                Quat::from_rotation_x(std::f32::consts::FRAC_PI_2),
+                Vec3::splat(4.0),
+            );
+            s.camera(
+                Vec3::new(0.0, 0.0, 1.0),
+                Vec3::ZERO,
+                Camera {
+                    tonemap,
+                    msaa: Msaa::Off,
+                    ..Camera::default()
+                },
+            );
+            let got = pixel(&s.render(&mut r, 8, 8), 4, 4);
+            let want =
+                concordia_render::tonemap::apply(tonemap, [value, value * 0.5, value * 0.25])
+                    .map(|c| (concordia_render::tonemap::srgb_encode(c) * 255.0).round() as u8);
+            for c in 0..3 {
+                assert!(
+                    got[c].abs_diff(want[c]) <= 1,
+                    "{tonemap:?} {value}: gpu {got:?} cpu {want:?}"
+                );
+            }
+        }
+    }
 }

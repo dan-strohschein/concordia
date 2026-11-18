@@ -8,17 +8,22 @@ use concordia_assets::{AssetRef, MaterialData};
 use concordia_core::id::EntityId;
 use concordia_core::math::Vec3;
 use concordia_rhi::{
-    Buffer, BufferDesc, BufferUsage, ClearValue, ColorAttachment, Command, CommandList,
-    DepthAttachment, Device, HeapDesc, Layout, LoadOp, MemoryLocation, Pipeline, QueueKind,
-    RenderPassDesc, SampleCount, StoreOp, Submit, Texture, TextureDesc, TextureUsage,
+    Access, AccessFlags, Buffer, BufferDesc, BufferUsage, ClearValue, ColorAttachment, Command,
+    CommandList, DepthAttachment, Device, HeapDesc, Layout, LoadOp, MemoryLocation, Pipeline,
+    QueueKind, RenderPassDesc, SampleCount, Stages, StoreOp, Submit, Texture, TextureDesc,
+    TextureUsage,
 };
 use concordia_shaders::ShaderCompiler;
 
 use crate::assets::AssetSource;
 use crate::camera::{eye, view_matrix};
-use crate::frame::{DrawPush, frame_block, instance_block, material_block, material_textures};
+use crate::cluster::{ClusterBuffers, ClusterCuller, ClusterGrid, ClusterSettings};
+use crate::frame::{
+    DrawPush, FrameParams, frame_block, instance_block, material_block, material_textures,
+};
 use crate::gpu::{GpuAssets, GpuMesh, Uploads};
 use crate::graph::{GraphTexture, PassContext, RenderGraph, Use};
+use crate::lighting::punctual_lights;
 use crate::pipelines::{DEPTH, HDR, OUTPUT, Pipelines};
 use crate::{CameraView, Msaa, RenderError, RenderWorld, Tonemap};
 
@@ -51,6 +56,9 @@ pub struct Image {
 pub struct Renderer {
     device: Arc<dyn Device>,
     pipelines: Pipelines,
+    culler: ClusterCuller,
+    clusters: ClusterSettings,
+    stats: RenderStats,
     assets: GpuAssets,
     frames: u64,
 }
@@ -69,6 +77,24 @@ struct FrameBlocks {
     order: Vec<DrawOrder>,
 }
 
+/// The frame's light clustering, recorded before the graph.
+struct ClusterJob<'a> {
+    buffers: &'a ClusterBuffers,
+    grid: &'a ClusterGrid,
+    light_count: usize,
+}
+
+/// Light and overflow counts of the last frame.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RenderStats {
+    /// Point and spot lights in the world.
+    pub punctual_lights: usize,
+    /// Lights beyond the frame budget (not drawn).
+    pub dropped_lights: usize,
+    /// Cluster assignments dropped because a cluster was full (lights missing there).
+    pub cluster_overflow: u32,
+}
+
 /// One draw, ready to record.
 struct Draw {
     pipeline: Pipeline,
@@ -83,9 +109,13 @@ impl Renderer {
         compiler: Box<dyn ShaderCompiler>,
     ) -> Result<Self, RenderError> {
         let pipelines = Pipelines::new(device.as_ref(), compiler.as_ref())?;
+        let culler = ClusterCuller::new(device.clone(), compiler.as_ref())?;
         Ok(Self {
             device,
             pipelines,
+            culler,
+            clusters: ClusterSettings::default(),
+            stats: RenderStats::default(),
             assets: GpuAssets::default(),
             frames: 0,
         })
@@ -106,56 +136,77 @@ impl Renderer {
         let (width, height) = check_size(request)?;
         let view = world.camera(request.camera)?;
         let aspect = width.get() as f32 / height.get() as f32;
-        let view_proj = view.camera.projection.matrix(aspect)? * view_matrix(&view.world);
-        let samples = match view.camera.msaa {
-            Msaa::Off => SampleCount::X1,
-            Msaa::X4 => SampleCount::X4,
-        };
+        let grid = ClusterGrid::new(self.clusters, &view.camera.projection, aspect)?;
         let mut frame = FrameResources::default();
-        let result = self.render_frame(
-            world,
-            assets,
-            view,
-            view_proj,
-            samples,
-            (width, height),
-            &mut frame,
-        );
+        let result = self.render_frame(world, assets, view, &grid, (width, height), &mut frame);
         frame.release(self.device.as_ref());
         self.frames += 1;
         result
     }
 
-    #[allow(clippy::too_many_arguments)]
+    /// Light and overflow counts of the last frame.
+    pub fn stats(&self) -> RenderStats {
+        self.stats
+    }
+
     fn render_frame(
         &mut self,
         world: &RenderWorld,
         assets: &mut dyn AssetSource,
         view: &CameraView,
-        view_proj: concordia_core::math::Mat4,
-        samples: SampleCount,
+        grid: &ClusterGrid,
         (width, height): (NonZeroU32, NonZeroU32),
         frame: &mut FrameResources,
     ) -> Result<Image, RenderError> {
+        let aspect = width.get() as f32 / height.get() as f32;
+        let view_m = view_matrix(&view.world);
+        let view_proj = view.camera.projection.matrix(aspect)? * view_m;
+        let samples = match view.camera.msaa {
+            Msaa::Off => SampleCount::X1,
+            Msaa::X4 => SampleCount::X4,
+        };
         let mut up = Uploads::new();
         let materials = self.load_assets(world, assets, &mut up)?;
         let device = self.device.clone();
         let device = device.as_ref();
-        let light = world.lights.first();
         let exposure = view.camera.exposure();
-        let (dir, radiance) = match light {
+        let (dir, radiance) = match world.lights.first() {
             Some(l) => (
                 l.direction,
                 Vec3::from_array(l.light.color) * l.light.illuminance_lux * exposure,
             ),
             None => (Vec3::NEG_Y, Vec3::ZERO),
         };
-        let block = frame_block(
-            &view_proj,
-            eye(&view.world).extend(1.0),
-            dir.extend(0.0),
-            radiance.extend(0.0),
+        let lights = punctual_lights(
+            world,
+            &view_m,
+            exposure,
+            grid.settings().max_lights as usize,
         );
+        if lights.dropped > 0 {
+            tracing::warn!(target: "concordia::render", dropped = lights.dropped, "more punctual lights than the frame budget");
+        }
+        let light_buf = frame.keep(up.buffer(device, &lights.rows, "lights")?);
+        let cluster = self.culler.prepare(&mut up, grid, &lights.bounds)?;
+        cluster.buffers().iter().for_each(|b| {
+            frame.keep(*b);
+        });
+        let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
+        let block = frame_block(&FrameParams {
+            view_proj,
+            view: view_m,
+            eye: eye(&view.world),
+            sun_dir: dir,
+            sun_radiance: radiance,
+            grid,
+            size: (width.get(), height.get()),
+            light_count: lights.bounds.len() as u32,
+            buffers: [
+                index(light_buf)?,
+                cluster.counts_index,
+                cluster.indices_index,
+            ],
+        });
         let frame_buf = frame.keep(up.buffer(device, &block, "frame")?);
         let FrameBlocks {
             instances,
@@ -165,7 +216,6 @@ impl Renderer {
         let inst_buf = frame.keep(up.buffer(device, &instances, "instances")?);
         let mat_buf = frame.keep(up.buffer(device, &material_bytes, "materials")?);
         up.flush(device)?;
-        let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
         let (frame_i, inst_i, mat_i) = (index(frame_buf)?, index(inst_buf)?, index(mat_buf)?);
         let mut draws = Vec::with_capacity(order.len());
         for (
@@ -197,7 +247,21 @@ impl Renderer {
                 vertices: mesh.count,
             });
         }
-        self.execute(view, draws, samples, (width, height), frame)
+        let job = ClusterJob {
+            buffers: &cluster,
+            grid,
+            light_count: lights.bounds.len(),
+        };
+        let (image, overflow) = self.execute(view, draws, samples, (width, height), frame, &job)?;
+        self.stats = RenderStats {
+            punctual_lights: world.punctual.len(),
+            dropped_lights: lights.dropped,
+            cluster_overflow: overflow,
+        };
+        if overflow > 0 {
+            tracing::warn!(target: "concordia::render", overflow, "clusters overflowed; raise max_per_cluster or reduce light ranges");
+        }
+        Ok(image)
     }
 
     /// Uploads missing meshes and textures; returns this frame's materials (deduplicated, in order).
@@ -289,9 +353,17 @@ impl Renderer {
         samples: SampleCount,
         size: (NonZeroU32, NonZeroU32),
         frame: &mut FrameResources,
-    ) -> Result<Image, RenderError> {
+        job: &ClusterJob<'_>,
+    ) -> Result<(Image, u32), RenderError> {
         let device = self.device.as_ref();
         let (w, h) = (size.0.get(), size.1.get());
+        let clusters = job.grid.len() as u64;
+        let overflow_rb = frame.keep(device.create_buffer(&BufferDesc {
+            size: NonZeroU64::new(clusters * 4).unwrap_or(NonZeroU64::MIN),
+            usage: BufferUsage::COPY_DST,
+            memory: MemoryLocation::Readback,
+            label: "cluster overflow".into(),
+        })?);
         let output = frame.texture(device.create_texture(&desc(
             size,
             OUTPUT,
@@ -349,7 +421,26 @@ impl Renderer {
             graph.compile(&|d: &TextureDesc| device.texture_heap_footprint(d).unwrap_or((0, 1)))?;
         let transients = frame.place(device, &graph, &compiled)?;
         let mut list = CommandList::new("frame");
+        let fragment_read = Access {
+            stages: Stages::FRAGMENT,
+            access: AccessFlags::SHADER_READ,
+            layout: Layout::General,
+        };
+        self.culler.record(
+            &mut list,
+            job.buffers,
+            job.grid,
+            job.light_count,
+            fragment_read,
+        );
         compiled.execute(&graph, &transients, &mut list)?;
+        list.push(Command::CopyBuffer {
+            src: job.buffers.counts,
+            src_offset: clusters * 4,
+            dst: overflow_rb,
+            dst_offset: 0,
+            size: clusters * 4,
+        });
         device.submit(Submit {
             queue: QueueKind::Graphics,
             commands: &list,
@@ -358,11 +449,21 @@ impl Renderer {
         })?;
         device.wait_idle()?;
         let rgba = device.read_buffer(readback, 0, u64::from(w) * u64::from(h) * 4)?;
-        Ok(Image {
-            width: w,
-            height: h,
-            rgba,
-        })
+        let dropped = device.read_buffer(overflow_rb, 0, clusters * 4)?;
+        let overflow = dropped
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|w| u32::from_le_bytes(*w))
+            .sum();
+        Ok((
+            Image {
+                width: w,
+                height: h,
+                rgba,
+            },
+            overflow,
+        ))
     }
 }
 
@@ -503,10 +604,7 @@ fn add_tonemap(
     tonemap: Tonemap,
     device: Arc<dyn Device>,
 ) {
-    let mode: u32 = match tonemap {
-        Tonemap::Neutral => 0,
-        Tonemap::Clamp => 1,
-    };
+    let mode = tonemap.shader_mode();
     graph.add_pass_recorded(
         "tonemap",
         |p| {

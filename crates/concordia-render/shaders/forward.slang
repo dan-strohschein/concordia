@@ -8,7 +8,16 @@ static const uint FLAG_UNLIT = 1;
 static const uint FLAG_MASK = 2;
 
 // Columns of 4×4 matrices are float4s: the layout is identical on every backend.
-struct Frame { float4 view_proj[4]; float4 eye; float4 light_dir; float4 light_radiance; float4 params; };
+// eye, sun direction and exposed radiance; cluster_depth = (near, far, ortho?, ln(far/near));
+// screen = (width, height, light count, 0); dims = (x, y, z, max per cluster);
+// buffers = (lights, cluster counts, cluster indices, 0).
+struct Frame {
+    float4 view_proj[4]; float4 view[4];
+    float4 eye; float4 light_dir; float4 light_radiance; float4 cluster_depth; float4 screen;
+    uint4 dims; uint4 buffers;
+};
+// Per light: position+range, direction, exposed radiance, spot (scale, offset).
+struct Light { float4 position_range; float4 direction; float4 radiance; float4 spot; };
 struct Instance { float4 model[4]; float4 normal[4]; };
 struct Material { float4 base_color; float4 emissive_cutoff; float4 factors; uint4 tex0; uint4 tex1; };
 
@@ -75,6 +84,58 @@ float3 shading_normal(VsOut i, Material m) {
     return normalize(t * tn.x + b * tn.y + n * tn.z);
 }
 
+// (diffuse + specular) * N·L for one light direction.
+float3 brdf(float3 n, float3 v, float3 l, float3 base, float metallic, float a) {
+    float3 h = normalize(v + l);
+    float nov = abs(dot(n, v)) + 1e-5;
+    float nol = saturate(dot(n, l));
+    float noh = saturate(dot(n, h));
+    float voh = saturate(dot(v, h));
+    float3 f0 = lerp(float3(0.04), base, metallic);
+    float3 f = f_schlick(f0, voh);
+    float3 specular = f * d_ggx(noh, a) * v_smith(nov, nol, a);
+    float3 diffuse = (1.0 - f) * (1.0 - metallic) * base / PI;
+    return (diffuse + specular) * nol;
+}
+
+// The cluster of a fragment: screen tile (rows from the top), then the depth slice.
+uint cluster_of(Frame* frame, float4 frag, float3 world) {
+    float view_z = -xform(frame.view, float4(world, 1.0)).z;
+    float4 d = frame.cluster_depth;
+    float t = d.z > 0.5 ? (view_z - d.x) / (d.y - d.x) : log(max(view_z, d.x) / d.x) / d.w;
+    uint3 dims = frame.dims.xyz;
+    uint z = min(uint(max(t, 0.0) * dims.z), dims.z - 1);
+    uint x = min(uint(frag.x / frame.screen.x * dims.x), dims.x - 1);
+    uint y = min(uint(frag.y / frame.screen.y * dims.y), dims.y - 1);
+    return x + dims.x * (y + dims.y * z);
+}
+
+// Inverse-square falloff windowed to zero at the range (Karis 2013).
+float distance_attenuation(float d2, float range) {
+    float r = d2 / (range * range);
+    float w = saturate(1.0 - r * r);
+    return w * w / max(d2, 1e-4);
+}
+
+float3 punctual(Frame* frame, float4 frag, float3 world, float3 n, float3 v, float3 base, float metallic, float a) {
+    uint c = cluster_of(frame, frag, world);
+    uint* counts = (uint*)g_buffers.ptr[frame.buffers.y];
+    uint* indices = (uint*)g_buffers.ptr[frame.buffers.z];
+    Light* lights = (Light*)g_buffers.ptr[frame.buffers.x];
+    uint cap = frame.dims.w;
+    float3 sum = float3(0.0);
+    for (uint i = 0; i < counts[c]; i++) {
+        Light light = lights[indices[c * cap + i]];
+        float3 to_light = light.position_range.xyz - world;
+        float d2 = dot(to_light, to_light);
+        float3 l = to_light * rsqrt(max(d2, 1e-8));
+        float spot = saturate(dot(-l, light.direction.xyz) * light.spot.x + light.spot.y);
+        float atten = distance_attenuation(d2, light.position_range.w) * spot * spot;
+        sum += brdf(n, v, l, base, metallic, a) * light.radiance.rgb * atten;
+    }
+    return sum;
+}
+
 [shader("fragment")]
 float4 fs(VsOut i, bool front : SV_IsFrontFace, uniform DrawPush push) : SV_Target {
     Frame* frame = (Frame*)g_buffers.ptr[push.frame];
@@ -86,21 +147,12 @@ float4 fs(VsOut i, bool front : SV_IsFrontFace, uniform DrawPush push) : SV_Targ
 
     float3 n = shading_normal(i, m) * (front ? 1.0 : -1.0);
     float3 v = normalize(frame.eye.xyz - i.world);
-    float3 l = -normalize(frame.light_dir.xyz);
-    float3 h = normalize(v + l);
     float4 mr = sample_or(m.tex0.y, i.uv, float4(1.0));
     float metallic = saturate(m.factors.x * mr.b);
     float a = max(m.factors.y * mr.g, 0.045);
     a = a * a;
-    float nov = abs(dot(n, v)) + 1e-5;
-    float nol = saturate(dot(n, l));
-    float noh = saturate(dot(n, h));
-    float voh = saturate(dot(v, h));
-    float3 f0 = lerp(float3(0.04), base.rgb, metallic);
-    float3 f = f_schlick(f0, voh);
-    float3 specular = f * d_ggx(noh, a) * v_smith(nov, nol, a);
-    float3 diffuse = (1.0 - f) * (1.0 - metallic) * base.rgb / PI;
     float occlusion = lerp(1.0, sample_or(m.tex0.w, i.uv, float4(1.0)).r, m.factors.w);
-    float3 lit = (diffuse + specular) * frame.light_radiance.rgb * nol * occlusion;
+    float3 sun = brdf(n, v, -normalize(frame.light_dir.xyz), base.rgb, metallic, a) * frame.light_radiance.rgb;
+    float3 lit = (sun + punctual(frame, i.position, i.world, n, v, base.rgb, metallic, a)) * occlusion;
     return float4(lit + emissive, 1.0);
 }

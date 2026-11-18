@@ -488,7 +488,7 @@ Scene(
                         fov_y: 0.9,
                         near: 0.1,
                     ),
-                    tonemap: Neutral,
+                    tonemap: AgX,
                 ),
                 "Name": "Camera",
                 "Transform": (

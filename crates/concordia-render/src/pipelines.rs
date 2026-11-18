@@ -7,7 +7,7 @@ use concordia_rhi::{
     Backend, BlendMode, CompareOp, CullMode, DepthState, Device, Format, GraphicsPipelineDesc,
     Pipeline, SampleCount, ShaderSource,
 };
-use concordia_shaders::{CompileRequest, ShaderCompiler, Stage, Target};
+use concordia_shaders::{CompileRequest, ShaderCompiler, ShaderModule, Stage, Target};
 
 use crate::RenderError;
 
@@ -23,6 +23,31 @@ pub fn shader_dir() -> PathBuf {
     PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/shaders"))
 }
 
+/// Compiles one entry point of a render shader for the device's backend.
+pub(crate) fn compile(
+    device: &dyn Device,
+    compiler: &dyn ShaderCompiler,
+    file: &str,
+    entry: &str,
+    stage: Stage,
+) -> Result<ShaderModule, RenderError> {
+    let target = match device.caps().backend {
+        Backend::Metal => Target::Msl,
+        Backend::Vulkan => Target::SpirV,
+    };
+    let request = CompileRequest {
+        path: shader_dir().join(file),
+        entry: entry.into(),
+        stage,
+        target,
+        defines: Default::default(),
+        include_dirs: vec![concordia_shaders::builtin_dir()],
+    };
+    compiler
+        .compile(&request)
+        .map_err(|e| RenderError::Shader(e.to_string()))
+}
+
 /// Compiled shaders and lazily created pipelines.
 pub(crate) struct Pipelines {
     forward: (ShaderSource, ShaderSource),
@@ -35,25 +60,9 @@ impl Pipelines {
         device: &dyn Device,
         compiler: &dyn ShaderCompiler,
     ) -> Result<Self, RenderError> {
-        let target = match device.caps().backend {
-            Backend::Metal => Target::Msl,
-            Backend::Vulkan => Target::SpirV,
+        let compile = |file: &str, entry: &str, stage: Stage| {
+            compile(device, compiler, file, entry, stage).map(|m| m.source())
         };
-        let compile =
-            |file: &str, entry: &str, stage: Stage| -> Result<ShaderSource, RenderError> {
-                let request = CompileRequest {
-                    path: shader_dir().join(file),
-                    entry: entry.into(),
-                    stage,
-                    target,
-                    defines: Default::default(),
-                    include_dirs: vec![concordia_shaders::builtin_dir()],
-                };
-                compiler
-                    .compile(&request)
-                    .map(|m| m.source())
-                    .map_err(|e| RenderError::Shader(e.to_string()))
-            };
         let forward = (
             compile("forward.slang", "vs", Stage::Vertex)?,
             compile("forward.slang", "fs", Stage::Fragment)?,

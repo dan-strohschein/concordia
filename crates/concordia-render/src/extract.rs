@@ -6,7 +6,7 @@ use concordia_core::math::{Mat4, Vec3};
 use concordia_scene::builtin::world_transforms;
 use concordia_terra::World;
 
-use crate::{Camera, DirectionalLight, RenderError};
+use crate::{Camera, DirectionalLight, PointLight, RenderError, SpotLight};
 
 /// A mesh to draw.
 #[derive(Debug, Clone, PartialEq)]
@@ -32,6 +32,39 @@ pub struct LightView {
     pub light: DirectionalLight,
 }
 
+/// Point or spot.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PunctualKind {
+    /// Omnidirectional.
+    Point,
+    /// Cone with inner and outer half-angles (radians).
+    Spot {
+        /// Full intensity inside.
+        inner: f32,
+        /// Zero outside.
+        outer: f32,
+    },
+}
+
+/// A point or spot light in world space.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PunctualLight {
+    /// The entity.
+    pub entity: EntityId,
+    /// World position.
+    pub position: Vec3,
+    /// Unit direction (the entity's -Z; spots only).
+    pub direction: Vec3,
+    /// Kind.
+    pub kind: PunctualKind,
+    /// Linear color.
+    pub color: [f32; 3],
+    /// Lumens.
+    pub intensity_lumens: f32,
+    /// Range.
+    pub range: f32,
+}
+
 /// A camera.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CameraView {
@@ -50,6 +83,8 @@ pub struct RenderWorld {
     pub draws: Vec<DrawItem>,
     /// Directional lights.
     pub lights: Vec<LightView>,
+    /// Point and spot lights.
+    pub punctual: Vec<PunctualLight>,
     /// Cameras.
     pub cameras: Vec<CameraView>,
 }
@@ -76,6 +111,36 @@ impl RenderWorld {
                     entity,
                     direction,
                     light: light.clone(),
+                });
+            }
+            let position = matrix.transform_point3(Vec3::ZERO);
+            let forward = matrix
+                .transform_vector3(Vec3::NEG_Z)
+                .normalize_or(Vec3::NEG_Z);
+            if let Some(p) = world.get::<PointLight>(entity) {
+                out.punctual.push(PunctualLight {
+                    entity,
+                    position,
+                    direction: forward,
+                    kind: PunctualKind::Point,
+                    color: p.color,
+                    intensity_lumens: p.intensity_lumens,
+                    range: p.range,
+                });
+            }
+            if let Some(s) = world.get::<SpotLight>(entity) {
+                let kind = PunctualKind::Spot {
+                    inner: s.inner_angle.min(s.outer_angle),
+                    outer: s.outer_angle,
+                };
+                out.punctual.push(PunctualLight {
+                    entity,
+                    position,
+                    direction: forward,
+                    kind,
+                    color: s.color,
+                    intensity_lumens: s.intensity_lumens,
+                    range: s.range,
                 });
             }
             if let Some(camera) = world.get::<Camera>(entity) {

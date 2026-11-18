@@ -4,7 +4,9 @@
 use std::collections::BTreeMap;
 
 use concordia_assets::{AlphaMode, AssetRef, MaterialData};
-use concordia_core::math::{Mat3, Mat4, Vec4};
+use concordia_core::math::{Mat3, Mat4, Vec3, Vec4};
+
+use crate::cluster::ClusterGrid;
 
 /// No texture bound (shaders use the factor alone).
 pub(crate) const NO_TEXTURE: u32 = u32::MAX;
@@ -84,11 +86,50 @@ fn columns(m: &Mat4) -> [Vec4; 4] {
     [m.x_axis, m.y_axis, m.z_axis, m.w_axis]
 }
 
-/// `Frame`: view-projection, eye, light direction, light radiance (exposed), params.
-pub(crate) fn frame_block(view_proj: &Mat4, eye: Vec4, light_dir: Vec4, radiance: Vec4) -> Vec<u8> {
-    let mut out = Vec::with_capacity(128);
-    push_rows(&mut out, &columns(view_proj));
-    push_rows(&mut out, &[eye, light_dir, radiance, Vec4::ZERO]);
+/// What the `Frame` block holds.
+pub(crate) struct FrameParams<'a> {
+    pub(crate) view_proj: Mat4,
+    pub(crate) view: Mat4,
+    pub(crate) eye: Vec3,
+    pub(crate) sun_dir: Vec3,
+    /// Sun radiance, already multiplied by exposure.
+    pub(crate) sun_radiance: Vec3,
+    pub(crate) grid: &'a ClusterGrid,
+    pub(crate) size: (u32, u32),
+    pub(crate) light_count: u32,
+    /// Bindless indices: lights, cluster counts, cluster indices.
+    pub(crate) buffers: [u32; 3],
+}
+
+/// `Frame` (mirrors `forward.slang`): matrices, eye, sun, cluster depth range, screen, then two
+/// `uint4` rows (cluster dims and budget; buffer indices).
+pub(crate) fn frame_block(p: &FrameParams<'_>) -> Vec<u8> {
+    let (near, far, ortho) = p.grid.depth_range();
+    let [dx, dy, dz] = p.grid.settings().dims;
+    let mut out = Vec::with_capacity(256);
+    push_rows(&mut out, &columns(&p.view_proj));
+    push_rows(&mut out, &columns(&p.view));
+    push_rows(
+        &mut out,
+        &[
+            p.eye.extend(1.0),
+            p.sun_dir.extend(0.0),
+            p.sun_radiance.extend(0.0),
+            Vec4::new(near, far, if ortho { 1.0 } else { 0.0 }, (far / near).ln()),
+            Vec4::new(p.size.0 as f32, p.size.1 as f32, p.light_count as f32, 0.0),
+        ],
+    );
+    let words = [
+        dx,
+        dy,
+        dz,
+        p.grid.settings().max_per_cluster,
+        p.buffers[0],
+        p.buffers[1],
+        p.buffers[2],
+        0,
+    ];
+    out.extend(words.iter().flat_map(|w| w.to_le_bytes()));
     out
 }
 

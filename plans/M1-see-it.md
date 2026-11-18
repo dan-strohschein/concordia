@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (phase 1.6; 1.0, 1.2a, 1.1, 1.7, 1.2b, 1.3, 1.4 and 1.5 done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (phase 1.6b; 1.0, 1.2a, 1.1, 1.7, 1.2b, 1.3, 1.4, 1.5 and 1.6a done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -153,6 +153,23 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 - the gate agent demo.
 
 **Installs needing approval:** cmake (1.7a), Slang into `target/` (1.3), the Tauri CLI (1.8), and git-lfs only if D5 changes.
+
+### Phase 1.6a: Tonemapping and clustered point/spot lights (done)
+- **Tonemappers:** AgX (default), Khronos PBR Neutral, ACES fitted and Linear, each with a CPU reference (`tonemap::apply`); a GPU test matches them within 1/255. AgX maps mid-grey 0.18 to sRGB 128.
+  - Plan-test corrections: PBR Neutral is checked as "offset identity" below the compression start (the spec subtracts a 0.04 toe offset, so it isn't a pure identity); the AgX mid-grey value is pinned from an independent computation rather than being circular.
+- **Lights:** `PointLight` / `SpotLight` components and extraction.
+- **Clustering:**
+  - a `ClusterGrid` with linear (ortho) or exponential (perspective) slices, snapshot-tested;
+  - a CPU reference `assign`, and a GPU `ClusterCuller` that matches it exactly for 1,024 random lights under both projections;
+  - overflow counted and reported through `Renderer::stats()`;
+  - an inverse-square check;
+  - goldens `many_lights_iso` (512 lights) and `spot_light_cone`, checked by eye.
+- **Deviations from the plan:**
+  - Fixed per-cluster slots replace the global atomic allocator: lists stay deterministic and ascending, and overflow is counted per cluster.
+  - Cluster AABBs and view-space light bounds are computed on the CPU and uploaded, so the GPU and the reference share geometry exactly.
+  - No depth prepass yet (a perf optimization, not needed for correctness).
+  - Cluster and light settings are fixed defaults (16×9×24, 4,096 lights, 128 per cluster) rather than a `RenderSettings` resource.
+  - The perf smoke benchmark runs with 1.6d.
 
 ### Phase 1.5b: Forward PBR, capture, MCP image (done)
 - **RHI additions:**
