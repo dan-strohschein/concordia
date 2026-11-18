@@ -9,7 +9,7 @@ Backend-neutral GPU vocabulary and the `Device` trait (ADR-0040): validated desc
 - Descriptors: `BufferDesc`, `TextureDesc`, `HeapDesc` (`validate`), `ComputePipelineDesc`, `GraphicsPipelineDesc`, `MeshPipelineDesc`, `ShaderSource`
 - Handles: `Buffer`, `Texture`, `Pipeline`, `Heap`, `Timeline`, `BindlessIndex`; `Slots<T>` for backends
 - `Access`, `BufferBarrier`, `TextureBarrier`, `Format`, `DeviceCaps`, `Requirement`, `RhiError`
-- `conformance` (feature `conformance`): `conformance_tests!` and `GoldenCheck`
+- `conformance` (feature `conformance`): `conformance_tests!(make, golden, shaders)`, `Harness`, `GoldenCheck`, `ShaderProvider`, `shader_dir()` (Slang sources in `conformance/*.slang`)
 
 ## Invariants
 - No graphics-API types here; backends translate.
@@ -23,7 +23,7 @@ Backend-neutral GPU vocabulary and the `Device` trait (ADR-0040): validated desc
 
 ## Common tasks
 - **Add a command:** add a `Command` variant, extend `CommandList::validate`, translate it in every backend, and add a conformance case.
-- **Add a conformance case:** write `pub fn case(device, golden)` in `src/conformance/cases.rs` and add its name to `conformance_tests!`.
+- **Add a conformance case:** write `pub fn case(device, harness)` in `src/conformance/cases.rs` (shaders in `conformance/<name>.slang`), then add its name to `conformance_tests!`.
 
 ## Don'ts
 - Don't add backend-specific enums; express them as capabilities.
@@ -33,7 +33,7 @@ Backend-neutral GPU vocabulary and the `Device` trait (ADR-0040): validated desc
 - Vulkan synchronization2 chapter; Microsoft "Enhanced Barriers" (D3D12) for the barrier vocabulary; Apple WWDC 2022 "Go bindless with Metal 3"; Apple *Metal Feature Set Tables*.
 
 ## Status
-M1 phase 1.2b.
+M1 phase 1.2b; conformance shaders in Slang since 1.3.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

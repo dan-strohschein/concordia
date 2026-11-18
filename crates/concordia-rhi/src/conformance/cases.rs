@@ -13,7 +13,7 @@ use crate::handle::{Buffer, Texture};
 use crate::pipeline::{CompareOp, ComputePipelineDesc, DepthState, ShaderSource};
 use crate::resource::{BufferUsage, HeapDesc, MemoryLocation, TextureUsage};
 
-use super::GoldenCheck;
+use super::Harness;
 use super::util::{
     WAIT, buffer, compute, download, graphics, push, read_texture, run, target, texture_desc,
     upload, words,
@@ -71,13 +71,14 @@ fn pixel(image: &[u8], x: u32, y: u32) -> [u8; 4] {
 /// Draws `vertices` (bindless) with the triangle pipeline into `color`.
 fn draw(
     device: &dyn Device,
+    h: &Harness<'_>,
     color: Texture,
     data: &[u8],
     samples: SampleCount,
     resolve: Option<Texture>,
     count: u32,
 ) {
-    let pipeline = graphics(device, "triangle", ("vs", "fs"), samples, None);
+    let pipeline = graphics(device, h, "triangle", ("vs", "fs"), samples, None);
     let vb = upload(device, data);
     let index = device.buffer_index(vb).expect("bindless index").0;
     let mut list = CommandList::new("draw");
@@ -93,7 +94,7 @@ fn draw(
 }
 
 /// Caps are populated and serialize; the bindless tables are large enough for M1.
-pub fn device_reports_caps_and_limits(device: &dyn Device, _: &dyn GoldenCheck) {
+pub fn device_reports_caps_and_limits(device: &dyn Device, _: &Harness<'_>) {
     let caps = device.caps();
     assert!(caps.max_bindless_textures >= 16_384, "{caps:?}");
     assert!(caps.max_bindless_buffers >= 16_384, "{caps:?}");
@@ -105,7 +106,7 @@ pub fn device_reports_caps_and_limits(device: &dyn Device, _: &dyn GoldenCheck) 
 }
 
 /// 1 MiB of patterned bytes survives upload → GPU buffer → readback.
-pub fn buffer_upload_and_readback_round_trips(device: &dyn Device, _: &dyn GoldenCheck) {
+pub fn buffer_upload_and_readback_round_trips(device: &dyn Device, _: &Harness<'_>) {
     let data: Vec<u8> = (0..1u32 << 20)
         .map(|i| (i.wrapping_mul(2_654_435_761) >> 24) as u8)
         .collect();
@@ -114,10 +115,10 @@ pub fn buffer_upload_and_readback_round_trips(device: &dyn Device, _: &dyn Golde
 }
 
 /// A kernel writes out[i] = i * 3 + 1 for 65 536 elements through a bindless pointer.
-pub fn compute_dispatch_writes_expected_values(device: &dyn Device, _: &dyn GoldenCheck) {
+pub fn compute_dispatch_writes_expected_values(device: &dyn Device, h: &Harness<'_>) {
     const N: u32 = 65_536;
     let out = upload(device, &vec![0u8; N as usize * 4]);
-    let pipeline = compute(device, "fill", "fill", [64, 1, 1]);
+    let pipeline = compute(device, h, "fill");
     let mut list = CommandList::new("fill");
     list.push(Command::SetPipeline(pipeline))
         .push(push(&[device.buffer_index(out).unwrap().0, N], &[]))
@@ -134,11 +135,11 @@ pub fn compute_dispatch_writes_expected_values(device: &dyn Device, _: &dyn Gold
 }
 
 /// A kernel receives only bindless indices and sums the referenced buffer.
-pub fn compute_reads_bindless_buffer_by_index(device: &dyn Device, _: &dyn GoldenCheck) {
+pub fn compute_reads_bindless_buffer_by_index(device: &dyn Device, h: &Harness<'_>) {
     let values: Vec<u8> = (1..=1000u32).flat_map(u32::to_le_bytes).collect();
     let src = upload(device, &values);
     let dst = upload(device, &[0u8; 4]);
-    let pipeline = compute(device, "sum", "sum", [1, 1, 1]);
+    let pipeline = compute(device, h, "sum");
     let (s, d) = (
         device.buffer_index(src).unwrap().0,
         device.buffer_index(dst).unwrap().0,
@@ -152,25 +153,33 @@ pub fn compute_reads_bindless_buffer_by_index(device: &dyn Device, _: &dyn Golde
 }
 
 /// One vertex-pulled triangle, no vertex buffers bound.
-pub fn triangle_renders_golden(device: &dyn Device, golden: &dyn GoldenCheck) {
+pub fn triangle_renders_golden(device: &dyn Device, h: &Harness<'_>) {
     let color = target(device, SIZE, SampleCount::X1);
     let points = vec![
         ([-0.8, -0.8, 0.5, 1.0], [1.0, 0.0, 0.0, 1.0]),
         ([0.8, -0.8, 0.5, 1.0], [0.0, 1.0, 0.0, 1.0]),
         ([0.0, 0.8, 0.5, 1.0], [0.0, 0.0, 1.0, 1.0]),
     ];
-    draw(device, color, &vertices(&points), SampleCount::X1, None, 3);
+    draw(
+        device,
+        h,
+        color,
+        &vertices(&points),
+        SampleCount::X1,
+        None,
+        3,
+    );
     let image = read_texture(device, color, SIZE);
     assert_eq!(
         pixel(&image, 0, 0),
         [0, 0, 0, 255],
         "corner is the clear color"
     );
-    golden.check("triangle", SIZE, SIZE, &image, 0.001);
+    h.golden.check("triangle", SIZE, SIZE, &image, 0.001);
 }
 
 /// Clearing RGBA8 to (0.25, 0.5, 0.75, 1) reads back (64, 128, 191, 255).
-pub fn clear_color_readback_is_exact(device: &dyn Device, _: &dyn GoldenCheck) {
+pub fn clear_color_readback_is_exact(device: &dyn Device, _: &Harness<'_>) {
     let color = target(device, SIZE, SampleCount::X1);
     let mut list = CommandList::new("clear");
     list.push(pass(color, clear([0.25, 0.5, 0.75, 1.0]), None, None))
@@ -181,7 +190,7 @@ pub fn clear_color_readback_is_exact(device: &dyn Device, _: &dyn GoldenCheck) {
 }
 
 /// Reverse-Z (clear 0, GreaterEqual): the nearer triangle wins whatever the draw order.
-pub fn depth_test_orders_overlapping_triangles(device: &dyn Device, _: &dyn GoldenCheck) {
+pub fn depth_test_orders_overlapping_triangles(device: &dyn Device, h: &Harness<'_>) {
     let state = DepthState {
         format: Format::Depth32Float,
         compare: CompareOp::GreaterEqual,
@@ -189,6 +198,7 @@ pub fn depth_test_orders_overlapping_triangles(device: &dyn Device, _: &dyn Gold
     };
     let pipeline = graphics(
         device,
+        h,
         "triangle",
         ("vs", "fs"),
         SampleCount::X1,
@@ -242,11 +252,12 @@ pub fn depth_test_orders_overlapping_triangles(device: &dyn Device, _: &dyn Gold
 }
 
 /// A 4× MSAA triangle resolves to a single-sample image with intermediate edge values.
-pub fn msaa4x_resolve_produces_antialiased_edge(device: &dyn Device, golden: &dyn GoldenCheck) {
+pub fn msaa4x_resolve_produces_antialiased_edge(device: &dyn Device, h: &Harness<'_>) {
     let msaa = target(device, SIZE, SampleCount::X4);
     let resolved = target(device, SIZE, SampleCount::X1);
     draw(
         device,
+        h,
         msaa,
         &vertices(&triangle(0.5, [1.0, 1.0, 1.0, 1.0])),
         SampleCount::X4,
@@ -264,22 +275,23 @@ pub fn msaa4x_resolve_produces_antialiased_edge(device: &dyn Device, golden: &dy
         partial > 50,
         "only {partial} partially covered pixels: no antialiasing"
     );
-    golden.check("msaa_edge", SIZE, SIZE, &image, 0.001);
+    h.golden.check("msaa_edge", SIZE, SIZE, &image, 0.001);
 }
 
 /// A compute write to a texture is visible to a fragment read in the same submission, every time.
 pub fn barrier_between_compute_write_and_fragment_read_is_respected(
     device: &dyn Device,
-    _: &dyn GoldenCheck,
+    h: &Harness<'_>,
 ) {
     let usage = TextureUsage::STORAGE | TextureUsage::SAMPLED | TextureUsage::BINDLESS;
     let storage = device
         .create_texture(&texture_desc(4, Format::Rgba8Unorm, SampleCount::X1, usage))
         .unwrap();
     let index = device.texture_index(storage).unwrap().0;
-    let writer = compute(device, "write_texture", "write_texture", [1, 1, 1]);
+    let writer = compute(device, h, "write_texture");
     let reader = graphics(
         device,
+        h,
         "sample_texture",
         ("fullscreen", "sample_texture"),
         SampleCount::X1,
@@ -326,7 +338,7 @@ pub fn barrier_between_compute_write_and_fragment_read_is_respected(
 /// Two textures placed at the same heap offset, used one after the other, each produce their own output.
 pub fn transient_textures_aliased_in_same_heap_do_not_corrupt(
     device: &dyn Device,
-    _: &dyn GoldenCheck,
+    _: &Harness<'_>,
 ) {
     let desc = texture_desc(
         SIZE,
@@ -400,7 +412,7 @@ pub fn transient_textures_aliased_in_same_heap_do_not_corrupt(
 }
 
 /// Values 1..=10 signalled in order are observed in order; the completed value never decreases.
-pub fn timeline_fence_signals_monotonically(device: &dyn Device, _: &dyn GoldenCheck) {
+pub fn timeline_fence_signals_monotonically(device: &dyn Device, _: &Harness<'_>) {
     let timeline = device.create_timeline(0).unwrap();
     let empty = CommandList::new("tick");
     for value in 1..=10 {
@@ -429,7 +441,7 @@ pub fn timeline_fence_signals_monotonically(device: &dyn Device, _: &dyn GoldenC
 /// Two frames in flight with their own readbacks: submitting frame 2 does not wait for frame 1.
 pub fn readback_of_frame_n_does_not_block_frame_n_plus_1_submission(
     device: &dyn Device,
-    _: &dyn GoldenCheck,
+    _: &Harness<'_>,
 ) {
     let timeline = device.create_timeline(0).unwrap();
     let frames: Vec<(Texture, Buffer, [f32; 4])> = [[1.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 1.0]]
@@ -478,7 +490,7 @@ pub fn readback_of_frame_n_does_not_block_frame_n_plus_1_submission(
 }
 
 /// Broken shader source is a `PipelineCompile` error carrying the compiler log.
-pub fn pipeline_creation_error_is_reported_not_panicked(device: &dyn Device, _: &dyn GoldenCheck) {
+pub fn pipeline_creation_error_is_reported_not_panicked(device: &dyn Device, _: &Harness<'_>) {
     let broken = match device.caps().backend {
         crate::caps::Backend::Metal => ShaderSource::Msl {
             source: "kernel void broken( { this is not MSL".into(),
@@ -506,7 +518,7 @@ pub fn pipeline_creation_error_is_reported_not_panicked(device: &dyn Device, _: 
 }
 
 /// Invalid descriptors, stale handles and invalid command lists are errors, never panics.
-pub fn invalid_descriptors_and_stale_handles_are_errors(device: &dyn Device, _: &dyn GoldenCheck) {
+pub fn invalid_descriptors_and_stale_handles_are_errors(device: &dyn Device, _: &Harness<'_>) {
     let mut bad = texture_desc(
         8,
         Format::Rgba8Unorm,

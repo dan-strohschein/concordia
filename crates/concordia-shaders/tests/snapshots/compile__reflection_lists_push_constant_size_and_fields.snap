@@ -1,0 +1,33 @@
+---
+source: crates/concordia-shaders/tests/compile.rs
+assertion_line: 57
+expression: module.reflection.push
+---
+Some(
+    StructLayout {
+        name: "FillPush",
+        size: 32,
+        fields: [
+            FieldLayout {
+                name: "out",
+                offset: 0,
+                size: 4,
+            },
+            FieldLayout {
+                name: "count",
+                offset: 4,
+                size: 4,
+            },
+            FieldLayout {
+                name: "scale",
+                offset: 8,
+                size: 4,
+            },
+            FieldLayout {
+                name: "tint",
+                offset: 16,
+                size: 16,
+            },
+        ],
+    },
+)

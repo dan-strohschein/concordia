@@ -21,4 +21,5 @@ objc2-metal = "0.3.2"
 
 [dev-dependencies]
 concordia-rhi = { workspace = true, features = ["conformance"] }
+concordia-shaders.workspace = true
 concordia-testkit.workspace = true

@@ -69,6 +69,10 @@ perf-smoke:
 bench *args:
     cargo bench --workspace {{args}}
 
+# Download the pinned Slang toolchain into target/toolchain/slang/ (prints its directory)
+slang-fetch:
+    tools/slang/fetch.sh
+
 # Regenerate jolt-sys bindings from the shim header (needs libclang, e.g. from Xcode)
 jolt-bindgen:
     cargo run --quiet --manifest-path tools/jolt-bindgen/Cargo.toml --target-dir target/jolt-bindgen

@@ -2,10 +2,48 @@
 //! [`conformance_tests!`](crate::conformance_tests) in its `tests/conformance.rs`.
 
 mod cases;
-mod shaders;
 mod util;
 
 pub use cases::*;
+
+use std::path::PathBuf;
+
+use crate::pipeline::ShaderSource;
+
+/// Directory of the conformance shaders (`*.slang`; `import bindless;` from `concordia-shaders`).
+pub fn shader_dir() -> PathBuf {
+    PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/conformance"))
+}
+
+/// A pipeline stage, for shader lookup.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ShaderStage {
+    /// Compute kernel.
+    Compute,
+    /// Vertex shader.
+    Vertex,
+    /// Fragment shader.
+    Fragment,
+}
+
+/// Compiles conformance shaders for the device under test (backends compile `shader_dir()/<name>.slang`).
+pub trait ShaderProvider {
+    /// The `entry` of conformance shader `name`, and its compute thread group size.
+    fn shader(
+        &self,
+        name: &str,
+        entry: &str,
+        stage: ShaderStage,
+    ) -> (ShaderSource, Option<[u32; 3]>);
+}
+
+/// What each case gets besides the device.
+pub struct Harness<'a> {
+    /// Golden comparisons.
+    pub golden: &'a dyn GoldenCheck,
+    /// Shader compilation.
+    pub shaders: &'a dyn ShaderProvider,
+}
 
 /// Compares a rendered RGBA8 image with a golden (backends pass a `concordia-testkit` implementation).
 pub trait GoldenCheck {
@@ -14,11 +52,11 @@ pub trait GoldenCheck {
 }
 
 /// One `#[test]` per conformance case. `$make` returns `Option<Box<dyn Device>>` (`None` skips);
-/// `$golden` is a `GoldenCheck`.
+/// `$golden` is a `GoldenCheck` and `$shaders` a `ShaderProvider`.
 #[macro_export]
 macro_rules! conformance_tests {
-    ($make:expr, $golden:expr) => {
-        $crate::conformance_tests!(@cases $make, $golden;
+    ($make:expr, $golden:expr, $shaders:expr) => {
+        $crate::conformance_tests!(@cases $make, $golden, $shaders;
             device_reports_caps_and_limits,
             buffer_upload_and_readback_round_trips,
             compute_dispatch_writes_expected_values,
@@ -35,11 +73,12 @@ macro_rules! conformance_tests {
             invalid_descriptors_and_stale_handles_are_errors
         );
     };
-    (@cases $make:expr, $golden:expr; $($name:ident),+) => {$(
+    (@cases $make:expr, $golden:expr, $shaders:expr; $($name:ident),+) => {$(
         #[test]
         fn $name() {
             let Some(device) = ($make)() else { return };
-            $crate::conformance::$name(&*device, &$golden);
+            let harness = $crate::conformance::Harness { golden: &$golden, shaders: &$shaders };
+            $crate::conformance::$name(&*device, &harness);
         }
     )+};
 }
