@@ -1,6 +1,7 @@
 //! The engine: registry, open scene (edit world + command log), play world, sessions.
 
-use std::collections::HashMap;
+use std::any::Any;
+use std::collections::{BTreeSet, HashMap};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -17,6 +18,9 @@ use concordia_terra::{SimLoop, World};
 use serde_json::Value;
 
 use crate::error::{ApiError, ApiErrorKind};
+use crate::method::MethodRegistry;
+use crate::methods::{WorldSel, world_of};
+use crate::module::{CoreModule, EngineModule};
 
 /// Engine settings.
 #[derive(Debug, Clone)]
@@ -37,6 +41,8 @@ pub struct EngineConfig {
     pub sim_seed: u64,
     /// Log ring served by `log.tail` (a private ring if `None`).
     pub log_ring: Option<Arc<LogRing>>,
+    /// Modules added after the core module, in order (ADR-0046).
+    pub modules: Vec<Arc<dyn EngineModule>>,
 }
 
 impl EngineConfig {
@@ -51,6 +57,7 @@ impl EngineConfig {
             sim_rate: TickRate::HZ_60,
             sim_seed: 0,
             log_ring: None,
+            modules: Vec::new(),
         }
     }
 }
@@ -101,12 +108,16 @@ pub(crate) struct Play {
     pub(crate) sim: SimLoop,
     pub(crate) playing: bool,
     pub(crate) last: Instant,
+    /// Module runtime state for this play session, dropped with it.
+    pub(crate) states: Vec<Box<dyn Any + Send>>,
 }
 
 /// Owns all engine state; every call runs on one thread, so mutations are serialized.
 pub struct Engine {
     pub(crate) config: EngineConfig,
     pub(crate) registry: TypeRegistry,
+    pub(crate) modules: Vec<Arc<dyn EngineModule>>,
+    pub(crate) methods: Arc<MethodRegistry>,
     pub(crate) ids: Ids,
     pub(crate) jobs: JobSystem,
     pub(crate) sessions: HashMap<SessionId, Session>,
@@ -126,10 +137,15 @@ impl std::fmt::Debug for Engine {
 }
 
 impl Engine {
-    /// Creates an engine with the built-in components registered.
+    /// Creates an engine with the core module followed by `config.modules`.
     pub fn new(config: EngineConfig) -> Result<Self, ApiError> {
-        let mut registry = TypeRegistry::new();
-        concordia_scene::builtin::register(&mut registry).map_err(internal)?;
+        let core: Arc<dyn EngineModule> = Arc::new(CoreModule);
+        let modules: Vec<_> = std::iter::once(core)
+            .chain(config.modules.iter().cloned())
+            .collect();
+        require_unique_names(&modules)?;
+        let registry = register_types(&modules)?;
+        let methods = Arc::new(MethodRegistry::build(&modules)?);
         let jobs = JobSystem::new(config.threads).map_err(internal)?;
         let ids = match config.deterministic_ids {
             Some(seed) => Ids::Deterministic(DeterministicIdGen::new(seed)),
@@ -142,6 +158,8 @@ impl Engine {
         Ok(Self {
             config,
             registry,
+            modules,
+            methods,
             ids,
             jobs,
             sessions: HashMap::new(),
@@ -154,6 +172,25 @@ impl Engine {
     /// The type registry.
     pub fn registry(&self) -> &TypeRegistry {
         &self.registry
+    }
+
+    /// Every method this engine serves (core and modules), sorted by name.
+    pub fn methods(&self) -> &Arc<MethodRegistry> {
+        &self.methods
+    }
+
+    /// The edit or play world (`NotPlaying` if there is no play world).
+    pub fn world(&self, which: WorldSel) -> Result<&World, ApiError> {
+        world_of(self, Some(which))
+    }
+
+    /// The state of type `T` a module created for the current play session, if any.
+    pub fn play_state<T: Any>(&self) -> Option<&T> {
+        self.play
+            .as_ref()?
+            .states
+            .iter()
+            .find_map(|s| s.downcast_ref::<T>())
     }
 
     /// The project root.
@@ -231,6 +268,24 @@ impl Engine {
             .as_mut()
             .ok_or_else(|| ApiError::from_kind(ApiErrorKind::NoSceneOpen))
     }
+}
+
+fn require_unique_names(modules: &[Arc<dyn EngineModule>]) -> Result<(), ApiError> {
+    let mut seen = BTreeSet::new();
+    match modules.iter().find(|m| !seen.insert(m.name())) {
+        Some(m) => Err(internal(format!("module {} is added twice", m.name()))),
+        None => Ok(()),
+    }
+}
+
+fn register_types(modules: &[Arc<dyn EngineModule>]) -> Result<TypeRegistry, ApiError> {
+    let mut registry = TypeRegistry::new();
+    for module in modules {
+        module
+            .register_types(&mut registry)
+            .map_err(|e| internal(format!("module {}: {e}", module.name())))?;
+    }
+    Ok(registry)
 }
 
 /// Wraps an unexpected failure.

@@ -7,9 +7,7 @@ use serde_json::{Value, json};
 
 use crate::engine::Engine;
 use crate::error::{ApiError, ApiErrorKind};
-use crate::method::{
-    CallCtx, Method, MethodInfo, methods as all_methods, params_schema, result_schema,
-};
+use crate::method::{CallCtx, Method, MethodInfo, params_schema, result_schema};
 
 /// Get the JSON Schema of a component, type or method; with no name, the index of all types and methods.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
@@ -44,10 +42,10 @@ impl Method for SchemaGet {
         let schema = match p.name {
             None => {
                 let mut index = engine.registry.schema_index();
-                index["methods"] = json!(all_methods().names().collect::<Vec<_>>());
+                index["methods"] = json!(engine.methods.names().collect::<Vec<_>>());
                 index
             }
-            Some(name) => match all_methods().get(&name) {
+            Some(name) => match engine.methods.get(&name) {
                 Some(method) => json!({
                     "method": method.name,
                     "mutates": method.mutates,
@@ -69,7 +67,7 @@ fn unknown(engine: &Engine, name: &str) -> ApiError {
     let candidates: Vec<&str> = engine
         .registry
         .names()
-        .chain(all_methods().names())
+        .chain(engine.methods.names())
         .collect();
     let similar = did_you_mean(name, candidates)
         .into_iter()

@@ -1,8 +1,10 @@
 //! rmcp adapter, part 1: the server handler and tools (one per Engine API method).
 
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
-use concordia_api::{ApiError, ApiErrorKind, MethodInfo, methods, params_schema, result_schema};
+use concordia_api::{
+    ApiError, ApiErrorKind, MethodInfo, MethodRegistry, params_schema, result_schema,
+};
 use concordia_core::suggest::did_you_mean;
 use concordia_reflect::example_json;
 use rmcp::ServiceExt;
@@ -31,14 +33,9 @@ fn tool_name(method: &str) -> String {
     method.replace('.', "_")
 }
 
-/// The API methods exposed as tools (`session.open` is handled by the adapter).
-fn tool_methods() -> impl Iterator<Item = &'static MethodInfo> {
-    methods().iter().filter(|m| m.name != "session.open")
-}
-
-fn tools() -> &'static [Tool] {
-    static TOOLS: OnceLock<Vec<Tool>> = OnceLock::new();
-    TOOLS.get_or_init(|| tool_methods().map(tool).collect())
+/// The engine's methods exposed as tools (`session.open` is handled by the adapter).
+fn tool_methods(methods: &MethodRegistry) -> impl Iterator<Item = &MethodInfo> {
+    methods.iter().filter(|m| m.name != "session.open")
 }
 
 fn tool(method: &MethodInfo) -> Tool {
@@ -111,8 +108,9 @@ fn reject_human(arguments: &JsonObject) -> Option<ApiError> {
 impl ConcordiaServer {
     async fn invoke(&self, request: CallToolRequestParams) -> Result<CallToolResult, McpError> {
         let name = request.name.as_ref();
-        let Some(method) = tool_methods().find(|m| tool_name(m.name) == name) else {
-            let names: Vec<String> = tool_methods().map(|m| tool_name(m.name)).collect();
+        let methods = self.methods();
+        let Some(method) = tool_methods(methods).find(|m| tool_name(m.name) == name) else {
+            let names: Vec<String> = tool_methods(methods).map(|m| tool_name(m.name)).collect();
             let similar = did_you_mean(name, names.iter().map(String::as_str));
             let hint = similar
                 .first()
@@ -164,7 +162,8 @@ impl ServerHandler for ConcordiaServer {
         _: Option<PaginatedRequestParams>,
         _: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
-        Ok(ListToolsResult::with_all_items(tools().to_vec()))
+        let tools = tool_methods(self.methods()).map(tool).collect();
+        Ok(ListToolsResult::with_all_items(tools))
     }
 
     async fn call_tool(

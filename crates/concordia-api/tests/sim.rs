@@ -85,3 +85,54 @@ fn sim_play_and_pause_report_state() {
     let err = h.err("sim.pause", json!({"bogus": 1}));
     assert_eq!(err.code(), -32602);
 }
+
+#[test]
+fn sim_step_accepts_optional_actor_and_logs_attribution() {
+    use std::sync::Arc;
+
+    use concordia_core::log::LogRing;
+    use tracing_subscriber::layer::SubscriberExt;
+
+    let ring = Arc::new(LogRing::new(NonZeroUsize::new(64).unwrap()));
+    let subscriber = tracing_subscriber::registry().with(ring.layer());
+    tracing::subscriber::with_default(subscriber, || {
+        let dir = tempfile::tempdir().unwrap();
+        let shared = Arc::clone(&ring);
+        let mut h = Harness::with_config(dir, move |c| c.log_ring = Some(shared)).ready();
+        moving(&mut h);
+        let step = h.ok("sim.step", json!({"ticks": 3, "actor": "agent:gate"}));
+        let records = h.ok("log.tail", json!({"level": "info"}))["records"].clone();
+        let stepped = records
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["message"] == "sim stepped")
+            .unwrap_or_else(|| panic!("no 'sim stepped' record: {records}"));
+        assert_eq!(stepped["fields"]["actor"], "agent:gate");
+        assert_eq!(stepped["fields"]["ticks"], "3");
+        assert_eq!(stepped["fields"]["world_hash"], step["world_hash"]);
+        // Attribution only: nothing is journaled.
+        let history = h.ok("txn.history", json!({}));
+        assert!(
+            history["entries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|e| !e.to_string().contains("sim")),
+            "{history}"
+        );
+        for method in ["sim.play", "sim.pause", "sim.stop"] {
+            h.ok(method, json!({"actor": "agent:gate"}));
+        }
+        let err = h.err("sim.step", json!({"ticks": 1, "actor": "not an actor"}));
+        assert_eq!(err.data.kind, "ActorMalformed");
+    });
+}
+
+#[test]
+fn sim_step_without_actor_uses_session_default() {
+    let mut h = Harness::new().ready();
+    moving(&mut h);
+    let step = h.ok("sim.step", json!({"ticks": 1}));
+    assert_eq!(step["tick"], 1);
+}

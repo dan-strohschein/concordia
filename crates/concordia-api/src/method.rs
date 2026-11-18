@@ -1,6 +1,7 @@
 //! Typed methods, the method registry and dispatch.
 
-use std::sync::OnceLock;
+use std::collections::BTreeMap;
+use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
 use concordia_command::Actor;
@@ -11,6 +12,7 @@ use serde_json::{Value, json};
 
 use crate::engine::Engine;
 use crate::error::{ApiError, ApiErrorKind};
+use crate::module::{CoreModule, EngineModule};
 
 /// One Engine API method. The marker type's doc comment is the method's agent-facing description.
 pub trait Method: Reflect {
@@ -98,6 +100,28 @@ pub struct MethodRegistry {
 }
 
 impl MethodRegistry {
+    /// Collects every module's methods, sorted by name; a name provided twice is an error.
+    pub fn build(modules: &[Arc<dyn EngineModule>]) -> Result<Self, ApiError> {
+        let mut owners: BTreeMap<&'static str, (&'static str, MethodInfo)> = BTreeMap::new();
+        for module in modules {
+            for method in module.methods() {
+                if let Some((owner, _)) = owners.insert(method.name, (module.name(), method)) {
+                    return Err(ApiError::new(
+                        ApiErrorKind::Internal,
+                        format!(
+                            "method {} is provided by both module {owner} and module {}",
+                            method.name,
+                            module.name()
+                        ),
+                    ));
+                }
+            }
+        }
+        Ok(Self {
+            methods: owners.into_values().map(|(_, m)| m).collect(),
+        })
+    }
+
     /// Looks up a method.
     pub fn get(&self, name: &str) -> Option<&MethodInfo> {
         self.methods
@@ -117,13 +141,12 @@ impl MethodRegistry {
     }
 }
 
-/// The M0 method registry.
+/// The core (M0) methods; an engine's full set, including modules, is [`Engine::methods`].
 pub fn methods() -> &'static MethodRegistry {
     static REGISTRY: OnceLock<MethodRegistry> = OnceLock::new();
     REGISTRY.get_or_init(|| {
-        let mut methods = crate::methods::all();
-        methods.sort_by_key(|m| m.name);
-        MethodRegistry { methods }
+        let core: Arc<dyn EngineModule> = Arc::new(CoreModule);
+        MethodRegistry::build(&[core]).expect("core method names are unique")
     })
 }
 
@@ -144,8 +167,8 @@ pub(crate) fn dispatch(
     method: &str,
     params: Value,
 ) -> Result<Value, ApiError> {
-    let info = methods().get(method).ok_or_else(|| {
-        let similar = did_you_mean(method, methods().names())
+    let info = *engine.methods.get(method).ok_or_else(|| {
+        let similar = did_you_mean(method, engine.methods.names())
             .into_iter()
             .map(|m| format!("did you mean {m}?"));
         ApiError::new(

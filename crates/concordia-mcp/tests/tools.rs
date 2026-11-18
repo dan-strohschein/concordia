@@ -253,3 +253,85 @@ async fn unadvertised_methods_not_reachable() {
         "prompts are not advertised"
     );
 }
+
+mod module_tools {
+    use std::sync::Arc;
+
+    use concordia_api::{
+        ApiError, CallCtx, Engine, EngineModule, Method, MethodInfo, params_schema,
+    };
+    use concordia_reflect::Reflect;
+    use serde::{Deserialize, Serialize};
+    use serde_json::json;
+
+    use super::common::{call, connect_with, options, text};
+
+    /// Answer "pong".
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+    struct Ping;
+
+    /// `probe.ping` params.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+    #[serde(deny_unknown_fields)]
+    struct PingParams {}
+
+    /// `probe.ping` result.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+    struct Pong {
+        /// Always "pong".
+        reply: String,
+    }
+
+    impl Method for Ping {
+        const NAME: &'static str = "probe.ping";
+        const MUTATES: bool = false;
+        type Params = PingParams;
+        type Result = Pong;
+
+        fn call(_: &mut Engine, _: &CallCtx, _: PingParams) -> Result<Pong, ApiError> {
+            Ok(Pong {
+                reply: "pong".into(),
+            })
+        }
+    }
+
+    #[derive(Debug)]
+    struct Probe;
+
+    impl EngineModule for Probe {
+        fn name(&self) -> &'static str {
+            "probe"
+        }
+
+        fn methods(&self) -> Vec<MethodInfo> {
+            vec![MethodInfo::of::<Ping>()]
+        }
+    }
+
+    #[tokio::test]
+    async fn tool_list_includes_module_methods() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut opts = options(&dir);
+        opts.modules = vec![Arc::new(Probe)];
+        let client = connect_with(opts, Default::default()).await;
+        let tools = client.list_all_tools().await.unwrap();
+        let ping = tools
+            .iter()
+            .find(|t| t.name == "probe_ping")
+            .expect("probe_ping is listed");
+        assert_eq!(
+            serde_json::to_value(ping.input_schema.as_ref()).unwrap(),
+            params_schema(&MethodInfo::of::<Ping>())
+        );
+        let result = call(&client, "probe_ping", json!({})).await;
+        assert_ne!(result.is_error, Some(true), "{}", text(&result));
+        assert!(text(&result).contains("pong"), "{}", text(&result));
+        let schema = client
+            .read_resource(rmcp::model::ReadResourceRequestParams::new(
+                "concordia://schema/method/probe.ping",
+            ))
+            .await
+            .expect("module method schema resource");
+        assert!(format!("{schema:?}").contains("probe.ping"));
+    }
+}

@@ -159,3 +159,34 @@ fn world_hash_hex_and_serde_roundtrip() {
     );
     assert!("zz".parse::<concordia_terra::WorldHash>().is_err());
 }
+
+#[test]
+fn set_rate_changes_dt_and_clock_without_resetting_tick() {
+    let mut world = World::new();
+    let jobs = JobSystem::new(NonZeroUsize::MIN).unwrap();
+    let mut schedule = Schedule::new();
+    schedule.add(system("dt", |world: &mut World, ctx: &SystemCtx| {
+        world.insert_resource(ctx.dt);
+    }));
+    let mut sim = SimLoop::new(TickRate::HZ_60, schedule);
+    sim.step(&mut world, &jobs, 3);
+    let thirty = TickRate::from_hz(30).unwrap();
+    sim.set_rate(&mut world, thirty);
+    sim.step(&mut world, &jobs, 1);
+    assert_eq!(world.resource::<f32>(), Some(&(1.0 / 30.0)));
+    let clock = world.resource::<SimClock>().unwrap();
+    assert_eq!((clock.tick, clock.rate), (Tick(4), thirty));
+    assert_eq!(sim.rate(), thirty);
+}
+
+#[test]
+fn appended_schedule_runs_after_existing_systems_in_order() {
+    let mut first = Schedule::new();
+    first.add(system("a", |_: &mut World, _: &SystemCtx| {}));
+    let mut second = Schedule::new();
+    second
+        .add(system("b", |_: &mut World, _: &SystemCtx| {}))
+        .add(system("c", |_: &mut World, _: &SystemCtx| {}));
+    first.append(second);
+    assert_eq!(first.names(), ["a", "b", "c"]);
+}

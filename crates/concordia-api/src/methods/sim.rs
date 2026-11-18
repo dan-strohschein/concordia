@@ -1,13 +1,12 @@
 //! `sim.play`, `sim.pause`, `sim.stop`, `sim.step` (play world only; ADR-0032).
 
+use concordia_command::Actor;
 use concordia_core::rng::SimRng;
 use concordia_core::time::TickRate;
 use concordia_reflect::Reflect;
-use concordia_scene::builtin::headless_schedule;
-use concordia_terra::{SimClock, SimLoop};
+use concordia_terra::{Schedule, SimClock, SimLoop, World};
 use serde::{Deserialize, Serialize};
 
-use super::Empty;
 use crate::engine::{Engine, Play, internal};
 use crate::error::{ApiError, ApiErrorKind};
 use crate::method::{CallCtx, Method, MethodInfo};
@@ -23,6 +22,16 @@ pub struct SimPlayParams {
     /// Fixed tick rate (default 60).
     #[reflect(range(min = 1.0, max = 1000.0))]
     pub rate_hz: Option<u32>,
+    /// Who is asking (attribution in the log only; the scene is never changed).
+    pub actor: Option<Actor>,
+}
+
+/// `sim.pause` / `sim.stop` params.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct SimControlParams {
+    /// Who is asking (attribution in the log only).
+    pub actor: Option<Actor>,
 }
 
 /// Pause the play world (keeps it for reads and sim.step).
@@ -53,6 +62,8 @@ pub struct SimStepParams {
     /// Ticks to simulate.
     #[reflect(range(min = 1.0, max = 1000000.0))]
     pub ticks: u32,
+    /// Who is asking (attribution in the log only; the scene is never changed).
+    pub actor: Option<Actor>,
 }
 
 /// `sim.step` result.
@@ -86,10 +97,10 @@ impl Method for SimPlay {
 impl Method for SimPause {
     const NAME: &'static str = "sim.pause";
     const MUTATES: bool = false;
-    type Params = Empty;
+    type Params = SimControlParams;
     type Result = SimState;
 
-    fn call(engine: &mut Engine, _: &CallCtx, _: Empty) -> Result<SimState, ApiError> {
+    fn call(engine: &mut Engine, _: &CallCtx, _: SimControlParams) -> Result<SimState, ApiError> {
         let play = engine
             .play
             .as_mut()
@@ -102,10 +113,10 @@ impl Method for SimPause {
 impl Method for SimStop {
     const NAME: &'static str = "sim.stop";
     const MUTATES: bool = false;
-    type Params = Empty;
+    type Params = SimControlParams;
     type Result = SimState;
 
-    fn call(engine: &mut Engine, _: &CallCtx, _: Empty) -> Result<SimState, ApiError> {
+    fn call(engine: &mut Engine, _: &CallCtx, _: SimControlParams) -> Result<SimState, ApiError> {
         let tick = tick_of(engine);
         engine.play = None;
         Ok(SimState {
@@ -121,7 +132,11 @@ impl Method for SimStep {
     type Params = SimStepParams;
     type Result = SimStepResult;
 
-    fn call(engine: &mut Engine, _: &CallCtx, p: SimStepParams) -> Result<SimStepResult, ApiError> {
+    fn call(
+        engine: &mut Engine,
+        ctx: &CallCtx,
+        p: SimStepParams,
+    ) -> Result<SimStepResult, ApiError> {
         ensure_play(engine, None)?;
         let Engine { play, jobs, .. } = engine;
         let play = play
@@ -129,6 +144,11 @@ impl Method for SimStep {
             .ok_or_else(|| ApiError::from_kind(ApiErrorKind::NotPlaying))?;
         play.sim.step(&mut play.world, jobs, p.ticks);
         let world_hash = play.world.state_hash().map_err(internal)?.to_string();
+        let actor = ctx
+            .actor
+            .as_ref()
+            .map_or_else(|| "none".into(), Actor::to_string);
+        tracing::info!(target: "concordia::sim", actor, ticks = p.ticks, world_hash, "sim stepped");
         Ok(SimStepResult {
             tick: tick_of(engine),
             world_hash,
@@ -136,31 +156,44 @@ impl Method for SimStep {
     }
 }
 
-/// The play world, cloned from the edit world on first use; `rate` replaces the tick rate.
+/// The play world, cloned from the edit world on first use; `rate` changes the tick rate in place.
 fn ensure_play(engine: &mut Engine, rate: Option<TickRate>) -> Result<&mut Play, ApiError> {
     if engine.play.is_none() {
         let mut world = engine.scene()?.world.clone();
         world.insert_resource(SimRng::new(engine.config.sim_seed));
-        let sim = SimLoop::new(rate.unwrap_or(engine.config.sim_rate), headless_schedule());
+        let (schedule, states) = start_modules(engine, &world)?;
+        let rate = rate.unwrap_or(engine.config.sim_rate);
         engine.play = Some(Play {
             world,
-            sim,
+            sim: SimLoop::new(rate, schedule),
             playing: false,
             last: std::time::Instant::now(),
+            states,
         });
     }
     let play = engine
         .play
         .as_mut()
         .ok_or_else(|| ApiError::from_kind(ApiErrorKind::NotPlaying))?;
-    if let Some(rate) = rate {
-        play.sim = SimLoop::new(rate, headless_schedule());
-        if let Some(clock) = play.world.resource_mut::<SimClock>() {
-            clock.rate = rate;
-        }
+    if let Some(rate) = rate.filter(|r| *r != play.sim.rate()) {
+        play.sim.set_rate(&mut play.world, rate);
     }
     Ok(play)
 }
+
+/// Every module's systems (in module order) and play-time state for a new play world.
+fn start_modules(engine: &Engine, world: &World) -> Result<(Schedule, Vec<PlayState>), ApiError> {
+    let mut schedule = Schedule::new();
+    let mut states = Vec::new();
+    for module in &engine.modules {
+        let setup = module.start_play(world)?;
+        schedule.append(setup.schedule);
+        states.extend(setup.state);
+    }
+    Ok((schedule, states))
+}
+
+type PlayState = Box<dyn std::any::Any + Send>;
 
 fn tick_of(engine: &Engine) -> u64 {
     engine

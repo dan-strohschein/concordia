@@ -71,6 +71,12 @@ impl Schedule {
         self
     }
 
+    /// Appends every system of `other`, keeping its order.
+    pub fn append(&mut self, other: Schedule) -> &mut Self {
+        self.systems.extend(other.systems);
+        self
+    }
+
     /// System names in run order.
     pub fn names(&self) -> Vec<&str> {
         self.systems.iter().map(|s| s.name()).collect()
