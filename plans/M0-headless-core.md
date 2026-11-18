@@ -1,5 +1,5 @@
 # M0: Headless Core
-Status: In progress (phase 0.8: layer 1 green locally; **layer 2 passed 2026-11-17 with Claude Code 2.1.327**: 3 of 3 recorded sessions pass the outcome check, and the fixed script passed on attempt 1 of 1; layer 3 in-session check and phase 0.7's `claude mcp list` check pending the author's approval of the project MCP server; CI on PR #1) · Depends on: M-1 · Detail level: Ready to execute · Estimated effort: ~9–11 weeks (author + agents), 8 phases
+Status: **Gate passed (2026-11-18).** Layer 1 (`just gate M0`) green locally and in CI on macOS and Ubuntu (PR #1, merged as `75be979`); layer 2 (`just gate-live M0`) passed 2026-11-17 with Claude Code 2.1.327 (3 of 3 recorded sessions, then attempt 1 of 1 after the script fix); layer 3 (in-session check with the approved `concordia` project server, `/mcp` showing it connected) passed 2026-11-18 · Depends on: M-1 · Detail level: Ready to execute · Estimated effort: ~9–11 weeks (author + agents), 8 phases
 
 ## Goal & context
 
@@ -736,7 +736,7 @@ The script:
    ```
    (verify flag names with `claude --help` at execution time; on 2026-11-17 Claude Code 2.1.327 did not list `--max-turns` in `--help`, so if it is gone, bound the run with `timeout` instead). File-writing tools are disallowed so the scene can only be produced through MCP.
 3. Prompt (`tools/gates/m0_live_prompt.md`), fixed: using only the `concordia` tools, create `scenes/courtyard.scene.ron` named "Courtyard"; spawn `Lamp` at translation (2, 0, -3); in one transaction labelled `plant trees` spawn `Tree 1..3` at x = −4, 0, 4, z = 5; spawn `Rock`, then undo that; set the Lamp's scale to (1, 2, 1); save; query entities with a Transform whose z > 1; end with a line `RESULT: <names>`.
-4. `M0_LIVE_PROJECT=… M0_LIVE_RESULT=result.json cargo nextest run -p concordia-tests --test m0_live_check --run-ignored ignored-only`, which asserts **outcomes, not transcripts**:
+4. `M0_LIVE_PROJECT=… M0_LIVE_RESULT=result.json cargo nextest run -p concordia-tests --test m0_live_check --run-ignored only`, which asserts **outcomes, not transcripts**:
    - `result.json` has `is_error: false`; its final text contains `RESULT:` naming Tree 1, Tree 2, Tree 3 (any order).
    - The scene file exists, parses, is canonical, has `name: "Courtyard"`, exactly 4 entities named `Lamp`, `Tree 1..3` (no `Rock`), Lamp translation ≈ (2, 0, −3) and scale ≈ (1, 2, 1) (ε = 1e-4), trees at the requested positions.
    - Journal: a commit labelled `plant trees` with 3 spawn ops; an `undo` whose target txn spawned `Rock`; all commit/undo actors start with `agent:`.
@@ -744,7 +744,7 @@ The script:
 
 ### Layer 3 — this session (the literal design gate, manual checklist)
 
-With the repo-root `.mcp.json` registering `concordia` (via `tools/mcp/concordia-mcp.sh`, project `examples/m0-sandbox`), in this Claude Code session on the subscription with no API key set: create a scene, spawn and edit entities, save, and query, using only `mcp__concordia__*` tools; then run `M0_LIVE_PROJECT=examples/m0-sandbox cargo nextest run -p concordia-tests --test m0_live_check --run-ignored ignored-only -- m0_scene_is_valid` (a lighter assertion: the saved scene is canonical and its journal is attributed to an `agent:` actor). Record the date in Status.
+With the repo-root `.mcp.json` registering `concordia` (via `tools/mcp/concordia-mcp.sh`, project `examples/m0-sandbox`), in this Claude Code session on the subscription with no API key set: create a scene, spawn and edit entities, save, and query, using only `mcp__concordia__*` tools; then run `M0_LIVE_PROJECT="$PWD/examples/m0-sandbox" cargo nextest run -p concordia-tests --test m0_live_check --run-ignored only -E 'test(m0_scene_is_valid)'` (a lighter assertion: the saved scene is canonical and its journal is attributed to an `agent:` actor). Use an absolute project path: nextest runs the test from `tests/`. Record the date in Status.
 
 ## Risks & mitigations
 
