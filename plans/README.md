@@ -15,6 +15,8 @@ The top-level design is in [`../docs/design.md`](../docs/design.md). This folder
 | M3 Closed loop & Studio v1 | [M3-closed-loop-and-studio.md](M3-closed-loop-and-studio.md) | M2 (Studio phases may start after M0) | Needs refinement after M2 | Planned |
 | M4 Unreal-class visuals | [M4-unreal-class-visuals.md](M4-unreal-class-visuals.md) | M1 (render), M2 (graphs) | Needs refinement after M3 | Planned |
 | M5 Bring your game | [M5-bring-your-game.md](M5-bring-your-game.md) | M2 (importer framework) | Needs refinement after M4 | Planned |
+| M6 Evolve (plugins) | [M6-evolve-plugins.md](M6-evolve-plugins.md) | M2 (parallel with M3) | Needs refinement after M2 | Planned |
+| M7 Terra (large-scale simulation) | [M7-terra.md](M7-terra.md) | M0 (Phase 7.0 rename, before M1); M1, M2, M4 (simulation features) | Needs refinement after M4 | Planned |
 | Later | [later-backlog.md](later-backlog.md) | none | Backlog | n/a |
 
 Status values: `Planned` → `Refined` → `In progress (phase N)` → `Gate passed`.
@@ -76,7 +78,7 @@ examples/             # small sample projects used by tests and docs
 |---|---|---|
 | `concordia-core` | math (glam re-export), ids (`EntityId` UUIDv7), time, tracing/logging, job system | M0 |
 | `concordia-reflect` (+ `concordia-reflect-derive`) | type registry, `#[derive(Reflect)]`, JSON Schema export, doc strings | M0 |
-| `concordia-ecs` | own archetype ECS, queries, systems, schedules, fixed-step deterministic loop | M0 |
+| `concordia-ecs` → **`concordia-terra`** | own archetype ECS, queries, systems, schedules, fixed-step deterministic loop; renamed Terra right after M0 merges (ADR-0010) and grown into large-scale simulation in M7 | M0 |
 | `concordia-command` | command log, transactions, undo/redo, `Actor` attribution | M0 |
 | `concordia-scene` | text scene/prefab format: read, write, canonical formatting, stable IDs | M0 |
 | `concordia-api` | Engine API: typed request/response types, JSON-RPC 2.0 server (stdio + WebSocket), sessions | M0 |
@@ -111,6 +113,10 @@ examples/             # small sample projects used by tests and docs
 | `concordia-cluster` (+ `meshopt-sys`) | cluster/DAG/page building for virtualized geometry | M4 |
 | `concordia-pathtrace` | reference path tracer (test oracle; must not depend on `concordia-render`) | M4 |
 | `concordia-ai-llm-local` | opt-in example local-LLM provider; not a default workspace member | M4 |
+| `concordia-evolve` | Evolve plugin system: manifests, resolution, lockfile, trust, orchestration over the native and WASM hosts | M6 |
+| `concordia-evolve-api` | stable extension-point API that native plugins link (WIT package `concordia:evolve` for WASM plugins) | M6 |
+| `concordia-terra-sim` | Terra templates and traits, processing phases, LOD, signals, spawners, representation | M7 |
+| `concordia-terra-crowd` | Terra crowds and traffic over `concordia-nav` | M7 |
 
 **Test package:** `tests/` is the `concordia-tests` package (`publish = false`, `autotests = false`, explicit `[[test]]` targets). Shared helpers (MCP test client, binary locators, gate checkers) live in its library, `tests/src/`.
 
@@ -118,7 +124,7 @@ New crates may be proposed in a plan's "Open questions" section; they are added 
 
 ### Text formats & file extensions
 - Format: **RON**, with canonical formatting (sorted keys, one entity per block, stable UUIDv7 ids, trailing commas). ADR-0009 (M0) confirms or replaces it.
-- `.scene.ron`: scenes. `.prefab.ron`: prefabs. `.material.ron`: materials. `.input.ron`: input maps (M1). `.animgraph.ron`: animation graphs (M2). `.data.ron`: typed data documents (M2). `.replay.ron`: replays (v0 input log in M2, extended in M3). `.playtest.ron`: assertion suites (M3). `.score.ron`: procedural music scores (M3). `.graph.ron`: visual graphs (M4). `.cmdlog.jsonl`: command journal, at `.concordia/journal/<scene-id>.cmdlog.jsonl` (M0).
+- `.scene.ron`: scenes. `.prefab.ron`: prefabs. `.material.ron`: materials. `.input.ron`: input maps (M1). `.animgraph.ron`: animation graphs (M2). `.data.ron`: typed data documents (M2). `.replay.ron`: replays (v0 input log in M2, extended in M3). `.playtest.ron`: assertion suites (M3). `.score.ron`: procedural music scores (M3). `.graph.ron`: visual graphs (M4). `.template.ron`: Terra entity templates (M7). `evolve.toml`: Evolve plugin manifest; `evolve.lock`: project plugin lockfile (M6). `.cmdlog.jsonl`: command journal, at `.concordia/journal/<scene-id>.cmdlog.jsonl` (M0).
 - **Exception (ADR in M3):** Studio role files (`studio/agents/<role>.md`) and tasks (`studio/tasks/T-0001-<slug>.task.md`) are Markdown with **YAML frontmatter**, to match Claude Code's native agent format.
 - **Ids:** entities created in the engine get UUIDv7. **Imported** entities get name-based UUIDv5, derived from the source id plus a project import namespace, so re-importing is deterministic.
 - **Asset references:** `"asset:<uuid>"`, `"asset:<uuid>#<sub-path>"`, `"builtin:<kind>/<name>"`. DDC layout: `.concordia/ddc/<2 hex>/<blake3 key>`.
@@ -166,6 +172,7 @@ To avoid collisions, each milestone draws ADR numbers from its own block. Use th
 |---|---|---|
 | 0001–0008 | Design | 0001 Rust · 0002 subscription-first · 0003 scripting tiers · 0004 editor · 0005 interchange · 0006 licensing · 0007 TDD/plans · 0008 name (Concordia) |
 | 0009 | M0 | 0009 scene text format (written: canonical RON, own reader/writer) |
+| 0010–0019 | Design additions | 0010 Terra entity system · 0011 Evolve plugin system |
 | 0020–0029 | M-1 | 0020 toolchain pinning · 0021 WASM guest build path · 0022 CI and supply chain |
 | 0030–0039 | M0 | 0030 own archetype ECS (written: safe column storage) · 0031 Engine API error model (written) · 0032 edit world vs play world (written) · 0033 MCP adapter (written: rmcp pin, protocol versions) |
 | 0040–0059 | M1 | 0040–0045 as named in M1's plan |
@@ -173,6 +180,8 @@ To avoid collisions, each milestone draws ADR numbers from its own block. Use th
 | 0080–0099 | M3 | (incl. YAML-frontmatter exception for Studio files) |
 | 0100–0119 | M4 | (incl. perf testing on reference hardware) |
 | 0120–0139 | M5 | |
+| 0140–0159 | M6 | 0140–0142 as named in M6's plan |
+| 0160–0179 | M7 | 0160–0161 as named in M7's plan |
 
 ## Consistency pass log (2026-11-17)
 - Merged each plan's proposed conventions into the sections above.
@@ -190,3 +199,10 @@ To avoid collisions, each milestone draws ADR numbers from its own block. Use th
 - Crate `AGENTS.md` required sections extended with *Public entry points*, *Common tasks* and *Don'ts* (template and hygiene test updated).
 - M0 gate tests are written at the start of phase 0.7 and excluded from the default nextest run until phase 0.8.
 - Phase 0.3: ECS storage is safe Rust (ADR-0030), so the Miri decision is moot; no nightly toolchain installed.
+
+## Terra and Evolve additions (2026-11-17)
+- Author decisions: the entity system is **Terra** (ADR-0010): `concordia-ecs` is renamed `concordia-terra` right after the M0 PR merges (M7 Phase 7.0) and grows Mass-style features in M7. The plugin system is **Evolve** (ADR-0011), milestone M6, native and WASM plugins from local paths and pinned git sources.
+- Numbering: M6 and M7 are new milestone numbers, not schedule positions. M6 starts after M2 (in parallel with M3); M7's simulation features start after M4. Existing milestones keep their numbers.
+- After the rename, the consistency pass replaces `concordia-ecs` with `concordia-terra` in the M1–M5 plans.
+- Actor grammar gains `plugin:<id>` in M6 (ADR-0011).
+- The M3 `concordia-gen` provider seam and the later-backlog "optional plugin crate" items become Evolve plugins once M6 lands.
