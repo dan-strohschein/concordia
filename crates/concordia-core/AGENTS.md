@@ -1,28 +1,48 @@
 # concordia-core: agent guide
 
 ## Purpose
-Math, ids, time, logging and the job system (M0). Currently a seed stub exposing the engine name and version.
+The root of the dependency graph: typed UUID ids and generators, glam math re-exports, fixed-step time, stderr-only logging with an in-memory ring for `log.tail`, a deterministic job system and a seeded simulation RNG.
 
 ## Public entry points
-- `NAME`, `version()` (seed; ids, time, logging and jobs arrive in M0 phase 0.1).
+- `id::{EntityId, SceneId, TxnId, SessionId, PrefabId, AssetId}`, `id::IdSource`, `id::SystemIdGen`, `id::DeterministicIdGen`
+- `time::{TickRate, Tick, Accumulator, Steps}`
+- `jobs::JobSystem` (`par_chunks_mut`, `par_map_reduce`)
+- `rng::SimRng` (`new`, `fork`)
+- `log::{init, LogConfig, LogRing, LogRecord}`
+- `math::{Vec2, Vec3, Vec4, Quat, Mat4, Affine3A}`
 
 ## Invariants
-- No dependencies on other Concordia crates; it is the root of the dependency graph.
+- No dependencies on other Concordia crates.
+- Generated ids are UUIDv7; parsing accepts v7 (engine) and v5 (imported content, `plans/README.md`) and rejects everything else.
+- Sim code never reads wall-clock time or OS randomness: use `SimRng` and an `IdSource` (`DeterministicIdGen` in tests and sims).
+- Logs go to stderr only; stdout belongs to stdio transports.
+- Job chunk sizes are chosen by the caller (`NonZeroUsize`) and never depend on thread count; `par_map_reduce` combines in chunk-index order. Results are bit-identical for any thread count.
+- The job system uses its own rayon pool, never the global one.
+- `Accumulator` uses exact integer arithmetic (remainder in `ns × hz`), so it never drifts.
 
 ## How to test
-`cargo nextest run -p concordia-core`
+`cargo nextest run -p concordia-core` and `cargo test --doc -p concordia-core`
 
 ## Common tasks
-None yet (filled in by M0 phase 0.1).
+- **Add an id type:** add a doc-commented name to the `define_id!` list in `src/id.rs`; extend `tests/ids.rs` if it has special rules.
+- **Add parallel work:** call `JobSystem::par_chunks_mut` with a constant chunk size; add a test comparing 1 vs 8 threads.
+- **Add a random draw in a system:** take a `SimRng` (or `fork(stream)` one per system); never `rand::thread_rng`.
 
 ## Don'ts
-- Don't depend on other Concordia crates.
+- Don't print to stdout (`println!`) anywhere in engine crates.
+- Don't derive a chunk size from `threads()`.
+- Don't use `SystemIdGen` inside simulation code.
+- Don't call `log::init` from libraries; binaries call it once.
 
 ## References
-None yet.
+- RFC 9562 (UUIDv7 layout; deterministic ids put a 12-bit counter in `rand_a`).
+- Steele, Lea & Flood, "Fast Splittable Pseudorandom Number Generators" (2014): SplitMix64 mixing for deterministic id bits.
+- Glenn Fiedler, "Fix Your Timestep!" (Gaffer on Games).
+- D. J. Bernstein, ChaCha (via the `rand_chacha` crate).
+- rayon and tracing crate documentation.
 
 ## Status
-Seed (M-1).
+M0 phase 0.1 complete.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

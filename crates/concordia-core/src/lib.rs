@@ -1,4 +1,11 @@
-//! Concordia core: math, ids, time, logging and jobs (M0). Currently a seed.
+//! Concordia core: ids, math, fixed-step time, logging, jobs and deterministic RNG.
+
+pub mod id;
+pub mod jobs;
+pub mod log;
+pub mod math;
+pub mod rng;
+pub mod time;
 
 /// The engine's name (ADR-0008).
 pub const NAME: &str = "concordia";

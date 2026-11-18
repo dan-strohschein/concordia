@@ -1,5 +1,5 @@
 # concordia-core
 
-Math, ids, time, logging and the job system for Concordia. Currently a seed stub.
+Ids, math, fixed-step time, logging, the job system and deterministic RNG for Concordia.
 
 See `AGENTS.md` for invariants, tests and references.
