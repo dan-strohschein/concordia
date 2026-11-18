@@ -1,0 +1,14 @@
+[package]
+name = "jolt-bindgen"
+description = "Regenerates crates/jolt-sys/src/bindings.rs from Concordia's Jolt shim header (`just jolt-bindgen`)."
+version = "0.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+# Its own workspace: bindgen and libclang never enter the engine build or CI.
+[workspace]
+
+[dependencies]
+bindgen = "0.73.2"
+blake3 = "1.8"

@@ -1,0 +1,20 @@
+[package]
+name = "jolt-sys"
+description = "Raw FFI to vendored Jolt Physics through Concordia's small C++ shim."
+links = "jolt"
+build = "build.rs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[build-dependencies]
+cmake = "0.1.58"
+
+[dev-dependencies]
+blake3.workspace = true

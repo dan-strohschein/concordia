@@ -1,0 +1,26 @@
+# Builds vendored Jolt + Concordia's shim as static libraries for jolt-sys (ADR-0041).
+cmake_minimum_required(VERSION 3.20)
+project(concordia_jolt LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+
+# Jolt options (cache entries win over its option() defaults).
+foreach(off JPH_BUILD_SHARED_LIBS ENABLE_INSTALL INTERPROCEDURAL_OPTIMIZATION GENERATE_DEBUG_SYMBOLS
+            ENABLE_ALL_WARNINGS DEBUG_RENDERER_IN_DEBUG_AND_RELEASE DEBUG_RENDERER_IN_DISTRIBUTION
+            PROFILER_IN_DEBUG_AND_RELEASE PROFILER_IN_DISTRIBUTION FLOATING_POINT_EXCEPTIONS_ENABLED
+            DOUBLE_PRECISION USE_ASSERTS ENABLE_OBJECT_STREAM
+            JPH_USE_DX12 JPH_USE_VK JPH_USE_MTL JPH_USE_CPU_COMPUTE)
+    set(${off} OFF CACHE BOOL "" FORCE)
+endforeach()
+set(CROSS_PLATFORM_DETERMINISTIC ON CACHE BOOL "" FORCE)
+set(OBJECT_LAYER_BITS 16 CACHE STRING "" FORCE)
+
+add_subdirectory(${JOLT_PHYSICS_ROOT}/Build jolt)
+
+add_library(concordia_jolt_ext STATIC ${CMAKE_CURRENT_SOURCE_DIR}/../shim/concordia_jolt_ext.cpp)
+target_link_libraries(concordia_jolt_ext PRIVATE Jolt)
+
+install(TARGETS concordia_jolt_ext Jolt ARCHIVE DESTINATION lib)

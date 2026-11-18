@@ -175,7 +175,7 @@ To avoid collisions, each milestone draws ADR numbers from its own block. Use th
 | 0010–0019 | Design additions | 0010 Terra entity system · 0011 Evolve plugin system |
 | 0020–0029 | M-1 | 0020 toolchain pinning · 0021 WASM guest build path · 0022 CI and supply chain |
 | 0030–0039 | M0 | 0030 own archetype ECS (written: safe column storage) · 0031 Engine API error model (written) · 0032 edit world vs play world (written) · 0033 MCP adapter (written: rmcp pin, protocol versions) |
-| 0040–0059 | M1 | 0040–0045 as named in M1's plan · 0046 engine modules (written) |
+| 0040–0059 | M1 | 0040–0045 as named in M1's plan (0041 written) · 0046 engine modules (written) |
 | 0060–0079 | M2 | |
 | 0080–0099 | M3 | (incl. YAML-frontmatter exception for Studio files) |
 | 0100–0119 | M4 | (incl. perf testing on reference hardware) |
