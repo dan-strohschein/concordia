@@ -70,7 +70,7 @@ fn m1_example_has_input_and_physics_modules_after_core() {
         .iter()
         .map(|m| m.name())
         .collect();
-    assert_eq!(names, ["input", "physics"]);
+    assert_eq!(names, ["input", "physics", "assets"]);
     assert_eq!(
         project.manifest.physics.as_ref().unwrap().gravity,
         [0.0, -9.81, 0.0]
@@ -115,4 +115,36 @@ fn m1_stack_scene_settles_in_a_headless_engine() {
 fn projects_without_an_input_map_have_no_input_module() {
     let project = Project::load(&examples().join("m0-sandbox")).unwrap();
     assert!(project.modules().unwrap().is_empty());
+}
+
+#[test]
+fn assets_module_imports_gltf_through_the_api() {
+    use concordia_api::{Engine, EngineConfig};
+    use serde_json::json;
+
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("concordia.toml"), "[assets]\n").unwrap();
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../concordia-import-gltf/tests/fixtures/two_nodes.gltf");
+    std::fs::copy(fixture, dir.path().join("two_nodes.gltf")).unwrap();
+    let project = Project::load(dir.path()).unwrap();
+    let mut config = EngineConfig::new(dir.path());
+    config.modules = project.modules().unwrap();
+    let mut engine = Engine::new(config).unwrap();
+    let s = engine.open_session();
+    let result = engine
+        .call(
+            s,
+            "asset.import",
+            json!({"path": "two_nodes.gltf", "actor": "agent:test"}),
+        )
+        .unwrap();
+    assert!(
+        result["sub_assets"].to_string().contains("mesh/Tri/0"),
+        "{result}"
+    );
+    let schema = engine
+        .call(s, "schema.get", json!({"name": "MeshRenderer"}))
+        .unwrap();
+    assert_eq!(schema["schema"]["title"], "MeshRenderer");
 }

@@ -11,6 +11,7 @@ M0 wired the engine statically. The method registry was a process-wide list of t
 - Module names and method names must be unique. `Engine::new` returns an error naming both modules.
 - Each engine has its own `MethodRegistry` (`Engine::methods`, `EngineHandle::methods`). It drives dispatch, `schema.get`, and the MCP tool and resource lists. `concordia_api::methods()` remains the core set.
 - `start_play` runs once per new play world. The schedules are appended in module order, so core systems run first. The returned state lives beside the play world and is dropped with it. Methods reach it through `Engine::play_state::<T>()`. A tick-rate change keeps the session (`SimLoop::set_rate`).
+- Modules may also own engine-lifetime state (`engine_state`, read through `Engine::state` / `state_mut`), e.g. the asset database behind `asset.import`.
 - Modules read worlds through `Engine::world(WorldSel)` and write the play world through `Engine::play_world_mut()`, which creates a paused play world if there is none. Edit-world mutation still goes only through the command log.
 
 ## Consequences

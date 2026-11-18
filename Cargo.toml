@@ -29,6 +29,7 @@ concordia-physics = { path = "crates/concordia-physics" }
 concordia-platform = { path = "crates/concordia-platform" }
 concordia-command = { path = "crates/concordia-command" }
 concordia-core = { path = "crates/concordia-core" }
+concordia-import-gltf = { path = "crates/concordia-import-gltf" }
 concordia-input = { path = "crates/concordia-input" }
 concordia-terra = { path = "crates/concordia-terra" }
 concordia-scene = { path = "crates/concordia-scene" }

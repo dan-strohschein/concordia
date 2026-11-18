@@ -189,3 +189,140 @@ impl Default for MaterialData {
         }
     }
 }
+
+/// Draws an imported or built-in mesh with a material (read by the renderer).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct MeshRenderer {
+    /// The mesh.
+    pub mesh: AssetRef,
+    /// The material.
+    pub material: AssetRef,
+    /// Casts shadows.
+    #[serde(default = "yes")]
+    pub cast_shadows: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// A skin: joints (prefab entity ids) and inverse bind matrices (column-major).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SkinData {
+    /// Joint names in joint-index order.
+    pub joint_names: Vec<String>,
+    /// Joint entity ids in the prefab, in joint-index order.
+    pub joints: Vec<concordia_core::id::EntityId>,
+    /// Inverse bind matrices, one per joint.
+    pub inverse_bind: Vec<[f32; 16]>,
+}
+
+/// What an animation channel drives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ChannelPath {
+    /// Translation (vec3).
+    Translation,
+    /// Rotation (quat xyzw).
+    Rotation,
+    /// Scale (vec3).
+    Scale,
+    /// Morph target weights.
+    Weights,
+}
+
+/// How keyframes are interpolated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Interpolation {
+    /// Linear (slerp for rotations).
+    Linear,
+    /// Hold the previous key.
+    Step,
+    /// Cubic spline (values hold in-tangent, value, out-tangent).
+    CubicSpline,
+}
+
+/// One animated property of one node.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Channel {
+    /// Target entity id in the prefab.
+    pub target: concordia_core::id::EntityId,
+    /// Property.
+    pub path: ChannelPath,
+    /// Interpolation.
+    pub interpolation: Interpolation,
+    /// Key times in seconds.
+    pub times: Vec<f32>,
+    /// Flattened key values.
+    pub values: Vec<f32>,
+}
+
+/// An animation clip (played from M2).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ClipData {
+    /// Clip name.
+    pub name: String,
+    /// Length in seconds.
+    pub duration: f32,
+    /// Channels.
+    pub channels: Vec<Channel>,
+}
+
+/// A punctual light from an imported file (turned into light components when rendering arrives).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum LightData {
+    /// Directional light (illuminance in lux).
+    Directional {
+        /// Linear color.
+        color: [f32; 3],
+        /// Lux.
+        intensity: f32,
+    },
+    /// Point light (candela).
+    Point {
+        /// Linear color.
+        color: [f32; 3],
+        /// Candela.
+        intensity: f32,
+        /// Range (None = infinite).
+        range: Option<f32>,
+    },
+    /// Spot light (candela).
+    Spot {
+        /// Linear color.
+        color: [f32; 3],
+        /// Candela.
+        intensity: f32,
+        /// Range (None = infinite).
+        range: Option<f32>,
+        /// Inner cone angle (radians).
+        inner: f32,
+        /// Outer cone angle (radians).
+        outer: f32,
+    },
+}
+
+/// A camera from an imported file.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum CameraData {
+    /// Perspective (vertical fov in radians).
+    Perspective {
+        /// Vertical field of view.
+        yfov: f32,
+        /// Near plane.
+        znear: f32,
+        /// Far plane (None = infinite).
+        zfar: Option<f32>,
+    },
+    /// Orthographic.
+    Orthographic {
+        /// Half width.
+        xmag: f32,
+        /// Half height.
+        ymag: f32,
+        /// Near plane.
+        znear: f32,
+        /// Far plane.
+        zfar: f32,
+    },
+}

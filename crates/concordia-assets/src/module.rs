@@ -1,6 +1,7 @@
 //! The assets engine module: `asset.import` and `asset.list` (ADR-0046).
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use concordia_api::{ApiError, ApiErrorKind, CallCtx, Engine, EngineModule, Method, MethodInfo};
 use concordia_command::Actor;
@@ -10,25 +11,51 @@ use serde::{Deserialize, Serialize};
 
 use crate::db::{AssetDb, AssetInfo};
 use crate::error::AssetError;
+use crate::importer::Importer;
 
-/// Adds the project's asset database and the `asset.*` methods.
-#[derive(Debug, Clone)]
+/// Adds the project's asset database, asset components and the `asset.*` methods.
+#[derive(Clone)]
 pub struct AssetsModule {
     root: PathBuf,
+    importers: Vec<Arc<dyn Importer>>,
+}
+
+impl std::fmt::Debug for AssetsModule {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let names: Vec<&str> = self.importers.iter().map(|i| i.name()).collect();
+        f.debug_struct("AssetsModule")
+            .field("root", &self.root)
+            .field("importers", &names)
+            .finish()
+    }
 }
 
 impl AssetsModule {
-    /// A module for the project at `root`.
+    /// A module for the project at `root` (the image importer is built in).
     pub fn new(root: &Path) -> Self {
         Self {
             root: root.to_path_buf(),
+            importers: Vec::new(),
         }
+    }
+
+    /// Adds an importer (e.g. glTF) to the module's database.
+    pub fn with_importer(mut self, importer: Arc<dyn Importer>) -> Self {
+        self.importers.push(importer);
+        self
     }
 }
 
 impl EngineModule for AssetsModule {
     fn name(&self) -> &'static str {
         "assets"
+    }
+
+    fn register_types(
+        &self,
+        registry: &mut concordia_reflect::TypeRegistry,
+    ) -> Result<(), concordia_reflect::RegistryError> {
+        crate::register_types(registry)
     }
 
     fn methods(&self) -> Vec<MethodInfo> {
@@ -40,7 +67,12 @@ impl EngineModule for AssetsModule {
 
     fn engine_state(&self) -> Option<Box<dyn std::any::Any + Send>> {
         match AssetDb::new(&self.root, Box::new(SystemIdGen)) {
-            Ok(db) => Some(Box::new(db)),
+            Ok(mut db) => {
+                self.importers
+                    .iter()
+                    .for_each(|i| db.register(Arc::clone(i)));
+                Some(Box::new(db))
+            }
             Err(e) => {
                 tracing::error!(target: "concordia::assets", error = %e, "asset database unavailable");
                 None

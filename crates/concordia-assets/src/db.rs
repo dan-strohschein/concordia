@@ -336,6 +336,15 @@ impl AssetDb {
         }
     }
 
+    /// Any postcard-encoded artifact of the expected kind (skins, clips, lights, cameras).
+    pub fn load<T: DeserializeOwned>(
+        &mut self,
+        reference: &AssetRef,
+        kind: AssetKind,
+    ) -> Result<T, AssetError> {
+        self.load_as(reference, kind)
+    }
+
     /// Where an asset's source lives (project-relative).
     pub fn path_of(&self, id: AssetId) -> Option<&Path> {
         self.records.get(&id).map(|r| r.path.as_path())

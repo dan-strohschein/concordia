@@ -21,6 +21,10 @@ pub enum AssetKind {
     Prefab,
     /// Skin data (joints, inverse bind matrices).
     Skin,
+    /// A punctual light.
+    Light,
+    /// A camera.
+    Camera,
     /// Animation clip.
     Clip,
 }
@@ -66,6 +70,11 @@ impl SubIds {
         })
     }
 
+    /// The parent asset (sub-asset references are `asset:<parent>#<path>`).
+    pub fn parent(&self) -> AssetId {
+        self.parent
+    }
+
     /// All ids, for writing back to the sidecar.
     pub fn into_map(self) -> BTreeMap<String, AssetId> {
         self.ids
@@ -100,7 +109,12 @@ pub trait Importer: Send + Sync {
     fn import(&self, input: ImportInput<'_>) -> Result<ImportOutput, AssetError>;
 }
 
-/// Postcard-encodes derived data.
-pub(crate) fn encode<T: Serialize>(value: &T) -> Result<Vec<u8>, AssetError> {
+/// Postcard-encodes derived data (what importers put in `Artifact::bytes`).
+pub fn encode<T: Serialize>(value: &T) -> Result<Vec<u8>, AssetError> {
     postcard::to_allocvec(value).map_err(|e| AssetError::Decode(e.to_string()))
+}
+
+/// Decodes postcard-encoded derived data.
+pub fn decode<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T, AssetError> {
+    postcard::from_bytes(bytes).map_err(|e| AssetError::Decode(e.to_string()))
 }

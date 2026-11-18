@@ -208,6 +208,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
+name = "base64"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
+
+[[package]]
+name = "bevy_mikktspace"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bff34eb29ff4b8a8688bc7299f14fb6b597461ca80fec03ed7d22939ab33e48f"
+
+[[package]]
 name = "bit-set"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -362,6 +374,12 @@ name = "bytemuck"
 version = "1.25.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95832e849adfb21180ccb6826a99da14e5d266ae5c2e668e1602cf234f153797"
+
+[[package]]
+name = "byteorder"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
 name = "byteorder-lite"
@@ -583,7 +601,9 @@ name = "concordia-app"
 version = "0.0.0"
 dependencies = [
  "concordia-api",
+ "concordia-assets",
  "concordia-core",
+ "concordia-import-gltf",
  "concordia-input",
  "concordia-physics",
  "concordia-platform",
@@ -604,6 +624,7 @@ dependencies = [
  "concordia-core",
  "concordia-reflect",
  "concordia-scene",
+ "concordia-terra",
  "image",
  "insta",
  "postcard",
@@ -623,7 +644,9 @@ dependencies = [
  "clap",
  "concordia-api",
  "concordia-app",
+ "concordia-assets",
  "concordia-core",
+ "concordia-import-gltf",
  "concordia-mcp",
  "concordia-platform",
  "concordia-reflect",
@@ -668,6 +691,27 @@ dependencies = [
  "thiserror 2.0.21",
  "tracing",
  "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "concordia-import-gltf"
+version = "0.0.0"
+dependencies = [
+ "base64 0.23.1",
+ "bevy_mikktspace",
+ "concordia-assets",
+ "concordia-command",
+ "concordia-core",
+ "concordia-reflect",
+ "concordia-scene",
+ "concordia-terra",
+ "gltf",
+ "postcard",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
  "uuid",
 ]
 
@@ -1734,6 +1778,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "gltf"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3ce1918195723ce6ac74e80542c5a96a40c2b26162c1957a5cd70799b8cacf7"
+dependencies = [
+ "byteorder",
+ "gltf-json",
+ "lazy_static",
+ "serde_json",
+]
+
+[[package]]
+name = "gltf-derive"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14070e711538afba5d6c807edb74bcb84e5dbb9211a3bf5dea0dfab5b24f4c51"
+dependencies = [
+ "inflections",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "gltf-json"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6176f9d60a7eab0a877e8e96548605dedbde9190a7ae1e80bbcc1c9af03ab14"
+dependencies = [
+ "gltf-derive",
+ "serde",
+ "serde_derive",
+ "serde_json",
+]
+
+[[package]]
 name = "half"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1960,6 +2040,12 @@ dependencies = [
  "serde",
  "serde_core",
 ]
+
+[[package]]
+name = "inflections"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a257582fdcde896fd96463bf2d40eefea0580021c0712a0e2b028b60b47a837a"
 
 [[package]]
 name = "inotify"
@@ -4559,7 +4645,7 @@ version = "50.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "96e9b0120eaa3448f11673000e5c970fda5d78f3a3f35a08fd00fa9462453322"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "directories-next",
  "log",
  "postcard",

@@ -14,12 +14,24 @@ mod reference;
 mod sidecar;
 
 pub use builtin::{Builtin, BuiltinAsset};
-pub use data::{AlphaMode, MaterialData, MeshData, TextureData, TextureFormat};
+pub use data::{
+    AlphaMode, CameraData, Channel, ChannelPath, ClipData, Interpolation, LightData, MaterialData,
+    MeshData, MeshRenderer, SkinData, TextureData, TextureFormat,
+};
 pub use db::{AssetDb, AssetInfo, ImportReport};
 pub use error::AssetError;
-pub use image_importer::{ColorSpace, ImageImporter, ImageSettings};
-pub use importer::{Artifact, AssetKind, ImportInput, ImportOutput, Importer, SubIds};
+pub use image_importer::{ColorSpace, ImageImporter, ImageSettings, decode as decode_image};
+pub use importer::{
+    Artifact, AssetKind, ImportInput, ImportOutput, Importer, SubIds, decode, encode,
+};
 pub use key::{PLATFORM, import_key};
 pub use module::{AssetImport, AssetList, AssetsModule};
 pub use reference::AssetRef;
 pub use sidecar::Sidecar;
+
+/// Registers the asset components (`MeshRenderer`).
+pub fn register_types(
+    registry: &mut concordia_reflect::TypeRegistry,
+) -> Result<(), concordia_reflect::RegistryError> {
+    concordia_terra::register_component::<MeshRenderer>(registry)
+}
