@@ -25,6 +25,10 @@ use crate::gpu::{GpuAssets, GpuMesh, Uploads};
 use crate::graph::{GraphTexture, PassContext, RenderGraph, Use};
 use crate::lighting::punctual_lights;
 use crate::pipelines::{DEPTH, HDR, OUTPUT, Pipelines};
+use crate::shadow::{Cascade, CascadeSettings, fit_cascades};
+use crate::shadow_pass::{
+    ShadowDraw, ShadowJob, ShadowMaps, ShadowPush, add_shadow_passes, world_bounds,
+};
 use crate::{CameraView, Msaa, RenderError, RenderWorld, Tonemap};
 
 /// The largest capture side.
@@ -57,6 +61,7 @@ pub struct Renderer {
     device: Arc<dyn Device>,
     pipelines: Pipelines,
     culler: ClusterCuller,
+    shadow_maps: ShadowMaps,
     clusters: ClusterSettings,
     stats: RenderStats,
     assets: GpuAssets,
@@ -75,6 +80,15 @@ struct FrameBlocks {
     instances: Vec<u8>,
     materials: Vec<u8>,
     order: Vec<DrawOrder>,
+}
+
+/// Everything `execute` records for one frame.
+struct FramePlan<'a> {
+    draws: Vec<Draw>,
+    samples: SampleCount,
+    size: (NonZeroU32, NonZeroU32),
+    cluster: ClusterJob<'a>,
+    shadow: Option<ShadowJob>,
 }
 
 /// The frame's light clustering, recorded before the graph.
@@ -114,6 +128,7 @@ impl Renderer {
             device,
             pipelines,
             culler,
+            shadow_maps: ShadowMaps::default(),
             clusters: ClusterSettings::default(),
             stats: RenderStats::default(),
             assets: GpuAssets::default(),
@@ -192,6 +207,15 @@ impl Renderer {
             frame.keep(*b);
         });
         let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
+        let shadows = self.prepare_shadows(world, view, aspect, dir)?;
+        let shadow_params = shadows.as_ref().map(|(cascades, settings, maps)| {
+            let mut indices = [0u32; 4];
+            maps.iter()
+                .take(4)
+                .enumerate()
+                .for_each(|(i, (_, m))| indices[i] = *m);
+            (cascades.as_slice(), settings, indices)
+        });
         let block = frame_block(&FrameParams {
             view_proj,
             view: view_m,
@@ -206,6 +230,7 @@ impl Renderer {
                 cluster.counts_index,
                 cluster.indices_index,
             ],
+            shadow: shadow_params,
         });
         let frame_buf = frame.keep(up.buffer(device, &block, "frame")?);
         let FrameBlocks {
@@ -218,6 +243,7 @@ impl Renderer {
         up.flush(device)?;
         let (frame_i, inst_i, mat_i) = (index(frame_buf)?, index(inst_buf)?, index(mat_buf)?);
         let mut draws = Vec::with_capacity(order.len());
+        let mut casters = Vec::new();
         for (
             instance,
             DrawOrder {
@@ -228,6 +254,19 @@ impl Renderer {
         ) in order.into_iter().enumerate()
         {
             let mesh = self.assets.meshes[&world.draws[item].mesh];
+            if world.draws[item].cast_shadows {
+                casters.push(ShadowDraw {
+                    push: ShadowPush {
+                        frame: frame_i,
+                        instances: inst_i,
+                        instance: instance as u32,
+                        indices: mesh.indices,
+                        positions: mesh.positions,
+                        cascade: 0,
+                    },
+                    vertices: mesh.count,
+                });
+            }
             let push = DrawPush {
                 frame: frame_i,
                 instances: inst_i,
@@ -252,7 +291,20 @@ impl Renderer {
             grid,
             light_count: lights.bounds.len(),
         };
-        let (image, overflow) = self.execute(view, draws, samples, (width, height), frame, &job)?;
+        let shadow = shadows.map(|(_, settings, maps)| ShadowJob {
+            maps,
+            resolution: settings.resolution,
+            pipeline: self.pipelines.shadow(),
+            casters,
+        });
+        let plan = FramePlan {
+            draws,
+            samples,
+            size: (width, height),
+            cluster: job,
+            shadow,
+        };
+        let (image, overflow) = self.execute(view, plan, frame)?;
         self.stats = RenderStats {
             punctual_lights: world.punctual.len(),
             dropped_lights: lights.dropped,
@@ -262,6 +314,39 @@ impl Renderer {
             tracing::warn!(target: "concordia::render", overflow, "clusters overflowed; raise max_per_cluster or reduce light ranges");
         }
         Ok(image)
+    }
+
+    /// Cascades, settings and shadow maps when the first directional light casts shadows.
+    #[allow(clippy::type_complexity)]
+    fn prepare_shadows(
+        &mut self,
+        world: &RenderWorld,
+        view: &CameraView,
+        aspect: f32,
+        sun_dir: Vec3,
+    ) -> Result<Option<(Vec<Cascade>, CascadeSettings, Vec<(Texture, u32)>)>, RenderError> {
+        let Some(settings) = world.lights.first().and_then(|l| l.light.shadows.clone()) else {
+            return Ok(None);
+        };
+        let casters = world
+            .draws
+            .iter()
+            .filter(|d| d.cast_shadows)
+            .map(|d| (self.assets.meshes[&d.mesh].aabb, d.world));
+        let bounds = world_bounds(casters);
+        let cascades = fit_cascades(
+            &settings,
+            &view.camera.projection,
+            aspect,
+            &view.world,
+            sun_dir,
+            bounds,
+        )?;
+        let maps = self
+            .shadow_maps
+            .ensure(self.device.as_ref(), settings.resolution, cascades.len())?
+            .to_vec();
+        Ok(Some((cascades, settings, maps)))
     }
 
     /// Uploads missing meshes and textures; returns this frame's materials (deduplicated, in order).
@@ -349,12 +434,17 @@ impl Renderer {
     fn execute(
         &mut self,
         view: &CameraView,
-        draws: Vec<Draw>,
-        samples: SampleCount,
-        size: (NonZeroU32, NonZeroU32),
+        plan: FramePlan<'_>,
         frame: &mut FrameResources,
-        job: &ClusterJob<'_>,
     ) -> Result<(Image, u32), RenderError> {
+        let FramePlan {
+            draws,
+            samples,
+            size,
+            cluster: job,
+            shadow,
+        } = plan;
+        let job = &job;
         let device = self.device.as_ref();
         let (w, h) = (size.0.get(), size.1.get());
         let clusters = job.grid.len() as u64;
@@ -391,7 +481,10 @@ impl Renderer {
             Layout::Undefined,
             Some(Layout::CopySrc),
         );
-        let targets = add_forward(&mut graph, view, draws, samples, size);
+        let shadow_maps = shadow
+            .map(|s| add_shadow_passes(&mut graph, s))
+            .unwrap_or_default();
+        let targets = add_forward(&mut graph, view, draws, samples, size, &shadow_maps);
         add_tonemap(
             &mut graph,
             targets.hdr,
@@ -471,6 +564,7 @@ impl Drop for Renderer {
     fn drop(&mut self) {
         let _ = self.device.wait_idle();
         self.assets.destroy(self.device.as_ref());
+        self.shadow_maps.destroy(self.device.as_ref());
     }
 }
 
@@ -519,7 +613,9 @@ fn add_forward(
     draws: Vec<Draw>,
     samples: SampleCount,
     size: (NonZeroU32, NonZeroU32),
+    shadow_maps: &[GraphTexture],
 ) -> ForwardTargets {
+    let shadow_maps = shadow_maps.to_vec();
     let hdr = graph.create_texture(desc(
         size,
         HDR,
@@ -551,6 +647,9 @@ fn add_forward(
             p.uses(hdr, Use::ColorWrite);
             if let Some(m) = msaa {
                 p.uses(m, Use::ColorWrite);
+            }
+            for map in &shadow_maps {
+                p.uses(*map, Use::SampledRead);
             }
         },
         Some(Box::new(move |ctx: &mut PassContext<'_>| {

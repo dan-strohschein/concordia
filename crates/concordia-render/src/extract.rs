@@ -19,6 +19,8 @@ pub struct DrawItem {
     pub mesh: AssetRef,
     /// Material.
     pub material: AssetRef,
+    /// Rendered into shadow maps.
+    pub cast_shadows: bool,
 }
 
 /// A light.
@@ -101,6 +103,7 @@ impl RenderWorld {
                     world: matrix,
                     mesh: r.mesh.clone(),
                     material: r.material.clone(),
+                    cast_shadows: r.cast_shadows,
                 });
             }
             if let Some(light) = world.get::<DirectionalLight>(entity) {

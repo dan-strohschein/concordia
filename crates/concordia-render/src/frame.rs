@@ -7,6 +7,7 @@ use concordia_assets::{AlphaMode, AssetRef, MaterialData};
 use concordia_core::math::{Mat3, Mat4, Vec3, Vec4};
 
 use crate::cluster::ClusterGrid;
+use crate::shadow::{Cascade, CascadeSettings};
 
 /// No texture bound (shaders use the factor alone).
 pub(crate) const NO_TEXTURE: u32 = u32::MAX;
@@ -99,6 +100,8 @@ pub(crate) struct FrameParams<'a> {
     pub(crate) light_count: u32,
     /// Bindless indices: lights, cluster counts, cluster indices.
     pub(crate) buffers: [u32; 3],
+    /// Fitted cascades, their settings and shadow-map indices (None: no shadows).
+    pub(crate) shadow: Option<(&'a [Cascade], &'a CascadeSettings, [u32; 4])>,
 }
 
 /// `Frame` (mirrors `forward.slang`): matrices, eye, sun, cluster depth range, screen, then two
@@ -130,7 +133,41 @@ pub(crate) fn frame_block(p: &FrameParams<'_>) -> Vec<u8> {
         0,
     ];
     out.extend(words.iter().flat_map(|w| w.to_le_bytes()));
+    shadow_rows(&mut out, p.shadow);
     out
+}
+
+/// Cascade matrices, splits, texel sizes, depth ranges, parameters and map indices (zeros: off).
+fn shadow_rows(out: &mut Vec<u8>, shadow: Option<(&[Cascade], &CascadeSettings, [u32; 4])>) {
+    let mut matrices = [Vec4::ZERO; 16];
+    let (mut splits, mut texel, mut depth) = ([0.0f32; 4], [0.0f32; 4], [1.0f32; 4]);
+    let (mut params, mut res, mut maps) = (Vec4::ZERO, Vec4::ZERO, [0u32; 4]);
+    if let Some((cascades, settings, indices)) = shadow {
+        for (i, c) in cascades.iter().take(4).enumerate() {
+            matrices[i * 4..i * 4 + 4].copy_from_slice(&columns(&c.view_proj));
+            (splits[i], texel[i], depth[i]) = (c.split_far, c.texel_world, c.depth_range);
+        }
+        params = Vec4::new(
+            settings.depth_bias,
+            settings.normal_bias,
+            settings.pcf.radius() as f32,
+            cascades.len().min(4) as f32,
+        );
+        res = Vec4::new(settings.resolution as f32, 0.0, 0.0, 0.0);
+        maps = indices;
+    }
+    push_rows(out, &matrices);
+    push_rows(
+        out,
+        &[
+            Vec4::from_array(splits),
+            Vec4::from_array(texel),
+            Vec4::from_array(depth),
+            params,
+            res,
+        ],
+    );
+    out.extend(maps.iter().flat_map(|w| w.to_le_bytes()));
 }
 
 /// `Instance`: model matrix and normal matrix (inverse transpose).

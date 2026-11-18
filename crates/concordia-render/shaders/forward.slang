@@ -15,11 +15,18 @@ struct Frame {
     float4 view_proj[4]; float4 view[4];
     float4 eye; float4 light_dir; float4 light_radiance; float4 cluster_depth; float4 screen;
     uint4 dims; uint4 buffers;
+    // Shadows: per-cascade light view-projection (4 columns each), far split distances, world
+    // texel sizes, light depth ranges; shadow = (depth bias, normal bias in texels, PCF radius,
+    // cascade count); shadow_res.x = map resolution; shadow_tex = bindless indices.
+    float4 cascade_vp[16]; float4 splits; float4 texel; float4 depth_range; float4 shadow; float4 shadow_res;
+    uint4 shadow_tex;
 };
 // Per light: position+range, direction, exposed radiance, spot (scale, offset).
 struct Light { float4 position_range; float4 direction; float4 radiance; float4 spot; };
 struct Instance { float4 model[4]; float4 normal[4]; };
 struct Material { float4 base_color; float4 emissive_cutoff; float4 factors; uint4 tex0; uint4 tex1; };
+
+struct ShadowPush { uint frame; uint instances; uint instance; uint indices; uint positions; uint cascade; };
 
 struct DrawPush { uint frame; uint instances; uint instance; uint materials; uint material; uint indices; uint positions; uint normals; uint tangents; uint uvs; };
 
@@ -52,6 +59,56 @@ VsOut vs(uint vid : SV_VertexID, uniform DrawPush push) {
     o.tangent = float4(xform(inst.model, float4(t.xyz, 0.0)).xyz, t.w);
     o.uv = ((float2*)g_buffers.ptr[push.uvs])[v];
     return o;
+}
+
+float4 cascade_xform(Frame* frame, uint c, float4 p) {
+    return frame.cascade_vp[c * 4] * p.x + frame.cascade_vp[c * 4 + 1] * p.y + frame.cascade_vp[c * 4 + 2] * p.z + frame.cascade_vp[c * 4 + 3] * p.w;
+}
+
+[shader("vertex")]
+float4 shadow_vs(uint vid : SV_VertexID, uniform ShadowPush push) : SV_Position {
+    Instance* inst = ((Instance*)g_buffers.ptr[push.instances]) + push.instance;
+    Frame* frame = (Frame*)g_buffers.ptr[push.frame];
+    uint v = ((uint*)g_buffers.ptr[push.indices])[vid];
+    return cascade_xform(frame, push.cascade, xform(inst.model, float4(read3(push.positions, v), 1.0)));
+}
+
+// Fraction of sunlight reaching `world` (1 outside the cascades). Reverse-Z: a texel closer to the
+// light than the receiver stores a larger depth. Filtered PCF: a box of bilinear compares. Bias:
+// constant + normal offset + slope-scaled, so the whole PCF footprint clears the receiver plane.
+float sun_shadow(Frame* frame, float3 world, float3 n, float3 to_light) {
+    uint count = uint(frame.shadow.w);
+    if (count == 0) { return 1.0; }
+    float view_z = -xform(frame.view, float4(world, 1.0)).z;
+    uint c = 0;
+    while (c + 1 < count && view_z > frame.splits[c]) { c++; }
+    if (view_z > frame.splits[count - 1]) { return 1.0; }
+    float3 p = world + n * frame.shadow.y * frame.texel[c];
+    float4 clip = cascade_xform(frame, c, float4(p, 1.0));
+    float2 uv = clip.xy * float2(0.5, -0.5) + 0.5;
+    if (any(uv < 0.0) || any(uv > 1.0) || clip.z < 0.0 || clip.z > 1.0) { return 1.0; }
+    float nol = saturate(dot(n, to_light));
+    float tan_theta = min(sqrt(1.0 - nol * nol) / max(nol, 1e-3), 10.0);
+    float slope = frame.texel[c] * (frame.shadow.z + 1.0) * tan_theta;
+    float depth = clip.z + (frame.shadow.x + slope) / frame.depth_range[c];
+    float res = frame.shadow_res.x;
+    float2 st = uv * res - 0.5;
+    float2 base = floor(st);
+    float2 f = st - base;
+    int k = int(frame.shadow.z);
+    Texture2D<float4> map = g_textures.tex[NonUniformResourceIndex(frame.shadow_tex[c])];
+    float lit = 0.0;
+    for (int dy = -k; dy <= k + 1; dy++) {
+        float wy = dy == -k ? 1.0 - f.y : (dy == k + 1 ? f.y : 1.0);
+        for (int dx = -k; dx <= k + 1; dx++) {
+            float wx = dx == -k ? 1.0 - f.x : (dx == k + 1 ? f.x : 1.0);
+            int2 texel = clamp(int2(base) + int2(dx, dy), int2(0), int2(int(res) - 1));
+            float stored = map.Load(int3(texel, 0)).r;
+            lit += wx * wy * (stored <= depth ? 1.0 : 0.0);
+        }
+    }
+    float side = float(2 * k + 1);
+    return lit / (side * side);
 }
 
 float4 sample_or(uint tex, float2 uv, float4 fallback) {
@@ -152,7 +209,8 @@ float4 fs(VsOut i, bool front : SV_IsFrontFace, uniform DrawPush push) : SV_Targ
     float a = max(m.factors.y * mr.g, 0.045);
     a = a * a;
     float occlusion = lerp(1.0, sample_or(m.tex0.w, i.uv, float4(1.0)).r, m.factors.w);
-    float3 sun = brdf(n, v, -normalize(frame.light_dir.xyz), base.rgb, metallic, a) * frame.light_radiance.rgb;
+    float3 geometric = normalize(i.normal) * (front ? 1.0 : -1.0);
+    float3 sun = brdf(n, v, -normalize(frame.light_dir.xyz), base.rgb, metallic, a) * frame.light_radiance.rgb * sun_shadow(frame, i.world, geometric, -normalize(frame.light_dir.xyz));
     float3 lit = (sun + punctual(frame, i.position, i.world, n, v, base.rgb, metallic, a)) * occlusion;
     return float4(lit + emissive, 1.0);
 }

@@ -114,6 +114,7 @@ impl Scene {
                 DirectionalLight {
                     color: [1.0; 3],
                     illuminance_lux: lux,
+                    shadows: None,
                 },
             )
             .unwrap();

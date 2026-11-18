@@ -120,6 +120,8 @@ pub struct DirectionalLight {
     /// Illuminance in lux (direct sunlight ≈ 100 000).
     #[reflect(range(min = 0.0, max = 200000.0))]
     pub illuminance_lux: f32,
+    /// Cascaded shadows (off when absent; only the first directional light casts them).
+    pub shadows: Option<crate::shadow::CascadeSettings>,
 }
 
 impl Default for DirectionalLight {
@@ -127,6 +129,7 @@ impl Default for DirectionalLight {
         Self {
             color: [1.0; 3],
             illuminance_lux: 100_000.0,
+            shadows: None,
         }
     }
 }

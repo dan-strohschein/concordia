@@ -52,6 +52,7 @@ pub(crate) fn compile(
 pub(crate) struct Pipelines {
     forward: (ShaderSource, ShaderSource),
     tonemap: Pipeline,
+    shadow: Pipeline,
     variants: BTreeMap<(u8, bool), Pipeline>,
 }
 
@@ -77,15 +78,35 @@ impl Pipelines {
             blend: BlendMode::Opaque,
             label: "tonemap".into(),
         })?;
+        let shadow = device.create_graphics_pipeline(&GraphicsPipelineDesc {
+            vertex: compile("forward.slang", "shadow_vs", Stage::Vertex)?,
+            fragment: None,
+            color_formats: Vec::new(),
+            depth: Some(DepthState {
+                format: DEPTH,
+                compare: CompareOp::GreaterEqual,
+                write: true,
+            }),
+            samples: SampleCount::X1,
+            cull: CullMode::None,
+            blend: BlendMode::Opaque,
+            label: "shadow depth".into(),
+        })?;
         Ok(Self {
             forward,
             tonemap,
+            shadow,
             variants: BTreeMap::new(),
         })
     }
 
     pub(crate) fn tonemap(&self) -> Pipeline {
         self.tonemap
+    }
+
+    /// Depth-only pipeline for shadow casters.
+    pub(crate) fn shadow(&self) -> Pipeline {
+        self.shadow
     }
 
     /// The forward pipeline for a sample count and face culling.

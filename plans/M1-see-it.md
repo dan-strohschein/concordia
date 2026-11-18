@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (phase 1.6b; 1.0, 1.2a, 1.1, 1.7, 1.2b, 1.3, 1.4, 1.5 and 1.6a done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (phase 1.6c; 1.0, 1.2a, 1.1, 1.7, 1.2b, 1.3, 1.4, 1.5, 1.6a and 1.6b done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -153,6 +153,26 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 - the gate agent demo.
 
 **Installs needing approval:** cmake (1.7a), Slang into `target/` (1.3), the Tauri CLI (1.8), and git-lfs only if D5 changes.
+
+### Phase 1.6b: Cascaded shadows (done)
+- **Cascade fitting (`shadow` module, CPU-tested):**
+  - practical splits (exact formula);
+  - per-cascade bounding spheres (radius rounded to 1/16) snapped to the texel grid in a world-fixed light frame;
+  - light depth range covering every caster's bounds;
+  - tight bounds (all slice corners inside; area ≤ 1.5× the slice's sphere).
+- **GPU:**
+  - one persistent `Depth32Float` map per cascade, imported into the graph; a depth-only pipeline;
+  - filtered PCF (3×3 / 5×5) with constant, normal-offset and slope-scaled bias;
+  - golden `shadow_box_plane_iso` checked by eye; grazing-sun acne under 0.1%.
+- **The shimmer test was rewritten after it passed with stabilization off,** so it couldn't detect shimmer. It now uses coarse maps and a 1-level threshold, and requires 0-ish changes when stabilized and more than 5× that when not: measured 0 vs 923.
+- **Writing the tests caught:** acne from the PCF footprint, fixed with the slope-scaled bias.
+- **Test-scene fixes:** two golden scenes hid their own shadow; the sun was moved, not the checks.
+- **Example:** the stack scene's sun now casts shadows.
+- **Deviations from the plan:**
+  - Separate textures per cascade instead of an atlas (the RHI has no viewport command yet).
+  - Manual compares instead of hardware comparison samplers.
+  - No blending across cascade seams yet.
+  - `normal_bias` is in texels, `depth_bias` in world units.
 
 ### Phase 1.6a: Tonemapping and clustered point/spot lights (done)
 - **Tonemappers:** AgX (default), Khronos PBR Neutral, ACES fitted and Linear, each with a CPU reference (`tonemap::apply`); a GPU test matches them within 1/255. AgX maps mid-grey 0.18 to sRGB 128.

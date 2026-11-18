@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::num::{NonZeroU32, NonZeroU64};
 
 use concordia_assets::{AssetRef, MeshData, TextureData, TextureFormat};
+use concordia_core::math::Vec3;
 use concordia_rhi::{
     Buffer, BufferDesc, BufferUsage, Command, CommandList, Device, Format, MemoryLocation,
     QueueKind, RhiError, SampleCount, Submit, Texture, TextureDesc, TextureUsage,
@@ -146,6 +147,8 @@ pub(crate) struct GpuMesh {
     pub(crate) tangents: u32,
     pub(crate) uvs: u32,
     pub(crate) count: u32,
+    /// Object-space bounds (min, max).
+    pub(crate) aabb: (Vec3, Vec3),
     buffers: [Buffer; 5],
 }
 
@@ -183,6 +186,7 @@ impl GpuMesh {
             tangents: index(tangents)?,
             uvs: index(uvs)?,
             count: mesh.indices.len() as u32,
+            aabb: (Vec3::from_array(mesh.aabb.0), Vec3::from_array(mesh.aabb.1)),
             buffers: [indices, positions, normals, tangents, uvs],
         })
     }

@@ -40,6 +40,10 @@ fn extract_collects_draws_lights_and_cameras_with_world_transforms() {
     world.get_mut::<Transform>(sun).unwrap().rotation =
         Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2);
     world.insert(sun, DirectionalLight::default()).unwrap();
+    assert!(
+        DirectionalLight::default().shadows.is_none(),
+        "shadows are opt-in"
+    );
     let cam = at(&mut world, &mut ids, Vec3::new(0.0, 0.0, 10.0));
     world.insert(cam, Camera::default()).unwrap();
 
