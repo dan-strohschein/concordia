@@ -1,0 +1,13 @@
+/target
+/tests/fixtures/wasm/*/target
+/private/
+.concordia/
+node_modules/
+editor/ui/dist/
+.DS_Store
+*.profraw
+.claude/settings.local.json
+tests/golden/**/*.actual.png
+tests/golden/**/*.diff.png
+*.pending-snap
+.env*

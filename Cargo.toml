@@ -1,0 +1,29 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "tests"]
+exclude = ["tests/fixtures/wasm/*"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.100"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/dan-strohschein/concordia"
+publish = false
+
+[workspace.lints.rust]
+missing_docs = "warn"
+unsafe_op_in_unsafe_fn = "deny"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+undocumented_unsafe_blocks = "warn"
+
+[workspace.dependencies]
+concordia-core = { path = "crates/concordia-core" }
+regex = "1.13"
+toml = "1.2"
+
+[profile.dev.package."*"]
+opt-level = 1
