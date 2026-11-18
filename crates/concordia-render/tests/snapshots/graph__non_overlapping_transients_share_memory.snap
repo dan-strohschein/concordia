@@ -1,0 +1,8 @@
+---
+source: crates/concordia-render/tests/graph.rs
+expression: compiled.memory_plan()
+---
+a: offset 0 size 1024 passes 0..=1
+b: offset 0 size 1024 passes 2..=3
+c: offset 1024 size 1024 passes 1..=2
+heap: 2048 bytes

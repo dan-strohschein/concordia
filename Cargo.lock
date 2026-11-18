@@ -817,6 +817,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "concordia-render"
+version = "0.0.0"
+dependencies = [
+ "concordia-rhi",
+ "insta",
+ "proptest",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "concordia-rhi"
 version = "0.0.0"
 dependencies = [

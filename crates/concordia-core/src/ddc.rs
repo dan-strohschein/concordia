@@ -112,12 +112,7 @@ impl Ddc {
 
     fn write_temp(&self, key: &DdcKey, bytes: &[u8]) -> Result<PathBuf, DdcError> {
         let path = self.path(key);
-        let dir = path.parent().unwrap_or(&self.root);
-        std::fs::create_dir_all(dir).map_err(|e| io(dir, e))?;
-        static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let tmp = dir.join(format!(".{key}.{}-{n}.tmp", std::process::id()));
-        std::fs::write(&tmp, bytes).map_err(|e| io(&tmp, e))?;
-        Ok(tmp)
+        crate::fs::write_temp_beside(&path, bytes, crate::fs::Visibility::Default)
+            .map_err(|e| io(&path, e))
     }
 }
