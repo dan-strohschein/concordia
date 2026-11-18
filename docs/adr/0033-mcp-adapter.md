@@ -16,6 +16,7 @@ The MCP server is how a subscription agent harness (Claude Code) drives the engi
 - `component` params are free strings (not an enum of registered names) so that tool schemas stay identical to the generated params schemas; errors and `schema_get` provide the names.
 
 ## Consequences
+`rmcp` 3.11 requires `chrono`, which RustSec marks unmaintained (RUSTSEC-2026-0543; not a vulnerability). `deny.toml` ignores exactly that advisory, with a comment; every rmcp upgrade re-checks it, and the entry is removed as soon as rmcp drops `chrono`. Evaluated 2026-11-17: pmcp 2.23 and turbomcp 3.6 also depend on `chrono`; `rust-mcp-sdk` 2.0 (server, client and stdio features) passes the advisory check with 84 crates against rmcp's 149, but has far less use and slower releases. It is the fallback if rmcp keeps `chrono` or falls behind the spec.
 An rmcp major is a two-file change caught by the gate. The tool list stays under the 12k-token budget (tested). Remote attach to a running `concordia headless` is deferred (M1).
 
 ## Alternatives considered

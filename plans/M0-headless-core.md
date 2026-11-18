@@ -1,5 +1,5 @@
 # M0: Headless Core
-Status: In progress (phase 0.7 nearly done: repo-root `.mcp.json` and the chrono advisory await the author; phases 0.0–0.6 done 2026-11-17; layer-1 gate green locally) · Depends on: M-1 · Detail level: Ready to execute · Estimated effort: ~9–11 weeks (author + agents), 8 phases
+Status: In progress (phase 0.8; phases 0.0–0.7 done 2026-11-17 except the `claude mcp list` check, pending the author's approval of the project server; layer-1 gate green locally) · Depends on: M-1 · Detail level: Ready to execute · Estimated effort: ~9–11 weeks (author + agents), 8 phases
 
 ## Goal & context
 
@@ -669,7 +669,7 @@ Every crate's `AGENTS.md` has these headings: **Purpose** (2–3 sentences), **P
   - API additions (test-first): `Engine::scene_text()` / `EngineHandle::scene_text()` (shared with `scene.save`) and a "scene opened" log record.
   - `concordia` CLI: `new`, `headless [--ws --port]`, `mcp`, `schema [NAME|--method M|--out DIR]`, `fmt [--check] [PATHS]`; exit codes 0/1/2. `concordia.toml` is written but not yet read by any command (M0).
   - `examples/m0-sandbox` is hand-written (a generated `.mcp.json` would contain an absolute home path, which the hygiene test forbids in tracked files); `tools/mcp/concordia-mcp.sh` always runs `cargo build -q` (to stderr) so the session uses the current code.
-  - rmcp pulls `chrono`, flagged unmaintained by RUSTSEC-2026-0543 (not a vulnerability; required by rmcp and its schemars dependency).
+  - rmcp pulls `chrono`, flagged unmaintained by RUSTSEC-2026-0543 (not a vulnerability; required by rmcp and its schemars dependency). Author decision: stay on rmcp with a scoped `deny.toml` ignore, re-checked at every rmcp upgrade; `rust-mcp-sdk` is the evaluated fallback (ADR-0033).
   - Extra tests: `unknown_tool_is_a_protocol_error`, `unknown_resources_are_not_found`, `concordia_schema_out_writes_one_sorted_file_per_type`, `mcp_subcommand_serves_mcp`, `fmt_reports_parse_errors_with_position`, `engine_exposes_current_scene_text_without_saving`.
 - **Done criteria:** all tests green; `claude mcp list` (run manually in this repo) shows `concordia` connected; `AGENTS.md` for both crates.
 

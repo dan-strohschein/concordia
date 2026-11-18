@@ -22,7 +22,7 @@ The MCP server (`concordia-mcp`, also `concordia mcp`): a thin rmcp adapter that
 
 ## Common tasks
 - **A new API method:** nothing to do here; it appears as a tool automatically. Update the M0 gate's expected tool count if it is part of M0.
-- **Upgrade rmcp:** bump the exact pin in the root `Cargo.toml`; fix compile errors in `src/tools.rs`, `src/resources.rs` and `tests/src/mcp_client.rs`; run `cargo nextest run -p concordia-mcp` and `just gate M0`; record notable protocol changes in ADR-0033.
+- **Upgrade rmcp:** bump the exact pin in the root `Cargo.toml`; fix compile errors in `src/tools.rs`, `src/resources.rs` and `tests/src/mcp_client.rs`; run `cargo nextest run -p concordia-mcp` and `just gate M0`; record notable protocol changes in ADR-0033; run `cargo tree -i chrono` and remove the RUSTSEC-2026-0543 ignore in `deny.toml` if chrono is gone.
 - **Add a resource:** list it in `resources::list` (or `templates`), serve it in `resources::read`, add a test in `tests/resources.rs`.
 
 ## Don'ts
