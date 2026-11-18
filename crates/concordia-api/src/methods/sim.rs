@@ -2,9 +2,9 @@
 
 use concordia_core::rng::SimRng;
 use concordia_core::time::TickRate;
-use concordia_ecs::{SimClock, SimLoop};
 use concordia_reflect::Reflect;
 use concordia_scene::builtin::headless_schedule;
+use concordia_terra::{SimClock, SimLoop};
 use serde::{Deserialize, Serialize};
 
 use super::Empty;

@@ -4,8 +4,8 @@ use std::collections::BTreeMap;
 
 use concordia_command::{Actor, EditOp};
 use concordia_core::id::{EntityId, IdSource};
-use concordia_ecs::component_from_json;
 use concordia_reflect::Reflect;
+use concordia_terra::component_from_json;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -90,7 +90,7 @@ impl Method for EntitySpawn {
         for (name, value) in &p.components {
             require_component(engine, name)?;
             component_from_json(&engine.registry, name, value.clone()).map_err(|e| match e {
-                concordia_ecs::EcsError::Reflect(r) => {
+                concordia_terra::EcsError::Reflect(r) => {
                     map::value_invalid(name, &r, &engine.registry)
                         .at(format!("/components/{name}{}", pointer(&r)))
                 }

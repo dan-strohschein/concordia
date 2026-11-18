@@ -16,7 +16,7 @@ The top-level design is in [`../docs/design.md`](../docs/design.md). This folder
 | M4 Unreal-class visuals | [M4-unreal-class-visuals.md](M4-unreal-class-visuals.md) | M1 (render), M2 (graphs) | Needs refinement after M3 | Planned |
 | M5 Bring your game | [M5-bring-your-game.md](M5-bring-your-game.md) | M2 (importer framework) | Needs refinement after M4 | Planned |
 | M6 Evolve (plugins) | [M6-evolve-plugins.md](M6-evolve-plugins.md) | M2 (parallel with M3) | Needs refinement after M2 | Planned |
-| M7 Terra (large-scale simulation) | [M7-terra.md](M7-terra.md) | M0 (Phase 7.0 rename, before M1); M1, M2, M4 (simulation features) | Needs refinement after M4 | Planned |
+| M7 Terra (large-scale simulation) | [M7-terra.md](M7-terra.md) | M0 (Phase 7.0 rename, done); M1, M2, M4 (simulation features) | Needs refinement after M4 | In progress (Phase 7.0 done; rest after M4) |
 | Later | [later-backlog.md](later-backlog.md) | none | Backlog | n/a |
 
 Status values: `Planned` → `Refined` → `In progress (phase N)` → `Gate passed`.
@@ -78,7 +78,7 @@ examples/             # small sample projects used by tests and docs
 |---|---|---|
 | `concordia-core` | math (glam re-export), ids (`EntityId` UUIDv7), time, tracing/logging, job system | M0 |
 | `concordia-reflect` (+ `concordia-reflect-derive`) | type registry, `#[derive(Reflect)]`, JSON Schema export, doc strings | M0 |
-| `concordia-ecs` → **`concordia-terra`** | own archetype ECS, queries, systems, schedules, fixed-step deterministic loop; renamed Terra right after M0 merges (ADR-0010) and grown into large-scale simulation in M7 | M0 |
+| `concordia-terra` | **Terra**, the entity system (ADR-0010): own archetype ECS, queries, systems, schedules, fixed-step deterministic loop; renamed from `concordia-ecs` in M7 Phase 7.0 and grown into large-scale simulation in M7 | M0 |
 | `concordia-command` | command log, transactions, undo/redo, `Actor` attribution | M0 |
 | `concordia-scene` | text scene/prefab format: read, write, canonical formatting, stable IDs | M0 |
 | `concordia-api` | Engine API: typed request/response types, JSON-RPC 2.0 server (stdio + WebSocket), sessions | M0 |
@@ -203,6 +203,6 @@ To avoid collisions, each milestone draws ADR numbers from its own block. Use th
 ## Terra and Evolve additions (2026-11-17)
 - Author decisions: the entity system is **Terra** (ADR-0010): `concordia-ecs` is renamed `concordia-terra` right after the M0 PR merges (M7 Phase 7.0) and grows Mass-style features in M7. The plugin system is **Evolve** (ADR-0011), milestone M6, native and WASM plugins from local paths and pinned git sources.
 - Numbering: M6 and M7 are new milestone numbers, not schedule positions. M6 starts after M2 (in parallel with M3); M7's simulation features start after M4. Existing milestones keep their numbers.
-- After the rename, the consistency pass replaces `concordia-ecs` with `concordia-terra` in the M1–M5 plans.
+- Done 2026-11-18 (M7 Phase 7.0): the crate is `concordia-terra`, and the M1–M5 plans, design doc and crate docs use the new name; only ADRs and plan history mention `concordia-ecs`.
 - Actor grammar gains `plugin:<id>` in M6 (ADR-0011).
 - The M3 `concordia-gen` provider seam and the later-backlog "optional plugin crate" items become Evolve plugins once M6 lands.

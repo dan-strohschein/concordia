@@ -6,9 +6,9 @@ use concordia_core::id::DeterministicIdGen;
 use concordia_core::jobs::JobSystem;
 use concordia_core::math::{Quat, Vec3};
 use concordia_core::time::TickRate;
-use concordia_ecs::{SimLoop, World};
 use concordia_reflect::TypeRegistry;
 use concordia_scene::builtin::{self, Transform, Velocity};
+use concordia_terra::{SimLoop, World};
 
 #[test]
 fn builtins_register_with_docs_and_schemas() {
@@ -23,7 +23,7 @@ fn builtins_register_with_docs_and_schemas() {
         assert!(
             reg.get_by_name(name)
                 .unwrap()
-                .data::<concordia_ecs::ReflectComponent>()
+                .data::<concordia_terra::ReflectComponent>()
                 .is_some()
         );
     }

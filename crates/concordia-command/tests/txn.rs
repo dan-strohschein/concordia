@@ -4,7 +4,7 @@ mod common;
 
 use common::{Fixture, author, pos_x, set_pos, spawn};
 use concordia_command::{CommandError, EditOp, EntryKind};
-use concordia_ecs::EcsError;
+use concordia_terra::EcsError;
 
 #[test]
 fn committed_txn_records_actor_label_and_ops() {

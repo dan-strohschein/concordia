@@ -4,8 +4,8 @@ use std::collections::{BTreeMap, HashSet};
 
 use concordia_core::id::EntityId;
 use concordia_core::suggest::did_you_mean;
-use concordia_ecs::ReflectComponent;
 use concordia_reflect::{DynReflect, ReflectError, TypeRegistration, TypeRegistry};
+use concordia_terra::ReflectComponent;
 
 use crate::convert::{ConvertError, Converter, found};
 use crate::error::SceneError;

@@ -528,3 +528,26 @@ fn claude_settings_sets_no_api_key_env() {
         );
     }
 }
+
+/// Files that may still mention the pre-Terra crate name (history: ADRs and plans that record it).
+const OLD_ECS_NAME_ALLOWED: [&str; 3] = [
+    "plans/M0-headless-core.md",
+    "plans/M7-terra.md",
+    "plans/README.md",
+];
+
+#[test]
+fn ecs_is_called_terra_everywhere() {
+    let old = Regex::new(r"concordia[-_]ecs").unwrap();
+    let offenders: Vec<String> = tracked_files()
+        .into_iter()
+        .filter(|f| !f.starts_with("docs/adr/") && !OLD_ECS_NAME_ALLOWED.contains(&f.as_str()))
+        .filter(|f| {
+            std::fs::read_to_string(repo_root().join(f)).is_ok_and(|text| old.is_match(&text))
+        })
+        .collect();
+    assert!(
+        offenders.is_empty(),
+        "rename concordia-terra to concordia-terra in: {offenders:?}"
+    );
+}

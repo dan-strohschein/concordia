@@ -3,8 +3,8 @@
 use std::collections::BTreeMap;
 
 use concordia_core::id::EntityId;
-use concordia_ecs::{DynamicQuery, World};
 use concordia_reflect::Reflect;
+use concordia_terra::{DynamicQuery, World};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 

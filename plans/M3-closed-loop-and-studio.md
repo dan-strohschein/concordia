@@ -37,7 +37,7 @@ The gate proves it end to end with a real `claude -p` run on the user's subscrip
 ## Dependencies (what must already exist, from which milestone)
 | Need | From | Used by |
 |---|---|---|
-| Fixed-step deterministic loop; world-state hashing; thread-count-independent determinism tests | M0 (`concordia-ecs`) | 3.1 |
+| Fixed-step deterministic loop; world-state hashing; thread-count-independent determinism tests | M0 (`concordia-terra`) | 3.1 |
 | Reflection registry and JSON Schema export (MCP schemas, assertion type checking, field diffs) | M0 (`concordia-reflect`) | 3.1, 3.2, 3.3 |
 | Command log with `Actor`, transactions, persisted log, `log.tail` | M0 (`concordia-command`) | 3.3, 3.5, 3.9 |
 | Engine API JSON-RPC server, sessions; `concordia-mcp` stdio server registered via `.mcp.json` | M0 | 3.2–3.5 |

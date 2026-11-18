@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 
 use concordia_command::{Actor, Author, CommandLog, EditOp};
 use concordia_core::id::{DeterministicIdGen, EntityId, IdSource};
-use concordia_ecs::{World, register_component};
 use concordia_reflect::{Reflect, TypeRegistry};
+use concordia_terra::{World, register_component};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -49,7 +49,7 @@ impl Fixture {
         self.ids.next_id().unwrap()
     }
 
-    pub fn hash(&self) -> concordia_ecs::WorldHash {
+    pub fn hash(&self) -> concordia_terra::WorldHash {
         self.world.state_hash().unwrap()
     }
 

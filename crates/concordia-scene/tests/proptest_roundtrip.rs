@@ -7,9 +7,9 @@ use std::collections::BTreeMap;
 use common::{Gadget, Inner, Mode, registry};
 use concordia_core::id::{DeterministicIdGen, IdSource};
 use concordia_core::math::{Quat, Vec2, Vec3};
-use concordia_ecs::World;
 use concordia_scene::builtin::{Name, Transform};
 use concordia_scene::{SceneMeta, read_scene, snapshot_world, write_scene};
+use concordia_terra::World;
 use proptest::prelude::*;
 
 fn f32s() -> impl Strategy<Value = f32> {

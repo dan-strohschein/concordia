@@ -3,8 +3,8 @@
 use std::collections::BTreeMap;
 
 use concordia_core::id::EntityId;
-use concordia_ecs::{EcsError, World, component_from_json};
 use concordia_reflect::TypeRegistry;
+use concordia_terra::{EcsError, World, component_from_json};
 use serde_json::Value;
 
 use crate::op::{AppliedOp, EditOp};

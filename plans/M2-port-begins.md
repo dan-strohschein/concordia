@@ -114,7 +114,7 @@ These facts shape every phase below.
 - `tests/gates/m2_port_begins.rs`, `docs/guides/porting-from-godot.md`.
 
 **Engine repo (touched)**
-- `concordia-ecs` (events/timers if M0 lacks them; `Sim` vs `Presentation` system sets; `SimClock::time_scale`), `concordia-physics` (character controller over Jolt `CharacterVirtual`, sensor enter/exit events, ray pick), `concordia-render` (GPU skinning, lighting-model extension point for translated `light()`, per-instance material params, UI pass, world-space text/billboards), `concordia-shaders` (compiling translated modules), `concordia-assets` (FBX, audio, anim graph, data docs, sidecars), `concordia-input` (pointer→world pick helper, imported bindings), `concordia-api`/`concordia-mcp`/`concordia-cli` (new methods), `justfile` (`gate M2`, `corpus`, `play-slice`), `deny.toml` (new licenses).
+- `concordia-terra` (events/timers if M0 lacks them; `Sim` vs `Presentation` system sets; `SimClock::time_scale`), `concordia-physics` (character controller over Jolt `CharacterVirtual`, sensor enter/exit events, ray pick), `concordia-render` (GPU skinning, lighting-model extension point for translated `light()`, per-instance material params, UI pass, world-space text/billboards), `concordia-shaders` (compiling translated modules), `concordia-assets` (FBX, audio, anim graph, data docs, sidecars), `concordia-input` (pointer→world pick helper, imported bindings), `concordia-api`/`concordia-mcp`/`concordia-cli` (new methods), `justfile` (`gate M2`, `corpus`, `play-slice`), `deny.toml` (new licenses).
 
 **Port project (outside the engine repo, private: it contains the game's assets)** at `$CONCORDIA_PORT_PROJECT`:
 ```
@@ -458,7 +458,7 @@ which runs `cargo nextest run --test m2_port_begins` (`tests/gates/m2_port_begin
 - Should the port project be its own private git repository (planned) or a private branch of the game repo?
 - Do probe scripts run with Godot's `--script` from outside the project reliably for everything we need (terrain sampling is pure; luma harnesses need a window)? Fallback: capture probe values once by hand and commit them to the port project.
 - Should the reference port's grid-to-polygon navmesh builder be ported verbatim as an alternative nav source, if Recast reachability ever disagrees with the grid oracle?
-- Does M0 already provide typed ECS events and timers, or does M2 add them to `concordia-ecs`?
+- Does M0 already provide typed ECS events and timers, or does M2 add them to `concordia-terra`?
 - Is `cosmic-text` the right text stack for the shipped game UI, or is a smaller atlas-only rasterizer enough for M2?
 
 ## ADRs to write

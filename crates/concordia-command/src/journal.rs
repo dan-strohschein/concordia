@@ -5,7 +5,7 @@ use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 use concordia_core::id::{SessionId, TxnId};
-use concordia_ecs::WorldHash;
+use concordia_terra::WorldHash;
 use serde::{Deserialize, Serialize};
 
 use crate::actor::Actor;

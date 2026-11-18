@@ -12,7 +12,7 @@ use tracing_subscriber::layer::{Context, SubscriberExt};
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer};
 
-/// Env var holding the tracing filter (e.g. `info,concordia_ecs=debug`).
+/// Env var holding the tracing filter (e.g. `info,concordia_terra=debug`).
 pub const LOG_ENV: &str = "CONCORDIA_LOG";
 
 /// Errors from logging setup.

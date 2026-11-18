@@ -4,7 +4,7 @@
 //! ```
 //! use concordia_command::{Actor, Author, CommandLog, EditOp};
 //! use concordia_core::id::{DeterministicIdGen, IdSource};
-//! use concordia_ecs::World;
+//! use concordia_terra::World;
 //! use concordia_reflect::TypeRegistry;
 //!
 //! let (mut world, registry, mut log) = (World::new(), TypeRegistry::new(), CommandLog::new());

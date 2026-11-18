@@ -1,7 +1,7 @@
 //! Command errors.
 
 use concordia_core::id::{IdError, TxnId};
-use concordia_ecs::{EcsError, WorldHash};
+use concordia_terra::{EcsError, WorldHash};
 
 use crate::actor::Actor;
 use crate::journal::JournalError;

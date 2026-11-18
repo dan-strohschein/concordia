@@ -7,7 +7,7 @@ use concordia_command::{
     CommandError, CommandLog, EditOp, History, Journal, JournalConfig, replay_journal,
 };
 
-fn recorded_session(path: &std::path::Path) -> (Fixture, concordia_ecs::World) {
+fn recorded_session(path: &std::path::Path) -> (Fixture, concordia_terra::World) {
     let mut fx = Fixture::new();
     let base = fx.world.clone();
     let (journal, _) = Journal::open(path, JournalConfig::default()).unwrap();
@@ -78,8 +78,10 @@ fn history_reloads_when_scene_hash_matches() {
         "seq continues after the journal"
     );
 
-    let (mut stale, history) =
-        CommandLog::resume(&entries, concordia_ecs::World::new().state_hash().unwrap());
+    let (mut stale, history) = CommandLog::resume(
+        &entries,
+        concordia_terra::World::new().state_hash().unwrap(),
+    );
     assert!(matches!(history, History::Stale { .. }));
     let err = stale
         .undo(&mut world, &fx.reg, author("agent:z"))

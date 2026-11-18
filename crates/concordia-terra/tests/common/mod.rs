@@ -2,8 +2,8 @@
 #![allow(dead_code, missing_docs)]
 
 use concordia_core::id::{DeterministicIdGen, EntityId, IdSource};
-use concordia_ecs::{World, register_component};
 use concordia_reflect::{Reflect, TypeRegistry};
+use concordia_terra::{World, register_component};
 use serde::{Deserialize, Serialize};
 
 /// Test component A.

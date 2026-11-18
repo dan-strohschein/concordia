@@ -6,8 +6,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use common::{A, Aligned, B, C, Marker, ids};
 use concordia_core::id::DeterministicIdGen;
-use concordia_ecs::{EcsError, World};
 use concordia_reflect::Reflect;
+use concordia_terra::{EcsError, World};
 use serde::{Deserialize, Serialize};
 
 #[test]

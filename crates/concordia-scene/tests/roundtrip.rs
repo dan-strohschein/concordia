@@ -5,9 +5,9 @@ mod common;
 use common::{canonical_fixtures, fixture, registry};
 use concordia_core::id::{DeterministicIdGen, IdSource};
 use concordia_core::math::{Quat, Vec3};
-use concordia_ecs::World;
 use concordia_scene::builtin::{Name, Parent, Transform, Velocity};
 use concordia_scene::{SceneMeta, load_into_world, read_scene, snapshot_world, write_scene};
+use concordia_terra::World;
 
 #[test]
 fn load_then_save_is_byte_identical_for_canonical_fixtures() {
