@@ -34,9 +34,15 @@ fn tool_name(method: &str) -> String {
     method.replace('.', "_")
 }
 
-/// The engine's methods exposed as tools (`session.open` is handled by the adapter).
+/// The engine's methods exposed as tools: `session.open` is handled by the adapter, and
+/// `events.*` need a push channel that MCP tool calls do not have.
 fn tool_methods(methods: &MethodRegistry) -> impl Iterator<Item = &MethodInfo> {
-    methods.iter().filter(|m| m.name != "session.open")
+    methods.iter().filter(|m| is_tool(m.name))
+}
+
+/// True for methods MCP exposes as tools.
+pub fn is_tool(method: &str) -> bool {
+    method != "session.open" && !method.starts_with("events.")
 }
 
 fn tool(method: &MethodInfo) -> Tool {

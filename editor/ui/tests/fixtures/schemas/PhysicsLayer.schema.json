@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A collision layer, 0..=15 (validated by [`PhysicsLayer::new`] and by the runtime).",
+  "maximum": 255,
+  "minimum": 0,
+  "title": "PhysicsLayer",
+  "type": "integer",
+  "x-concordia-type": "PhysicsLayer"
+}

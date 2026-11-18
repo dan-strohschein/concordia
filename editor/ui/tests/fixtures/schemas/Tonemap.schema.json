@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Maps HDR scene color to the display.",
+  "oneOf": [
+    {
+      "const": "AgX",
+      "description": "AgX: filmic, hue-stable highlight roll-off (Godot 4.4+ offers the same curve)."
+    },
+    {
+      "const": "KhronosPbrNeutral",
+      "description": "Khronos PBR Neutral: keeps base colors faithful, compresses only highlights."
+    },
+    {
+      "const": "AcesFitted",
+      "description": "ACES fitted curve (Narkowicz): punchy contrast."
+    },
+    {
+      "const": "Linear",
+      "description": "Clamp to [0, 1] (exact colors for tests and unlit UI-like scenes)."
+    }
+  ],
+  "title": "Tonemap",
+  "x-concordia-type": "Tonemap"
+}

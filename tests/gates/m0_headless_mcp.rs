@@ -57,7 +57,7 @@ async fn check_tools_and_schemas(client: &McpClient) {
     names.sort();
     let mut expected: Vec<String> = methods()
         .names()
-        .filter(|m| *m != "session.open")
+        .filter(|m| concordia_mcp::is_tool(m))
         .map(|m| m.replace('.', "_"))
         .collect();
     expected.sort();

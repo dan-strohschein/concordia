@@ -29,6 +29,7 @@ pub struct ContainerAttrs {
 pub struct FieldAttrs {
     pub default: Option<Expr>,
     pub range: Option<(f64, f64)>,
+    pub widget: Option<syn::LitStr>,
     pub skip: bool,
     pub serde_optional: bool,
 }
@@ -120,9 +121,12 @@ fn parse_field_reflect(meta: &ParseNestedMeta, out: &mut FieldAttrs) -> syn::Res
     } else if meta.path.is_ident("range") {
         out.range = Some(parse_range(meta)?);
         Ok(())
+    } else if meta.path.is_ident("widget") {
+        out.widget = Some(meta.value()?.parse()?);
+        Ok(())
     } else {
         Err(meta.error(
-            "unknown reflect attribute; expected `default = ...` or `range(min = .., max = ..)`",
+            "unknown reflect attribute; expected `default = ...`, `range(min = .., max = ..)` or `widget = \"..\"`",
         ))
     }
 }

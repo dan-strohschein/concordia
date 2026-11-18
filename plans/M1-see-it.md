@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (phase 1.9; 1.0, 1.2a, 1.1, 1.7, 1.2b, 1.3, 1.4, 1.5, 1.6 and 1.8 done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (phase 1.9b; 1.0, 1.2a, 1.1, 1.7, 1.2b, 1.3, 1.4, 1.5, 1.6, 1.8 and 1.9a done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -153,6 +153,38 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 - the gate agent demo.
 
 **Installs needing approval:** cmake (1.7a), Slang into `target/` (1.3), the Tauri CLI (1.8), and git-lfs only if D5 changes.
+
+### Phase 1.9a: Events and editor UI (done)
+- **`events.subscribe` / `events.unsubscribe`** (core API; 27 methods). M0 had no change feed.
+  - `edit` events carry the actor, label and entities per commit, undo or redo; `scene` covers opened, new and saved; `sim` covers `sim.*`.
+  - Transports register per-session sinks; WebSocket pushes `events.event` notifications with a 1,024-event queue per connection.
+  - MCP excludes `events.*` via the shared `concordia_mcp::is_tool`, so M0's 24 tools are unchanged.
+- **Widget hints:** `x-concordia-widget` comes from types (`Vec3` → `vec3`, `Quat` → `quat`) and from `#[reflect(widget = "color")]` on colour fields.
+- **`concordia schema --project <dir> --out`:** module types plus `methods/<name>.{params,result}.schema.json`. `just editor-schemas` generates committed TypeScript types and test fixtures; CI checks drift.
+- **`editor/ui`** (React 19, TypeScript 5.9 strict, Vite 8, Vitest 5.1.0, Playwright 1.64.1; exact pins at least two weeks old, installed with `--ignore-scripts`):
+  - `EngineClient`;
+  - `EditorSession` (`human:local`);
+  - a schema-driven Inspector (number, bool, string, enum, vec3, quat as Euler YXZ, colour with sRGB picker, asset, entity, struct, option, JSON fallback; Godot-style labels; one commit per gesture);
+  - the Outliner (tree from `Parent`, stable sort, F2 rename, Delete);
+  - the streamed Viewport (approach D) with a Select/Move strip;
+  - the Output panel (`log.tail`);
+  - run controls and Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z, Cmd/Ctrl+S.
+  The layout follows Godot (`docs/design/editor-ux.md`).
+- **Tests:** 17 Vitest tests, and 6 Playwright browser-mode e2e tests against `concordia headless --ws` on a temporary copy of the example:
+  - outliner;
+  - inspector;
+  - an edit logged as `human:local`;
+  - undo shortcut;
+  - an agent edit live in under 500 ms;
+  - step changes the viewport image.
+- **CI:** `.github/workflows/editor.yml`, with a UI job (Ubuntu: lint, unit tests, schema drift) and an e2e job (macos-26 GPU).
+- **Moved to 1.9b:**
+  - the native shell (`editor/src-tauri`: in-process engine, token-protected API, Metal viewport with display-synced presentation per ADR-0043);
+  - viewport camera controls and an editor camera;
+  - click-to-select picking (`viewport_click_selects_box_under_cursor`);
+  - the translate gizmo;
+  - `api_server_rejects_connections_without_token`;
+  - the native smoke test.
 
 ### Phase 1.8: Editor viewport spike (done)
 - **The spike** (Tauri 2.12.7, CLI 2.12.6 as a project-local devDependency, React 19, Vite 8) tried approach A (`NSView` + `CAMetalLayer` above the webview) and C (a docked child window). Both passed `spike_viewport_tracks_slot_rect_on_resize` exactly at 2× scale, and every manual check by the author: live resize, panel changes, move, displays, full screen, Stage Manager, mouse focus.
@@ -783,6 +815,7 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
 ---
 
 ### Phase 1.9: Minimal editor
+- **UX direction (author, 2026-11-18):** layout, widgets, gizmos and docking follow Godot 4.6; anything Godot lacks is marked *needs visual design* and kept basic; the look stays basic. See `docs/design/editor-ux.md`.
 - **Objective:** A Tauri v2 editor that is purely an Engine API client: outliner, schema-driven inspector generated from `concordia-reflect`, native viewport (approach from 1.8), log panel, undo/redo, play/pause/step.
 - **Deliverables**
   - `editor/src-tauri`: hosts an in-process engine (`EngineHost`) and starts the Engine API WebSocket server on `127.0.0.1:<random port>` with a per-launch bearer token; injects port and token into the webview. Hosts the native viewport (or the streamed fallback). Contains **no editing logic**; all edits are Engine API calls from the UI with `actor: "human:local"`.

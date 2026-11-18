@@ -160,6 +160,9 @@ impl Ctx {
             schema.insert("minimum".into(), json!(range.min));
             schema.insert("maximum".into(), json!(range.max));
         }
+        if let Some(widget) = field.widget.or(field.ty.info().widget) {
+            schema.insert("x-concordia-widget".into(), json!(widget));
+        }
         schema
     }
 

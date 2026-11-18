@@ -25,7 +25,7 @@ async fn tool_list_is_one_to_one_with_api_methods() {
         .collect();
     let expected: Vec<String> = methods()
         .names()
-        .filter(|m| *m != "session.open")
+        .filter(|m| concordia_mcp::is_tool(m))
         .map(tool_name)
         .collect();
     assert_eq!(names, expected);

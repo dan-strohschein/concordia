@@ -4,8 +4,12 @@ use concordia_api::{methods, params_schema, result_schema};
 use serde_json::json;
 
 #[test]
-fn registry_has_the_25_m0_methods() {
-    assert_eq!(methods().iter().count(), 25);
+fn registry_has_the_25_m0_methods_and_the_m1_event_methods() {
+    assert_eq!(
+        methods().iter().count(),
+        27,
+        "25 from M0 plus events.subscribe/unsubscribe (M1 phase 1.9)"
+    );
     for name in [
         "session.open",
         "scene.new",
@@ -15,6 +19,8 @@ fn registry_has_the_25_m0_methods() {
         "txn.history",
         "sim.step",
         "log.tail",
+        "events.subscribe",
+        "events.unsubscribe",
     ] {
         assert!(methods().get(name).is_some(), "{name}");
     }

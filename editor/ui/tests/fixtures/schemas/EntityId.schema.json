@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Stable entity id (UUID string).",
+  "format": "uuid",
+  "title": "EntityId",
+  "type": "string",
+  "x-concordia-type": "EntityId"
+}

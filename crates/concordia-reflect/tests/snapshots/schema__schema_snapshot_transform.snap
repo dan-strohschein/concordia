@@ -14,7 +14,8 @@ expression: "schema_for(Transform::type_info())"
       },
       "maxItems": 4,
       "minItems": 4,
-      "type": "array"
+      "type": "array",
+      "x-concordia-widget": "quat"
     },
     "scale": {
       "description": "Per-axis scale.\n\n3D vector as [x, y, z].",
@@ -23,7 +24,8 @@ expression: "schema_for(Transform::type_info())"
       },
       "maxItems": 3,
       "minItems": 3,
-      "type": "array"
+      "type": "array",
+      "x-concordia-widget": "vec3"
     },
     "translation": {
       "description": "Position.\n\n3D vector as [x, y, z].",
@@ -32,7 +34,8 @@ expression: "schema_for(Transform::type_info())"
       },
       "maxItems": 3,
       "minItems": 3,
-      "type": "array"
+      "type": "array",
+      "x-concordia-widget": "vec3"
     }
   },
   "required": [

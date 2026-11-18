@@ -22,6 +22,7 @@
 
 mod engine;
 mod error;
+mod events;
 mod handle;
 mod image;
 mod map;
@@ -34,6 +35,7 @@ pub mod transport;
 
 pub use engine::{Engine, EngineConfig};
 pub use error::{ApiError, ApiErrorKind, ErrorData};
+pub use events::{EventSink, Topic};
 pub use handle::EngineHandle;
 pub use image::{EncodedImage, image_fields};
 pub use method::{

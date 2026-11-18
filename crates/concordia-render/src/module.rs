@@ -150,7 +150,7 @@ impl Method for CaptureScreenshot {
             .as_ref()
             .map(ToString::to_string)
             .unwrap_or_default();
-        tracing::info!(target: "concordia::render", actor, width = p.width, height = p.height, sim_tick, frame, "captured screenshot");
+        tracing::debug!(target: "concordia::render", actor, width = p.width, height = p.height, sim_tick, frame, "captured screenshot");
         Ok(CaptureScreenshotResult {
             image: EncodedImage::png(&encode_png(&image)?),
             width: image.width,

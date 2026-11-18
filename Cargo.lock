@@ -939,6 +939,7 @@ version = "0.0.0"
 dependencies = [
  "concordia-api",
  "concordia-core",
+ "concordia-mcp",
  "concordia-reflect",
  "concordia-scene",
  "insta",

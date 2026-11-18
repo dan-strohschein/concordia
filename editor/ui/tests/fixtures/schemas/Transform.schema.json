@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Local transform relative to `Parent` (or to the world if there is no parent).",
+  "properties": {
+    "rotation": {
+      "description": "Orientation (unit quaternion).\n\nRotation quaternion as [x, y, z, w]; identity is [0, 0, 0, 1].",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 4,
+      "minItems": 4,
+      "type": "array",
+      "x-concordia-widget": "quat"
+    },
+    "scale": {
+      "description": "Per-axis scale factor.\n\n3D vector as [x, y, z].",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array",
+      "x-concordia-widget": "vec3"
+    },
+    "translation": {
+      "description": "Position in meters.\n\n3D vector as [x, y, z].",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array",
+      "x-concordia-widget": "vec3"
+    }
+  },
+  "required": [
+    "translation",
+    "rotation",
+    "scale"
+  ],
+  "title": "Transform",
+  "type": "object",
+  "x-concordia-type": "Transform"
+}

@@ -15,6 +15,7 @@ use crate::method::MethodRegistry;
 enum Request {
     Open(oneshot::Sender<SessionId>),
     Close(SessionId),
+    Sink(SessionId, crate::events::EventSink),
     SceneText(oneshot::Sender<Result<String, ApiError>>),
     Rpc {
         session: SessionId,
@@ -86,6 +87,7 @@ fn serve(engine: &mut Engine, request: Request) {
             let _ = reply.send(engine.open_session());
         }
         Request::Close(session) => engine.close_session(session),
+        Request::Sink(session, sink) => engine.set_event_sink(session, sink),
         Request::SceneText(reply) => {
             let _ = reply.send(engine.scene_text());
         }
@@ -129,6 +131,11 @@ impl EngineHandle {
     /// Ends a session (aborting its open transaction).
     pub fn close_session(&self, session: SessionId) {
         let _ = self.send(Request::Close(session));
+    }
+
+    /// Lets `session` receive pushed events (see [`Engine::set_event_sink`]).
+    pub fn set_event_sink(&self, session: SessionId, sink: crate::events::EventSink) {
+        let _ = self.send(Request::Sink(session, sink));
     }
 
     /// The open scene as canonical RON (see [`Engine::scene_text`]).

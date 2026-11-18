@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "How the camera projects (reverse-Z for both).",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "Perspective with a vertical field of view in radians.",
+      "properties": {
+        "Perspective": {
+          "additionalProperties": false,
+          "properties": {
+            "far": {
+              "description": "Far plane distance (> near).",
+              "type": "number"
+            },
+            "fov_y": {
+              "description": "Vertical field of view (radians).",
+              "type": "number"
+            },
+            "near": {
+              "description": "Near plane distance (> 0).",
+              "type": "number"
+            }
+          },
+          "required": [
+            "fov_y",
+            "near",
+            "far"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "Perspective"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Orthographic; `height` world units fill the image vertically.",
+      "properties": {
+        "Orthographic": {
+          "additionalProperties": false,
+          "properties": {
+            "far": {
+              "description": "Far plane distance (> near).",
+              "type": "number"
+            },
+            "height": {
+              "description": "Visible height in world units.",
+              "type": "number"
+            },
+            "near": {
+              "description": "Near plane distance (≥ 0).",
+              "type": "number"
+            }
+          },
+          "required": [
+            "height",
+            "near",
+            "far"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "Orthographic"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "Projection",
+  "x-concordia-type": "Projection"
+}

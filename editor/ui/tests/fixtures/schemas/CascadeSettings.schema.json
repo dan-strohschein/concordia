@@ -1,0 +1,71 @@
+{
+  "$defs": {
+    "PcfKernel": {
+      "description": "Percentage-closer filter size.",
+      "oneOf": [
+        {
+          "const": "X3",
+          "description": "3×3 texels (tent-filtered)."
+        },
+        {
+          "const": "X5",
+          "description": "5×5 texels (softer)."
+        }
+      ],
+      "title": "PcfKernel",
+      "x-concordia-type": "PcfKernel"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Shadow settings of a directional light.",
+  "properties": {
+    "cascades": {
+      "description": "Cascades (1..=4).",
+      "maximum": 4.0,
+      "minimum": 1.0,
+      "type": "integer"
+    },
+    "depth_bias": {
+      "description": "Constant depth bias in world units.",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "max_distance": {
+      "description": "Shadows end this far from the camera (view distance).",
+      "maximum": 10000.0,
+      "minimum": 0.1,
+      "type": "number"
+    },
+    "normal_bias": {
+      "description": "Receiver offset along the normal, in shadow texels.",
+      "maximum": 10.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "pcf": {
+      "$ref": "#/$defs/PcfKernel",
+      "description": "Filter."
+    },
+    "resolution": {
+      "description": "Shadow map size per cascade (texels per side).",
+      "maximum": 8192.0,
+      "minimum": 64.0,
+      "type": "integer"
+    },
+    "split_lambda": {
+      "description": "Blend between logarithmic (1) and uniform (0) splits.",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "stabilize": {
+      "description": "Snap cascades to the texel grid so shadows do not shimmer while the camera moves.",
+      "type": "boolean"
+    }
+  },
+  "title": "CascadeSettings",
+  "type": "object",
+  "x-concordia-type": "CascadeSettings"
+}

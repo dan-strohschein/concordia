@@ -1,0 +1,157 @@
+{
+  "$defs": {
+    "Msaa": {
+      "description": "Multisample anti-aliasing.",
+      "oneOf": [
+        {
+          "const": "Off",
+          "description": "One sample per pixel."
+        },
+        {
+          "const": "X4",
+          "description": "Four samples per pixel."
+        }
+      ],
+      "title": "Msaa",
+      "x-concordia-type": "Msaa"
+    },
+    "Projection": {
+      "description": "How the camera projects (reverse-Z for both).",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Perspective with a vertical field of view in radians.",
+          "properties": {
+            "Perspective": {
+              "additionalProperties": false,
+              "properties": {
+                "far": {
+                  "description": "Far plane distance (> near).",
+                  "type": "number"
+                },
+                "fov_y": {
+                  "description": "Vertical field of view (radians).",
+                  "type": "number"
+                },
+                "near": {
+                  "description": "Near plane distance (> 0).",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "fov_y",
+                "near",
+                "far"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Perspective"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Orthographic; `height` world units fill the image vertically.",
+          "properties": {
+            "Orthographic": {
+              "additionalProperties": false,
+              "properties": {
+                "far": {
+                  "description": "Far plane distance (> near).",
+                  "type": "number"
+                },
+                "height": {
+                  "description": "Visible height in world units.",
+                  "type": "number"
+                },
+                "near": {
+                  "description": "Near plane distance (≥ 0).",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "height",
+                "near",
+                "far"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Orthographic"
+          ],
+          "type": "object"
+        }
+      ],
+      "title": "Projection",
+      "x-concordia-type": "Projection"
+    },
+    "Tonemap": {
+      "description": "Maps HDR scene color to the display.",
+      "oneOf": [
+        {
+          "const": "AgX",
+          "description": "AgX: filmic, hue-stable highlight roll-off (Godot 4.4+ offers the same curve)."
+        },
+        {
+          "const": "KhronosPbrNeutral",
+          "description": "Khronos PBR Neutral: keeps base colors faithful, compresses only highlights."
+        },
+        {
+          "const": "AcesFitted",
+          "description": "ACES fitted curve (Narkowicz): punchy contrast."
+        },
+        {
+          "const": "Linear",
+          "description": "Clamp to [0, 1] (exact colors for tests and unlit UI-like scenes)."
+        }
+      ],
+      "title": "Tonemap",
+      "x-concordia-type": "Tonemap"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A view into the world (the entity's `Transform` places it; it looks down its -Z).",
+  "properties": {
+    "clear": {
+      "description": "Linear clear color (RGBA).",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 4,
+      "minItems": 4,
+      "type": "array",
+      "x-concordia-widget": "color"
+    },
+    "exposure_ev100": {
+      "description": "Exposure as EV100 (physical camera; 15 suits direct sunlight).",
+      "maximum": 30.0,
+      "minimum": -10.0,
+      "type": "number"
+    },
+    "msaa": {
+      "$ref": "#/$defs/Msaa",
+      "description": "Anti-aliasing."
+    },
+    "priority": {
+      "description": "The highest priority camera is the default view.",
+      "maximum": 2147483647,
+      "minimum": -2147483648,
+      "type": "integer"
+    },
+    "projection": {
+      "$ref": "#/$defs/Projection",
+      "description": "Projection."
+    },
+    "tonemap": {
+      "$ref": "#/$defs/Tonemap",
+      "description": "Tone mapping."
+    }
+  },
+  "title": "Camera",
+  "type": "object",
+  "x-concordia-type": "Camera"
+}

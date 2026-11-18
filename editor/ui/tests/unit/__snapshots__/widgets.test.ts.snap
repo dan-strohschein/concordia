@@ -1,0 +1,179 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`schema_to_widget_maps_vec3_number_enum_color_assetref 1`] = `
+{
+  "Camera": {
+    "clear": {
+      "alpha": true,
+      "kind": "color",
+    },
+    "exposure_ev100": {
+      "integer": false,
+      "kind": "number",
+      "max": 30,
+      "min": -10,
+    },
+    "msaa": {
+      "kind": "enum",
+      "options": [
+        "Off",
+        "X4",
+      ],
+    },
+    "priority": {
+      "integer": true,
+      "kind": "number",
+      "max": 2147483647,
+      "min": -2147483648,
+    },
+    "projection": {
+      "kind": "json",
+    },
+    "tonemap": {
+      "kind": "enum",
+      "options": [
+        "AgX",
+        "KhronosPbrNeutral",
+        "AcesFitted",
+        "Linear",
+      ],
+    },
+  },
+  "DirectionalLight": {
+    "color": {
+      "alpha": false,
+      "kind": "color",
+    },
+    "illuminance_lux": {
+      "integer": false,
+      "kind": "number",
+      "max": 200000,
+      "min": 0,
+    },
+    "shadows": {
+      "inner": {
+        "fields": [
+          {
+            "doc": "Cascades (1..=4).",
+            "label": "Cascades",
+            "name": "cascades",
+            "optional": true,
+            "widget": {
+              "integer": true,
+              "kind": "number",
+              "max": 4,
+              "min": 1,
+            },
+          },
+          {
+            "doc": "Constant depth bias in world units.",
+            "label": "Depth Bias",
+            "name": "depth_bias",
+            "optional": true,
+            "widget": {
+              "integer": false,
+              "kind": "number",
+              "max": 1,
+              "min": 0,
+            },
+          },
+          {
+            "doc": "Shadows end this far from the camera (view distance).",
+            "label": "Max Distance",
+            "name": "max_distance",
+            "optional": true,
+            "widget": {
+              "integer": false,
+              "kind": "number",
+              "max": 10000,
+              "min": 0.1,
+            },
+          },
+          {
+            "doc": "Receiver offset along the normal, in shadow texels.",
+            "label": "Normal Bias",
+            "name": "normal_bias",
+            "optional": true,
+            "widget": {
+              "integer": false,
+              "kind": "number",
+              "max": 10,
+              "min": 0,
+            },
+          },
+          {
+            "doc": "Filter.",
+            "label": "Pcf",
+            "name": "pcf",
+            "optional": true,
+            "widget": {
+              "kind": "enum",
+              "options": [
+                "X3",
+                "X5",
+              ],
+            },
+          },
+          {
+            "doc": "Shadow map size per cascade (texels per side).",
+            "label": "Resolution",
+            "name": "resolution",
+            "optional": true,
+            "widget": {
+              "integer": true,
+              "kind": "number",
+              "max": 8192,
+              "min": 64,
+            },
+          },
+          {
+            "doc": "Blend between logarithmic (1) and uniform (0) splits.",
+            "label": "Split Lambda",
+            "name": "split_lambda",
+            "optional": true,
+            "widget": {
+              "integer": false,
+              "kind": "number",
+              "max": 1,
+              "min": 0,
+            },
+          },
+          {
+            "doc": "Snap cascades to the texel grid so shadows do not shimmer while the camera moves.",
+            "label": "Stabilize",
+            "name": "stabilize",
+            "optional": true,
+            "widget": {
+              "kind": "bool",
+            },
+          },
+        ],
+        "kind": "struct",
+      },
+      "kind": "option",
+    },
+  },
+  "MeshRenderer": {
+    "cast_shadows": {
+      "kind": "bool",
+    },
+    "material": {
+      "kind": "asset",
+    },
+    "mesh": {
+      "kind": "asset",
+    },
+  },
+  "Transform": {
+    "rotation": {
+      "kind": "quat",
+    },
+    "scale": {
+      "kind": "vec3",
+    },
+    "translation": {
+      "kind": "vec3",
+    },
+  },
+}
+`;

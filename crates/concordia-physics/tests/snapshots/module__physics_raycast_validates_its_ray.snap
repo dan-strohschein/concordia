@@ -1,6 +1,5 @@
 ---
 source: crates/concordia-physics/tests/module.rs
-assertion_line: 137
 expression: params_schema(method)
 ---
 {
@@ -32,7 +31,8 @@ expression: params_schema(method)
       },
       "maxItems": 3,
       "minItems": 3,
-      "type": "array"
+      "type": "array",
+      "x-concordia-widget": "vec3"
     },
     "layers": {
       "anyOf": [
@@ -63,7 +63,8 @@ expression: params_schema(method)
       },
       "maxItems": 3,
       "minItems": 3,
-      "type": "array"
+      "type": "array",
+      "x-concordia-widget": "vec3"
     },
     "world": {
       "anyOf": [

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Sky light and background from an HDR equirectangular texture (the first one in the world is used).",
+  "properties": {
+    "intensity": {
+      "description": "Radiance multiplier (nits per texel unit; exposure applies as for lights).",
+      "maximum": 1000000.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "map": {
+      "description": "HDR equirectangular texture (an imported `.hdr`).\n\nAsset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+      "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+      "type": "string"
+    },
+    "skybox": {
+      "description": "Draw the map behind everything.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "map"
+  ],
+  "title": "Environment",
+  "type": "object",
+  "x-concordia-type": "Environment"
+}
