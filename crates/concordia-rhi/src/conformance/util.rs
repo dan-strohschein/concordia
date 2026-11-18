@@ -11,7 +11,7 @@ use crate::handle::{Buffer, Pipeline, Texture};
 use crate::pipeline::{BlendMode, ComputePipelineDesc, CullMode, DepthState, GraphicsPipelineDesc};
 use crate::resource::{BufferDesc, BufferUsage, MemoryLocation, TextureDesc, TextureUsage};
 
-use super::shaders::shader;
+use super::{Harness, ShaderStage};
 
 pub(crate) fn buffer(
     device: &dyn Device,
@@ -86,10 +86,11 @@ pub(crate) fn read_texture(device: &dyn Device, texture: Texture, size: u32) -> 
     device.read_buffer(readback, 0, bytes).expect("read buffer")
 }
 
-pub(crate) fn compute(device: &dyn Device, name: &str, entry: &str, threads: [u32; 3]) -> Pipeline {
+pub(crate) fn compute(device: &dyn Device, h: &Harness<'_>, name: &str) -> Pipeline {
+    let (shader, threads) = h.shaders.shader(name, name, ShaderStage::Compute);
     let desc = ComputePipelineDesc {
-        shader: shader(device.caps().backend, name, entry),
-        threads_per_group: threads,
+        shader,
+        threads_per_group: threads.expect("compute shaders report their thread group size"),
         label: name.into(),
     };
     device
@@ -99,15 +100,15 @@ pub(crate) fn compute(device: &dyn Device, name: &str, entry: &str, threads: [u3
 
 pub(crate) fn graphics(
     device: &dyn Device,
+    h: &Harness<'_>,
     name: &str,
     entries: (&str, &str),
     samples: SampleCount,
     depth: Option<DepthState>,
 ) -> Pipeline {
-    let backend = device.caps().backend;
     let desc = GraphicsPipelineDesc {
-        vertex: shader(backend, name, entries.0),
-        fragment: Some(shader(backend, name, entries.1)),
+        vertex: h.shaders.shader(name, entries.0, ShaderStage::Vertex).0,
+        fragment: Some(h.shaders.shader(name, entries.1, ShaderStage::Fragment).0),
         color_formats: vec![Format::Rgba8Unorm],
         depth,
         samples,

@@ -32,6 +32,12 @@ jobs:
       - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with:
           tool: just,cargo-nextest,cargo-deny,wasm-tools
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/toolchain/slang
+          key: slang-${{ runner.os }}-${{ hashFiles('tools/slang/slang.toml') }}
+      - name: Slang toolchain
+        run: just slang-fetch
       - name: Lint
         run: just lint
       - name: Build WASM fixtures

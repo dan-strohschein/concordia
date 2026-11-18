@@ -31,6 +31,7 @@ concordia-core = { path = "crates/concordia-core" }
 concordia-input = { path = "crates/concordia-input" }
 concordia-terra = { path = "crates/concordia-terra" }
 concordia-scene = { path = "crates/concordia-scene" }
+concordia-shaders = { path = "crates/concordia-shaders" }
 concordia-reflect = { path = "crates/concordia-reflect" }
 concordia-reflect-derive = { path = "crates/concordia-reflect-derive" }
 concordia-rhi = { path = "crates/concordia-rhi" }
