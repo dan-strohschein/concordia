@@ -267,7 +267,7 @@ A review compared Concordia against Unreal's public architecture and audited our
 | 7 | Frustum culling, instancing | done: CPU frustum test per mesh (shadow casters are not camera-culled); repeated mesh + material pairs are one instanced call (`SV_InstanceID`); `RenderStats` reports draws, culled and draw calls. GPU-driven culling stays a later step |
 | 8 | Persistent per-frame buffers and pooled textures | done: `BufferPool` for per-frame, staging and readback buffers; recycled heaps keep their placed textures; `RenderStats::allocations` is 0 for warm frames |
 | 9 | Cached shadows for static casters | done: when no caster, light, cascade or map changed, the shadow passes are skipped and the maps reused (`RenderStats::shadows_cached`). Cascades follow the camera, so camera moves still redraw; caching across camera motion needs world-anchored (virtual) shadow maps, a later step |
-| 10 | Incremental outliner tree | |
+| 10 | Incremental outliner tree | done: `OutlinerTree` patches sorted sibling lists per edit (binary insertion; adoption of waiting children); cycles fall back to a full rebuild; a seeded property test checks it always equals `buildTree` |
 | 11 | Inspector refetches throttled during drags | |
 | 12 | Binary/low-overhead hot paths if JSON shows up in the bench | |
 | 13 | First-use hitches: background IBL, shader compiles and texture uploads | |

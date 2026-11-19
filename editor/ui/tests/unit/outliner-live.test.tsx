@@ -5,27 +5,13 @@ import { act, render, screen } from "@testing-library/react";
 import { EngineClient } from "../../src/api/client";
 import { EditorSession } from "../../src/engine/session";
 import { Outliner } from "../../src/outliner/Outliner";
-import { flatten, rowWindow, withUpdates } from "../../src/outliner/rows";
+import { flatten, rowWindow } from "../../src/outliner/rows";
 import { buildTree, type EntityRow } from "../../src/outliner/tree";
 import { FakeEngine, oneEntity } from "./support/engine";
 
 const row = (id: string, name: string, parent?: string): EntityRow => ({
   id,
   components: { Name: name, ...(parent === undefined ? {} : { Parent: parent }) },
-});
-
-test("updates replace, add and remove rows without touching the rest", () => {
-  const rows = new Map([
-    ["a", row("a", "A")],
-    ["b", row("b", "B")],
-  ]);
-  const next = withUpdates(rows, [
-    { id: "a", row: row("a", "A2") },
-    { id: "b", row: undefined },
-    { id: "c", row: row("c", "C") },
-  ]);
-  expect([...next.values()].map((r) => r.components["Name"])).toEqual(["A2", "C"]);
-  expect(rows.get("b")).toBeDefined();
 });
 
 test("flatten lists the tree depth-first with levels", () => {
