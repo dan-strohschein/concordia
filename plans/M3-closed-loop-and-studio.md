@@ -113,6 +113,7 @@ The options differ in how a call's identity reaches `concordia mcp` and how hook
 
   Tests: `mcp_attaches_to_live_engine_from_connection_file`, `mcp_hosts_and_publishes_connection_file_when_none_live`, `stale_connection_file_is_replaced`, `editor_and_mcp_share_one_command_log` (e2e: an MCP edit appears in Agent Activity).
 - **3.6:** G10, G13.
+- **New 3.6b Team questions and answers** (author request, 2026-11-19; ADR-0081): Director-routed questions between roles, escalation to the human, and a dedicated editor panel, all tested without live agents.
 - **3.8:** builds on the 1.15 Activity panel. It merges `txn.history` with `studio.activity`, goes live via `edit` and `studio` events (not `log.tail`), adds role filters and colors, and adds the task board, approvals and launcher as planned.
 - **Checkpoint gate** (`just gate-tests M3S`): `tests/gates/m3s_studio_sync.rs`, `m3s_enforcement.rs` (real hook binary + real `concordia mcp`, scripted hook inputs), `m3s_task_board.rs`, `m3s_shared_engine.rs`. The live part (`just gate-live M3S`) is unchanged and runs only with the author's go-ahead.
 
@@ -640,6 +641,70 @@ justfile                       (touched) `gate-live` recipe
 - **Implementation notes:** prompts are written as plain, direct instructions, with tool names exactly as generated (`mcp__concordia__…`), and each contains a worked example of the output contract. Roles must not be told forbidden source (clean room): the gameplay and tech-artist prompts include the clean-room rule verbatim. Starter prompts get iterated during the 3.9 live runs; changes are tracked in git like code.
 - **Done criteria:** tests pass; synced fixture project shows 12 agents; the human can read each prompt and understand the role in under a minute.
 
+### Phase 3.6b: Team questions and answers (ADR-0081)
+*Author request, 2026-11-19. After 3.6; before 3.8. Team mode only. Tested without live agents.*
+
+- **Objective:** Studio agents can ask each other questions and get answers, in token-lean, still human-readable messages. The Director routes them, and escalates what nobody on the team can answer to the human. Every exchange is visible in a dedicated editor panel: who asked what and when, who answered what and when. An escalation makes itself impossible to miss.
+- **Decisions** (author, 2026-11-19):
+  - a new phase before 3.8, with a dedicated UI panel;
+  - escalation reaches the human through the editor panel only (no OS notification), made obvious;
+  - test everything without live agents.
+
+  *Assumptions,* taken from the recommendations because the author didn't object:
+  - team mode means Studio is on in the project;
+  - messages use telegraphic English with a small glossary and length caps.
+- **Deliverables:**
+  - **Engine API** (Studio module; MCP tools `studio_ask`, `studio_answer`, `studio_escalate`, `studio_questions`):
+    - `studio.ask {to: <role> | "director" | "human", text ≤ 280, task?, refs?: [id]}` → `{question}`, with ids `Q-0001`... sequential per project (allocated under the board lock).
+    - `studio.answer {id, text ≤ 500}`: by an agent of the addressed role, the Director or a human. An escalated question takes only a human answer, and the first answer closes a question.
+    - `studio.escalate {id, reason ≤ 280}`: Director only. Re-addresses the question to `human`. If the question has a task that isn't done, the task becomes `blocked` (attributed to `system:studio`), and a human answer moves it back to `todo`.
+    - `studio.questions {status?: open | answered | escalated, to?, from?, task?, since?, limit?}` → questions with `{id, from, to, task, refs, text, asked_ms, status, answer?: {by, text, ms}, escalation?: {by, reason, ms}}`.
+  - **Journal events:** `question_asked`, `question_answered` and `question_escalated`. Question state is derived from the Studio journal (no question files), and the existing `studio` events topic carries them live.
+  - **Hooks** (context injection; no polling):
+    - SubagentStart also lists the open questions addressed to the role and the answers to that agent's own questions;
+    - a new **PostToolUse on `Agent`** gives the Director the questions opened or answered since its last turn when a subagent returns;
+    - a new **UserPromptSubmit** gives an interactive Director the human answers since its last prompt.
+  - **Prompts and skill:** a `concordia-team-comms` skill (when to ask instead of proceeding, the telegraphic style, the glossary, ids instead of restated context). The Director's prompt gets the routing and escalation rule: never guess a design decision; if no role can answer, call `studio_escalate`. 3.6 writes the full prompts, and this phase adds these sections.
+  - **CLI:** `concordia studio questions [--status ...]` and `concordia studio answer Q-0007 "text"` (as `human:local`).
+  - **Editor: a dedicated Team Questions panel** (`editor/ui/src/panels/questions/`, a dock beside Agent Activity):
+    - **Threads:** asker → addressee, the task, the question, the times, the answer, the answerer and the answer time. Filters by status and role. Escalated questions are pinned at the top with an inline answer box.
+    - **Attention for escalations:** a count badge on the dock tab and in the title bar; the panel reveals itself and scrolls to a new escalation when one arrives (unless the user is typing in another answer box); a banner across the editor top ("The producer needs you: Q-0007 …", with an **Answer** button) that stays until every escalation is answered.
+    - **Answering** calls `studio.answer` as `human:local`, with the length cap enforced in the box.
+    - The panel is shown only when the project has `[studio]`.
+- **Tests first** (no live agents):
+  - `crates/concordia-studio/tests/questions.rs`:
+    - `ask_records_who_asked_what_and_when`;
+    - `question_ids_are_sequential_across_engines`;
+    - `addressed_role_director_or_human_may_answer`;
+    - `another_role_may_not_answer`;
+    - `text_over_the_cap_is_rejected_with_the_limit`;
+    - `only_the_director_escalates`;
+    - `escalated_questions_take_only_human_answers`;
+    - `escalation_blocks_the_task_and_a_human_answer_unblocks_it`;
+    - `a_question_closes_on_its_first_answer`;
+    - `questions_filter_by_status_role_and_task`;
+    - `question_history_survives_a_restart`;
+    - `ask_answer_and_escalate_publish_studio_events`;
+    - `questions_need_team_mode` (no Studio module, no tools).
+  - `crates/concordia-studio/tests/hook_other_events.rs`:
+    - `subagent_start_lists_open_questions_for_the_role_and_answers_to_mine`;
+    - `post_tool_use_on_agent_returns_new_questions_to_the_director`;
+    - `user_prompt_submit_injects_new_human_answers`.
+  - `crates/concordia-studio/tests/sync_*`: the comms skill and the new hook entries in the snapshots; the hook count test changes deliberately.
+  - `crates/concordia-cli/tests/cli_studio.rs`: `studio_questions_and_answer_cli`.
+  - `tests/gates/m3s_team_questions.rs`: a **scripted twin** of the live loop. It feeds hook inputs shaped like Claude Code's through the real hook binary, then the hook's `updatedInput` into the real `concordia mcp`. A level designer asks the tech artist; the Director routes it; the tech artist answers; another question is escalated, a human answers over the Engine API, and the task unblocks. It asserts the journal, the attribution and the task status.
+  - `editor/ui` (vitest, mocked client):
+    - `questions_panel_shows_threads_with_actors_and_times`;
+    - `escalations_are_pinned_and_counted_on_the_badge`;
+    - `a_new_escalation_reveals_the_panel_and_shows_the_banner`;
+    - `the_banner_stays_until_every_escalation_is_answered`;
+    - `answering_calls_studio_answer_as_the_local_human`;
+    - `the_answer_box_enforces_the_length_cap`;
+    - `the_panel_is_hidden_outside_team_mode`.
+  - `editor/ui/tests/e2e/questions.spec.ts` (Playwright, headless engine on a Studio fixture project, an "agent" WebSocket client): an escalation from the client shows the banner and badge within 1 s (15 s in CI); the human answers in the panel; `studio.questions` shows the answer by `human:local`; and the task is back to `todo`.
+- **Implementation notes:** reuse the board lock and the journal (`TaskStore`/`StudioJournal`) for ids and events; there's no new storage. The panel builds on the 1.15 Activity dock patterns and the `studio` events topic, with no editor-only logic (ADR-0047). The editor sees live questions from agents once 3.5b shares the engine; before that, the panel reads the journal on refresh.
+- **Done criteria:** all of the above green; `just gate-tests M3S` includes `m3s_team_questions`; no live run is needed for this phase.
+
 ### Phase 3.7: `concordia-gen`: provider interface, procedural providers, Blender bridge
 *Interface and SFX after M0; mesh after M1 (glTF import); texture bake after M1 (render); music after M2 (audio).*
 
@@ -707,13 +772,14 @@ justfile                       (touched) `gate-live` recipe
 - **Implementation notes:** all panel state comes from the Engine API (principle 1): no editor-only logic, and approvals are just `task.approve` calls by `human:local`. Live updates use `events.subscribe` (`edit`, `scene` and the new `studio` topic). The headless launch passes `--max-budget-usd` from `[budgets] headless_max_budget_usd` (a client-side estimate per the docs; informational under a subscription, *verify at execution time*).
 - **Done criteria:** tests pass; manual run: launch the Director from the panel and watch cards move.
 
-### Studio checkpoint (after 3.3–3.6 and 3.8; ADR-0049)
+### Studio checkpoint (after 3.3–3.6, 3.6b and 3.8; ADR-0049)
 An interim gate that needs no replay or scripting, so it can pass before M2.
 1. **Deterministic (CI):** `just gate-tests M3S` runs `tests/gates/m3s_*.rs`, which asserts:
    - `concordia studio sync` generates `.claude/agents/*`, skills, settings hooks, `.mcp.json` and the `CLAUDE.md` block from `studio/team.toml`, matching snapshots, idempotently;
    - the hooks block out-of-scope writes;
    - `concordia-mcp` stamps and enforces each role's actor;
-   - the task board's state machine and approval gates hold.
+   - the task board's state machine and approval gates hold;
+   - team questions route, escalate and unblock (`m3s_team_questions`, scripted).
 2. **Live (subscription):** `just gate-live M3S` (`tools/gates/m3s_live.sh`). The Director assigns a task, "build a lit physics playground in `scenes/playground.scene.ron`", to the Level Designer role. A reviewing role (QA) verifies it with queries and `capture.screenshot`, then approves. A checker asserts:
    - the task's final status;
    - every edit is attributed to the Level Designer's actor;
@@ -814,6 +880,7 @@ The milestone is **Gate passed** when (1) is green in CI and (2) has passed at l
 | 3.4 Sync compiler | 1.5 weeks |
 | 3.5 Attribution + enforcement + doctor | 1.5 weeks |
 | 3.6 Roster, prompts, skills | 1 week (+ iteration during 3.9) |
+| 3.6b Team questions and answers | 1 week |
 | 3.7 concordia-gen + Blender bridge | 2 weeks |
 | 3.8 Studio panel + launcher | 1.5 weeks |
 | 3.9 Fixture, scripted + live gate | 1 week |
