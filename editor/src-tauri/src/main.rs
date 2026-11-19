@@ -388,6 +388,8 @@ fn main() {
                     .inner_size(1400.0, 900.0)
                     .transparent(true)
                     .initialization_script(&init)
+                    // The page's own drag and drop (FileSystem dock → viewport); no OS file drops yet.
+                    .disable_drag_drop_handler()
                     .build()?;
             #[cfg(target_os = "macos")]
             {

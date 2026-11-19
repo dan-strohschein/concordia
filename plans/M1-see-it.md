@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (editor v1, phases 1.11–1.15, then the gate; 1.0–1.9 done, 1.10 stretch pending; ADR-0048) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (editor v1, agent-first: 1.11 done, 1.12–1.16 next, then the gate; ADR-0049; 1.0–1.9 done, 1.10 stretch pending; ADR-0048) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -1089,21 +1089,26 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
 
 ---
 
-### Editor v1 (phases 1.11–1.15; ADR-0048)
-**Goal.** Make the editor a usable 3D scene editor before the gate, so the author can build scenes by hand and see what the 3D engine still lacks.
-- **UX:** follow Godot 4.6 (`docs/design/editor-ux.md`); anything Godot lacks is marked "needs visual design".
-- **ADR-0047 applies throughout:**
-  - every feature is a thin panel over the Engine API, so agents can do everything the editor does;
-  - shared behaviour lives in the engine behind a method;
-  - everything inside the viewport is drawn by the engine.
-- **Each phase is test-first:** Rust tests for new methods, Vitest for panels and widgets, Playwright e2e for workflows, and the bench must show no regression.
+### Editor v1, agent-first (phases 1.11–1.16; ADR-0048, amended by ADR-0049)
+**Goal.** Everything a game developer does in M1 can be done by their agent (or team of agents) through MCP. The editor is where a human **watches agents work and overrides them**, not the main way in.
+- **Deliverable of every phase:** the Engine API method, its MCP tool and the agent guide entry. The UI for it is the thinnest usable view; polish is out of scope.
+- **ADR-0047 still applies:**
+  - panels are thin clients of the Engine API;
+  - shared behaviour lives in the engine;
+  - the engine draws the viewport.
+- **UX follows Godot 4.6** where there is UI at all.
+- **Each phase is test-first:**
+  - Rust tests for methods;
+  - MCP tests that each new method appears as a tool;
+  - Vitest only for UI logic that exists;
+  - one e2e per workflow.
 
-### Phase 1.11: Files
+### Phase 1.11: Files (done)
 **Goal.** Create, open and save scenes from the editor, browse the project's files, and bring assets into a scene.
 
 **Engine API:**
 - `project.files {dir?, pattern?}` lists project files (project-relative, with size, kind and import status; skips `.concordia/` and git-ignored paths); read-only.
-- `prefab.instantiate {asset, parent?, transform?}` spawns an imported glTF scene's node hierarchy as one transaction (the importer already stores it as a prefab, phase 1.4).
+- `prefab.instantiate {asset, parent?, translation?}` spawns an imported glTF scene's node hierarchy as one transaction (the importer already stores it as a prefab, phase 1.4).
 - `viewport.drop {view, x, y, width, height}` returns where a dragged asset lands: the surface under the pointer, else the ground plane.
 
 **UI:**
@@ -1126,112 +1131,109 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
 
 **Done when** a scene can be built, saved and reopened entirely from the editor.
 
-### Phase 1.12: Scene tree
-**Goal.** The Scene dock does what Godot's does.
+**As built:** the Scene menu is the first menu of a data-driven `MenuBar` that phase 1.14 grows into the action registry; Open Recent lists recent scenes inline. The native shell disables Tauri's OS file-drop handler so the page's drag and drop works; OS file drops come later.
+
+### Phase 1.12: Agent surface (MCP coverage and tool quality)
+**Goal.** Agents see every M1 capability as a well-described MCP tool, and nothing they don't need.
+
+**MCP:**
+- **The repo's MCP launcher** (`tools/mcp/concordia-mcp.sh`) defaults to `examples/m1-physics-stack`, so this repo's Claude Code session gets the asset, render, physics and input tools (done with ADR-0049).
+- **`MethodInfo` gains an audience: `agent` (default) or `editor`.** Editor plumbing is not offered as an MCP tool, but stays callable over the WebSocket API:
+  - `viewport.present`, `viewport.stats`, `viewport.navigate`, `viewport.overlays`, `viewport.gizmo`.
+- **`capture.screenshot`** defaults to an agent-friendly size (longest side 768 px) when no size is given, to save the agent's context.
+
+**Docs:** the agent guide (`concordia://docs/agent-guide`) gains the M1 workflows:
+- import a model and place it;
+- add lights and a camera;
+- make bodies dynamic, play and step;
+- capture and inspect.
+
+**Tests first:**
+- `every_agent_method_is_an_mcp_tool_and_no_editor_method_is` (over the full M1 module set);
+- `every_tool_and_param_has_a_description` (non-empty, not just the name);
+- `capture_without_size_fits_the_agent_budget`;
+- `agent_guide_mentions_every_agent_tool`.
+
+### Phase 1.13: Scene tree
+**Goal.** Agents can build an entity hierarchy in a few calls; the Scene dock exposes the same, minimally.
 
 **Engine API:**
 - `entity.templates` lists ready-made entities: Empty, Cube, Sphere, Plane, Camera, Directional/Point/Spot Light, Environment. They are data, so agents see the same list.
-- `entity.create {template, parent?, name?}` spawns one.
+- `entity.create {template, parent?, name?, translation?}` spawns one.
 - `entity.duplicate {ids}` copies with children, new ids and unique names, as one transaction.
 - `entity.reparent {id, parent | null, keep_world?}` keeps the world pose by default and rejects cycles with a clear error.
 - `entity.despawn {id, recursive?}`.
 
-**UI:**
-- Add (+), with a searchable list of templates;
-- a context menu: Rename, Duplicate (Ctrl+D), Delete, Add Child;
-- drag-and-drop reparenting with drop indicators;
-- multi-select (Shift/Cmd), synced with the viewport's selection overlay;
-- keyboard navigation.
+**UI (minimal):** a right-click menu in the Scene dock with Create (template list), Rename, Duplicate and Delete. No drag-and-drop reparenting, no multi-select.
 
 **Tests first:**
 - `entity_duplicate_copies_components_and_children_with_new_ids_in_one_undo`
 - `entity_reparent_keeps_the_world_transform_and_rejects_cycles`
 - `entity_create_spawns_each_template_renderable`
-- the outliner's multi-select and drop-target logic (unit);
-- e2e: create, rename, duplicate, reparent by drag, delete, undo each.
+- `despawn_recursive_removes_the_subtree_in_one_undo`
+- e2e: create from the menu, duplicate, delete, undo.
 
-### Phase 1.13: Inspector
-**Goal.** Every component and field can be added, edited and removed with a proper widget.
+### Phase 1.14: Component discovery (Inspector)
+**Goal.** Agents can find out which components exist, what they mean and their defaults, and add them. The Inspector can add and remove them.
 
 **Engine API:**
 - `component.add {entity, component}` inserts the type's default value.
-- `schema.get` lists components with a `category` hint for grouping.
-- A per-field default is reachable for "reset to default".
+- `schema.get` lists components with a `category` and a one-line description for each.
 
-**UI widgets, Godot-style:**
-- numbers and vectors you can drag on the label;
-- colour picker;
-- enum dropdown;
-- bool;
-- text;
-- **asset picker** (searches `asset.list` by kind; accepts drops from the FileSystem dock);
-- **entity picker**;
-- rotation shown as Euler degrees;
-- collapsible sections;
-- **Add Component** (a searchable, grouped list) and **Remove Component**;
-- reset a field to its default.
-
-**Behaviour:** one undo step per gesture, so a drag is one transaction. Multi-selection edits shared components on every selected entity in one transaction.
+**UI (minimal):** Add Component (a searchable list) and Remove Component on the existing generic schema-driven fields. No new custom widgets.
 
 **Tests first:**
 - `component_add_inserts_the_default_and_rejects_duplicates_and_unknown_names`
-- one Vitest file per widget (parse, commit, cancel, validation);
-- e2e:
-  - add a PointLight, drag its intensity, and the viewport updates live;
-  - pick a material asset;
-  - remove a component;
-  - undo.
+- `schema_index_has_category_and_description_for_every_component`
+- e2e: add a PointLight from the Inspector, remove it, undo.
 
-### Phase 1.14: Working menus and shortcuts
-**Goal.** Every menu item and button does something, and Godot's shortcuts work.
+### Phase 1.15: Agent activity and minimal menus
+**Goal.** A human can see what the agents did and undo any of it. That is the editor's main job in an AI-first engine.
 
-**Design:**
-- **One action registry in the UI** (id, label, shortcut, enabled-when, run) drives the menu bar, toolbar buttons, the context menus and a **command palette** (Ctrl+Shift+P, as in Godot).
-- In the native shell, the same actions also appear in the **macOS menu bar** (Tauri menus mapped to action ids).
+**Engine API:**
+- `txn.history` entries carry the actor, label, time and affected entities.
+- `txn.undo_to {txn}` undoes back to a point as one call (attributed).
 
-**The menus:**
-- **Scene:** New, Open, Open Recent, Save, Save As, Close Scene, Quit.
-- **Edit:** Undo, Redo, Undo History, Select All, Duplicate, Delete.
-- **View:** dock toggles, grid, debug views (1.15), the performance panel.
-- **Project:** Project Settings, a view of `concordia.toml` (editing comes later, as "needs visual design").
-- **Help:** documentation, About.
+**UI:**
+- **An Agent Activity panel:** a live list of transactions by actor (agent roles or human), filterable by actor. Clicking an entry selects the entities it touched; "Undo to here" undoes back to that point.
+- **Menus,** on the 1.11 `MenuBar`:
+  - Edit: Undo and Redo;
+  - View: dock toggles and the grid.
 
-**The Undo History panel:** lists `txn.history` with actors and jumps to any point.
+  No command palette, native menu bar or full shortcut table (later, if wanted).
 
 **Tests first:**
-- registry unit tests: every menu item maps to an action, and shortcuts are unique per context;
-- e2e: each menu item calls its API, and the history panel jumps back three steps;
-- a shell test: a native menu action reaches the page.
+- `history_entries_name_actor_and_entities`
+- `undo_to_reverts_every_later_transaction_attributed_to_the_caller`
+- the panel's filter logic (unit);
+- e2e: an agent makes three edits; the panel shows them; "Undo to here" on the first restores the scene.
 
-### Phase 1.15: Viewport improvements
-**Goal.** Godot's viewport tools, plus the views that show what the renderer is missing.
+### Phase 1.16: Viewport views for agents
+**Goal.** Agents and humans can see what the renderer is doing, which is how gaps in the 3D engine get found.
 
-**Gizmos:**
-- **Rotate and Scale**, beside Move (W, E, R), engine-drawn and engine-hit-tested like Move (`viewport.gizmo {mode}`);
-- local/global space;
-- snapping (translation step, rotation degrees, scale step);
-- a multi-selection pivot at the median.
+**Engine API:**
+- **`capture.screenshot` and `viewport.overlays` take a `view_mode`:**
+  - lit, unlit, wireframe;
+  - normals, albedo, roughness/metallic;
+  - overdraw;
+  - shadow cascades;
+  - lights per cluster.
+- **`render.stats`** reports the last frame: CPU and GPU time, draw calls, culled meshes, triangles, memory.
+- **`viewport.gizmo {mode}`** adds Rotate and Scale beside Move (editor audience).
 
-**Icons:** light and camera icons drawn by the engine's overlay pass, which picking can select.
+**UI (minimal):**
+- view modes in the viewport's View menu;
+- E and R switch the gizmo;
+- a small stats readout.
 
-**Debug views** (`viewport.overlays {view_mode}`):
-- lit, unlit, wireframe;
-- normals, albedo, roughness/metallic;
-- overdraw;
-- shadow cascades;
-- light count per cluster.
-
-**Camera:** Godot's freelook (right mouse + WASD, speed on the wheel while held).
-
-**A performance panel:** frames per second, frame, CPU and GPU time, draw calls, culled meshes, allocations and memory, from a new `render.stats`.
+No snapping, freelook or light and camera icons in this phase (backlog).
 
 **Tests first:**
-- rotate and scale drag math, snapping and one-step undo;
-- icon picking;
-- view-mode goldens (each checked by eye);
+- view-mode goldens (each checked by eye once);
 - `render_stats_reports_the_last_frame`;
-- e2e: rotate with snapping, switch to wireframe, and the performance panel updates;
-- the bench: orbit and gizmos still hold the display rate.
+- rotate and scale drag math with one-step undo;
+- an MCP test: `capture_screenshot {view_mode: "wireframe"}` returns an image that differs from the lit one;
+- the bench: no regression in orbit and gizmo frame rates.
 
 ## Milestone gate (the executable acceptance test: exact command and what it asserts)
 
@@ -1272,6 +1274,24 @@ It must pass on CI's macOS GPU job (`macos-26` arm64, or the `self-hosted-macos-
   4. `tools/call capture_screenshot { camera: "gate_cam", width: 1280, height: 720, world: "play" }`.
   5. Assert the result has `isError: false` and a content item `{ "type": "image", "mimeType": "image/png", "data": <base64> }`; base64-decode → valid PNG 1280×720; FLIP vs the same golden `m1_physics_stack.png` within the same tolerance.
   6. `tools/call log_tail` shows the `sim stepped` record with `actor` = `agent:gate` (emitted since phase 1.0).
+
+**`tests/gates/m1_mcp_coverage.rs`** (added by ADR-0049)
+- `m1_gate_every_agent_method_is_a_described_mcp_tool`: the full M1 module set's agent-audience methods are all MCP tools, each with descriptions, and no editor-audience method is.
+
+**Live agent gate (`just gate-live M1`, on the author's subscription; outcomes asserted, never transcripts)** (added by ADR-0049)
+- `tools/gates/m1_live.sh` copies a project skeleton (manifest and a CC0 model file only, no scene) to a temp folder and runs `claude -p` with only the Concordia MCP server. The prompt asks it to build a small physics scene from nothing, using MCP only:
+  - import the model and place it;
+  - add a ground, a sun and a camera;
+  - add five dynamic boxes above the ground;
+  - save the scene as `scenes/agent.scene.ron`;
+  - step the simulation for two seconds;
+  - capture a screenshot and describe it.
+- A checker then asserts:
+  - the saved scene exists and holds an instance of the imported model, a DirectionalLight, a Camera and five or more RigidBody entities;
+  - in the play world, the boxes ended lower than they started;
+  - `log.tail` shows the `sim stepped` and `capture` records attributed to the agent;
+  - the command log attributes every edit to the agent's actor;
+  - no LLM API key is in the environment.
 
 **Agent demonstration (sign-off, recorded, not CI):** in this repo's Claude Code session (subscription, no API key) with `concordia-mcp` registered in `.mcp.json`, ask the agent to open the stack scene, step 180 ticks and call `capture_screenshot`; the agent describes the image it received (boxes, shadows, colored lights). Paste the transcript excerpt into the PR that flips M1's status to "Gate passed".
 

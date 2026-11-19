@@ -6,6 +6,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { EDITOR_ACTOR, type EditorSession } from "../engine/session";
 import { type Preset, type Vec3, type View } from "./camera";
+import { FILE_DRAG_TYPE } from "../files/FileSystem";
+import { placeAsset } from "../files/place";
+import type { ProjectFile } from "../files/tree";
 import { GizmoDrag } from "./gizmoDrag";
 import { inputTags } from "./latency";
 import { isNative, onNativeView, reportSlot } from "./native";
@@ -264,6 +267,22 @@ export function Viewport({ session, world, selected, onSelect }: Props) {
         }}
         onWheel={onWheel}
         onContextMenu={(e) => e.preventDefault()}
+        onDragOver={(e) => {
+          if (world !== "edit" || !e.dataTransfer.types.includes(FILE_DRAG_TYPE)) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+        }}
+        onDrop={(e) => {
+          const data = e.dataTransfer.getData(FILE_DRAG_TYPE);
+          if (world !== "edit" || data === "" || !view) return;
+          e.preventDefault();
+          const p = local(e);
+          const x = Math.min(Math.max(p.x, 0), size.width - 1);
+          const y = Math.min(Math.max(p.y, 0), size.height - 1);
+          placeAsset(session, JSON.parse(data) as ProjectFile, { view, x, y, ...size }).then(onSelect, (err: unknown) =>
+            console.warn("drop failed", err),
+          );
+        }}
       >
         {src && (
           <img

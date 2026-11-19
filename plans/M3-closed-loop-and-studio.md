@@ -1,4 +1,6 @@
 # M3: Closed Loop & Agent Studio v1
+> **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
+
 Status: Planned · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Needs refinement after M2** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
@@ -484,6 +486,22 @@ justfile                       (touched) `gate-live` recipe
     - `approve_in_panel_moves_task_to_done_and_logs_human_actor`.
 - **Implementation notes:** all panel state comes from the Engine API (principle 1): no editor-only logic, and approvals are just `task.approve` calls by `human:local`. Live updates use the M0 WebSocket subscription on `log.tail`. The headless launch passes `--max-budget-usd` from `[budgets] headless_max_budget_usd` (a client-side estimate per the docs; informational under a subscription, *verify at execution time*).
 - **Done criteria:** tests pass; manual run: launch the Director from the panel and watch cards move.
+
+### Studio checkpoint (after 3.3–3.6 and 3.8; ADR-0049)
+An interim gate that needs no replay or scripting, so it can pass before M2.
+1. **Deterministic (CI):** `just gate-tests M3S` runs `tests/gates/m3s_*.rs`, which asserts:
+   - `concordia studio sync` generates `.claude/agents/*`, skills, settings hooks, `.mcp.json` and the `CLAUDE.md` block from `studio/team.toml`, matching snapshots, idempotently;
+   - the hooks block out-of-scope writes;
+   - `concordia-mcp` stamps and enforces each role's actor;
+   - the task board's state machine and approval gates hold.
+2. **Live (subscription):** `just gate-live M3S` (`tools/gates/m3s_live.sh`). The Director assigns a task, "build a lit physics playground in `scenes/playground.scene.ron`", to the Level Designer role. A reviewing role (QA) verifies it with queries and `capture.screenshot`, then approves. A checker asserts:
+   - the task's final status;
+   - every edit is attributed to the Level Designer's actor;
+   - no edits outside the role's scope;
+   - the scene's contents (lights, camera, dynamic bodies);
+   - no API key in the environment.
+
+   It checks outcomes only, never transcripts.
 
 ### Phase 3.9: Gate fixture, scripted closed loop, live gate
 *Needs all previous phases and M2.*

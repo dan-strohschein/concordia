@@ -274,6 +274,11 @@ impl AssetDb {
         Ok(sub_ids.into_map())
     }
 
+    /// The importer that would import `rel` (by extension), if any.
+    pub fn importer_name(&self, rel: &Path) -> Option<&'static str> {
+        self.importer_for(rel).ok().map(|i| i.name())
+    }
+
     fn importer_for(&self, rel: &Path) -> Result<Arc<dyn Importer>, AssetError> {
         let extension = rel
             .extension()

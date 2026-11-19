@@ -18,6 +18,8 @@ export interface Engine {
   agent: EngineClient;
   /** Ids of entities by Name in the edit world. */
   idsByName: () => Promise<Record<string, string>>;
+  /** The temporary project folder. */
+  dir: string;
 }
 
 async function waitForFile(path: string, ms: number): Promise<void> {
@@ -55,7 +57,7 @@ export const test = base.extend<{ engine: Engine }>({
         });
         return Object.fromEntries(result.rows.map((r) => [r.components.Name ?? r.id, r.id]));
       };
-      await use({ url, agent, idsByName });
+      await use({ url, agent, idsByName, dir });
       agent.close();
     } finally {
       child.kill();

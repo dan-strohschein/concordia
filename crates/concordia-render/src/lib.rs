@@ -50,7 +50,7 @@ pub use pipelines::shader_dir;
 pub use renderer::{FrameCallbacks, Image, MAX_SIZE, RenderRequest, RenderStats, Renderer};
 pub use scene_cache::{RenderScene, SceneCache, SceneDelta, SceneItems};
 pub use shadow_pass::ShadowPush;
-pub use view::{Pick, View, axis_delta, pick};
+pub use view::{Landing, Pick, View, axis_delta, landing, pick};
 
 /// Registers the render components.
 pub fn register_types(

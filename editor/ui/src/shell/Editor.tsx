@@ -1,14 +1,17 @@
 // The editor window, laid out like Godot 4 (docs/design/editor-ux.md): menu bar with run controls,
 // Scene + FileSystem docks on the left, the viewport in the center, the Inspector on the right and
-// the Output panel at the bottom. Undo/redo/save shortcuts follow Godot.
+// the Output panel at the bottom. Shortcuts follow Godot.
 import { useEffect, useState } from "react";
 
 import { EDITOR_ACTOR, type EditorSession } from "../engine/session";
+import { FileSystem } from "../files/FileSystem";
 import { Inspector } from "../inspector/Inspector";
 import { Outliner } from "../outliner/Outliner";
 import { Output } from "../output/Output";
 import { isNative } from "../viewport/native";
 import { Viewport } from "../viewport/Viewport";
+import { MenuBar } from "./MenuBar";
+import { useSceneMenu } from "./useSceneMenu";
 
 const dock: React.CSSProperties = { background: "#232323", overflow: "auto", minHeight: 0 };
 const title: React.CSSProperties = { padding: "3px 8px", background: "#2d2d2d", fontWeight: 600 };
@@ -16,6 +19,7 @@ const title: React.CSSProperties = { padding: "3px 8px", background: "#2d2d2d", 
 export function Editor({ session }: { session: EditorSession }) {
   const [selected, setSelected] = useState<string>();
   const [world, setWorld] = useState<"edit" | "play">("edit");
+  const scene = useSceneMenu(session);
   const act = (method: string, params: Record<string, unknown> = {}) =>
     void session.call(method, { ...params, actor: EDITOR_ACTOR });
   useEffect(() => {
@@ -25,10 +29,6 @@ export function Editor({ session }: { session: EditorSession }) {
       if (e.key.toLowerCase() === "z") {
         e.preventDefault();
         act(e.shiftKey ? "txn.redo" : "txn.undo");
-      }
-      if (e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        void session.call("scene.save");
       }
     };
     window.addEventListener("keydown", keys);
@@ -59,12 +59,15 @@ export function Editor({ session }: { session: EditorSession }) {
           background: "#2a2a2a",
         }}
       >
-        {["Scene", "Project", "Debug", "Editor", "Help"].map((m) => (
-          <span key={m} style={{ opacity: 0.85 }}>
-            {m}
-          </span>
-        ))}
+        <MenuBar
+          menus={[scene.menu, ...["Project", "Debug", "Editor", "Help"].map((label) => ({ label, items: [] }))]}
+        />
         <span style={{ flex: 1, textAlign: "center", fontWeight: 600 }}>3D</span>
+        {scene.error !== undefined && (
+          <span role="alert" style={{ color: "#e88", maxWidth: 400, overflow: "hidden", textOverflow: "ellipsis" }}>
+            {scene.error}
+          </span>
+        )}
         <div role="toolbar" aria-label="Run" style={{ display: "flex", gap: 4 }}>
           <button title="Play" onClick={() => run("sim.play", "play")}>
             ▶
@@ -90,7 +93,7 @@ export function Editor({ session }: { session: EditorSession }) {
         </section>
         <section style={{ ...dock, borderTop: "1px solid #111" }} aria-label="FileSystem dock">
           <div style={title}>FileSystem</div>
-          <p style={{ opacity: 0.5, padding: 8 }}>Project files arrive later.</p>
+          <FileSystem session={session} onOpenScene={scene.openScene} />
         </section>
       </div>
       <main style={{ minHeight: 0 }}>
@@ -104,6 +107,7 @@ export function Editor({ session }: { session: EditorSession }) {
         <div style={title}>Output</div>
         <Output session={session} />
       </footer>
+      {scene.dialogs}
     </div>
   );
 }

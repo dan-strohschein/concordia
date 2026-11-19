@@ -18,7 +18,7 @@ use concordia_terra::{SimLoop, World};
 use serde_json::Value;
 
 use crate::error::{ApiError, ApiErrorKind};
-use crate::method::MethodRegistry;
+use crate::method::{CallCtx, MethodRegistry};
 use crate::methods::{WorldSel, world_of};
 use crate::module::{CoreModule, EngineModule};
 
@@ -211,6 +211,22 @@ impl Engine {
             .states
             .iter()
             .find_map(|s| s.downcast_ref::<T>())
+    }
+
+    /// The engine's id source (deterministic when configured), for ids a module's edits introduce.
+    pub fn ids_mut(&mut self) -> &mut impl IdSource {
+        &mut self.ids
+    }
+
+    /// Applies `ops` for the caller as one undo step labelled `label`, or inside the caller's
+    /// open transaction. On failure nothing is applied (and an open transaction is rolled back).
+    pub fn apply_edits(
+        &mut self,
+        ctx: &CallCtx,
+        label: &str,
+        ops: Vec<concordia_command::EditOp>,
+    ) -> Result<(), ApiError> {
+        crate::methods::edit_all(self, ctx, label, ops, None)
     }
 
     /// The project root.
