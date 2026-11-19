@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (gate; 1.0–1.9 done, 1.10 stretch pending) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (editor v1, phases 1.11–1.15, then the gate; 1.0–1.9 done, 1.10 stretch pending; ADR-0048) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -1088,6 +1088,150 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
 - **Done criteria:** conformance + render goldens green on lavapipe in CI. If not done in M1, this phase moves to M2 unchanged.
 
 ---
+
+### Editor v1 (phases 1.11–1.15; ADR-0048)
+**Goal.** Make the editor a usable 3D scene editor before the gate, so the author can build scenes by hand and see what the 3D engine still lacks.
+- **UX:** follow Godot 4.6 (`docs/design/editor-ux.md`); anything Godot lacks is marked "needs visual design".
+- **ADR-0047 applies throughout:**
+  - every feature is a thin panel over the Engine API, so agents can do everything the editor does;
+  - shared behaviour lives in the engine behind a method;
+  - everything inside the viewport is drawn by the engine.
+- **Each phase is test-first:** Rust tests for new methods, Vitest for panels and widgets, Playwright e2e for workflows, and the bench must show no regression.
+
+### Phase 1.11: Files
+**Goal.** Create, open and save scenes from the editor, browse the project's files, and bring assets into a scene.
+
+**Engine API:**
+- `project.files {dir?, pattern?}` lists project files (project-relative, with size, kind and import status; skips `.concordia/` and git-ignored paths); read-only.
+- `prefab.instantiate {asset, parent?, transform?}` spawns an imported glTF scene's node hierarchy as one transaction (the importer already stores it as a prefab, phase 1.4).
+- `viewport.drop {view, x, y, width, height}` returns where a dragged asset lands: the surface under the pointer, else the ground plane.
+
+**UI:**
+- **Scene menu items:** New, Open, Open Recent (per-user, kept in the page), Save, Save As.
+- **An unsaved-changes guard:** a `*` in the window title, and a prompt before New, Open or quitting with changes.
+- **The FileSystem dock:**
+  - a project file tree;
+  - double-click a `.scene.ron` to open it;
+  - an Import action for unimported images and glTF;
+  - drag a model into the viewport to instance it there.
+
+**Tests first:**
+- `project_files_lists_project_relative_paths_and_skips_engine_state`
+- `prefab_instantiate_spawns_the_hierarchy_as_one_undo_step`
+- `viewport_drop_lands_on_the_surface_under_the_pointer_else_the_ground`
+- e2e:
+  - new scene, add an entity, save as, reopen, and the entity is there;
+  - import a glTF, drag it in, and its meshes render;
+  - the unsaved prompt guards New.
+
+**Done when** a scene can be built, saved and reopened entirely from the editor.
+
+### Phase 1.12: Scene tree
+**Goal.** The Scene dock does what Godot's does.
+
+**Engine API:**
+- `entity.templates` lists ready-made entities: Empty, Cube, Sphere, Plane, Camera, Directional/Point/Spot Light, Environment. They are data, so agents see the same list.
+- `entity.create {template, parent?, name?}` spawns one.
+- `entity.duplicate {ids}` copies with children, new ids and unique names, as one transaction.
+- `entity.reparent {id, parent | null, keep_world?}` keeps the world pose by default and rejects cycles with a clear error.
+- `entity.despawn {id, recursive?}`.
+
+**UI:**
+- Add (+), with a searchable list of templates;
+- a context menu: Rename, Duplicate (Ctrl+D), Delete, Add Child;
+- drag-and-drop reparenting with drop indicators;
+- multi-select (Shift/Cmd), synced with the viewport's selection overlay;
+- keyboard navigation.
+
+**Tests first:**
+- `entity_duplicate_copies_components_and_children_with_new_ids_in_one_undo`
+- `entity_reparent_keeps_the_world_transform_and_rejects_cycles`
+- `entity_create_spawns_each_template_renderable`
+- the outliner's multi-select and drop-target logic (unit);
+- e2e: create, rename, duplicate, reparent by drag, delete, undo each.
+
+### Phase 1.13: Inspector
+**Goal.** Every component and field can be added, edited and removed with a proper widget.
+
+**Engine API:**
+- `component.add {entity, component}` inserts the type's default value.
+- `schema.get` lists components with a `category` hint for grouping.
+- A per-field default is reachable for "reset to default".
+
+**UI widgets, Godot-style:**
+- numbers and vectors you can drag on the label;
+- colour picker;
+- enum dropdown;
+- bool;
+- text;
+- **asset picker** (searches `asset.list` by kind; accepts drops from the FileSystem dock);
+- **entity picker**;
+- rotation shown as Euler degrees;
+- collapsible sections;
+- **Add Component** (a searchable, grouped list) and **Remove Component**;
+- reset a field to its default.
+
+**Behaviour:** one undo step per gesture, so a drag is one transaction. Multi-selection edits shared components on every selected entity in one transaction.
+
+**Tests first:**
+- `component_add_inserts_the_default_and_rejects_duplicates_and_unknown_names`
+- one Vitest file per widget (parse, commit, cancel, validation);
+- e2e:
+  - add a PointLight, drag its intensity, and the viewport updates live;
+  - pick a material asset;
+  - remove a component;
+  - undo.
+
+### Phase 1.14: Working menus and shortcuts
+**Goal.** Every menu item and button does something, and Godot's shortcuts work.
+
+**Design:**
+- **One action registry in the UI** (id, label, shortcut, enabled-when, run) drives the menu bar, toolbar buttons, the context menus and a **command palette** (Ctrl+Shift+P, as in Godot).
+- In the native shell, the same actions also appear in the **macOS menu bar** (Tauri menus mapped to action ids).
+
+**The menus:**
+- **Scene:** New, Open, Open Recent, Save, Save As, Close Scene, Quit.
+- **Edit:** Undo, Redo, Undo History, Select All, Duplicate, Delete.
+- **View:** dock toggles, grid, debug views (1.15), the performance panel.
+- **Project:** Project Settings, a view of `concordia.toml` (editing comes later, as "needs visual design").
+- **Help:** documentation, About.
+
+**The Undo History panel:** lists `txn.history` with actors and jumps to any point.
+
+**Tests first:**
+- registry unit tests: every menu item maps to an action, and shortcuts are unique per context;
+- e2e: each menu item calls its API, and the history panel jumps back three steps;
+- a shell test: a native menu action reaches the page.
+
+### Phase 1.15: Viewport improvements
+**Goal.** Godot's viewport tools, plus the views that show what the renderer is missing.
+
+**Gizmos:**
+- **Rotate and Scale**, beside Move (W, E, R), engine-drawn and engine-hit-tested like Move (`viewport.gizmo {mode}`);
+- local/global space;
+- snapping (translation step, rotation degrees, scale step);
+- a multi-selection pivot at the median.
+
+**Icons:** light and camera icons drawn by the engine's overlay pass, which picking can select.
+
+**Debug views** (`viewport.overlays {view_mode}`):
+- lit, unlit, wireframe;
+- normals, albedo, roughness/metallic;
+- overdraw;
+- shadow cascades;
+- light count per cluster.
+
+**Camera:** Godot's freelook (right mouse + WASD, speed on the wheel while held).
+
+**A performance panel:** frames per second, frame, CPU and GPU time, draw calls, culled meshes, allocations and memory, from a new `render.stats`.
+
+**Tests first:**
+- rotate and scale drag math, snapping and one-step undo;
+- icon picking;
+- view-mode goldens (each checked by eye);
+- `render_stats_reports_the_last_frame`;
+- e2e: rotate with snapping, switch to wireframe, and the performance panel updates;
+- the bench: orbit and gizmos still hold the display rate.
 
 ## Milestone gate (the executable acceptance test: exact command and what it asserts)
 

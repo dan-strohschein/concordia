@@ -40,4 +40,5 @@ Keep the web UI (React panels in Tauri) for the editor, under two rules that kee
   - very large panels (node graphs with thousands of nodes; use canvas or WebGL rendering inside the panel);
   - Linux (WebKitGTK) performance once a Linux editor is in scope;
   - memory.
+- **The editor's feature set** (files, scene tree, inspector, menus, viewport tools) is scheduled by ADR-0048 as M1 phases 1.11–1.15, all under these rules.
 - **The in-game UI system** (a later milestone) is the natural candidate if the editor ever moves off the web: Unreal and Godot build their editors on their own UI. Thin panels keep that path open.

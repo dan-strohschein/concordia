@@ -1,4 +1,6 @@
 # M5: Bring your game
+> **ADR-0048:** this milestone also takes the reference port from M2: phases 2.1 (Godot text formats and the interchange model), 2.2 (GDScript tools and the translation workflow) and 2.9 (the playable slice). It is restructured when M2 is refined.
+
 Status: Planned · Depends on: M2 (importer framework, `concordia-interchange` v0, WASM host), M3 (replay, playtest assertions, Studio), M4 (visual graphs, `concordia-graph`) · Detail level: **Needs refinement after M4** · Estimated effort: ~19 weeks (range 16–24), author plus agents
 
 > This plan has full phase breakdowns and test lists. It must get a refinement pass when M4 completes, because the shapes of `concordia-interchange` v0 (M2), the replay and assertion APIs (M3) and the `.graph.ron` node set (M4) will change details here. Places that depend on those shapes are marked **(refine)**.
