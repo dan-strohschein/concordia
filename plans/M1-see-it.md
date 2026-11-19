@@ -1362,6 +1362,7 @@ It must pass on CI's macOS GPU job (`macos-26` arm64, or the `self-hosted-macos-
   - the names of the agent's environment variables (no `*_API_KEY` or `*_AUTH_TOKEN`).
   The checker re-simulates the saved scene to see the boxes fall.
 - **Live gate result (2026-11-19, Claude Code 2.1.328):** passed on attempt 1. The first run of the script failed on a checker bug (a `query.run` limit above the API's 1000-row page), not the agent; re-checking those three sessions' artifacts with the fixed checker passed all three. Each session took about 30 turns and under a minute, and described the five fallen boxes and the crate.
+- **The editor e2e tests use the light pre-gate scene** (`editor/ui/tests/fixtures/scenes/stack.scene.ron`). On CI's virtual GPU each gate-scene frame costs seconds, and the browser viewport's queued captures held editor calls (undo, undo-to) past the tests' 5 s waits. The gate scene is for render checks; the editor tests check interaction. In the same change the IBL prefilter's crate (`concordia-render`) builds at `opt-level = 2` in dev: a fresh engine's first capture of a sky went from 1.4 s to 0.25 s.
 - **CI** runs `just gate-tests M1` on macOS (GPU required) and Linux (the image checks skip; the physics hash must still match).
 - **`just clean-builds`** empties the build outputs. Cargo never collects stale variants, which filled the disk after two days (99 GB in `target/`).
 

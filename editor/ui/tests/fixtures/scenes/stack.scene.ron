@@ -1,0 +1,544 @@
+// Concordia scene, format 1. Canonical form: `concordia fmt` rewrites this file.
+Scene(
+    format: 1,
+    id: "0193a1c2-7e40-7000-8000-000000000100",
+    name: "Physics stack",
+    entities: [
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-000000000101",
+            components: {
+                "Collider": (
+                    is_sensor: false,
+                    layer: 0,
+                    offset: (0.0, 0.0, 0.0),
+                    shape: Box(
+                        half_extents: (15.0, 0.25, 15.0),
+                    ),
+                ),
+                "Name": "Ground",
+                "RigidBody": (
+                    angular_damping: 0.05,
+                    ccd: false,
+                    friction: 0.5,
+                    gravity_scale: 1.0,
+                    kind: Static,
+                    linear_damping: 0.05,
+                    mass: None,
+                    restitution: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.0, -0.25, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-000000000102",
+            components: {
+                "Collider": (
+                    is_sensor: false,
+                    layer: 0,
+                    offset: (0.0, 0.0, 0.0),
+                    shape: Box(
+                        half_extents: (0.5, 0.5, 0.5),
+                    ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Pyramid 0.0",
+                "RigidBody": (
+                    angular_damping: 0.05,
+                    ccd: false,
+                    friction: 0.5,
+                    gravity_scale: 1.0,
+                    kind: Dynamic,
+                    linear_damping: 0.05,
+                    mass: None,
+                    restitution: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.575, 0.5, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-000000000103",
+            components: {
+                "Collider": (
+                    is_sensor: false,
+                    layer: 0,
+                    offset: (0.0, 0.0, 0.0),
+                    shape: Box(
+                        half_extents: (0.5, 0.5, 0.5),
+                    ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Pyramid 0.1",
+                "RigidBody": (
+                    angular_damping: 0.05,
+                    ccd: false,
+                    friction: 0.5,
+                    gravity_scale: 1.0,
+                    kind: Dynamic,
+                    linear_damping: 0.05,
+                    mass: None,
+                    restitution: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-0.525, 0.5, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-000000000104",
+            components: {
+                "Collider": (
+                    is_sensor: false,
+                    layer: 0,
+                    offset: (0.0, 0.0, 0.0),
+                    shape: Box(
+                        half_extents: (0.5, 0.5, 0.5),
+                    ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Pyramid 0.2",
+                "RigidBody": (
+                    angular_damping: 0.05,
+                    ccd: false,
+                    friction: 0.5,
+                    gravity_scale: 1.0,
+                    kind: Dynamic,
+                    linear_damping: 0.05,
+                    mass: None,
+                    restitution: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.525, 0.5, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-000000000105",
+            components: {
+                "Collider": (
+                    is_sensor: false,
+                    layer: 0,
+                    offset: (0.0, 0.0, 0.0),
+                    shape: Box(
+                        half_extents: (0.5, 0.5, 0.5),
+                    ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Pyramid 0.3",
+                "RigidBody": (
+                    angular_damping: 0.05,
+                    ccd: false,
+                    friction: 0.5,
+                    gravity_scale: 1.0,
+                    kind: Dynamic,
+                    linear_damping: 0.05,
+                    mass: None,
+                    restitution: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (1.575, 0.5, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-000000000106",
+            components: {
+                "Collider": (
+                    is_sensor: false,
+                    layer: 0,
+                    offset: (0.0, 0.0, 0.0),
+                    shape: Box(
+                        half_extents: (0.5, 0.5, 0.5),
+                    ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Pyramid 1.0",
+                "RigidBody": (
+                    angular_damping: 0.05,
+                    ccd: false,
+                    friction: 0.5,
+                    gravity_scale: 1.0,
+                    kind: Dynamic,
+                    linear_damping: 0.05,
+                    mass: None,
+                    restitution: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.05, 1.51, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-000000000107",
+            components: {
+                "Collider": (
+                    is_sensor: false,
+                    layer: 0,
+                    offset: (0.0, 0.0, 0.0),
+                    shape: Box(
+                        half_extents: (0.5, 0.5, 0.5),
+                    ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Pyramid 1.1",
+                "RigidBody": (
+                    angular_damping: 0.05,
+                    ccd: false,
+                    friction: 0.5,
+                    gravity_scale: 1.0,
+                    kind: Dynamic,
+                    linear_damping: 0.05,
+                    mass: None,
+                    restitution: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.0, 1.51, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-000000000108",
+            components: {
+                "Collider": (
+                    is_sensor: false,
+                    layer: 0,
+                    offset: (0.0, 0.0, 0.0),
+                    shape: Box(
+                        half_extents: (0.5, 0.5, 0.5),
+                    ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Pyramid 1.2",
+                "RigidBody": (
+                    angular_damping: 0.05,
+                    ccd: false,
+                    friction: 0.5,
+                    gravity_scale: 1.0,
+                    kind: Dynamic,
+                    linear_damping: 0.05,
+                    mass: None,
+                    restitution: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (1.05, 1.51, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-000000000109",
+            components: {
+                "Collider": (
+                    is_sensor: false,
+                    layer: 0,
+                    offset: (0.0, 0.0, 0.0),
+                    shape: Box(
+                        half_extents: (0.5, 0.5, 0.5),
+                    ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Pyramid 2.0",
+                "RigidBody": (
+                    angular_damping: 0.05,
+                    ccd: false,
+                    friction: 0.5,
+                    gravity_scale: 1.0,
+                    kind: Dynamic,
+                    linear_damping: 0.05,
+                    mass: None,
+                    restitution: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-0.525, 2.52, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-00000000010a",
+            components: {
+                "Collider": (
+                    is_sensor: false,
+                    layer: 0,
+                    offset: (0.0, 0.0, 0.0),
+                    shape: Box(
+                        half_extents: (0.5, 0.5, 0.5),
+                    ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Pyramid 2.1",
+                "RigidBody": (
+                    angular_damping: 0.05,
+                    ccd: false,
+                    friction: 0.5,
+                    gravity_scale: 1.0,
+                    kind: Dynamic,
+                    linear_damping: 0.05,
+                    mass: None,
+                    restitution: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.525, 2.52, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-00000000010b",
+            components: {
+                "Collider": (
+                    is_sensor: false,
+                    layer: 0,
+                    offset: (0.0, 0.0, 0.0),
+                    shape: Box(
+                        half_extents: (0.5, 0.5, 0.5),
+                    ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Pyramid 3.0",
+                "RigidBody": (
+                    angular_damping: 0.05,
+                    ccd: false,
+                    friction: 0.5,
+                    gravity_scale: 1.0,
+                    kind: Dynamic,
+                    linear_damping: 0.05,
+                    mass: None,
+                    restitution: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.0, 3.53, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-00000000010c",
+            components: {
+                "Collider": (
+                    is_sensor: false,
+                    layer: 0,
+                    offset: (0.0, 0.0, 0.0),
+                    shape: Box(
+                        half_extents: (0.5, 0.5, 0.5),
+                    ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Dropped 0",
+                "RigidBody": (
+                    angular_damping: 0.05,
+                    ccd: false,
+                    friction: 0.5,
+                    gravity_scale: 1.0,
+                    kind: Dynamic,
+                    linear_damping: 0.05,
+                    mass: None,
+                    restitution: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.097843, 0.197677, -0.019834, 0.97517),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-2.8, 4.0, 0.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-00000000010d",
+            components: {
+                "Collider": (
+                    is_sensor: false,
+                    layer: 0,
+                    offset: (0.0, 0.0, 0.0),
+                    shape: Box(
+                        half_extents: (0.5, 0.5, 0.5),
+                    ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Dropped 1",
+                "RigidBody": (
+                    angular_damping: 0.05,
+                    ccd: false,
+                    friction: 0.5,
+                    gravity_scale: 1.0,
+                    kind: Dynamic,
+                    linear_damping: 0.05,
+                    mass: None,
+                    restitution: 0.0,
+                ),
+                "Transform": (
+                    rotation: (-0.1274, 0.516818, 0.078109, 0.842952),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (2.6, 5.0, -0.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-00000000010e",
+            components: {
+                "Collider": (
+                    is_sensor: false,
+                    layer: 0,
+                    offset: (0.0, 0.0, 0.0),
+                    shape: Box(
+                        half_extents: (0.5, 0.5, 0.5),
+                    ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Dropped 2",
+                "RigidBody": (
+                    angular_damping: 0.05,
+                    ccd: false,
+                    friction: 0.5,
+                    gravity_scale: 1.0,
+                    kind: Dynamic,
+                    linear_damping: 0.05,
+                    mass: None,
+                    restitution: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.140378, -0.339047, 0.051242, 0.928825),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.1, 6.0, 1.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-000000000200",
+            components: {
+                "Camera": (
+                    clear: (0.25, 0.35, 0.5, 1.0),
+                    exposure_ev100: 15.0,
+                    msaa: X4,
+                    priority: 0,
+                    projection: Perspective(
+                        far: 200.0,
+                        fov_y: 0.9,
+                        near: 0.1,
+                    ),
+                    tonemap: AgX,
+                ),
+                "Name": "Camera",
+                "Transform": (
+                    rotation: (-0.150378, 0.296879, 0.047402, 0.941808),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (7.0, 5.5, 10.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-000000000201",
+            components: {
+                "DirectionalLight": (
+                    color: (1.0, 0.96, 0.9),
+                    illuminance_lux: 100000.0,
+                    shadows: Some((
+                        cascades: 3,
+                        depth_bias: 0.02,
+                        max_distance: 40.0,
+                        normal_bias: 1.5,
+                        pcf: X3,
+                        resolution: 2048,
+                        split_lambda: 0.75,
+                        stabilize: true,
+                    )),
+                ),
+                "Name": "Sun",
+                "Transform": (
+                    rotation: (-0.429612, -0.343689, -0.0, 0.835052),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.0, 10.0, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-000000000202",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Ground visual",
+                "Parent": "0193a1c2-7e40-7000-8000-000000000101",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (30.0, 0.5, 30.0),
+                    translation: (0.0, 0.0, 0.0),
+                ),
+            },
+        ),
+    ],
+)
