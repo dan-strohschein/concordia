@@ -1,10 +1,12 @@
 // The Move gizmo: red/green/blue axis arrows on the selected entity. Dragging an arrow moves the
-// entity along that axis; the whole drag is one transaction, so one undo restores it.
-import { useCallback, useEffect, useRef, useState } from "react";
+// entity along that axis through `viewport.gizmo` (engine-side; one transaction, so one undo).
+// In the native shell the handles are reported to Rust, which drags them without the page.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { EditorSession } from "../engine/session";
 import { project, type Vec3, type View } from "./camera";
 import { inputTags } from "./latency";
+import { isNative, reportGizmoHandles } from "./native";
 
 interface Props {
   session: EditorSession;
@@ -15,44 +17,56 @@ interface Props {
   actor: string;
 }
 
-interface TransformValue {
-  translation: Vec3;
-  rotation: [number, number, number, number];
-  scale: Vec3;
+/** One drawn axis handle (viewport pixels). */
+export interface Handle {
+  axis: "x" | "y" | "z";
+  color: string;
+  origin: [number, number];
+  end: [number, number];
 }
 
-const AXES: { axis: Vec3; color: string; name: string }[] = [
+const AXES: { axis: Vec3; color: string; name: Handle["axis"] }[] = [
   { axis: [1, 0, 0], color: "#e05050", name: "x" },
   { axis: [0, 1, 0], color: "#60c060", name: "y" },
   { axis: [0, 0, 1], color: "#5080e0", name: "z" },
 ];
+const LENGTH = 60;
+/** Handle radius in pixels (the circle at each arrow's end). */
+export const HANDLE_RADIUS = 7;
 
-/** World amount to move along `axis` for a pointer delta, from the axis' on-screen direction. */
-export function axisDelta(
-  view: View,
-  origin: Vec3,
-  axis: Vec3,
-  delta: [number, number],
-  width: number,
-  height: number,
-): number {
-  const a = project(view, origin, width, height);
-  const b = project(view, [origin[0] + axis[0], origin[1] + axis[1], origin[2] + axis[2]], width, height);
-  if (!a || !b) return 0;
-  const s: [number, number] = [b[0] - a[0], b[1] - a[1]];
-  const length2 = s[0] * s[0] + s[1] * s[1];
-  return length2 < 1e-6 ? 0 : (delta[0] * s[0] + delta[1] * s[1]) / length2;
+/** The arrows for an entity at `translation`, each `LENGTH` pixels along its axis on screen. */
+export function handles(view: View, translation: Vec3 | undefined, width: number, height: number): Handle[] {
+  if (!translation) return [];
+  const origin = project(view, translation, width, height);
+  if (!origin) return [];
+  return AXES.flatMap(({ axis, color, name }) => {
+    const tip = project(
+      view,
+      [translation[0] + axis[0], translation[1] + axis[1], translation[2] + axis[2]],
+      width,
+      height,
+    );
+    if (!tip) return [];
+    const [dx, dy] = [tip[0] - origin[0], tip[1] - origin[1]];
+    const n = Math.hypot(dx, dy);
+    if (n < 1e-3) return []; // the axis points at the eye: no usable handle
+    return [{ axis: name, color, origin, end: [origin[0] + (dx / n) * LENGTH, origin[1] + (dy / n) * LENGTH] }];
+  });
+}
+
+interface Drag {
+  latest: { x: number; y: number; seq: number; input_time_ms: number } | undefined;
+  busy: boolean;
 }
 
 export function Gizmo({ session, entity, view, width, height, actor }: Props) {
-  const [transform, setTransform] = useState<TransformValue>();
-  const drag = useRef<{ axis: Vec3; start: TransformValue; x: number; y: number; txn: string | undefined } | undefined>(
-    undefined,
-  );
+  const [translation, setTranslation] = useState<Vec3>();
+  const drag = useRef<Drag | undefined>(undefined);
+  const svg = useRef<SVGSVGElement>(null);
   const load = useCallback(() => {
     session.entity(entity).then(
-      (d) => setTransform(d.components["Transform"] as TransformValue | undefined),
-      () => setTransform(undefined),
+      (d) => setTranslation((d.components["Transform"] as { translation?: Vec3 } | undefined)?.translation),
+      () => setTranslation(undefined),
     );
   }, [session, entity]);
   useEffect(load, [load]);
@@ -63,39 +77,52 @@ export function Gizmo({ session, entity, view, width, height, actor }: Props) {
       }),
     [session, entity, load],
   );
-  if (!transform) return null;
-  const origin = project(view, transform.translation, width, height);
-  if (!origin) return null;
-  const length = 60;
-
-  const begin = (axis: Vec3) => (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const state = { axis, start: transform, x: e.clientX, y: e.clientY, txn: undefined as string | undefined };
-    drag.current = state;
-    session.call<{ txn: string }>("txn.begin", { label: "Move", actor }).then(
-      (r) => (state.txn = r.txn),
-      () => undefined,
+  const arrows = useMemo(() => handles(view, translation, width, height), [view, translation, width, height]);
+  useEffect(() => {
+    if (!isNative()) return;
+    reportGizmoHandles(
+      entity,
+      arrows.map((a) => ({ axis: a.axis, x: a.end[0], y: a.end[1], radius: HANDLE_RADIUS + 3 })),
     );
+    return () => reportGizmoHandles(entity, []);
+  }, [entity, arrows]);
+
+  /** Pointer position in viewport pixels. */
+  const local = (e: { clientX: number; clientY: number }): [number, number] => {
+    const box = svg.current?.getBoundingClientRect();
+    return [e.clientX - (box?.left ?? 0), e.clientY - (box?.top ?? 0)];
+  };
+  const begin = (axis: Handle["axis"]) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const [x, y] = local(e);
+    const state: Drag = { latest: undefined, busy: false };
+    drag.current = state;
+    void session.call("viewport.gizmo", { action: "begin", entity, axis, x, y, actor });
+    // Pointer positions are absolute, so only the latest one needs sending.
+    const send = () => {
+      const next = state.latest;
+      if (state.busy || !next) return;
+      state.latest = undefined;
+      state.busy = true;
+      session
+        .call<{ translation: Vec3 | null }>("viewport.gizmo", { action: "move", ...next, width, height, actor })
+        .then((r) => r.translation && setTranslation(r.translation))
+        .catch(() => undefined)
+        .finally(() => {
+          state.busy = false;
+          send();
+        });
+    };
     const move = (m: MouseEvent) => {
-      inputTags.mark(m.timeStamp);
-      const t = axisDelta(
-        view,
-        state.start.translation,
-        axis,
-        [m.clientX - state.x, m.clientY - state.y],
-        width,
-        height,
-      );
-      const translation = state.start.translation.map((v, i) => v + (axis[i] ?? 0) * t) as Vec3;
-      const next = { ...state.start, translation };
-      setTransform(next);
-      void session.call("component.set", { entity, component: "Transform", value: next, actor });
+      const [mx, my] = local(m);
+      state.latest = { x: mx, y: my, ...inputTags.mark(m.timeStamp) };
+      send();
     };
     const up = () => {
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", up);
       drag.current = undefined;
-      if (state.txn !== undefined) void session.call("txn.commit", { txn: state.txn, actor });
+      void session.call("viewport.gizmo", { action: "end", actor });
     };
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
@@ -103,35 +130,24 @@ export function Gizmo({ session, entity, view, width, height, actor }: Props) {
 
   return (
     <svg
+      ref={svg}
       width={width}
       height={height}
       style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
       aria-label="Move gizmo"
     >
-      {AXES.map(({ axis, color, name }) => {
-        const tip = project(
-          view,
-          [transform.translation[0] + axis[0], transform.translation[1] + axis[1], transform.translation[2] + axis[2]],
-          width,
-          height,
-        );
-        if (!tip) return null;
-        const [dx, dy] = [tip[0] - origin[0], tip[1] - origin[1]];
-        const n = Math.hypot(dx, dy) || 1;
-        const end = [origin[0] + (dx / n) * length, origin[1] + (dy / n) * length];
-        return (
-          <g
-            key={name}
-            style={{ pointerEvents: "all", cursor: "grab" }}
-            onMouseDown={begin(axis)}
-            aria-label={`Move ${name}`}
-            role="button"
-          >
-            <line x1={origin[0]} y1={origin[1]} x2={end[0]} y2={end[1]} stroke={color} strokeWidth={4} />
-            <circle cx={end[0]} cy={end[1]} r={7} fill={color} />
-          </g>
-        );
-      })}
+      {arrows.map(({ axis, color, origin, end }) => (
+        <g
+          key={axis}
+          style={{ pointerEvents: "all", cursor: "grab" }}
+          onMouseDown={begin(axis)}
+          aria-label={`Move ${axis}`}
+          role="button"
+        >
+          <line x1={origin[0]} y1={origin[1]} x2={end[0]} y2={end[1]} stroke={color} strokeWidth={4} />
+          <circle cx={end[0]} cy={end[1]} r={HANDLE_RADIUS} fill={color} />
+        </g>
+      ))}
     </svg>
   );
 }

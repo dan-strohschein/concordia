@@ -17,12 +17,12 @@ test("project maps the target to the image center and +x to the right", () => {
   expect(project(front, [0, 0, 20], 400, 300)).toBeUndefined();
 });
 
-test("gizmo drags convert pointer motion along the axis into world units", async () => {
-  const { axisDelta } = await import("../../src/viewport/Gizmo");
-  const view = front;
-  const right = project(view, [1, 0, 0], 400, 300);
-  const pixelsPerUnit = (right?.[0] ?? 0) - 200;
-  expect(axisDelta(view, [0, 0, 0], [1, 0, 0], [pixelsPerUnit * 2, 0], 400, 300)).toBeCloseTo(2);
-  expect(axisDelta(view, [0, 0, 0], [1, 0, 0], [0, 50], 400, 300)).toBeCloseTo(0);
-  expect(axisDelta(view, [0, 0, 0], [0, 0, 1], [30, 30], 400, 300)).toBe(0);
+test("gizmo handles point along each axis on screen at a fixed length", async () => {
+  const { handles } = await import("../../src/viewport/Gizmo");
+  const arrows = handles(front, [0, 0, 0], 400, 300);
+  expect(arrows.map((a) => a.axis)).toEqual(["x", "y"]); // z points at the eye: no handle
+  const x = arrows[0];
+  expect(x?.origin[0]).toBeCloseTo(200);
+  expect(x?.end[0]).toBeCloseTo(260);
+  expect(handles(front, undefined, 400, 300)).toEqual([]);
 });

@@ -179,3 +179,28 @@ fn bench_reads_this_process_resident_memory() {
     let mb = concordia_editor::bench::rss_mb(std::process::id()).expect("ps reports our RSS");
     assert!(mb > 1.0 && mb < 100_000.0, "{mb} MB");
 }
+
+#[test]
+fn session_as_attributes_edits_to_the_given_actor() {
+    let dir = example_copy();
+    let host = EngineHost::start(dir.path()).unwrap();
+    let human = host.session_as("human:local").unwrap();
+    let txn = human
+        .call("txn.begin", serde_json::json!({"label": "by hand"}))
+        .unwrap();
+    human
+        .call(
+            "entity.spawn",
+            serde_json::json!({"components": {"Name": "Mine"}}),
+        )
+        .unwrap();
+    human
+        .call("txn.commit", serde_json::json!({"txn": txn["txn"]}))
+        .unwrap();
+    let history = human.call("txn.history", serde_json::json!({})).unwrap();
+    let text = history.to_string();
+    assert!(
+        text.contains("by hand") && text.contains("human:local"),
+        "{text}"
+    );
+}

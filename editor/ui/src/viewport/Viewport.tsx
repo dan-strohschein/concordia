@@ -79,7 +79,9 @@ export function Viewport({ session, world, selected, onSelect }: Props) {
   const { src, status, request } = useStreamedView(session, world);
   const navigate = useNavigate(session, setView);
   const latest = useRef({ view, size });
-  latest.current = { view, size };
+  useEffect(() => {
+    latest.current = { view, size };
+  }, [view, size]);
 
   useEffect(() => navigate({}), [navigate]);
   useEffect(() => (native ? onNativeView(setView) : undefined), [native]);
@@ -105,19 +107,11 @@ export function Viewport({ session, world, selected, onSelect }: Props) {
     if (!native) redraw();
   }, [native, redraw, view]);
   useEffect(() => session.onEvent(redraw), [session, redraw]);
-  // In the native shell: keep the Metal view on the slot, and redraw every display frame while playing.
+  // In the native shell: keep the Metal view on the slot (while playing, the engine redraws it each tick).
   useEffect(() => {
     if (!native || !slot.current) return;
     void reportSlot(slot.current);
   }, [native, size]);
-  useEffect(() => {
-    if (!native || world !== "play") return;
-    let frame = requestAnimationFrame(function tick() {
-      redraw();
-      frame = requestAnimationFrame(tick);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [native, world, redraw]);
 
   const focusSelection = useCallback(async () => {
     if (selected === undefined) return;

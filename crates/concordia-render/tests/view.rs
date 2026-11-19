@@ -375,3 +375,109 @@ fn viewport_navigate_moves_the_engine_side_editor_camera() {
         .unwrap_err();
     assert_eq!(err.kind, concordia_api::ApiErrorKind::InvalidParams);
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn a_playing_viewport_redraws_on_each_simulation_tick_without_being_asked() {
+    let Some(mut h) = Harness::gpu() else { return };
+    h.two_cubes();
+    let layer = objc2_quartz_core::CAMetalLayer::new();
+    let target = concordia_rhi::SurfaceTarget::MetalLayer(std::ptr::NonNull::from(&*layer).cast());
+    // SAFETY: the layer outlives the engine (dropped after `h`).
+    unsafe { concordia_render::attach_surface(&mut h.engine, target) }.unwrap();
+    h.ok("sim.play", json!({}));
+    h.ok(
+        "viewport.present",
+        json!({"view": front_view(), "width": 64, "height": 48, "world": "play"}),
+    );
+    wait_until_rendered(&mut h, 1);
+    h.ok("viewport.stats", json!({"clear": true}));
+    let start = std::time::Instant::now();
+    for i in 1..=5u64 {
+        h.engine
+            .poll(start + std::time::Duration::from_millis(20 * i));
+    }
+    wait_until_rendered(&mut h, 3);
+    h.ok("sim.pause", json!({}));
+}
+
+/// Polls `viewport.stats` until at least `n` frames have rendered (up to 10 s).
+#[cfg(target_os = "macos")]
+fn wait_until_rendered(h: &mut Harness, n: usize) {
+    for _ in 0..200 {
+        let stats = h.ok("viewport.stats", json!({}));
+        let rendered = stats["frames"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|f| !f["submitted_ms"].is_null())
+            .count();
+        if rendered >= n {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    panic!("fewer than {n} frames rendered");
+}
+
+fn translation_x(h: &mut Harness, id: &Value) -> f64 {
+    h.ok(
+        "component.get",
+        json!({"entity": id, "component": "Transform"}),
+    )["value"]["translation"][0]
+        .as_f64()
+        .unwrap()
+}
+
+#[test]
+fn viewport_gizmo_drags_an_entity_along_an_axis_as_one_undo_step() {
+    let mut h = Harness::new();
+    let id = h.ok(
+        "entity.spawn",
+        json!({"components": {"Name": "Box", "Transform": {"translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]}}, "actor": "human:local"}),
+    )["id"]
+        .clone();
+    h.ok(
+        "viewport.navigate",
+        json!({"preset": "front", "focus": [0.0, 0.0, 0.0]}),
+    );
+    let at = |x: f64| json!({"x": x, "y": 150.0, "width": 400.0, "height": 300.0, "actor": "human:local"});
+    let mut begin = at(200.0);
+    begin["action"] = json!("begin");
+    begin["entity"] = id.clone();
+    begin["axis"] = json!("x");
+    h.ok("viewport.gizmo", begin);
+    for x in [230.0, 260.0] {
+        let mut step = at(x);
+        step["action"] = json!("move");
+        h.ok("viewport.gizmo", step);
+    }
+    assert!(translation_x(&mut h, &id) > 0.5, "dragging right moves +x");
+    h.ok(
+        "viewport.gizmo",
+        json!({"action": "end", "actor": "human:local"}),
+    );
+    h.ok("txn.undo", json!({"actor": "human:local"}));
+    assert_eq!(
+        translation_x(&mut h, &id),
+        0.0,
+        "the whole drag is one undo step"
+    );
+    let err = h
+        .call(
+            "viewport.gizmo",
+            json!({"action": "move", "x": 1.0, "y": 1.0, "width": 10.0, "height": 10.0, "actor": "human:local"}),
+        )
+        .unwrap_err();
+    assert_eq!(
+        err.kind,
+        concordia_api::ApiErrorKind::InvalidRequest,
+        "no drag in progress"
+    );
+    let err = h.call("viewport.gizmo", json!({"action": "begin", "axis": "x", "x": 1.0, "y": 1.0, "width": 10.0, "height": 10.0, "actor": "human:local"})).unwrap_err();
+    assert_eq!(
+        err.kind,
+        concordia_api::ApiErrorKind::InvalidParams,
+        "begin needs an entity"
+    );
+}

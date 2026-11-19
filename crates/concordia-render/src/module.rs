@@ -47,7 +47,7 @@ impl RenderModule {
 }
 
 /// Engine-lifetime state: the device factory and, once something renders, the render thread.
-struct RenderState {
+pub(crate) struct RenderState {
     factory: DeviceFactory,
     thread: Option<RenderThread>,
     /// Whether a host attached the editor's native viewport.
@@ -60,9 +60,11 @@ struct RenderState {
     frames: FrameLog,
     next_frame: u64,
     /// The editor's camera (`viewport.navigate`).
-    camera: OrbitCamera,
+    pub(crate) camera: OrbitCamera,
     /// The native viewport's last size and world, so navigation can re-present it.
-    viewport: Option<(u32, u32, Option<WorldSel>)>,
+    pub(crate) viewport: Option<(u32, u32, Option<WorldSel>)>,
+    /// The gizmo drag in progress (`viewport.gizmo`).
+    pub(crate) gizmo: Option<crate::gizmo::GizmoDrag>,
 }
 
 impl EngineModule for RenderModule {
@@ -84,7 +86,30 @@ impl EngineModule for RenderModule {
             MethodInfo::of::<ViewportPresent>(),
             MethodInfo::of::<ViewportStats>(),
             MethodInfo::of::<ViewportNavigate>(),
+            MethodInfo::of::<crate::gizmo::ViewportGizmo>(),
         ]
+    }
+
+    /// A native viewport showing the play world redraws on every simulation tick.
+    fn after_sim(&self, engine: &mut Engine) {
+        let Some(state) = engine.state::<RenderState>() else {
+            return;
+        };
+        let Some((width, height, Some(WorldSel::play))) = state.viewport.filter(|_| state.surface)
+        else {
+            return;
+        };
+        let view = state.camera.view();
+        let target = PresentTarget {
+            width,
+            height,
+            world: Some(WorldSel::play),
+            seq: None,
+            input_time_ms: None,
+        };
+        if let Err(e) = queue_present(engine, view, target) {
+            tracing::warn!(target: "concordia::render", error = %e.message, "play viewport redraw failed");
+        }
     }
 
     fn engine_state(&self) -> Option<Box<dyn std::any::Any + Send>> {
@@ -98,6 +123,7 @@ impl EngineModule for RenderModule {
             next_frame: 0,
             camera: OrbitCamera::default(),
             viewport: None,
+            gizmo: None,
         }))
     }
 }
@@ -505,16 +531,43 @@ impl Method for ViewportPresent {
 }
 
 /// Where and why a native-viewport frame is drawn.
-struct PresentTarget {
-    width: u32,
-    height: u32,
-    world: Option<WorldSel>,
+pub(crate) struct PresentTarget {
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+    pub(crate) world: Option<WorldSel>,
+    pub(crate) seq: Option<u64>,
+    pub(crate) input_time_ms: Option<f64>,
+}
+
+/// Redraws the attached native viewport (if any) at its last size, tagged with an input.
+pub(crate) fn redraw_viewport(
+    engine: &mut Engine,
     seq: Option<u64>,
     input_time_ms: Option<f64>,
+) -> Result<(), ApiError> {
+    let Some(state) = engine.state::<RenderState>() else {
+        return Ok(());
+    };
+    let Some((width, height, world)) = state.viewport.filter(|_| state.surface) else {
+        return Ok(());
+    };
+    let view = state.camera.view();
+    let target = PresentTarget {
+        width,
+        height,
+        world,
+        seq,
+        input_time_ms,
+    };
+    queue_present(engine, view, target)
 }
 
 /// Snapshots the world and queues a frame of `view` on the render thread.
-fn queue_present(engine: &mut Engine, view: crate::View, t: PresentTarget) -> Result<(), ApiError> {
+pub(crate) fn queue_present(
+    engine: &mut Engine,
+    view: crate::View,
+    t: PresentTarget,
+) -> Result<(), ApiError> {
     let scene = scene_update(engine, t.world.unwrap_or_default())?;
     let slot = scene.slot;
     let request = RenderRequest {

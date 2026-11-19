@@ -36,6 +36,48 @@ impl View {
         let rotation = Quat::from_mat3(&Mat3::from_cols(right, right.cross(f), -f));
         Ok(Mat4::from_rotation_translation(rotation, self.eye))
     }
+
+    /// Pixel position of `point` in a `width`×`height` image, or `None` if it is not in view depth.
+    pub fn project(&self, point: Vec3, width: f32, height: f32) -> Option<[f32; 2]> {
+        if !(width > 0.0 && height > 0.0) {
+            return None;
+        }
+        let clip_from_world =
+            self.projection.matrix(width / height).ok()? * self.world_matrix().ok()?.inverse();
+        let clip = clip_from_world * point.extend(1.0);
+        if clip.w <= 0.0 {
+            return None;
+        }
+        let ndc = clip.truncate() / clip.w;
+        if !(0.0..=1.0).contains(&ndc.z) {
+            return None;
+        }
+        Some([(ndc.x + 1.0) / 2.0 * width, (1.0 - ndc.y) / 2.0 * height])
+    }
+}
+
+/// World distance to move along `axis` (from `origin`) for a pointer `delta` in pixels, using the
+/// axis' on-screen direction; 0 when the axis points at the eye or is out of view.
+pub fn axis_delta(
+    view: &View,
+    origin: Vec3,
+    axis: Vec3,
+    delta: [f32; 2],
+    width: f32,
+    height: f32,
+) -> f32 {
+    let (Some(a), Some(b)) = (
+        view.project(origin, width, height),
+        view.project(origin + axis, width, height),
+    ) else {
+        return 0.0;
+    };
+    let s = [b[0] - a[0], b[1] - a[1]];
+    let length2 = s[0] * s[0] + s[1] * s[1];
+    if length2 < 1e-6 {
+        return 0.0;
+    }
+    (delta[0] * s[0] + delta[1] * s[1]) / length2
 }
 
 /// A pick hit: the entity and its depth along the view direction from the eye.

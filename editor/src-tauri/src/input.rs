@@ -1,7 +1,8 @@
-//! Native viewport input: mouse gestures over the viewport become editor-camera moves in Rust,
-//! so navigation never waits on the page. Godot-style, like the web UI: middle-drag orbits,
-//! Shift+middle-drag pans, Alt+left-drag emulates the middle button, the wheel zooms. Plain left
-//! clicks (selection, gizmos) stay with the page.
+//! Native viewport input: mouse gestures over the viewport become editor-camera moves and gizmo
+//! drags in Rust, so they never wait on the page. Godot-style, like the web UI: middle-drag
+//! orbits, Shift+middle-drag pans, Alt+left-drag emulates the middle button, the wheel zooms, and
+//! left-dragging a gizmo handle moves the entity. Other left clicks (selection) stay with the
+//! page. Positions are viewport pixels, y down.
 
 /// A mouse button.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -11,7 +12,7 @@ pub enum Button {
     Other,
 }
 
-/// A mouse event in window coordinates (AppKit: y grows upward).
+/// A mouse event, in viewport pixels (y down).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Input {
     Down {
@@ -63,24 +64,68 @@ impl Nav {
     }
 }
 
+/// A gizmo handle the page drew (viewport pixels).
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct Handle {
+    pub axis: String,
+    pub x: f64,
+    pub y: f64,
+    pub radius: f64,
+}
+
+/// A step of a native gizmo drag (`viewport.gizmo`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum GizmoStep {
+    Begin {
+        entity: String,
+        axis: String,
+        x: f64,
+        y: f64,
+    },
+    Move {
+        x: f64,
+        y: f64,
+    },
+    End,
+}
+
+/// What a consumed event does.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Action {
+    Nav(Nav),
+    Gizmo(GizmoStep),
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Mode {
+    Orbit,
+    Pan,
+    Gizmo,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct Drag {
     x: f64,
     y: f64,
-    pan: bool,
+    mode: Mode,
 }
 
-/// Tracks one navigation drag at a time.
+/// Tracks one drag at a time, and the selected entity's gizmo handles.
 #[derive(Debug, Default)]
 pub struct Navigator {
     drag: Option<Drag>,
+    gizmo: Option<(String, Vec<Handle>)>,
 }
 
 impl Navigator {
-    /// Handles an event; `in_slot` says whether it is over the viewport. Returns the camera move
-    /// (empty for presses and releases) when the viewport consumes the event, `None` when the page
-    /// should get it.
-    pub fn handle(&mut self, input: Input, in_slot: bool) -> Option<Nav> {
+    /// The gizmo handles the page drew for `entity` (empty when there is no gizmo).
+    pub fn set_gizmo(&mut self, entity: &str, handles: Vec<Handle>) {
+        self.gizmo = (!handles.is_empty()).then(|| (entity.to_owned(), handles));
+    }
+
+    /// Handles an event; `in_slot` says whether it is over the viewport. Returns what it does when
+    /// the viewport consumes it, `None` when the page should get it.
+    pub fn handle(&mut self, input: Input, in_slot: bool) -> Option<Action> {
         match input {
             Input::Down {
                 button,
@@ -88,40 +133,74 @@ impl Navigator {
                 y,
                 alt,
                 shift,
-            } => {
-                let navigates = button == Button::Middle || (button == Button::Left && alt);
-                if !(in_slot && navigates) {
-                    return None;
-                }
-                self.drag = Some(Drag { x, y, pan: shift });
-                Some(Nav::default())
-            }
+            } => self.press(button, x, y, alt, shift, in_slot),
             Input::Drag { x, y } => {
                 let drag = self.drag.as_mut()?;
-                let delta = [(x - drag.x) as f32, (drag.y - y) as f32];
+                let delta = [(x - drag.x) as f32, (y - drag.y) as f32];
                 (drag.x, drag.y) = (x, y);
-                Some(match drag.pan {
-                    true => Nav {
-                        pan: Some(delta),
-                        ..Nav::default()
-                    },
-                    false => Nav {
+                Some(match drag.mode {
+                    Mode::Orbit => Action::Nav(Nav {
                         orbit: Some(delta),
                         ..Nav::default()
-                    },
+                    }),
+                    Mode::Pan => Action::Nav(Nav {
+                        pan: Some(delta),
+                        ..Nav::default()
+                    }),
+                    Mode::Gizmo => Action::Gizmo(GizmoStep::Move { x, y }),
                 })
             }
-            Input::Up => self.drag.take().map(|_| Nav::default()),
+            Input::Up => self.drag.take().map(|d| match d.mode {
+                Mode::Gizmo => Action::Gizmo(GizmoStep::End),
+                _ => Action::Nav(Nav::default()),
+            }),
             Input::Scroll { dy } => {
                 if !in_slot || dy == 0.0 || !dy.is_finite() {
                     return None;
                 }
                 // Scrolling the content up (dy > 0) is a wheel turn away: zoom in.
-                Some(Nav {
+                Some(Action::Nav(Nav {
                     zoom: Some(if dy > 0.0 { -1.0 } else { 1.0 }),
                     ..Nav::default()
-                })
+                }))
             }
         }
+    }
+
+    fn press(
+        &mut self,
+        button: Button,
+        x: f64,
+        y: f64,
+        alt: bool,
+        shift: bool,
+        in_slot: bool,
+    ) -> Option<Action> {
+        if !in_slot {
+            return None;
+        }
+        if button == Button::Middle || (button == Button::Left && alt) {
+            let mode = if shift { Mode::Pan } else { Mode::Orbit };
+            self.drag = Some(Drag { x, y, mode });
+            return Some(Action::Nav(Nav::default()));
+        }
+        if button != Button::Left {
+            return None;
+        }
+        let (entity, handles) = self.gizmo.as_ref()?;
+        let hit = handles
+            .iter()
+            .find(|h| (h.x - x).hypot(h.y - y) <= h.radius)?;
+        self.drag = Some(Drag {
+            x,
+            y,
+            mode: Mode::Gizmo,
+        });
+        Some(Action::Gizmo(GizmoStep::Begin {
+            entity: entity.clone(),
+            axis: hit.axis.clone(),
+            x,
+            y,
+        }))
     }
 }

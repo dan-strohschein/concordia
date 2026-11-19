@@ -307,3 +307,33 @@ fn engine_state_lives_for_the_engine_and_survives_play_sessions() {
     assert!(h.engine.state::<Counter>().is_some());
     assert!(h.engine.state::<Seen>().is_none());
 }
+
+/// Counts `after_sim` calls.
+#[derive(Debug)]
+struct SimWatcher(Arc<AtomicUsize>);
+
+impl EngineModule for SimWatcher {
+    fn name(&self) -> &'static str {
+        "sim-watcher"
+    }
+
+    fn after_sim(&self, _: &mut Engine) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+#[test]
+fn modules_hear_about_each_simulation_advance() {
+    let seen = Arc::new(AtomicUsize::new(0));
+    let mut h = with_modules(vec![Arc::new(SimWatcher(seen.clone()))]).ready();
+    h.ok("sim.play", json!({}));
+    let start = std::time::Instant::now();
+    h.engine.poll(start + std::time::Duration::from_millis(100));
+    let after_play = seen.load(Ordering::SeqCst);
+    assert!(after_play >= 1, "a tick advanced");
+    h.engine.poll(start + std::time::Duration::from_millis(100));
+    assert_eq!(seen.load(Ordering::SeqCst), after_play, "no tick, no call");
+    h.ok("sim.pause", json!({}));
+    h.engine.poll(start + std::time::Duration::from_millis(500));
+    assert_eq!(seen.load(Ordering::SeqCst), after_play, "paused");
+}

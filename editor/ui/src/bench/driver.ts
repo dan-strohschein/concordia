@@ -60,10 +60,6 @@ async function revealRow(prefix: string): Promise<void> {
   throw new Error(`bench: no outliner row starts with ${prefix}`);
 }
 
-function mouse(target: EventTarget, type: string, x: number, y: number, button: number) {
-  target.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button, buttons: 1 << button }));
-}
-
 /** One scenario's result. */
 export interface ScenarioResult {
   viewport: FrameSummary;
@@ -131,18 +127,21 @@ class Bench {
     return performance.now() - start;
   }
 
-  /** Drags the selected entity's Move-x handle 1 px per display frame. */
+  /** Drags the selected entity's Move-x handle with native input, one step per display refresh. */
   async gizmo(probeName: string): Promise<ScenarioResult> {
+    const { invoke } = await import("@tauri-apps/api/core");
     await revealRow(probeName);
     (await waitFor(() => treeItem(probeName)?.querySelector<HTMLElement>(":scope > div"), "probe row")).click();
     (await waitFor(() => document.querySelector<HTMLElement>('button[title="Move (W)"]'), "Move tool")).click();
     const handle = await waitFor(() => document.querySelector('[aria-label="Move x"] circle'), "Move x handle");
-    const box = handle.getBoundingClientRect();
-    const [x, y] = [box.left + box.width / 2, box.top + box.height / 2];
+    const slot = await waitFor(() => document.getElementById("viewport-slot"), "viewport");
+    const [h, s] = [handle.getBoundingClientRect(), slot.getBoundingClientRect()];
+    const from = [h.left + h.width / 2 - s.left, h.top + h.height / 2 - s.top];
+    await nextFrame(); // let the handles reach the shell
     await this.stats();
-    mouse(handle, "mousedown", x, y, 0);
-    const intervals = await paced(this.frames, (i) => mouse(window, "mousemove", x + (i % 120) - 60, y, 0));
-    mouse(window, "mouseup", x, y, 0);
+    const drag = invoke("bench_native_drag", { frames: this.frames * 2, from, alt: false });
+    const intervals = await paced(this.frames, () => undefined);
+    await drag;
     return this.result(await this.stats(), intervals);
   }
 

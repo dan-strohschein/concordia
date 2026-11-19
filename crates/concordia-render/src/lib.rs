@@ -10,6 +10,7 @@ mod error;
 mod extract;
 mod frame;
 mod frame_log;
+mod gizmo;
 mod gpu;
 pub mod graph;
 pub mod ibl;
@@ -45,7 +46,7 @@ pub use pipelines::shader_dir;
 pub use renderer::{Image, MAX_SIZE, RenderRequest, RenderStats, Renderer};
 pub use scene_cache::{RenderScene, SceneCache, SceneDelta, SceneItems};
 pub use shadow_pass::ShadowPush;
-pub use view::{Pick, View, pick};
+pub use view::{Pick, View, axis_delta, pick};
 
 /// Registers the render components.
 pub fn register_types(

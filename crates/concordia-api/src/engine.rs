@@ -260,10 +260,16 @@ impl Engine {
     pub fn poll(&mut self, now: Instant) {
         let timeout = self.config.txn_timeout;
         self.abort_held(|hold| now.duration_since(hold.since) >= timeout, "timeout");
+        let mut advanced = false;
         if let Some(play) = self.play.as_mut().filter(|p| p.playing) {
             let real = now.saturating_duration_since(play.last);
             play.last = now;
-            play.sim.advance(&mut play.world, &self.jobs, real);
+            advanced = play.sim.advance(&mut play.world, &self.jobs, real).steps > 0;
+        }
+        if advanced {
+            for module in self.modules.clone() {
+                module.after_sim(self);
+            }
         }
     }
 
