@@ -6,11 +6,12 @@ Agent Studio's harness-neutral source of truth and its engine module: role files
 ## Public entry points
 - `StudioModule`: the engine module (`[studio]` in `concordia.toml` turns it on via `concordia-app`).
 - `RoleFile`, `RoleSpec`, `RoleId`: `studio/agents/<role>.md` (YAML frontmatter + Markdown body).
+- `SkillFile`, `CLAUDE_SKILL_FIELDS`: `studio/skills/<name>/SKILL.md` (Claude Code's skill format), validated on load and before sync.
 - `Team`, `Gate`, `GateParty`: `studio/team.toml`.
 - `Roster::load` / `Roster::resolve`: team overrides applied, tool patterns expanded against a `ToolCatalog`.
 - `TaskBoard`, `TaskStore`, `Task`: `studio/tasks/T-0001-<slug>.task.md`.
 - `StudioJournal`: `.concordia/studio/journal.jsonl` (ADR-0080); hooks append to it directly.
-- `default_roster`, `init`: the embedded default team (`roster/`).
+- `default_roster`, `init`: the embedded default team (`roster/`): 12 roles and 8 engine skills.
 - `sync`, `SyncOptions`, `SyncReport`: compile the roster to Claude Code files (`claude_code/`).
 - `Policy`: who may call which tools, write which paths, run which commands; written by sync to `.claude/concordia/policy.json`, rebuilt from the engine by `concordia mcp`.
 - `hook::run`: the `concordia studio hook <event>` logic (pure; the CLI only does stdin/stdout).
@@ -28,11 +29,15 @@ Agent Studio's harness-neutral source of truth and its engine module: role files
 - The hook never starts an engine: it reads only the policy file. PreToolUse fails closed (unreadable input exits 2; a missing or stale policy denies). The other events fail open with a warning.
 - Engine calls are stamped with a reserved `_studio` key that only `concordia mcp` reads and strips; engine params never see it.
 - The default roster lives only in `roster/`. Its tool scopes name only tools that exist today (M3 refinement G10).
+- Every role prompt has the sections Mission, You own, You never, Workflow, How you verify, When to escalate and Output contract (with a fenced example). Enabled roles' prompts name only tools in their scope.
+- A role's `skills` must exist in `studio/skills/`. Skill frontmatter uses only `CLAUDE_SKILL_FIELDS`, `name` matches the folder, and description plus `when_to_use` stay within 1,536 chars.
+- A default skill that names a tool the engine doesn't offer yet carries a `> **Not available yet:**` line naming those tools and the phase that brings them (tracked in the M3 plan's 3.1, 3.2 and 3.7 follow-ups).
 
 ## How to test
 `cargo nextest run -p concordia-studio` (role, team, journal, task board and method tests; `insta` snapshots).
 
 ## Common tasks
+- **Add a default skill:** write `roster/skills/<name>/SKILL.md`, add it to `SKILLS` in `defaults.rs`, preload it in roles' `skills`, and update the list in `tests/skills.rs`.
 - **Add a role field:** add it to `RoleSpec` and `ROLE_KEYS`, then extend the round-trip property test.
 - **Add a journal event:** add a `JournalEvent` variant (snake_case `kind`), and map it in `task()` and `kind()`.
 - **Add a method:** define it in `methods.rs`, add it to `all()`, document it in `docs/guides/agents-engine-api.md` and update the schema snapshot.
@@ -48,7 +53,7 @@ Agent Studio's harness-neutral source of truth and its engine module: role files
 - YAML via `serde_norway` 0.9 (MIT OR Apache-2.0), a maintained fork of `serde_yaml`; globs via `globset` (Unlicense OR MIT).
 
 ## Status
-M3 phases 3.3 (config model, task board, Studio journal), 3.4 (sync) and 3.5 (hooks, policy, slots). The full prompts (3.6) come next.
+M3 phases 3.3 (config model, task board, Studio journal), 3.4 (sync), 3.5 (hooks, policy, slots) and 3.6 (default prompts and engine skills). Team questions (3.6b) come next.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

@@ -35,6 +35,42 @@ const ROLES: [(&str, &str); 12] = [
     ("writer", include_str!("../roster/agents/writer.md")),
 ];
 
+/// Engine skills of the default roster: (name, `SKILL.md`), sorted by name.
+const SKILLS: [(&str, &str); 8] = [
+    (
+        "concordia-add-material",
+        include_str!("../roster/skills/concordia-add-material/SKILL.md"),
+    ),
+    (
+        "concordia-director-planning",
+        include_str!("../roster/skills/concordia-director-planning/SKILL.md"),
+    ),
+    (
+        "concordia-fix-bug-with-replay",
+        include_str!("../roster/skills/concordia-fix-bug-with-replay/SKILL.md"),
+    ),
+    (
+        "concordia-generate-mesh-blender",
+        include_str!("../roster/skills/concordia-generate-mesh-blender/SKILL.md"),
+    ),
+    (
+        "concordia-record-replay",
+        include_str!("../roster/skills/concordia-record-replay/SKILL.md"),
+    ),
+    (
+        "concordia-synthesize-sfx",
+        include_str!("../roster/skills/concordia-synthesize-sfx/SKILL.md"),
+    ),
+    (
+        "concordia-task-workflow",
+        include_str!("../roster/skills/concordia-task-workflow/SKILL.md"),
+    ),
+    (
+        "concordia-write-playtest",
+        include_str!("../roster/skills/concordia-write-playtest/SKILL.md"),
+    ),
+];
+
 const TEAM: &str = include_str!("../roster/team.toml");
 
 /// The default roster's files.
@@ -44,6 +80,8 @@ pub struct DefaultRoster {
     pub team: &'static str,
     /// Role files: (id, text), sorted by id.
     pub roles: &'static [(&'static str, &'static str)],
+    /// Engine skills: (name, `SKILL.md` text), sorted by name.
+    pub skills: &'static [(&'static str, &'static str)],
 }
 
 /// The default team: 12 roles, some disabled until their engine features land.
@@ -51,6 +89,7 @@ pub fn default_roster() -> DefaultRoster {
     DefaultRoster {
         team: TEAM,
         roles: &ROLES,
+        skills: &SKILLS,
     }
 }
 
@@ -73,6 +112,12 @@ pub fn init(root: &Path, dir: &Path) -> Result<Vec<PathBuf>, StudioError> {
             .roles
             .iter()
             .map(|(id, text)| (PathBuf::from(format!("agents/{id}.md")), *text)),
+    );
+    files.extend(
+        roster
+            .skills
+            .iter()
+            .map(|(name, text)| (PathBuf::from(format!("skills/{name}/SKILL.md")), *text)),
     );
     files
         .into_iter()

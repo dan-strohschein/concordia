@@ -1,7 +1,7 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5 and 3.5b done; 3.6 next; refinement approved 2026-11-19) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Needs refinement after M2** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b and 3.6 done; 3.6b next; refinement approved 2026-11-19) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Needs refinement after M2** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
@@ -242,7 +242,7 @@ crates/concordia-mcp/             (touched) role-scope enforcement, actor slot r
 crates/concordia-cli/             (touched) concordia replay|assert|task|studio|gen subcommands
 editor/ui/src/panels/studio/   (new) TaskBoard, CommandLog, Approvals, ClaudeLauncher
 editor/src-tauri/src/claude_launcher.rs   (new)
-studio/                        (filled) team.toml, agents/<12 roles>.md, skills/<engine skills>/SKILL.md
+crates/concordia-studio/roster/ (filled) team.toml, agents/<12 roles>.md, skills/<engine skills>/SKILL.md (the only home of the default roster; the repo-root studio/ folder is removed, G13)
 tools/blender-bridge/          (new, separate optional tool) bridge.py run inside Blender; own LICENSE review
 tests/gates/m3_replay_assert.rs, m3_studio_sync.rs, m3_studio_loop_scripted.rs, m3_live_studio.rs
 tests/src/m3_checker.rs        shared outcome checker (scripted + live)
@@ -308,6 +308,11 @@ justfile                       (touched) `gate-live` recipe
   - Inputs are recorded at the action level (post-binding) plus raw device events behind a flag, so replays survive rebinding.
   - References: deterministic lockstep and replay practice (public GDC talks on deterministic simulation and replay, e.g. talks on lockstep RTS replays and on fighting-game rollback (GGPO's public docs)); content hashing with BLAKE3 (Apache-2.0/CC0 crate `blake3`).
 - **Done criteria:** all tests above pass; `concordia replay run tests/replays/m2-level1.replay.ron` verifies; the CI job "replay determinism" runs the committed replays on every PR.
+- **Studio follow-ups (from 3.6, author request: track what 3.6 couldn't finish):**
+  - **`concordia-record-replay`** and the replay half of **`concordia-fix-bug-with-replay`** were written in 3.6 against the planned `replay_record` / `replay_run` names.
+  - finish it to full quality: check every tool name and argument against the real schemas, replace the planned examples with ones that run, and remove its `> **Not available yet:**` note (`skills_for_tools_not_built_yet_say_so_and_name_their_phase` then requires the note to go);
+  - add a test that drives the skill's steps against the real tools (scripted, no live agent);
+  - add `replay_*` to the QA, level-designer and gameplay-programmer scopes (G10), and preload `concordia-record-replay` into `qa-playtester`.
 
 ### Phase 3.2: Playtest assertions + `assert.eval`
 *The language and evaluator over a live session can start after M0/M1. Evaluation over replays needs 3.1.*
@@ -354,6 +359,12 @@ justfile                       (touched) `gate-live` recipe
     - `concordia_assert_eval_exit_code_reflects_outcome`: 0 = pass, 1 = fail, 2 = type or parse error; `--json` prints the result object.
 - **Implementation notes:** hand-written recursive-descent parser (no parser-generator dependency, so error messages stay ours). The evaluator compiles predicates to closures over ECS queries resolved once per run, with selectors cached by tag index. The result type `AssertOutcome { status: Passed|Failed|Undecided, decided_at, witness: BTreeMap<String, Value>, trace: Option<Vec<Sample>> }` is designed to be pasted directly into a task's acceptance notes. References: runtime verification and temporal-logic monitors (bounded LTL monitoring literature); the units approach follows dimensional-analysis type checking.
 - **Done criteria:** tests pass; `concordia test playtests` runs all `.playtest.ron` in a project; doc tests show the builder API.
+- **Studio follow-ups (from 3.6):**
+  - **`concordia-write-playtest`** and the assertion half of **`concordia-fix-bug-with-replay`** were written in 3.6 against the planned `assert_eval` name.
+  - finish it to full quality: check every tool name and argument against the real schemas, replace the planned examples with ones that run, and remove its `> **Not available yet:**` note (`skills_for_tools_not_built_yet_say_so_and_name_their_phase` then requires the note to go);
+  - add a test that drives the skill's steps against the real tools (scripted, no live agent);
+  - add `assert_eval` to the QA, level-designer and gameplay-programmer scopes (G10), and preload `concordia-write-playtest` into `qa-playtester` and `level-designer`;
+  - the director's planning skill can then require `assert` acceptance criteria that `assert_eval` checks directly.
 
 ### Phase 3.3: Studio config model + task board (done)
 *Can start right after M0.*
@@ -646,7 +657,7 @@ justfile                       (touched) `gate-live` recipe
     - PostToolUse quick checks;
     - making the read-only rule for unknown agent types configurable.
 
-### Phase 3.6: Default roster, starter prompts, engine skills
+### Phase 3.6: Default roster, starter prompts, engine skills (done)
 *Can start after 3.3/3.4. Artist roles become fully useful after 3.7.*
 
 - **Objective:** A useful default team out of the box: 12 roles with well-written prompts, clear tool and path scopes, and a set of engine skills encoding the workflows (task flow, bug fix with replay, write a playtest, add a material, generate a mesh with Blender).
@@ -684,6 +695,42 @@ justfile                       (touched) `gate-live` recipe
     - `skill_frontmatter_uses_documented_fields_only`, `skill_descriptions_under_listing_limit` (≤ 1,536 chars combined with `when_to_use`).
 - **Implementation notes:** prompts are written as plain, direct instructions, with tool names exactly as generated (`mcp__concordia__…`), and each contains a worked example of the output contract. Roles must not be told forbidden source (clean room): the gameplay and tech-artist prompts include the clean-room rule verbatim. Starter prompts get iterated during the 3.9 live runs; changes are tracked in git like code.
 - **Done criteria:** tests pass; synced fixture project shows 12 agents; the human can read each prompt and understand the role in under a minute.
+
+**As built (2026-11-19):**
+- **Prompts:** all 12 roles have full prompts in the planned structure (Mission, You own, You never, Workflow, How you verify, When to escalate, Output contract), each with a fenced worked example.
+  - Enabled roles name only tools in their own scope, as `mcp__concordia__<tool>`.
+  - Disabled roles open with a line saying what they wait for.
+  - The gameplay programmer and the tech artist carry the clean-room rule verbatim.
+- **Skills** (author decision: write all eight now and track the gaps): `concordia-task-workflow`, `concordia-director-planning` (the only user-invocable one), `concordia-add-material`, `concordia-record-replay`, `concordia-write-playtest`, `concordia-fix-bug-with-replay`, `concordia-generate-mesh-blender` and `concordia-synthesize-sfx`.
+  - They live in `crates/concordia-studio/roster/skills/`, and `concordia studio init` and `concordia new` write them.
+  - The four that need tools not built yet each start with a `> **Not available yet:**` line naming those tools and their phase, and a test keeps that note honest.
+  - Finishing them is tracked as **Studio follow-ups** in 3.1, 3.2 and 3.7.
+- **Preloads:**
+  - Enabled roles preload only skills that work today: everyone `concordia-task-workflow`, the director `concordia-director-planning`, the tech artist `concordia-add-material`.
+  - Disabled roles preload their target skills.
+  - QA and the level designer get the replay and playtest skills with 3.1 and 3.2.
+- **Validation:**
+  - `SkillFile` checks skill frontmatter against `CLAUDE_SKILL_FIELDS` (Claude Code 2.1.328), checks that `name` matches the folder, and enforces the 1,536-char listing limit.
+  - `Roster::load` rejects a role that preloads a missing skill, with a did-you-mean.
+  - Sync validates skills through the same code; its private skill reader moved to `skill.rs`.
+- **Paths:**
+  - the gameplay programmer writes `tests/gameplay/**` instead of `tests/**`, which overlapped QA's replays, the shared playtests and the tech artist's goldens;
+  - the VFX artist keeps its shaders under `assets/vfx/` instead of `assets/shaders/vfx/**`.
+  - With that, no undeclared write-path overlaps remain.
+- **G13:** the repo-root `studio/` folder is removed; the default roster lives only in `crates/concordia-studio/roster/`.
+- **Tests:** `tests/roster.rs` (11) and `tests/skills.rs` (7).
+  - They extend the plan's list: section order, fenced examples, the clean-room rule, tool names in prompts, a missing skill rejected at load, the not-yet-available note, and init writing the skills.
+  - `only_director_can_spawn_subagents` was not added; the existing `non_director_agents_have_no_agent_tool` covers it.
+- **Red run:**
+  - The content and validation tests failed first for the right reason.
+  - These passed at once because they only guard rules that held before 3.6, or loop over a skill list that was still empty: `qa_role_has_no_write_access_to_code_or_content_paths`, `prompts_never_mention_api_keys_except_to_say_none_needed`, `enabled_role_prompts_name_only_tools_in_their_scope`, `default_roster_has_exactly_the_twelve_design_roles`, `skill_descriptions_under_listing_limit`, `only_director_planning_is_user_invocable` and `every_skill_referenced_by_a_role_exists`. `the_default_roster_ships_the_eight_planned_skills` failed and covers the empty list.
+  - The API-key test then caught two skill descriptions that said "without API keys", and I reworded them.
+- **Changed deliberately:**
+  - `sync_check_reports_stale_files_with_a_diff_and_writes_nothing` edited a sentence of the old placeholder writer prompt; it now edits one from the new prompt;
+  - the five enabled agents' sync snapshots were updated.
+- **Not done here:**
+  - the manual check (read each prompt in an interactive `/agents` session), left to the author;
+  - iterating the prompts on live runs, which belongs to 3.9.
 
 ### Phase 3.6b: Team questions and answers (ADR-0081)
 *Author request, 2026-11-19. After 3.6; before 3.8. Team mode only. Tested without live agents.*
@@ -787,6 +834,12 @@ justfile                       (touched) `gate-live` recipe
     - `blender_armature_action_exports_animation_clip` (Animator path).
 - **Implementation notes:** **license boundary:** Blender is GPL. The engine never links it. It launches the user's installed Blender as a separate process. `tools/blender-bridge/bridge.py` imports `bpy` and therefore lives outside the engine crates as a separate optional tool, pending the license review that `docs/clean-room.md` requires for copyleft-adjacent tools (ADR). The glTF export operator name and options must be checked against Blender 5.2's Python API (*verify at execution time*; `docs.blender.org` returned 403 to automated fetch during planning). CLI flags were verified locally from `Blender --help` (5.2.1 LTS): `-b/--background`, `-P/--python`, `--python-expr`, `--python-exit-code`, `-X/--factory-startup`, `--offline-mode`, `--` (args to `sys.argv`), `-Y/--disable-autoexec` (default). Blender scripts are arbitrary code, so the bridge runs only files inside the calling role's scope, with `--offline-mode`, and logs the script hash in provenance. References: Perlin's "Improving Noise" (2002); Worley's cellular texture basis (1996); Gustavson's simplex noise notes; surface nets (Gibson 1998); sfxr (public-domain/MIT-style synth design notes; reimplemented, not copied).
 - **Done criteria:** tests pass; the 3D Modeler skill `concordia-generate-mesh-blender` works in an interactive session in the fixture project (manual check), producing an imported asset with provenance.
+- **Studio follow-ups (from 3.6):**
+  - **`concordia-generate-mesh-blender`** and **`concordia-synthesize-sfx`** were written in 3.6 against the planned `gen_list` / `gen_run` names and request shapes.
+  - finish it to full quality: check every tool name and argument against the real schemas, replace the planned examples with ones that run, and remove its `> **Not available yet:**` note (`skills_for_tools_not_built_yet_say_so_and_name_their_phase` then requires the note to go);
+  - add a test that drives the skill's steps against the real tools (scripted, no live agent);
+  - check the request fields (`provider`, `request`, `seed`, `path`) and the Blender script contract against the built bridge;
+  - add `gen_*` to the modeler, animator, tech-artist (texture) and sound-designer scopes, and enable the modeler (and the vfx artist for textures) in the default `team.toml`, each with a test.
 
 ### Phase 3.8: Editor Studio panel + Claude Code launcher
 *Needs the M1 editor shell. API side after 3.3.*

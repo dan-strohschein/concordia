@@ -149,7 +149,7 @@ fn studio_sync_check_exits_nonzero_and_prints_diff_when_stale() {
     let text = std::fs::read_to_string(&role).unwrap();
     std::fs::write(
         &role,
-        text.replace("Write the game's text", "Write all text"),
+        text.replace("Give the game its words", "Write all text"),
     )
     .unwrap();
     let output = run(&["studio", "sync", "--check"], &root);
