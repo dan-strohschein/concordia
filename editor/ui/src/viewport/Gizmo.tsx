@@ -3,6 +3,8 @@
 // In the native shell the handles are reported to Rust, which drags them without the page.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { Coalescer } from "../engine/coalesce";
+
 import type { EditorSession } from "../engine/session";
 import { project, type Vec3, type View } from "./camera";
 import { inputTags } from "./latency";
@@ -63,12 +65,17 @@ export function Gizmo({ session, entity, view, width, height, actor }: Props) {
   const [translation, setTranslation] = useState<Vec3>();
   const drag = useRef<Drag | undefined>(undefined);
   const svg = useRef<SVGSVGElement>(null);
-  const load = useCallback(() => {
-    session.entity(entity).then(
-      (d) => setTranslation((d.components["Transform"] as { translation?: Vec3 } | undefined)?.translation),
-      () => setTranslation(undefined),
-    );
-  }, [session, entity]);
+  const loader = useMemo(
+    () =>
+      new Coalescer(() =>
+        session.entity(entity).then(
+          (d) => setTranslation((d.components["Transform"] as { translation?: Vec3 } | undefined)?.translation),
+          () => setTranslation(undefined),
+        ),
+      ),
+    [session, entity],
+  );
+  const load = useCallback(() => loader.request(), [loader]);
   useEffect(load, [load]);
   useEffect(
     () =>

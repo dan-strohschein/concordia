@@ -268,7 +268,7 @@ A review compared Concordia against Unreal's public architecture and audited our
 | 8 | Persistent per-frame buffers and pooled textures | done: `BufferPool` for per-frame, staging and readback buffers; recycled heaps keep their placed textures; `RenderStats::allocations` is 0 for warm frames |
 | 9 | Cached shadows for static casters | done: when no caster, light, cascade or map changed, the shadow passes are skipped and the maps reused (`RenderStats::shadows_cached`). Cascades follow the camera, so camera moves still redraw; caching across camera motion needs world-anchored (virtual) shadow maps, a later step |
 | 10 | Incremental outliner tree | done: `OutlinerTree` patches sorted sibling lists per edit (binary insertion; adoption of waiting children); cycles fall back to a full rebuild; a seeded property test checks it always equals `buildTree` |
-| 11 | Inspector refetches throttled during drags | |
+| 11 | Inspector refetches throttled during drags | done: `Coalescer` (one fetch in flight, one trailing) for the inspector and the gizmo overlay; a burst of 50 events costs at most 2 fetches |
 | 12 | Binary/low-overhead hot paths if JSON shows up in the bench | |
 | 13 | First-use hitches: background IBL, shader compiles and texture uploads | |
 | 14 | Optimized dev builds for the editor | |
