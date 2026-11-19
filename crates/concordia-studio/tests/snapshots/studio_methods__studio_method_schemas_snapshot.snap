@@ -826,5 +826,256 @@ expression: schemas
       "type": "object",
       "x-concordia-type": "StudioSyncParams"
     }
+  },
+  {
+    "docs": "Ask a teammate a question (telegraphic, ≤ 280 chars; refer to ids, don't restate context). Returns at once with an id; don't wait for the answer.",
+    "mutates": true,
+    "name": "studio.ask",
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`studio.ask` params.",
+      "properties": {
+        "actor": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "description": "Who makes a change: <human|agent|system|tool|script>:<name>[#n], e.g. agent:claude-code.",
+              "pattern": "^(human|agent|system|tool|script):[a-z0-9][a-z0-9._-]{0,63}(#[1-9][0-9]*)?$",
+              "type": "string"
+            }
+          ],
+          "description": "Actor (defaults to the session's)."
+        },
+        "refs": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "Related ids (tasks, questions)."
+        },
+        "task": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "The task it is about."
+        },
+        "text": {
+          "description": "The question, at most 280 characters.",
+          "type": "string"
+        },
+        "to": {
+          "description": "An enabled role id (e.g. `qa-playtester`, `director`) or `human`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "to",
+        "text"
+      ],
+      "title": "StudioAskParams",
+      "type": "object",
+      "x-concordia-type": "StudioAskParams"
+    }
+  },
+  {
+    "docs": "Answer a question addressed to your role (the director and humans may answer any; escalated ones take only a human answer). ≤ 500 chars.",
+    "mutates": true,
+    "name": "studio.answer",
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`studio.answer` params.",
+      "properties": {
+        "actor": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "description": "Who makes a change: <human|agent|system|tool|script>:<name>[#n], e.g. agent:claude-code.",
+              "pattern": "^(human|agent|system|tool|script):[a-z0-9][a-z0-9._-]{0,63}(#[1-9][0-9]*)?$",
+              "type": "string"
+            }
+          ],
+          "description": "Actor (defaults to the session's)."
+        },
+        "id": {
+          "description": "Question id (`Q-0001`).",
+          "type": "string"
+        },
+        "text": {
+          "description": "The answer, at most 500 characters.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "text"
+      ],
+      "title": "StudioAnswerParams",
+      "type": "object",
+      "x-concordia-type": "StudioAnswerParams"
+    }
+  },
+  {
+    "docs": "Escalate a question nobody on the team can answer to the human (director only); its unfinished task becomes blocked until a human answers.",
+    "mutates": true,
+    "name": "studio.escalate",
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`studio.escalate` params.",
+      "properties": {
+        "actor": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "description": "Who makes a change: <human|agent|system|tool|script>:<name>[#n], e.g. agent:claude-code.",
+              "pattern": "^(human|agent|system|tool|script):[a-z0-9][a-z0-9._-]{0,63}(#[1-9][0-9]*)?$",
+              "type": "string"
+            }
+          ],
+          "description": "Actor (defaults to the session's)."
+        },
+        "id": {
+          "description": "Question id.",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Why no role can answer, at most 280 characters.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "reason"
+      ],
+      "title": "StudioEscalateParams",
+      "type": "object",
+      "x-concordia-type": "StudioEscalateParams"
+    }
+  },
+  {
+    "docs": "List team questions, oldest first: who asked what and when, who answered what and when.",
+    "mutates": false,
+    "name": "studio.questions",
+    "params": {
+      "$defs": {
+        "QuestionStatus": {
+          "description": "Where a question stands.",
+          "oneOf": [
+            {
+              "const": "open",
+              "description": "Waiting for an answer from its addressee."
+            },
+            {
+              "const": "answered",
+              "description": "Answered; closed."
+            },
+            {
+              "const": "escalated",
+              "description": "Escalated to the human; waiting for a human answer."
+            }
+          ],
+          "title": "QuestionStatus",
+          "x-concordia-type": "QuestionStatus"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`studio.questions` params.",
+      "properties": {
+        "from": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Only questions from this role or actor."
+        },
+        "limit": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            }
+          ],
+          "description": "At most this many."
+        },
+        "since": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "maximum": 18446744073709551615,
+              "minimum": 0,
+              "type": "integer"
+            }
+          ],
+          "description": "Only questions with an event after this journal `seq` (a previous `next`)."
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/QuestionStatus"
+            }
+          ],
+          "description": "Only questions in this state."
+        },
+        "task": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Only questions about this task."
+        },
+        "to": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Only questions to this role (or `human`)."
+        }
+      },
+      "title": "StudioQuestionsParams",
+      "type": "object",
+      "x-concordia-type": "StudioQuestionsParams"
+    }
   }
 ]

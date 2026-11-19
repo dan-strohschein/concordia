@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use super::model::{Acceptance, Priority, Task, TaskId, TaskMeta, TaskStatus};
 use super::state::{can_move, next_statuses};
-use super::store::{LOCAL_HUMAN, TaskStore, diff};
+use super::store::{BoardLock, LOCAL_HUMAN, TaskStore, diff};
 use crate::error::StudioError;
 use crate::gate::{GateOn, GateParty};
 use crate::journal::{JournalEntry, JournalEvent};
@@ -87,7 +87,7 @@ pub struct TaskEdit {
 /// The task board: the store plus the rules.
 #[derive(Debug)]
 pub struct TaskBoard {
-    store: TaskStore,
+    pub(super) store: TaskStore,
     published: u64,
 }
 
@@ -286,6 +286,17 @@ impl TaskBoard {
         edit: impl FnOnce(&mut Task) -> Result<(), BoardError>,
     ) -> Result<Task, BoardError> {
         let lock = self.store.lock()?;
+        self.change_locked(&lock, id, actor, edit)
+    }
+
+    /// [`TaskBoard::change`] under a lock the caller already holds.
+    pub(super) fn change_locked(
+        &mut self,
+        lock: &BoardLock,
+        id: &str,
+        actor: &Actor,
+        edit: impl FnOnce(&mut Task) -> Result<(), BoardError>,
+    ) -> Result<Task, BoardError> {
         let before = self.task(id)?.clone();
         let mut task = before.clone();
         edit(&mut task)?;
@@ -297,11 +308,11 @@ impl TaskBoard {
             task: id.to_owned(),
             changes,
         };
-        self.store.write(&lock, task.clone(), actor, event)?;
+        self.store.write(lock, task.clone(), actor, event)?;
         Ok(task)
     }
 
-    fn task(&self, id: &str) -> Result<&Task, BoardError> {
+    pub(super) fn task(&self, id: &str) -> Result<&Task, BoardError> {
         let parsed: TaskId = id.parse().map_err(|_| BoardError::NotFound(id.into()))?;
         self.store
             .get(parsed)

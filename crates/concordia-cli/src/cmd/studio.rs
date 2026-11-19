@@ -43,7 +43,7 @@ enum StudioCommand {
     },
     /// Claude Code hook entry point: reads the hook's JSON on stdin, answers with a decision (ADR-0080).
     Hook {
-        /// pre-tool-use, post-tool-use, subagent-start, subagent-stop or session-end.
+        /// pre-tool-use, post-tool-use, subagent-start, subagent-stop, session-end or user-prompt-submit.
         event: String,
     },
     /// Print the resolved team (enabled roles with tools and paths, disabled roles with reasons).
@@ -52,6 +52,25 @@ enum StudioCommand {
     Status,
     /// Check the environment: Claude Code installed and logged in, `concordia` on PATH, files in sync.
     Doctor,
+    /// List team questions (who asked what and when, who answered what and when).
+    Questions {
+        /// open, answered or escalated.
+        #[arg(long)]
+        status: Option<String>,
+        /// Only questions to this role (or human).
+        #[arg(long)]
+        to: Option<String>,
+        /// Only questions about this task.
+        #[arg(long)]
+        task: Option<String>,
+    },
+    /// Answer a team question as the local human (escalated questions take only human answers).
+    Answer {
+        /// Question id, e.g. Q-0007.
+        id: String,
+        /// The answer (at most 500 characters).
+        text: String,
+    },
 }
 
 /// `concordia task` arguments.
@@ -151,6 +170,16 @@ pub(crate) fn run_studio(args: &StudioArgs) -> Result<(), Failure> {
         StudioCommand::Doctor => super::doctor::run(&args.project),
         StudioCommand::Roster => call(&args.project, "studio.roster", json!({})),
         StudioCommand::Status => call(&args.project, "studio.status", json!({})),
+        StudioCommand::Questions { status, to, task } => call(
+            &args.project,
+            "studio.questions",
+            without_nulls(json!({"status": status, "to": to, "task": task})),
+        ),
+        StudioCommand::Answer { id, text } => call(
+            &args.project,
+            "studio.answer",
+            json!({"id": id, "text": text, "actor": HUMAN}),
+        ),
     }
 }
 
@@ -308,7 +337,7 @@ pub(crate) fn sync(project: &Path, check: bool, dry_run: bool, force: bool) -> R
 fn hook(project: &Path, event: &str) -> Result<(), Failure> {
     let event = concordia_studio::HookEvent::from_cli(event).ok_or_else(|| {
         Failure::usage(format!(
-            "unknown hook event {event:?}; expected pre-tool-use, post-tool-use, subagent-start, subagent-stop or session-end"
+            "unknown hook event {event:?}; expected pre-tool-use, post-tool-use, subagent-start, subagent-stop, session-end or user-prompt-submit"
         ))
     })?;
     let root =

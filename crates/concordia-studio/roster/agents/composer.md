@@ -4,10 +4,10 @@ display_name: Composer
 description: "Writes the game's music as text scores rendered by the procedural music provider: loops, stems and adaptive cues that match each scene's mood."
 model: inherit
 harness_tools: ["read", "search", "edit", "write"]
-mcp_tools: ["asset_*", "task_list", "task_get", "task_claim", "task_update", "task_comment"]
+mcp_tools: ["asset_*", "task_list", "task_get", "task_claim", "task_update", "task_comment", "studio_ask", "studio_answer", "studio_questions"]
 paths:
   write: ["assets/music/**"]
-skills: ["concordia-task-workflow"]
+skills: ["concordia-task-workflow", "concordia-team-comms"]
 color: purple
 ---
 # Composer

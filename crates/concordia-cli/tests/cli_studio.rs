@@ -219,3 +219,45 @@ fn hook_completes_under_50ms_p95() {
     let p95 = times[times.len() * 95 / 100];
     assert!(p95 < std::time::Duration::from_millis(50), "p95 {p95:?}");
 }
+
+#[test]
+fn studio_questions_and_answer_cli() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = new_project(dir.path(), &[]);
+    let journal = concordia_studio::StudioJournal::of_project(&root);
+    journal
+        .append(
+            &"agent:level-designer#1".parse().unwrap(),
+            concordia_studio::JournalEvent::QuestionAsked {
+                question: "Q-0001".into(),
+                to: "director".into(),
+                text: "arena size?".into(),
+                task: None,
+                refs: Vec::new(),
+            },
+        )
+        .unwrap();
+    journal
+        .append(
+            &"agent:director#1".parse().unwrap(),
+            concordia_studio::JournalEvent::QuestionEscalated {
+                question: "Q-0001".into(),
+                reason: "design call".into(),
+            },
+        )
+        .unwrap();
+
+    let escalated = json(&run(
+        &["studio", "questions", "--status", "escalated"],
+        &root,
+    ));
+    assert_eq!(escalated["questions"][0]["id"], "Q-0001");
+    assert_eq!(escalated["questions"][0]["to"], "human");
+
+    let answered = json(&run(&["studio", "answer", "Q-0001", "40 m square"], &root));
+    assert_eq!(answered["question"]["status"], "answered");
+    assert_eq!(answered["question"]["answer"]["by"], "human:local");
+    assert_eq!(answered["question"]["answer"]["text"], "40 m square");
+    let open = json(&run(&["studio", "questions", "--status", "open"], &root));
+    assert_eq!(open["questions"], serde_json::json!([]));
+}

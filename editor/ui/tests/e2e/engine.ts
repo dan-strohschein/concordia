@@ -1,6 +1,6 @@
 // Test fixture: a headless engine on a temporary copy of the example project, plus an "agent"
 // API connection for setting up scenes and checking results from outside the editor.
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -30,8 +30,10 @@ async function waitForFile(path: string, ms: number): Promise<void> {
   }
 }
 
-export const test = base.extend<{ engine: Engine }>({
-  engine: async ({}, use) => {
+export const test = base.extend<{ engine: Engine; studio: boolean }>({
+  /** Add Agent Studio to the project (`concordia studio init`) before the engine starts. */
+  studio: [false, { option: true }],
+  engine: async ({ studio }, use) => {
     const dir = mkdtempSync(join(tmpdir(), "concordia-e2e-"));
     // Skip local engine state (a stale connection file would be read before ours is written).
     cpSync(join(repo, "examples/m1-physics-stack"), dir, {
@@ -42,6 +44,7 @@ export const test = base.extend<{ engine: Engine }>({
     // tuned for render checks and costs CI's virtual GPU seconds per frame, which delays every call.
     cpSync(join(import.meta.dirname, "../fixtures/scenes/stack.scene.ron"), join(dir, "scenes/stack.scene.ron"));
     const binary = join(repo, "target/debug/concordia");
+    if (studio) execFileSync(binary, ["studio", "init", "--project", dir], { stdio: "ignore" });
     const child: ChildProcess = spawn(binary, ["headless", "--ws", "--port", "0", "--project", dir], {
       stdio: "ignore",
     });

@@ -100,6 +100,18 @@ impl TaskStore {
         self.cache.get(&id).map(|c| c.file.as_path())
     }
 
+    /// Records `event` by `actor` in the journal only (no task file); requires the lock.
+    pub fn record(
+        &mut self,
+        _: &BoardLock,
+        actor: &Actor,
+        event: JournalEvent,
+    ) -> Result<(), StudioError> {
+        self.journal.append(actor, event)?;
+        self.cursor = self.journal.last_seq()?;
+        Ok(())
+    }
+
     /// Writes `task` (atomically) and records `event` by `actor`; requires the lock.
     pub fn write(
         &mut self,

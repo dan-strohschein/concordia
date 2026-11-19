@@ -7,7 +7,7 @@ use super::json::Json;
 use crate::roster::Roster;
 
 /// Hook events and the matcher groups Studio owns in each (event, matcher, hook subcommand).
-const HOOKS: [(&str, Option<&str>, &str); 7] = [
+const HOOKS: [(&str, Option<&str>, &str); 9] = [
     ("PreToolUse", Some("mcp__concordia__.*"), "pre-tool-use"),
     (
         "PreToolUse",
@@ -20,9 +20,11 @@ const HOOKS: [(&str, Option<&str>, &str); 7] = [
         Some("Edit|Write|NotebookEdit"),
         "post-tool-use",
     ),
+    ("PostToolUse", Some("Agent"), "post-tool-use"),
     ("SubagentStart", None, "subagent-start"),
     ("SubagentStop", None, "subagent-stop"),
     ("SessionEnd", None, "session-end"),
+    ("UserPromptSubmit", None, "user-prompt-submit"),
 ];
 
 /// Seconds Claude Code waits for a hook (its default is 600; ADR-0080 budgets 2 s).

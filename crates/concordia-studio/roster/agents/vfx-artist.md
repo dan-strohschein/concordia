@@ -4,10 +4,10 @@ display_name: VFX Artist
 description: "Creates particle and visual effects and their shaders, checks them in simulation with screenshots and keeps their overdraw and GPU cost within budget."
 model: inherit
 harness_tools: ["read", "search", "edit", "write"]
-mcp_tools: ["asset_*", "capture_screenshot", "render_stats", "sim_*", "task_list", "task_get", "task_claim", "task_update", "task_comment"]
+mcp_tools: ["asset_*", "capture_screenshot", "render_stats", "sim_*", "task_list", "task_get", "task_claim", "task_update", "task_comment", "studio_ask", "studio_answer", "studio_questions"]
 paths:
   write: ["assets/vfx/**"]
-skills: ["concordia-task-workflow"]
+skills: ["concordia-task-workflow", "concordia-team-comms"]
 color: orange
 ---
 # VFX Artist

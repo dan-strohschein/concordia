@@ -85,13 +85,18 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `studio.status` | | `{}` → `{tasks: {<status>: count}, pending_approvals}` |
 | `studio.activity` | | `{since?, actor?, role?, task?, kind?, limit?}` → `{entries, next}` (task changes, reviews and agents' file edits, oldest first) |
 | `studio.sync` | yes | `{check?, force?}` → `{changes: [{path, action, diff?}], refused, stale}` (regenerates `.claude/agents`, `.claude/skills`, the settings hooks, `.mcp.json` and the `CLAUDE.md` block from `studio/`; usually run by a human) |
+| `studio.ask` | yes | `{to, text, task?, refs?}` → `{question}` (ask an enabled role or `human`; `text` ≤ 280 chars; returns at once with `Q-0001`: don't wait, carry on or report you're blocked; see `concordia-team-comms`) |
+| `studio.answer` | yes | `{id, text}` → `{question}` (≤ 500 chars; the addressed role, the director or a human; an escalated question takes only a human answer; the first answer closes it) |
+| `studio.escalate` | yes | `{id, reason}` → `{question}` (director only, when no role can answer; re-addresses it to `human` and blocks its unfinished task until a human answers) |
+| `studio.questions` | | `{status?, to?, from?, task?, since?, limit?}` → `{questions: [{id, from, to, task, refs, text, asked_ms, status, answer?, escalation?}], next}` (oldest first) |
 
 `events.subscribe` makes the WebSocket connection receive JSON-RPC notifications, `{"method": "events.event", "params": {"topic", ...}}`:
 - `edit`: one per committed transaction, undo or redo, with `method`, `txn`, `label`, `actor`, `entities` and `undo`;
 - `scene`: `event` is `opened`, `new` or `saved`, plus the `path`;
 - `sim`: `method`, `tick` and `state`;
 - `pending`: one per call that changes the world inside an open transaction (`pending: true`, with `method`, `txn`, `label`, `actor` and that call's `entities`), and one when a transaction is aborted (`aborted: true` and its `entities`). Use it to show work in progress, such as a gizmo drag, before the commit;
-- `log`: `latest` (the newest log record's seq) after a call wrote log records; fetch them with `log.tail`.
+- `log`: `latest` (the newest log record's seq) after a call wrote log records; fetch them with `log.tail`;
+- `studio` (projects with `[studio]`): one per new Studio journal entry (task changes, reviews, file edits, and `question_asked`, `question_answered` and `question_escalated`), with its `seq`, `ts_ms`, `actor`, `kind` and the kind's fields.
 
 Edits made by other clients arrive too, which is how the editor sees agents work. Over stdio or MCP, poll `log.tail` instead. If a client falls more than 1,024 events behind, newer events are dropped, so re-read state with `query.run`.
 

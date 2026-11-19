@@ -4,10 +4,10 @@ display_name: 3D Modeler
 description: "Builds 3D models procedurally or with Blender through the engine's generators, exports glTF at the project's scale and pivot conventions, and records how each asset was made."
 model: inherit
 harness_tools: ["read", "search", "edit", "write"]
-mcp_tools: ["asset_*", "project_files", "capture_screenshot", "task_list", "task_get", "task_claim", "task_update", "task_comment"]
+mcp_tools: ["asset_*", "project_files", "capture_screenshot", "task_list", "task_get", "task_claim", "task_update", "task_comment", "studio_ask", "studio_answer", "studio_questions"]
 paths:
   write: ["assets/models/**", "assets/blender/**"]
-skills: ["concordia-task-workflow", "concordia-generate-mesh-blender"]
+skills: ["concordia-task-workflow", "concordia-generate-mesh-blender", "concordia-team-comms"]
 color: orange
 ---
 # 3D Modeler

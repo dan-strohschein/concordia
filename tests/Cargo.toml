@@ -24,6 +24,7 @@ concordia-mcp.workspace = true
 concordia-reflect.workspace = true
 concordia-render.workspace = true
 concordia-scene.workspace = true
+concordia-studio.workspace = true
 concordia-testkit.workspace = true
 insta.workspace = true
 tempfile.workspace = true
@@ -44,6 +45,10 @@ path = "gates/m_minus1_scaffold.rs"
 [[test]]
 name = "m0_headless_mcp"
 path = "gates/m0_headless_mcp.rs"
+
+[[test]]
+name = "m3s_team_questions"
+path = "gates/m3s_team_questions.rs"
 
 [[test]]
 name = "m0_live_check"

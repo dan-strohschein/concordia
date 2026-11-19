@@ -366,9 +366,10 @@ fn hook_entries_run_concordia_with_a_short_timeout() {
         }
     }
     // 7 since 3.5: SessionEnd releases the main session's slot (the live probe found it held).
+    // 9 since 3.6b: PostToolUse on Agent and UserPromptSubmit bring team questions to the director.
     assert_eq!(
-        count, 7,
-        "PreToolUse ×3, PostToolUse, SubagentStart, SubagentStop, SessionEnd"
+        count, 9,
+        "PreToolUse ×3, PostToolUse ×2, SubagentStart, SubagentStop, SessionEnd, UserPromptSubmit"
     );
 }
 

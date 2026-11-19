@@ -1,7 +1,7 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b and 3.6 done; 3.6b next; refinement approved 2026-11-19) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Needs refinement after M2** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6 and 3.6b done; 3.8 next; refinement approved 2026-11-19) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Needs refinement after M2** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
@@ -732,7 +732,7 @@ justfile                       (touched) `gate-live` recipe
   - the manual check (read each prompt in an interactive `/agents` session), left to the author;
   - iterating the prompts on live runs, which belongs to 3.9.
 
-### Phase 3.6b: Team questions and answers (ADR-0081)
+### Phase 3.6b: Team questions and answers (ADR-0081) (done)
 *Author request, 2026-11-19. After 3.6; before 3.8. Team mode only. Tested without live agents.*
 
 - **Objective:** Studio agents can ask each other questions and get answers, in token-lean, still human-readable messages. The Director routes them, and escalates what nobody on the team can answer to the human. Every exchange is visible in a dedicated editor panel: who asked what and when, who answered what and when. An escalation makes itself impossible to miss.
@@ -795,6 +795,49 @@ justfile                       (touched) `gate-live` recipe
   - `editor/ui/tests/e2e/questions.spec.ts` (Playwright, headless engine on a Studio fixture project, an "agent" WebSocket client): an escalation from the client shows the banner and badge within 1 s (15 s in CI); the human answers in the panel; `studio.questions` shows the answer by `human:local`; and the task is back to `todo`.
 - **Implementation notes:** reuse the board lock and the journal (`TaskStore`/`StudioJournal`) for ids and events; there's no new storage. The panel builds on the 1.15 Activity dock patterns and the `studio` events topic, with no editor-only logic (ADR-0047). The editor sees live questions from agents once 3.5b shares the engine; before that, the panel reads the journal on refresh.
 - **Done criteria:** all of the above green; `just gate-tests M3S` includes `m3s_team_questions`; no live run is needed for this phase.
+
+**As built (2026-11-19):**
+- **Engine** (Studio module, `question_methods.rs`):
+  - `studio.ask/answer/escalate/questions` as planned.
+  - Question state is folded from three new journal kinds (`task/question.rs`), and the board's desk (`task/desk.rs`) allocates `Q-0001` ids under the board lock.
+  - Escalating blocks the task in the same lock, as `system:studio` (the board's `change` now has a `change_locked` form); a human answer moves it back to `todo`.
+  - `studio.questions` also takes `since` (a journal `seq`) and returns `next`, like `studio.activity`. `from` matches a role or a full actor.
+  - A missing question is `InvalidParams` with a `studio.questions` hint, so there is no new error code.
+- **Hooks** (`team_context.rs`). All of them add context only:
+  - SubagentStart lists the open questions to the role and the answers to its role's questions not delivered before;
+  - PostToolUse on `Agent` (or `Task`) in the main session gives the director every question opened, answered or escalated since its last turn (its first turn: everything unanswered);
+  - the new `concordia studio hook user-prompt-submit` gives an interactive director the human answers since its last prompt.
+  - Cursors per role or session live in `.concordia/studio/cursors.json`.
+  - Sync adds the two hook entries; the hook count test went from 7 to 9 deliberately.
+- **Roles and skill:**
+  - `concordia-team-comms` (the ninth default skill) covers when to ask, the telegraphic style, the caps, the glossary, "don't wait", and the director's routing.
+  - Every role preloads it, and every role gets `studio_ask`, `studio_answer` and `studio_questions`; only the director escalates (via `studio_*`).
+  - The director's prompt gains a "Routing questions" section with the rule "never guess a design decision".
+- **CLI:** `concordia studio questions [--status --to --task]` and `concordia studio answer <id> <text>`, as `human:local`.
+- **Editor** (`editor/ui/src/questions/`):
+  - `useTeamQuestions` is shared state, live through the `studio` events topic, which the editor session now subscribes to;
+  - the `TeamDesk` dock has threads, status and role filters, pinned escalations and an inline answer box capped at 500 characters with a counter;
+  - an `EscalationBadge` sits on the dock title and in the title bar;
+  - the banner ("The producer needs you: Q-…", with an Answer button) stays until every escalation is answered;
+  - a new escalation reveals the dock and focuses its box, unless the user is typing in another answer box;
+  - the panel and its View menu entry appear only when `studio.questions` exists.
+- **Tests:**
+  - `questions.rs` (15: the plan's 13, plus `since` and unknown role or task);
+  - `hook_other_events.rs` (+4: the plan's 3, plus "nothing for a subagent");
+  - `roster.rs` (+2) and `skills.rs` (+1, and the planned skill list now has 9);
+  - `cli_studio.rs` (+1);
+  - the gate `tests/gates/m3s_team_questions.rs` (`just gate-tests M3S`), the first M3S gate test;
+  - vitest `questions.test.tsx` (the plan's 7);
+  - e2e `questions.spec.ts`, which uses the e2e fixture's new `studio` option.
+- **Red runs:** the engine, hook, roster, skill, CLI and UI tests failed first for the right reason. Exceptions:
+  - `questions_need_team_mode`, `post_tool_use_on_agent_says_nothing_to_a_subagent` and `the_panel_is_hidden_outside_team_mode` are guards and passed at once;
+  - the gate was written after the parts it integrates and passed on its first run;
+  - the e2e test was written after the panel, so I checked it red by removing the dock from the editor (the banner never appeared), then restored it.
+- **Changed deliberately:**
+  - the editor session's subscription assertion (adds `studio`);
+  - the hook count (7 to 9);
+  - the Studio method schema, settings and agent snapshots.
+- **Not done here:** an OS notification (the author chose the panel only); a per-project solo switch (ADR-0081 assumption).
 
 ### Phase 3.7: `concordia-gen`: provider interface, procedural providers, Blender bridge
 *Interface and SFX after M0; mesh after M1 (glTF import); texture bake after M1 (render); music after M2 (audio).*

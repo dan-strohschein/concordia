@@ -34,6 +34,9 @@ pub(crate) fn all() -> Vec<MethodInfo> {
         MethodInfo::of::<StudioActivity>(),
         MethodInfo::of::<StudioSync>(),
     ]
+    .into_iter()
+    .chain(crate::question_methods::all())
+    .collect()
 }
 
 /// A task as the API returns it.
