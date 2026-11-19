@@ -10,11 +10,13 @@ use serde::{Deserialize, Serialize};
 
 /// Human-readable entity name. Not required to be unique.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Core", default = Name("Entity".into()))]
 #[serde(transparent)]
 pub struct Name(pub String);
 
 /// Local transform relative to `Parent` (or to the world if there is no parent).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Core", default)]
 pub struct Transform {
     /// Position in meters.
     pub translation: Vec3,
@@ -36,11 +38,13 @@ impl Default for Transform {
 
 /// Hierarchy link to the parent entity's stable id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Core")]
 #[serde(transparent)]
 pub struct Parent(pub EntityId);
 
 /// Velocity integrated into `Transform` by `integrate_velocity` every fixed tick.
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Core", default)]
 pub struct Velocity {
     /// Meters per second.
     pub linear: Vec3,

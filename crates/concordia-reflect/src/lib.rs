@@ -41,7 +41,7 @@ pub use hash::canonical_hash;
 pub use info::{FieldInfo, Primitive, Range, Shape, TypeInfo, TypeRef, VariantInfo, VariantShape};
 pub use reflect::Reflect;
 pub use registry::{RegistryError, TypeRegistration, TypeRegistry};
-pub use schema::{DRAFT, schema_for};
+pub use schema::{DRAFT, index_entry, schema_for};
 pub use validate::validate_json;
 
 /// Support code for `#[derive(Reflect)]`; not a public API.

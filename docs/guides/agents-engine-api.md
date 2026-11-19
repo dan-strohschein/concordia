@@ -5,8 +5,8 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 ## Workflow
 1. `session.open {"client": "claude-code", "actor": "agent:claude-code"}` sets the default actor for this session. (The MCP server does this for you.)
 2. `scene.new {"path": "scenes/arena.scene.ron", "name": "Arena"}` or `scene.open {"path": ...}`.
-3. Discover shapes with `schema.get {}` (index), `schema.get {"name": "Transform"}` (component) or `schema.get {"name": "entity.spawn"}` (method).
-4. Edit with `entity.spawn`, `component.set` (whole value), `component.patch` (merge patch, e.g. `{"scale": [2, 2, 2]}`), `component.remove`, `entity.despawn`. Group edits with `txn.begin {"label": ...}` … `txn.commit {"txn": ...}` so they undo as one step.
+3. Discover shapes with `schema.get {}` (index), `schema.get {"name": "Transform"}` (component) or `schema.get {"name": "entity.spawn"}` (method). The index's `components` list gives each component's `category`, a one-line `description` and whether it is `addable`; a component's schema carries its `default`.
+4. Edit with `entity.spawn`, `component.add` (the default value, then patch what differs), `component.set` (whole value), `component.patch` (merge patch, e.g. `{"scale": [2, 2, 2]}`), `component.remove`, `entity.despawn`. Group edits with `txn.begin {"label": ...}` … `txn.commit {"txn": ...}` so they undo as one step.
 5. Check your work with `entity.get`, `component.get` and `query.run`.
 6. `scene.save {}` writes canonical RON. `txn.undo` / `txn.redo` work across restarts when the file is unchanged.
 7. Simulate without touching the scene: `sim.step {"ticks": 60}`, then read with `"world": "play"`; `sim.stop {}` discards the play world.
@@ -14,7 +14,7 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 ## Building a scene (M1)
 1. Look around: `project.files {}` lists the project's files with their kind and import status.
 2. Bring in a model: `asset.import {"path": "models/crate.glb"}`, then `prefab.instantiate {"asset": "asset:<id>", "translation": [0, 0, 0]}` (one undo step).
-3. Add ready-made entities: `entity.templates {}` lists them; `entity.create {"template": "Cube", "translation": [0, 0.5, 0]}`, `{"template": "Directional Light"}`, `{"template": "Camera"}`. Group with `"parent"`, copy with `entity.duplicate`, regroup with `entity.reparent`. For physics add `RigidBody` + `Collider`; for a sky add `Environment` with an imported `.hdr`. (`entity.spawn` still takes raw components.)
+3. Add ready-made entities: `entity.templates {}` lists them; `entity.create {"template": "Cube", "translation": [0, 0.5, 0]}`, `{"template": "Directional Light"}`, `{"template": "Camera"}`. Group with `"parent"`, copy with `entity.duplicate`, regroup with `entity.reparent`. For physics, `component.add` `RigidBody` and `Collider` (a 1 m box by default), then `component.patch` the shape; for a sky add `Environment` with an imported `.hdr`. (`entity.spawn` still takes raw components.)
 4. Look at it: `capture.screenshot {}` returns an image (768 × 432 by default; pass `width`/`height` for detail, `camera` or `view` to choose the viewpoint, `"world": "play"` to see the simulation). `viewport.pick` tells you which entity is at a pixel of that image; `viewport.drop` where something placed there would land.
 5. Run it: `sim.step {"ticks": 120}`, `input.inject` to press actions, `physics.raycast` to probe, then read with `"world": "play"`.
 6. `scene.save {}`.
@@ -46,11 +46,12 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `prefab.instantiate` | yes | `{asset, parent?, translation?}` → `{root, entities}` (an imported model's hierarchy, one undo step; joins an open transaction) |
 | `entity.get` | | `{id, world?}` → `{id, components}` |
 | `component.get` | | `{entity, component, world?}` → `{value}` |
+| `component.add` | yes | `{entity, component}` → `{value}` (inserts the default; fails if the entity has it already or the component has no default, e.g. `Parent`, `Environment`) |
 | `component.set` | yes | `{entity, component, value}` → `{previous}` |
 | `component.patch` | yes | `{entity, component, patch}` → `{value}` |
 | `component.remove` | yes | `{entity, component}` → `{previous}` |
 | `query.run` | | `{with, without?, where?, select?, world?, limit?, cursor?}` → `{rows: [{id, components}], next_cursor?}` |
-| `schema.get` | | `{name?}` → `{schema}` |
+| `schema.get` | | `{name?}` → `{schema}` (no name: `{types, components: [{name, category, description, addable}], methods}`) |
 | `txn.begin` | yes | `{label}` → `{txn}` |
 | `txn.commit` / `txn.abort` | yes | `{txn}` → `{ops}` |
 | `txn.undo` / `txn.redo` | yes | `{}` → `{txn, label, by}` |

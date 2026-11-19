@@ -42,6 +42,7 @@ impl Method for SchemaGet {
         let schema = match p.name {
             None => {
                 let mut index = engine.registry.schema_index();
+                index["components"] = components(engine);
                 index["methods"] = json!(engine.methods.names().collect::<Vec<_>>());
                 index
             }
@@ -61,6 +62,24 @@ impl Method for SchemaGet {
         };
         Ok(SchemaGetResult { schema })
     }
+}
+
+/// One row per component: name, category, first doc line and whether `component.add` works.
+fn components(engine: &Engine) -> Value {
+    let rows: Vec<Value> = crate::map::component_names(&engine.registry)
+        .into_iter()
+        .filter_map(|name| engine.registry.get_by_name(name))
+        .map(|r| {
+            let info = r.info();
+            json!({
+                "name": info.name,
+                "category": info.category,
+                "description": info.docs.lines().next().unwrap_or(""),
+                "addable": info.default.is_some(),
+            })
+        })
+        .collect();
+    Value::Array(rows)
 }
 
 fn unknown(engine: &Engine, name: &str) -> ApiError {

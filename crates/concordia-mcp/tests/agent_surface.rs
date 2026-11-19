@@ -156,3 +156,48 @@ fn capture_without_size_fits_the_agent_budget() {
         params.height
     );
 }
+
+#[test]
+fn schema_index_has_category_and_description_for_every_component() {
+    let (dir, modules) = m1_project();
+    let mut config = EngineConfig::new(dir.path());
+    config.modules = modules;
+    let mut engine = Engine::new(config).unwrap();
+    let session = engine.open_session();
+    let index = engine
+        .call(session, "schema.get", serde_json::json!({}))
+        .unwrap()["schema"]
+        .clone();
+    let components = index["components"].as_array().expect("components list");
+    let names: BTreeSet<&str> = components
+        .iter()
+        .filter_map(|c| c["name"].as_str())
+        .collect();
+    for needed in [
+        "Transform",
+        "PointLight",
+        "MeshRenderer",
+        "RigidBody",
+        "Collider",
+    ] {
+        assert!(names.contains(needed), "{needed} missing from {names:?}");
+    }
+    let mut bad = Vec::new();
+    for c in components {
+        let text = |key: &str| c[key].as_str().is_some_and(|s| !s.trim().is_empty());
+        if !text("category") || !text("description") || !c["addable"].is_boolean() {
+            bad.push(c.to_string());
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "incomplete component rows:\n{}",
+        bad.join("\n")
+    );
+    let point = components
+        .iter()
+        .find(|c| c["name"] == "PointLight")
+        .unwrap();
+    assert_eq!(point["category"], "Lighting");
+    assert_eq!(point["addable"], true);
+}

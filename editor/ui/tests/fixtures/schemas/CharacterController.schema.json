@@ -11,6 +11,13 @@
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "default": {
+    "height": 1.7999999523162842,
+    "layer": 0,
+    "max_slope_deg": 45.0,
+    "radius": 0.30000001192092896,
+    "step_height": 0.30000001192092896
+  },
   "description": "A walking character (Jolt CharacterVirtual): moved by `CharacterMotion`, feet at `Transform.translation`.",
   "properties": {
     "height": {
@@ -46,5 +53,6 @@
   },
   "title": "CharacterController",
   "type": "object",
+  "x-concordia-category": "Physics",
   "x-concordia-type": "CharacterController"
 }

@@ -105,3 +105,44 @@ fn deny_unknown_fields_is_recorded() {
         }
     ));
 }
+
+/// A lamp.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Lighting", default)]
+struct Lamp {
+    /// Brightness.
+    lumens: f32,
+}
+
+/// A label.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Core", default = Label("Entity".into()))]
+#[serde(transparent)]
+struct Label(String);
+
+#[test]
+fn type_level_category_and_default_reach_type_info_schema_and_index() {
+    let lamp = Lamp::type_info();
+    assert_eq!(lamp.category, Some("Lighting"));
+    assert_eq!(
+        lamp.default.map(|d| d()),
+        Some(serde_json::json!({"lumens": 0.0}))
+    );
+    assert_eq!(
+        Label::type_info().default.map(|d| d()),
+        Some(serde_json::json!("Entity"))
+    );
+    assert_eq!(Renamed::type_info().category, None);
+    assert!(Renamed::type_info().default.is_none());
+
+    let schema = concordia_reflect::schema_for(lamp);
+    assert_eq!(schema["default"], serde_json::json!({"lumens": 0.0}));
+    assert_eq!(schema["x-concordia-category"], "Lighting");
+    let row = concordia_reflect::index_entry(lamp);
+    assert_eq!(row["category"], "Lighting");
+    assert!(
+        concordia_reflect::index_entry(Renamed::type_info())
+            .get("category")
+            .is_none()
+    );
+}

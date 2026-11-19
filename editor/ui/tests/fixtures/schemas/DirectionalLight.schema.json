@@ -71,6 +71,15 @@
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "default": {
+    "color": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "illuminance_lux": 100000.0,
+    "shadows": null
+  },
   "description": "Sun-like light shining along the entity's -Z.",
   "properties": {
     "color": {
@@ -103,5 +112,6 @@
   },
   "title": "DirectionalLight",
   "type": "object",
+  "x-concordia-category": "Lighting",
   "x-concordia-type": "DirectionalLight"
 }
