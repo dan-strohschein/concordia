@@ -57,8 +57,8 @@ float3 read3(uint buffer, uint i) {
 }
 
 [shader("vertex")]
-VsOut vs(uint vid : SV_VertexID, uniform DrawPush push) {
-    Instance* inst = ((Instance*)g_buffers.ptr[push.instances]) + push.instance;
+VsOut vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform DrawPush push) {
+    Instance* inst = ((Instance*)g_buffers.ptr[push.instances]) + push.instance + iid;
     Frame* frame = (Frame*)g_buffers.ptr[push.frame];
     uint v = ((uint*)g_buffers.ptr[push.indices])[vid];
     float4 world = xform(inst.model, float4(read3(push.positions, v), 1.0));
@@ -77,8 +77,8 @@ float4 cascade_xform(Frame* frame, uint c, float4 p) {
 }
 
 [shader("vertex")]
-float4 shadow_vs(uint vid : SV_VertexID, uniform ShadowPush push) : SV_Position {
-    Instance* inst = ((Instance*)g_buffers.ptr[push.instances]) + push.instance;
+float4 shadow_vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform ShadowPush push) : SV_Position {
+    Instance* inst = ((Instance*)g_buffers.ptr[push.instances]) + push.instance + iid;
     Frame* frame = (Frame*)g_buffers.ptr[push.frame];
     uint v = ((uint*)g_buffers.ptr[push.indices])[vid];
     return cascade_xform(frame, push.cascade, xform(inst.model, float4(read3(push.positions, v), 1.0)));

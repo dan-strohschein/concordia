@@ -104,6 +104,8 @@ impl ShadowPush {
 pub(crate) struct ShadowDraw {
     pub(crate) push: ShadowPush,
     pub(crate) vertices: u32,
+    /// Consecutive instances drawn by this call (same mesh).
+    pub(crate) instances: u32,
 }
 
 /// The shadow work of one frame.
@@ -158,7 +160,7 @@ pub(crate) fn add_shadow_passes(graph: &mut RenderGraph, job: ShadowJob) -> Vec<
                     ctx.commands.push(Command::PushConstants(push.bytes()));
                     ctx.commands.push(Command::Draw {
                         vertices: 0..draw.vertices,
-                        instances: 0..1,
+                        instances: 0..draw.instances,
                     });
                 }
                 ctx.commands.push(Command::EndRenderPass);

@@ -685,3 +685,48 @@ fn frames_in_flight_can_be_lowered_for_latency() {
         assert!(r.frames_in_flight() <= 1);
     }
 }
+
+#[test]
+fn off_screen_meshes_are_culled_and_repeated_meshes_draw_as_one_instanced_call() {
+    let Some(mut r) = renderer() else { return };
+    let mut s = Scene::new();
+    let red = s.material("red", unlit([0.8, 0.1, 0.1, 1.0]));
+    for i in 0..10 {
+        s.mesh(
+            "cube",
+            red.clone(),
+            Vec3::new(i as f32 * 0.3 - 1.5, 0.0, 0.0),
+            Quat::IDENTITY,
+            Vec3::splat(0.2),
+        );
+    }
+    for i in 0..3 {
+        s.mesh(
+            "cube",
+            red.clone(),
+            Vec3::new(i as f32, 0.0, 20.0),
+            Quat::IDENTITY,
+            Vec3::ONE,
+        );
+    }
+    s.camera(
+        Vec3::new(0.0, 0.0, 4.0),
+        Vec3::ZERO,
+        clamp_camera(Projection::default(), Msaa::X4),
+    );
+    let rw = RenderWorld::extract(&s.world);
+    let request = RenderRequest {
+        camera: None,
+        view: None,
+        width: 96,
+        height: 64,
+    };
+    let image = r.render(&rw, &mut s.assets, &request).unwrap();
+    let stats = r.stats();
+    assert_eq!((stats.draws, stats.culled), (10, 3), "{stats:?}");
+    assert_eq!(
+        stats.draw_calls, 1,
+        "ten identical cubes are one instanced draw: {stats:?}"
+    );
+    assert_eq!(pixel(&image, 48, 32)[..3], [231, 89, 89][..]);
+}

@@ -106,6 +106,8 @@ struct DrawOrder {
     material: u32,
     double_sided: bool,
     blend: bool,
+    /// Inside the camera's view.
+    visible: bool,
 }
 
 /// Per-frame instance and material bytes, and the draw order.
@@ -202,13 +204,23 @@ pub struct RenderStats {
     pub dropped_lights: usize,
     /// Cluster assignments dropped because a cluster was full (lights missing there).
     pub cluster_overflow: u32,
+    /// Meshes in view (drawn).
+    pub draws: usize,
+    /// Meshes outside the camera's view (not drawn by it; they may still cast shadows).
+    pub culled: usize,
+    /// Forward-pass draw calls (repeated mesh + material pairs are instanced into one).
+    pub draw_calls: usize,
 }
 
-/// One draw, ready to record.
+/// One draw call, ready to record: `instances` consecutive instances of one mesh and material.
 struct Draw {
     pipeline: Pipeline,
     push: Vec<u8>,
     vertices: u32,
+    instances: u32,
+    /// What may share the call: the pipeline, material and mesh streams.
+    batch: (Pipeline, u32, u32),
+    first: u32,
 }
 
 impl Renderer {
@@ -521,7 +533,12 @@ impl Renderer {
             instances,
             materials: material_bytes,
             order,
-        } = self.instance_data(world, &materials, &view_m);
+        } = self.instance_data(
+            world,
+            &materials,
+            &view_m,
+            &crate::cull::Frustum::new(view_proj),
+        );
         let inst_buf = frame.keep(up.buffer(device, &instances, "instances")?);
         let mat_buf = frame.keep(up.buffer(device, &material_bytes, "materials")?);
         let (uploads, staging) = up.into_commands();
@@ -529,8 +546,9 @@ impl Renderer {
             frame.keep(b);
         });
         let (frame_i, inst_i, mat_i) = (index(frame_buf)?, index(inst_buf)?, index(mat_buf)?);
-        let mut draws = Vec::with_capacity(order.len());
-        let mut casters = Vec::new();
+        let mut draws: Vec<Draw> = Vec::with_capacity(order.len());
+        let mut casters: Vec<ShadowDraw> = Vec::new();
+        let culled = order.iter().filter(|d| !d.visible).count();
         for (
             instance,
             DrawOrder {
@@ -538,27 +556,41 @@ impl Renderer {
                 material: material_index,
                 double_sided,
                 blend,
+                visible,
             },
         ) in order.into_iter().enumerate()
         {
+            let instance = instance as u32;
             let mesh = self.assets.meshes[&world.draws[item].mesh];
             if world.draws[item].cast_shadows {
-                casters.push(ShadowDraw {
-                    push: ShadowPush {
-                        frame: frame_i,
-                        instances: inst_i,
-                        instance: instance as u32,
-                        indices: mesh.indices,
-                        positions: mesh.positions,
-                        cascade: 0,
-                    },
-                    vertices: mesh.count,
-                });
+                match casters.last_mut() {
+                    Some(c)
+                        if c.push.indices == mesh.indices
+                            && c.push.instance + c.instances == instance =>
+                    {
+                        c.instances += 1;
+                    }
+                    _ => casters.push(ShadowDraw {
+                        push: ShadowPush {
+                            frame: frame_i,
+                            instances: inst_i,
+                            instance,
+                            indices: mesh.indices,
+                            positions: mesh.positions,
+                            cascade: 0,
+                        },
+                        vertices: mesh.count,
+                        instances: 1,
+                    }),
+                }
+            }
+            if !visible {
+                continue;
             }
             let push = DrawPush {
                 frame: frame_i,
                 instances: inst_i,
-                instance: instance as u32,
+                instance,
                 materials: mat_i,
                 material: material_index,
                 indices: mesh.indices,
@@ -570,12 +602,24 @@ impl Renderer {
             let pipeline = self
                 .pipelines
                 .forward(device, samples, double_sided, blend)?;
-            draws.push(Draw {
-                pipeline,
-                push: push.bytes(),
-                vertices: mesh.count,
-            });
+            let batch = (pipeline, material_index, mesh.indices);
+            match draws.last_mut() {
+                Some(d) if d.batch == batch && d.first + d.instances == instance => {
+                    d.instances += 1
+                }
+                _ => draws.push(Draw {
+                    pipeline,
+                    push: push.bytes(),
+                    vertices: mesh.count,
+                    instances: 1,
+                    batch,
+                    first: instance,
+                }),
+            }
         }
+        self.stats.draws = world.draws.len() - culled;
+        self.stats.culled = culled;
+        self.stats.draw_calls = draws.len();
         let job = ClusterJob {
             buffers: &cluster,
             grid,
@@ -688,6 +732,7 @@ impl Renderer {
         world: &RenderWorld,
         materials: &BTreeMap<AssetRef, MaterialData>,
         view: &Mat4,
+        frustum: &crate::cull::Frustum,
     ) -> FrameBlocks {
         let textures: BTreeMap<AssetRef, u32> = self
             .assets
@@ -713,6 +758,10 @@ impl Renderer {
                 material: indices[&d.material],
                 double_sided: materials[&d.material].double_sided,
                 blend: materials[&d.material].alpha_mode == AlphaMode::Blend,
+                visible: {
+                    let (lo, hi) = self.assets.meshes[&d.mesh].aabb;
+                    frustum.sees(&d.world, lo, hi)
+                },
             })
             .collect();
         let depth = |d: &DrawOrder| {
@@ -722,7 +771,18 @@ impl Renderer {
                 .z
         };
         order.sort_by(|a, b| match (a.blend, b.blend) {
-            (false, false) => (a.double_sided, a.item).cmp(&(b.double_sided, b.item)),
+            // Opaque: grouped by pipeline, material and mesh (so repeats instance), then entity.
+            (false, false) => {
+                let key = |d: &DrawOrder| {
+                    (
+                        d.double_sided,
+                        d.material,
+                        &world.draws[d.item].mesh,
+                        d.item,
+                    )
+                };
+                key(a).cmp(&key(b))
+            }
             (true, true) => depth(a).total_cmp(&depth(b)).then(a.item.cmp(&b.item)),
             (x, y) => x.cmp(&y),
         });
@@ -1095,7 +1155,7 @@ fn add_forward(
                 ctx.commands.push(Command::PushConstants(draw.push.clone()));
                 ctx.commands.push(Command::Draw {
                     vertices: 0..draw.vertices,
-                    instances: 0..1,
+                    instances: 0..draw.instances,
                 });
             }
             ctx.commands.push(Command::EndRenderPass);
