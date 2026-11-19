@@ -351,9 +351,17 @@ fn main() {
         eprintln!("concordia-editor: bench scene: {e}");
         std::process::exit(2);
     }
+    if !host.is_host() {
+        eprintln!(
+            "concordia-editor: attached to the project's engine ({}); the viewport renders in the page",
+            host.host_description()
+        );
+    }
     let url = serde_json::to_string(&host.url()).unwrap_or_default();
-    let mut init =
-        format!("window.__CONCORDIA_ENGINE__ = {url}; window.__CONCORDIA_NATIVE__ = true;");
+    let mut init = format!(
+        "window.__CONCORDIA_ENGINE__ = {url}; window.__CONCORDIA_NATIVE__ = {};",
+        host.is_host()
+    );
     if bench_out.is_some() {
         init.push_str(&format!(
             " window.__CONCORDIA_BENCH__ = {{ frames: {bench_frames} }};"
@@ -391,12 +399,13 @@ fn main() {
                     // The page's own drag and drop (FileSystem dock → viewport); no OS file drops yet.
                     .disable_drag_drop_handler()
                     .build()?;
+            // The native viewport needs the engine in this process; attached, the page renders it.
             #[cfg(target_os = "macos")]
-            {
+            if let Some(engine) = host_setup.handle() {
                 let target = concordia_editor::native::install(&window)?;
                 let control = host_setup
                     .runtime()
-                    .block_on(host_setup.handle().run(concordia_render::viewport_control))
+                    .block_on(engine.run(concordia_render::viewport_control))
                     .map_err(|e| e.message)?
                     .map_err(|e| e.message)?;
                 let (moves, queue) = std::sync::mpsc::channel();
@@ -422,14 +431,11 @@ fn main() {
                 if let Ok(mut hz) = shell_setup.display_hz.lock() {
                     *hz = concordia_editor::native::display_hz();
                 }
-                let attached =
-                    host_setup
-                        .runtime()
-                        .block_on(host_setup.handle().run(move |engine| {
-                            // SAFETY: the layer lives in the native thread-local for the life of the app.
-                            unsafe { concordia_render::attach_surface(engine, target) }
-                                .map_err(|e| e.message)
-                        }));
+                let attached = host_setup.runtime().block_on(engine.run(move |engine| {
+                    // SAFETY: the layer lives in the native thread-local for the life of the app.
+                    unsafe { concordia_render::attach_surface(engine, target) }
+                        .map_err(|e| e.message)
+                }));
                 attached.map_err(|e| e.message)??;
             }
             if smoke {

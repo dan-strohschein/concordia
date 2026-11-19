@@ -1,7 +1,7 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: In progress (Studio track: 3.0, 3.3, 3.4 and 3.5 done (3.5's live probe pending), 3.5b next; refinement approved 2026-11-19) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Needs refinement after M2** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5 and 3.5b done; 3.6 next; refinement approved 2026-11-19) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Needs refinement after M2** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
@@ -112,6 +112,50 @@ The options differ in how a call's identity reaches `concordia mcp` and how hook
   - the host's exit is visible to attached clients.
 
   Tests: `mcp_attaches_to_live_engine_from_connection_file`, `mcp_hosts_and_publishes_connection_file_when_none_live`, `stale_connection_file_is_replaced`, `editor_and_mcp_share_one_command_log` (e2e: an MCP edit appears in Agent Activity).
+
+  **Done (2026-11-19). As built (ADR-0082):**
+  - **Author decisions:**
+    - an editor that starts while another engine is live attaches and renders its viewport in the page (the native viewport needs an in-process engine);
+    - after a host exits, `concordia mcp` reports `EngineExited` on the failing call and attaches or hosts again on the next one.
+  - **One code path:** `concordia_app::SharedEngine::attach_or_host[_on]` under `.concordia/engine.lock`.
+    - **Attach:** `headless.json` (`url`, `token`, `pid`, and now `version` and `host`) names a live pid, and the handshake accepts the token.
+    - **Stale file:** otherwise, host and rewrite it.
+    - **Version mismatch:** a live engine of another version is an error, never attached.
+    - **Clean exit:** a host removes the file on drop, only if the file still names it.
+  - **API:**
+    - `EngineLink` trait, implemented by `EngineHandle` and by the new `transport::remote::RemoteEngine`, with one WebSocket per engine session, so Studio's per-agent sessions stay separate on the host;
+    - `transport::connection::{ConnectionInfo, HostKind}` replaces `ws::write_connection_file`;
+    - `ApiError::from_jsonrpc`;
+    - `MethodRegistry::with_core`;
+    - new error `EngineExited` (−32017);
+    - dropping a `WsServer` now closes its connections.
+  - **New core method `scene.text`:** it serves `concordia://scene/current` when attached. Counts changed deliberately, each with a note: 34 core methods, 31 MCP tools (`method_schemas`, `tools`, `stdout_hygiene`, M0 gate, method index snapshot).
+  - **`concordia mcp`:**
+    - always shares the project's engine; the private engine is gone;
+    - `--scene` opens only if no scene is open;
+    - `deterministic_ids`, `threads` and `log_ring` apply only when it hosts;
+    - Studio mode works attached: per-agent host sessions, policy, slots. After a reconnect, agent sessions reopen and slots are kept.
+  - **Editor:**
+    - `EngineHost` attaches or hosts, and opens the main scene if none is open;
+    - `handle()` is `Some` only when hosting, which gates the native viewport;
+    - the UI's `EngineClient` detects a dropped socket, rejects calls and shows the `EngineLost` banner.
+  - **CLI:**
+    - `concordia headless --ws` refuses while an engine is live, naming the host and pid, and removes its file on Ctrl-C or SIGTERM;
+    - `studio` and `task` commands run on the live engine when there is one, otherwise on an unpublished in-process engine.
+  - **Tests:**
+    - `concordia-api`: `remote.rs` (7), plus `scene_text_method_returns_the_open_scene_as_saved` and two error tests;
+    - `concordia-app/tests/shared_engine.rs` (8);
+    - `concordia-mcp/tests/shared_engine.rs` (6: the plan's three, host exit, scene resource, Studio attached);
+    - `concordia-cli/tests/cli_shared_engine.rs` (2);
+    - editor `host.rs` (+2);
+    - vitest: client (+2) and `engine-lost` (1);
+    - e2e `shared-engine.spec.ts`.
+  - **Red runs:** every new test failed first for the right reason, with these exceptions:
+    - `engine_exited_has_its_own_code_and_a_reconnect_hint` passed at once, because the error kind was added with the skeleton;
+    - three tests were mine to fix, and I fixed them deliberately: the stale-file test called `scene_info` with no scene open; the Studio test lacked the modules the default roster needs; the scene-resource test passed on a private engine, so it now checks the host;
+    - the e2e test was run red against a `concordia` binary built from the pre-3.5b commit.
+  - **Changed deliberately:** `transports.rs`'s connection-file test now writes through `ConnectionInfo`.
+  - **Not done here:** the checkpoint's `tests/gates/m3s_shared_engine.rs` (with the checkpoint gate), and a handover that lets an attached editor take over as host (ADR-0082 alternatives).
 - **3.6:** G10, G13.
 - **New 3.6b Team questions and answers** (author request, 2026-11-19; ADR-0081): Director-routed questions between roles, escalation to the human, and a dedicated editor panel, all tested without live agents.
 - **3.8:** builds on the 1.15 Activity panel. It merges `txn.history` with `studio.activity`, goes live via `edit` and `studio` events (not `log.tail`), adds role filters and colors, and adds the task board, approvals and launcher as planned.

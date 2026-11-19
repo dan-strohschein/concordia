@@ -151,6 +151,11 @@ impl MethodRegistry {
         })
     }
 
+    /// The core methods plus `modules`' methods: the set an engine with those modules serves.
+    pub fn with_core(modules: &[Arc<dyn EngineModule>]) -> Result<Self, ApiError> {
+        Self::build(&crate::module::with_core(modules))
+    }
+
     /// Looks up a method.
     pub fn get(&self, name: &str) -> Option<&MethodInfo> {
         self.methods

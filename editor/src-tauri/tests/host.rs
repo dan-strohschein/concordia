@@ -204,3 +204,83 @@ fn session_as_attributes_edits_to_the_given_actor() {
         "{text}"
     );
 }
+
+/// Another process's engine for `project` (here: as if Claude Code's `concordia mcp` hosted it).
+fn mcp_host(project: &std::path::Path) -> (tokio::runtime::Runtime, concordia_app::SharedEngine) {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()
+        .unwrap();
+    let mut config = concordia_api::EngineConfig::new(project);
+    config.modules = concordia_app::Project::load(project)
+        .unwrap()
+        .modules()
+        .unwrap();
+    let engine = runtime
+        .block_on(concordia_app::SharedEngine::attach_or_host(
+            config,
+            concordia_api::transport::connection::HostKind::Mcp,
+        ))
+        .unwrap();
+    assert!(engine.is_host());
+    (runtime, engine)
+}
+
+#[test]
+fn editor_attaches_when_an_engine_is_live() {
+    let dir = example_copy();
+    let (runtime, engine) = mcp_host(dir.path());
+    let host = EngineHost::start(dir.path()).unwrap();
+    assert!(!host.is_host(), "attached, so no native viewport");
+    assert_eq!(host.url(), engine.info().connect_url());
+    let info = host.call("scene.info", serde_json::json!({})).unwrap();
+    assert_eq!(
+        info["path"], "scenes/stack.scene.ron",
+        "the editor opens the main scene when the shared engine has none"
+    );
+    // The edit landed in the MCP server's engine.
+    let link = engine.link();
+    let seen = runtime.block_on(async {
+        let session = link.open_session().await.unwrap();
+        link.call(session, "scene.info", serde_json::json!({}))
+            .await
+            .unwrap()
+    });
+    assert_eq!(seen["path"], "scenes/stack.scene.ron");
+    assert_eq!(
+        concordia_api::transport::connection::ConnectionInfo::read(dir.path())
+            .unwrap()
+            .unwrap()
+            .host,
+        concordia_api::transport::connection::HostKind::Mcp,
+        "the editor publishes nothing when attached"
+    );
+}
+
+#[test]
+fn editor_hosts_when_the_connection_file_is_stale() {
+    let dir = example_copy();
+    let mut exited = std::process::Command::new("true").spawn().unwrap();
+    let pid = exited.id();
+    exited.wait().unwrap();
+    concordia_api::transport::connection::ConnectionInfo {
+        url: "ws://127.0.0.1:9/".into(),
+        token: "stale".into(),
+        pid,
+        version: concordia_core::version().into(),
+        host: concordia_api::transport::connection::HostKind::Mcp,
+    }
+    .write(dir.path())
+    .unwrap();
+    let host = EngineHost::start(dir.path()).unwrap();
+    assert!(host.is_host());
+    assert!(host.handle().is_some());
+    let file = concordia_api::transport::connection::ConnectionInfo::read(dir.path())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        file.host,
+        concordia_api::transport::connection::HostKind::Editor
+    );
+}

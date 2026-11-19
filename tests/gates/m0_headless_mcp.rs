@@ -64,8 +64,8 @@ async fn check_tools_and_schemas(client: &McpClient) {
     assert_eq!(names, expected);
     assert_eq!(
         names.len(),
-        30,
-        "the 24 M0 tools plus M1 1.13's entity.templates/create/duplicate/reparent, M1 1.14's component.add and M1 1.15's txn.undo_to"
+        31,
+        "the 24 M0 tools plus M1 1.13's entity.templates/create/duplicate/reparent, M1 1.14's component.add, M1 1.15's txn.undo_to and M3 3.5b's scene.text"
     );
     for tool in &tools {
         let method = methods().get(&tool.name.replacen('_', ".", 1)).unwrap();

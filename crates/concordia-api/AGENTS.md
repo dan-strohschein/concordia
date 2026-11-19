@@ -9,7 +9,9 @@ The one Engine API: typed `domain.verb` methods with generated schemas, JSON-RPC
 - `EngineModule` and `PlaySetup` (ADR-0046): how other crates add types, methods, play systems and play-time state
 - `methods()` → the core `MethodRegistry`; `Engine::methods()` is the full set. `MethodRegistry::build`, `params_schema`, `result_schema`, the `Method` trait
 - `ApiError`, `ApiErrorKind`, `ErrorData`
-- `transport::stdio::serve`, `transport::ws::{serve, WsConfig, WsServer, write_connection_file}`
+- `transport::stdio::serve`, `transport::ws::{serve, WsConfig, WsServer}` (dropping the server closes its connections)
+- `transport::connection::{ConnectionInfo, HostKind}`: `.concordia/headless.json` (ADR-0082)
+- `transport::remote::RemoteEngine` and the `EngineLink` trait: one interface to an in-process `EngineHandle` or a live engine in another process
 
 ## Invariants
 - Every mutating method requires an actor (explicit `actor` or the session default) and changes the edit world only through `methods::edit` → `CommandLog`. A grep for direct world mutation finds only the play world's `SimRng`.

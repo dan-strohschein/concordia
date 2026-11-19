@@ -52,11 +52,13 @@ pub enum ApiErrorKind {
     TaskTransition,
     /// A Studio gate or role scope does not allow this actor to do this.
     NotPermitted,
+    /// The shared engine this client was attached to has exited (ADR-0082).
+    EngineExited,
 }
 
 impl ApiErrorKind {
     /// Every kind (for exhaustive tests and docs).
-    pub const ALL: [Self; 23] = [
+    pub const ALL: [Self; 24] = [
         Self::ParseError,
         Self::InvalidRequest,
         Self::MethodNotFound,
@@ -80,6 +82,7 @@ impl ApiErrorKind {
         Self::TaskNotFound,
         Self::TaskTransition,
         Self::NotPermitted,
+        Self::EngineExited,
     ];
 
     /// The JSON-RPC error code.
@@ -106,7 +109,13 @@ impl ApiErrorKind {
             Self::TaskNotFound => -32014,
             Self::TaskTransition => -32015,
             Self::NotPermitted => -32016,
+            Self::EngineExited => -32017,
         }
+    }
+
+    /// The kind whose [`ApiErrorKind::name`] is `name`.
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|kind| kind.name() == name)
     }
 
     /// The stable name used in `data.kind`.
@@ -135,6 +144,7 @@ impl ApiErrorKind {
             Self::TaskNotFound => "TaskNotFound",
             Self::TaskTransition => "TaskTransition",
             Self::NotPermitted => "NotPermitted",
+            Self::EngineExited => "EngineExited",
         }
     }
 
@@ -163,6 +173,7 @@ impl ApiErrorKind {
             Self::TaskNotFound => "no task has that id",
             Self::TaskTransition => "the task's status cannot change that way",
             Self::NotPermitted => "this actor is not allowed to do that",
+            Self::EngineExited => "the shared engine has exited",
         }
     }
 
@@ -206,6 +217,9 @@ impl ApiErrorKind {
                 "follow todo → in_progress (task.claim) → in_review → done (task.approve)"
             }
             Self::NotPermitted => "see studio.roster for each role's tools, paths and gates",
+            Self::EngineExited => {
+                "call again to reconnect (concordia mcp attaches to a live engine or hosts one), then reopen the scene with scene.open"
+            }
         }
     }
 }
@@ -303,5 +317,46 @@ impl ApiError {
     /// The JSON-RPC `error` object.
     pub fn to_jsonrpc(&self) -> Value {
         json!({ "code": self.code(), "message": self.message, "data": self.data })
+    }
+
+    /// Rebuilds an error from a JSON-RPC `error` object (the inverse of [`ApiError::to_jsonrpc`]).
+    pub fn from_jsonrpc(error: &Value) -> Self {
+        let data = &error["data"];
+        let kind = data["kind"]
+            .as_str()
+            .and_then(ApiErrorKind::from_name)
+            .unwrap_or(ApiErrorKind::Internal);
+        let message = error["message"]
+            .as_str()
+            .unwrap_or_else(|| kind.default_message());
+        let mut rebuilt = Self::new(kind, message);
+        let Value::Object(fields) = data else {
+            return rebuilt;
+        };
+        for (key, value) in fields {
+            rebuilt.set_data_field(key, value.clone());
+        }
+        rebuilt
+    }
+
+    fn set_data_field(&mut self, key: &str, value: Value) {
+        let text = |v: &Value| v.as_str().map(str::to_owned);
+        let data = &mut self.data;
+        match key {
+            "kind" => {}
+            "suggestions" => {
+                data.suggestions = value
+                    .as_array()
+                    .map(|items| items.iter().filter_map(text).collect())
+                    .unwrap_or_default();
+            }
+            "pointer" => data.pointer = text(&value),
+            "see" => data.see = text(&value),
+            "expected" => data.expected = Some(value),
+            "example" => data.example = Some(value),
+            _ => {
+                data.extra.insert(key.to_owned(), value);
+            }
+        }
     }
 }

@@ -4,6 +4,7 @@ mod common;
 
 use std::net::SocketAddr;
 
+use concordia_api::transport::connection::{ConnectionInfo, HostKind};
 use concordia_api::transport::{stdio, ws};
 use concordia_api::{Engine, EngineHandle};
 use futures::{SinkExt, StreamExt};
@@ -134,7 +135,9 @@ async fn ws_binds_localhost_only() {
 #[tokio::test]
 async fn connection_file_is_private_and_complete() {
     let (dir, server) = ws_server().await;
-    let path = ws::write_connection_file(dir.path(), &server).unwrap();
+    // 3.5b: written through `ConnectionInfo` (adds `version` and `host`; ADR-0082).
+    let info = ConnectionInfo::for_server(&server, HostKind::Headless);
+    let path = info.write(dir.path()).unwrap();
     let info: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     assert_eq!(info["url"], server.url());
     assert_eq!(info["token"], server.token);

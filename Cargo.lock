@@ -615,11 +615,13 @@ dependencies = [
  "concordia-scene",
  "concordia-studio",
  "concordia-testkit",
+ "futures",
  "png",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",
+ "tokio",
  "toml",
 ]
 
@@ -665,10 +667,12 @@ dependencies = [
  "concordia-scene",
  "concordia-studio",
  "concordia-testkit",
+ "futures",
  "insta",
  "serde_json",
  "tempfile",
  "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]
@@ -693,6 +697,7 @@ version = "0.0.0"
 dependencies = [
  "blake3",
  "glam",
+ "libc",
  "rand_chacha",
  "rand_core",
  "rayon",
@@ -929,7 +934,6 @@ dependencies = [
  "concordia-reflect",
  "globset",
  "insta",
- "libc",
  "proptest",
  "serde",
  "serde_json",
