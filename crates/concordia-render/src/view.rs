@@ -87,6 +87,18 @@ pub struct Pick {
     pub entity: EntityId,
     /// Distance from the eye along the view direction.
     pub depth: f32,
+    /// Where the pointer's ray enters the mesh's bounds, in world space.
+    pub point: Vec3,
+}
+
+/// Where something dropped at a pixel lands: on the mesh under it, else on the ground (y = 0),
+/// else (a ray that never meets the ground) at the view's focus distance along the ray.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Landing {
+    /// The landing point, in world space.
+    pub point: Vec3,
+    /// The entity landed on, if any.
+    pub entity: Option<EntityId>,
 }
 
 /// The nearest drawn mesh under pixel (x, y) of a `width`×`height` image from `view`, testing each
@@ -105,15 +117,7 @@ pub fn pick(
             max: crate::MAX_SIZE,
         });
     }
-    let camera = view.world_matrix()?;
-    let inverse =
-        (view.projection.matrix(width as f32 / height as f32)? * camera.inverse()).inverse();
-    let ndc = (
-        2.0 * (x as f32 + 0.5) / width as f32 - 1.0,
-        1.0 - 2.0 * (y as f32 + 0.5) / height as f32,
-    );
-    let near = inverse.project_point3(Vec3::new(ndc.0, ndc.1, 1.0));
-    let far = inverse.project_point3(Vec3::new(ndc.0, ndc.1, 0.0));
+    let (near, far) = pixel_ray(view, (x, y), (width, height))?;
     let forward = (view.target - view.eye).normalize();
     let mut best: Option<Pick> = None;
     for draw in &world.draws {
@@ -132,11 +136,60 @@ pub fn pick(
                 best = Some(Pick {
                     entity: draw.entity,
                     depth,
+                    point: hit,
                 });
             }
         }
     }
     Ok(best)
+}
+
+/// Where an item dropped at pixel (x, y) lands (see [`Landing`]); `bounds` as for [`pick`].
+pub fn landing(
+    world: &RenderWorld,
+    view: &View,
+    pixel: (u32, u32),
+    size: (u32, u32),
+    bounds: impl FnMut(&AssetRef) -> Option<(Vec3, Vec3)>,
+) -> Result<Landing, RenderError> {
+    if let Some(hit) = pick(world, view, pixel, size, bounds)? {
+        return Ok(Landing {
+            point: hit.point,
+            entity: Some(hit.entity),
+        });
+    }
+    let (near, far) = pixel_ray(view, pixel, size)?;
+    let dir = (far - near).normalize_or_zero();
+    let ground = (dir.y.abs() > 1e-6)
+        .then(|| -near.y / dir.y)
+        .filter(|t| *t >= 0.0);
+    let point = match ground {
+        Some(t) => near + dir * t,
+        None => view.eye + dir * (view.target - view.eye).length(),
+    };
+    Ok(Landing {
+        point,
+        entity: None,
+    })
+}
+
+/// The world-space points on the near and far planes under pixel (x, y)'s centre.
+fn pixel_ray(
+    view: &View,
+    (x, y): (u32, u32),
+    (width, height): (u32, u32),
+) -> Result<(Vec3, Vec3), RenderError> {
+    let camera = view.world_matrix()?;
+    let inverse =
+        (view.projection.matrix(width as f32 / height as f32)? * camera.inverse()).inverse();
+    let ndc = (
+        2.0 * (x as f32 + 0.5) / width as f32 - 1.0,
+        1.0 - 2.0 * (y as f32 + 0.5) / height as f32,
+    );
+    Ok((
+        inverse.project_point3(Vec3::new(ndc.0, ndc.1, 1.0)),
+        inverse.project_point3(Vec3::new(ndc.0, ndc.1, 0.0)),
+    ))
 }
 
 /// Slab test: the smallest t in [0, 1] where `origin + dir·t` enters the box.

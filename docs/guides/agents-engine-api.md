@@ -26,8 +26,10 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `scene.open` | | `{path, discard?}` → `{scene_id, entity_count, history: "restored"\|"stale"\|"none"}` |
 | `scene.save` | | `{path?}` → `{path, bytes, hash}` |
 | `scene.info` | | `{}` → `{scene_id, name, path, dirty, entity_count, components_in_use}` |
+| `project.files` | | `{dir?}` → `{files: [{path, kind, size, asset, importer}]}` (projects with `[assets]`; skips hidden, git-ignored and sidecar files) |
 | `entity.spawn` | yes | `{components, id?}` → `{id}` |
 | `entity.despawn` | yes | `{id}` → `{}` |
+| `prefab.instantiate` | yes | `{asset, parent?, translation?}` → `{root, entities}` (an imported model's hierarchy, one undo step; joins an open transaction) |
 | `entity.get` | | `{id, world?}` → `{id, components}` |
 | `component.get` | | `{entity, component, world?}` → `{value}` |
 | `component.set` | yes | `{entity, component, value}` → `{previous}` |
@@ -43,6 +45,7 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `sim.step` | | `{ticks}` → `{tick, world_hash}` |
 | `capture.screenshot` | | `{width?, height?, camera? \| view?, world?, overlays?}` → `{image, width, height, sim_tick, frame}` (projects with `[render]`; `overlays: true` adds the editor overlays) |
 | `viewport.pick` | | `{view, x, y, width, height, world?}` → `{entity, distance}` (projects with `[render]`) |
+| `viewport.drop` | | `{view, x, y, width, height, world?}` → `{position, entity}` (where a dragged-in asset lands: the mesh under the pointer, else the ground plane y = 0) |
 | `viewport.present` | | `{view, width, height, world?, seq?, input_time_ms?}` → `{presented}` (the editor's native viewport only) |
 | `viewport.overlays` | | `{selection?, gizmo?: {entity, hovered?}, grid?, scale?}` → `{overlays}` (what the engine draws over the editor viewport) |
 | `viewport.gizmo` | yes | `{action: begin\|move\|end\|cancel, entity?, axis?, x?, y?, width?, height?}` → `{translation, axis}` (Move-gizmo drags; a begin without an axis grabs the shown gizmo's handle under the pointer, or misses) |

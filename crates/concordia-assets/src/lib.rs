@@ -6,10 +6,12 @@ mod builtin;
 mod data;
 mod db;
 mod error;
+mod files;
 mod image_importer;
 mod importer;
 mod key;
 mod module;
+mod prefab_method;
 mod reference;
 mod sidecar;
 
@@ -20,12 +22,14 @@ pub use data::{
 };
 pub use db::{AssetDb, AssetInfo, ImportReport};
 pub use error::AssetError;
+pub use files::{FileKind, ProjectFile, ProjectFiles};
 pub use image_importer::{ColorSpace, ImageImporter, ImageSettings, decode as decode_image};
 pub use importer::{
     Artifact, AssetKind, ImportInput, ImportOutput, Importer, SubIds, decode, encode,
 };
 pub use key::{PLATFORM, import_key};
 pub use module::{AssetImport, AssetList, AssetsModule};
+pub use prefab_method::PrefabInstantiate;
 pub use reference::AssetRef;
 pub use sidecar::Sidecar;
 

@@ -8,6 +8,7 @@ use concordia_api::{
 };
 use concordia_assets::AssetDb;
 use concordia_command::Actor;
+use concordia_core::math::Vec3;
 use concordia_reflect::Reflect;
 use concordia_rhi::{Device, RhiError};
 use concordia_shaders::{SlangToolchain, SlangcCompiler};
@@ -87,6 +88,7 @@ impl EngineModule for RenderModule {
         vec![
             MethodInfo::of::<CaptureScreenshot>(),
             MethodInfo::of::<ViewportPick>(),
+            MethodInfo::of::<ViewportDrop>(),
             MethodInfo::of::<ViewportPresent>(),
             MethodInfo::of::<ViewportStats>(),
             MethodInfo::of::<ViewportNavigate>(),
@@ -429,43 +431,85 @@ impl Method for ViewportPick {
         p: ViewportPickParams,
     ) -> Result<ViewportPickResult, ApiError> {
         check_view(&p.view)?;
-        if p.x >= p.width || p.y >= p.height {
-            return Err(ApiError::new(
-                ApiErrorKind::InvalidParams,
-                format!(
-                    "pixel ({}, {}) is outside the {}×{} image",
-                    p.x, p.y, p.width, p.height
-                ),
-            )
-            .at("/x"));
-        }
-        let snapshot = RenderWorld::extract(engine.world(p.world.unwrap_or_default())?);
-        let mut memory = MemoryAssets::default();
-        let mut bounds = |mesh: &concordia_assets::AssetRef| {
-            let data = match engine.state_mut::<AssetDb>() {
-                Some(db) => crate::AssetSource::mesh(db, mesh),
-                None => crate::AssetSource::mesh(&mut memory, mesh),
-            };
-            data.ok().map(|m| {
-                (
-                    concordia_core::math::Vec3::from_array(m.aabb.0),
-                    concordia_core::math::Vec3::from_array(m.aabb.1),
-                )
-            })
-        };
-        let hit = crate::pick(
-            &snapshot,
-            &p.view,
-            (p.x, p.y),
-            (p.width, p.height),
-            &mut bounds,
-        )
-        .map_err(api_error)?;
+        check_pixel(p.x, p.y, p.width, p.height)?;
+        let hit = with_bounds(engine, p.world, |snapshot, bounds| {
+            crate::pick(snapshot, &p.view, (p.x, p.y), (p.width, p.height), bounds)
+        })?;
         Ok(ViewportPickResult {
             entity: hit.map(|h| h.entity.to_string()),
             distance: hit.map(|h| h.depth),
         })
     }
+}
+
+/// Where an item dropped at pixel (x, y) of a width×height image from `view` lands: on the mesh under it (bounds-based), else on the ground plane (y = 0), else at the view's focus distance.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ViewportDrop;
+
+/// `viewport.drop` result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ViewportDropResult {
+    /// The landing point in world space.
+    pub position: [f32; 3],
+    /// The entity it lands on, or null (the ground or empty space).
+    pub entity: Option<String>,
+}
+
+impl Method for ViewportDrop {
+    const NAME: &'static str = "viewport.drop";
+    const MUTATES: bool = false;
+    type Params = ViewportPickParams;
+    type Result = ViewportDropResult;
+
+    fn call(
+        engine: &mut Engine,
+        _: &CallCtx,
+        p: ViewportPickParams,
+    ) -> Result<ViewportDropResult, ApiError> {
+        check_view(&p.view)?;
+        check_pixel(p.x, p.y, p.width, p.height)?;
+        let landing = with_bounds(engine, p.world, |snapshot, bounds| {
+            crate::landing(snapshot, &p.view, (p.x, p.y), (p.width, p.height), bounds)
+        })?;
+        Ok(ViewportDropResult {
+            position: landing.point.to_array(),
+            entity: landing.entity.map(|e| e.to_string()),
+        })
+    }
+}
+
+/// A pixel outside the image is a parameter error at `/x`.
+fn check_pixel(x: u32, y: u32, width: u32, height: u32) -> Result<(), ApiError> {
+    match x < width && y < height {
+        true => Ok(()),
+        false => Err(ApiError::new(
+            ApiErrorKind::InvalidParams,
+            format!("pixel ({x}, {y}) is outside the {width}×{height} image"),
+        )
+        .at("/x")),
+    }
+}
+
+/// Runs `f` on a snapshot of `world` with a mesh-bounds lookup (the project's assets, else built-ins).
+fn with_bounds<R>(
+    engine: &mut Engine,
+    world: Option<WorldSel>,
+    f: impl FnOnce(
+        &RenderWorld,
+        &mut dyn FnMut(&AssetRef) -> Option<(Vec3, Vec3)>,
+    ) -> Result<R, RenderError>,
+) -> Result<R, ApiError> {
+    let snapshot = RenderWorld::extract(engine.world(world.unwrap_or_default())?);
+    let mut memory = MemoryAssets::default();
+    let mut bounds = |mesh: &AssetRef| {
+        let data = match engine.state_mut::<AssetDb>() {
+            Some(db) => crate::AssetSource::mesh(db, mesh),
+            None => crate::AssetSource::mesh(&mut memory, mesh),
+        };
+        data.ok()
+            .map(|m| (Vec3::from_array(m.aabb.0), Vec3::from_array(m.aabb.1)))
+    };
+    f(&snapshot, &mut bounds).map_err(api_error)
 }
 
 /// A view that cannot be used is a parameter error at `/view`.

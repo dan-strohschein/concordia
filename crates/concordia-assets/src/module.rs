@@ -62,6 +62,8 @@ impl EngineModule for AssetsModule {
         vec![
             MethodInfo::of::<AssetImport>(),
             MethodInfo::of::<AssetList>(),
+            MethodInfo::of::<crate::prefab_method::PrefabInstantiate>(),
+            MethodInfo::of::<crate::files::ProjectFiles>(),
         ]
     }
 
@@ -81,7 +83,7 @@ impl EngineModule for AssetsModule {
     }
 }
 
-fn db(engine: &mut Engine) -> Result<&mut AssetDb, ApiError> {
+pub(crate) fn db(engine: &mut Engine) -> Result<&mut AssetDb, ApiError> {
     engine.state_mut::<AssetDb>().ok_or_else(|| {
         ApiError::new(
             ApiErrorKind::Internal,
@@ -90,12 +92,13 @@ fn db(engine: &mut Engine) -> Result<&mut AssetDb, ApiError> {
     })
 }
 
-fn api_error(e: AssetError) -> ApiError {
+pub(crate) fn api_error(e: AssetError) -> ApiError {
     let kind = match e {
         AssetError::Path(_)
         | AssetError::NoImporter { .. }
         | AssetError::Io(_)
-        | AssetError::Reference { .. } => ApiErrorKind::InvalidParams,
+        | AssetError::Reference { .. }
+        | AssetError::NotFound(_) => ApiErrorKind::InvalidParams,
         _ => ApiErrorKind::Internal,
     };
     ApiError::new(kind, e.to_string())

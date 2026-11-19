@@ -27,10 +27,13 @@ pub struct Sidecar {
 }
 
 impl Sidecar {
+    /// What a sidecar's file name adds to its source's.
+    pub const SUFFIX: &'static str = ".import.ron";
+
     /// The sidecar path for `source`.
     pub fn path_for(source: &Path) -> PathBuf {
         let mut name = source.as_os_str().to_owned();
-        name.push(".import.ron");
+        name.push(Self::SUFFIX);
         PathBuf::from(name)
     }
 

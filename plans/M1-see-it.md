@@ -1103,7 +1103,7 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
 
 **Engine API:**
 - `project.files {dir?, pattern?}` lists project files (project-relative, with size, kind and import status; skips `.concordia/` and git-ignored paths); read-only.
-- `prefab.instantiate {asset, parent?, transform?}` spawns an imported glTF scene's node hierarchy as one transaction (the importer already stores it as a prefab, phase 1.4).
+- `prefab.instantiate {asset, parent?, translation?}` spawns an imported glTF scene's node hierarchy as one transaction (the importer already stores it as a prefab, phase 1.4).
 - `viewport.drop {view, x, y, width, height}` returns where a dragged asset lands: the surface under the pointer, else the ground plane.
 
 **UI:**

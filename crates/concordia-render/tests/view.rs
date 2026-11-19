@@ -663,3 +663,51 @@ fn the_viewport_control_hit_tests_the_gizmo_without_the_engine_thread() {
         "no gizmo, no hit"
     );
 }
+
+fn near(value: &Value, expected: [f64; 3]) -> bool {
+    (0..3).all(|i| (value[i].as_f64().unwrap() - expected[i]).abs() < 0.05)
+}
+
+#[test]
+fn viewport_drop_lands_on_the_surface_under_the_pointer_else_the_ground() {
+    let mut h = Harness::new();
+    let (_, right) = h.two_cubes();
+    // Top-down ortho, 20 px per unit: screen right is -X, screen up is +Z.
+    let top = json!({"eye": [0.0, 20.0, 0.0], "target": [0.0, 0.0, 0.0], "projection": {"Orthographic": {"height": 20.0, "near": 0.1, "far": 100.0}}});
+    let on_cube = h.ok(
+        "viewport.drop",
+        json!({"view": top, "x": 160, "y": 200, "width": 400, "height": 400}),
+    );
+    assert_eq!(on_cube["entity"], right, "{on_cube}");
+    assert!(
+        near(&on_cube["position"], [2.0, 0.5, 0.0]),
+        "lands on the cube's top face: {on_cube}"
+    );
+    let on_ground = h.ok(
+        "viewport.drop",
+        json!({"view": top, "x": 200, "y": 100, "width": 400, "height": 400}),
+    );
+    assert!(on_ground["entity"].is_null(), "{on_ground}");
+    assert!(
+        near(&on_ground["position"], [0.0, 0.0, 5.0]),
+        "lands on the ground plane: {on_ground}"
+    );
+    // Looking level, the top row's ray never meets the ground: it lands at the focus distance.
+    let sky = h.ok(
+        "viewport.drop",
+        json!({"view": front_view(), "x": 200, "y": 0, "width": 400, "height": 400}),
+    );
+    let p = &sky["position"];
+    let from_eye = (0..3)
+        .map(|i| (p[i].as_f64().unwrap() - [0.0, 0.0, 10.0][i]).powi(2))
+        .sum::<f64>()
+        .sqrt();
+    assert!((from_eye - 10.0).abs() < 0.05, "{sky}");
+    let err = h
+        .call(
+            "viewport.drop",
+            json!({"view": top, "x": 400, "y": 0, "width": 400, "height": 400}),
+        )
+        .unwrap_err();
+    assert_eq!(err.code(), -32602, "{err:?}");
+}
