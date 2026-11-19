@@ -253,6 +253,28 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 - **The outliner** rebuilds and sorts the whole 10k-entity tree on every change.
 
 
+### Phase 1.9e: Performance review fixes (in progress; author request 2026-11-18)
+A review compared Concordia against Unreal's public architecture and audited our own code. The author asked for every item, fixed in priority order, as one PR. Each item is test-first; the bench (`just editor-bench`) is re-run at the end against the 1.9d kill criteria.
+
+| # | Item | Status |
+|---|---|---|
+| 1 | Decoded assets cached in memory (no per-frame source reads or hashing); materials sent only when they change | |
+| 2 | Persistent render scene updated by deltas, not a full extract and transform pass per frame | |
+| 3 | Shallow presentation queue for the editor viewport (latency) | |
+| 4 | Engine-driven redraws during play; native gizmo drags | |
+| 5 | Camera moves skip the engine thread; read-only calls off the engine thread | |
+| 6 | Simulation paced by the display (no 16 ms sleep steps), interpolated drawing | |
+| 7 | Frustum culling, instancing | |
+| 8 | Persistent per-frame buffers and pooled textures | |
+| 9 | Cached shadows for static casters | |
+| 10 | Incremental outliner tree | |
+| 11 | Inspector refetches throttled during drags | |
+| 12 | Binary/low-overhead hot paths if JSON shows up in the bench | |
+| 13 | First-use hitches: background IBL, shader compiles and texture uploads | |
+| 14 | Optimized dev builds for the editor | |
+| 15 | GPU timestamp queries in `viewport.stats` | |
+| 16 | Idle editor costs nothing (test) | |
+
 ### Phase 1.9c: Native editor shell (done)
 - **RHI window surfaces:** `create_surface` (unsafe; wraps a `CAMetalLayer`), `acquire`, `present` and `destroy_surface`, with Metal tests using a standalone layer (12 acquire/clear/present cycles, misuse errors).
   - `Renderer::present` renders into a surface image: BGRA sRGB tonemap target, final Present layout, no readback. The tonemap pipeline is now per format.

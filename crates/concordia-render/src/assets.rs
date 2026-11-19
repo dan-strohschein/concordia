@@ -88,9 +88,12 @@ impl MemoryAssets {
         self.textures.extend(other.textures);
     }
 
-    /// References of the stored meshes and textures (the GPU-cached kinds).
-    pub fn cached_kinds(&self) -> impl Iterator<Item = &AssetRef> {
-        self.meshes.keys().chain(self.textures.keys())
+    /// References of every stored asset.
+    pub fn refs(&self) -> impl Iterator<Item = &AssetRef> {
+        self.meshes
+            .keys()
+            .chain(self.materials.keys())
+            .chain(self.textures.keys())
     }
 
     pub(crate) fn meshes(&self) -> impl Iterator<Item = (&AssetRef, &MeshData)> {
@@ -106,9 +109,8 @@ impl MemoryAssets {
     }
 }
 
-/// The CPU asset data a frame of `world` needs: every mesh and texture (material and
-/// environment) that `held` does not report as already loaded, and every material (small, and
-/// they can change).
+/// The CPU asset data a frame of `world` needs that `held` does not report as already loaded:
+/// meshes, materials (with their textures) and the environment map.
 pub fn resolve(
     world: &crate::RenderWorld,
     source: &mut dyn AssetSource,
@@ -125,7 +127,7 @@ pub fn resolve(
             let data = source.mesh(&item.mesh).map_err(fail(&item.mesh))?;
             out.meshes.insert(item.mesh.clone(), data);
         }
-        if !out.materials.contains_key(&item.material) {
+        if wanted(&out, &item.material) {
             let material = source
                 .material(&item.material)
                 .map_err(fail(&item.material))?;

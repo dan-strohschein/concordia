@@ -235,7 +235,7 @@ fn ship(engine: &mut Engine, world: &RenderWorld) -> Result<MemoryAssets, ApiErr
     };
     let mut shipped = shipped;
     if let Ok(assets) = &resolved {
-        shipped.extend(assets.cached_kinds().cloned());
+        shipped.extend(assets.refs().cloned());
     }
     if let Some(state) = engine.state_mut::<RenderState>() {
         state.shipped = shipped;
