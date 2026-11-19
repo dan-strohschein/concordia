@@ -253,6 +253,32 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 - **The outliner** rebuilds and sorts the whole 10k-entity tree on every change.
 
 
+### Phase 1.9f: Latency isolation (in progress; author request 2026-11-18)
+**Goal.** Find where input-to-photon latency goes, with the engine alone, and get it to Unreal's range.
+
+**The harness.** `concordia run` now draws into its own window. `concordia run --bench-latency <out.json> [--bench-frames N] [--fullscreen]` drives the camera once per refresh through `ViewportControl`, with no editor and no webview; `tools/bench/latency.py` summarizes the report.
+
+**Findings** (M3 Pro at 120 Hz):
+
+| Setup | input→photon p50 | p95 |
+|---|---|---|
+| Engine window, before late latching | 31.4 | 32.8 |
+| Engine window, late latching (`Renderer::acquire_ahead`) | 22.5–29.5 (3 runs; mean ≈ 26) | 27–31 |
+| Engine, fullscreen (direct to display) | **14.5** | **18.7** |
+| Editor (webview over Metal), orbit | 25–30 | 29–40 (noisy) |
+| Editor, native gizmo drag | 29–33 | 30–33 |
+
+- **The webview isn't the latency.** The editor adds about 2 ms over the bare engine window.
+- **Windowed macOS compositing costs about 11 ms.** Fullscreen opaque layers get direct scanout; any windowed app pays this, the Unreal Editor included. A webview drawn *over* the viewport rules out direct scanout even in fullscreen, so that cost is structural to the web UI.
+- **Run-to-run spread is about one refresh,** because synthetic input at 120 Hz holds a fixed phase against the display. A real mouse lands at random phases, so read the mean.
+- **Two bench artifacts are fixed:**
+  - the native-drag injector drifted to about 100 Hz (fixed sleeps); it now uses absolute deadlines, and editor orbit then holds 108–117 fps;
+  - page view updates are throttled to 16 ms (`Throttle`).
+
+**Next:**
+- just-in-time latching (render as close to the refresh deadline as the GPU allows; about 3 ms estimated);
+- a like-for-like comparison with Unreal (external high-speed camera, since its internals can't be instrumented here).
+
 ### Phase 1.9e: Performance review fixes (done; author request 2026-11-18)
 A review compared Concordia against Unreal's public architecture and audited our own code. The author asked for every item, fixed in priority order, as one PR. Each item is test-first; the bench (`just editor-bench`) is re-run at the end against the 1.9d kill criteria.
 

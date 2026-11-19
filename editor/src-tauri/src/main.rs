@@ -86,11 +86,24 @@ fn navigation_worker(
         Ok(Ok(control)) => control,
         Ok(Err(e)) | Err(e) => return eprintln!("concordia-editor: native input: {}", e.message),
     };
+    use tauri::Emitter;
     let mut seq = NATIVE_SEQ_BASE;
     let mut pending: Option<(Action, f64)> = None;
+    // Views for the page's overlays, at most every 16 ms (the page draws at 60 Hz).
+    let mut views = concordia_editor::input::Throttle::new(Duration::from_millis(16));
     loop {
         let next = match pending.take() {
             Some(next) => next,
+            None if views.has_pending() => match queue.recv_timeout(Duration::from_millis(16)) {
+                Ok(next) => next,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    if let Some(view) = views.flush() {
+                        let _ = app.emit("viewport-view", view);
+                    }
+                    continue;
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+            },
             None => match queue.recv() {
                 Ok(next) => next,
                 Err(_) => return,
@@ -113,7 +126,13 @@ fn navigation_worker(
         seq += 1;
         let input_time_ms = concordia_editor::native::uptime_to_unix_ms(earliest);
         match action {
-            Action::Nav(nav) => navigate(&control, shell, app, nav, seq, input_time_ms),
+            Action::Nav(nav) => {
+                if let Some(view) = navigate(&control, shell, nav, seq, input_time_ms)
+                    && let Some(view) = views.offer(view, Instant::now())
+                {
+                    let _ = app.emit("viewport-view", view);
+                }
+            }
             Action::Gizmo(step) => gizmo(&human, shell, step, seq, input_time_ms),
         }
     }
@@ -136,15 +155,14 @@ fn merge(
 }
 
 #[cfg(target_os = "macos")]
+/// Moves the camera; returns the new view for the page.
 fn navigate(
     control: &concordia_render::ViewportControl,
     shell: &Shell,
-    app: &tauri::AppHandle,
     nav: concordia_editor::input::Nav,
     seq: u64,
     input_time_ms: f64,
-) {
-    use tauri::Emitter;
+) -> Option<concordia_render::View> {
     let height = shell.slot_height.lock().map_or(360.0, |h| *h).max(1.0) as f32;
     let params = concordia_render::ViewportNavigateParams {
         orbit: nav.orbit,
@@ -156,12 +174,10 @@ fn navigate(
         ..Default::default()
     };
     // Straight to the render thread: a busy engine thread never delays the camera.
-    match control.navigate(&params) {
-        Ok(view) => {
-            let _ = app.emit("viewport-view", view);
-        }
-        Err(e) => eprintln!("concordia-editor: navigation: {}", e.message),
-    }
+    control
+        .navigate(&params)
+        .inspect_err(|e| eprintln!("concordia-editor: navigation: {}", e.message))
+        .ok()
 }
 
 #[cfg(target_os = "macos")]
@@ -241,8 +257,11 @@ async fn bench_native_drag(
                 .map_err(|e| e.to_string())
         };
         post(DragStep::Down)?;
+        // Absolute deadlines: a fixed sleep per step drifts (it ran at ~100 Hz, not 120).
+        let (period, mut next) = (Duration::from_secs_f64(1.0 / hz), Instant::now());
         for i in 1..=frames {
-            std::thread::sleep(Duration::from_secs_f64(1.0 / hz));
+            next += period;
+            std::thread::sleep(next.saturating_duration_since(Instant::now()));
             post(DragStep::Move(3.0 * i as f64))?;
         }
         post(DragStep::Up(3.0 * frames as f64))

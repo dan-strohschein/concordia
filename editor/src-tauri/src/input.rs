@@ -204,3 +204,46 @@ impl Navigator {
         }))
     }
 }
+
+/// Passes the latest value at most once per `interval`; a held value waits for [`Throttle::flush`].
+/// The page draws at 60 Hz, so sending it every native camera move only busies the main thread.
+#[derive(Debug)]
+pub struct Throttle<T> {
+    interval: std::time::Duration,
+    last: Option<std::time::Instant>,
+    pending: Option<T>,
+}
+
+impl<T> Throttle<T> {
+    pub fn new(interval: std::time::Duration) -> Self {
+        Self {
+            interval,
+            last: None,
+            pending: None,
+        }
+    }
+
+    /// `value` to send now, or `None` while it is held (replacing any older held value).
+    pub fn offer(&mut self, value: T, now: std::time::Instant) -> Option<T> {
+        if self
+            .last
+            .is_some_and(|t| now.duration_since(t) < self.interval)
+        {
+            self.pending = Some(value);
+            return None;
+        }
+        self.last = Some(now);
+        self.pending = None;
+        Some(value)
+    }
+
+    /// Whether a value is held.
+    pub fn has_pending(&self) -> bool {
+        self.pending.is_some()
+    }
+
+    /// The held value, if any.
+    pub fn flush(&mut self) -> Option<T> {
+        self.pending.take()
+    }
+}

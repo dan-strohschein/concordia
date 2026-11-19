@@ -159,3 +159,31 @@ fn pressing_a_gizmo_handle_drags_it_natively() {
         "no gizmo, no drag"
     );
 }
+
+#[test]
+fn view_updates_to_the_page_are_throttled_but_the_last_always_arrives() {
+    use concordia_editor::input::Throttle;
+    use std::time::{Duration, Instant};
+    let t0 = Instant::now();
+    let ms = |n| t0 + Duration::from_millis(n);
+    let mut throttle = Throttle::new(Duration::from_millis(16));
+    assert_eq!(
+        throttle.offer(1, ms(0)),
+        Some(1),
+        "the first passes at once"
+    );
+    assert_eq!(throttle.offer(2, ms(5)), None, "too soon: held");
+    assert_eq!(throttle.offer(3, ms(9)), None, "a newer one replaces it");
+    assert!(throttle.has_pending());
+    assert_eq!(
+        throttle.flush(),
+        Some(3),
+        "the latest is delivered when things go quiet"
+    );
+    assert_eq!(throttle.flush(), None);
+    assert_eq!(
+        throttle.offer(4, ms(20)),
+        Some(4),
+        "after the interval, passes again"
+    );
+}
