@@ -66,6 +66,8 @@ pub struct Renderer {
     surfaces: Vec<Surface>,
     /// Called when the frame being rendered reaches the display (set by `present_with`).
     callbacks: FrameCallbacks,
+    /// A surface image acquired ahead of its frame (`acquire_ahead`), with its size.
+    ahead: Option<(Surface, Texture, (u32, u32))>,
     environments: EnvironmentCache,
     shadow_maps: ShadowMaps,
     clusters: ClusterSettings,
@@ -264,6 +266,7 @@ impl Renderer {
             culler,
             surfaces: Vec::new(),
             callbacks: FrameCallbacks::default(),
+            ahead: None,
             environments: EnvironmentCache::default(),
             shadow_maps: ShadowMaps::default(),
             clusters: ClusterSettings::default(),
@@ -370,8 +373,22 @@ impl Renderer {
     ) -> Result<bool, RenderError> {
         self.callbacks = callbacks;
         let (width, height) = check_size(request)?;
-        let Some(texture) = self.device.acquire(surface, width.get(), height.get())? else {
-            return Ok(false);
+        let held = match self.ahead.take() {
+            Some((s, texture, size)) if s == surface && size == (width.get(), height.get()) => {
+                Some(texture)
+            }
+            Some((s, _, _)) => {
+                self.hand_back(s);
+                None
+            }
+            None => None,
+        };
+        let texture = match held {
+            Some(texture) => texture,
+            None => match self.device.acquire(surface, width.get(), height.get())? {
+                Some(texture) => texture,
+                None => return Ok(false),
+            },
         };
         match self.frame(
             world,
@@ -385,14 +402,41 @@ impl Renderer {
         ) {
             Ok(_) => Ok(true),
             Err(e) => {
-                // Hand the image back so the surface is not left holding it.
-                let _ = self.device.present(
-                    surface,
-                    concordia_rhi::Present::new(&CommandList::new("abandoned frame")),
-                );
+                self.hand_back(surface);
                 Err(e)
             }
         }
+    }
+
+    /// Waits for and holds the surface's next image at `width`×`height`, so a following
+    /// [`Renderer::present_with`] can use the newest input (late latching). `false` if the display
+    /// has no image free.
+    pub fn acquire_ahead(
+        &mut self,
+        surface: Surface,
+        width: u32,
+        height: u32,
+    ) -> Result<bool, RenderError> {
+        match &self.ahead {
+            Some((s, _, size)) if *s == surface && *size == (width, height) => return Ok(true),
+            Some((s, _, _)) => {
+                let s = *s;
+                self.ahead = None;
+                self.hand_back(s);
+            }
+            None => {}
+        }
+        let texture = self.device.acquire(surface, width, height)?;
+        self.ahead = texture.map(|t| (surface, t, (width, height)));
+        Ok(self.ahead.is_some())
+    }
+
+    /// Returns an acquired image unused, so the surface is not left holding it.
+    fn hand_back(&mut self, surface: Surface) {
+        let _ = self.device.present(
+            surface,
+            concordia_rhi::Present::new(&CommandList::new("abandoned frame")),
+        );
     }
 
     fn frame(

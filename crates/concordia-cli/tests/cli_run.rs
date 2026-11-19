@@ -46,3 +46,36 @@ fn run_opens_and_closes_window_cleanly() {
         stderr(&output)
     );
 }
+
+/// Needs a desktop session with a GPU: `cargo nextest run --run-ignored only -E 'test(bench_latency)'`.
+#[test]
+#[ignore = "opens a real window"]
+fn run_bench_latency_measures_the_engine_window_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("latency.json");
+    let output = run(
+        &[
+            "run",
+            "--project",
+            &example("m1-physics-stack"),
+            "--bench-latency",
+            out.to_str().unwrap(),
+            "--bench-frames",
+            "60",
+        ],
+        dir.path(),
+    );
+    assert!(output.status.success(), "{}", stderr(&output));
+    let report: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+    let presented = report["frames"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|f| f["presented_ms"].is_number() && f["input_time_ms"].is_number())
+        .count();
+    assert!(
+        presented >= 30,
+        "frames with input and display times: {presented}\n{report}"
+    );
+}

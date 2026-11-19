@@ -774,3 +774,52 @@ fn warm_frames_reuse_their_gpu_memory_instead_of_allocating() {
         );
     }
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn a_drawable_acquired_ahead_is_used_by_the_next_present() {
+    let Some(mut r) = renderer() else { return };
+    let mut s = Scene::new();
+    let red = s.material("red", unlit([0.8, 0.1, 0.1, 1.0]));
+    s.mesh("cube", red, Vec3::ZERO, Quat::IDENTITY, Vec3::ONE);
+    s.camera(
+        Vec3::new(0.0, 0.0, 4.0),
+        Vec3::ZERO,
+        clamp_camera(Projection::default(), Msaa::X4),
+    );
+    let layer = objc2_quartz_core::CAMetalLayer::new();
+    // SAFETY: the layer outlives the surface, which the renderer releases when dropped.
+    let surface = unsafe {
+        r.create_surface(concordia_rhi::SurfaceTarget::MetalLayer(
+            std::ptr::NonNull::from(&*layer).cast(),
+        ))
+    }
+    .unwrap();
+    let rw = RenderWorld::extract(&s.world);
+    let request = |w, h| RenderRequest {
+        camera: None,
+        view: None,
+        width: w,
+        height: h,
+    };
+    assert!(r.acquire_ahead(surface, 64, 64).unwrap());
+    assert!(
+        r.acquire_ahead(surface, 64, 64).unwrap(),
+        "holding one already is fine"
+    );
+    assert!(
+        r.present(&rw, &mut s.assets, &request(64, 64), surface)
+            .unwrap()
+    );
+    assert!(r.acquire_ahead(surface, 64, 64).unwrap());
+    assert!(
+        r.present(&rw, &mut s.assets, &request(32, 32), surface)
+            .unwrap(),
+        "a size change re-acquires"
+    );
+    for _ in 0..4 {
+        r.acquire_ahead(surface, 48, 48).unwrap();
+        r.present(&rw, &mut s.assets, &request(48, 48), surface)
+            .unwrap();
+    }
+}

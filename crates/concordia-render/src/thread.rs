@@ -215,23 +215,42 @@ impl Worker {
                     Err(_) => return,
                 },
             };
-            let Some(first) = first else {
-                if !self.ticking() {
-                    // Waiting on background work, not motion: no need to redraw every refresh.
-                    std::thread::sleep(Duration::from_millis(16));
-                }
-                self.present_between_ticks();
-                continue;
-            };
             let mut latest = None;
-            let mut next = Some(first);
-            while let Some(job) = next {
+            let animating = first.is_none();
+            match first {
+                Some(first) => latest = self.handle(first, latest),
+                // Waiting on background work, not motion: no need to redraw every refresh.
+                None if !self.ticking() => std::thread::sleep(Duration::from_millis(16)),
+                None => {}
+            }
+            // Late latching: hold the next display image first (this is where the thread waits
+            // for the display), then take everything that arrived meanwhile, so the frame shows
+            // the newest camera and scene rather than what was current before the wait.
+            if latest.is_none() && !animating {
+                continue; // a capture or surface change: nothing new to show
+            }
+            self.hold_image(latest.as_ref());
+            while let Ok(job) = queue.try_recv() {
                 latest = self.handle(job, latest);
-                next = queue.try_recv().ok();
             }
-            if let Some(frame) = latest {
-                self.present(frame);
+            match latest {
+                Some(frame) => self.present(frame),
+                None => self.present_between_ticks(),
             }
+        }
+    }
+
+    /// Acquires the viewport's next image ahead of rendering, at the size of `frame` (or the last
+    /// frame's).
+    fn hold_image(&mut self, frame: Option<&ViewportFrame>) {
+        let size = frame
+            .map(|f| &f.request)
+            .or(self.last.as_ref().map(|(_, r)| r))
+            .map(|r| (r.width, r.height));
+        if let (Some(surface), Some((width, height))) = (self.surface, size)
+            && let Err(e) = self.renderer.acquire_ahead(surface, width, height)
+        {
+            tracing::warn!(target: "concordia::render", error = %e, "viewport image unavailable");
         }
     }
 

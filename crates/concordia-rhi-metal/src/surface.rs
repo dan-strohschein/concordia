@@ -170,3 +170,29 @@ pub(crate) fn on_gpu_time(
     // SAFETY: Metal copies and retains the block until the handler has run; its state is Send.
     unsafe { command_buffer.addCompletedHandler(&*block as *const _ as *mut _) };
 }
+
+/// Makes `view` (an `NSView`) layer-backed by a new opaque `CAMetalLayer` and returns it with its
+/// surface target. Main thread only.
+///
+/// # Safety
+/// `view` must point to a live `NSView`, and the returned layer must outlive any surface created
+/// from the target.
+pub unsafe fn layer_for_view(
+    view: std::ptr::NonNull<std::ffi::c_void>,
+) -> (ViewLayer, concordia_rhi::SurfaceTarget) {
+    let layer = CAMetalLayer::new();
+    // An opaque layer lets the window server skip blending it with what is behind.
+    layer.setOpaque(true);
+    // SAFETY: the caller guarantees `view` is a live NSView; these are its standard setters.
+    unsafe {
+        let view: &objc2::runtime::AnyObject = view.cast().as_ref();
+        let _: () = objc2::msg_send![view, setWantsLayer: true];
+        let _: () = objc2::msg_send![view, setLayer: &*layer];
+    }
+    let target = concordia_rhi::SurfaceTarget::MetalLayer(std::ptr::NonNull::from(&*layer).cast());
+    (ViewLayer(layer), target)
+}
+
+/// Keeps a view's Metal layer alive (see [`layer_for_view`]).
+#[derive(Debug)]
+pub struct ViewLayer(#[allow(dead_code)] Retained<CAMetalLayer>);

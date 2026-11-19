@@ -22,6 +22,7 @@ concordia-core.workspace = true
 concordia-mcp.workspace = true
 concordia-platform.workspace = true
 concordia-reflect.workspace = true
+concordia-render.workspace = true
 concordia-rhi.workspace = true
 concordia-rhi-metal.workspace = true
 concordia-scene.workspace = true
