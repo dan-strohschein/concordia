@@ -1,11 +1,123 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: Planned · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Needs refinement after M2** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0 and 3.3 done, 3.4 next; refinement approved 2026-11-19) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Needs refinement after M2** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
 > **Scheduling note.** The Studio phases (3.3 config and task board, 3.4 `concordia studio sync`, 3.5 attribution and enforcement, 3.6 roster and skills) need only the M0 Engine API and `concordia-mcp`. They may start right after M0, in parallel with M1/M2. Replay generalization (3.1), assertions over replays (3.2) and the gate (3.9) need M2. The editor panel (3.8) needs the M1 editor shell.
+
+## Studio refinement (2026-11-19, against M0/M1 as built)
+**Status: author decided (a) = A1 and (b) = B1, and approved the refined phases (2026-11-19).** Where this section and the phase text below disagree, this section wins. The phase text is edited in place only where it was plainly wrong.
+
+### What exists (checked in code)
+- **`concordia new <dir>`** (`crates/concordia-cli/src/cmd/new.rs`) writes four files:
+  - `concordia.toml` with `[project] [scene] [sim] [journal]` only, so there's no physics, assets or render, and no `capture_screenshot`;
+  - an empty `scenes/main.scene.ron`;
+  - `.gitignore` (`.concordia/`);
+  - `.mcp.json`, whose server `concordia` runs the **absolute path** of the current `concordia` binary with `["mcp","--project","."]`.
+
+  `--force` overwrites those four files. There are no other directories, no Studio files and no `CLAUDE.md`.
+- **Actor grammar** (`concordia-command/src/actor.rs`): `<human|agent|system|tool|script>:<name>[#n]`, names `[a-z0-9][a-z0-9._-]{0,63}`, and `#n` is `NonZeroU32`. Role ids such as `gameplay-programmer` fit as they are. `Author { actor, session }` already carries the engine session.
+- **Command log:**
+  - one journal **per scene** (`.concordia/journal/<scene-id>.cmdlog.jsonl`), single writer (the engine owns `seq`);
+  - events are `commit | undo | redo | abort | save`, all of them edit-world ops;
+  - `txn.history` reads it, with actor, label, time, entities and `undone` added in 1.15;
+  - `txn.undo_to` exists.
+- **`log.tail` is not the command log.** It reads the in-memory tracing ring (level, target, message, fields). The live stream is `events.subscribe` with topics `edit | scene | sim | pending | log`. The 1.15 Agent Activity panel is built on `txn.history` and is refreshed by `edit` and `scene` events.
+- **MCP adapter** (`concordia-mcp`):
+  - it starts **its own engine** and opens **one engine session** with one default actor (`--actor`, default `agent:claude-code`);
+  - every tool call runs in that session, and a per-call `actor` param overrides it;
+  - `human:*` is rejected;
+  - method params are `deny_unknown_fields`, and only mutating methods take `actor`.
+- **Transactions:** one open transaction per scene (`scene.hold`), owned by an engine session. Later mutating calls *from that session* join it, and other sessions get `TxnConflict`.
+- **Discovery:** the editor and `concordia headless --ws` write `.concordia/headless.json` (`url`, `token`, `pid`, mode 0600). There is no `.concordia/session.json`.
+- **Engine modules** (ADR-0046) can add methods, types and engine-lifetime state (`engine_state`). `concordia.toml` sections switch them on, and `Manifest` is `deny_unknown_fields`.
+- **Counts:** the core has 33 methods and 30 MCP tools.
+
+### Gaps (assumed by this plan, not built in M0/M1)
+| # | Gap | Resolution | Phase |
+|---|---|---|---|
+| G1 | **No shared engine.** `concordia-mcp --connect` was deferred from M0 (open question 5) to M1 and never built. Claude Code's MCP server and the editor run **two engines** on the same files, so the Studio panel would never see agent edits, and both can save the same scene. | `concordia mcp` **attaches** to a live engine found in `.concordia/headless.json` (pid alive, token valid). Otherwise it hosts its own and publishes `headless.json` itself. The editor does the same: attach if one is live, else host. The host owns the journal, and attached clients are proxies. ADR-0080. | new **3.5b** |
+| G2 | **One engine session for every MCP caller.** Parallel subagents would join each other's transactions, so their edits would be **misattributed** to whichever role began the transaction. | The adapter keeps **one engine session per caller identity** (`agent:<role>#n`), opened lazily. A second role's `txn.begin` while another holds one gets `TxnConflict` (correct isolation; prompts say to retry). | 3.5 |
+| G3 | **No project-level log.** Task changes and file-edit audits aren't world ops, and `CommandLog` is bound to a scene's `World`. "`TaskCommand` variants in `concordia-command`" doesn't fit. | A **Studio journal**, `.concordia/studio/journal.jsonl`: append-only JSON lines, versioned like the scene journal, with an actor on every entry. Kinds: `task_created`, `task_changed`, `task_comment`, `task_gate`, `file_edit`, `slot_claimed`, `slot_released`, `sync`. Task history is rebuilt from it. **Tasks have no undo**: you reopen or reject instead. Writers take an advisory file lock, and the engine watches the file and publishes new entries. | 3.3 (journal), 3.5 (hook writes) |
+| G4 | **`log.tail` has no actor/role/task filters and no subscription.** The plan's "command log from the `log.tail` subscription" doesn't exist. | `log.tail` stays the tracing log. The Studio panel merges `txn.history` (scene) with a new `studio.activity` (Studio journal, filterable by actor, role, task and kind), live through a new `studio` events topic. | 3.3, 3.8 |
+| G5 | **New projects have no render or physics.** The checkpoint's live task ("lit physics playground", QA uses `capture_screenshot`) can't run in a `concordia new` project. | `concordia new` writes `[physics]`, `[assets]` and `[render]` (opt out with `--minimal`). | 3.3 |
+| G6 | **`Manifest` rejects unknown sections.** | Add `[studio]` (`dir = "studio"` default). Its presence enables the `StudioModule`. | 3.3 |
+| G7 | **`.mcp.json` holds an absolute user path.** That breaks portability and privacy once committed, and contradicts 3.4's `generated_files_contain_no_secrets_or_absolute_user_paths`. Also, the plan names the server `engine` and the command `concordia-mcp`; the convention is server `concordia` and `concordia mcp`. | `.mcp.json` and hook entries use bare `concordia` (resolved on `PATH`). `concordia studio doctor` checks that it resolves. The repo's own `.mcp.json` keeps `tools/mcp/concordia-mcp.sh` for engine development. | 3.3 (`new`), 3.4 (sync) |
+| G8 | **No YAML crate** in the workspace. | Choose `serde_norway` or `serde_yaml_ng` in 3.3, by maintenance and `cargo deny`. | 3.3 |
+| G9 | **Tool-name envelope vs `deny_unknown_fields`.** The hook can't add `actor_session`, and stamping `actor` on read-only tools would break them. | The hook adds one reserved key, `_studio`, which the adapter **strips** before dispatch (see (b)). Engine params are unchanged. | 3.5 |
+| G10 | **Roles reference tools that don't exist yet** (`replay_*`, `assert_eval`, `gen_*`, `audio`, scripts). 3.3's `mcp_tool_scope_globs_must_match_at_least_one_known_tool` would reject them. | The default roster lists only tools that exist for the project's modules. Roles with no useful work before M2 (gameplay-programmer, animator, sound-designer, composer, and vfx-artist until 3.7) ship with `enabled = false` in `team.toml`, each with a reason. 3.1, 3.2 and 3.7 widen scopes as their tools land. | 3.6 |
+| G11 | **Project `env` may not apply untrusted.** The docs say most `env` values apply only after trust, so `CLAUDE_CODE_MAX_*` from settings may be ignored in `-p`. | Don't rely on it. Nesting is prevented by omitting `Agent` from subagent `tools` (works untrusted). Concurrency is bounded by the instance slots in `concordia mcp`. The `env` entries stay as a best effort, and doctor reports whether they applied. | 3.4, 3.5 |
+| G12 | **Default hook timeout is 600 s.** | Every generated hook entry sets `"timeout": 5`. The hook's own budget stays 2 s. | 3.4 |
+| G13 | **`studio/` at the repo root and `roster/` in the crate** are two homes for the default roster. | One source: `crates/concordia-studio/roster/` (embedded). The repo-root `studio/` folder is removed, and `plans/README.md`'s layout is updated. | 3.6 |
+| G14 | **Where the Studio API lives.** | A `StudioModule` engine module in `concordia-studio`, not core methods. Core stays at 33 methods and 30 tools. Studio tools are counted per module, like physics and render. The count tests get a note, not a bump. | 3.3 |
+
+### Decision (a): the project layout `concordia new` produces (decided: A1)
+- **A1 (recommended) Studio on by default, full editable copies.** `concordia new` writes the game files plus `studio/` (team, all role files, engine skills, an empty task board), then runs `concordia studio sync`. Generated `.claude/` files are **committed**, so a fresh clone works in Claude Code without a sync, and `sync --check` keeps them honest in CI. `--no-studio` skips it; `concordia studio init` adds it to an existing project (same code). It fits ADR-0049's premise (people build games through agents) and "text is the source of truth": every prompt is readable and editable in the project. The cost is that engine upgrades to default prompts need `concordia studio diff-defaults`/merge later, since role files carry `based_on: default@<version>`.
+- **A2 Opt-in.** `concordia new` stays minimal, and Studio arrives only through `concordia studio init`. It's simpler, but the default experience isn't agent-first.
+- **A3 Embedded defaults, overrides only.** The project holds `team.toml` and only the role files it customizes; the rest come from the engine at sync time. It upgrades for free, but the prompts aren't visible in the project, and sync output changes with the engine version.
+
+A1's tree:
+```
+<game>/
+  concordia.toml        [project] [scene] [sim] [journal] [physics] [assets] [render] [studio]
+  scenes/main.scene.ron
+  studio/
+    team.toml
+    agents/<role>.md    all 12 roles (some disabled in team.toml, G10)
+    skills/<name>/SKILL.md
+    tasks/              T-0001-<slug>.task.md (starts empty, with .gitkeep)
+  .claude/              generated by `concordia studio sync`, committed
+    agents/<role>.md · skills/<name>/SKILL.md · settings.json (owned hook entries, agent=director)
+  .mcp.json             { "concordia": { "command": "concordia", "args": ["mcp","--project","${CLAUDE_PROJECT_DIR:-.}"] } }
+  CLAUDE.md             the managed block only
+  .gitignore            .concordia/  .claude/settings.local.json
+  .concordia/           (ignored) journal/ ddc/ headless.json studio/{journal.jsonl,roster.ron,actors.ron}
+```
+Role write-path directories (`assets/models/`, `tests/playtests/` and so on) are created when first written, not up front.
+
+### Decision (b): how hooks reach the command log (decided: B1, ADR-0080)
+Common to all options:
+- **Engine edits** reach the per-scene command log **only through `concordia mcp`**, never from a hook.
+- **Non-world events** (file edits, tasks, slots) go to the Studio journal (G3).
+- **Out-of-scope `Edit|Write|Bash`** is denied by the PreToolUse hook.
+- **`concordia mcp` re-checks MCP scope on the server** (defense in depth).
+
+The options differ in how a call's identity reaches `concordia mcp` and how hooks write.
+- **B1 (recommended) Hook-stamped envelope, file-appended audits.**
+  - The PreToolUse hook (`mcp__concordia__.*`) checks the scope, then returns `allow` with `updatedInput` = the original input plus `"_studio": {"role": <agent_type or director>, "agent": "<session_id>/<agent_id>", "tool_use_id": …}`. That's a full replacement, as the docs require.
+  - `concordia mcp` strips `_studio`, maps the `agent` key to a slot `agent:<role>#n` and that identity's own engine session (G2), and ignores any model-supplied `actor`.
+  - With `[studio]` on, **a call without `_studio` is read-only.** Hooks not loaded means fail closed, and doctor flags it.
+  - PostToolUse `Edit|Write` appends `file_edit` (actor, path, before/after hashes) **directly to the Studio journal** under the lock, so it works whether or not an engine is running.
+  - Fallback if `updatedInput` is ignored for MCP (first live probe): *check mode*, where agents pass `actor` and the hook denies mismatches.
+- **B2 Envelope, but hooks write through the running engine** (`headless.json` → WebSocket → `studio.record`). That gives one writer and live events with no file watching. But every audit needs a live engine and a socket handshake inside the 2 s budget, and an audit is lost (or must be spooled) when none is running.
+- **B3 One MCP server per role.** Sync writes `concordia-<role>` servers to `.mcp.json`, each `concordia mcp --actor agent:<role>`, all attached to one engine (G1). Attribution is structural, with no input rewriting. But the main session lists every server's tools (12 × 30+), there are no `#n` instances, tool names become `mcp__concordia-<role>__*` (against the convention), and it's 12 processes. File-scope hooks are still needed.
+
+### Phase changes
+- **New 3.0 Housekeeping** (small, its own commit):
+  - **`concordia fmt` infers the project** from each file's nearest `concordia.toml`. Today `--project .` silently loads no modules when run outside the project, so `Collider` is unknown. Tests: `fmt_infers_project_from_nearest_manifest`, `fmt_reports_unknown_component_with_project_hint`.
+  - **Re-measure the 10k browser orbit** (`just editor-bench`, at least 5 runs each of `pre-1.16` and `post-1.16`) and close or confirm the M1 1.16 open item.
+  - **Asynchronous browser captures stay in `later-backlog.md`.** Studio e2e uses the light fixture scene, and the native path is unaffected. Revisit if 3.8's e2e waits grow.
+  - **Done (2026-11-19). As built:**
+    - **`fmt`:** `--project` is now optional, and each file is formatted against its nearest `concordia.toml`, with one engine per project. A file with no manifest above it gets only built-in components, and an unknown component there says so with a `--project` hint.
+    - **Bench:** the 1.16 regression is not real. A `main` build on the 1.16-era scene matches pre-1.16 (107.3 fps median). The gate scene's content costs the rest; details are in the M1 plan, 1.16 As built.
+- **3.3** gains G3 (journal), G5, G6, G8, G14, decision (a) (`concordia new`, `concordia studio init`), and `studio.activity`.
+- **3.4:** G7, G11, G12; the `.mcp.json` key is `concordia`.
+- **3.5:** decision (b), G2, G9; the probe for `updatedInput` on MCP tools is the first task (a manual interactive check, then a scripted `claude -p` probe only with the author's go-ahead).
+- **New 3.5b Shared engine (G1):**
+  - `concordia mcp` attach-or-host;
+  - editor attach-or-host;
+  - stale `headless.json` detection (dead pid, bad token);
+  - the host's exit is visible to attached clients.
+
+  Tests: `mcp_attaches_to_live_engine_from_connection_file`, `mcp_hosts_and_publishes_connection_file_when_none_live`, `stale_connection_file_is_replaced`, `editor_and_mcp_share_one_command_log` (e2e: an MCP edit appears in Agent Activity).
+- **3.6:** G10, G13.
+- **3.8:** builds on the 1.15 Activity panel. It merges `txn.history` with `studio.activity`, goes live via `edit` and `studio` events (not `log.tail`), adds role filters and colors, and adds the task board, approvals and launcher as planned.
+- **Checkpoint gate** (`just gate-tests M3S`): `tests/gates/m3s_studio_sync.rs`, `m3s_enforcement.rs` (real hook binary + real `concordia mcp`, scripted hook inputs), `m3s_task_board.rs`, `m3s_shared_engine.rs`. The live part (`just gate-live M3S`) is unchanged and runs only with the author's go-ahead.
+
+### Follow-ups found
+- **`main` lacks M1.** PRs #6–#19 were stacked and each merged into its parent branch, so `origin/main` stops at #5 (58 commits behind `m1/gate`). The author asked for a PR `m1/gate` → `main`. Studio branches start from `main` once it holds M1.
 
 ## Goal & context
 M3 closes the loop the design promises (principle 3): an agent can **record** a play session, **replay** it deterministically, **find the first frame** where two runs diverge, and **prove** behavior with typed playtest assertions, all from tests, the CLI and MCP. On top of that loop, M3 ships **Agent Studio v1**: a configurable team of specialist agents that runs **inside the user's own Claude Code on a regular subscription, with no API key** (principle 0).
@@ -198,7 +310,7 @@ justfile                       (touched) `gate-live` recipe
 - **Implementation notes:** hand-written recursive-descent parser (no parser-generator dependency, so error messages stay ours). The evaluator compiles predicates to closures over ECS queries resolved once per run, with selectors cached by tag index. The result type `AssertOutcome { status: Passed|Failed|Undecided, decided_at, witness: BTreeMap<String, Value>, trace: Option<Vec<Sample>> }` is designed to be pasted directly into a task's acceptance notes. References: runtime verification and temporal-logic monitors (bounded LTL monitoring literature); the units approach follows dimensional-analysis type checking.
 - **Done criteria:** tests pass; `concordia test playtests` runs all `.playtest.ron` in a project; doc tests show the builder API.
 
-### Phase 3.3: Studio config model + task board
+### Phase 3.3: Studio config model + task board (done)
 *Can start right after M0.*
 
 - **Objective:** Parse, validate and expose the Studio's text config (roles, team, tasks) and implement the task board as Engine API commands with actor attribution, a state machine and approval gates.
@@ -291,8 +403,31 @@ justfile                       (touched) `gate-live` recipe
     - `task_ids_are_stable_and_sequential_under_concurrent_creates` (two sessions racing).
   - `crates/concordia-api/tests/task_methods.rs`
     - `task_methods_roundtrip_over_json_rpc`, `mcp_task_tool_schemas_snapshot` (insta).
-- **Implementation notes:** YAML frontmatter parsed with a maintained serde YAML crate (choose at execution; `serde_yaml` is unmaintained; candidates `serde_norway`, `serde_yaml_ng`; must pass `cargo-deny`). The Markdown body is kept verbatim. Task writes go through `concordia-command` as `TaskCommand` variants, so undo/redo and attribution come for free. Glob matching via `globset` (MIT/Unlicense).
+- **Implementation notes:** YAML frontmatter parsed with a maintained serde YAML crate (choose at execution; `serde_yaml` is unmaintained; candidates `serde_norway`, `serde_yaml_ng`; must pass `cargo-deny`). The Markdown body is kept verbatim. Task writes are attributed entries in the Studio journal (`.concordia/studio/journal.jsonl`, refinement G3), not `concordia-command` ops; tasks have no undo. Glob matching via `globset` (MIT/Unlicense).
 - **Done criteria:** tests pass; `concordia task list` works against the fixture project; `studio.roster` returns the resolved scopes that 3.4 and 3.5 consume.
+
+**As built (2026-11-19):**
+- **An engine module, not core methods (G14).** `concordia-studio` provides `StudioModule`, switched on by `[studio]` (`dir = "studio"`) in `concordia.toml`. The core stays at 33 methods and 30 MCP tools, so no count test changed. `MethodInfo::tool_name` and `MethodInfo::is_agent_tool` moved into `concordia-api`, so Studio and `concordia mcp` share one naming rule.
+- **Methods:** `task.create/get/list/claim/update/comment/approve/reject` and `studio.roster/status/activity`. `studio.sync` and `studio.release_actor` come with 3.4 and 3.5. `studio.status` reports task counts and pending approvals; instances arrive with 3.5.
+  - `task.update` can't set done or rejected (`task.approve` and `task.reject` do).
+  - Unblocking (blocked → todo) is human-only.
+  - A reviewer must match every in_review → done gate and the role's own `review.requires`.
+- **The Studio journal (G3, ADR-0080):** `.concordia/studio/journal.jsonl`. Its kinds are `task_created`, `task_changed` (field → [before, after]), `task_comment`, `task_review`, `file_edit` and `sync`. Writers lock the file and drop an incomplete last line, and `seq` is the line number. Tasks have no undo.
+- **Board sync:** every board call holds `.concordia/studio/board.lock`, then syncs: journal entries since the last sync explain changed files (from other engines), and any other change is a hand edit, logged as `human:local` with a field diff. There is no file watcher yet. Hand edits and hook entries are noticed at the next Studio call; live watching comes with 3.5b/3.8.
+- **Events:** a new `studio` events topic. `Engine::publish_event` lets module methods publish, and every Studio call publishes the journal entries written since the last one.
+- **New error kinds:** −32014 `TaskNotFound`, −32015 `TaskTransition`, −32016 `NotPermitted`.
+- **YAML:** `serde_norway` 0.9.42 (MIT OR Apache-2.0), with strict keys and a did-you-mean suggestion. `studio.activity` entries and `task.get` history are JSON values in the schema, because reflection has no flattened tagged enums.
+- **Default roster (G10):** it lives only in `crates/concordia-studio/roster/`. Its 12 roles have real descriptions and scopes, but placeholder bodies until 3.6. Five are enabled: director, level-designer, qa-playtester, tech-artist and writer. The other seven are disabled in `team.toml`, each with a reason. Scopes name only tools that exist now.
+- **`concordia new` (decision A1, partly):**
+  - it writes `[physics]`, `[assets]`, `[render]` and `[studio]`, plus `studio/` (team, 12 roles, `tasks/.gitkeep`);
+  - `.gitignore` also ignores `.claude/settings.local.json`;
+  - `.mcp.json` runs bare `concordia mcp --project ${CLAUDE_PROJECT_DIR:-.}`. The old test asserting an absolute path was changed deliberately (G7), and its snapshot updated.
+  - Flags: `--no-studio` and `--minimal`.
+  - `.claude/` and `CLAUDE.md` arrive with `studio sync` in 3.4.
+- **CLI:** `concordia studio init|roster|status` and `concordia task list|show|create|claim|update|comment|approve|reject` (JSON output, default actor `human:local`). It runs an in-process engine until 3.5b lets it attach to a running one.
+- **Tests:** they sit in `crates/concordia-studio/tests/` (`role`, `team`, `journal`, `task_board`, `studio_methods`) instead of `concordia-api/tests/task_methods.rs`, because the methods live in the module. The CLI tests are `cli_new` and `cli_studio`; the app wiring test is `concordia-app/tests/project.rs`.
+  - **Red run:** every API, CLI and app test failed first for the right reason. The role, team and journal tests had no red run: those modules were written before the run.
+  - **Two test fixes,** made deliberately: a fixture role named a tool its engine didn't offer, and the history test wrongly treated `created_by` as history.
 
 ### Phase 3.4: `concordia studio sync`: compile to Claude Code native files
 *Can start right after M0.*
@@ -309,7 +444,7 @@ justfile                       (touched) `gate-live` recipe
     - Hooks use exec form (`"command": "concordia", "args": ["studio","hook","pre-tool-use"]`), so no shell parsing and no shell scripts.
     - `env`: `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`, `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` from `[concurrency]`.
     - `agent`: `"director"` when `[team] director` is set and `[claude] main_session_agent = true` (default), so a plain `claude` in the project starts as the Director.
-  - **`.mcp.json`**: merges `mcpServers.engine = { "command": "concordia-mcp", "args": ["--project", "${CLAUDE_PROJECT_DIR:-.}"] }`; other servers are untouched.
+  - **`.mcp.json`**: merges `mcpServers.concordia = { "command": "concordia", "args": ["mcp", "--project", "${CLAUDE_PROJECT_DIR:-.}"] }` (refinement G7); other servers are untouched.
   - **`CLAUDE.md`**: a managed block between `<!-- concordia-studio:begin -->` and `<!-- concordia-studio:end -->`: the team, how to delegate (Director workflow), task-board rules, "act only through the engine MCP tools", subscription-first note. Content outside the markers is preserved.
   - CLI: `concordia studio sync [--target claude-code] [--check] [--force] [--dry-run]`. `--check` exits 1 with a diff if anything is stale (CI). Hand-edited owned files (hash mismatch) are refused without `--force`, and the refusal names each file. Removed or disabled roles delete their owned `.claude/agents/<role>.md` files (only files carrying our marker).
   - Engine API `studio.sync` (so the editor panel can run it), logged with an actor.
@@ -350,7 +485,7 @@ justfile                       (touched) `gate-live` recipe
   4. **Instance numbers:** `concordia-mcp` maps each distinct `actor_session` to a slot `#1..#count` for that role (first come), persisted in `.concordia/studio/actors.ron`. Calls beyond `count` concurrent instances are rejected with "role at capacity". The SubagentStop hook releases the slot (`studio.release_actor`).
   5. **Server-side scope (defense in depth):** `concordia-mcp` loads the resolved roster and rejects any call whose actor's role lacks the tool, any `asset.*`/`gen.*`/`scene.save` write whose target path is outside the role's `paths.write`, any `task.*` transition the gates forbid, and calls past the per-task budgets. Calls without an `agent:` actor that arrive through MCP default to `main_session_actor`. `human:*` actors are accepted only from the Engine API's local editor session, never from MCP.
   6. **File writes:** the PreToolUse hook for `Edit|Write|NotebookEdit` checks `tool_input.file_path` (normalized, symlinks resolved, relative to `CLAUDE_PROJECT_DIR`) against the role's `paths.write`, minus `[paths] deny` and the human-only gate paths. It returns `allow` in scope (so `-p` runs need no `permissions.allow`, which an untrusted `-p` run ignores) and `deny` otherwise. Bash: allow commands matching `bash_allow` patterns, deny others for roles with `bash_allow` set. This is best effort, documented as not a sandbox (scripts can write files indirectly). Claude Code sandboxing is recommended for hard isolation.
-  7. **Audit of file edits:** PostToolUse `Edit|Write` → `audit.record` command `{ actor, path, before_hash, after_hash, tool }` into the command log via the Engine API (discovered via `.concordia/session.json`; if no engine is running, appended to the persisted log journal; *refine after M0*). Source edits are therefore attributable even though they aren't world mutations.
+  7. **Audit of file edits:** PostToolUse `Edit|Write` → `audit.record` command `{ actor, path, before_hash, after_hash, tool }` into the Studio journal (refinement G3 and decision (b)), not the per-scene command log. Source edits are therefore attributable even though they aren't world mutations.
   8. **Hook robustness:** exit code 2 on internal error for PreToolUse (fail closed, reason on stderr); other events fail open with a logged warning. Hard 2 s timeout. No network access.
   9. **Optional hardening (open question):** an HMAC `actor_proof` added by the hook with a per-session secret in `.concordia/studio/secret` (Read/Edit denied to agents), verified by `concordia-mcp`. This stops an agent that bypasses the hook from claiming another role.
 - **Deliverables:** `concordia studio hook <pre-tool-use|post-tool-use|subagent-start|subagent-stop>`; `concordia-mcp` scope middleware; `studio.release_actor`, `audit.record`; `concordia studio doctor` (checks: `claude` on PATH, `claude auth status` → `authMethod` reported and *not required* to be an API key, `ANTHROPIC_API_KEY` presence reported as info only, sync freshness, `concordia` resolvable from the hook PATH, Blender found).
@@ -464,7 +599,7 @@ justfile                       (touched) `gate-live` recipe
 
 - **Objective:** The human sees and steers the team: a live task board, a command log with actor attribution, and approve/reject for gates. Optionally the human can start their own logged-in Claude Code from the editor. The editor never touches credentials.
 - **Deliverables:**
-  - `editor/ui/src/panels/studio/`: `TaskBoard` (columns per status; drag = `task.update` as `human:local`; card shows role, assignee, acceptance, last evidence), `CommandLog` (stream from `log.tail` subscription; filters by actor, role, task, command kind; per-role colors that match the generated agent `color`), `Approvals` (pending gate items; approve/reject with a comment → `task.approve`/`task.reject`), `StudioStatus` (instances in use, budgets, last sync, `concordia studio doctor` results), "Sync now" (`studio.sync`).
+  - `editor/ui/src/panels/studio/`: `TaskBoard` (columns per status; drag = `task.update` as `human:local`; card shows role, assignee, acceptance, last evidence), `CommandLog` (extends the 1.15 Agent Activity panel: `txn.history` merged with `studio.activity`, live via `edit` and `studio` events; filters by actor, role, task, kind; per-role colors that match the generated agent `color`), `Approvals` (pending gate items; approve/reject with a comment → `task.approve`/`task.reject`), `StudioStatus` (instances in use, budgets, last sync, `concordia studio doctor` results), "Sync now" (`studio.sync`).
   - `editor/src-tauri/src/claude_launcher.rs`: detects `claude` on PATH; shows `claude auth status --text`-derived login method (display only); launches either an interactive terminal session (`claude --agent director` in the project directory, through the OS terminal) or a headless run (`claude -p --agent director --output-format stream-json …`) whose stream is shown in a panel (subagent messages grouped by `parent_tool_use_id`). The child inherits the user's environment unchanged; the launcher **reads, stores and logs no credentials**, and redacts env values in logs.
 - **Tests first:**
   - `editor/ui` (vitest + Testing Library, mocked Engine API client)
@@ -484,7 +619,7 @@ justfile                       (touched) `gate-live` recipe
   - `editor/e2e` (Playwright against a headless engine with the fixture project)
     - `studio_panel_reflects_task_updates_made_over_mcp_within_one_second`.
     - `approve_in_panel_moves_task_to_done_and_logs_human_actor`.
-- **Implementation notes:** all panel state comes from the Engine API (principle 1): no editor-only logic, and approvals are just `task.approve` calls by `human:local`. Live updates use the M0 WebSocket subscription on `log.tail`. The headless launch passes `--max-budget-usd` from `[budgets] headless_max_budget_usd` (a client-side estimate per the docs; informational under a subscription, *verify at execution time*).
+- **Implementation notes:** all panel state comes from the Engine API (principle 1): no editor-only logic, and approvals are just `task.approve` calls by `human:local`. Live updates use `events.subscribe` (`edit`, `scene` and the new `studio` topic). The headless launch passes `--max-budget-usd` from `[budgets] headless_max_budget_usd` (a client-side estimate per the docs; informational under a subscription, *verify at execution time*).
 - **Done criteria:** tests pass; manual run: launch the Director from the panel and watch cards move.
 
 ### Studio checkpoint (after 3.3–3.6 and 3.8; ADR-0049)
@@ -605,7 +740,7 @@ For the consistency pass into `plans/README.md`:
 - **MCP server name** in `.mcp.json`: `concordia` → Claude Code tool names `mcp__concordia__<tool>`.
 - **Actor fields:** mutating MCP calls carry `actor` plus optional `actor_session` (hook-provided `<session_id>/<agent_id>`); instance `#n` is assigned by `concordia-mcp`. `human:*` actors are not accepted over MCP.
 - **File formats:** `.playtest.ron` (assertion suites + scenario), `.score.ron` (procedural music scores); Studio role and task files use **Markdown + YAML frontmatter**; `studio/tasks/<id>-<slug>.task.md` with ids `T-0001…`.
-- **Runtime state dirs:** `.concordia/studio/` (`roster.ron` cache, `actors.ron` slots, optional `secret`); `.concordia/session.json` (running-engine discovery for hooks/CLI).
+- **Runtime state dirs:** `.concordia/studio/` (`journal.jsonl` Studio journal and `board.lock`, from 3.3; `roster.ron` cache and `actors.ron` slots, 3.4–3.5; optional `secret`); running-engine discovery uses the existing `.concordia/headless.json` (there is no `session.json`; refinement G1).
 - **CLI:** `concordia replay record|run|diff`, `concordia assert eval`, `concordia test playtests`, `concordia task …`, `concordia studio sync|hook|roster|status|doctor`, `concordia gen list|run`.
 - **Test conventions:** live-agent gates are `#[ignore]` tests named `m<n>_live_*` in `tests/gates/`, run via `just gate-live M<n>`; they assert outcomes only and remove API-key env vars from the child process. Shared gate checkers live in `tests/src/`.
 - **Directories:** `tools/blender-bridge/` (separate optional tool); `tests/gates/live-reports/M<n>/`.

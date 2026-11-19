@@ -1,0 +1,780 @@
+---
+source: crates/concordia-studio/tests/studio_methods.rs
+expression: schemas
+---
+[
+  {
+    "docs": "Create a task on the Studio board for an enabled role (the Director plans work this way).",
+    "mutates": true,
+    "name": "task.create",
+    "params": {
+      "$defs": {
+        "Acceptance": {
+          "additionalProperties": false,
+          "description": "One acceptance criterion.",
+          "properties": {
+            "assert": {
+              "description": "What must be true, in words (checked by the reviewer).",
+              "type": "string"
+            },
+            "playtest": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "description": "A playtest suite that proves it (M3 phase 3.2)."
+            },
+            "replay": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "description": "A replay that proves it (M3 phase 3.1)."
+            }
+          },
+          "required": [
+            "assert"
+          ],
+          "title": "Acceptance",
+          "type": "object",
+          "x-concordia-type": "Acceptance"
+        },
+        "Priority": {
+          "description": "How urgent a task is.",
+          "oneOf": [
+            {
+              "const": "low",
+              "description": "Low."
+            },
+            {
+              "const": "normal",
+              "description": "Normal (default)."
+            },
+            {
+              "const": "high",
+              "description": "High."
+            },
+            {
+              "const": "urgent",
+              "description": "Urgent."
+            }
+          ],
+          "title": "Priority",
+          "x-concordia-type": "Priority"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`task.create` params.",
+      "properties": {
+        "acceptance": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "items": {
+                "$ref": "#/$defs/Acceptance"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "What must be true when it is done; reviewers check these."
+        },
+        "actor": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "description": "Who makes a change: <human|agent|system|tool|script>:<name>[#n], e.g. agent:claude-code.",
+              "pattern": "^(human|agent|system|tool|script):[a-z0-9][a-z0-9._-]{0,63}(#[1-9][0-9]*)?$",
+              "type": "string"
+            }
+          ],
+          "description": "Actor (defaults to the session's)."
+        },
+        "depends_on": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "Task ids that must be done first."
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "What to do, in Markdown."
+        },
+        "links": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "Related links or project paths."
+        },
+        "priority": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Priority"
+            }
+          ],
+          "description": "low, normal (default), high or urgent."
+        },
+        "role": {
+          "description": "The role that should do it (see studio.roster), e.g. \"level-designer\".",
+          "type": "string"
+        },
+        "title": {
+          "description": "Short title, e.g. \"Build the arena\".",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "role"
+      ],
+      "title": "TaskCreateParams",
+      "type": "object",
+      "x-concordia-type": "TaskCreateParams"
+    }
+  },
+  {
+    "docs": "Get one task and its history (from the Studio journal).",
+    "mutates": false,
+    "name": "task.get",
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "A task id.",
+      "properties": {
+        "id": {
+          "description": "Task id, e.g. \"T-0001\".",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "TaskIdParams",
+      "type": "object",
+      "x-concordia-type": "TaskIdParams"
+    }
+  },
+  {
+    "docs": "List tasks on the Studio board, optionally filtered.",
+    "mutates": false,
+    "name": "task.list",
+    "params": {
+      "$defs": {
+        "TaskStatus": {
+          "description": "Where a task is in its life.",
+          "oneOf": [
+            {
+              "const": "todo",
+              "description": "Not started."
+            },
+            {
+              "const": "in_progress",
+              "description": "Claimed and being worked on."
+            },
+            {
+              "const": "in_review",
+              "description": "Waiting for review."
+            },
+            {
+              "const": "done",
+              "description": "Approved."
+            },
+            {
+              "const": "blocked",
+              "description": "Needs a human."
+            },
+            {
+              "const": "rejected",
+              "description": "Sent back by a reviewer."
+            }
+          ],
+          "title": "TaskStatus",
+          "x-concordia-type": "TaskStatus"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`task.list` params.",
+      "properties": {
+        "assignee": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Only this assignee (an actor)."
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Only this role."
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/TaskStatus"
+            }
+          ],
+          "description": "Only this status."
+        }
+      },
+      "title": "TaskListParams",
+      "type": "object",
+      "x-concordia-type": "TaskListParams"
+    }
+  },
+  {
+    "docs": "Claim a todo or rejected task: it becomes in_progress, assigned to you.",
+    "mutates": true,
+    "name": "task.claim",
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "A task id and the actor.",
+      "properties": {
+        "actor": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "description": "Who makes a change: <human|agent|system|tool|script>:<name>[#n], e.g. agent:claude-code.",
+              "pattern": "^(human|agent|system|tool|script):[a-z0-9][a-z0-9._-]{0,63}(#[1-9][0-9]*)?$",
+              "type": "string"
+            }
+          ],
+          "description": "Actor (defaults to the session's)."
+        },
+        "id": {
+          "description": "Task id.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "TaskActorParams",
+      "type": "object",
+      "x-concordia-type": "TaskActorParams"
+    }
+  },
+  {
+    "docs": "Change a task's fields or status (in_progress → in_review when your work is ready; done and rejected go through task.approve and task.reject).",
+    "mutates": true,
+    "name": "task.update",
+    "params": {
+      "$defs": {
+        "Acceptance": {
+          "additionalProperties": false,
+          "description": "One acceptance criterion.",
+          "properties": {
+            "assert": {
+              "description": "What must be true, in words (checked by the reviewer).",
+              "type": "string"
+            },
+            "playtest": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "description": "A playtest suite that proves it (M3 phase 3.2)."
+            },
+            "replay": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string"
+                }
+              ],
+              "description": "A replay that proves it (M3 phase 3.1)."
+            }
+          },
+          "required": [
+            "assert"
+          ],
+          "title": "Acceptance",
+          "type": "object",
+          "x-concordia-type": "Acceptance"
+        },
+        "Priority": {
+          "description": "How urgent a task is.",
+          "oneOf": [
+            {
+              "const": "low",
+              "description": "Low."
+            },
+            {
+              "const": "normal",
+              "description": "Normal (default)."
+            },
+            {
+              "const": "high",
+              "description": "High."
+            },
+            {
+              "const": "urgent",
+              "description": "Urgent."
+            }
+          ],
+          "title": "Priority",
+          "x-concordia-type": "Priority"
+        },
+        "TaskStatus": {
+          "description": "Where a task is in its life.",
+          "oneOf": [
+            {
+              "const": "todo",
+              "description": "Not started."
+            },
+            {
+              "const": "in_progress",
+              "description": "Claimed and being worked on."
+            },
+            {
+              "const": "in_review",
+              "description": "Waiting for review."
+            },
+            {
+              "const": "done",
+              "description": "Approved."
+            },
+            {
+              "const": "blocked",
+              "description": "Needs a human."
+            },
+            {
+              "const": "rejected",
+              "description": "Sent back by a reviewer."
+            }
+          ],
+          "title": "TaskStatus",
+          "x-concordia-type": "TaskStatus"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`task.update` params.",
+      "properties": {
+        "acceptance": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "items": {
+                "$ref": "#/$defs/Acceptance"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "New acceptance criteria."
+        },
+        "actor": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "description": "Who makes a change: <human|agent|system|tool|script>:<name>[#n], e.g. agent:claude-code.",
+              "pattern": "^(human|agent|system|tool|script):[a-z0-9][a-z0-9._-]{0,63}(#[1-9][0-9]*)?$",
+              "type": "string"
+            }
+          ],
+          "description": "Actor (defaults to the session's)."
+        },
+        "assignee": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "description": "Who makes a change: <human|agent|system|tool|script>:<name>[#n], e.g. agent:claude-code.",
+              "pattern": "^(human|agent|system|tool|script):[a-z0-9][a-z0-9._-]{0,63}(#[1-9][0-9]*)?$",
+              "type": "string"
+            }
+          ],
+          "description": "New assignee (an actor)."
+        },
+        "depends_on": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "New prerequisites."
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "New description."
+        },
+        "id": {
+          "description": "Task id.",
+          "type": "string"
+        },
+        "links": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "New links."
+        },
+        "priority": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Priority"
+            }
+          ],
+          "description": "New priority."
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/TaskStatus"
+            }
+          ],
+          "description": "New status."
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "New title."
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "TaskUpdateParams",
+      "type": "object",
+      "x-concordia-type": "TaskUpdateParams"
+    }
+  },
+  {
+    "docs": "Add a note to a task (what you did, evidence, questions).",
+    "mutates": true,
+    "name": "task.comment",
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`task.comment` params.",
+      "properties": {
+        "actor": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "description": "Who makes a change: <human|agent|system|tool|script>:<name>[#n], e.g. agent:claude-code.",
+              "pattern": "^(human|agent|system|tool|script):[a-z0-9][a-z0-9._-]{0,63}(#[1-9][0-9]*)?$",
+              "type": "string"
+            }
+          ],
+          "description": "Actor (defaults to the session's)."
+        },
+        "id": {
+          "description": "Task id.",
+          "type": "string"
+        },
+        "text": {
+          "description": "The note (one line).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "text"
+      ],
+      "title": "TaskCommentParams",
+      "type": "object",
+      "x-concordia-type": "TaskCommentParams"
+    }
+  },
+  {
+    "docs": "Approve a task in review: in_review → done (only reviewers the team's gates allow).",
+    "mutates": true,
+    "name": "task.approve",
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`task.approve` params.",
+      "properties": {
+        "actor": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "description": "Who makes a change: <human|agent|system|tool|script>:<name>[#n], e.g. agent:claude-code.",
+              "pattern": "^(human|agent|system|tool|script):[a-z0-9][a-z0-9._-]{0,63}(#[1-9][0-9]*)?$",
+              "type": "string"
+            }
+          ],
+          "description": "Actor (defaults to the session's)."
+        },
+        "comment": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "What you checked."
+        },
+        "id": {
+          "description": "Task id.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "TaskApproveParams",
+      "type": "object",
+      "x-concordia-type": "TaskApproveParams"
+    }
+  },
+  {
+    "docs": "Reject a task in review with a reason: in_review → rejected (blocked for a human after too many attempts).",
+    "mutates": true,
+    "name": "task.reject",
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`task.reject` params.",
+      "properties": {
+        "actor": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "description": "Who makes a change: <human|agent|system|tool|script>:<name>[#n], e.g. agent:claude-code.",
+              "pattern": "^(human|agent|system|tool|script):[a-z0-9][a-z0-9._-]{0,63}(#[1-9][0-9]*)?$",
+              "type": "string"
+            }
+          ],
+          "description": "Actor (defaults to the session's)."
+        },
+        "comment": {
+          "description": "What is wrong (required).",
+          "type": "string"
+        },
+        "id": {
+          "description": "Task id.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "comment"
+      ],
+      "title": "TaskRejectParams",
+      "type": "object",
+      "x-concordia-type": "TaskRejectParams"
+    }
+  },
+  {
+    "docs": "The Studio team: enabled roles with their tools and write paths, and disabled roles with reasons.",
+    "mutates": false,
+    "name": "studio.roster",
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "No params.",
+      "properties": {},
+      "title": "NoParams",
+      "type": "object",
+      "x-concordia-type": "NoParams"
+    }
+  },
+  {
+    "docs": "Board overview: task counts by status and tasks waiting for approval.",
+    "mutates": false,
+    "name": "studio.status",
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "No params.",
+      "properties": {},
+      "title": "NoParams",
+      "type": "object",
+      "x-concordia-type": "NoParams"
+    }
+  },
+  {
+    "docs": "Studio activity from the Studio journal (task changes, reviews, file edits by agents), oldest first.",
+    "mutates": false,
+    "name": "studio.activity",
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`studio.activity` params.",
+      "properties": {
+        "actor": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Only this actor, e.g. \"agent:level-designer#1\"."
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Only this kind: task_created, task_changed, task_comment, task_review, file_edit, sync."
+        },
+        "limit": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            }
+          ],
+          "description": "Maximum entries (default 100).",
+          "maximum": 1000.0,
+          "minimum": 1.0
+        },
+        "role": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Only agents in this role, e.g. \"level-designer\"."
+        },
+        "since": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "maximum": 18446744073709551615,
+              "minimum": 0,
+              "type": "integer"
+            }
+          ],
+          "description": "Only entries after this seq (use `next` from the last call)."
+        },
+        "task": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Only this task."
+        }
+      },
+      "title": "StudioActivityParams",
+      "type": "object",
+      "x-concordia-type": "StudioActivityParams"
+    }
+  }
+]

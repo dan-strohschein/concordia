@@ -10,6 +10,7 @@ use concordia_import_gltf::GltfImporter;
 use concordia_input::{InputMap, InputModule};
 use concordia_physics::{PhysicsModule, PhysicsSettings};
 use concordia_render::RenderModule;
+use concordia_studio::StudioModule;
 
 use crate::error::AppError;
 use crate::manifest::Manifest;
@@ -34,6 +35,9 @@ impl Project {
         };
         if let Some(map) = &manifest.input.map {
             inside(map).map_err(|m| manifest_error(&path, format!("[input] map: {m}")))?;
+        }
+        if let Some(studio) = &manifest.studio {
+            inside(&studio.dir).map_err(|m| manifest_error(&path, format!("[studio] dir: {m}")))?;
         }
         Ok(Self {
             root: root.to_path_buf(),
@@ -76,6 +80,9 @@ impl Project {
             modules.push(Arc::new(RenderModule::new(Arc::new(
                 concordia_rhi_metal::new_headless,
             ))));
+        }
+        if let Some(studio) = &self.manifest.studio {
+            modules.push(Arc::new(StudioModule::new(&self.root, &studio.dir)));
         }
         Ok(modules)
     }

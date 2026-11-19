@@ -267,6 +267,13 @@ impl Engine {
         result
     }
 
+    /// Sends an `events.event` on `topic` to subscribed sessions (module methods use it, e.g. Studio).
+    pub fn publish_event(&mut self, topic: crate::events::Topic, params: serde_json::Value) {
+        if self.events.wants(topic) {
+            self.events.publish(topic, params);
+        }
+    }
+
     /// Lets `session` receive pushed events (transports that can push call this once per session).
     pub fn set_event_sink(&mut self, session: SessionId, sink: crate::events::EventSink) {
         self.events.set_sink(session, sink);

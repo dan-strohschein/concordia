@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use concordia_api::{
-    ApiError, ApiErrorKind, Audience, EncodedImage, MethodInfo, MethodRegistry, image_fields,
-    params_schema, result_schema,
+    ApiError, ApiErrorKind, EncodedImage, MethodInfo, MethodRegistry, image_fields, params_schema,
+    result_schema,
 };
 use concordia_core::suggest::did_you_mean;
 use concordia_reflect::example_json;
@@ -29,26 +29,18 @@ Read concordia://docs/agent-guide for the full workflow and error codes.";
 /// Mutating tools that delete or replace data.
 const DESTRUCTIVE: [&str; 3] = ["entity_despawn", "component_remove", "scene_new"];
 
-/// MCP tool name for an API method (`entity.spawn` → `entity_spawn`).
-fn tool_name(method: &str) -> String {
-    method.replace('.', "_")
-}
-
 /// The engine's methods exposed as tools.
 fn tool_methods(methods: &MethodRegistry) -> impl Iterator<Item = &MethodInfo> {
     methods.iter().filter(|m| is_tool(m))
 }
 
-/// True for methods MCP exposes as tools: agent-audience methods, except `session.open` (handled by
-/// the adapter) and `events.*` (they need a push channel that MCP tool calls do not have).
+/// True for methods MCP exposes as tools ([`MethodInfo::is_agent_tool`]).
 pub fn is_tool(method: &MethodInfo) -> bool {
-    method.audience == Audience::agent
-        && method.name != "session.open"
-        && !method.name.starts_with("events.")
+    method.is_agent_tool()
 }
 
 fn tool(method: &MethodInfo) -> Tool {
-    let name = tool_name(method.name);
+    let name = method.tool_name();
     let annotations = ToolAnnotations::new()
         .read_only(!method.mutates)
         .destructive(method.mutates && DESTRUCTIVE.contains(&name.as_str()));
@@ -142,8 +134,8 @@ impl ConcordiaServer {
     async fn invoke(&self, request: CallToolRequestParams) -> Result<CallToolResult, McpError> {
         let name = request.name.as_ref();
         let methods = self.methods();
-        let Some(method) = tool_methods(methods).find(|m| tool_name(m.name) == name) else {
-            let names: Vec<String> = tool_methods(methods).map(|m| tool_name(m.name)).collect();
+        let Some(method) = tool_methods(methods).find(|m| m.tool_name() == name) else {
+            let names: Vec<String> = tool_methods(methods).map(MethodInfo::tool_name).collect();
             let similar = did_you_mean(name, names.iter().map(String::as_str));
             let hint = similar
                 .first()

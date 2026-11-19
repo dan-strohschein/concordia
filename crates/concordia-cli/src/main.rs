@@ -18,7 +18,7 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Create a project: concordia.toml, scenes/main.scene.ron, .gitignore and .mcp.json.
+    /// Create a project: concordia.toml, scenes/main.scene.ron, .gitignore, .mcp.json and Agent Studio.
     New(cmd::new::Args),
     /// Open the project's window (simulation and rendering are wired in later M1 phases).
     Run(cmd::run::Args),
@@ -34,6 +34,10 @@ enum Command {
     Fmt(cmd::fmt::Args),
     /// Print the GPU's capabilities as JSON (--require-m1 fails if they fall short of M1).
     GpuProbe(cmd::gpu_probe::Args),
+    /// Agent Studio: add it to a project, show the team and board status.
+    Studio(cmd::studio::StudioArgs),
+    /// The Agent Studio task board: list, show, create, claim, update, comment, approve, reject.
+    Task(cmd::studio::TaskArgs),
 }
 
 /// A failure with a process exit code.
@@ -67,6 +71,8 @@ fn main() -> ExitCode {
         Command::Schema(args) => cmd::schema::run(&args),
         Command::Fmt(args) => cmd::fmt::run(&args),
         Command::GpuProbe(args) => cmd::gpu_probe::run(&args),
+        Command::Studio(args) => cmd::studio::run_studio(&args),
+        Command::Task(args) => cmd::studio::run_task(&args),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

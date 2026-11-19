@@ -26,6 +26,7 @@ concordia-render.workspace = true
 concordia-rhi.workspace = true
 concordia-rhi-metal.workspace = true
 concordia-scene.workspace = true
+concordia-studio.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["signal"] }
 

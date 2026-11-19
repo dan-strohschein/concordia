@@ -209,3 +209,24 @@ fn m1_stack_scene_capture_shows_the_settled_stack() {
         colors.len()
     );
 }
+
+#[test]
+fn studio_section_enables_the_studio_module() {
+    let (_dir, project) = project_with("[studio]\n");
+    let project = project.unwrap();
+    assert_eq!(project.manifest.studio.as_ref().unwrap().dir, "studio");
+    let names: Vec<&str> = project
+        .modules()
+        .unwrap()
+        .iter()
+        .map(|m| m.name())
+        .collect();
+    assert_eq!(names, ["studio"]);
+}
+
+#[test]
+fn studio_dir_must_stay_inside_the_project() {
+    let (_dir, project) = project_with("[studio]\ndir = \"../team\"\n");
+    let err = project.unwrap_err();
+    assert!(err.to_string().contains("inside the project"), "{err}");
+}
