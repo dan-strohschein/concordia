@@ -114,6 +114,8 @@ pub(crate) struct ShadowJob {
     pub(crate) resolution: u32,
     pub(crate) pipeline: Pipeline,
     pub(crate) casters: Vec<ShadowDraw>,
+    /// The maps already hold exactly these shadows: sample them, draw nothing.
+    pub(crate) reuse: bool,
 }
 
 /// One depth pass per cascade; returns the graph textures the forward pass samples.
@@ -131,13 +133,16 @@ pub(crate) fn add_shadow_passes(graph: &mut RenderGraph, job: ShadowJob) -> Vec<
             usage: TextureUsage::RENDER_TARGET | TextureUsage::SAMPLED,
             label: String::new(),
         };
-        let map = graph.import_texture(
-            &format!("shadow {cascade}"),
-            *texture,
-            desc,
-            Layout::Undefined,
-            None,
-        );
+        let before = if job.reuse {
+            Layout::ShaderRead
+        } else {
+            Layout::Undefined
+        };
+        let map = graph.import_texture(&format!("shadow {cascade}"), *texture, desc, before, None);
+        if job.reuse {
+            textures.push(map);
+            continue;
+        }
         let (casters, pipeline) = (casters.clone(), job.pipeline);
         graph.add_pass_recorded(
             &format!("shadow {cascade}"),

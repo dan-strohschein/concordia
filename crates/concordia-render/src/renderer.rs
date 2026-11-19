@@ -78,6 +78,8 @@ pub struct Renderer {
     frames_in_flight: usize,
     /// Transient heaps of retired frames, reused by later ones.
     recycle: Recycler,
+    /// What the shadow maps currently hold (see `shadow_key`).
+    shadow_key: Option<u64>,
 }
 
 /// A presented frame the GPU may still be working on.
@@ -216,6 +218,8 @@ pub struct RenderStats {
     pub draw_calls: usize,
     /// GPU buffers, heaps and textures the frame had to create (0 once warm).
     pub allocations: usize,
+    /// The sun's shadow maps were reused: no caster, light or cascade changed since they were drawn.
+    pub shadows_cached: bool,
 }
 
 /// One draw call, ready to record: `instances` consecutive instances of one mesh and material.
@@ -253,6 +257,7 @@ impl Renderer {
             in_flight: std::collections::VecDeque::new(),
             frames_in_flight: 2,
             recycle: Recycler::default(),
+            shadow_key: None,
         })
     }
 
@@ -557,6 +562,7 @@ impl Renderer {
         let mut draws: Vec<Draw> = Vec::with_capacity(order.len());
         let mut casters: Vec<ShadowDraw> = Vec::new();
         let culled = order.iter().filter(|d| !d.visible).count();
+        let mut casting = std::hash::DefaultHasher::new();
         for (
             instance,
             DrawOrder {
@@ -571,6 +577,8 @@ impl Renderer {
             let instance = instance as u32;
             let mesh = self.assets.meshes[&world.draws[item].mesh];
             if world.draws[item].cast_shadows {
+                std::hash::Hash::hash(&mesh.indices, &mut casting);
+                hash_matrix(&world.draws[item].world, &mut casting);
                 match casters.last_mut() {
                     Some(c)
                         if c.push.indices == mesh.indices
@@ -640,12 +648,28 @@ impl Renderer {
             )),
             false => None,
         };
-        let shadow = shadows.map(|(_, settings, maps)| ShadowJob {
-            maps,
-            resolution: settings.resolution,
-            pipeline: self.pipelines.shadow(),
-            casters,
+        let shadow = shadows.map(|(cascades, settings, maps)| {
+            let key = shadow_key(
+                std::hash::Hasher::finish(&casting),
+                &cascades,
+                settings.resolution,
+                &maps,
+            );
+            let reuse = self.shadow_key == Some(key);
+            self.shadow_key = Some(key);
+            self.stats.shadows_cached = reuse;
+            ShadowJob {
+                maps,
+                resolution: settings.resolution,
+                pipeline: self.pipelines.shadow(),
+                casters,
+                reuse,
+            }
         });
+        if shadow.is_none() {
+            self.shadow_key = None;
+            self.stats.shadows_cached = false;
+        }
         let plan = FramePlan {
             draws,
             samples,
@@ -1381,4 +1405,24 @@ fn read_overflow(device: &dyn Device, buffer: Buffer, clusters: u64) -> Result<u
         .iter()
         .map(|w| u32::from_le_bytes(*w))
         .sum())
+}
+
+fn hash_matrix(m: &Mat4, hasher: &mut impl std::hash::Hasher) {
+    m.to_cols_array()
+        .iter()
+        .for_each(|v| hasher.write_u32(v.to_bits()));
+}
+
+/// Identifies the shadow maps' contents: the casters (meshes and world matrices), the cascades
+/// and the maps themselves.
+fn shadow_key(casters: u64, cascades: &[Cascade], resolution: u32, maps: &[(Texture, u32)]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::hash::DefaultHasher::new();
+    casters.hash(&mut h);
+    resolution.hash(&mut h);
+    maps.hash(&mut h);
+    cascades
+        .iter()
+        .for_each(|c| hash_matrix(&c.view_proj, &mut h));
+    h.finish()
 }
