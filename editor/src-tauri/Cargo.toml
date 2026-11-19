@@ -46,3 +46,8 @@ block2 = "0.6.2"
 futures = "0.3"
 tempfile = "3"
 tokio-tungstenite = "0.30"
+
+# Everyday `just editor` runs: optimize the engine and other dependencies (the shell itself stays
+# quick to rebuild). The debug engine is several times slower, which hides real performance.
+[profile.dev.package."*"]
+opt-level = 2
