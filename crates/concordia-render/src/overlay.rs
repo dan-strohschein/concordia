@@ -1,6 +1,6 @@
 //! Editor overlays drawn by the engine in the viewport's own frame (ADR-0047): selection bounds
-//! and the Move gizmo, as screen-space triangles over the tonemapped image. The gizmo's handle
-//! geometry here is the one source for drawing and hit-testing.
+//! and the Move, Rotate and Scale gizmos, as screen-space triangles over the tonemapped image. The
+//! gizmo geometry here is the one source for drawing and hit-testing.
 
 use concordia_core::id::EntityId;
 use concordia_core::math::{Mat4, Vec3};
@@ -42,12 +42,28 @@ impl GizmoAxis {
     }
 }
 
-/// The Move gizmo on an entity.
+/// What a gizmo does: arrows move, rings rotate, box-tipped arrows scale.
+#[allow(non_camel_case_types)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect)]
+pub enum GizmoMode {
+    /// Translate along a world axis.
+    #[default]
+    r#move,
+    /// Rotate about a world axis.
+    rotate,
+    /// Scale along a local axis.
+    scale,
+}
+
+/// The transform gizmo on an entity.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 #[serde(deny_unknown_fields)]
 pub struct GizmoOverlay {
     /// The entity it moves.
     pub entity: EntityId,
+    /// Move (default), rotate or scale.
+    #[serde(default)]
+    pub mode: GizmoMode,
     /// The handle under the pointer, drawn highlighted.
     #[serde(default)]
     pub hovered: Option<GizmoAxis>,
@@ -70,6 +86,9 @@ pub struct Overlays {
     #[serde(default)]
     #[reflect(range(min = 0.5, max = 4.0))]
     pub scale: Option<f32>,
+    /// How the native viewport draws the scene (lit, or a debug view).
+    #[serde(default)]
+    pub view_mode: crate::ViewMode,
 }
 
 /// One gizmo arrow on screen (pixels, y down).
@@ -83,8 +102,19 @@ pub struct GizmoHandle {
     pub end: [f32; 2],
 }
 
-/// Arrow length on screen, in pixels (constant under zoom).
-const ARROW: f32 = 60.0;
+/// A rotate ring on screen: a closed loop of points (pixels, y down).
+#[derive(Debug, Clone, PartialEq)]
+pub struct GizmoRing {
+    /// The axis it rotates about.
+    pub axis: GizmoAxis,
+    /// Points around the loop (the last joins the first).
+    pub points: Vec<[f32; 2]>,
+}
+
+/// Arrow length (and ring radius) on screen, in pixels (constant under zoom).
+pub(crate) const ARROW: f32 = 60.0;
+/// Segments per ring.
+const RING_SEGMENTS: usize = 64;
 /// Radius of an arrow's tip, in pixels.
 const TIP: f32 = 7.0;
 /// How close to an arrow (pixels) a press counts as on it.
@@ -156,6 +186,77 @@ fn handles(projector: &Projector, at: Vec3, scale: f32) -> Vec<GizmoHandle> {
         .collect()
 }
 
+/// The gizmo's rings for an entity at `at`; a ring seen edge-on is a line through the entity.
+pub fn gizmo_rings(view: &View, at: Vec3, width: f32, height: f32) -> Vec<GizmoRing> {
+    Projector::of(view, width, height).map_or_else(Vec::new, |p| rings(&p, at, 1.0))
+}
+
+/// Each ring: a unit circle about the axis, projected, then scaled about the entity's screen
+/// position so its longest radius is the arrow length.
+fn rings(projector: &Projector, at: Vec3, scale: f32) -> Vec<GizmoRing> {
+    let Some(origin) = projector.project(at) else {
+        return Vec::new();
+    };
+    [GizmoAxis::x, GizmoAxis::y, GizmoAxis::z]
+        .into_iter()
+        .filter_map(|axis| {
+            let (u, v) = axis.vector().any_orthonormal_pair();
+            let projected: Vec<[f32; 2]> = (0..RING_SEGMENTS)
+                .filter_map(|i| {
+                    let t = i as f32 / RING_SEGMENTS as f32 * std::f32::consts::TAU;
+                    projector.project(at + u * t.cos() + v * t.sin())
+                })
+                .map(|p| [p[0] - origin[0], p[1] - origin[1]])
+                .collect();
+            let reach = projected
+                .iter()
+                .map(|d| d[0].hypot(d[1]))
+                .fold(0.0, f32::max);
+            (projected.len() == RING_SEGMENTS && reach >= 1e-3).then(|| {
+                let k = ARROW * scale / reach;
+                let points = projected
+                    .iter()
+                    .map(|d| [origin[0] + d[0] * k, origin[1] + d[1] * k])
+                    .collect();
+                GizmoRing { axis, points }
+            })
+        })
+        .collect()
+}
+
+/// The ring under the pointer at (x, y), nearest first.
+pub fn ring_hit(rings: &[GizmoRing], x: f32, y: f32) -> Option<GizmoAxis> {
+    rings
+        .iter()
+        .map(|r| {
+            let n = r.points.len();
+            let d = (0..n)
+                .map(|i| distance_to_segment([x, y], r.points[i], r.points[(i + 1) % n]))
+                .fold(f32::INFINITY, f32::min);
+            (r.axis, d)
+        })
+        .filter(|(_, d)| *d <= REACH)
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(axis, _)| axis)
+}
+
+/// The handle of a `mode` gizmo at `at` under the pointer: rings rotate, arrows move and scale.
+pub fn gizmo_pick(
+    mode: GizmoMode,
+    view: &View,
+    at: Vec3,
+    [x, y]: [f32; 2],
+    width: f32,
+    height: f32,
+) -> Option<GizmoAxis> {
+    match mode {
+        GizmoMode::rotate => ring_hit(&gizmo_rings(view, at, width, height), x, y),
+        GizmoMode::r#move | GizmoMode::scale => {
+            gizmo_hit(&gizmo_handles(view, at, width, height), x, y)
+        }
+    }
+}
+
 /// The arrow under the pointer at (x, y), nearest first.
 pub fn gizmo_hit(handles: &[GizmoHandle], x: f32, y: f32) -> Option<GizmoAxis> {
     handles
@@ -211,13 +312,37 @@ pub(crate) fn triangles(
     if let Some(gizmo) = &overlays.gizmo
         && let Some(at) = position_of(world, gizmo.entity)
     {
-        for h in handles(projector, at, scale) {
-            let color = h.axis.color(gizmo.hovered == Some(h.axis));
-            line(&mut out, h.origin, h.end, 4.0 * scale, color);
-            disc(&mut out, h.end, TIP * scale, color);
-        }
+        gizmo_triangles(&mut out, projector, gizmo, at, scale);
     }
     out
+}
+
+/// The gizmo's shapes: arrows with round tips (move) or square tips (scale), or rings (rotate).
+fn gizmo_triangles(
+    out: &mut Vec<f32>,
+    projector: &Projector,
+    gizmo: &GizmoOverlay,
+    at: Vec3,
+    scale: f32,
+) {
+    let color = |axis: GizmoAxis| axis.color(gizmo.hovered == Some(axis));
+    if gizmo.mode == GizmoMode::rotate {
+        for ring in rings(projector, at, scale) {
+            let n = ring.points.len();
+            for i in 0..n {
+                let (a, b) = (ring.points[i], ring.points[(i + 1) % n]);
+                line(out, a, b, 3.0 * scale, color(ring.axis));
+            }
+        }
+        return;
+    }
+    for h in handles(projector, at, scale) {
+        line(out, h.origin, h.end, 4.0 * scale, color(h.axis));
+        match gizmo.mode {
+            GizmoMode::scale => square(out, h.end, TIP * scale, color(h.axis)),
+            _ => disc(out, h.end, TIP * scale, color(h.axis)),
+        }
+    }
 }
 
 /// Where an entity is in the world (from its draw, camera or light).
@@ -311,6 +436,19 @@ fn disc(out: &mut Vec<f32>, at: [f32; 2], radius: f32, color: [f32; 3]) {
         vertex(out, at, color);
         vertex(out, point(i), color);
         vertex(out, point(i + 1), color);
+    }
+}
+
+/// A filled square of half-size `half`, axis-aligned on screen.
+fn square(out: &mut Vec<f32>, at: [f32; 2], half: f32, color: [f32; 3]) {
+    let c = [
+        [at[0] - half, at[1] - half],
+        [at[0] + half, at[1] - half],
+        [at[0] + half, at[1] + half],
+        [at[0] - half, at[1] + half],
+    ];
+    for i in [0, 1, 2, 0, 2, 3] {
+        vertex(out, c[i], color);
     }
 }
 

@@ -8,6 +8,10 @@ export type GizmoAction = "begin" | "move" | "end" | "cancel";
  * A gizmo axis.
  */
 export type GizmoAxis = "x" | "y" | "z";
+/**
+ * What a gizmo does: arrows move, rings rotate, box-tipped arrows scale.
+ */
+export type GizmoMode = "move" | "rotate" | "scale";
 
 /**
  * `viewport.gizmo` params.
@@ -34,6 +38,10 @@ export interface MethodViewportGizmoParams {
    * When the input happened (Unix ms).
    */
   input_time_ms?: null | number;
+  /**
+   * Move, rotate or scale (begin; default: the shown gizmo's mode).
+   */
+  mode?: null | GizmoMode;
   /**
    * Caller's input tag, echoed in `viewport.stats` for the redrawn frame.
    */

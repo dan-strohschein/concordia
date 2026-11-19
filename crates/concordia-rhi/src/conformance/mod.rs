@@ -71,7 +71,9 @@ macro_rules! conformance_tests {
             readback_of_frame_n_does_not_block_frame_n_plus_1_submission,
             pipeline_creation_error_is_reported_not_panicked,
             invalid_descriptors_and_stale_handles_are_errors,
-            static_samplers_filter_and_address_as_named
+            static_samplers_filter_and_address_as_named,
+            additive_blend_sums_overlapping_draws,
+            submit_timed_reports_the_gpu_time_once
         );
     };
     (@cases $make:expr, $golden:expr, $shaders:expr; $($name:ident),+) => {$(

@@ -83,6 +83,17 @@ pub trait Device: Send + Sync {
     ) -> Result<bool, RhiError>;
     /// Validates and submits work.
     fn submit(&self, submit: Submit<'_>) -> Result<(), RhiError>;
+    /// [`Device::submit`], reporting the submission's GPU time (ms) once it completes; backends
+    /// that cannot measure it report `None` right away.
+    fn submit_timed(
+        &self,
+        submit: Submit<'_>,
+        on_gpu_time: crate::GpuTimeCallback,
+    ) -> Result<(), RhiError> {
+        self.submit(submit)?;
+        on_gpu_time(None);
+        Ok(())
+    }
     /// Blocks until all submitted work finished.
     fn wait_idle(&self) -> Result<(), RhiError>;
     /// Releases a buffer once the GPU is done with it.

@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::Arc;
 
-use common::{Client, connect_with, options};
+use common::{Client, call, connect_with, options};
 use concordia_api::{Audience, Engine, EngineConfig, EngineModule};
 use rmcp::model::{ClientConfig, ReadResourceRequestParams, ResourceContents};
 use serde_json::Value;
@@ -200,4 +200,68 @@ fn schema_index_has_category_and_description_for_every_component() {
         .unwrap();
     assert_eq!(point["category"], "Lighting");
     assert_eq!(point["addable"], true);
+}
+
+/// The PNG data of a capture_screenshot result, or None when there is no GPU (and none is required).
+fn image_data(result: &rmcp::model::CallToolResult) -> Option<String> {
+    let json = serde_json::to_value(result).unwrap();
+    if result.is_error == Some(true) {
+        let gpu_missing = json.to_string().contains("GpuUnavailable");
+        assert!(
+            gpu_missing && std::env::var("CONCORDIA_REQUIRE_GPU").as_deref() != Ok("1"),
+            "capture failed: {json}"
+        );
+        return None;
+    }
+    let images: Vec<String> = json["content"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| c["type"] == "image")
+        .map(|c| c["data"].as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(images.len(), 1, "{json}");
+    images.into_iter().next()
+}
+
+#[tokio::test]
+async fn capture_screenshot_view_mode_wireframe_differs_from_lit() {
+    let (_dir, client, _engine) = m1_client().await;
+    call(
+        &client,
+        "scene_new",
+        serde_json::json!({"path": "scenes/v.scene.ron", "name": "V"}),
+    )
+    .await;
+    for template in ["Cube", "Directional Light"] {
+        call(
+            &client,
+            "entity_create",
+            serde_json::json!({"template": template}),
+        )
+        .await;
+    }
+    call(
+        &client,
+        "entity_create",
+        serde_json::json!({"template": "Camera", "translation": [0.0, 1.0, 4.0]}),
+    )
+    .await;
+    let shot = |mode: &'static str| {
+        let client = &client;
+        async move {
+            let args = serde_json::json!({"width": 160, "height": 90, "view_mode": mode});
+            image_data(&call(client, "capture_screenshot", args).await)
+        }
+    };
+    let Some(lit) = shot("lit").await else { return };
+    let wire = shot("wireframe")
+        .await
+        .expect("lit rendered, so wireframe should");
+    assert_ne!(lit, wire, "wireframe looks different from lit");
+    assert_eq!(
+        shot("lit").await.unwrap(),
+        lit,
+        "and lit is unchanged by it"
+    );
 }

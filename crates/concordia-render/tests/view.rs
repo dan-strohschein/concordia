@@ -483,6 +483,81 @@ fn viewport_gizmo_drags_an_entity_along_an_axis_as_one_undo_step() {
     assert_eq!(miss["axis"], Value::Null, "{miss}");
 }
 
+fn transform(h: &mut Harness, id: &Value) -> Value {
+    h.ok(
+        "component.get",
+        json!({"entity": id, "component": "Transform"}),
+    )["value"]
+        .clone()
+}
+
+#[test]
+fn viewport_gizmo_rotates_and_scales_as_one_undo_step_each() {
+    let mut h = Harness::new();
+    let id = h.ok(
+        "entity.spawn",
+        json!({"components": {"Name": "Box", "Transform": {"translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]}}, "actor": "human:local"}),
+    )["id"]
+        .clone();
+    h.ok(
+        "viewport.navigate",
+        json!({"preset": "front", "focus": [0.0, 0.0, 0.0]}),
+    );
+    let drag = |h: &mut Harness, mode: &str, axis: &str, from: [f64; 2], to: [f64; 2]| {
+        let at = |p: [f64; 2]| json!({"x": p[0], "y": p[1], "width": 400.0, "height": 300.0, "actor": "human:local"});
+        let mut begin = at(from);
+        begin["action"] = json!("begin");
+        begin["mode"] = json!(mode);
+        begin["entity"] = id.clone();
+        begin["axis"] = json!(axis);
+        h.ok("viewport.gizmo", begin);
+        let mut step = at(to);
+        step["action"] = json!("move");
+        h.ok("viewport.gizmo", step);
+        h.ok(
+            "viewport.gizmo",
+            json!({"action": "end", "actor": "human:local"}),
+        );
+    };
+
+    // A quarter turn counter-clockwise on screen about +z (which points at the eye).
+    drag(&mut h, "rotate", "z", [260.0, 150.0], [200.0, 90.0]);
+    let rotation = transform(&mut h, &id)["rotation"].clone();
+    let half = std::f64::consts::FRAC_1_SQRT_2;
+    for (got, want) in rotation
+        .as_array()
+        .unwrap()
+        .iter()
+        .zip([0.0, 0.0, half, half])
+    {
+        assert!((got.as_f64().unwrap() - want).abs() < 1e-3, "{rotation}");
+    }
+    assert_eq!(
+        transform(&mut h, &id)["translation"],
+        json!([0.0, 0.0, 0.0]),
+        "rotation stays in place"
+    );
+
+    // One arrow length outward doubles the x scale.
+    drag(&mut h, "scale", "x", [260.0, 150.0], [320.0, 150.0]);
+    let scale = transform(&mut h, &id)["scale"].clone();
+    assert!((scale[0].as_f64().unwrap() - 2.0).abs() < 1e-3, "{scale}");
+    assert_eq!(scale[1], 1.0);
+
+    h.ok("txn.undo", json!({"actor": "human:local"}));
+    assert_eq!(
+        transform(&mut h, &id)["scale"],
+        json!([1.0, 1.0, 1.0]),
+        "the scale drag is one step"
+    );
+    h.ok("txn.undo", json!({"actor": "human:local"}));
+    assert_eq!(
+        transform(&mut h, &id)["rotation"],
+        json!([0.0, 0.0, 0.0, 1.0]),
+        "the rotate drag is one step"
+    );
+}
+
 #[cfg(target_os = "macos")]
 #[test]
 fn camera_moves_through_the_viewport_control_skip_the_engine_thread() {

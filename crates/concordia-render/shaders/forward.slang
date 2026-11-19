@@ -31,6 +31,9 @@ struct Frame {
     // indices 0..5, then the BRDF table.
     float4 inv_view_proj[4]; float4 sh[9]; float4 ibl;
     uint4 env_a; uint4 env_b;
+    // debug.x = view mode (ViewMode order: 0 lit, 1 unlit, 2 wireframe, 3 normals, 4 albedo,
+    // 5 roughness/metallic, 6 overdraw, 7 shadow cascades, 8 light clusters).
+    uint4 debug;
 };
 // Per light: position+range, direction, exposed radiance, spot (scale, offset).
 struct Light { float4 position_range; float4 direction; float4 radiance; float4 spot; };
@@ -47,6 +50,7 @@ struct VsOut {
     float3 normal : NORMAL;
     float4 tangent : TANGENT;
     float2 uv : UV;
+    float3 bary : BARY;
 };
 
 float4 xform(float4 m[4], float4 v) { return m[0] * v.x + m[1] * v.y + m[2] * v.z + m[3] * v.w; }
@@ -69,6 +73,8 @@ VsOut vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform DrawPush push
     float4 t = ((float4*)g_buffers.ptr[push.tangents])[v];
     o.tangent = float4(xform(inst.model, float4(t.xyz, 0.0)).xyz, t.w);
     o.uv = ((float2*)g_buffers.ptr[push.uvs])[v];
+    uint corner = vid % 3; // vertices are pulled per triangle corner
+    o.bary = float3(corner == 0 ? 1.0 : 0.0, corner == 1 ? 1.0 : 0.0, corner == 2 ? 1.0 : 0.0);
     return o;
 }
 
@@ -87,13 +93,20 @@ float4 shadow_vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform Shado
 // Fraction of sunlight reaching `world` (1 outside the cascades). Reverse-Z: a texel closer to the
 // light than the receiver stores a larger depth. Filtered PCF: a box of bilinear compares. Bias:
 // constant + normal offset + slope-scaled, so the whole PCF footprint clears the receiver plane.
-float sun_shadow(Frame* frame, float3 world, float3 n, float3 to_light) {
+// The shadow cascade covering `world`, or the cascade count when none does.
+uint cascade_of(Frame* frame, float3 world) {
     uint count = uint(frame.shadow.w);
-    if (count == 0) { return 1.0; }
+    if (count == 0) { return 0; }
     float view_z = -xform(frame.view, float4(world, 1.0)).z;
     uint c = 0;
     while (c + 1 < count && view_z > frame.splits[c]) { c++; }
-    if (view_z > frame.splits[count - 1]) { return 1.0; }
+    return view_z > frame.splits[count - 1] ? count : c;
+}
+
+float sun_shadow(Frame* frame, float3 world, float3 n, float3 to_light) {
+    uint count = uint(frame.shadow.w);
+    uint c = cascade_of(frame, world);
+    if (c >= count) { return 1.0; }
     float3 p = world + n * frame.shadow.y * frame.texel[c];
     float4 clip = cascade_xform(frame, c, float4(p, 1.0));
     float2 uv = clip.xy * float2(0.5, -0.5) + 0.5;
@@ -239,6 +252,21 @@ float distance_attenuation(float d2, float range) {
     return w * w / max(d2, 1e-4);
 }
 
+// Lights in the fragment's cluster as a heat color: blue (none), green (8), red (16 or more).
+float3 cluster_heat(Frame* frame, float4 frag, float3 world) {
+    uint* counts = (uint*)g_buffers.ptr[frame.buffers.y];
+    float t = saturate(float(counts[cluster_of(frame, frag, world)]) / 16.0);
+    return t < 0.5 ? lerp(float3(0.0, 0.1, 0.6), float3(0.0, 0.8, 0.1), t * 2.0)
+                   : lerp(float3(0.0, 0.8, 0.1), float3(0.9, 0.05, 0.0), t * 2.0 - 1.0);
+}
+
+// Edge coverage of a fragment from its barycentrics (about a pixel wide, antialiased).
+float wire_edge(float3 bary) {
+    float3 d = max(fwidth(bary), 1e-5);
+    float3 a = smoothstep(float3(0.0), d * 1.2, bary);
+    return 1.0 - min(a.x, min(a.y, a.z));
+}
+
 float3 punctual(Frame* frame, float4 frag, float3 world, float3 n, float3 v, float3 base, float metallic, float a) {
     uint c = cluster_of(frame, frag, world);
     uint* counts = (uint*)g_buffers.ptr[frame.buffers.y];
@@ -265,19 +293,39 @@ float4 fs(VsOut i, bool front : SV_IsFrontFace, uniform DrawPush push) : SV_Targ
     float4 base = m.base_color * sample_or(m.tex0.x, i.uv, float4(1.0));
     if ((m.tex1.y & FLAG_MASK) != 0 && base.a < m.emissive_cutoff.w) { discard; }
     float3 emissive = m.emissive_cutoff.xyz * sample_or(m.tex1.x, i.uv, float4(1.0)).rgb;
-    if ((m.tex1.y & FLAG_UNLIT) != 0) { return finish(m, base.rgb + emissive, base.a); }
+    uint mode = frame.debug.x;
+    if (mode == 2) {
+        float edge = wire_edge(i.bary);
+        if (edge < 0.02) { discard; }
+        return float4(float3(0.85, 0.9, 1.0) * edge, 1.0);
+    }
+    if (mode == 6) { return float4(0.12, 0.06, 0.02, 1.0); } // added up per covering surface
+    if (mode == 4) { return float4(base.rgb, 1.0); }
+    if (mode == 1 || (m.tex1.y & FLAG_UNLIT) != 0) { return finish(m, base.rgb + emissive, base.a); }
 
     float3 n = shading_normal(i, m) * (front ? 1.0 : -1.0);
+    if (mode == 3) { return float4(n * 0.5 + 0.5, 1.0); }
     float3 v = normalize(frame.eye.xyz - i.world);
     float4 mr = sample_or(m.tex0.y, i.uv, float4(1.0));
     float metallic = saturate(m.factors.x * mr.b);
     float roughness = saturate(m.factors.y * mr.g);
+    if (mode == 5) { return float4(0.0, roughness, metallic, 1.0); }
     float a = max(roughness, 0.045);
     a = a * a;
     float occlusion = lerp(1.0, sample_or(m.tex0.w, i.uv, float4(1.0)).r, m.factors.w);
     float3 geometric = normalize(i.normal) * (front ? 1.0 : -1.0);
     float3 sun = brdf(n, v, -normalize(frame.light_dir.xyz), base.rgb, metallic, a) * frame.light_radiance.rgb * sun_shadow(frame, i.world, geometric, -normalize(frame.light_dir.xyz));
     float3 lit = (sun + punctual(frame, i.position, i.world, n, v, base.rgb, metallic, a) + ambient(frame, n, v, base.rgb, metallic, roughness)) * occlusion;
+    if (mode == 7) {
+        const float3 tints[5] = { float3(1.0, 0.3, 0.3), float3(0.3, 1.0, 0.3), float3(0.3, 0.4, 1.0), float3(1.0, 1.0, 0.3), float3(1.0) };
+        uint c = cascade_of(frame, i.world);
+        uint tint = c >= uint(frame.shadow.w) ? 4 : min(c, 3u); // white: no cascade
+        return finish(m, (lit + emissive) * tints[tint], base.a);
+    }
+    if (mode == 8) {
+        float shade = dot(lit, float3(0.2126, 0.7152, 0.0722));
+        return float4(lerp(float3(shade), cluster_heat(frame, i.position, i.world), 0.7), 1.0);
+    }
     return finish(m, lit + emissive, base.a);
 }
 

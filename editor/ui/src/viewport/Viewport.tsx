@@ -1,6 +1,6 @@
 // The viewport: Godot's tool strip, View menu and navigation (middle-drag orbit, Shift+middle-drag
 // pan, wheel zoom; Alt+left-drag emulates the middle button), click-to-select through
-// `viewport.pick`, and the Move gizmo. In a browser the picture is a streamed
+// `viewport.pick`, the Move/Rotate/Scale gizmos, debug view modes and a render stats readout. In a browser the picture is a streamed
 // `capture.screenshot` from the editor's own view (ADR-0043 approach D).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -14,8 +14,8 @@ import { GizmoDrag } from "./gizmoDrag";
 import { inputTags } from "./latency";
 import { isNative, onNativeView, reportSlot } from "./native";
 import { type NavParams, useNavigate } from "./navigate";
-
-type Tool = "select" | "move";
+import { RenderStatsReadout } from "./RenderStatsReadout";
+import { VIEW_MODES, gizmoMode, toolForKey, type Tool, type ViewModeId } from "./tools";
 
 /** A mouse press in the viewport: where, which button, and whether it grabbed the gizmo. */
 interface Drag {
@@ -43,7 +43,7 @@ interface Props {
 
 /** Renders the latest view: streamed `capture.screenshot` in a browser, `viewport.present` into the
  * native view in the shell, through a `FrameQueue`. */
-function useStreamedView(session: EditorSession, world: "edit" | "play") {
+function useStreamedView(session: EditorSession, world: "edit" | "play", viewMode: ViewModeId) {
   const native = isNative();
   const [src, setSrc] = useState<string>();
   const [status, setStatus] = useState<string>();
@@ -68,6 +68,7 @@ function useStreamedView(session: EditorSession, world: "edit" | "play") {
                 height: job.height,
                 world: job.world,
                 overlays: true,
+                view_mode: job.viewMode,
               })
               .then((c) => {
                 setSrc(`data:${c.image.mime_type};base64,${c.image.data_base64}`);
@@ -78,8 +79,8 @@ function useStreamedView(session: EditorSession, world: "edit" | "play") {
     [session, native],
   );
   const request = useCallback(
-    (view: View, width: number, height: number) => queue.request({ view, width, height, world }),
-    [queue, world],
+    (view: View, width: number, height: number) => queue.request({ view, width, height, world, viewMode }),
+    [queue, world, viewMode],
   );
   return { src, status, request };
 }
@@ -90,17 +91,19 @@ interface Frame {
   width: number;
   height: number;
   world: "edit" | "play";
+  viewMode: ViewModeId;
 }
 
 export function Viewport({ session, world, selected, onSelect, grid, onToggleGrid }: Props) {
   const native = isNative();
   const [tool, setTool] = useState<Tool>("select");
+  const [viewMode, setViewMode] = useState<ViewModeId>("lit");
   const [view, setView] = useState<View>();
   const [size, setSize] = useState({ width: 640, height: 360 });
   const slot = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | undefined>(undefined);
   const gizmo = useMemo(() => new GizmoDrag(session, EDITOR_ACTOR), [session]);
-  const { src, status, request } = useStreamedView(session, world);
+  const { src, status, request } = useStreamedView(session, world, viewMode);
   const navigate = useNavigate(session, setView);
   const latest = useRef({ view, size });
   useEffect(() => {
@@ -131,16 +134,18 @@ export function Viewport({ session, world, selected, onSelect, grid, onToggleGri
     if (!native) redraw();
   }, [native, redraw, view]);
   useEffect(() => session.onEvent(redraw), [session, redraw]);
-  // The engine draws the selection and the Move gizmo (ADR-0047); the page only says what to show.
+  // The engine draws the selection and the gizmo (ADR-0047); the page only says what to show.
+  const mode = gizmoMode(tool);
   useEffect(() => {
     const overlays = {
       selection: selected === undefined ? [] : [selected],
-      gizmo: tool === "move" && selected !== undefined ? { entity: selected } : null,
+      gizmo: mode !== undefined && selected !== undefined ? { entity: selected, mode } : null,
       grid,
       scale: window.devicePixelRatio || 1,
+      view_mode: viewMode,
     };
     void session.call("viewport.overlays", overlays).then(() => (native ? undefined : redraw()));
-  }, [session, selected, tool, grid, native, redraw]);
+  }, [session, selected, mode, grid, viewMode, native, redraw]);
   // In the native shell: keep the Metal view on the slot (while playing, the engine redraws it each tick).
   useEffect(() => {
     if (!native || !slot.current) return;
@@ -157,9 +162,9 @@ export function Viewport({ session, world, selected, onSelect, grid, onToggleGri
   useEffect(() => {
     const keys = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
-      if (e.key === "q") setTool("select");
-      if (e.key === "w") setTool("move");
-      if (e.key === "f") void focusSelection();
+      const picked = toolForKey(e);
+      if (picked) setTool(picked);
+      if (e.key === "f" && !e.metaKey && !e.ctrlKey) void focusSelection();
       const byCode: Record<string, NavParams> = {
         Numpad1: { preset: "front" },
         Numpad3: { preset: "right" },
@@ -190,7 +195,7 @@ export function Viewport({ session, world, selected, onSelect, grid, onToggleGri
     const button = e.altKey && e.button === 0 ? 1 : e.button;
     // In a browser, a left press may grab the engine-drawn gizmo (natively the shell does this).
     const grab =
-      !native && button === 0 && tool === "move" && selected !== undefined
+      !native && button === 0 && mode !== undefined && selected !== undefined
         ? gizmo.start(local(e).x, local(e).y, size)
         : undefined;
     drag.current = { x: e.clientX, y: e.clientY, button, shift: e.shiftKey, moved: false, grab };
@@ -219,7 +224,8 @@ export function Viewport({ session, world, selected, onSelect, grid, onToggleGri
   };
   const onWheel = (e: React.WheelEvent) => navigate({ zoom: Math.sign(e.deltaY) });
   const onViewMenu = (choice: string) => {
-    if (choice === "grid") onToggleGrid();
+    if (choice.startsWith("mode:")) setViewMode(choice.slice(5) as ViewModeId);
+    else if (choice === "grid") onToggleGrid();
     else if (choice === "ortho") navigate({ toggle_ortho: true });
     else if (choice === "focus") void focusSelection();
     else if (choice !== "") navigate({ preset: choice as Preset });
@@ -238,7 +244,14 @@ export function Viewport({ session, world, selected, onSelect, grid, onToggleGri
         <button aria-pressed={tool === "move"} onClick={() => setTool("move")} title="Move (W)">
           Move
         </button>
+        <button aria-pressed={tool === "rotate"} onClick={() => setTool("rotate")} title="Rotate (E)">
+          Rotate
+        </button>
+        <button aria-pressed={tool === "scale"} onClick={() => setTool("scale")} title="Scale (R)">
+          Scale
+        </button>
         <span style={{ flex: 1 }} />
+        <RenderStatsReadout session={session} />
         <select aria-label="View" value="" onChange={(e) => onViewMenu(e.target.value)}>
           <option value="">View ▾</option>
           <option value="grid">Toggle grid</option>
@@ -248,6 +261,14 @@ export function Viewport({ session, world, selected, onSelect, grid, onToggleGri
           <option value="top">Top (Num 7)</option>
           <option value="iso">Isometric</option>
           <option value="focus">Focus selection (F)</option>
+          <optgroup label="Display">
+            {VIEW_MODES.map((m) => (
+              <option key={m.id} value={`mode:${m.id}`}>
+                {m.id === viewMode ? "✓ " : ""}
+                {m.label}
+              </option>
+            ))}
+          </optgroup>
         </select>
       </div>
       <div

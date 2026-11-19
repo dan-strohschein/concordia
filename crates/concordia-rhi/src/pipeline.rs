@@ -79,6 +79,8 @@ pub enum BlendMode {
     Opaque,
     /// Premultiplied alpha over.
     PremultipliedAlpha,
+    /// Add source to destination (color and alpha), e.g. for overdraw counting.
+    Additive,
 }
 
 /// A graphics pipeline (vertex pulling: no vertex input layout).

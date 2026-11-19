@@ -107,6 +107,8 @@ pub(crate) struct FrameParams<'a> {
     pub(crate) ibl: Option<IblParams<'a>>,
     /// Bindless index of the BRDF table.
     pub(crate) lut: u32,
+    /// The view mode's shader number (`ViewMode::shader_index`).
+    pub(crate) view_mode: u32,
 }
 
 /// The environment as the shader sees it.
@@ -149,6 +151,8 @@ pub(crate) fn frame_block(p: &FrameParams<'_>) -> Vec<u8> {
     out.extend(words.iter().flat_map(|w| w.to_le_bytes()));
     shadow_rows(&mut out, p.shadow);
     ibl_rows(&mut out, p);
+    let debug = [p.view_mode, 0, 0, 0];
+    out.extend(debug.iter().flat_map(|w| w.to_le_bytes()));
     out
 }
 

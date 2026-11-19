@@ -106,6 +106,25 @@ pub(crate) fn graphics(
     samples: SampleCount,
     depth: Option<DepthState>,
 ) -> Pipeline {
+    graphics_blended(
+        device,
+        h,
+        name,
+        entries,
+        (samples, depth),
+        BlendMode::Opaque,
+    )
+}
+
+/// [`graphics`] with a blend mode.
+pub(crate) fn graphics_blended(
+    device: &dyn Device,
+    h: &Harness<'_>,
+    name: &str,
+    entries: (&str, &str),
+    (samples, depth): (SampleCount, Option<DepthState>),
+    blend: BlendMode,
+) -> Pipeline {
     let desc = GraphicsPipelineDesc {
         vertex: h.shaders.shader(name, entries.0, ShaderStage::Vertex).0,
         fragment: Some(h.shaders.shader(name, entries.1, ShaderStage::Fragment).0),
@@ -113,7 +132,7 @@ pub(crate) fn graphics(
         depth,
         samples,
         cull: CullMode::None,
-        blend: BlendMode::Opaque,
+        blend,
         label: name.into(),
     };
     device

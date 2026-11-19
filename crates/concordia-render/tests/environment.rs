@@ -164,6 +164,7 @@ fn environment_with_a_missing_map_names_it() {
                 width: 8,
                 height: 8,
                 overlays: None,
+                view_mode: Default::default(),
             },
         )
         .unwrap_err();
@@ -197,6 +198,7 @@ fn the_viewport_does_not_wait_for_an_environment_to_prefilter() {
         width: 64,
         height: 64,
         overlays: None,
+        view_mode: Default::default(),
     };
     r.present(&rw, &mut s.assets, &request, surface).unwrap();
     assert!(

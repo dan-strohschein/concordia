@@ -10,13 +10,15 @@ use crate::device::{Device, QueueKind, Submit};
 use crate::error::RhiError;
 use crate::format::Format;
 use crate::handle::{Buffer, Texture};
-use crate::pipeline::{CompareOp, ComputePipelineDesc, DepthState, ShaderSource, StaticSampler};
+use crate::pipeline::{
+    BlendMode, CompareOp, ComputePipelineDesc, DepthState, ShaderSource, StaticSampler,
+};
 use crate::resource::{BufferUsage, HeapDesc, MemoryLocation, TextureUsage};
 
 use super::Harness;
 use super::util::{
-    WAIT, buffer, compute, download, graphics, push, read_texture, run, target, texture_desc,
-    upload, words,
+    WAIT, buffer, compute, download, graphics, graphics_blended, push, read_texture, run, target,
+    texture_desc, upload, words,
 };
 
 const SIZE: u32 = 256;
@@ -656,5 +658,70 @@ pub fn static_samplers_filter_and_address_as_named(device: &dyn Device, h: &Harn
     assert!(
         near(wrapped, 128),
         "linear repeat blends across the wrap: {wrapped}"
+    );
+}
+
+/// Additive blending adds each draw to the target: a clear plus two equal draws is their sum.
+pub fn additive_blend_sums_overlapping_draws(device: &dyn Device, h: &Harness<'_>) {
+    let pipeline = graphics_blended(
+        device,
+        h,
+        "triangle",
+        ("vs", "fs"),
+        (SampleCount::X1, None),
+        BlendMode::Additive,
+    );
+    let color = target(device, SIZE, SampleCount::X1);
+    let vb = upload(device, &vertices(&triangle(0.5, [0.2; 4])));
+    let mut list = CommandList::new("additive");
+    list.push(pass(color, clear([0.1, 0.2, 0.3, 0.4]), None, None))
+        .push(Command::SetPipeline(pipeline));
+    for _ in 0..2 {
+        list.push(push(
+            &[device.buffer_index(vb).unwrap().0, 0, 0, 0],
+            &[1.0; 4],
+        ))
+        .push(Command::Draw {
+            vertices: 0..3,
+            instances: 0..1,
+        });
+    }
+    list.push(Command::EndRenderPass);
+    run(device, &list);
+    let got = pixel(&read_texture(device, color, SIZE), SIZE / 2, SIZE / 2);
+    for (g, want) in got.iter().zip([0.5f32, 0.6, 0.7, 0.8]) {
+        let want = (want * 255.0).round() as u8;
+        assert!(g.abs_diff(want) <= 1, "{got:?}: channel {g} vs {want}");
+    }
+}
+
+/// `submit_timed` calls back exactly once after the work: a finite, non-negative time in ms, or
+/// `None` when the backend cannot measure it.
+pub fn submit_timed_reports_the_gpu_time_once(device: &dyn Device, _: &Harness<'_>) {
+    let color = target(device, SIZE, SampleCount::X1);
+    let mut list = CommandList::new("timed");
+    list.push(pass(color, clear([0.0, 0.0, 0.0, 1.0]), None, None))
+        .push(Command::EndRenderPass);
+    let (tx, rx) = std::sync::mpsc::channel();
+    device
+        .submit_timed(
+            Submit {
+                queue: QueueKind::Graphics,
+                commands: &list,
+                wait: &[],
+                signal: &[],
+            },
+            Box::new(move |ms| tx.send(ms).expect("one report")),
+        )
+        .expect("submit");
+    device.wait_idle().expect("wait idle");
+    let ms = rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("the GPU time is reported");
+    assert!(ms.is_none_or(|ms| ms.is_finite() && ms >= 0.0), "{ms:?}");
+    assert!(
+        rx.recv_timeout(std::time::Duration::from_millis(100))
+            .is_err(),
+        "reported once"
     );
 }

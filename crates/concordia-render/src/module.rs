@@ -70,6 +70,8 @@ pub(crate) struct RenderState {
     pub(crate) anchor: GizmoAnchor,
     /// The gizmo drag in progress (`viewport.gizmo`).
     pub(crate) gizmo: Option<crate::gizmo::GizmoDrag>,
+    /// The last frame drawn (`render.stats`), recorded by the render thread.
+    pub(crate) last: crate::stats::LastFrame,
 }
 
 impl EngineModule for RenderModule {
@@ -98,6 +100,7 @@ impl EngineModule for RenderModule {
             MethodInfo::of::<ViewportNavigate>(),
             MethodInfo::of::<ViewportOverlays>(),
             MethodInfo::of::<crate::gizmo::ViewportGizmo>(),
+            MethodInfo::of::<crate::stats::RenderStatsGet>(),
         ]
     }
 
@@ -138,6 +141,7 @@ impl EngineModule for RenderModule {
             overlays: crate::Overlays::default(),
             anchor: GizmoAnchor::default(),
             gizmo: None,
+            last: Default::default(),
         }))
     }
 }
@@ -170,6 +174,9 @@ pub struct CaptureScreenshotParams {
     /// Who is asking (attribution in the log only).
     #[serde(default)]
     pub actor: Option<Actor>,
+    /// Draw a debug view instead of the lit image, e.g. "wireframe" or "normals" (see ViewMode).
+    #[serde(default)]
+    pub view_mode: Option<crate::ViewMode>,
     /// Draw the editor overlays (`viewport.overlays`: selection, gizmo) on top.
     #[serde(default)]
     pub overlays: Option<bool>,
@@ -228,6 +235,7 @@ impl Method for CaptureScreenshot {
             overlays: (p.overlays == Some(true))
                 .then(|| engine.state::<RenderState>().map(|s| s.overlays.clone()))
                 .flatten(),
+            view_mode: p.view_mode.unwrap_or_default(),
         };
         let scene = scene_update(engine, p.world.unwrap_or_default(), None)?;
         let slot = scene.slot;
@@ -258,8 +266,10 @@ fn render_thread(engine: &mut Engine) -> Result<&RenderThread, ApiError> {
         .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render module has no state"))?;
     if state.thread.is_none() {
         let factory = state.factory.clone();
-        state.thread =
-            Some(RenderThread::spawn(move || make_renderer(&factory, ddc)).map_err(api_error)?);
+        let last = state.last.clone();
+        state.thread = Some(
+            RenderThread::spawn(move || make_renderer(&factory, ddc), last).map_err(api_error)?,
+        );
     }
     state
         .thread
@@ -659,6 +669,10 @@ pub(crate) fn queue_present(
         width: t.width,
         height: t.height,
         overlays: engine.state::<RenderState>().map(|s| s.overlays.clone()),
+        view_mode: engine
+            .state::<RenderState>()
+            .map(|s| s.overlays.view_mode)
+            .unwrap_or_default(),
     };
     let (log, id) = queue_record(engine, &t);
     if let Some(state) = engine.state_mut::<RenderState>() {
@@ -909,9 +923,9 @@ impl ViewportControl {
         width: f32,
         height: f32,
     ) -> Option<(concordia_core::id::EntityId, crate::GizmoAxis)> {
-        let (entity, at) = (*self.anchor.lock().ok()?)?;
-        let handles = crate::gizmo_handles(&self.camera.view(), at, width, height);
-        crate::gizmo_hit(&handles, x, y).map(|axis| (entity, axis))
+        let (entity, at, mode) = (*self.anchor.lock().ok()?)?;
+        crate::gizmo_pick(mode, &self.camera.view(), at, [x, y], width, height)
+            .map(|axis| (entity, axis))
     }
 
     /// Like `viewport.navigate`, from any thread.
@@ -965,8 +979,9 @@ fn play_tick(engine: &Engine) -> Option<std::time::Duration> {
     ))
 }
 
-/// Set what the engine draws over the editor viewport: selection outlines, the Move gizmo, the
-/// grid. The native viewport redraws; captures include them with `overlays: true`.
+/// Set what the engine draws over the editor viewport (selection outlines, the gizmo, the grid)
+/// and its view mode. The native viewport redraws; captures include the overlays with
+/// `overlays: true`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 pub struct ViewportOverlays;
 
@@ -999,9 +1014,17 @@ impl Method for ViewportOverlays {
     }
 }
 
-/// The gizmo's entity and world position, shared with [`ViewportControl`] for native hit-tests.
-pub(crate) type GizmoAnchor =
-    Arc<std::sync::Mutex<Option<(concordia_core::id::EntityId, concordia_core::math::Vec3)>>>;
+/// The gizmo's entity, world position and mode, shared with [`ViewportControl`] for native
+/// hit-tests.
+pub(crate) type GizmoAnchor = Arc<
+    std::sync::Mutex<
+        Option<(
+            concordia_core::id::EntityId,
+            concordia_core::math::Vec3,
+            crate::GizmoMode,
+        )>,
+    >,
+>;
 
 /// Updates the shared gizmo anchor from the overlays and the viewport's world.
 pub(crate) fn refresh_anchor(engine: &mut Engine) {
@@ -1016,6 +1039,7 @@ pub(crate) fn refresh_anchor(engine: &mut Engine) {
         Some((
             g.entity,
             m.transform_point3(concordia_core::math::Vec3::ZERO),
+            g.mode,
         ))
     });
     if let Ok(mut a) = anchor.lock() {

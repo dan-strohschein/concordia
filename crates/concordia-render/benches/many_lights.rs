@@ -120,6 +120,7 @@ fn main() {
         width: 1920,
         height: 1080,
         overlays: None,
+        view_mode: Default::default(),
     };
     for _ in 0..3 {
         renderer
