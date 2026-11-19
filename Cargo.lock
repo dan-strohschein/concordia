@@ -921,6 +921,7 @@ dependencies = [
 name = "concordia-studio"
 version = "0.0.0"
 dependencies = [
+ "blake3",
  "concordia-api",
  "concordia-command",
  "concordia-core",
@@ -931,6 +932,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_norway",
+ "similar",
  "tempfile",
  "thiserror 2.0.21",
  "toml",

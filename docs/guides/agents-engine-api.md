@@ -83,6 +83,7 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `studio.roster` | | `{}` → `{team, director, main_session_actor, roles: [{role, mcp_tools, write, ...}], disabled: [{role, reason}]}` |
 | `studio.status` | | `{}` → `{tasks: {<status>: count}, pending_approvals}` |
 | `studio.activity` | | `{since?, actor?, role?, task?, kind?, limit?}` → `{entries, next}` (task changes, reviews and agents' file edits, oldest first) |
+| `studio.sync` | yes | `{check?, force?}` → `{changes: [{path, action, diff?}], refused, stale}` (regenerates `.claude/agents`, `.claude/skills`, the settings hooks, `.mcp.json` and the `CLAUDE.md` block from `studio/`; usually run by a human) |
 
 `events.subscribe` makes the WebSocket connection receive JSON-RPC notifications, `{"method": "events.event", "params": {"topic", ...}}`:
 - `edit`: one per committed transaction, undo or redo, with `method`, `txn`, `label`, `actor`, `entities` and `undo`;

@@ -1,0 +1,16 @@
+---
+source: crates/concordia-studio/tests/sync_snapshots.rs
+expression: "read(dir.path(), \".mcp.json\")"
+---
+{
+  "mcpServers": {
+    "concordia": {
+      "args": [
+        "mcp",
+        "--project",
+        "${CLAUDE_PROJECT_DIR:-.}"
+      ],
+      "command": "concordia"
+    }
+  }
+}

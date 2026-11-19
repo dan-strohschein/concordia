@@ -22,8 +22,30 @@ pub(crate) struct StudioArgs {
 
 #[derive(Debug, clap::Subcommand)]
 enum StudioCommand {
-    /// Add the default Agent Studio files and a [studio] section to this project.
-    Init,
+    /// Add the default Agent Studio files and a [studio] section to this project, then sync.
+    Init {
+        /// Skip generating the Claude Code files.
+        #[arg(long)]
+        no_sync: bool,
+    },
+    /// Generate the Claude Code files (.claude/, .mcp.json, CLAUDE.md block) from studio/.
+    Sync {
+        /// Exit 1 with a diff if anything is out of date; write nothing.
+        #[arg(long)]
+        check: bool,
+        /// List what would change; write nothing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Overwrite generated files that were edited by hand.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Claude Code hook entry point (reads the hook's JSON on stdin). Until enforcement lands
+    /// (M3 phase 3.5) it decides nothing, so Claude Code's own permission rules apply.
+    Hook {
+        /// pre-tool-use, post-tool-use, subagent-start or subagent-stop.
+        event: String,
+    },
     /// Print the resolved team (enabled roles with tools and paths, disabled roles with reasons).
     Roster,
     /// Print task counts and tasks waiting for approval.
@@ -110,8 +132,20 @@ enum TaskCommand {
 }
 
 pub(crate) fn run_studio(args: &StudioArgs) -> Result<(), Failure> {
-    match args.command {
-        StudioCommand::Init => init(&args.project),
+    match &args.command {
+        StudioCommand::Init { no_sync } => {
+            init(&args.project)?;
+            match no_sync {
+                true => Ok(()),
+                false => sync(&args.project, false, false, false),
+            }
+        }
+        StudioCommand::Sync {
+            check,
+            dry_run,
+            force,
+        } => sync(&args.project, *check, *dry_run, *force),
+        StudioCommand::Hook { event } => hook(event),
         StudioCommand::Roster => call(&args.project, "studio.roster", json!({})),
         StudioCommand::Status => call(&args.project, "studio.status", json!({})),
     }
@@ -195,6 +229,78 @@ fn init(project: &Path) -> Result<(), Failure> {
             .map_err(|e| Failure::usage(format!("{}: {e}", manifest_path.display())))?;
     }
     eprintln!("added Agent Studio: {} files under studio/", files.len());
+    Ok(())
+}
+
+/// Runs `studio.sync` and reports it; `--check` fails when anything is stale.
+pub(crate) fn sync(project: &Path, check: bool, dry_run: bool, force: bool) -> Result<(), Failure> {
+    let mut engine = studio_engine(project)?;
+    let session = engine.open_session();
+    let params = json!({"check": check || dry_run, "force": force, "actor": HUMAN});
+    let report = engine
+        .call(session, "studio.sync", params)
+        .map_err(|e| api_failure(&e))?;
+    let verb = |action: &str| match (check || dry_run, action) {
+        (true, "create") => "would create",
+        (true, "update") => "would update",
+        (true, "delete") => "would delete",
+        (_, "create") => "created",
+        (_, "update") => "updated",
+        (_, _) => "deleted",
+    };
+    for change in report["changes"].as_array().into_iter().flatten() {
+        let action = change["action"].as_str().unwrap_or_default();
+        if action == "unchanged" {
+            continue;
+        }
+        println!(
+            "{} {}",
+            verb(action),
+            change["path"].as_str().unwrap_or_default()
+        );
+        if let (true, Some(diff)) = (check || dry_run, change["diff"].as_str()) {
+            print!("{diff}");
+        }
+    }
+    let refused: Vec<&str> = report["refused"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    match (check && report["stale"] == true, refused.is_empty()) {
+        (true, _) => Err(Failure {
+            code: 1,
+            message: "the Claude Code files are out of date; run `concordia studio sync`".into(),
+        }),
+        (false, false) => Err(Failure {
+            code: 1,
+            message: format!(
+                "left hand-edited generated files alone: {}; edit studio/ instead, or pass --force to overwrite them",
+                refused.join(", ")
+            ),
+        }),
+        (false, true) => Ok(()),
+    }
+}
+
+/// The hook entry point: consumes the hook input and makes no decision (phase 3.5 adds enforcement).
+fn hook(event: &str) -> Result<(), Failure> {
+    const EVENTS: [&str; 4] = [
+        "pre-tool-use",
+        "post-tool-use",
+        "subagent-start",
+        "subagent-stop",
+    ];
+    if !EVENTS.contains(&event) {
+        return Err(Failure::usage(format!(
+            "unknown hook event {event:?}; expected one of {}",
+            EVENTS.join(", ")
+        )));
+    }
+    let mut input = Vec::new();
+    std::io::Read::read_to_end(&mut std::io::stdin(), &mut input)
+        .map_err(|e| Failure::usage(format!("reading the hook input: {e}")))?;
     Ok(())
 }
 
