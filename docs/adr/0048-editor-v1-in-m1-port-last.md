@@ -1,5 +1,5 @@
 # ADR-0048: Editor v1 joins M1; engine breadth before the port
-- Status: Accepted
+- Status: Accepted; amended by ADR-0049 (agent-first scope, phases renumbered 1.11–1.16)
 - Date: 2026-11-18
 - Builds on: ADR-0047 (the editor UI stays web-based), ADR-0004
 
