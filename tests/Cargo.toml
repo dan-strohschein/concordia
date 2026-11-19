@@ -16,11 +16,15 @@ tokio.workspace = true
 toml.workspace = true
 
 [dev-dependencies]
+base64.workspace = true
 concordia-api.workspace = true
+concordia-app.workspace = true
 concordia-core.workspace = true
 concordia-mcp.workspace = true
 concordia-reflect.workspace = true
+concordia-render.workspace = true
 concordia-scene.workspace = true
+concordia-testkit.workspace = true
 insta.workspace = true
 tempfile.workspace = true
 regex.workspace = true
@@ -44,6 +48,22 @@ path = "gates/m0_headless_mcp.rs"
 [[test]]
 name = "m0_live_check"
 path = "gates/m0_live_check.rs"
+
+[[test]]
+name = "m1_physics_golden"
+path = "gates/m1_physics_golden.rs"
+
+[[test]]
+name = "m1_mcp_screenshot"
+path = "gates/m1_mcp_screenshot.rs"
+
+[[test]]
+name = "m1_mcp_coverage"
+path = "gates/m1_mcp_coverage.rs"
+
+[[test]]
+name = "m1_live_check"
+path = "gates/m1_live_check.rs"
 
 [lints]
 workspace = true

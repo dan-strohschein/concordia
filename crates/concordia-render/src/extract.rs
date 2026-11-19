@@ -3,7 +3,7 @@
 use concordia_assets::{AssetRef, MeshRenderer};
 use concordia_core::id::EntityId;
 use concordia_core::math::{Mat4, Vec3};
-use concordia_scene::builtin::world_transforms;
+use concordia_scene::builtin::{Transform, world_transform, world_transforms};
 use concordia_terra::World;
 
 use crate::{Camera, DirectionalLight, Environment, PointLight, RenderError, SpotLight};
@@ -96,8 +96,7 @@ pub struct RenderWorld {
 impl RenderWorld {
     /// Copies render components and world transforms out of `world`.
     pub fn extract(world: &World) -> Self {
-        let transforms = world_transforms(world);
-        let items: Vec<EntityItems> = transforms
+        let items: Vec<EntityItems> = placements(world)
             .iter()
             .map(|(&entity, &matrix)| EntityItems::extract(world, entity, matrix))
             .collect();
@@ -151,6 +150,29 @@ pub struct EntityItems {
     pub camera: Option<CameraView>,
     /// Its `Parent`, if any.
     pub parent: Option<EntityId>,
+}
+
+/// Every rendered entity's matrix, in id order (see [`placement`]).
+pub(crate) fn placements(world: &World) -> std::collections::BTreeMap<EntityId, Mat4> {
+    let mut placed: std::collections::BTreeMap<EntityId, Mat4> = world_transforms(world)
+        .iter()
+        .map(|(&entity, &matrix)| (entity, matrix))
+        .collect();
+    for id in world.entity_ids_sorted() {
+        if world.get::<Environment>(id).is_some() {
+            placed.entry(id).or_insert(Mat4::IDENTITY);
+        }
+    }
+    placed
+}
+
+/// Where `id` is drawn from: its world matrix, or the origin for an `Environment` without a
+/// `Transform` (it has no position); `None` when it is not rendered.
+pub(crate) fn placement(world: &World, id: EntityId) -> Option<Mat4> {
+    match world.get::<Transform>(id) {
+        Some(_) => world_transform(world, id),
+        None => world.get::<Environment>(id).map(|_| Mat4::IDENTITY),
+    }
 }
 
 impl EntityItems {

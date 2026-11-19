@@ -38,6 +38,9 @@ export const test = base.extend<{ engine: Engine }>({
       recursive: true,
       filter: (source) => !source.split(/[\\/]/).includes(".concordia"),
     });
+    // The editor tests use the light pre-gate scene: the gate scene (16 lights, shadows, a sky) is
+    // tuned for render checks and costs CI's virtual GPU seconds per frame, which delays every call.
+    cpSync(join(import.meta.dirname, "../fixtures/scenes/stack.scene.ron"), join(dir, "scenes/stack.scene.ron"));
     const binary = join(repo, "target/debug/concordia");
     const child: ChildProcess = spawn(binary, ["headless", "--ws", "--port", "0", "--project", dir], {
       stdio: "ignore",

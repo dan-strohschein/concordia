@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EditorSession } from "../engine/session";
 import { deleteEntity, duplicateEntity } from "./actions";
 import { EntityMenu, type MenuTarget } from "./EntityMenu";
-import { flatten, rowWindow, type FlatRow } from "./rows";
+import { flatten, rowWindow, scrollToShow, type FlatRow } from "./rows";
 import { OutlinerTree, type TreeNode } from "./tree";
 
 interface Props {
@@ -67,6 +67,11 @@ function useEntityTree(session: EditorSession): TreeNode[] {
   return roots;
 }
 
+/** Scrolls `element` to `top` (a DOM write, as effects may do). */
+function scrollTop(element: HTMLElement, top: number) {
+  element.scrollTop = top;
+}
+
 /** The list's scroll position and height, for rendering only the rows in view. */
 function useScrollWindow(count: number) {
   const box = useRef<HTMLDivElement>(null);
@@ -90,6 +95,15 @@ export function Outliner({ session, selected, onSelect }: Props) {
   const roots = useEntityTree(session);
   const flat = useMemo(() => flatten(roots), [roots]);
   const { box, onScroll, range } = useScrollWindow(flat.length);
+  // Like Godot's Scene dock: a new selection (from the viewport, an agent, a new entity) is scrolled into view.
+  useEffect(() => {
+    const element = box.current;
+    if (!element || selected === undefined) return;
+    const index = flat.findIndex((r) => r.node.id === selected);
+    const height = element.clientHeight;
+    const top = scrollToShow({ index, scrollTop: element.scrollTop, height, rowHeight: ROW_HEIGHT });
+    if (top !== undefined) scrollTop(element, top);
+  }, [box, flat, selected]);
   const [renaming, setRenaming] = useState<string>();
   const [menu, setMenu] = useState<MenuTarget>();
   const select = (work: Promise<string | undefined>) => void work.then(onSelect, (e: unknown) => console.warn(e));

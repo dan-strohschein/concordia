@@ -78,6 +78,14 @@ impl RgbaImage {
         let rgba = img.to_rgba8();
         Self::new(rgba.width(), rgba.height(), rgba.into_raw())
     }
+
+    /// Decodes PNG bytes (e.g. a `capture.screenshot` result).
+    pub fn from_png(bytes: &[u8]) -> Result<Self, GoldenError> {
+        let img = image::load_from_memory_with_format(bytes, image::ImageFormat::Png)
+            .map_err(|e| GoldenError::Io(format!("PNG: {e}")))?;
+        let rgba = img.to_rgba8();
+        Self::new(rgba.width(), rgba.height(), rgba.into_raw())
+    }
 }
 
 /// FLIP statistics of a comparison (0 = identical, 1 = maximally different).

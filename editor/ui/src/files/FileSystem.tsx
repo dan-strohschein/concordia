@@ -10,7 +10,14 @@ import { baseName, buildTree, type FolderNode, type ProjectFile } from "./tree";
 /** The drag-and-drop type carrying a `ProjectFile` as JSON. */
 export const FILE_DRAG_TYPE = "application/x-concordia-file";
 
-const ICONS: Record<ProjectFile["kind"], string> = { scene: "🎬", prefab: "📦", model: "🧊", image: "🖼", other: "📄" };
+const ICONS: Record<ProjectFile["kind"], string> = {
+  scene: "🎬",
+  prefab: "📦",
+  model: "🧊",
+  image: "🖼",
+  material: "🎨",
+  other: "📄",
+};
 
 export function FileSystem({ session, onOpenScene }: { session: EditorSession; onOpenScene: (path: string) => void }) {
   const [root, setRoot] = useState<FolderNode>();

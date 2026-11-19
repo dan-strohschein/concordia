@@ -184,3 +184,28 @@ fn play_scenes_blend_between_the_last_two_ticks() {
         "alpha 1 is the latest tick"
     );
 }
+
+/// An environment has no position: an entity with only `Environment` still lights the scene, in
+/// full extraction and through the scene cache alike.
+#[test]
+fn an_environment_needs_no_transform() {
+    let (mut world, mut ids) = (World::new(), DeterministicIdGen::new(3));
+    spawn(&mut world, &mut ids, 0.0);
+    let sky = world.spawn(&mut ids).unwrap();
+    let environment = concordia_render::Environment {
+        map: "asset:01900000-0000-7000-8000-000000000001"
+            .parse()
+            .unwrap(),
+        intensity: 2.0,
+        skybox: true,
+    };
+    world.insert(sky, environment.clone()).unwrap();
+    assert_eq!(
+        RenderWorld::extract(&world).environment,
+        Some(environment.clone())
+    );
+    let mut cache = SceneCache::default();
+    let mut scene = RenderScene::default();
+    scene.apply(cache.update(&world));
+    assert_eq!(scene.world().environment, Some(environment));
+}

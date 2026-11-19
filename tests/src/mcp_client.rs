@@ -5,7 +5,8 @@ use std::process::Stdio;
 
 use rmcp::ServiceExt;
 use rmcp::model::{
-    CallToolRequestParams, ClientConfig, ReadResourceRequestParams, ResourceContents, Tool,
+    CallToolRequestParams, CallToolResult, ClientConfig, ReadResourceRequestParams,
+    ResourceContents, Tool,
 };
 use rmcp::service::{RoleClient, RunningService};
 use rmcp::transport::TokioChildProcess;
@@ -26,7 +27,8 @@ pub struct McpClient {
 }
 
 impl McpClient {
-    /// Spawns `bin args...` with only `PATH` and `HOME` in its environment.
+    /// Spawns `bin args...` with only `PATH`, `HOME`, `SLANG_DIR` and `CONCORDIA_*` in its
+    /// environment (no API keys reach the server).
     pub async fn spawn(bin: &Path, args: &[&str]) -> Result<Self, String> {
         Self::spawn_with(bin, args, ClientConfig::default()).await
     }
@@ -35,8 +37,11 @@ impl McpClient {
     pub async fn spawn_with(bin: &Path, args: &[&str], info: ClientConfig) -> Result<Self, String> {
         let mut command = tokio::process::Command::new(bin);
         command.args(args).env_clear();
-        for key in ["PATH", "HOME"] {
-            if let Some(value) = std::env::var_os(key) {
+        for (key, value) in std::env::vars_os() {
+            let name = key.to_string_lossy();
+            if matches!(name.as_ref(), "PATH" | "HOME" | "SLANG_DIR")
+                || name.starts_with("CONCORDIA_")
+            {
                 command.env(key, value);
             }
         }
@@ -58,15 +63,7 @@ impl McpClient {
 
     /// Calls a tool; `Ok` carries the structured result.
     pub async fn call(&self, tool: &str, arguments: Value) -> Result<Value, ToolError> {
-        let Value::Object(arguments) = arguments else {
-            panic!("tool arguments must be an object")
-        };
-        let params = CallToolRequestParams::new(tool.to_owned()).with_arguments(arguments);
-        let result = self
-            .service
-            .call_tool(params)
-            .await
-            .unwrap_or_else(|e| panic!("{tool}: protocol error {e}"));
+        let result = self.call_raw(tool, arguments).await;
         let text = result
             .content
             .iter()
@@ -80,6 +77,18 @@ impl McpClient {
             }),
             _ => Ok(result.structured_content.unwrap_or(Value::Null)),
         }
+    }
+
+    /// Calls a tool and returns the whole MCP result (content items such as images included).
+    pub async fn call_raw(&self, tool: &str, arguments: Value) -> CallToolResult {
+        let Value::Object(arguments) = arguments else {
+            panic!("tool arguments must be an object")
+        };
+        let params = CallToolRequestParams::new(tool.to_owned()).with_arguments(arguments);
+        self.service
+            .call_tool(params)
+            .await
+            .unwrap_or_else(|e| panic!("{tool}: protocol error {e}"))
     }
 
     /// Reads a text resource.

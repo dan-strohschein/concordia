@@ -6,12 +6,11 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use concordia_core::id::EntityId;
 use concordia_core::math::Mat4;
-use concordia_scene::builtin::{Transform, world_transform};
 use concordia_terra::World;
 
 use crate::{EntityItems, RenderWorld};
 
-/// Render items by entity (only entities with a `Transform`), in id order.
+/// Render items by entity (entities with a `Transform`, and environments), in id order.
 pub type SceneItems = BTreeMap<EntityId, EntityItems>;
 
 /// What the render side must apply to catch up with a world.
@@ -57,7 +56,7 @@ impl SceneCache {
         }
         let (mut upserts, mut removed) = (Vec::new(), Vec::new());
         for id in dirty {
-            match world_transform(world, id).filter(|_| world.get::<Transform>(id).is_some()) {
+            match crate::extract::placement(world, id) {
                 Some(matrix) => {
                     let items = EntityItems::extract(world, id, matrix);
                     self.link(id, items.parent);
@@ -80,7 +79,7 @@ impl SceneCache {
         self.world = Some(world.identity());
         self.items.clear();
         self.children.clear();
-        for (&id, &matrix) in concordia_scene::builtin::world_transforms(world).iter() {
+        for (id, matrix) in crate::extract::placements(world) {
             let items = EntityItems::extract(world, id, matrix);
             self.link(id, items.parent);
             self.items.insert(id, items);

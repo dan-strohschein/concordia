@@ -107,3 +107,19 @@ fn golden_names_are_validated() {
         .unwrap_err();
     assert!(matches!(err, GoldenError::Name(_)), "{err}");
 }
+
+#[test]
+fn png_bytes_decode_to_the_same_pixels_and_bad_bytes_are_an_error() {
+    let image = gradient(8, 4, 3);
+    let dir = tempfile::tempdir().unwrap();
+    let golden = store(&dir, true, false);
+    golden
+        .check("png", "roundtrip", &image, Tolerance::default())
+        .unwrap();
+    let bytes = std::fs::read(dir.path().join("golden/png/roundtrip.png")).unwrap();
+    assert_eq!(RgbaImage::from_png(&bytes).unwrap(), image);
+    assert!(matches!(
+        RgbaImage::from_png(b"not a png"),
+        Err(GoldenError::Io(_))
+    ));
+}
