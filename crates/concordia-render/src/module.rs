@@ -14,6 +14,14 @@ use concordia_shaders::{SlangToolchain, SlangcCompiler};
 use concordia_terra::SimClock;
 use serde::{Deserialize, Serialize};
 
+use std::collections::BTreeSet;
+
+use concordia_assets::AssetRef;
+
+pub use crate::frame_log::FrameRecord;
+use crate::frame_log::{FrameLog, push_frame, remove_frame, unix_ms};
+use crate::orbit::{OrbitCamera, Preset};
+use crate::thread::{RenderThread, ViewportFrame};
 use crate::{Image, MemoryAssets, RenderError, RenderRequest, RenderWorld, Renderer};
 
 /// Creates the GPU device on first use (so engines start without one).
@@ -37,12 +45,21 @@ impl RenderModule {
     }
 }
 
-/// Engine-lifetime state: the device factory and, after the first capture, the renderer.
+/// Engine-lifetime state: the device factory and, once something renders, the render thread.
 struct RenderState {
     factory: DeviceFactory,
-    renderer: Option<Renderer>,
-    /// The editor's native viewport, once a host attached one.
-    surface: Option<concordia_rhi::Surface>,
+    thread: Option<RenderThread>,
+    /// Whether a host attached the editor's native viewport.
+    surface: bool,
+    /// Meshes and textures already sent to the render thread (it keeps them).
+    shipped: BTreeSet<AssetRef>,
+    /// Recent native-viewport frames (for `viewport.stats`), keyed by frame number.
+    frames: FrameLog,
+    next_frame: u64,
+    /// The editor's camera (`viewport.navigate`).
+    camera: OrbitCamera,
+    /// The native viewport's last size and world, so navigation can re-present it.
+    viewport: Option<(u32, u32, Option<WorldSel>)>,
 }
 
 impl EngineModule for RenderModule {
@@ -62,14 +79,21 @@ impl EngineModule for RenderModule {
             MethodInfo::of::<CaptureScreenshot>(),
             MethodInfo::of::<ViewportPick>(),
             MethodInfo::of::<ViewportPresent>(),
+            MethodInfo::of::<ViewportStats>(),
+            MethodInfo::of::<ViewportNavigate>(),
         ]
     }
 
     fn engine_state(&self) -> Option<Box<dyn std::any::Any + Send>> {
         Some(Box::new(RenderState {
             factory: self.factory.clone(),
-            renderer: None,
-            surface: None,
+            thread: None,
+            surface: false,
+            shipped: BTreeSet::new(),
+            frames: FrameLog::default(),
+            next_frame: 0,
+            camera: OrbitCamera::default(),
+            viewport: None,
         }))
     }
 }
@@ -150,20 +174,16 @@ impl Method for CaptureScreenshot {
         let camera = p.camera.as_ref().map(|c| c.resolve(world)).transpose()?;
         let sim_tick = world.resource::<SimClock>().map_or(0, |c| c.tick.0);
         let snapshot = RenderWorld::extract(world);
-        let mut renderer = take_renderer(engine)?;
         let request = RenderRequest {
             camera,
             view: p.view.clone(),
             width: p.width,
             height: p.height,
         };
-        let rendered = match engine.state_mut::<AssetDb>() {
-            Some(db) => renderer.render(&snapshot, db, &request),
-            None => renderer.render(&snapshot, &mut MemoryAssets::default(), &request),
-        };
-        let frame = renderer.frames();
-        put_renderer(engine, renderer);
-        let image = rendered.map_err(api_error)?;
+        let assets = ship(engine, &snapshot)?;
+        let (image, frame) = render_thread(engine)?
+            .capture(snapshot, assets, request)
+            .map_err(api_error)?;
         let actor = ctx
             .actor
             .as_ref()
@@ -180,24 +200,47 @@ impl Method for CaptureScreenshot {
     }
 }
 
-/// The renderer, created on first use (taken out so assets can be borrowed alongside).
-fn take_renderer(engine: &mut Engine) -> Result<Renderer, ApiError> {
+/// The render thread, started on first use (with its device and renderer).
+fn render_thread(engine: &mut Engine) -> Result<&RenderThread, ApiError> {
     let state = engine
         .state_mut::<RenderState>()
         .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render module has no state"))?;
-    if let Some(renderer) = state.renderer.take() {
-        return Ok(renderer);
+    if state.thread.is_none() {
+        let factory = state.factory.clone();
+        state.thread =
+            Some(RenderThread::spawn(move || make_renderer(&factory)).map_err(api_error)?);
     }
-    let device = (state.factory)().map_err(|e| api_error(RenderError::Gpu(e)))?;
-    let toolchain =
-        SlangToolchain::locate().map_err(|e| api_error(RenderError::Shader(e.to_string())))?;
-    Renderer::new(Arc::from(device), Box::new(SlangcCompiler::new(toolchain))).map_err(api_error)
+    state
+        .thread
+        .as_ref()
+        .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render thread did not start"))
 }
 
-fn put_renderer(engine: &mut Engine, renderer: Renderer) {
-    if let Some(state) = engine.state_mut::<RenderState>() {
-        state.renderer = Some(renderer);
+fn make_renderer(factory: &DeviceFactory) -> Result<Renderer, RenderError> {
+    let device = factory().map_err(RenderError::Gpu)?;
+    let toolchain = SlangToolchain::locate().map_err(|e| RenderError::Shader(e.to_string()))?;
+    Renderer::new(Arc::from(device), Box::new(SlangcCompiler::new(toolchain)))
+}
+
+/// The asset data `world` needs that the render thread has not been sent yet.
+fn ship(engine: &mut Engine, world: &RenderWorld) -> Result<MemoryAssets, ApiError> {
+    let shipped = engine
+        .state_mut::<RenderState>()
+        .map(|s| std::mem::take(&mut s.shipped))
+        .unwrap_or_default();
+    let held = |r: &AssetRef| shipped.contains(r);
+    let resolved = match engine.state_mut::<AssetDb>() {
+        Some(db) => crate::resolve(world, db, &held),
+        None => crate::resolve(world, &mut MemoryAssets::default(), &held),
+    };
+    let mut shipped = shipped;
+    if let Ok(assets) = &resolved {
+        shipped.extend(assets.cached_kinds().cloned());
     }
+    if let Some(state) = engine.state_mut::<RenderState>() {
+        state.shipped = shipped;
+    }
+    resolved.map_err(api_error)
 }
 
 /// Deterministic PNG bytes (RGBA8, default compression).
@@ -341,20 +384,10 @@ pub unsafe fn attach_surface(
     engine: &mut Engine,
     target: concordia_rhi::SurfaceTarget,
 ) -> Result<(), ApiError> {
-    let mut renderer = take_renderer(engine)?;
-    // SAFETY: forwarded from the caller.
-    let created = unsafe { renderer.create_surface(target) };
-    let old = engine
-        .state_mut::<RenderState>()
-        .and_then(|s| s.surface.take());
-    if let Some(old) = old {
-        renderer.destroy_surface(old);
-    }
-    let surface = created.map_err(api_error);
-    put_renderer(engine, renderer);
-    let surface = surface?;
+    // SAFETY: forwarded from the caller (the engine owns the render thread).
+    unsafe { render_thread(engine)?.attach(target) }.map_err(api_error)?;
     if let Some(state) = engine.state_mut::<RenderState>() {
-        state.surface = Some(surface);
+        state.surface = true;
     }
     Ok(())
 }
@@ -378,12 +411,19 @@ pub struct ViewportPresentParams {
     /// Which world: edit (default) or play.
     #[serde(default)]
     pub world: Option<WorldSel>,
+    /// Caller's tag for this view, echoed in `viewport.stats`.
+    #[serde(default)]
+    pub seq: Option<u64>,
+    /// When the input behind this view happened (Unix ms), for input-to-photon latency.
+    #[serde(default)]
+    pub input_time_ms: Option<f64>,
 }
 
 /// `viewport.present` result.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 pub struct ViewportPresentResult {
-    /// False when the display had no free image (the frame was skipped).
+    /// The frame is queued for the render thread, which presents the newest queued view at
+    /// display pace (see `viewport.stats` for what reached the screen).
     pub presented: bool,
 }
 
@@ -399,31 +439,236 @@ impl Method for ViewportPresent {
         p: ViewportPresentParams,
     ) -> Result<ViewportPresentResult, ApiError> {
         check_view(&p.view)?;
-        let surface = engine
-            .state::<RenderState>()
-            .and_then(|s| s.surface)
-            .ok_or_else(|| {
-                ApiError::new(
-                    ApiErrorKind::InvalidRequest,
-                    "no native viewport is attached",
-                )
-                .suggest(["use capture.screenshot (the editor streams it in a browser)".to_owned()])
-            })?;
-        let snapshot = RenderWorld::extract(engine.world(p.world.unwrap_or_default())?);
-        let mut renderer = take_renderer(engine)?;
-        let request = RenderRequest {
-            camera: None,
-            view: Some(p.view.clone()),
+        if !engine.state::<RenderState>().is_some_and(|s| s.surface) {
+            return Err(ApiError::new(
+                ApiErrorKind::InvalidRequest,
+                "no native viewport is attached",
+            )
+            .suggest(["use capture.screenshot (the editor streams it in a browser)".to_owned()]));
+        }
+        let target = PresentTarget {
             width: p.width,
             height: p.height,
+            world: p.world,
+            seq: p.seq,
+            input_time_ms: p.input_time_ms,
         };
-        let presented = match engine.state_mut::<AssetDb>() {
-            Some(db) => renderer.present(&snapshot, db, &request, surface),
-            None => renderer.present(&snapshot, &mut MemoryAssets::default(), &request, surface),
-        };
-        put_renderer(engine, renderer);
-        Ok(ViewportPresentResult {
-            presented: presented.map_err(api_error)?,
+        queue_present(engine, p.view, target)?;
+        Ok(ViewportPresentResult { presented: true })
+    }
+}
+
+/// Where and why a native-viewport frame is drawn.
+struct PresentTarget {
+    width: u32,
+    height: u32,
+    world: Option<WorldSel>,
+    seq: Option<u64>,
+    input_time_ms: Option<f64>,
+}
+
+/// Snapshots the world and queues a frame of `view` on the render thread.
+fn queue_present(engine: &mut Engine, view: crate::View, t: PresentTarget) -> Result<(), ApiError> {
+    let world = RenderWorld::extract(engine.world(t.world.unwrap_or_default())?);
+    let assets = ship(engine, &world)?;
+    let request = RenderRequest {
+        camera: None,
+        view: Some(view),
+        width: t.width,
+        height: t.height,
+    };
+    let (log, id) = queue_record(engine, &t);
+    if let Some(state) = engine.state_mut::<RenderState>() {
+        state.viewport = Some((t.width, t.height, t.world));
+    }
+    let frame = ViewportFrame {
+        world,
+        assets,
+        request,
+        log: log.clone(),
+        id,
+    };
+    if let Err(e) = render_thread(engine).and_then(|t| t.present(frame).map_err(api_error)) {
+        remove_frame(&log, id);
+        return Err(e);
+    }
+    Ok(())
+}
+
+/// Logs a newly queued native-viewport frame.
+fn queue_record(engine: &mut Engine, p: &PresentTarget) -> (FrameLog, u64) {
+    let Some(state) = engine.state_mut::<RenderState>() else {
+        return (FrameLog::default(), 0);
+    };
+    state.next_frame += 1;
+    let record = FrameRecord {
+        seq: p.seq,
+        input_time_ms: p.input_time_ms,
+        queued_ms: unix_ms(std::time::SystemTime::now()),
+        cpu_ms: 0.0,
+        submitted_ms: None,
+        presented_ms: None,
+    };
+    push_frame(&state.frames, state.next_frame, record);
+    (state.frames.clone(), state.next_frame)
+}
+
+/// Recent native-viewport frames: input tag, CPU time, submission and display times.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ViewportStats;
+
+/// `viewport.stats` params.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportStatsParams {
+    /// Empty the record after reading it.
+    #[serde(default)]
+    pub clear: Option<bool>,
+}
+
+/// `viewport.stats` result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ViewportStatsResult {
+    /// Oldest first (at most 4096).
+    pub frames: Vec<FrameRecord>,
+}
+
+impl Method for ViewportStats {
+    const NAME: &'static str = "viewport.stats";
+    const MUTATES: bool = false;
+    type Params = ViewportStatsParams;
+    type Result = ViewportStatsResult;
+
+    fn call(
+        engine: &mut Engine,
+        _: &CallCtx,
+        p: ViewportStatsParams,
+    ) -> Result<ViewportStatsResult, ApiError> {
+        let log = engine
+            .state::<RenderState>()
+            .map(|s| s.frames.clone())
+            .unwrap_or_default();
+        let mut list = log
+            .lock()
+            .map_err(|_| ApiError::new(ApiErrorKind::Internal, "viewport frame log poisoned"))?;
+        let frames = list.iter().map(|(_, f)| f.clone()).collect();
+        if p.clear == Some(true) {
+            list.clear();
+        }
+        Ok(ViewportStatsResult { frames })
+    }
+}
+
+/// Move the editor's camera (orbit, pan, zoom, presets, focus) and return its view; the native
+/// viewport, if attached, is redrawn. Pass no fields to read the current view.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ViewportNavigate;
+
+/// `viewport.navigate` params (applied in order: preset, toggle_ortho, focus, orbit, pan, zoom).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportNavigateParams {
+    /// Jump to a named view.
+    #[serde(default)]
+    pub preset: Option<Preset>,
+    /// Switch between perspective and orthographic.
+    #[serde(default)]
+    pub toggle_ortho: Option<bool>,
+    /// Orbit around this point from now on.
+    #[serde(default)]
+    pub focus: Option<concordia_core::math::Vec3>,
+    /// Orbit by a pointer drag of [dx, dy] pixels.
+    #[serde(default)]
+    pub orbit: Option<[f32; 2]>,
+    /// Pan by a pointer drag of [dx, dy] pixels (needs `height`).
+    #[serde(default)]
+    pub pan: Option<[f32; 2]>,
+    /// Viewport height in pixels, for panning.
+    #[serde(default)]
+    #[reflect(range(min = 1.0, max = 16384.0))]
+    pub height: Option<f32>,
+    /// Zoom steps: positive zooms out.
+    #[serde(default)]
+    pub zoom: Option<f32>,
+    /// Caller's input tag, echoed in `viewport.stats` for the redrawn frame.
+    #[serde(default)]
+    pub seq: Option<u64>,
+    /// When the input happened (Unix ms).
+    #[serde(default)]
+    pub input_time_ms: Option<f64>,
+}
+
+/// `viewport.navigate` result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ViewportNavigateResult {
+    /// The camera's view after the move.
+    pub view: crate::View,
+}
+
+impl Method for ViewportNavigate {
+    const NAME: &'static str = "viewport.navigate";
+    const MUTATES: bool = false;
+    type Params = ViewportNavigateParams;
+    type Result = ViewportNavigateResult;
+
+    fn call(
+        engine: &mut Engine,
+        _: &CallCtx,
+        p: ViewportNavigateParams,
+    ) -> Result<ViewportNavigateResult, ApiError> {
+        Ok(ViewportNavigateResult {
+            view: navigate(engine, &p)?,
         })
     }
+}
+
+/// Applies `p` to the editor camera, redraws the native viewport if one is attached, and returns
+/// the new view (for in-process hosts' native input, and `viewport.navigate`).
+pub fn navigate(engine: &mut Engine, p: &ViewportNavigateParams) -> Result<crate::View, ApiError> {
+    let pan_height = match (p.pan, p.height) {
+        (Some(_), Some(h)) if h.is_finite() && h >= 1.0 => h,
+        (Some(_), _) => {
+            return Err(ApiError::new(
+                ApiErrorKind::InvalidParams,
+                "pan needs the viewport height in pixels (≥ 1)",
+            )
+            .at("/height"));
+        }
+        _ => 1.0,
+    };
+    let state = engine
+        .state_mut::<RenderState>()
+        .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render module has no state"))?;
+    let camera = &mut state.camera;
+    if let Some(preset) = p.preset {
+        camera.preset(preset);
+    }
+    if p.toggle_ortho == Some(true) {
+        camera.ortho = !camera.ortho;
+    }
+    if let Some(point) = p.focus.filter(|v| v.is_finite()) {
+        camera.target = point;
+    }
+    if let Some([dx, dy]) = p.orbit {
+        camera.orbit(dx, dy);
+    }
+    if let Some([dx, dy]) = p.pan {
+        camera.pan(dx, dy, pan_height);
+    }
+    if let Some(steps) = p.zoom {
+        camera.zoom(steps);
+    }
+    let view = camera.view();
+    let redraw = state.surface.then_some(state.viewport).flatten();
+    if let Some((width, height, world)) = redraw {
+        let target = PresentTarget {
+            width,
+            height,
+            world,
+            seq: p.seq,
+            input_time_ms: p.input_time_ms,
+        };
+        queue_present(engine, view.clone(), target)?;
+    }
+    Ok(view)
 }

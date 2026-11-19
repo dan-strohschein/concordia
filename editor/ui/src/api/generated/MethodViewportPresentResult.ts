@@ -5,7 +5,8 @@
  */
 export interface MethodViewportPresentResult {
   /**
-   * False when the display had no free image (the frame was skipped).
+   * The frame is queued for the render thread, which presents the newest queued view at
+   * display pace (see `viewport.stats` for what reached the screen).
    */
   presented: boolean;
 }

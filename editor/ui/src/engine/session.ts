@@ -21,21 +21,44 @@ export class EditorSession {
 
   private constructor(readonly client: EngineClient) {}
 
-  /** Opens a session as `human:local` and subscribes to edit, scene and sim events. */
+  /** Opens a session as `human:local` and subscribes to edit, scene, sim and pending events. */
   static async open(client: EngineClient): Promise<EditorSession> {
     await client.call("session.open", { client: "concordia-editor", actor: EDITOR_ACTOR });
-    await client.call("events.subscribe", { topics: ["edit", "scene", "sim"] });
+    await client.call("events.subscribe", { topics: ["edit", "scene", "sim", "pending"] });
     return new EditorSession(client);
   }
 
   /** All entities with their Name and Parent (for the Outliner). */
   async entities(): Promise<Row[]> {
-    const result = await this.client.call<{ rows: Row[] }>("query.run", {
-      with: [],
-      select: ["Name", "Parent"],
-      limit: 1000,
-    });
-    return result.rows;
+    const rows: Row[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await this.client.call<{ rows: Row[]; next_cursor?: string | null }>("query.run", {
+        with: [],
+        select: ["Name", "Parent"],
+        limit: 1000,
+        ...(cursor === undefined ? {} : { cursor }),
+      });
+      rows.push(...page.rows);
+      cursor = page.next_cursor ?? undefined;
+    } while (cursor !== undefined);
+    return rows;
+  }
+
+  /** The Outliner rows (Name and Parent) of `ids`; `undefined` for entities that are gone. */
+  async entityRows(ids: readonly string[]): Promise<{ id: string; row: Row | undefined }[]> {
+    return Promise.all(
+      ids.map(async (id) => {
+        try {
+          const e = await this.entity(id);
+          const { Name, Parent } = e.components;
+          const components = { ...(Name === undefined ? {} : { Name }), ...(Parent === undefined ? {} : { Parent }) };
+          return { id, row: { id, components } };
+        } catch {
+          return { id, row: undefined };
+        }
+      }),
+    );
   }
 
   entity(id: string): Promise<EntityData> {

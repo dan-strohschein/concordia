@@ -1,6 +1,6 @@
-// The editor's orbit camera (Godot-style) and the projection the engine uses for an explicit
-// `view` (look-at with +Y up, reverse-Z perspective or orthographic), so clicks and gizmos land
-// exactly on what `capture.screenshot` draws.
+// The engine's view (the editor camera itself lives engine-side: `viewport.navigate`) and the
+// projection the engine uses for it (look-at with +Y up, reverse-Z perspective or orthographic),
+// so clicks and gizmos land exactly on what is drawn.
 
 export type Vec3 = [number, number, number];
 
@@ -15,12 +15,7 @@ export interface View {
 
 export type Preset = "front" | "right" | "top" | "iso";
 
-const FOV = (75 * Math.PI) / 180;
-const PITCH_LIMIT = Math.PI / 2 - 0.01;
-const ISO_PITCH = -(35.264 * Math.PI) / 180;
-
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const scale = (a: Vec3, s: number): Vec3 => [a[0] * s, a[1] * s, a[2] * s];
 const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a: Vec3, b: Vec3): Vec3 => [
@@ -64,90 +59,4 @@ export function unitsPerPixel(view: View, height: number): number {
   if ("Orthographic" in view.projection) return view.projection.Orthographic.height / height;
   const distance = Math.hypot(...sub(view.target, view.eye));
   return (2 * distance * Math.tan(view.projection.Perspective.fov_y / 2)) / height;
-}
-
-export interface OrbitState {
-  target: Vec3;
-  yaw: number;
-  pitch: number;
-  distance: number;
-  ortho?: boolean;
-}
-
-/** Where the editor's camera starts. */
-export const DEFAULT_CAMERA: OrbitState = { target: [0, 1, 0], yaw: 0.6, pitch: -0.45, distance: 14 };
-
-/** Orbits a target: middle-drag orbits, Shift+middle-drag pans, the wheel zooms (Godot). */
-export class OrbitCamera {
-  target: Vec3;
-  yaw: number;
-  pitch: number;
-  distance: number;
-  ortho: boolean;
-
-  constructor(state: OrbitState) {
-    this.target = [...state.target];
-    this.yaw = state.yaw;
-    this.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, state.pitch));
-    this.distance = Math.max(0.05, state.distance);
-    this.ortho = state.ortho ?? false;
-  }
-
-  /** The engine `View` for this camera. */
-  view(): View {
-    const dir: Vec3 = [
-      Math.sin(this.yaw) * Math.cos(this.pitch),
-      -Math.sin(this.pitch),
-      Math.cos(this.yaw) * Math.cos(this.pitch),
-    ];
-    const eye = add(this.target, scale(dir, this.distance));
-    const near = Math.max(0.01, this.distance * 0.001);
-    const far = Math.max(1000, this.distance * 100);
-    const projection: View["projection"] = this.ortho
-      ? { Orthographic: { height: 2 * this.distance * Math.tan(FOV / 2), near: 0, far: far + this.distance } }
-      : { Perspective: { fov_y: FOV, near, far } };
-    return { eye, target: [...this.target], projection };
-  }
-
-  orbit(dx: number, dy: number): void {
-    this.yaw -= dx * 0.005;
-    this.pitch = Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, this.pitch - dy * 0.005));
-  }
-
-  pan(dx: number, dy: number, viewportHeight: number): void {
-    const view = this.view();
-    const { right, up } = basis(view);
-    const units = unitsPerPixel(view, Math.max(1, viewportHeight));
-    this.target = add(this.target, add(scale(right, -dx * units), scale(up, dy * units)));
-  }
-
-  /** Positive steps zoom out, negative zoom in. */
-  zoom(steps: number): void {
-    this.distance = Math.max(0.05, Math.min(1e5, this.distance * Math.pow(1.1, steps)));
-  }
-
-  focus(point: Vec3): void {
-    this.target = [...point];
-  }
-
-  toggleOrtho(): void {
-    this.ortho = !this.ortho;
-  }
-
-  preset(name: Preset): void {
-    switch (name) {
-      case "front":
-        [this.yaw, this.pitch] = [0, 0];
-        break;
-      case "right":
-        [this.yaw, this.pitch] = [Math.PI / 2, 0];
-        break;
-      case "top":
-        [this.yaw, this.pitch] = [0, -PITCH_LIMIT];
-        break;
-      case "iso":
-        [this.yaw, this.pitch, this.ortho] = [Math.PI / 4, ISO_PITCH, true];
-        break;
-    }
-  }
 }

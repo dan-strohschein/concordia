@@ -49,6 +49,14 @@ export interface MethodViewportPresentParams {
    * Height in physical pixels.
    */
   height: number;
+  /**
+   * When the input behind this view happened (Unix ms), for input-to-photon latency.
+   */
+  input_time_ms?: null | number;
+  /**
+   * Caller's tag for this view, echoed in `viewport.stats`.
+   */
+  seq?: null | number;
   view: View;
   /**
    * Width in physical pixels.

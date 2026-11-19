@@ -67,6 +67,11 @@ impl EnvironmentCache {
         Ok(&self.envs[map])
     }
 
+    /// Whether the environment for `map` is already prefiltered and on the GPU.
+    pub(crate) fn holds(&self, map: &AssetRef) -> bool {
+        self.envs.contains_key(map)
+    }
+
     pub(crate) fn destroy(&mut self, device: &dyn Device) {
         if let Some((lut, _)) = self.lut.take() {
             device.destroy_texture(lut);

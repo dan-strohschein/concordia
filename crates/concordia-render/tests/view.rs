@@ -241,3 +241,137 @@ fn viewport_present_draws_into_the_attached_layer() {
     assert!(presented >= 4, "{presented}");
     drop(h);
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn viewport_stats_record_each_presented_frame_with_its_input_tag() {
+    let Some(mut h) = Harness::gpu() else { return };
+    h.two_cubes();
+    let layer = objc2_quartz_core::CAMetalLayer::new();
+    let target = concordia_rhi::SurfaceTarget::MetalLayer(std::ptr::NonNull::from(&*layer).cast());
+    // SAFETY: the layer outlives the engine (dropped after `h`).
+    unsafe { concordia_render::attach_surface(&mut h.engine, target) }.unwrap();
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64()
+        * 1000.0;
+    // One frame at a time: frames queued faster than they render are coalesced (newest wins).
+    for seq in 1..=3u64 {
+        h.ok("viewport.present", json!({"view": front_view(), "width": 64, "height": 48, "seq": seq, "input_time_ms": now_ms}));
+        wait_until_submitted(&mut h, seq);
+    }
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let stats = h.ok("viewport.stats", json!({"clear": true}));
+    let frames = stats["frames"].as_array().unwrap();
+    assert_eq!(
+        frames
+            .iter()
+            .map(|f| f["seq"].as_u64().unwrap())
+            .collect::<Vec<_>>(),
+        [1, 2, 3],
+        "{stats}"
+    );
+    for f in frames {
+        assert!(f["cpu_ms"].as_f64().unwrap() > 0.0, "{f}");
+        assert!(f["submitted_ms"].as_f64().unwrap() >= now_ms, "{f}");
+        assert_eq!(f["input_time_ms"].as_f64(), Some(now_ms));
+    }
+    assert!(
+        h.ok("viewport.stats", json!({}))["frames"]
+            .as_array()
+            .unwrap()
+            .is_empty(),
+        "clear empties the record"
+    );
+    drop(h);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn queued_viewport_frames_coalesce_to_the_newest_view() {
+    let Some(mut h) = Harness::gpu() else { return };
+    h.two_cubes();
+    let layer = objc2_quartz_core::CAMetalLayer::new();
+    let target = concordia_rhi::SurfaceTarget::MetalLayer(std::ptr::NonNull::from(&*layer).cast());
+    // SAFETY: the layer outlives the engine (dropped after `h`).
+    unsafe { concordia_render::attach_surface(&mut h.engine, target) }.unwrap();
+    h.ok(
+        "viewport.present",
+        json!({"view": front_view(), "width": 64, "height": 48}),
+    );
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    h.ok("viewport.stats", json!({"clear": true}));
+    for seq in 1..=20u64 {
+        h.ok(
+            "viewport.present",
+            json!({"view": front_view(), "width": 2048, "height": 2048, "seq": seq}),
+        );
+    }
+    let mut seqs = Vec::new();
+    for _ in 0..100 {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let stats = h.ok("viewport.stats", json!({}));
+        seqs = stats["frames"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|f| !f["submitted_ms"].is_null())
+            .map(|f| f["seq"].as_u64().unwrap())
+            .collect();
+        if seqs.last() == Some(&20) {
+            break;
+        }
+    }
+    assert_eq!(
+        seqs.last(),
+        Some(&20),
+        "the newest view is always presented: {seqs:?}"
+    );
+    assert!(seqs.windows(2).all(|w| w[0] < w[1]), "in order: {seqs:?}");
+    assert!(
+        seqs.len() < 20,
+        "stale views are skipped while the GPU is busy, not rendered on the engine thread: {seqs:?}"
+    );
+    drop(h);
+}
+
+/// Polls `viewport.stats` until frame `seq` has been rendered and submitted (up to 10 s).
+#[cfg(target_os = "macos")]
+fn wait_until_submitted(h: &mut Harness, seq: u64) {
+    for _ in 0..200 {
+        let stats = h.ok("viewport.stats", json!({}));
+        let done = stats["frames"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["seq"] == seq && !f["submitted_ms"].is_null());
+        if done {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    panic!("frame {seq} never rendered");
+}
+
+#[test]
+fn viewport_navigate_moves_the_engine_side_editor_camera() {
+    let mut h = Harness::new();
+    let start = h.ok("viewport.navigate", json!({}))["view"].clone();
+    let orbited = h.ok("viewport.navigate", json!({"orbit": [40.0, 0.0]}))["view"].clone();
+    assert_ne!(start["eye"], orbited["eye"], "orbiting moves the eye");
+    assert_eq!(start["target"], orbited["target"]);
+    let top = h.ok("viewport.navigate", json!({"preset": "top"}))["view"].clone();
+    assert!(top["eye"][1].as_f64().unwrap() > top["target"][1].as_f64().unwrap());
+    let iso = h.ok("viewport.navigate", json!({"preset": "iso"}));
+    assert!(
+        iso["view"]["projection"]["Orthographic"].is_object(),
+        "{iso}"
+    );
+    let focused = h.ok("viewport.navigate", json!({"focus": [3.0, 0.0, 0.0]}))["view"].clone();
+    assert_eq!(focused["target"], json!([3.0, 0.0, 0.0]));
+    let err = h
+        .call("viewport.navigate", json!({"pan": [1.0, 1.0], "height": 0}))
+        .unwrap_err();
+    assert_eq!(err.kind, concordia_api::ApiErrorKind::InvalidParams);
+}

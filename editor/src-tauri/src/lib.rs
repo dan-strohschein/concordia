@@ -1,6 +1,8 @@
 //! The Concordia editor shell: hosts an engine in-process for the editor UI (ADR-0004, ADR-0043).
 //! The UI is just another Engine API client; this crate holds no editing logic.
 
+pub mod bench;
+pub mod input;
 #[cfg(target_os = "macos")]
 pub mod native;
 
@@ -41,6 +43,14 @@ impl std::fmt::Debug for EngineHost {
 impl EngineHost {
     /// Loads `project` (its modules and main scene) and starts the API server.
     pub fn start(project: &Path) -> Result<Self, HostError> {
+        Self::start_with_log(project, None)
+    }
+
+    /// [`EngineHost::start`], serving `log.tail` from `log_ring` (the process's log capture).
+    pub fn start_with_log(
+        project: &Path,
+        log_ring: Option<std::sync::Arc<concordia_core::log::LogRing>>,
+    ) -> Result<Self, HostError> {
         if !project.join("concordia.toml").is_file() {
             return Err(HostError::Project(format!(
                 "no concordia.toml in {}; create a project with `concordia new`",
@@ -49,6 +59,7 @@ impl EngineHost {
         }
         let loaded = Project::load(project).map_err(|e| HostError::Project(e.to_string()))?;
         let mut config = EngineConfig::new(project);
+        config.log_ring = log_ring;
         config.modules = loaded
             .modules()
             .map_err(|e| HostError::Project(e.to_string()))?;
@@ -100,26 +111,56 @@ impl EngineHost {
 
     /// Calls a method on a fresh shell session (actor `tool:editor-shell`); errors as text.
     pub fn call(&self, method: &str, params: Value) -> Result<Value, String> {
-        self.runtime.block_on(async {
-            let session = self.handle.open_session().await.map_err(|e| e.message)?;
-            let opened = self
-                .handle
-                .call(
-                    session,
-                    "session.open",
-                    json!({"client": "editor-shell", "actor": "tool:editor-shell"}),
-                )
-                .await;
-            let result = match opened {
-                Ok(_) => self
-                    .handle
-                    .call(session, method, params)
-                    .await
-                    .map_err(|e| e.message),
-                Err(e) => Err(e.message),
-            };
-            self.handle.close_session(session);
-            result
-        })
+        self.session()?.call(method, params)
+    }
+
+    /// Calls `method` once per params, in order, on one shell session.
+    pub fn call_each(
+        &self,
+        method: &str,
+        params: impl IntoIterator<Item = Value>,
+    ) -> Result<Vec<Value>, String> {
+        let session = self.session()?;
+        params
+            .into_iter()
+            .map(|p| session.call(method, p))
+            .collect()
+    }
+
+    /// Opens a shell session (actor `tool:editor-shell`), closed when dropped.
+    pub fn session(&self) -> Result<ShellSession<'_>, String> {
+        let id = self
+            .runtime
+            .block_on(self.handle.open_session())
+            .map_err(|e| e.message)?;
+        let session = ShellSession { host: self, id };
+        session.call(
+            "session.open",
+            json!({"client": "editor-shell", "actor": "tool:editor-shell"}),
+        )?;
+        Ok(session)
+    }
+}
+
+/// One API session of the shell; blocking calls.
+pub struct ShellSession<'a> {
+    host: &'a EngineHost,
+    id: concordia_core::id::SessionId,
+}
+
+impl ShellSession<'_> {
+    /// Calls a method on this session; errors as text.
+    pub fn call(&self, method: &str, params: Value) -> Result<Value, String> {
+        let handle = &self.host.handle;
+        self.host
+            .runtime
+            .block_on(handle.call(self.id, method, params))
+            .map_err(|e| e.message)
+    }
+}
+
+impl Drop for ShellSession<'_> {
+    fn drop(&mut self) {
+        self.host.handle.close_session(self.id);
     }
 }

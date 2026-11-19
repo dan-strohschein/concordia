@@ -94,7 +94,9 @@ test("step_button_advances_sim_and_viewport_image_changes", async ({ page, engin
 });
 
 async function viewportPixel(page: Page, engine: Engine, name: string): Promise<{ x: number; y: number; id: string }> {
-  const { DEFAULT_CAMERA, OrbitCamera, project } = await import("../../src/viewport/camera");
+  const { project } = await import("../../src/viewport/camera");
+  // The editor camera lives in the engine; read its current view.
+  const { view } = await engine.agent.call<{ view: import("../../src/viewport/camera").View }>("viewport.navigate", {});
   const id = (await engine.idsByName())[name] ?? "";
   const t = await engine.agent.call<{ value: { translation: [number, number, number] } }>("component.get", {
     entity: id,
@@ -102,12 +104,7 @@ async function viewportPixel(page: Page, engine: Engine, name: string): Promise<
   });
   const box = await page.getByTestId("viewport").boundingBox();
   if (!box) throw new Error("no viewport");
-  const p = project(
-    new OrbitCamera(DEFAULT_CAMERA).view(),
-    t.value.translation,
-    Math.round(box.width),
-    Math.round(box.height),
-  );
+  const p = project(view, t.value.translation, Math.round(box.width), Math.round(box.height));
   if (!p) throw new Error(`${name} is not in view`);
   return { x: box.x + p[0], y: box.y + p[1], id };
 }
@@ -132,7 +129,11 @@ test("gizmo_drag_moves_along_its_axis_as_one_undo_step", async ({ page, engine }
   if (!start) throw new Error("no x handle");
   await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
   await page.mouse.down();
+  const image = page.getByRole("img", { name: "Viewport" });
+  const still = await image.getAttribute("src");
   for (let i = 1; i <= 8; i++) await page.mouse.move(start.x + start.width / 2 + i * 10, start.y + start.height / 2);
+  // The viewport follows the drag live, before the transaction commits.
+  await expect.poll(() => image.getAttribute("src")).not.toBe(still);
   await page.mouse.up();
   await expect.poll(() => translationX(engine, id)).not.toBeCloseTo(before, 1);
   await page.getByRole("tree", { name: "Scene" }).click();

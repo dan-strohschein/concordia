@@ -36,4 +36,4 @@ pub use pipeline::{
 };
 pub use resource::{BufferDesc, BufferUsage, HeapDesc, MemoryLocation, TextureDesc, TextureUsage};
 pub use slots::Slots;
-pub use surface::SurfaceTarget;
+pub use surface::{Present, PresentedCallback, SurfaceTarget};

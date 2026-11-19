@@ -28,6 +28,11 @@ function App() {
       .then((t) => EditorSession.open(new EngineClient(t)))
       .then(setSession, (e: unknown) => setError(String(e)));
   }, [url]);
+  useEffect(() => {
+    const bench = window.__CONCORDIA_BENCH__;
+    if (session === undefined || url === undefined || bench === undefined) return;
+    void import("./bench/driver").then((d) => d.runBench(url, bench.frames));
+  }, [session, url]);
   if (url === undefined) {
     return (
       <p style={{ color: "#f88", padding: 16, font: "13px system-ui" }}>

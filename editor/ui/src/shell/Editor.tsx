@@ -81,7 +81,10 @@ export function Editor({ session }: { session: EditorSession }) {
         </div>
       </header>
       <div style={{ display: "grid", gridTemplateRows: "1fr 1fr", minHeight: 0 }}>
-        <section style={dock} aria-label="Scene dock">
+        <section
+          style={{ ...dock, display: "flex", flexDirection: "column", overflow: "hidden" }}
+          aria-label="Scene dock"
+        >
           <div style={title}>Scene</div>
           <Outliner session={session} selected={selected} onSelect={setSelected} />
         </section>

@@ -119,3 +119,11 @@ editor-shell-test:
     cd editor/ui && pnpm build
     cargo deny --manifest-path editor/src-tauri/Cargo.toml --config editor/src-tauri/deny.toml check
     cargo test --manifest-path editor/src-tauri/Cargo.toml
+
+# Editor performance bench: release build, scenes of +0, +1k and +10k entities (macOS; the
+# window stays on top for about a minute per size). Reports land in target/bench/<label>-<n>.json.
+editor-bench label="current":
+    cd editor/ui && pnpm build
+    cargo build --release --manifest-path editor/src-tauri/Cargo.toml
+    for n in 0 1000 10000; do editor/src-tauri/target/release/concordia-editor --project examples/m1-physics-stack --bench target/bench/{{label}}-$n.json --bench-entities $n || exit 1; done
+    python3 -I tools/bench/summary.py target/bench/{{label}}-0.json target/bench/{{label}}-1000.json target/bench/{{label}}-10000.json

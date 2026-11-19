@@ -9,19 +9,22 @@ mod environment;
 mod error;
 mod extract;
 mod frame;
+mod frame_log;
 mod gpu;
 pub mod graph;
 pub mod ibl;
 mod lighting;
 mod module;
+mod orbit;
 mod pipelines;
 mod renderer;
 pub mod shadow;
 mod shadow_pass;
+mod thread;
 pub mod tonemap;
 mod view;
 
-pub use assets::{AssetSource, MemoryAssets};
+pub use assets::{AssetSource, MemoryAssets, resolve};
 pub use camera::view_matrix;
 pub use components::{
     Camera, DirectionalLight, Environment, Msaa, PointLight, Projection, SpotLight, Tonemap,
@@ -32,8 +35,9 @@ pub use frame::DrawPush;
 pub use lighting::candela;
 pub use module::{
     CaptureScreenshot, CaptureScreenshotParams, CaptureScreenshotResult, DeviceFactory,
-    RenderModule, attach_surface,
+    RenderModule, ViewportNavigateParams, attach_surface, navigate,
 };
+pub use orbit::{OrbitCamera, Preset};
 pub use pipelines::shader_dir;
 pub use renderer::{Image, MAX_SIZE, RenderRequest, RenderStats, Renderer};
 pub use shadow_pass::ShadowPush;

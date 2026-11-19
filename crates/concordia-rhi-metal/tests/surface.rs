@@ -5,8 +5,8 @@
 use std::ptr::NonNull;
 
 use concordia_rhi::{
-    ClearValue, ColorAttachment, Command, CommandList, Device, Format, LoadOp, RenderPassDesc,
-    RhiError, StoreOp, SurfaceTarget,
+    ClearValue, ColorAttachment, Command, CommandList, Device, Format, LoadOp, Present,
+    RenderPassDesc, RhiError, StoreOp, SurfaceTarget,
 };
 use concordia_testkit::gpu_required;
 use objc2::rc::Retained;
@@ -61,7 +61,9 @@ fn acquire_clear_present_cycles_without_leaking_handles() {
             .acquire(surface, 64, 48)
             .unwrap()
             .expect("a drawable");
-        device.present(surface, &clear(texture)).unwrap();
+        device
+            .present(surface, Present::new(&clear(texture)))
+            .unwrap();
         assert!(
             device.texture_index(texture).is_err(),
             "the drawable's handle is released after present"
@@ -84,7 +86,7 @@ fn surface_misuse_is_reported() {
     // SAFETY: as above.
     let surface = unsafe { device.create_surface(target(&layer), Format::Bgra8UnormSrgb) }.unwrap();
     assert!(matches!(
-        device.present(surface, &CommandList::new("nothing acquired")),
+        device.present(surface, Present::new(&CommandList::new("nothing acquired"))),
         Err(RhiError::Invalid { .. })
     ));
     assert!(matches!(
@@ -96,6 +98,91 @@ fn surface_misuse_is_reported() {
     assert!(
         matches!(rgba, Err(RhiError::Unsupported(_))),
         "layers only take BGRA8 (sRGB or not) or RGBA16F"
+    );
+    device.destroy_surface(surface);
+}
+
+#[test]
+fn present_signals_timelines_and_reports_presentation() {
+    let Some(device) = device() else { return };
+    let layer = layer();
+    // SAFETY: the layer outlives the surface (destroyed below).
+    let surface = unsafe { device.create_surface(target(&layer), Format::Bgra8UnormSrgb) }.unwrap();
+    let timeline = device.create_timeline(0).unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let texture = device
+        .acquire(surface, 32, 32)
+        .unwrap()
+        .expect("a drawable");
+    let present = Present {
+        commands: &clear(texture),
+        signal: &[(timeline, 7)],
+        on_presented: Some(Box::new(move |at| tx.send(at).unwrap())),
+    };
+    device.present(surface, present).unwrap();
+    device
+        .wait_timeline(timeline, 7, std::time::Duration::from_secs(5))
+        .unwrap();
+    assert_eq!(
+        device.timeline_value(timeline).unwrap(),
+        7,
+        "the frame's timeline signal fires"
+    );
+    let at = rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("the presented callback runs");
+    if let Some(time) = at {
+        let age = std::time::SystemTime::now()
+            .duration_since(time)
+            .unwrap_or_default();
+        assert!(
+            age < std::time::Duration::from_secs(5),
+            "presentation time is recent wall-clock time: {age:?}"
+        );
+    }
+    device.destroy_surface(surface);
+}
+
+/// The engine renders on a long-lived thread: per-frame Metal objects must not pile up in a
+/// never-drained autorelease pool (they retain every resource the frame used).
+#[test]
+fn frame_resources_are_freed_on_a_long_lived_thread() {
+    let Some(device) = device() else { return };
+    let layer = layer();
+    // SAFETY: the layer outlives the surface (destroyed below).
+    let surface = unsafe { device.create_surface(target(&layer), Format::Bgra8UnormSrgb) }.unwrap();
+    let side = std::num::NonZeroU32::new(2048).unwrap();
+    let desc = concordia_rhi::TextureDesc {
+        width: side,
+        height: side,
+        mip_levels: std::num::NonZeroU32::MIN,
+        samples: concordia_rhi::SampleCount::X1,
+        format: Format::Rgba16Float,
+        usage: concordia_rhi::TextureUsage::RENDER_TARGET,
+        label: "frame target".into(),
+    };
+    let frame = |device: &dyn Device| {
+        let scratch = device.create_texture(&desc).unwrap();
+        let mut list = clear(scratch);
+        if let Some(image) = device.acquire(surface, 256, 256).unwrap() {
+            list.commands.extend(clear(image).commands);
+            device.present(surface, Present::new(&list)).unwrap();
+        }
+        device.wait_idle().unwrap();
+        device.destroy_texture(scratch);
+    };
+    frame(device.as_ref());
+    let before = device
+        .allocated_bytes()
+        .expect("Metal reports allocated bytes");
+    for _ in 0..40 {
+        frame(device.as_ref());
+    }
+    let grown = device.allocated_bytes().unwrap().saturating_sub(before);
+    assert!(
+        grown < 128 << 20,
+        "40 frames of a 32 MB target grew allocations by {} MB",
+        grown >> 20
     );
     device.destroy_surface(surface);
 }
