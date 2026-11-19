@@ -14,7 +14,11 @@ use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use concordia_api::{ApiError, Engine, EngineConfig, EngineHandle, EngineModule, MethodRegistry};
+use concordia_api::transport::connection::HostKind;
+use concordia_api::{
+    ApiError, ApiErrorKind, EngineConfig, EngineLink, EngineModule, MethodRegistry,
+};
+use concordia_app::{AppError, SharedEngine};
 use concordia_command::Actor;
 use concordia_core::id::SessionId;
 use concordia_core::log::{LogConfig, LogError, LogRing};
@@ -27,13 +31,13 @@ pub struct Options {
     pub project: PathBuf,
     /// Default actor for every tool call (never `human:*`).
     pub actor: Actor,
-    /// Scene to open at startup (project-relative).
+    /// Scene to open at startup (project-relative) unless the shared engine already has one open.
     pub scene: Option<String>,
-    /// Seed for reproducible ids (tests and gates).
+    /// Seed for reproducible ids when this server hosts the engine (tests and gates).
     pub deterministic_ids: Option<u64>,
-    /// Job system threads (default: all cores).
+    /// Job system threads when this server hosts the engine (default: all cores).
     pub threads: Option<NonZeroUsize>,
-    /// Log ring served by `log_tail`.
+    /// Log ring served by `log_tail` when this server hosts the engine.
     pub log_ring: Option<Arc<LogRing>>,
     /// Engine modules after the core module; their methods become tools (ADR-0046).
     pub modules: Vec<Arc<dyn EngineModule>>,
@@ -55,6 +59,17 @@ impl Options {
             studio: None,
         }
     }
+
+    fn engine_config(&self) -> EngineConfig {
+        let mut config = EngineConfig::new(&self.project);
+        config.deterministic_ids = self.deterministic_ids;
+        config.log_ring = self.log_ring.clone();
+        config.modules = self.modules.clone();
+        if let Some(threads) = self.threads {
+            config.threads = threads;
+        }
+        config
+    }
 }
 
 /// The server could not start.
@@ -68,52 +83,134 @@ pub enum StartError {
     /// The engine rejected the configuration or the startup scene.
     #[error("engine: {0}")]
     Engine(#[from] ApiError),
+    /// The project's shared engine could not be attached or hosted (ADR-0082).
+    #[error("{0}")]
+    Shared(#[from] AppError),
 }
 
-/// A running engine plus the session every MCP call uses.
+/// The project's shared engine plus the session plain (unstamped) tool calls use.
+#[derive(Debug)]
+pub(crate) struct Connection {
+    engine: SharedEngine,
+    base: SessionId,
+}
+
+impl Connection {
+    pub(crate) fn link(&self) -> &dyn EngineLink {
+        self.engine.link()
+    }
+
+    pub(crate) fn base(&self) -> SessionId {
+        self.base
+    }
+}
+
+/// The MCP server: tools over the project's shared engine (ADR-0080, ADR-0082).
 #[derive(Debug, Clone)]
 pub struct ConcordiaServer {
-    handle: EngineHandle,
-    session: SessionId,
-    studio: Option<Arc<studio::StudioGate>>,
+    inner: Arc<Inner>,
+}
+
+#[derive(Debug)]
+struct Inner {
+    options: Options,
+    methods: MethodRegistry,
+    connection: tokio::sync::Mutex<Option<Arc<Connection>>>,
+    studio: Option<studio::StudioGate>,
 }
 
 impl ConcordiaServer {
-    /// Starts an engine thread and opens a session (and the startup scene, if any).
+    /// Attaches to the project's live engine or hosts one (publishing `.concordia/headless.json`),
+    /// then opens a session (and the startup scene, if any).
     pub async fn start(options: Options) -> Result<Self, StartError> {
         if options.actor.is_human() {
             return Err(StartError::HumanActor(options.actor));
         }
-        let project = options.project.clone();
-        let mut config = EngineConfig::new(&project);
-        config.deterministic_ids = options.deterministic_ids;
-        config.log_ring = options.log_ring;
-        config.modules = options.modules;
-        if let Some(threads) = options.threads {
-            config.threads = threads;
-        }
-        let handle = Engine::new(config)?.spawn();
-        let session = handle.open_session().await?;
-        let open = json!({ "client": "mcp", "actor": options.actor.to_string() });
-        handle.call(session, "session.open", open).await?;
-        if let Some(scene) = options.scene {
-            handle
-                .call(session, "scene.open", json!({ "path": scene }))
-                .await?;
-        }
+        let methods = MethodRegistry::with_core(&options.modules)?;
+        let connection = connect(&options).await?;
         let studio = options
             .studio
-            .map(|dir| Arc::new(studio::StudioGate::new(&options.project, &dir)));
+            .as_ref()
+            .map(|dir| studio::StudioGate::new(&options.project, dir));
         Ok(Self {
-            handle,
-            session,
-            studio,
+            inner: Arc::new(Inner {
+                options,
+                methods,
+                connection: tokio::sync::Mutex::new(Some(Arc::new(connection))),
+                studio,
+            }),
         })
     }
 
     /// Every method the engine serves; one tool each, except `session.open`.
     pub(crate) fn methods(&self) -> &MethodRegistry {
-        self.handle.methods()
+        &self.inner.methods
+    }
+
+    pub(crate) fn studio(&self) -> Option<&studio::StudioGate> {
+        self.inner.studio.as_ref()
+    }
+
+    /// The current connection; after the host exited, attaches or hosts again.
+    pub(crate) async fn connection(&self) -> Result<Arc<Connection>, ApiError> {
+        let mut current = self.inner.connection.lock().await;
+        if let Some(connection) = current.as_ref() {
+            return Ok(Arc::clone(connection));
+        }
+        let connection = Arc::new(
+            connect(&self.inner.options)
+                .await
+                .map_err(reconnect_error)?,
+        );
+        tracing::info!(
+            target: "concordia::mcp",
+            host = %connection.engine.info().host,
+            pid = connection.engine.info().pid,
+            "reconnected to the project's engine"
+        );
+        *current = Some(Arc::clone(&connection));
+        Ok(connection)
+    }
+
+    /// Drops `connection` after its host exited, so the next call reconnects.
+    pub(crate) async fn forget_if_exited(&self, connection: &Arc<Connection>, error: &ApiError) {
+        if error.kind != ApiErrorKind::EngineExited {
+            return;
+        }
+        let mut current = self.inner.connection.lock().await;
+        if current.as_ref().is_some_and(|c| Arc::ptr_eq(c, connection)) {
+            *current = None;
+            if let Some(gate) = self.studio() {
+                gate.forget_sessions();
+            }
+        }
+    }
+}
+
+/// Attaches or hosts, opens the base session, and opens the startup scene if none is open.
+async fn connect(options: &Options) -> Result<Connection, StartError> {
+    let engine = SharedEngine::attach_or_host(options.engine_config(), HostKind::Mcp).await?;
+    let link = engine.link();
+    let base = link.open_session().await?;
+    let open = json!({ "client": "mcp", "actor": options.actor.to_string() });
+    link.call(base, "session.open", open).await?;
+    if let Some(scene) = &options.scene {
+        let none_open = matches!(
+            link.call(base, "scene.info", json!({})).await,
+            Err(e) if e.kind == ApiErrorKind::NoSceneOpen
+        );
+        if none_open {
+            link.call(base, "scene.open", json!({ "path": scene }))
+                .await?;
+        }
+    }
+    Ok(Connection { engine, base })
+}
+
+fn reconnect_error(error: StartError) -> ApiError {
+    match error {
+        StartError::Engine(e) => e,
+        other => ApiError::new(ApiErrorKind::EngineExited, other.to_string()),
     }
 }
 

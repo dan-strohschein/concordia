@@ -11,6 +11,7 @@ publish.workspace = true
 [dependencies]
 blake3.workspace = true
 glam.workspace = true
+libc = "0.2.191"
 rand_chacha.workspace = true
 rand_core.workspace = true
 rayon.workspace = true

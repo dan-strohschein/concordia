@@ -169,3 +169,30 @@ fn studio_error_kinds_have_their_own_codes() {
         ]
     );
 }
+
+#[test]
+fn errors_round_trip_through_jsonrpc_with_kind_and_data() {
+    let err = ApiError::new(ApiErrorKind::TxnConflict, "held by agent:a#1")
+        .suggest(["retry after agent:a#1 commits".to_owned()])
+        .at("/txn")
+        .see("concordia://docs/agent-guide")
+        .with("holder", json!("agent:a#1"));
+    let back = ApiError::from_jsonrpc(&err.to_jsonrpc());
+    assert_eq!(back, err);
+    for kind in ApiErrorKind::ALL {
+        let err = ApiError::from_kind(kind);
+        assert_eq!(ApiError::from_jsonrpc(&err.to_jsonrpc()).kind, kind);
+    }
+    let foreign = ApiError::from_jsonrpc(&json!({"code": -1, "message": "odd"}));
+    assert_eq!(
+        (foreign.kind, foreign.message.as_str()),
+        (ApiErrorKind::Internal, "odd")
+    );
+}
+
+#[test]
+fn engine_exited_has_its_own_code_and_a_reconnect_hint() {
+    let err = ApiError::from_kind(ApiErrorKind::EngineExited);
+    assert_eq!((err.code(), err.data.kind), (-32017, "EngineExited"));
+    assert!(err.data.suggestions[0].contains("reconnect"), "{err:?}");
+}

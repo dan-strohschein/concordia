@@ -2,6 +2,7 @@
 
 use std::any::Any;
 use std::fmt;
+use std::sync::Arc;
 
 use concordia_reflect::{RegistryError, TypeRegistry};
 use concordia_scene::builtin;
@@ -60,6 +61,14 @@ impl fmt::Debug for PlaySetup {
             .field("state", &self.state.is_some())
             .finish()
     }
+}
+
+/// The core module followed by `modules`: every engine's module list.
+pub(crate) fn with_core(modules: &[Arc<dyn EngineModule>]) -> Vec<Arc<dyn EngineModule>> {
+    let core: Arc<dyn EngineModule> = Arc::new(CoreModule);
+    std::iter::once(core)
+        .chain(modules.iter().cloned())
+        .collect()
 }
 
 /// The M0 built-ins: `Name`, `Transform`, `Parent`, `Velocity`, `integrate_velocity` and the core methods.

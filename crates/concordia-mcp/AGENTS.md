@@ -5,7 +5,7 @@ The MCP server (`concordia-mcp`, also `concordia mcp`): a thin rmcp adapter that
 
 ## Public entry points
 - `run(Args)`: logging to stderr, then serve MCP on stdio (shared by both binaries)
-- `ConcordiaServer::start(Options)` and its rmcp `ServerHandler` impl (in-process tests serve it over a duplex pipe)
+- `ConcordiaServer::start(Options)` (attaches to the project's live engine or hosts and publishes one, ADR-0082) and its rmcp `ServerHandler` impl (in-process tests serve it over a duplex pipe)
 - `Options` (incl. `modules`), `Args`, `StartError`
 
 ## Invariants
@@ -22,6 +22,7 @@ The MCP server (`concordia-mcp`, also `concordia mcp`): a thin rmcp adapter that
   - scene and asset writes are checked against the role's paths;
   - calls without a stamp are read-only;
   - per-task budgets block the task for a human when exceeded.
+- **Shared engine** (ADR-0082): the server never starts a private engine. After the host exits, the failing call returns `EngineExited` and the next call attaches or hosts again (agent sessions are reopened; slots are kept). `--scene` opens only if the engine has no scene open. `deterministic_ids`, `threads` and `log_ring` apply only when this server hosts.
 - No API key or environment variable is required (tested with a cleared environment).
 
 ## How to test
@@ -41,7 +42,7 @@ The MCP server (`concordia-mcp`, also `concordia mcp`): a thin rmcp adapter that
 - Model Context Protocol specification (2025-11-25 and 2026-07-28); `rmcp` 3.11 documentation and source.
 
 ## Status
-M0 phase 0.7 complete.
+M0 phase 0.7 complete; M3 phases 3.5 (Studio) and 3.5b (shared engine).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

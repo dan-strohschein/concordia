@@ -47,7 +47,7 @@ impl Slots {
     ) -> Result<NonZeroU32, StudioError> {
         self.update(|table| {
             let slots = table.entry(role.to_owned()).or_default();
-            slots.retain(|_, h| alive(h.pid));
+            slots.retain(|_, h| concordia_core::process::alive(h.pid));
             if let Some((n, _)) = slots.iter().find(|(_, h)| h.agent == agent) {
                 return NonZeroU32::new(*n).ok_or_else(|| StudioError::invalid("slot 0"));
             }
@@ -143,22 +143,4 @@ fn read_all(file: &mut File) -> std::io::Result<String> {
 /// A missing or unreadable table is empty (slots are runtime state, safe to rebuild).
 fn parse(text: &str) -> Table {
     serde_json::from_str(text).unwrap_or_default()
-}
-
-/// True if process `pid` exists.
-fn alive(pid: u32) -> bool {
-    #[cfg(unix)]
-    {
-        let Ok(pid) = libc::pid_t::try_from(pid) else {
-            return false;
-        };
-        // SAFETY: signal 0 only checks that the process exists; nothing is delivered.
-        let result = unsafe { libc::kill(pid, 0) };
-        result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = pid;
-        true
-    }
 }

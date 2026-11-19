@@ -2,7 +2,8 @@
 
 use std::path::{Path, PathBuf};
 
-use concordia_api::Engine;
+use concordia_api::EngineLink;
+use concordia_app::{Project, SharedEngine};
 use serde_json::{Value, json};
 
 use super::{api_failure, project_engine};
@@ -189,28 +190,49 @@ pub(crate) fn run_task(args: &TaskArgs) -> Result<(), Failure> {
     call(&args.project, method, without_nulls(params))
 }
 
-/// Calls one Studio method on an in-process engine and prints the result as JSON.
+/// Calls one Studio method and prints the result as JSON.
 fn call(project: &Path, method: &str, params: Value) -> Result<(), Failure> {
-    let mut engine = studio_engine(project)?;
-    let session = engine.open_session();
-    let result = engine
-        .call(session, method, params)
-        .map_err(|e| api_failure(&e))?;
+    let result = studio_call(project, method, params)?;
     let text = serde_json::to_string_pretty(&result).map_err(|e| Failure::usage(e.to_string()))?;
     println!("{text}");
     Ok(())
 }
 
-fn studio_engine(project: &Path) -> Result<Engine, Failure> {
-    let manifest = concordia_app::Project::load(project)
-        .map_err(|e| Failure::usage(e.to_string()))?
-        .manifest;
-    if manifest.studio.is_none() {
+/// Runs a Studio method on the project's live engine if one is running (ADR-0082), else on a
+/// short-lived in-process engine that is never published.
+fn studio_call(root: &Path, method: &str, params: Value) -> Result<Value, Failure> {
+    let project = studio_project(root)?;
+    let modules = project
+        .modules()
+        .map_err(|e| Failure::usage(e.to_string()))?;
+    let method = method.to_owned();
+    super::block_on(async move {
+        let live = SharedEngine::attach_live(root, &modules)
+            .await
+            .map_err(|e| Failure::usage(e.to_string()))?;
+        let Some(remote) = live else {
+            let mut engine = project_engine(root)?;
+            let session = engine.open_session();
+            return engine
+                .call(session, &method, params)
+                .map_err(|e| api_failure(&e));
+        };
+        let session = remote.open_session().await.map_err(|e| api_failure(&e))?;
+        let result = remote.call(session, &method, params).await;
+        remote.close_session(session);
+        result.map_err(|e| api_failure(&e))
+    })
+}
+
+/// The project, which must have `[studio]`.
+fn studio_project(root: &Path) -> Result<Project, Failure> {
+    let project = Project::load(root).map_err(|e| Failure::usage(e.to_string()))?;
+    if project.manifest.studio.is_none() {
         return Err(Failure::usage(
             "this project has no [studio] section in concordia.toml; run `concordia studio init` to add Agent Studio",
         ));
     }
-    project_engine(project)
+    Ok(project)
 }
 
 /// Writes the default Studio files and adds `[studio]` to `concordia.toml`.
@@ -236,12 +258,8 @@ fn init(project: &Path) -> Result<(), Failure> {
 
 /// Runs `studio.sync` and reports it; `--check` fails when anything is stale.
 pub(crate) fn sync(project: &Path, check: bool, dry_run: bool, force: bool) -> Result<(), Failure> {
-    let mut engine = studio_engine(project)?;
-    let session = engine.open_session();
     let params = json!({"check": check || dry_run, "force": force, "actor": HUMAN});
-    let report = engine
-        .call(session, "studio.sync", params)
-        .map_err(|e| api_failure(&e))?;
+    let report = studio_call(project, "studio.sync", params)?;
     let verb = |action: &str| match (check || dry_run, action) {
         (true, "create") => "would create",
         (true, "update") => "would update",

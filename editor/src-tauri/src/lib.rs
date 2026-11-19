@@ -1,5 +1,7 @@
-//! The Concordia editor shell: hosts an engine in-process for the editor UI (ADR-0004, ADR-0043).
-//! The UI is just another Engine API client; this crate holds no editing logic.
+//! The Concordia editor shell: joins the project's shared engine for the editor UI (ADR-0004,
+//! ADR-0043, ADR-0082). It hosts the engine in-process (and publishes it) unless one is already
+//! live, in which case it attaches. The UI is just another Engine API client; this crate holds no
+//! editing logic.
 
 pub mod bench;
 pub mod input;
@@ -8,9 +10,9 @@ pub mod native;
 
 use std::path::Path;
 
-use concordia_api::transport::ws::{self, WsServer};
-use concordia_api::{Engine, EngineConfig, EngineHandle};
-use concordia_app::Project;
+use concordia_api::transport::connection::HostKind;
+use concordia_api::{ApiErrorKind, EngineConfig, EngineHandle};
+use concordia_app::{Project, SharedEngine};
 use serde_json::{Value, json};
 
 /// Why the host could not start.
@@ -24,11 +26,10 @@ pub enum HostError {
     Engine(String),
 }
 
-/// An engine on its own thread, serving the Engine API on localhost with a per-launch token.
+/// The project's engine as the editor sees it: hosted here, or attached to another process's.
 pub struct EngineHost {
-    handle: EngineHandle,
+    engine: SharedEngine,
     runtime: tokio::runtime::Runtime,
-    server: WsServer,
     base: String,
 }
 
@@ -36,17 +37,19 @@ impl std::fmt::Debug for EngineHost {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EngineHost")
             .field("url", &self.base)
+            .field("host", &self.engine.is_host())
             .finish_non_exhaustive()
     }
 }
 
 impl EngineHost {
-    /// Loads `project` (its modules and main scene) and starts the API server.
+    /// Loads `project`, attaches to its live engine or hosts one, and opens the main scene if the
+    /// engine has none open.
     pub fn start(project: &Path) -> Result<Self, HostError> {
         Self::start_with_log(project, None)
     }
 
-    /// [`EngineHost::start`], serving `log.tail` from `log_ring` (the process's log capture).
+    /// [`EngineHost::start`], serving `log.tail` from `log_ring` when hosting (the process's log capture).
     pub fn start_with_log(
         project: &Path,
         log_ring: Option<std::sync::Arc<concordia_core::log::LogRing>>,
@@ -63,30 +66,50 @@ impl EngineHost {
         config.modules = loaded
             .modules()
             .map_err(|e| HostError::Project(e.to_string()))?;
-        let engine = Engine::new(config).map_err(|e| HostError::Engine(e.message))?;
-        let handle = engine.spawn();
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
             .build()
             .map_err(|e| HostError::Engine(e.to_string()))?;
-        let server = runtime
-            .block_on(ws::serve(handle.clone(), ws::WsConfig::localhost(0)))
-            .map_err(|e| HostError::Engine(e.message))?;
-        ws::write_connection_file(project, &server)
+        let engine = runtime
+            .block_on(SharedEngine::attach_or_host(config, HostKind::Editor))
             .map_err(|e| HostError::Engine(e.to_string()))?;
-        let base = server.url().trim_end_matches('/').to_owned();
+        let base = engine.info().url.trim_end_matches('/').to_owned();
         let host = Self {
-            handle,
+            engine,
             runtime,
-            server,
             base,
         };
         if let Some(main) = loaded.manifest.scene.main {
-            host.call("scene.open", json!({ "path": main }))
-                .map_err(HostError::Engine)?;
+            host.open_main_scene(&main).map_err(HostError::Engine)?;
         }
         Ok(host)
+    }
+
+    /// Opens `main` unless the shared engine already has a scene open.
+    fn open_main_scene(&self, main: &str) -> Result<(), String> {
+        let session = self.session()?;
+        let info =
+            self.runtime
+                .block_on(self.engine.link().call(session.id, "scene.info", json!({})));
+        match info {
+            Err(e) if e.kind == ApiErrorKind::NoSceneOpen => session
+                .call("scene.open", json!({ "path": main }))
+                .map(drop),
+            Err(e) => Err(e.message),
+            Ok(_) => Ok(()),
+        }
+    }
+
+    /// True when this editor hosts the engine (and can drive the native viewport).
+    pub fn is_host(&self) -> bool {
+        self.engine.is_host()
+    }
+
+    /// Who hosts the engine, e.g. "concordia mcp, pid 4242".
+    pub fn host_description(&self) -> String {
+        let info = self.engine.info();
+        format!("{}, pid {}", info.host, info.pid)
     }
 
     /// `ws://127.0.0.1:<port>` without the token.
@@ -96,15 +119,15 @@ impl EngineHost {
 
     /// The URL the editor UI connects with (`…/?token=…`).
     pub fn url(&self) -> String {
-        format!("{}/?token={}", self.base, self.server.token)
+        self.engine.info().connect_url()
     }
 
-    /// The engine's handle (for `run` and calls from the shell).
-    pub fn handle(&self) -> &EngineHandle {
-        &self.handle
+    /// The in-process engine, when this editor hosts it (for `run`: the native viewport).
+    pub fn handle(&self) -> Option<&EngineHandle> {
+        self.engine.handle()
     }
 
-    /// The tokio runtime the server runs on.
+    /// The tokio runtime the engine connection runs on.
     pub fn runtime(&self) -> &tokio::runtime::Runtime {
         &self.runtime
     }
@@ -136,7 +159,7 @@ impl EngineHost {
     pub fn session_as(&self, actor: &str) -> Result<ShellSession<'_>, String> {
         let id = self
             .runtime
-            .block_on(self.handle.open_session())
+            .block_on(self.engine.link().open_session())
             .map_err(|e| e.message)?;
         let session = ShellSession { host: self, id };
         session.call(
@@ -156,16 +179,16 @@ pub struct ShellSession<'a> {
 impl ShellSession<'_> {
     /// Calls a method on this session; errors as text.
     pub fn call(&self, method: &str, params: Value) -> Result<Value, String> {
-        let handle = &self.host.handle;
+        let link = self.host.engine.link();
         self.host
             .runtime
-            .block_on(handle.call(self.id, method, params))
+            .block_on(link.call(self.id, method, params))
             .map_err(|e| e.message)
     }
 }
 
 impl Drop for ShellSession<'_> {
     fn drop(&mut self) {
-        self.host.handle.close_session(self.id);
+        self.host.engine.link().close_session(self.id);
     }
 }

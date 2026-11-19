@@ -552,8 +552,10 @@ dependencies = [
  "concordia-platform",
  "concordia-render",
  "concordia-rhi-metal",
+ "concordia-studio",
  "serde",
  "thiserror 2.0.21",
+ "tokio",
  "toml 1.2.1+spec-1.1.0",
 ]
 
@@ -595,6 +597,7 @@ version = "0.0.0"
 dependencies = [
  "blake3",
  "glam",
+ "libc",
  "rand_chacha",
  "rand_core",
  "rayon",
@@ -789,6 +792,26 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tracing",
+]
+
+[[package]]
+name = "concordia-studio"
+version = "0.0.0"
+dependencies = [
+ "blake3",
+ "concordia-api",
+ "concordia-command",
+ "concordia-core",
+ "concordia-reflect",
+ "globset",
+ "serde",
+ "serde_json",
+ "serde_norway",
+ "similar",
+ "thiserror 2.0.21",
+ "toml 1.2.1+spec-1.1.0",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -4168,6 +4191,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_norway"
+version = "0.9.42"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e408f29489b5fd500fab51ff1484fc859bb655f32c671f307dcd733b72e8168c"
+dependencies = [
+ "indexmap 2.14.2",
+ "itoa",
+ "ryu",
+ "serde",
+ "unsafe-libyaml-norway",
+]
+
+[[package]]
 name = "serde_repr"
 version = "0.1.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4344,6 +4380,12 @@ name = "simdutf8"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
+
+[[package]]
+name = "similar"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
 
 [[package]]
 name = "siphasher"
@@ -5290,6 +5332,12 @@ name = "unicode-segmentation"
 version = "1.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
+
+[[package]]
+name = "unsafe-libyaml-norway"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b39abd59bf32521c7f2301b52d05a6a2c975b6003521cbd0c6dc1582f0a22104"
 
 [[package]]
 name = "url"

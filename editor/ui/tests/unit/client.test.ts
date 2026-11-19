@@ -15,6 +15,14 @@ class FakeTransport implements Transport {
   close(): void {
     this.closed = true;
   }
+  private dropped: (() => void) | undefined;
+  onClose(handler: () => void): void {
+    this.dropped = handler;
+  }
+  /** The other end went away (the engine's host exited). */
+  drop(): void {
+    this.dropped?.();
+  }
   deliver(message: unknown): void {
     this.handler?.(typeof message === "string" ? message : JSON.stringify(message));
   }
@@ -87,4 +95,31 @@ test("close rejects pending calls and closes the transport", async () => {
   await expect(pending).rejects.toThrow(/closed/);
   expect(t.closed).toBe(true);
   await expect(client.call("scene.info")).rejects.toThrow(/closed/);
+});
+
+test("a_lost_engine_connection_rejects_pending_and_later_calls_and_tells_listeners", async () => {
+  const t = new FakeTransport();
+  const client = new EngineClient(t);
+  const lost: string[] = [];
+  client.onLost((reason) => lost.push(reason));
+  const pending = client.call("scene.info");
+  t.drop();
+  await expect(pending).rejects.toThrow(/engine.*exited/);
+  await expect(client.call("scene.info")).rejects.toThrow(/engine.*exited/);
+  expect(client.lost).toBe(true);
+  expect(lost).toHaveLength(1);
+  client.close();
+  t.drop();
+  expect(lost).toHaveLength(1);
+});
+
+test("closing the client on purpose is not a lost engine", () => {
+  const t = new FakeTransport();
+  const client = new EngineClient(t);
+  const lost: string[] = [];
+  client.onLost((reason) => lost.push(reason));
+  client.close();
+  t.drop();
+  expect(lost).toEqual([]);
+  expect(client.lost).toBe(false);
 });

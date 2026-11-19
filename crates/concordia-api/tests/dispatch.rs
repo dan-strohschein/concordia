@@ -353,3 +353,23 @@ fn engine_exposes_current_scene_text_without_saving() {
     let file = std::fs::read_to_string(h.dir.path().join("scenes/test.scene.ron")).unwrap();
     assert_eq!(h.engine.scene_text().unwrap(), file);
 }
+
+#[test]
+fn scene_text_method_returns_the_open_scene_as_saved() {
+    let mut h = Harness::new();
+    assert_eq!(h.err("scene.text", json!({})).data.kind, "NoSceneOpen");
+    let mut h = h.ready();
+    h.spawn("A", 1.0);
+    let unsaved = h.ok("scene.text", json!({}));
+    assert_eq!(unsaved["path"], "scenes/test.scene.ron");
+    assert!(
+        unsaved["text"]
+            .as_str()
+            .unwrap()
+            .contains("\"Name\": \"A\""),
+        "{unsaved}"
+    );
+    h.ok("scene.save", json!({}));
+    let file = std::fs::read_to_string(h.dir.path().join("scenes/test.scene.ron")).unwrap();
+    assert_eq!(h.ok("scene.text", json!({}))["text"], file.as_str());
+}

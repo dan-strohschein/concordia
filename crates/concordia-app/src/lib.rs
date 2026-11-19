@@ -6,6 +6,7 @@
 mod error;
 mod manifest;
 mod project;
+mod shared;
 
 pub use error::AppError;
 pub use manifest::{
@@ -13,3 +14,4 @@ pub use manifest::{
     RenderSection, SceneSection, SimSection, StudioSection,
 };
 pub use project::Project;
+pub use shared::{HostedEngine, SharedEngine};

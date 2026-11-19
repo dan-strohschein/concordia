@@ -1,22 +1,25 @@
 # concordia-app: agent guide
 
 ## Purpose
-The composition root: loads a project's `concordia.toml` and builds the engine modules it uses, so the CLI, MCP server and editor never repeat the list (ADR-0046).
+The composition root: loads a project's `concordia.toml` and builds the engine modules it uses, so the CLI, MCP server and editor never repeat the list (ADR-0046). It also decides whether a process attaches to the project's live engine or hosts one (ADR-0082).
 
 ## Public entry points
 - `Project::load(root)`, `Project::modules()`, `Project::input_map()`
 - `Manifest` and its sections (`[project]`, `[scene]`, `[sim]`, `[journal]`, `[window]`, `[input]`, `[physics]`, `[assets]`)
+- `SharedEngine::attach_or_host[_on]`, `SharedEngine::attach_live`, `HostedEngine`: one engine per project (ADR-0082)
 - `AppError`
 
 ## Invariants
 - Unknown manifest keys are errors; a missing `concordia.toml` means all defaults.
 - Paths in the manifest are project-relative and may not escape the project.
+- One engine per project: attach-or-host runs under `.concordia/engine.lock`; a stale `headless.json` (dead pid, refused token) is replaced; a live engine of another version is never attached; a host removes its file on drop only if the file still names it.
 - A module is included only if the manifest configures it (input needs `[input] map`; physics, assets and render need their sections), so M0 projects keep the M0 tool set.
 
 ## How to test
 `cargo nextest run -p concordia-app`
 
 ## Common tasks
+- **Start an engine in a new process kind:** use `SharedEngine::attach_or_host` with a `HostKind`, never `Engine::new` plus `ws::serve` directly.
 - **Add a module:** read its settings from a new manifest section, append it in `Project::modules`, and add a test in `tests/project.rs`.
 
 ## Don'ts
@@ -26,7 +29,7 @@ The composition root: loads a project's `concordia.toml` and builds the engine m
 - TOML 1.0 specification.
 
 ## Status
-M1 phase 1.1.
+M1 phase 1.1; M3 phase 3.5b (shared engine).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

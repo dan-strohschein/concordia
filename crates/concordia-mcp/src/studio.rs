@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use concordia_api::{ApiError, ApiErrorKind, EngineHandle, MethodInfo};
+use concordia_api::{ApiError, ApiErrorKind, EngineLink, MethodInfo};
 use concordia_command::Actor;
 use concordia_core::id::SessionId;
 use concordia_studio::{Decision, Policy, Roster, Slots, ToolCatalog, source_hash};
@@ -61,7 +61,7 @@ impl StudioGate {
     /// Checks one call and returns the engine session to run it in; strips `_studio` and `actor`.
     pub(crate) async fn admit(
         &self,
-        handle: &EngineHandle,
+        engine: &dyn EngineLink,
         base: SessionId,
         method: &MethodInfo,
         args: &mut JsonObject,
@@ -78,7 +78,7 @@ impl StudioGate {
                 false => Ok(base),
             };
         };
-        let policy = self.policy(handle)?;
+        let policy = self.policy(engine)?;
         let role = stamp.role.as_deref();
         if let Decision::Deny(reason) = policy.tool(role, &method.tool_name()) {
             return Err(not_permitted(&reason));
@@ -86,23 +86,30 @@ impl StudioGate {
         let Some(role) = role else {
             return Ok(base);
         };
-        self.check_paths(handle, base, &policy, role, method, args)
+        self.check_paths(engine, base, &policy, role, method, args)
             .await?;
-        let agent = self.agent(handle, &policy, role, &stamp.agent).await?;
-        self.charge(handle, base, &policy, &agent.actor, method.mutates)
+        let agent = self.agent(engine, &policy, role, &stamp.agent).await?;
+        self.charge(engine, base, &policy, &agent.actor, method.mutates)
             .await?;
         Ok(agent.session)
     }
 
+    /// Forgets every agent's engine session (the engine they lived in has exited); slots are kept.
+    pub(crate) fn forget_sessions(&self) {
+        if let Ok(mut agents) = self.agents.lock() {
+            agents.clear();
+        }
+    }
+
     /// The policy built from the engine's roster, rebuilt when `studio/` changes.
-    fn policy(&self, handle: &EngineHandle) -> Result<Policy, ApiError> {
+    fn policy(&self, engine: &dyn EngineLink) -> Result<Policy, ApiError> {
         let studio = self.root.join(&self.studio);
         let hash = source_hash(&studio).map_err(config)?;
         let mut cached = self.policy.lock().map_err(|_| poisoned())?;
         if let Some(policy) = cached.as_ref().filter(|p| p.source_hash == hash) {
             return Ok(policy.clone());
         }
-        let catalog = ToolCatalog::from_methods(handle.methods());
+        let catalog = ToolCatalog::from_methods(engine.methods());
         let roster = Roster::load(&studio, &catalog).map_err(config)?;
         let policy = Policy::build(&roster, &catalog, &self.studio, hash);
         *cached = Some(policy.clone());
@@ -112,7 +119,7 @@ impl StudioGate {
     /// Scene and asset writes must land inside the role's paths.
     async fn check_paths(
         &self,
-        handle: &EngineHandle,
+        engine: &dyn EngineLink,
         base: SessionId,
         policy: &Policy,
         role: &str,
@@ -122,7 +129,7 @@ impl StudioGate {
         let given = args.get("path").and_then(Value::as_str).map(str::to_owned);
         let path = match (method.name, given) {
             ("scene.new" | "scene.save" | "asset.import", Some(path)) => path,
-            ("scene.save", None) => match handle.call(base, "scene.info", json!({})).await {
+            ("scene.save", None) => match engine.call(base, "scene.info", json!({})).await {
                 Ok(info) => info["path"].as_str().unwrap_or_default().to_owned(),
                 Err(_) => return Ok(()),
             },
@@ -137,7 +144,7 @@ impl StudioGate {
     /// The agent's session, claiming an instance slot on first use.
     async fn agent(
         &self,
-        handle: &EngineHandle,
+        engine: &dyn EngineLink,
         policy: &Policy,
         role: &str,
         key: &str,
@@ -156,8 +163,8 @@ impl StudioGate {
                 .map_err(|e: concordia_command::ActorError| {
                     ApiError::new(ApiErrorKind::ActorMalformed, e.to_string())
                 })?;
-        let session = handle.open_session().await?;
-        handle
+        let session = engine.open_session().await?;
+        engine
             .call(
                 session,
                 "session.open",
@@ -175,7 +182,7 @@ impl StudioGate {
     /// Counts the call against the agent's in-progress task; over budget blocks the task.
     async fn charge(
         &self,
-        handle: &EngineHandle,
+        engine: &dyn EngineLink,
         base: SessionId,
         policy: &Policy,
         actor: &Actor,
@@ -185,7 +192,7 @@ impl StudioGate {
         if limits.calls.is_none() && limits.mutations.is_none() {
             return Ok(());
         }
-        let Some(task) = current_task(handle, base, actor).await else {
+        let Some(task) = current_task(engine, base, actor).await else {
             return Ok(());
         };
         let (calls, mutations) = {
@@ -204,7 +211,7 @@ impl StudioGate {
         }
         let block =
             json!({"id": task, "status": "blocked", "assignee": "human:local", "actor": SYSTEM});
-        let _ = handle.call(base, "task.update", block).await;
+        let _ = engine.call(base, "task.update", block).await;
         Err(not_permitted(&format!(
             "{actor} used up the engine budget for {task} (studio/team.toml [budgets]); {task} is now blocked for a human"
         )))
@@ -212,9 +219,9 @@ impl StudioGate {
 }
 
 /// The task `actor` is working on (in progress and assigned to it), if any.
-async fn current_task(handle: &EngineHandle, base: SessionId, actor: &Actor) -> Option<String> {
+async fn current_task(engine: &dyn EngineLink, base: SessionId, actor: &Actor) -> Option<String> {
     let params = json!({"status": "in_progress", "assignee": actor.to_string()});
-    let listed = handle.call(base, "task.list", params).await.ok()?;
+    let listed = engine.call(base, "task.list", params).await.ok()?;
     listed["tasks"][0]["id"].as_str().map(str::to_owned)
 }
 
