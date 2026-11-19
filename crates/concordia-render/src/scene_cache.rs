@@ -5,6 +5,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use concordia_core::id::EntityId;
+use concordia_core::math::Mat4;
 use concordia_scene::builtin::{Transform, world_transform};
 use concordia_terra::World;
 
@@ -118,14 +119,48 @@ impl SceneCache {
 }
 
 /// The render side: the mirror of a [`SceneCache`], assembled into a [`RenderWorld`] on demand.
+/// For a playing world it also keeps the previous tick's items of what moved, to draw between
+/// ticks ([`RenderScene::world_at`]).
 #[derive(Debug, Default)]
 pub struct RenderScene {
     items: SceneItems,
     world: RenderWorld,
     stale: bool,
+    previous: SceneItems,
 }
 
 impl RenderScene {
+    /// Applies the delta of a new simulation tick, remembering the moved entities' previous items.
+    pub fn apply_tick(&mut self, delta: SceneDelta) {
+        self.previous.clear();
+        if let SceneDelta::Changes { upserts, .. } = &delta {
+            for (id, _) in upserts {
+                if let Some(old) = self.items.get(id) {
+                    self.previous.insert(*id, old.clone());
+                }
+            }
+        }
+        self.apply(delta);
+    }
+
+    /// The scene `alpha` of the way from the previous tick to the latest (clamped to [0, 1]).
+    pub fn world_at(&self, alpha: f32) -> RenderWorld {
+        let alpha = if alpha.is_finite() {
+            alpha.clamp(0.0, 1.0)
+        } else {
+            1.0
+        };
+        let blended: Vec<EntityItems> = self
+            .items
+            .iter()
+            .map(|(id, now)| match self.previous.get(id) {
+                Some(before) => blend(before, now, alpha),
+                None => now.clone(),
+            })
+            .collect();
+        RenderWorld::assemble(blended.iter())
+    }
+
     /// Applies a delta from the engine side.
     pub fn apply(&mut self, delta: SceneDelta) {
         match delta {
@@ -151,4 +186,40 @@ impl RenderScene {
         }
         &self.world
     }
+}
+
+/// `now`'s items with their transforms `alpha` of the way from `before`'s.
+fn blend(before: &EntityItems, now: &EntityItems, alpha: f32) -> EntityItems {
+    let mut out = now.clone();
+    if let (Some(a), Some(b)) = (&before.draw, &mut out.draw) {
+        b.world = lerp_matrix(a.world, b.world, alpha);
+    }
+    if let (Some(a), Some(b)) = (&before.camera, &mut out.camera) {
+        b.world = lerp_matrix(a.world, b.world, alpha);
+    }
+    if let (Some(a), Some(b)) = (&before.light, &mut out.light) {
+        b.direction = a
+            .direction
+            .lerp(b.direction, alpha)
+            .normalize_or(b.direction);
+    }
+    for (a, b) in before.punctual.iter().zip(out.punctual.iter_mut()) {
+        b.position = a.position.lerp(b.position, alpha);
+        b.direction = a
+            .direction
+            .lerp(b.direction, alpha)
+            .normalize_or(b.direction);
+    }
+    out
+}
+
+/// Interpolates scale and translation linearly and rotation spherically.
+fn lerp_matrix(a: Mat4, b: Mat4, alpha: f32) -> Mat4 {
+    let (sa, ra, ta) = a.to_scale_rotation_translation();
+    let (sb, rb, tb) = b.to_scale_rotation_translation();
+    Mat4::from_scale_rotation_translation(
+        sa.lerp(sb, alpha),
+        ra.slerp(rb, alpha),
+        ta.lerp(tb, alpha),
+    )
 }

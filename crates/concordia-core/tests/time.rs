@@ -46,3 +46,13 @@ fn tick_rate_from_hz_rejects_zero() {
     assert_eq!(TickRate::from_hz(0), Err(TimeError::ZeroRate));
     assert_eq!(TickRate::from_hz(60).unwrap(), TickRate::HZ_60);
 }
+
+#[test]
+fn accumulator_reports_the_time_to_the_next_step_and_the_fraction_done() {
+    let mut acc = Accumulator::new(TickRate::from_hz(50).unwrap());
+    assert_eq!(acc.until_next_step(), Duration::from_millis(20));
+    assert_eq!(acc.fraction(), 0.0);
+    acc.push(Duration::from_millis(25));
+    assert_eq!(acc.until_next_step(), Duration::from_millis(15));
+    assert!((acc.fraction() - 0.25).abs() < 1e-6);
+}

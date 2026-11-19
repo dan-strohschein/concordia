@@ -275,8 +275,13 @@ impl Engine {
 
     /// How long the engine thread may sleep before `poll` has work.
     pub(crate) fn idle_timeout(&self) -> Option<Duration> {
-        if self.play.as_ref().is_some_and(|p| p.playing) {
-            return Some(Duration::from_millis(16));
+        if let Some(play) = self.play.as_ref().filter(|p| p.playing) {
+            // Wake exactly when the next tick is due: one tick per wake, no judder.
+            return Some(
+                play.sim
+                    .until_next_step()
+                    .saturating_sub(play.last.elapsed()),
+            );
         }
         let hold = self.scene.as_ref()?.hold?;
         Some(self.config.txn_timeout.saturating_sub(hold.since.elapsed()))

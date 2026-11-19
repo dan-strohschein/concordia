@@ -148,3 +148,39 @@ proptest! {
         }
     }
 }
+
+#[test]
+fn play_scenes_blend_between_the_last_two_ticks() {
+    let (mut world, mut ids) = (World::new(), DeterministicIdGen::new(1));
+    let moving = spawn(&mut world, &mut ids, 0.0);
+    let still = spawn(&mut world, &mut ids, 5.0);
+    let (mut cache, mut mirror) = (SceneCache::default(), RenderScene::default());
+    mirror.apply_tick(cache.update(&world));
+    world.get_mut::<Transform>(moving).unwrap().translation.x = 2.0;
+    mirror.apply_tick(cache.update(&world));
+    let x_of = |w: &RenderWorld, id| {
+        w.draws
+            .iter()
+            .find(|d| d.entity == id)
+            .unwrap()
+            .world
+            .transform_point3(Vec3::ZERO)
+            .x
+    };
+    let half = mirror.world_at(0.5);
+    assert!(
+        (x_of(&half, moving) - 1.0).abs() < 1e-5,
+        "halfway between ticks"
+    );
+    assert!(
+        (x_of(&half, still) - 5.0).abs() < 1e-5,
+        "unmoved entities stay put"
+    );
+    assert!((x_of(&mirror.world_at(0.0), moving)).abs() < 1e-5);
+    assert!((x_of(&mirror.world_at(1.0), moving) - 2.0).abs() < 1e-5);
+    assert_eq!(
+        mirror.world_at(1.0),
+        *mirror.world(),
+        "alpha 1 is the latest tick"
+    );
+}

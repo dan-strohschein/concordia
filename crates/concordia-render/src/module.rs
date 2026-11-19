@@ -106,6 +106,7 @@ impl EngineModule for RenderModule {
             world: Some(WorldSel::play),
             seq: None,
             input_time_ms: None,
+            tick: play_tick(engine),
         };
         if let Err(e) = queue_present(engine, view, target) {
             tracing::warn!(target: "concordia::render", error = %e.message, "play viewport redraw failed");
@@ -209,7 +210,7 @@ impl Method for CaptureScreenshot {
             width: p.width,
             height: p.height,
         };
-        let scene = scene_update(engine, p.world.unwrap_or_default())?;
+        let scene = scene_update(engine, p.world.unwrap_or_default(), None)?;
         let slot = scene.slot;
         let captured =
             render_thread(engine).and_then(|t| t.capture(scene, request).map_err(api_error));
@@ -254,7 +255,11 @@ fn make_renderer(factory: &DeviceFactory) -> Result<Renderer, RenderError> {
 
 /// The changes to world `sel` since the render thread last saw it, with the asset data they need.
 /// On error the scene is forgotten, so the next update is complete.
-fn scene_update(engine: &mut Engine, sel: WorldSel) -> Result<SceneUpdate, ApiError> {
+fn scene_update(
+    engine: &mut Engine,
+    sel: WorldSel,
+    tick: Option<std::time::Duration>,
+) -> Result<SceneUpdate, ApiError> {
     let slot = match sel {
         WorldSel::edit => 0,
         WorldSel::play => 1,
@@ -279,6 +284,7 @@ fn scene_update(engine: &mut Engine, sel: WorldSel) -> Result<SceneUpdate, ApiEr
             slot,
             delta,
             assets,
+            tick,
         }),
         Err(e) => {
             forget_scene(engine, slot);
@@ -524,6 +530,7 @@ impl Method for ViewportPresent {
             world: p.world,
             seq: p.seq,
             input_time_ms: p.input_time_ms,
+            tick: None,
         };
         queue_present(engine, p.view, target)?;
         Ok(ViewportPresentResult { presented: true })
@@ -537,6 +544,8 @@ pub(crate) struct PresentTarget {
     pub(crate) world: Option<WorldSel>,
     pub(crate) seq: Option<u64>,
     pub(crate) input_time_ms: Option<f64>,
+    /// Set for redraws after a simulation tick of this length.
+    pub(crate) tick: Option<std::time::Duration>,
 }
 
 /// Redraws the attached native viewport (if any) at its last size, tagged with an input.
@@ -558,6 +567,7 @@ pub(crate) fn redraw_viewport(
         world,
         seq,
         input_time_ms,
+        tick: None,
     };
     queue_present(engine, view, target)
 }
@@ -568,7 +578,7 @@ pub(crate) fn queue_present(
     view: crate::View,
     t: PresentTarget,
 ) -> Result<(), ApiError> {
-    let scene = scene_update(engine, t.world.unwrap_or_default())?;
+    let scene = scene_update(engine, t.world.unwrap_or_default(), t.tick)?;
     let slot = scene.slot;
     let request = RenderRequest {
         camera: None,
@@ -739,6 +749,7 @@ pub fn navigate(engine: &mut Engine, p: &ViewportNavigateParams) -> Result<crate
             world,
             seq: p.seq,
             input_time_ms: p.input_time_ms,
+            tick: None,
         };
         queue_present(engine, view.clone(), target)?;
     }
@@ -851,4 +862,12 @@ pub fn viewport_control(engine: &mut Engine) -> Result<ViewportControl, ApiError
         frames: state.frames.clone(),
         next_frame: state.next_frame.clone(),
     })
+}
+
+/// The play world's tick length, if it has a clock.
+fn play_tick(engine: &Engine) -> Option<std::time::Duration> {
+    let clock = engine.world(WorldSel::play).ok()?.resource::<SimClock>()?;
+    Some(std::time::Duration::from_secs_f64(
+        1.0 / f64::from(clock.rate.hz()),
+    ))
 }

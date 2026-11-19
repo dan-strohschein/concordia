@@ -263,7 +263,7 @@ A review compared Concordia against Unreal's public architecture and audited our
 | 3 | Shallow presentation queue for the editor viewport (latency) | done: two drawables; one frame in flight on the render thread |
 | 4 | Engine-driven redraws during play; native gizmo drags | done: `after_sim`; `viewport.gizmo` |
 | 5 | Camera moves skip the engine thread; read-only calls off the engine thread | camera: done (`ViewportControl`). Concurrent reads: **deferred**; they need snapshot isolation in the API layer (an ADR), and camera moves no longer wait on the engine thread, so a slow read cannot stall the viewport |
-| 6 | Simulation paced by the display (no 16 ms sleep steps), interpolated drawing | |
+| 6 | Simulation paced by the display (no 16 ms sleep steps), interpolated drawing | done: the engine wakes exactly at the next tick (`until_next_step`); the render thread presents every refresh between ticks, blending transforms (`RenderScene::world_at`) |
 | 7 | Frustum culling, instancing | |
 | 8 | Persistent per-frame buffers and pooled textures | |
 | 9 | Cached shadows for static casters | |

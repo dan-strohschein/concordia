@@ -4,7 +4,7 @@
 
 use std::sync::mpsc;
 use std::thread::JoinHandle;
-use std::time::{Instant, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use concordia_rhi::{RhiError, Surface, SurfaceTarget};
 
@@ -19,6 +19,8 @@ pub(crate) struct SceneUpdate {
     pub(crate) slot: SceneSlot,
     pub(crate) delta: SceneDelta,
     pub(crate) assets: MemoryAssets,
+    /// Set when the update is a new simulation tick of this length (drawn interpolated).
+    pub(crate) tick: Option<Duration>,
 }
 
 /// A viewport frame to present: the scene update, the view, and its `viewport.stats` record.
@@ -168,6 +170,8 @@ struct Worker {
     surface: Option<Surface>,
     /// The latest viewport frame's scene and request, which redraws reuse.
     last: Option<(SceneSlot, RenderRequest)>,
+    /// When each scene's latest simulation tick arrived, and the tick length.
+    ticks: [Option<(Instant, Duration)>; 2],
 }
 
 impl Worker {
@@ -178,12 +182,31 @@ impl Worker {
             scenes: Default::default(),
             surface: None,
             last: None,
+            ticks: [None; 2],
         }
     }
 
     /// Handles jobs until the handle drops; presents only the newest queued viewport frame.
+    /// Handles jobs until the handle drops; presents only the newest queued viewport frame. While
+    /// the viewport shows a ticking simulation, it also presents between ticks, every display
+    /// refresh (paced by the display), interpolating motion.
     fn run(mut self, queue: &mpsc::Receiver<Job>) {
-        while let Ok(first) = queue.recv() {
+        loop {
+            let first = match self.animating() {
+                true => match queue.try_recv() {
+                    Ok(job) => Some(job),
+                    Err(mpsc::TryRecvError::Empty) => None,
+                    Err(mpsc::TryRecvError::Disconnected) => return,
+                },
+                false => match queue.recv() {
+                    Ok(job) => Some(job),
+                    Err(_) => return,
+                },
+            };
+            let Some(first) = first else {
+                self.present_between_ticks();
+                continue;
+            };
             let mut latest = None;
             let mut next = Some(first);
             while let Some(job) = next {
@@ -193,6 +216,38 @@ impl Worker {
             if let Some(frame) = latest {
                 self.present(frame);
             }
+        }
+    }
+
+    /// Whether the viewport shows a scene that ticked within the last two tick lengths.
+    fn animating(&self) -> bool {
+        let Some((slot, _)) = &self.last else {
+            return false;
+        };
+        self.surface.is_some() && self.ticks[*slot].is_some_and(|(at, dt)| at.elapsed() < dt * 2)
+    }
+
+    /// How far between its last two ticks scene `slot` should be drawn now (1 = the latest).
+    fn alpha(&self, slot: SceneSlot) -> f32 {
+        match self.ticks[slot] {
+            Some((at, dt)) if !dt.is_zero() => {
+                (at.elapsed().as_secs_f32() / dt.as_secs_f32()).min(1.0)
+            }
+            _ => 1.0,
+        }
+    }
+
+    /// Presents the latest viewport request again, interpolated (no stats record).
+    fn present_between_ticks(&mut self) {
+        let (Some((slot, request)), Some(surface)) = (self.last.clone(), self.surface) else {
+            return;
+        };
+        let world = self.scenes[slot].world_at(self.alpha(slot));
+        if let Err(e) = self
+            .renderer
+            .present_with(&world, &mut self.store, &request, surface, None)
+        {
+            tracing::warn!(target: "concordia::render", error = %e, "viewport frame failed");
         }
     }
 
@@ -236,6 +291,7 @@ impl Worker {
                             removed: Vec::new(),
                         },
                         assets: MemoryAssets::default(),
+                        tick: None,
                     },
                     request,
                     log,
@@ -256,7 +312,14 @@ impl Worker {
             upserts: Vec::new(),
             removed: Vec::new(),
         };
-        self.scenes[scene.slot].apply(std::mem::replace(&mut scene.delta, empty));
+        let delta = std::mem::replace(&mut scene.delta, empty);
+        match scene.tick {
+            Some(dt) => {
+                self.scenes[scene.slot].apply_tick(delta);
+                self.ticks[scene.slot] = Some((Instant::now(), dt));
+            }
+            None => self.scenes[scene.slot].apply(delta),
+        }
     }
 
     fn attach(&mut self, target: SurfaceTarget) -> Result<(), RenderError> {
@@ -280,9 +343,9 @@ impl Worker {
         };
         let start = Instant::now();
         let on_presented = presented_callback(log.clone(), id);
-        let world = self.scenes[scene.slot].world();
+        let world = self.scenes[scene.slot].world_at(self.alpha(scene.slot));
         let presented = self.renderer.present_with(
-            world,
+            &world,
             &mut self.store,
             &request,
             surface,

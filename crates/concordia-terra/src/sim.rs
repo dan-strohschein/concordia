@@ -62,6 +62,16 @@ impl SimLoop {
         }
     }
 
+    /// Real time until the next tick is due.
+    pub fn until_next_step(&self) -> Duration {
+        self.acc.until_next_step()
+    }
+
+    /// How far toward the next tick the simulation is, in [0, 1) (for interpolated drawing).
+    pub fn fraction(&self) -> f32 {
+        self.acc.fraction()
+    }
+
     /// Adds real elapsed time and runs the steps now due.
     pub fn advance(&mut self, world: &mut World, jobs: &JobSystem, real: Duration) -> Steps {
         let steps = self.acc.push(real);
