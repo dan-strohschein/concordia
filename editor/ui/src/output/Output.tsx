@@ -1,6 +1,8 @@
-// The bottom Output panel: polls `log.tail` and shows level, actor and message.
+// The bottom Output panel: fetches `log.tail` when the engine announces records (`log` events)
+// and shows level, actor and message.
 import { useEffect, useState } from "react";
 
+import { Coalescer } from "../engine/coalesce";
 import type { EditorSession } from "../engine/session";
 
 interface LogRecord {
@@ -17,23 +19,20 @@ export function Output({ session }: { session: EditorSession }) {
   useEffect(() => {
     let since: number | undefined;
     let stopped = false;
-    const poll = async () => {
-      try {
-        const page = await session.call<{ records: LogRecord[]; next: number }>(
-          "log.tail",
-          since === undefined ? {} : { since },
-        );
-        since = page.next;
-        if (!stopped && page.records.length > 0) setLines((old) => [...old, ...page.records].slice(-MAX_LINES));
-      } catch {
-        // the connection reports its own errors; keep polling
-      }
-    };
-    void poll();
-    const timer = setInterval(poll, 1000);
+    // Fetched once, then only when the engine announces new records (`log` events): no polling.
+    const fetchNew = new Coalescer(async () => {
+      const page = await session.call<{ records: LogRecord[]; next: number }>(
+        "log.tail",
+        since === undefined ? {} : { since },
+      );
+      since = page.next;
+      if (!stopped && page.records.length > 0) setLines((old) => [...old, ...page.records].slice(-MAX_LINES));
+    });
+    fetchNew.request();
+    const unsubscribe = session.onEvent((e) => (e.topic === "log" ? fetchNew.request() : undefined));
     return () => {
       stopped = true;
-      clearInterval(timer);
+      unsubscribe();
     };
   }, [session]);
   return (

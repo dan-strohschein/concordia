@@ -9,7 +9,8 @@ use std::time::{Duration, Instant, SystemTime};
 use concordia_rhi::{RhiError, Surface, SurfaceTarget};
 
 use crate::frame_log::{
-    FrameLog, gpu_time_callback, presented_callback, remove_frame, unix_ms, update_frame,
+    FrameLog, FrameRecord, gpu_time_callback, presented_callback, push_frame, remove_frame,
+    unix_ms, update_frame,
 };
 use crate::{
     FrameCallbacks, Image, MemoryAssets, RenderError, RenderRequest, RenderScene, Renderer,
@@ -177,6 +178,10 @@ struct Worker {
     last: Option<(SceneSlot, RenderRequest)>,
     /// When each scene's latest simulation tick arrived, and the tick length.
     ticks: [Option<(Instant, Duration)>; 2],
+    /// The `viewport.stats` log, and ids for frames this thread draws on its own (between ticks),
+    /// counted from 2^63 so they never meet the engine's.
+    log: Option<FrameLog>,
+    own_ids: u64,
 }
 
 impl Worker {
@@ -188,6 +193,8 @@ impl Worker {
             surface: None,
             last: None,
             ticks: [None; 2],
+            log: None,
+            own_ids: 1 << 63,
         }
     }
 
@@ -254,21 +261,38 @@ impl Worker {
         }
     }
 
-    /// Presents the latest viewport request again, interpolated (no stats record).
+    /// Presents the latest viewport request again, interpolated, as its own `viewport.stats` frame.
     fn present_between_ticks(&mut self) {
-        let (Some((slot, request)), Some(surface)) = (self.last.clone(), self.surface) else {
+        let (Some((slot, request)), Some(log)) = (self.last.clone(), self.log.clone()) else {
             return;
         };
-        let world = self.scenes[slot].world_at(self.alpha(slot));
-        if let Err(e) = self.renderer.present_with(
-            &world,
-            &mut self.store,
-            &request,
-            surface,
-            FrameCallbacks::default(),
-        ) {
-            tracing::warn!(target: "concordia::render", error = %e, "viewport frame failed");
-        }
+        self.own_ids += 1;
+        let record = FrameRecord {
+            seq: None,
+            input_time_ms: None,
+            queued_ms: unix_ms(SystemTime::now()),
+            cpu_ms: 0.0,
+            submitted_ms: None,
+            presented_ms: None,
+            gpu_ms: None,
+        };
+        push_frame(&log, self.own_ids, record);
+        let scene = SceneUpdate {
+            slot,
+            delta: SceneDelta::Changes {
+                upserts: Vec::new(),
+                removed: Vec::new(),
+            },
+            assets: MemoryAssets::default(),
+            tick: None,
+        };
+        let id = self.own_ids;
+        self.present(ViewportFrame {
+            scene,
+            request,
+            log,
+            id,
+        });
     }
 
     /// Handles one job; returns the newest viewport frame still to present.
@@ -278,6 +302,7 @@ impl Worker {
                 // Every delta is applied, even for frames that will be skipped.
                 self.update(&mut frame.scene);
                 self.last = Some((frame.scene.slot, frame.request.clone()));
+                self.log = Some(frame.log.clone());
                 if let Some(stale) = latest {
                     remove_frame(&stale.log, stale.id);
                 }

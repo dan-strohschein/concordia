@@ -524,3 +524,23 @@ fn camera_moves_through_the_viewport_control_skip_the_engine_thread() {
         "one camera"
     );
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn an_idle_viewport_renders_nothing() {
+    let Some(mut h) = Harness::gpu() else { return };
+    h.two_cubes();
+    let layer = objc2_quartz_core::CAMetalLayer::new();
+    let target = concordia_rhi::SurfaceTarget::MetalLayer(std::ptr::NonNull::from(&*layer).cast());
+    // SAFETY: the layer outlives the engine (dropped after `h`).
+    unsafe { concordia_render::attach_surface(&mut h.engine, target) }.unwrap();
+    h.ok(
+        "viewport.present",
+        json!({"view": front_view(), "width": 64, "height": 48}),
+    );
+    wait_until_rendered(&mut h, 1);
+    h.ok("viewport.stats", json!({"clear": true}));
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let stats = h.ok("viewport.stats", json!({}));
+    assert_eq!(stats["frames"], json!([]), "no work while nothing changes");
+}

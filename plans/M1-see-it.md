@@ -273,7 +273,7 @@ A review compared Concordia against Unreal's public architecture and audited our
 | 13 | First-use hitches: background IBL, shader compiles and texture uploads | done: environments prefilter on a background thread (viewport frames draw without them meanwhile; captures wait, so goldens are unchanged); compiled shaders are cached in the project DDC, so later starts skip `slangc`; texture uploads already ride in the frame's command list (item 1), leaving only a staging copy. Caching prefiltered environments in the DDC is a later step |
 | 14 | Optimized dev builds for the editor | done: the shell's dev profile builds the engine and other dependencies at `opt-level = 2` (one-time rebuild about 2 min); the shell itself stays quick to rebuild |
 | 15 | GPU timestamp queries in `viewport.stats` | done: each presented frame reports its command buffer's GPU time (`Present::on_gpu_time`, Metal `GPUStartTime`/`GPUEndTime`) as `gpu_ms`; the bench shows GPU p50. Per-pass timings need counter sample buffers, a later step |
-| 16 | Idle editor costs nothing (test) | |
+| 16 | Idle editor costs nothing (test) | done: the Output panel no longer polls `log.tail` every second; it fetches on the new `log` event topic. The render thread records its between-tick frames in `viewport.stats` too, and `an_idle_viewport_renders_nothing` checks that idle means no frames |
 
 ### Phase 1.9c: Native editor shell (done)
 - **RHI window surfaces:** `create_surface` (unsafe; wraps a `CAMetalLayer`), `acquire`, `present` and `destroy_surface`, with Metal tests using a standalone layer (12 acquire/clear/present cycles, misuse errors).

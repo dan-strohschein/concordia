@@ -21,10 +21,10 @@ export class EditorSession {
 
   private constructor(readonly client: EngineClient) {}
 
-  /** Opens a session as `human:local` and subscribes to edit, scene, sim and pending events. */
+  /** Opens a session as `human:local` and subscribes to edit, scene, sim, pending and log events. */
   static async open(client: EngineClient): Promise<EditorSession> {
     await client.call("session.open", { client: "concordia-editor", actor: EDITOR_ACTOR });
-    await client.call("events.subscribe", { topics: ["edit", "scene", "sim", "pending"] });
+    await client.call("events.subscribe", { topics: ["edit", "scene", "sim", "pending", "log"] });
     return new EditorSession(client);
   }
 

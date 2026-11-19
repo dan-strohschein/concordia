@@ -46,13 +46,14 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `viewport.present` | | `{view, width, height, world?, seq?, input_time_ms?}` → `{presented}` (the editor's native viewport only) |
 | `viewport.stats` | | `{clear?}` → `{frames: [{seq, input_time_ms, cpu_ms, submitted_ms, presented_ms}]}` (recent native-viewport frames; times in Unix ms) |
 | `log.tail` | | `{since?, level?, limit?}` → `{records, next}` |
-| `events.subscribe` / `events.unsubscribe` | | `{topics: ["edit" \| "scene" \| "sim" \| "pending"]}` → `{topics}` (WebSocket only; not an MCP tool) |
+| `events.subscribe` / `events.unsubscribe` | | `{topics: ["edit" \| "scene" \| "sim" \| "pending" \| "log"]}` → `{topics}` (WebSocket only; not an MCP tool) |
 
 `events.subscribe` makes the WebSocket connection receive JSON-RPC notifications, `{"method": "events.event", "params": {"topic", ...}}`:
 - `edit`: one per committed transaction, undo or redo, with `method`, `txn`, `label`, `actor`, `entities` and `undo`;
 - `scene`: `event` is `opened`, `new` or `saved`, plus the `path`;
 - `sim`: `method`, `tick` and `state`;
-- `pending`: one per call that changes the world inside an open transaction (`pending: true`, with `method`, `txn`, `label`, `actor` and that call's `entities`), and one when a transaction is aborted (`aborted: true` and its `entities`). Use it to show work in progress, such as a gizmo drag, before the commit.
+- `pending`: one per call that changes the world inside an open transaction (`pending: true`, with `method`, `txn`, `label`, `actor` and that call's `entities`), and one when a transaction is aborted (`aborted: true` and its `entities`). Use it to show work in progress, such as a gizmo drag, before the commit;
+- `log`: `latest` (the newest log record's seq) after a call wrote log records; fetch them with `log.tail`.
 
 Edits made by other clients arrive too, which is how the editor sees agents work. Over stdio or MCP, poll `log.tail` instead. If a client falls more than 1,024 events behind, newer events are dropped, so re-read state with `query.run`.
 
