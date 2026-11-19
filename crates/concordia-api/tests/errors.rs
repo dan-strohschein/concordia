@@ -146,3 +146,26 @@ fn gpu_unavailable_has_its_own_code_and_hint() {
         err.data.suggestions
     );
 }
+
+#[test]
+fn studio_error_kinds_have_their_own_codes() {
+    let codes: Vec<(i32, &str)> = [
+        ApiErrorKind::TaskNotFound,
+        ApiErrorKind::TaskTransition,
+        ApiErrorKind::NotPermitted,
+    ]
+    .into_iter()
+    .map(|kind| {
+        let err = ApiError::from_kind(kind);
+        (err.code(), err.data.kind)
+    })
+    .collect();
+    assert_eq!(
+        codes,
+        [
+            (-32014, "TaskNotFound"),
+            (-32015, "TaskTransition"),
+            (-32016, "NotPermitted")
+        ]
+    );
+}

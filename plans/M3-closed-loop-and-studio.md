@@ -1,14 +1,14 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: Planned (Studio refinement 2026-11-19: (a) A1, (b) B1 decided; phases await approval) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Needs refinement after M2** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0 and 3.3 done, 3.4 next; refinement approved 2026-11-19) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Needs refinement after M2** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
 > **Scheduling note.** The Studio phases (3.3 config and task board, 3.4 `concordia studio sync`, 3.5 attribution and enforcement, 3.6 roster and skills) need only the M0 Engine API and `concordia-mcp`. They may start right after M0, in parallel with M1/M2. Replay generalization (3.1), assertions over replays (3.2) and the gate (3.9) need M2. The editor panel (3.8) needs the M1 editor shell.
 
 ## Studio refinement (2026-11-19, against M0/M1 as built)
-**Status: author decided (a) = A1 and (b) = B1 on 2026-11-19; the refined phases await the author's approval.** Where this section and the phase text below disagree, this section wins. The phase text is edited in place only where it was plainly wrong.
+**Status: author decided (a) = A1 and (b) = B1, and approved the refined phases (2026-11-19).** Where this section and the phase text below disagree, this section wins. The phase text is edited in place only where it was plainly wrong.
 
 ### What exists (checked in code)
 - **`concordia new <dir>`** (`crates/concordia-cli/src/cmd/new.rs`) writes four files:
@@ -310,7 +310,7 @@ justfile                       (touched) `gate-live` recipe
 - **Implementation notes:** hand-written recursive-descent parser (no parser-generator dependency, so error messages stay ours). The evaluator compiles predicates to closures over ECS queries resolved once per run, with selectors cached by tag index. The result type `AssertOutcome { status: Passed|Failed|Undecided, decided_at, witness: BTreeMap<String, Value>, trace: Option<Vec<Sample>> }` is designed to be pasted directly into a task's acceptance notes. References: runtime verification and temporal-logic monitors (bounded LTL monitoring literature); the units approach follows dimensional-analysis type checking.
 - **Done criteria:** tests pass; `concordia test playtests` runs all `.playtest.ron` in a project; doc tests show the builder API.
 
-### Phase 3.3: Studio config model + task board
+### Phase 3.3: Studio config model + task board (done)
 *Can start right after M0.*
 
 - **Objective:** Parse, validate and expose the Studio's text config (roles, team, tasks) and implement the task board as Engine API commands with actor attribution, a state machine and approval gates.
@@ -405,6 +405,29 @@ justfile                       (touched) `gate-live` recipe
     - `task_methods_roundtrip_over_json_rpc`, `mcp_task_tool_schemas_snapshot` (insta).
 - **Implementation notes:** YAML frontmatter parsed with a maintained serde YAML crate (choose at execution; `serde_yaml` is unmaintained; candidates `serde_norway`, `serde_yaml_ng`; must pass `cargo-deny`). The Markdown body is kept verbatim. Task writes are attributed entries in the Studio journal (`.concordia/studio/journal.jsonl`, refinement G3), not `concordia-command` ops; tasks have no undo. Glob matching via `globset` (MIT/Unlicense).
 - **Done criteria:** tests pass; `concordia task list` works against the fixture project; `studio.roster` returns the resolved scopes that 3.4 and 3.5 consume.
+
+**As built (2026-11-19):**
+- **An engine module, not core methods (G14).** `concordia-studio` provides `StudioModule`, switched on by `[studio]` (`dir = "studio"`) in `concordia.toml`. The core stays at 33 methods and 30 MCP tools, so no count test changed. `MethodInfo::tool_name` and `MethodInfo::is_agent_tool` moved into `concordia-api`, so Studio and `concordia mcp` share one naming rule.
+- **Methods:** `task.create/get/list/claim/update/comment/approve/reject` and `studio.roster/status/activity`. `studio.sync` and `studio.release_actor` come with 3.4 and 3.5. `studio.status` reports task counts and pending approvals; instances arrive with 3.5.
+  - `task.update` can't set done or rejected (`task.approve` and `task.reject` do).
+  - Unblocking (blocked → todo) is human-only.
+  - A reviewer must match every in_review → done gate and the role's own `review.requires`.
+- **The Studio journal (G3, ADR-0080):** `.concordia/studio/journal.jsonl`. Its kinds are `task_created`, `task_changed` (field → [before, after]), `task_comment`, `task_review`, `file_edit` and `sync`. Writers lock the file and drop an incomplete last line, and `seq` is the line number. Tasks have no undo.
+- **Board sync:** every board call holds `.concordia/studio/board.lock`, then syncs: journal entries since the last sync explain changed files (from other engines), and any other change is a hand edit, logged as `human:local` with a field diff. There is no file watcher yet. Hand edits and hook entries are noticed at the next Studio call; live watching comes with 3.5b/3.8.
+- **Events:** a new `studio` events topic. `Engine::publish_event` lets module methods publish, and every Studio call publishes the journal entries written since the last one.
+- **New error kinds:** −32014 `TaskNotFound`, −32015 `TaskTransition`, −32016 `NotPermitted`.
+- **YAML:** `serde_norway` 0.9.42 (MIT OR Apache-2.0), with strict keys and a did-you-mean suggestion. `studio.activity` entries and `task.get` history are JSON values in the schema, because reflection has no flattened tagged enums.
+- **Default roster (G10):** it lives only in `crates/concordia-studio/roster/`. Its 12 roles have real descriptions and scopes, but placeholder bodies until 3.6. Five are enabled: director, level-designer, qa-playtester, tech-artist and writer. The other seven are disabled in `team.toml`, each with a reason. Scopes name only tools that exist now.
+- **`concordia new` (decision A1, partly):**
+  - it writes `[physics]`, `[assets]`, `[render]` and `[studio]`, plus `studio/` (team, 12 roles, `tasks/.gitkeep`);
+  - `.gitignore` also ignores `.claude/settings.local.json`;
+  - `.mcp.json` runs bare `concordia mcp --project ${CLAUDE_PROJECT_DIR:-.}`. The old test asserting an absolute path was changed deliberately (G7), and its snapshot updated.
+  - Flags: `--no-studio` and `--minimal`.
+  - `.claude/` and `CLAUDE.md` arrive with `studio sync` in 3.4.
+- **CLI:** `concordia studio init|roster|status` and `concordia task list|show|create|claim|update|comment|approve|reject` (JSON output, default actor `human:local`). It runs an in-process engine until 3.5b lets it attach to a running one.
+- **Tests:** they sit in `crates/concordia-studio/tests/` (`role`, `team`, `journal`, `task_board`, `studio_methods`) instead of `concordia-api/tests/task_methods.rs`, because the methods live in the module. The CLI tests are `cli_new` and `cli_studio`; the app wiring test is `concordia-app/tests/project.rs`.
+  - **Red run:** every API, CLI and app test failed first for the right reason. The role, team and journal tests had no red run: those modules were written before the run.
+  - **Two test fixes,** made deliberately: a fixture role named a tool its engine didn't offer, and the history test wrongly treated `created_by` as history.
 
 ### Phase 3.4: `concordia studio sync`: compile to Claude Code native files
 *Can start right after M0.*
@@ -717,7 +740,7 @@ For the consistency pass into `plans/README.md`:
 - **MCP server name** in `.mcp.json`: `concordia` → Claude Code tool names `mcp__concordia__<tool>`.
 - **Actor fields:** mutating MCP calls carry `actor` plus optional `actor_session` (hook-provided `<session_id>/<agent_id>`); instance `#n` is assigned by `concordia-mcp`. `human:*` actors are not accepted over MCP.
 - **File formats:** `.playtest.ron` (assertion suites + scenario), `.score.ron` (procedural music scores); Studio role and task files use **Markdown + YAML frontmatter**; `studio/tasks/<id>-<slug>.task.md` with ids `T-0001…`.
-- **Runtime state dirs:** `.concordia/studio/` (`roster.ron` cache, `actors.ron` slots, optional `secret`); `.concordia/session.json` (running-engine discovery for hooks/CLI).
+- **Runtime state dirs:** `.concordia/studio/` (`journal.jsonl` Studio journal and `board.lock`, from 3.3; `roster.ron` cache and `actors.ron` slots, 3.4–3.5; optional `secret`); running-engine discovery uses the existing `.concordia/headless.json` (there is no `session.json`; refinement G1).
 - **CLI:** `concordia replay record|run|diff`, `concordia assert eval`, `concordia test playtests`, `concordia task …`, `concordia studio sync|hook|roster|status|doctor`, `concordia gen list|run`.
 - **Test conventions:** live-agent gates are `#[ignore]` tests named `m<n>_live_*` in `tests/gates/`, run via `just gate-live M<n>`; they assert outcomes only and remove API-key env vars from the child process. Shared gate checkers live in `tests/src/`.
 - **Directories:** `tools/blender-bridge/` (separate optional tool); `tests/gates/live-reports/M<n>/`.

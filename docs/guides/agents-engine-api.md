@@ -71,7 +71,18 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `viewport.gizmo` | yes | `{action: begin\|move\|end\|cancel, entity?, axis?, x?, y?, width?, height?}` → `{translation, axis}` (Move-gizmo drags; a begin without an axis grabs the shown gizmo's handle under the pointer, or misses); **editor only, not an MCP tool** |
 | `viewport.stats` | | `{clear?}` → `{frames: [{seq, input_time_ms, cpu_ms, submitted_ms, presented_ms}]}` (recent native-viewport frames; times in Unix ms); **editor only, not an MCP tool** |
 | `log.tail` | | `{since?, level?, limit?}` → `{records, next}` |
-| `events.subscribe` / `events.unsubscribe` | | `{topics: ["edit" \| "scene" \| "sim" \| "pending" \| "log"]}` → `{topics}` (WebSocket only; not an MCP tool) |
+| `events.subscribe` / `events.unsubscribe` | | `{topics: ["edit" \| "scene" \| "sim" \| "pending" \| "log" \| "studio"]}` → `{topics}` (WebSocket only; not an MCP tool) |
+| `task.create` | yes | `{title, role, description?, priority?, acceptance?: [{assert}], depends_on?, links?}` → `{task}` (projects with `[studio]`; the role must be enabled, see `studio.roster`) |
+| `task.get` | | `{id}` → `{task, history}` (history comes from the Studio journal, oldest first) |
+| `task.list` | | `{status?, role?, assignee?}` → `{tasks}` |
+| `task.claim` | yes | `{id}` → `{task}` (todo or rejected → in_progress, assigned to you) |
+| `task.update` | yes | `{id, status?, title?, description?, priority?, acceptance?, links?, depends_on?, assignee?}` → `{task}` (in_progress → in_review when your work is ready) |
+| `task.comment` | yes | `{id, text}` → `{task}` (a note: what you did, evidence, questions) |
+| `task.approve` | yes | `{id, comment?}` → `{task}` (in_review → done; only reviewers the team's gates allow, else `NotPermitted`) |
+| `task.reject` | yes | `{id, comment}` → `{task}` (in_review → rejected; blocked for a human after `max_attempts_per_task` rejections) |
+| `studio.roster` | | `{}` → `{team, director, main_session_actor, roles: [{role, mcp_tools, write, ...}], disabled: [{role, reason}]}` |
+| `studio.status` | | `{}` → `{tasks: {<status>: count}, pending_approvals}` |
+| `studio.activity` | | `{since?, actor?, role?, task?, kind?, limit?}` → `{entries, next}` (task changes, reviews and agents' file edits, oldest first) |
 
 `events.subscribe` makes the WebSocket connection receive JSON-RPC notifications, `{"method": "events.event", "params": {"topic", ...}}`:
 - `edit`: one per committed transaction, undo or redo, with `method`, `txn`, `label`, `actor`, `entities` and `undo`;
@@ -104,6 +115,9 @@ Errors are JSON-RPC errors whose `data` says what to do next (ADR-0031): `kind`,
 | −32011 | `NotPlaying` | `sim.step` or `sim.play` first |
 | −32012 | `TxnNotFound` | use the id from `txn.begin`; it may have timed out |
 | −32013 | `GpuUnavailable` | run `concordia gpu-probe`; rendering needs Metal (macOS) in M1 |
+| −32014 | `TaskNotFound` | list tasks with `task_list` |
+| −32015 | `TaskTransition` | follow todo → in_progress (`task_claim`) → in_review → done (`task_approve`) |
+| −32016 | `NotPermitted` | a Studio gate or your role's scope refuses this; see `studio_roster` |
 | −32602 | `InvalidParams` | match `expected` at `pointer` |
 
 ## Journal

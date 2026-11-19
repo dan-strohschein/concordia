@@ -10,6 +10,6 @@ mod project;
 pub use error::AppError;
 pub use manifest::{
     AssetsSection, InputSection, JournalSection, Manifest, PhysicsSection, ProjectSection,
-    RenderSection, SceneSection, SimSection,
+    RenderSection, SceneSection, SimSection, StudioSection,
 };
 pub use project::Project;

@@ -1,0 +1,20 @@
+---
+source: crates/concordia-studio/tests/task_board.rs
+expression: text
+---
+---
+id: T-0001
+uid: 018bcfe5-6800-7001-9dc5-b68e72e89d6c
+title: Build the arena
+status: todo
+role: level-designer
+priority: high
+created_by: agent:director
+acceptance:
+- assert: the arena has 8 walls
+---
+A ring of eight walls around a lit floor.
+
+## Notes
+
+## Review

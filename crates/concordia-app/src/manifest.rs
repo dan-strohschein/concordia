@@ -25,6 +25,24 @@ pub struct Manifest {
     pub assets: Option<AssetsSection>,
     /// `[render]`; render components and `capture.screenshot` exist only if this section exists.
     pub render: Option<RenderSection>,
+    /// `[studio]`; Agent Studio (`task.*`, `studio.*`) runs only if this section exists.
+    pub studio: Option<StudioSection>,
+}
+
+/// `[studio]`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct StudioSection {
+    /// The Studio folder (project-relative): team.toml, agents/, skills/, tasks/.
+    pub dir: String,
+}
+
+impl Default for StudioSection {
+    fn default() -> Self {
+        Self {
+            dir: "studio".into(),
+        }
+    }
 }
 
 /// `[render]` (no settings yet; the device is created on the first capture).

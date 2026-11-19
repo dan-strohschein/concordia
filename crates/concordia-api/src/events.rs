@@ -28,6 +28,8 @@ pub enum Topic {
     pending,
     /// New log records (`latest`: the newest record's seq); fetch them with `log.tail`.
     log,
+    /// Agent Studio activity: task changes, file-edit audits, actor slots (see `studio.activity`).
+    studio,
 }
 
 /// Sinks and subscriptions by session.
@@ -61,12 +63,12 @@ impl EventHub {
         self.topics.remove(&session);
     }
 
-    fn wants(&self, topic: Topic) -> bool {
+    pub(crate) fn wants(&self, topic: Topic) -> bool {
         self.topics.values().any(|t| t.contains(&topic))
     }
 
     /// Sends `events.event` with `params` (plus `topic`) to every session subscribed to `topic`.
-    fn publish(&mut self, topic: Topic, mut params: Value) {
+    pub(crate) fn publish(&mut self, topic: Topic, mut params: Value) {
         params["topic"] = json!(topic);
         let message = json!({"jsonrpc": "2.0", "method": "events.event", "params": params});
         for (session, topics) in &self.topics {

@@ -46,11 +46,17 @@ pub enum ApiErrorKind {
     TxnNotFound,
     /// No GPU device is available for rendering.
     GpuUnavailable,
+    /// No Studio task has the given id.
+    TaskNotFound,
+    /// The task's status cannot change that way.
+    TaskTransition,
+    /// A Studio gate or role scope does not allow this actor to do this.
+    NotPermitted,
 }
 
 impl ApiErrorKind {
     /// Every kind (for exhaustive tests and docs).
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 23] = [
         Self::ParseError,
         Self::InvalidRequest,
         Self::MethodNotFound,
@@ -71,6 +77,9 @@ impl ApiErrorKind {
         Self::NotPlaying,
         Self::TxnNotFound,
         Self::GpuUnavailable,
+        Self::TaskNotFound,
+        Self::TaskTransition,
+        Self::NotPermitted,
     ];
 
     /// The JSON-RPC error code.
@@ -94,6 +103,9 @@ impl ApiErrorKind {
             Self::NotPlaying => -32011,
             Self::TxnNotFound => -32012,
             Self::GpuUnavailable => -32013,
+            Self::TaskNotFound => -32014,
+            Self::TaskTransition => -32015,
+            Self::NotPermitted => -32016,
         }
     }
 
@@ -120,6 +132,9 @@ impl ApiErrorKind {
             Self::NotPlaying => "NotPlaying",
             Self::TxnNotFound => "TxnNotFound",
             Self::GpuUnavailable => "GpuUnavailable",
+            Self::TaskNotFound => "TaskNotFound",
+            Self::TaskTransition => "TaskTransition",
+            Self::NotPermitted => "NotPermitted",
         }
     }
 
@@ -145,6 +160,9 @@ impl ApiErrorKind {
             Self::NotPlaying => "there is no play world",
             Self::TxnNotFound => "that transaction is not open",
             Self::GpuUnavailable => "no GPU device is available for rendering",
+            Self::TaskNotFound => "no task has that id",
+            Self::TaskTransition => "the task's status cannot change that way",
+            Self::NotPermitted => "this actor is not allowed to do that",
         }
     }
 
@@ -183,6 +201,11 @@ impl ApiErrorKind {
             Self::GpuUnavailable => {
                 "run `concordia gpu-probe`; rendering needs Metal (macOS) in M1"
             }
+            Self::TaskNotFound => "list tasks with task.list",
+            Self::TaskTransition => {
+                "follow todo → in_progress (task.claim) → in_review → done (task.approve)"
+            }
+            Self::NotPermitted => "see studio.roster for each role's tools, paths and gates",
         }
     }
 }

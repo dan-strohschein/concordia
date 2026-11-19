@@ -3,10 +3,11 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use concordia_api::{Engine, EngineConfig};
+use concordia_api::Engine;
 use concordia_reflect::TypeRegistry;
 use concordia_scene::SceneError;
 
+use super::project_engine;
 use crate::Failure;
 
 /// `concordia fmt` arguments.
@@ -27,16 +28,6 @@ const MANIFEST: &str = "concordia.toml";
 
 /// The project a file is formatted against: a root, or none (built-in components only).
 type ProjectRoot = Option<PathBuf>;
-
-/// An engine with the project's modules, for its type registry.
-fn project_engine(root: &Path) -> Result<Engine, Failure> {
-    let project = concordia_app::Project::load(root).map_err(|e| Failure::usage(e.to_string()))?;
-    let mut config = EngineConfig::new(root);
-    config.modules = project
-        .modules()
-        .map_err(|e| Failure::usage(e.to_string()))?;
-    Engine::new(config).map_err(|e| Failure::usage(e.message))
-}
 
 /// The nearest ancestor directory of `file` that holds a `concordia.toml`.
 fn nearest_project(file: &Path) -> ProjectRoot {

@@ -8,9 +8,9 @@ expression: mcp
       "args": [
         "mcp",
         "--project",
-        "."
+        "${CLAUDE_PROJECT_DIR:-.}"
       ],
-      "command": "[concordia binary]"
+      "command": "concordia"
     }
   }
 }

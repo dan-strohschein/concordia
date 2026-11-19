@@ -19,16 +19,39 @@ pub(crate) struct Args {
     /// Write into a non-empty directory (existing files other than the project files are kept).
     #[arg(long)]
     force: bool,
+    /// Leave out Agent Studio (add it later with `concordia studio init`).
+    #[arg(long)]
+    no_studio: bool,
+    /// Only the core engine: no physics, assets, render or Agent Studio.
+    #[arg(long)]
+    minimal: bool,
+}
+
+/// What the project's manifest switches on.
+struct Features {
+    modules: bool,
+    studio: bool,
 }
 
 pub(crate) fn run(args: &Args) -> Result<(), Failure> {
     ensure_usable(&args.dir, args.force)?;
     let name = args.name.clone().unwrap_or_else(|| default_name(&args.dir));
+    let features = Features {
+        modules: !args.minimal,
+        studio: !args.minimal && !args.no_studio,
+    };
     let write = |relative: &str, text: String| write_file(&args.dir.join(relative), &text);
-    write("concordia.toml", manifest(&name))?;
+    write("concordia.toml", manifest(&name, &features))?;
     write("scenes/main.scene.ron", main_scene()?)?;
-    write(".gitignore", ".concordia/\n".to_owned())?;
+    write(
+        ".gitignore",
+        ".concordia/\n.claude/settings.local.json\n".to_owned(),
+    )?;
     write(".mcp.json", mcp_json()?)?;
+    if features.studio && !args.dir.join("studio").exists() {
+        concordia_studio::init(&args.dir, Path::new("studio"))
+            .map_err(|e| Failure::usage(e.to_string()))?;
+    }
     eprintln!("created project {name:?} in {}", args.dir.display());
     Ok(())
 }
@@ -51,11 +74,20 @@ fn default_name(dir: &Path) -> String {
         .map_or_else(|| "game".to_owned(), |n| n.to_string_lossy().into_owned())
 }
 
-fn manifest(name: &str) -> String {
+fn manifest(name: &str, features: &Features) -> String {
     let name = serde_json::to_string(name).unwrap_or_else(|_| "\"game\"".to_owned());
-    format!(
+    let mut text = format!(
         "# Concordia project manifest.\n[project]\nname = {name}\n\n[scene]\nmain = \"scenes/main.scene.ron\"\n\n[sim]\nrate_hz = 60\nseed = 0\n\n[journal]\nsync = true\n"
-    )
+    );
+    if features.modules {
+        text.push_str("\n[physics]\ngravity = [0.0, -9.81, 0.0]\n\n[assets]\n\n[render]\n");
+    }
+    if features.studio {
+        text.push_str(
+            "\n# Agent Studio: studio/team.toml, studio/agents/, studio/tasks/.\n[studio]\n",
+        );
+    }
+    text
 }
 
 fn main_scene() -> Result<String, Failure> {
@@ -71,11 +103,12 @@ fn main_scene() -> Result<String, Failure> {
     write_scene(&doc).map_err(|e| Failure::usage(e.to_string()))
 }
 
-/// Registers the MCP server as "concordia" for Claude Code, launched from the project root.
+/// Registers the MCP server as "concordia" for Claude Code: `concordia` on PATH, no user paths.
 fn mcp_json() -> Result<String, Failure> {
-    let exe = std::env::current_exe()
-        .map_err(|e| Failure::usage(format!("cannot locate the concordia binary: {e}")))?;
-    let config = json!({ "mcpServers": { "concordia": { "command": exe, "args": ["mcp", "--project", "."] } } });
+    let config = json!({ "mcpServers": { "concordia": {
+        "command": "concordia",
+        "args": ["mcp", "--project", "${CLAUDE_PROJECT_DIR:-.}"]
+    } } });
     let mut text =
         serde_json::to_string_pretty(&config).map_err(|e| Failure::usage(e.to_string()))?;
     text.push('\n');

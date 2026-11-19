@@ -7,10 +7,13 @@ pub(crate) mod import;
 pub(crate) mod new;
 pub(crate) mod run;
 pub(crate) mod schema;
+pub(crate) mod studio;
 
 use std::future::Future;
 
-use concordia_api::ApiError;
+use std::path::Path;
+
+use concordia_api::{ApiError, Engine, EngineConfig};
 
 use crate::Failure;
 
@@ -32,4 +35,14 @@ pub(crate) fn api_failure(error: &ApiError) -> Failure {
         .map(|s| format!("\n  - {s}"))
         .collect();
     Failure::usage(format!("{}{suggestions}", error.message))
+}
+
+/// An in-process engine with the project's modules.
+pub(crate) fn project_engine(root: &Path) -> Result<Engine, Failure> {
+    let project = concordia_app::Project::load(root).map_err(|e| Failure::usage(e.to_string()))?;
+    let mut config = EngineConfig::new(root);
+    config.modules = project
+        .modules()
+        .map_err(|e| Failure::usage(e.to_string()))?;
+    Engine::new(config).map_err(|e| Failure::usage(e.message))
 }

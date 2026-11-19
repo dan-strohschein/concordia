@@ -1,0 +1,64 @@
+# Agent Studio team: roles, limits and approval gates.
+# Edit freely; run `concordia studio sync` afterwards to regenerate the Claude Code files.
+
+[team]
+name = "default"
+director = "director"
+
+[roles.level-designer]
+count = 2
+
+# Roles whose engine features have not landed yet. Enable them when they do.
+[roles.gameplay-programmer]
+enabled = false
+reason = "gameplay scripts arrive with WASM scripting (M2)"
+
+[roles.modeler]
+enabled = false
+reason = "mesh generation and the Blender bridge arrive in M3 phase 3.7"
+
+[roles.animator]
+enabled = false
+reason = "animation arrives in M2"
+
+[roles.vfx-artist]
+enabled = false
+reason = "particles and VFX arrive in M2"
+
+[roles.sound-designer]
+enabled = false
+reason = "audio arrives in M2"
+
+[roles.composer]
+enabled = false
+reason = "audio arrives in M2 and music generation in M3 phase 3.7"
+
+[roles.ui-ux]
+enabled = false
+reason = "in-game UI arrives in M2"
+
+[concurrency]
+max_parallel_subagents = 4
+max_spawn_depth = 1
+
+[budgets]
+max_turns_per_subagent = 80
+max_mcp_calls_per_task = 400
+max_mutations_per_task = 200
+
+# Only QA or a human may approve finished work.
+[[gates]]
+on = { task_transition = "in_review->done" }
+require_any = ["role:qa-playtester", "human"]
+
+# Agents may not change the project's configuration.
+[[gates]]
+on = { paths = ["concordia.toml", "studio/**", ".claude/**", ".mcp.json"] }
+require_any = ["human"]
+
+[escalation]
+max_attempts_per_task = 3
+
+[paths]
+deny = [".env", "**/*.key"]
+shared = ["assets/blender/**", "tests/playtests/**"]

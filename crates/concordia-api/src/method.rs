@@ -29,7 +29,7 @@ pub enum Audience {
 pub trait Method: Reflect {
     /// Wire name, `domain.verb`.
     const NAME: &'static str;
-    /// True if the method changes the edit world (requires an actor).
+    /// True if the method changes engine or project state (edit world, tasks); requires an actor.
     const MUTATES: bool;
     /// Who the method is for (default: agents).
     const AUDIENCE: Audience = Audience::agent;
@@ -106,6 +106,19 @@ impl MethodInfo {
             result: M::Result::type_info(),
             invoke: invoke::<M>,
         }
+    }
+
+    /// The MCP tool name (`entity.spawn` → `entity_spawn`).
+    pub fn tool_name(&self) -> String {
+        self.name.replace('.', "_")
+    }
+
+    /// True for methods offered to agents as MCP tools: agent audience, except `session.open`
+    /// (the adapter opens the session) and `events.*` (they need a push channel tool calls lack).
+    pub fn is_agent_tool(&self) -> bool {
+        self.audience == Audience::agent
+            && self.name != "session.open"
+            && !self.name.starts_with("events.")
     }
 }
 
