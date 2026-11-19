@@ -113,6 +113,19 @@ pub struct SceneInfoResult {
     pub components_in_use: Vec<String>,
 }
 
+/// The open scene as canonical RON, exactly as `scene.save` would write it, without saving.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct SceneText;
+
+/// `scene.text` result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct SceneTextResult {
+    /// Project-relative path of the open scene.
+    pub path: String,
+    /// The scene file's text.
+    pub text: String,
+}
+
 impl Method for SceneNew {
     const NAME: &'static str = "scene.new";
     const MUTATES: bool = true;
@@ -288,6 +301,24 @@ impl Method for SceneInfo {
     }
 }
 
+impl Method for SceneText {
+    const NAME: &'static str = "scene.text";
+    const MUTATES: bool = false;
+    type Params = super::Empty;
+    type Result = SceneTextResult;
+
+    fn call(
+        engine: &mut Engine,
+        _: &CallCtx,
+        _: super::Empty,
+    ) -> Result<SceneTextResult, ApiError> {
+        Ok(SceneTextResult {
+            path: engine.scene()?.path.clone(),
+            text: engine.scene_text()?,
+        })
+    }
+}
+
 impl Engine {
     /// The open scene in canonical RON, exactly as `scene.save` would write it.
     pub fn scene_text(&self) -> Result<String, ApiError> {
@@ -366,5 +397,6 @@ pub(crate) fn methods() -> Vec<MethodInfo> {
         MethodInfo::of::<SceneOpen>(),
         MethodInfo::of::<SceneSave>(),
         MethodInfo::of::<SceneInfo>(),
+        MethodInfo::of::<SceneText>(),
     ]
 }

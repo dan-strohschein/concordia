@@ -1,7 +1,6 @@
 //! JSON-RPC over WebSocket: localhost only, with a startup token and an Origin check.
 
 use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
 
 use futures::{SinkExt, StreamExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -34,7 +33,7 @@ impl WsConfig {
     }
 }
 
-/// A running WebSocket server (stops when dropped).
+/// A running WebSocket server; dropping it stops it and closes every connection.
 #[derive(Debug)]
 pub struct WsServer {
     /// The bound address.
@@ -72,16 +71,29 @@ pub async fn serve(handle: EngineHandle, config: WsConfig) -> Result<WsServer, A
     let listener = TcpListener::bind(config.addr).await.map_err(internal)?;
     let local_addr = listener.local_addr().map_err(internal)?;
     let token = config.token.clone();
-    let task = tokio::spawn(async move {
-        while let Ok((stream, _)) = listener.accept().await {
-            tokio::spawn(connection(handle.clone(), stream, token.clone()));
-        }
-    });
+    let task = tokio::spawn(accept(listener, handle, token));
     Ok(WsServer {
         local_addr,
         token: config.token,
         task,
     })
+}
+
+/// Accepts connections; they live in a set owned by this task, so stopping it closes them all.
+async fn accept(listener: TcpListener, handle: EngineHandle, token: String) {
+    let mut connections = tokio::task::JoinSet::new();
+    loop {
+        tokio::select! {
+            accepted = listener.accept() => match accepted {
+                Ok((stream, _)) => {
+                    connections.spawn(connection(handle.clone(), stream, token.clone()));
+                }
+                // Transient (e.g. out of file descriptors): back off rather than drop live clients.
+                Err(_) => tokio::time::sleep(std::time::Duration::from_millis(20)).await,
+            },
+            Some(_) = connections.join_next(), if !connections.is_empty() => {}
+        }
+    }
 }
 
 async fn connection(handle: EngineHandle, stream: TcpStream, token: String) {
@@ -178,18 +190,4 @@ fn local_origin(origin: &str) -> bool {
     };
     matches!(scheme, "http" | "https" | "tauri")
         && matches!(host, "localhost" | "127.0.0.1" | "[::1]")
-}
-
-/// Writes `<project>/.concordia/headless.json` (`url`, `token`, `pid`) atomically, readable only by the owner.
-pub fn write_connection_file(project: &Path, server: &WsServer) -> std::io::Result<PathBuf> {
-    let dir = project.join(".concordia");
-    std::fs::create_dir_all(&dir)?;
-    let path = dir.join("headless.json");
-    let body = serde_json::json!({ "url": server.url(), "token": server.token, "pid": std::process::id() });
-    concordia_core::fs::write_atomically(
-        &path,
-        body.to_string().as_bytes(),
-        concordia_core::fs::Visibility::OwnerOnly,
-    )?;
-    Ok(path)
 }

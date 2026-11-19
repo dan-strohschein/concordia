@@ -34,6 +34,7 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `scene.open` | | `{path, discard?}` → `{scene_id, entity_count, history: "restored"\|"stale"\|"none"}` |
 | `scene.save` | | `{path?}` → `{path, bytes, hash}` |
 | `scene.info` | | `{}` → `{scene_id, name, path, dirty, entity_count, components_in_use}` |
+| `scene.text` | | `{}` → `{path, text}`: the open scene as canonical RON, as `scene.save` would write it, without saving |
 | `project.files` | | `{dir?}` → `{files: [{path, kind, size, asset, importer}]}` (projects with `[assets]`; skips hidden, git-ignored and sidecar files) |
 | `asset.import` | | `{path}` → `{id, cached, sub_assets}` (import or re-import a project file; idempotent; refer to it as `"asset:<id>"`) |
 | `asset.list` | | `{}` → `{assets: [{id, path, importer, sub_assets}]}` |
@@ -83,6 +84,7 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `studio.roster` | | `{}` → `{team, director, main_session_actor, roles: [{role, mcp_tools, write, ...}], disabled: [{role, reason}]}` |
 | `studio.status` | | `{}` → `{tasks: {<status>: count}, pending_approvals}` |
 | `studio.activity` | | `{since?, actor?, role?, task?, kind?, limit?}` → `{entries, next}` (task changes, reviews and agents' file edits, oldest first) |
+| `studio.sync` | yes | `{check?, force?}` → `{changes: [{path, action, diff?}], refused, stale}` (regenerates `.claude/agents`, `.claude/skills`, the settings hooks, `.mcp.json` and the `CLAUDE.md` block from `studio/`; usually run by a human) |
 
 `events.subscribe` makes the WebSocket connection receive JSON-RPC notifications, `{"method": "events.event", "params": {"topic", ...}}`:
 - `edit`: one per committed transaction, undo or redo, with `method`, `txn`, `label`, `actor`, `entities` and `undo`;
@@ -118,6 +120,7 @@ Errors are JSON-RPC errors whose `data` says what to do next (ADR-0031): `kind`,
 | −32014 | `TaskNotFound` | list tasks with `task_list` |
 | −32015 | `TaskTransition` | follow todo → in_progress (`task_claim`) → in_review → done (`task_approve`) |
 | −32016 | `NotPermitted` | a Studio gate or your role's scope refuses this; see `studio_roster` |
+| −32017 | `EngineExited` | the shared engine's host (editor or another server) exited; call again to reconnect, then `scene_open` your scene (unsaved edits are gone) |
 | −32602 | `InvalidParams` | match `expected` at `pointer` |
 
 ## Journal
@@ -125,4 +128,6 @@ Every commit, undo, redo, abort and save is appended to `.concordia/journal/<sce
 
 ## Transports
 - stdio: one JSON-RPC message per line, one session per process.
+- MCP with Agent Studio (`[studio]`): every engine call made from Claude Code is stamped by the Studio hook with your role. Each agent instance gets its own session and actor (`agent:<role>#n`). Calls outside your role's tools or paths fail with `NotPermitted`, and so do edits when the hooks aren't running. Don't pass `actor`; it is ignored.
 - WebSocket: `ws://127.0.0.1:<port>/?token=<token>`, localhost only; the URL and token are in `.concordia/headless.json` (mode 0600). Browser origins other than localhost are rejected.
+- One engine per project (ADR-0082): `concordia mcp`, the editor and `concordia headless --ws` attach to the live engine named in `.concordia/headless.json`, or host one and publish that file. Your edits show live in the editor, and the editor's in yours. If the host exits, the next call fails with `EngineExited`; the call after it reconnects.

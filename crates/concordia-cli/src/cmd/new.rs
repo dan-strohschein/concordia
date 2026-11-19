@@ -52,6 +52,9 @@ pub(crate) fn run(args: &Args) -> Result<(), Failure> {
         concordia_studio::init(&args.dir, Path::new("studio"))
             .map_err(|e| Failure::usage(e.to_string()))?;
     }
+    if features.studio {
+        super::studio::sync(&args.dir, false, false, false)?;
+    }
     eprintln!("created project {name:?} in {}", args.dir.display());
     Ok(())
 }

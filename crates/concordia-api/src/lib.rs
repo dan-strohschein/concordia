@@ -25,6 +25,7 @@ mod error;
 mod events;
 mod handle;
 mod image;
+mod link;
 mod map;
 mod method;
 mod methods;
@@ -39,6 +40,7 @@ pub use error::{ApiError, ApiErrorKind, ErrorData};
 pub use events::{EventSink, Topic};
 pub use handle::EngineHandle;
 pub use image::{EncodedImage, image_fields};
+pub use link::EngineLink;
 pub use method::{
     Audience, CallCtx, Method, MethodInfo, MethodRegistry, methods, params_schema, result_schema,
 };

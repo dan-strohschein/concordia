@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import { EngineClient, websocketTransport } from "./api/client";
 import { EditorSession } from "./engine/session";
 import { Editor } from "./shell/Editor";
+import { EngineLost } from "./shell/EngineLost";
 
 declare global {
   interface Window {
@@ -42,7 +43,12 @@ function App() {
   }
   if (error) return <p style={{ color: "#f88", padding: 16, font: "13px system-ui" }}>{error}</p>;
   if (!session) return <p style={{ padding: 16, font: "13px system-ui" }}>Connecting…</p>;
-  return <Editor session={session} />;
+  return (
+    <>
+      <EngineLost client={session.client} />
+      <Editor session={session} />
+    </>
+  );
 }
 
 const root = document.getElementById("root");

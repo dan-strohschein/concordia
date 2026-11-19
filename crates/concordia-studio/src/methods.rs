@@ -9,8 +9,9 @@ use concordia_reflect::Reflect;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::claude_code::{SyncAction, SyncOptions, sync};
 use crate::gate::GateParty;
-use crate::journal::JournalEntry;
+use crate::journal::{JournalEntry, JournalEvent};
 use crate::module::{board_error, publish, roster, state};
 use crate::roster::Roster;
 use crate::task::{
@@ -31,6 +32,7 @@ pub(crate) fn all() -> Vec<MethodInfo> {
         MethodInfo::of::<StudioRoster>(),
         MethodInfo::of::<StudioStatus>(),
         MethodInfo::of::<StudioActivity>(),
+        MethodInfo::of::<StudioSync>(),
     ]
 }
 
@@ -683,4 +685,96 @@ fn matches_filter(entry: &JournalEntry, p: &StudioActivityParams) -> bool {
             .as_ref()
             .is_none_or(|t| entry.event.task() == Some(t.as_str()))
         && p.kind.as_ref().is_none_or(|k| entry.event.kind() == k)
+}
+
+/// Regenerate the Claude Code files (.claude/agents, .claude/skills, settings hooks, .mcp.json, the CLAUDE.md block) from studio/.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct StudioSync;
+
+/// `studio.sync` params.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct StudioSyncParams {
+    /// Report what would change and write nothing.
+    pub check: Option<bool>,
+    /// Overwrite generated files that were edited by hand.
+    pub force: Option<bool>,
+    /// Actor (defaults to the session's).
+    pub actor: Option<Actor>,
+}
+
+/// One file's outcome.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct SyncChangeView {
+    /// Project-relative path.
+    pub path: String,
+    /// create, update, delete or unchanged.
+    pub action: String,
+    /// Unified diff (updates only).
+    pub diff: Option<String>,
+}
+
+/// `studio.sync` result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct StudioSyncResult {
+    /// Every file sync owns or merges into.
+    pub changes: Vec<SyncChangeView>,
+    /// Generated files edited by hand and left alone (pass force to overwrite).
+    pub refused: Vec<String>,
+    /// True if files are (check) or remain (write) out of date.
+    pub stale: bool,
+}
+
+impl Method for StudioSync {
+    const NAME: &'static str = "studio.sync";
+    const MUTATES: bool = true;
+    type Params = StudioSyncParams;
+    type Result = StudioSyncResult;
+    fn call(
+        engine: &mut Engine,
+        ctx: &CallCtx,
+        p: StudioSyncParams,
+    ) -> Result<StudioSyncResult, ApiError> {
+        let actor = ctx.actor()?.clone();
+        let roster = roster(engine)?;
+        let catalog = crate::scope::ToolCatalog::from_methods(engine.methods());
+        let root = engine.project().to_owned();
+        let options = SyncOptions {
+            check: p.check.unwrap_or(false),
+            force: p.force.unwrap_or(false),
+        };
+        let state = state(engine)?;
+        let report = sync(&root, &state.dir, &roster, &catalog, options)
+            .map_err(crate::module::config_error)?;
+        let changed: Vec<String> = report
+            .changes
+            .iter()
+            .filter(|c| c.action != SyncAction::Unchanged)
+            .map(|c| c.path.clone())
+            .collect();
+        if !options.check && !changed.is_empty() {
+            state
+                .board
+                .journal()
+                .append(&actor, JournalEvent::Sync { changed })
+                .map_err(crate::module::config_error)?;
+        }
+        publish(engine)?;
+        Ok(StudioSyncResult {
+            stale: match options.check {
+                true => report.is_stale(),
+                false => !report.refused.is_empty(),
+            },
+            changes: report
+                .changes
+                .into_iter()
+                .map(|c| SyncChangeView {
+                    path: c.path,
+                    action: format!("{:?}", c.action).to_lowercase(),
+                    diff: c.diff,
+                })
+                .collect(),
+            refused: report.refused,
+        })
+    }
 }

@@ -1,5 +1,6 @@
 //! Subcommands.
 
+pub(crate) mod doctor;
 pub(crate) mod fmt;
 pub(crate) mod gpu_probe;
 pub(crate) mod headless;
@@ -18,7 +19,7 @@ use concordia_api::{ApiError, Engine, EngineConfig};
 use crate::Failure;
 
 /// Runs an async subcommand on a fresh multi-threaded runtime.
-pub(crate) fn block_on(task: impl Future<Output = Result<(), Failure>>) -> Result<(), Failure> {
+pub(crate) fn block_on<T>(task: impl Future<Output = Result<T, Failure>>) -> Result<T, Failure> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()

@@ -4,8 +4,10 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use concordia_api::transport::{stdio, ws};
+use concordia_api::transport::connection::{ConnectionInfo, HostKind};
+use concordia_api::transport::stdio;
 use concordia_api::{Engine, EngineConfig};
+use concordia_app::SharedEngine;
 use concordia_core::log::{LogConfig, init};
 
 use super::api_failure;
@@ -44,26 +46,46 @@ pub(crate) async fn run(args: Args) -> Result<(), Failure> {
     if let Some(threads) = args.threads {
         config.threads = threads;
     }
-    let handle = Engine::new(config).map_err(|e| api_failure(&e))?.spawn();
     if !args.ws {
+        let handle = Engine::new(config).map_err(|e| api_failure(&e))?.spawn();
         let (stdin, stdout) = (tokio::io::stdin(), tokio::io::stdout());
         return stdio::serve(&handle, stdin, stdout)
             .await
             .map_err(|e| Failure::usage(e.to_string()));
     }
-    let server = ws::serve(handle, ws::WsConfig::localhost(args.port))
+    let engine = SharedEngine::attach_or_host_on(config, HostKind::Headless, args.port)
         .await
-        .map_err(|e| api_failure(&e))?;
-    let file = ws::write_connection_file(&args.project, &server)
         .map_err(|e| Failure::usage(e.to_string()))?;
+    let info = engine.info();
+    if !engine.is_host() {
+        return Err(Failure::usage(format!(
+            "an engine is already running for this project: {} (pid {}) at {}; connect to it (see .concordia/headless.json) or stop it first",
+            info.host, info.pid, info.url
+        )));
+    }
     eprintln!(
-        "concordia headless: {}?token={} (also in {})",
-        server.url(),
-        server.token,
-        file.display()
+        "concordia headless: {} (also in {})",
+        info.connect_url(),
+        ConnectionInfo::path(&args.project).display()
     );
-    tokio::signal::ctrl_c()
-        .await
-        .map_err(|e| Failure::usage(e.to_string()))?;
+    shutdown_signal().await?;
     Ok(())
+}
+
+/// Ctrl-C, or SIGTERM on Unix; the hosted engine then removes its connection file.
+async fn shutdown_signal() -> Result<(), Failure> {
+    let failure = |e: std::io::Error| Failure::usage(e.to_string());
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        let mut term = signal(SignalKind::terminate()).map_err(failure)?;
+        tokio::select! {
+            result = tokio::signal::ctrl_c() => result.map_err(failure),
+            _ = term.recv() => Ok(()),
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        tokio::signal::ctrl_c().await.map_err(failure)
+    }
 }

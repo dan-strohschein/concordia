@@ -152,3 +152,40 @@ fn a_project_without_studio_files_reports_how_to_add_them() {
         err.data.suggestions
     );
 }
+
+#[test]
+fn studio_sync_writes_claude_code_files_and_journals_a_sync_entry() {
+    let mut fx = Fixture::new();
+    let report = fx.ok("studio.sync", json!({"actor": "human:local"}));
+    assert_eq!(report["stale"], false);
+    assert!(fx.path(".claude/agents/director.md").is_file());
+    assert!(fx.path(".claude/agents/level-designer.md").is_file());
+    assert!(
+        !fx.path(".claude/agents/writer.md").exists(),
+        "writer is disabled in the fixture team"
+    );
+    let entries = fx.ok("studio.activity", json!({"kind": "sync"}))["entries"].clone();
+    assert_eq!(entries.as_array().unwrap().len(), 1);
+    assert_eq!(entries[0]["actor"], "human:local");
+    assert!(
+        entries[0]["changed"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p == ".mcp.json")
+    );
+
+    let check = fx.ok(
+        "studio.sync",
+        json!({"check": true, "actor": "human:local"}),
+    );
+    assert_eq!(check["stale"], false);
+    assert_eq!(
+        fx.ok("studio.activity", json!({"kind": "sync"}))["entries"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1,
+        "an up-to-date sync journals nothing"
+    );
+}

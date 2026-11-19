@@ -1,0 +1,125 @@
+---
+source: crates/concordia-studio/tests/sync_snapshots.rs
+expression: "read(dir.path(), \".claude/settings.json\")"
+---
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "args": [
+              "studio",
+              "hook",
+              "pre-tool-use"
+            ],
+            "command": "concordia",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "mcp__concordia__.*"
+      },
+      {
+        "hooks": [
+          {
+            "args": [
+              "studio",
+              "hook",
+              "pre-tool-use"
+            ],
+            "command": "concordia",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "Edit|Write|NotebookEdit"
+      },
+      {
+        "hooks": [
+          {
+            "args": [
+              "studio",
+              "hook",
+              "pre-tool-use"
+            ],
+            "command": "concordia",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "args": [
+              "studio",
+              "hook",
+              "post-tool-use"
+            ],
+            "command": "concordia",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "Edit|Write|NotebookEdit"
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "args": [
+              "studio",
+              "hook",
+              "subagent-start"
+            ],
+            "command": "concordia",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "args": [
+              "studio",
+              "hook",
+              "subagent-stop"
+            ],
+            "command": "concordia",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "args": [
+              "studio",
+              "hook",
+              "session-end"
+            ],
+            "command": "concordia",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  },
+  "env": {
+    "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS": "4",
+    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "1"
+  },
+  "agent": "director"
+}

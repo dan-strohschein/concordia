@@ -291,3 +291,28 @@ fn task_writes_require_an_actor() {
         .unwrap_err();
     assert_eq!(err.kind, ApiErrorKind::ActorRequired);
 }
+
+#[test]
+fn the_assignee_cannot_review_its_own_task() {
+    let mut fx = Fixture::new();
+    let id = fx.ok(
+        "task.create",
+        json!({"title": "Write a playtest", "role": "qa-playtester", "actor": "agent:director"}),
+    )["task"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    fx.submit(&id, "agent:qa-playtester#1");
+    let err = fx
+        .call(
+            "task.approve",
+            json!({"id": id, "actor": "agent:qa-playtester#1"}),
+        )
+        .unwrap_err();
+    assert_eq!(err.kind, ApiErrorKind::NotPermitted);
+    assert!(err.message.contains("own"), "{}", err.message);
+    fx.ok(
+        "task.approve",
+        json!({"id": id, "actor": "agent:qa-playtester#2"}),
+    );
+}

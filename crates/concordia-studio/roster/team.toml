@@ -11,7 +11,7 @@ count = 2
 # Roles whose engine features have not landed yet. Enable them when they do.
 [roles.gameplay-programmer]
 enabled = false
-reason = "gameplay scripts arrive with WASM scripting (M2)"
+reason = "gameplay scripts arrive with WASM scripting in M2"
 
 [roles.modeler]
 enabled = false

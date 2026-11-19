@@ -5,6 +5,8 @@ export interface Transport {
   send(text: string): void;
   onMessage(handler: (text: string) => void): void;
   close(): void;
+  /** Called once if the other end goes away (the engine's host exited). */
+  onClose?(handler: () => void): void;
 }
 
 /** A JSON-RPC error returned by the engine (code, `data.kind`, suggestions). */
@@ -60,8 +62,10 @@ export class EngineClient {
   private readonly onProtocolError: (problem: string) => void;
   private readonly waiting = new Map<number, Pending>();
   private readonly listeners = new Set<(event: EngineEvent) => void>();
+  private readonly lostListeners = new Set<(reason: string) => void>();
   private nextId = 1;
   private closed = false;
+  private lostReason: string | undefined;
 
   constructor(transport: Transport, options: ClientOptions = {}) {
     if (options.timeoutMs !== undefined && !(options.timeoutMs > 0)) {
@@ -71,6 +75,18 @@ export class EngineClient {
     this.timeoutMs = options.timeoutMs ?? 10_000;
     this.onProtocolError = options.onProtocolError ?? (() => {});
     transport.onMessage((text) => this.receive(text));
+    transport.onClose?.(() => this.lose());
+  }
+
+  /** True once the engine went away without the client closing (e.g. its host exited). */
+  get lost(): boolean {
+    return this.lostReason !== undefined;
+  }
+
+  /** Listens for the engine going away; returns the unsubscribe function. */
+  onLost(listener: (reason: string) => void): () => void {
+    this.lostListeners.add(listener);
+    return () => this.lostListeners.delete(listener);
   }
 
   /** Calls in flight. */
@@ -80,6 +96,7 @@ export class EngineClient {
 
   /** Calls `method`; resolves with its result or rejects with a `JsonRpcError` or `TimeoutError`. */
   call<T = unknown>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+    if (this.lostReason !== undefined) return Promise.reject(new Error(this.lostReason));
     if (this.closed) return Promise.reject(new Error("the engine connection is closed"));
     if (method.length === 0) return Promise.reject(new RangeError("method must not be empty"));
     const id = this.nextId++;
@@ -103,12 +120,25 @@ export class EngineClient {
   close(): void {
     if (this.closed) return;
     this.closed = true;
+    this.rejectAll((method) => `the engine connection is closed (${method})`);
+    this.transport.close();
+  }
+
+  private lose(): void {
+    if (this.closed) return;
+    this.closed = true;
+    const reason = "the engine has exited (the process hosting it closed)";
+    this.lostReason = reason;
+    this.rejectAll((method) => `${reason} (${method})`);
+    for (const listener of this.lostListeners) listener(reason);
+  }
+
+  private rejectAll(message: (method: string) => string): void {
     for (const [id, p] of this.waiting) {
       clearTimeout(p.timer);
-      p.reject(new Error(`the engine connection is closed (${p.method})`));
+      p.reject(new Error(message(p.method)));
       this.waiting.delete(id);
     }
-    this.transport.close();
   }
 
   private receive(text: string): void {
@@ -165,6 +195,8 @@ export function websocketTransport(url: string): Promise<Transport> {
     const socket = new WebSocket(url);
     const queue: string[] = [];
     let handler: ((text: string) => void) | undefined;
+    let closed: (() => void) | undefined;
+    socket.onclose = () => closed?.();
     socket.onmessage = (e: MessageEvent) => {
       if (typeof e.data !== "string") return;
       if (handler) handler(e.data);
@@ -179,6 +211,9 @@ export function websocketTransport(url: string): Promise<Transport> {
           queue.splice(0).forEach(h);
         },
         close: () => socket.close(),
+        onClose: (h) => {
+          closed = h;
+        },
       });
   });
 }

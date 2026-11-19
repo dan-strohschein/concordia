@@ -20,7 +20,7 @@ use serde_json::Value;
 use crate::error::{ApiError, ApiErrorKind};
 use crate::method::{CallCtx, MethodRegistry};
 use crate::methods::{WorldSel, world_of};
-use crate::module::{CoreModule, EngineModule};
+use crate::module::EngineModule;
 
 /// Engine settings.
 #[derive(Debug, Clone)]
@@ -141,10 +141,7 @@ impl std::fmt::Debug for Engine {
 impl Engine {
     /// Creates an engine with the core module followed by `config.modules`.
     pub fn new(config: EngineConfig) -> Result<Self, ApiError> {
-        let core: Arc<dyn EngineModule> = Arc::new(CoreModule);
-        let modules: Vec<_> = std::iter::once(core)
-            .chain(config.modules.iter().cloned())
-            .collect();
+        let modules = crate::module::with_core(&config.modules);
         require_unique_names(&modules)?;
         let registry = register_types(&modules)?;
         let methods = Arc::new(MethodRegistry::build(&modules)?);

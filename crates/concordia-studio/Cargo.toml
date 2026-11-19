@@ -16,14 +16,18 @@ concordia-api.workspace = true
 concordia-command.workspace = true
 concordia-core.workspace = true
 concordia-reflect.workspace = true
+blake3.workspace = true
 globset = "0.4.21"
 serde.workspace = true
 serde_json.workspace = true
 serde_norway = "0.9.42"
+similar = "2.7.0"
 thiserror.workspace = true
 toml.workspace = true
 tracing.workspace = true
 uuid.workspace = true
+
+[target.'cfg(unix)'.dependencies]
 
 [dev-dependencies]
 insta.workspace = true

@@ -1,7 +1,7 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: In progress (Studio track: 3.0 and 3.3 done, 3.4 next; refinement approved 2026-11-19) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Needs refinement after M2** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5 and 3.5b done; 3.6 next; refinement approved 2026-11-19) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Needs refinement after M2** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
@@ -112,7 +112,52 @@ The options differ in how a call's identity reaches `concordia mcp` and how hook
   - the host's exit is visible to attached clients.
 
   Tests: `mcp_attaches_to_live_engine_from_connection_file`, `mcp_hosts_and_publishes_connection_file_when_none_live`, `stale_connection_file_is_replaced`, `editor_and_mcp_share_one_command_log` (e2e: an MCP edit appears in Agent Activity).
+
+  **Done (2026-11-19). As built (ADR-0082):**
+  - **Author decisions:**
+    - an editor that starts while another engine is live attaches and renders its viewport in the page (the native viewport needs an in-process engine);
+    - after a host exits, `concordia mcp` reports `EngineExited` on the failing call and attaches or hosts again on the next one.
+  - **One code path:** `concordia_app::SharedEngine::attach_or_host[_on]` under `.concordia/engine.lock`.
+    - **Attach:** `headless.json` (`url`, `token`, `pid`, and now `version` and `host`) names a live pid, and the handshake accepts the token.
+    - **Stale file:** otherwise, host and rewrite it.
+    - **Version mismatch:** a live engine of another version is an error, never attached.
+    - **Clean exit:** a host removes the file on drop, only if the file still names it.
+  - **API:**
+    - `EngineLink` trait, implemented by `EngineHandle` and by the new `transport::remote::RemoteEngine`, with one WebSocket per engine session, so Studio's per-agent sessions stay separate on the host;
+    - `transport::connection::{ConnectionInfo, HostKind}` replaces `ws::write_connection_file`;
+    - `ApiError::from_jsonrpc`;
+    - `MethodRegistry::with_core`;
+    - new error `EngineExited` (−32017);
+    - dropping a `WsServer` now closes its connections.
+  - **New core method `scene.text`:** it serves `concordia://scene/current` when attached. Counts changed deliberately, each with a note: 34 core methods, 31 MCP tools (`method_schemas`, `tools`, `stdout_hygiene`, M0 gate, method index snapshot).
+  - **`concordia mcp`:**
+    - always shares the project's engine; the private engine is gone;
+    - `--scene` opens only if no scene is open;
+    - `deterministic_ids`, `threads` and `log_ring` apply only when it hosts;
+    - Studio mode works attached: per-agent host sessions, policy, slots. After a reconnect, agent sessions reopen and slots are kept.
+  - **Editor:**
+    - `EngineHost` attaches or hosts, and opens the main scene if none is open;
+    - `handle()` is `Some` only when hosting, which gates the native viewport;
+    - the UI's `EngineClient` detects a dropped socket, rejects calls and shows the `EngineLost` banner.
+  - **CLI:**
+    - `concordia headless --ws` refuses while an engine is live, naming the host and pid, and removes its file on Ctrl-C or SIGTERM;
+    - `studio` and `task` commands run on the live engine when there is one, otherwise on an unpublished in-process engine.
+  - **Tests:**
+    - `concordia-api`: `remote.rs` (7), plus `scene_text_method_returns_the_open_scene_as_saved` and two error tests;
+    - `concordia-app/tests/shared_engine.rs` (8);
+    - `concordia-mcp/tests/shared_engine.rs` (6: the plan's three, host exit, scene resource, Studio attached);
+    - `concordia-cli/tests/cli_shared_engine.rs` (2);
+    - editor `host.rs` (+2);
+    - vitest: client (+2) and `engine-lost` (1);
+    - e2e `shared-engine.spec.ts`.
+  - **Red runs:** every new test failed first for the right reason, with these exceptions:
+    - `engine_exited_has_its_own_code_and_a_reconnect_hint` passed at once, because the error kind was added with the skeleton;
+    - three tests were mine to fix, and I fixed them deliberately: the stale-file test called `scene_info` with no scene open; the Studio test lacked the modules the default roster needs; the scene-resource test passed on a private engine, so it now checks the host;
+    - the e2e test was run red against a `concordia` binary built from the pre-3.5b commit.
+  - **Changed deliberately:** `transports.rs`'s connection-file test now writes through `ConnectionInfo`.
+  - **Not done here:** the checkpoint's `tests/gates/m3s_shared_engine.rs` (with the checkpoint gate), and a handover that lets an attached editor take over as host (ADR-0082 alternatives).
 - **3.6:** G10, G13.
+- **New 3.6b Team questions and answers** (author request, 2026-11-19; ADR-0081): Director-routed questions between roles, escalation to the human, and a dedicated editor panel, all tested without live agents.
 - **3.8:** builds on the 1.15 Activity panel. It merges `txn.history` with `studio.activity`, goes live via `edit` and `studio` events (not `log.tail`), adds role filters and colors, and adds the task board, approvals and launcher as planned.
 - **Checkpoint gate** (`just gate-tests M3S`): `tests/gates/m3s_studio_sync.rs`, `m3s_enforcement.rs` (real hook binary + real `concordia mcp`, scripted hook inputs), `m3s_task_board.rs`, `m3s_shared_engine.rs`. The live part (`just gate-live M3S`) is unchanged and runs only with the author's go-ahead.
 
@@ -429,7 +474,7 @@ justfile                       (touched) `gate-live` recipe
   - **Red run:** every API, CLI and app test failed first for the right reason. The role, team and journal tests had no red run: those modules were written before the run.
   - **Two test fixes,** made deliberately: a fixture role named a tool its engine didn't offer, and the history test wrongly treated `created_by` as history.
 
-### Phase 3.4: `concordia studio sync`: compile to Claude Code native files
+### Phase 3.4: `concordia studio sync`: compile to Claude Code native files (done)
 *Can start right after M0.*
 
 - **Objective:** Deterministically compile the Studio config into Claude Code files, idempotently, without clobbering user content. CI can check freshness.
@@ -474,7 +519,33 @@ justfile                       (touched) `gate-live` recipe
 - **Implementation notes:** pipeline `parse → validate → resolve (team overrides, scopes against the method registry) → StudioIr → target::claude_code::emit → merge → write`. The IR is harness-neutral (harness tool names like `read/search/edit/write/bash` map per target: Claude Code `Read, Grep, Glob, Edit, Write, Bash`). JSON merging uses `serde_json` with the `preserve_order` feature; owned hook entries are identified by `command == "concordia" && args[0..2] == ["studio","hook"]`. Writes are atomic (temp file + rename). Pin the documented-field list and the Claude Code version it was checked against in `crates/concordia-studio/AGENTS.md`.
 - **Done criteria:** tests pass; running `concordia studio sync` in the fixture project, then `claude agents`-style listing (manual check: `/agents` in an interactive session) shows all roles; `just gate M3` includes the sync snapshots.
 
-### Phase 3.5: Actor attribution + per-role enforcement (hooks + `concordia-mcp`)
+**As built (2026-11-19):**
+- **Pipeline:** `Roster` is the harness-neutral IR, so there's no separate `StudioIr` type. `concordia_studio::sync(root, studio, roster, options)` plans every file, then writes atomically. The code lives in `src/claude_code/`, not the planned `target/claude_code/`, to avoid confusion with cargo's `target/`.
+- **Agent files:** one per **enabled** role (5 with the default team).
+  - `tools` is a comma-separated list. Read → Read; search → Grep and Glob; edit → Edit; write → Write; bash → Bash. Then `Agent(<other enabled roles>)` for the director only, then `mcp__concordia__<tool>` for each resolved tool.
+  - The fields are `name`, `description`, `tools`, `model`, `effort`, `maxTurns`, `skills` and `color`. `CLAUDE_AGENT_FIELDS` is pinned to Claude Code 2.1.328.
+  - The body is the role's body plus a "Your identity and limits" footer.
+- **Ownership marker:** the first frontmatter line is `# generated by concordia studio sync from <source>; hash=<blake3, 16 hex>; do not edit`. The hash covers the file without that line, so a mismatch means a hand edit. Hand-edited owned files are refused (reported, not overwritten) without `force`. Deleting a disabled role's file follows the same rule, and files without the marker are never deleted.
+- **Skills:** `studio/skills/<name>/SKILL.md` is copied with the marker added. A skill must start with frontmatter. The built-in engine skills arrive in 3.6.
+- **JSON merging:** `settings.json` and `.mcp.json` go through a small order-preserving JSON type, because enabling `serde_json`'s `preserve_order` would reorder maps across the whole workspace. Studio's hook handlers are recognized as `command: concordia, args: [studio, hook, ...]`. User groups and handlers keep their order, and Studio's groups are appended.
+  - `env` gets the two `CLAUDE_CODE_MAX_*` keys (best effort, G11), and `agent` is set to the director.
+  - Each hook handler has `"timeout": 5` (G12).
+  - Re-syncing never duplicates entries.
+- **The `CLAUDE.md` block:** the team (enabled roles with counts and descriptions, disabled roles with reasons), how work flows, the gate reviewers and the rules. Text outside the markers is byte-for-byte unchanged.
+- **The hook pass-through:** `concordia studio hook <event>` consumes the hook's JSON, prints nothing and exits 0, so Claude Code's own permission rules apply until 3.5 adds enforcement. Without it, the generated hooks would hit clap's unknown-subcommand exit code 2, which Claude Code treats as a block for PreToolUse.
+- **API and CLI:**
+  - `studio.sync {check?, force?}` → `{changes: [{path, action, diff?}], refused, stale}`. A write that changes files appends a `sync` entry to the Studio journal.
+  - CLI: `concordia studio sync [--check] [--dry-run] [--force]`. `--check` prints unified diffs (`similar`) and exits 1 when stale, and refused files also exit 1 with a `--force` hint.
+  - `concordia studio init` now syncs (unless `--no-sync`), and so does `concordia new` (completing layout A1). A fresh project passes `sync --check`.
+- **Default roster:** the director's write scope is now empty. Task files change only through `task_*` tools; a direct edit would be logged as a hand edit by `human:local`.
+- **Fixed from 3.3:** a reviewer can no longer approve or reject a task it holds (`the_assignee_cannot_review_its_own_task`). Gate errors still come first.
+- **Deviations:**
+  - The plan's `sync_check_exits_nonzero_and_prints_diff_when_stale` is split between the crate (`sync_check_reports_stale_files_with_a_diff_and_writes_nothing`) and the CLI (`studio_sync_check_exits_nonzero_and_prints_diff_when_stale`).
+  - The "independent of filesystem order" test copies the Studio files into a second project in reverse order and compares the output.
+  - The no-secrets test passed vacuously against the red-run stub (no files written); it checks real output now.
+- **Not done here:** the `roster.ron` cache for fast hooks belongs to 3.5, and the manual `/agents` check in an interactive session is left to the author.
+
+### Phase 3.5: Actor attribution + per-role enforcement (hooks + `concordia-mcp`) (done)
 *Can start right after M0.*
 
 - **Objective:** Every Engine MCP call made by a subagent is attributed to `agent:<role>#<n>` without trusting the model to say who it is. Each role can touch only its own tools and paths, enforced twice: in Claude Code hooks (before the call) and in `concordia-mcp` (on the server).
@@ -516,6 +587,65 @@ justfile                       (touched) `gate-live` recipe
 - **Implementation notes:** `scope.rs` is shared by the hook and `concordia-mcp`, so both enforce the same rules. The hook binary path is the same `concordia` CLI; its startup must be fast (no world load; read the roster from a cached `.concordia/studio/roster.ron` written by sync). Hook output JSON exactly as documented: `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow|deny","permissionDecisionReason":"…","updatedInput":{…}}}`.
 - **Done criteria:** tests pass; a manual interactive check in the fixture project shows a QA subagent's attempted `Edit` of `scripts/**` blocked with our reason, and its MCP calls appear in `concordia log tail --actor agent:qa-playtester#1`.
 
+**As built (2026-11-19, decision B1 / ADR-0080):**
+- **The policy is the one rulebook.** `concordia_studio::Policy` holds:
+  - per role: engine tools, write paths, bash patterns (`None` = no shell) and count;
+  - `[paths] deny`;
+  - path gates;
+  - read-only tools (from the method registry's `mutates`);
+  - per-task budgets;
+  - a hash of `team.toml` and `agents/*.md`.
+
+  Sync writes it to `.claude/concordia/policy.json` (committed with the other generated files, so a fresh clone works). `concordia mcp` builds the same policy from the engine and rebuilds it when the hash changes.
+- **`concordia studio hook <event>`** reads only the policy file. It starts no engine, and runs in about 17 ms per call including process start in release (the test budget is p95 < 50 ms).
+  - **PreToolUse:**
+    - `mcp__concordia__*` is checked against the role's tools, and if allowed, gets `allow` plus `updatedInput` = the input with `_studio: {role, agent: "<session_id>/<agent_id|main>", tool_use_id}`.
+    - Edit, Write, MultiEdit and NotebookEdit paths are resolved inside the project (`..` and symlinked parents can't escape), then checked against deny paths, then path gates (human-only unless a gate names the role), then the role's write paths.
+    - Bash is matched against `bash_allow`; roles without a shell are denied.
+    - Other tools get no decision.
+    - The caller is the subagent's `agent_type`, else the team's main-session role (the director). An agent type outside the team (`Explore`, ...) gets read-only engine tools and no file writes.
+    - Unreadable input exits 2; a missing or stale policy denies with a "run `concordia studio sync`" hint.
+  - **PostToolUse** appends `file_edit {path, tool, before, after}` to the Studio journal. Before-hashes are kept by PreToolUse in `.concordia/studio/pending/<tool_use_id>`. The actor is `agent:<role>#n` once the engine has assigned a slot, else `agent:<role>`.
+  - **SubagentStart** injects the actor and the role's open tasks as `additionalContext`.
+  - **SubagentStop** releases the agent's slot.
+  - Everything except PreToolUse fails open with a warning.
+- **`concordia mcp` in Studio mode** (`Options::studio`, from `[studio]`):
+  - it strips `_studio` and any `actor`;
+  - it re-checks the tool against the policy;
+  - it checks the write path of `scene.new`, `scene.save` (the open scene's path if none is given) and `asset.import`;
+  - each agent key gets its own engine session as `agent:<role>#n` (G2), so a second role's write during another's transaction gets `TxnConflict`, naming the holder;
+  - calls without a stamp are read-only, with an error that points at the hooks.
+- **Slots:** `.concordia/studio/slots.json`, under a file lock and shared by the server and the hooks. A slot held by a dead server PID is reclaimed, so crashes can't leak capacity, and a full role errors with "at capacity".
+- **Budgets:** per (actor, in-progress task), counting calls and mutations in server memory (reset on restart). Going over blocks the task for `human:local`, attributed to `system:studio`.
+- **`concordia studio doctor`** checks:
+  - `claude --version`;
+  - `claude auth status` (a subscription login is ok; other methods are notes; "none" fails);
+  - `ANTHROPIC_API_KEY` (a note only);
+  - `concordia` on PATH;
+  - sync freshness.
+
+  It exits 1 on any failure.
+- **Tests:**
+  - `crates/concordia-studio/tests/hook_pre_tool_use.rs` (13) and `hook_other_events.rs` (5);
+  - `crates/concordia-mcp/tests/role_scope.rs` (8);
+  - `crates/concordia-cli/tests/doctor.rs` (2);
+  - `cli_studio.rs`: the binary's hook answers, and the release-only latency test.
+  - 3.4's pass-through test was replaced deliberately, now that enforcement exists.
+- **Live probe (2026-11-19, Claude Code 2.1.328, subscription login, no API key):** one `claude -p --agent director` run in a fresh `concordia new` project. It took 5 turns and $0.44 estimated. It passed on the first attempt, so check mode is not needed.
+  - **`updatedInput` is honored for MCP tools:** the debug log shows the hook adding `_studio` on 11 calls.
+  - **No schema rejection,** despite `additionalProperties: false`.
+  - **Attribution:** the Studio journal shows `agent:director#1` creating T-0001 and `agent:level-designer#1` claiming, commenting and submitting it. The scene's command log has the Wall spawn and save as `agent:level-designer#1`.
+  - **Generated agents load,** with the marker comment as the first frontmatter line.
+  - **Hooks fire** in `-p` in an untrusted folder, and subagents' `agent_type` reaches the hook.
+  - **One finding,** fixed in the same phase: the main session gets no SubagentStop, so the director's slot stayed held. A **SessionEnd** hook (`concordia studio hook session-end`) now frees every slot of the ended session. The hook count test went from 6 to 7 deliberately.
+- **Not done, deliberately:**
+  - **Smaller gaps:**
+    - the HMAC actor proof (open question 2);
+    - `studio.release_actor` (the hook releases slots directly);
+    - flagging tasks left `in_progress` at SubagentStop;
+    - PostToolUse quick checks;
+    - making the read-only rule for unknown agent types configurable.
+
 ### Phase 3.6: Default roster, starter prompts, engine skills
 *Can start after 3.3/3.4. Artist roles become fully useful after 3.7.*
 
@@ -554,6 +684,70 @@ justfile                       (touched) `gate-live` recipe
     - `skill_frontmatter_uses_documented_fields_only`, `skill_descriptions_under_listing_limit` (≤ 1,536 chars combined with `when_to_use`).
 - **Implementation notes:** prompts are written as plain, direct instructions, with tool names exactly as generated (`mcp__concordia__…`), and each contains a worked example of the output contract. Roles must not be told forbidden source (clean room): the gameplay and tech-artist prompts include the clean-room rule verbatim. Starter prompts get iterated during the 3.9 live runs; changes are tracked in git like code.
 - **Done criteria:** tests pass; synced fixture project shows 12 agents; the human can read each prompt and understand the role in under a minute.
+
+### Phase 3.6b: Team questions and answers (ADR-0081)
+*Author request, 2026-11-19. After 3.6; before 3.8. Team mode only. Tested without live agents.*
+
+- **Objective:** Studio agents can ask each other questions and get answers, in token-lean, still human-readable messages. The Director routes them, and escalates what nobody on the team can answer to the human. Every exchange is visible in a dedicated editor panel: who asked what and when, who answered what and when. An escalation makes itself impossible to miss.
+- **Decisions** (author, 2026-11-19):
+  - a new phase before 3.8, with a dedicated UI panel;
+  - escalation reaches the human through the editor panel only (no OS notification), made obvious;
+  - test everything without live agents.
+
+  *Assumptions,* taken from the recommendations because the author didn't object:
+  - team mode means Studio is on in the project;
+  - messages use telegraphic English with a small glossary and length caps.
+- **Deliverables:**
+  - **Engine API** (Studio module; MCP tools `studio_ask`, `studio_answer`, `studio_escalate`, `studio_questions`):
+    - `studio.ask {to: <role> | "director" | "human", text ≤ 280, task?, refs?: [id]}` → `{question}`, with ids `Q-0001`... sequential per project (allocated under the board lock).
+    - `studio.answer {id, text ≤ 500}`: by an agent of the addressed role, the Director or a human. An escalated question takes only a human answer, and the first answer closes a question.
+    - `studio.escalate {id, reason ≤ 280}`: Director only. Re-addresses the question to `human`. If the question has a task that isn't done, the task becomes `blocked` (attributed to `system:studio`), and a human answer moves it back to `todo`.
+    - `studio.questions {status?: open | answered | escalated, to?, from?, task?, since?, limit?}` → questions with `{id, from, to, task, refs, text, asked_ms, status, answer?: {by, text, ms}, escalation?: {by, reason, ms}}`.
+  - **Journal events:** `question_asked`, `question_answered` and `question_escalated`. Question state is derived from the Studio journal (no question files), and the existing `studio` events topic carries them live.
+  - **Hooks** (context injection; no polling):
+    - SubagentStart also lists the open questions addressed to the role and the answers to that agent's own questions;
+    - a new **PostToolUse on `Agent`** gives the Director the questions opened or answered since its last turn when a subagent returns;
+    - a new **UserPromptSubmit** gives an interactive Director the human answers since its last prompt.
+  - **Prompts and skill:** a `concordia-team-comms` skill (when to ask instead of proceeding, the telegraphic style, the glossary, ids instead of restated context). The Director's prompt gets the routing and escalation rule: never guess a design decision; if no role can answer, call `studio_escalate`. 3.6 writes the full prompts, and this phase adds these sections.
+  - **CLI:** `concordia studio questions [--status ...]` and `concordia studio answer Q-0007 "text"` (as `human:local`).
+  - **Editor: a dedicated Team Questions panel** (`editor/ui/src/panels/questions/`, a dock beside Agent Activity):
+    - **Threads:** asker → addressee, the task, the question, the times, the answer, the answerer and the answer time. Filters by status and role. Escalated questions are pinned at the top with an inline answer box.
+    - **Attention for escalations:** a count badge on the dock tab and in the title bar; the panel reveals itself and scrolls to a new escalation when one arrives (unless the user is typing in another answer box); a banner across the editor top ("The producer needs you: Q-0007 …", with an **Answer** button) that stays until every escalation is answered.
+    - **Answering** calls `studio.answer` as `human:local`, with the length cap enforced in the box.
+    - The panel is shown only when the project has `[studio]`.
+- **Tests first** (no live agents):
+  - `crates/concordia-studio/tests/questions.rs`:
+    - `ask_records_who_asked_what_and_when`;
+    - `question_ids_are_sequential_across_engines`;
+    - `addressed_role_director_or_human_may_answer`;
+    - `another_role_may_not_answer`;
+    - `text_over_the_cap_is_rejected_with_the_limit`;
+    - `only_the_director_escalates`;
+    - `escalated_questions_take_only_human_answers`;
+    - `escalation_blocks_the_task_and_a_human_answer_unblocks_it`;
+    - `a_question_closes_on_its_first_answer`;
+    - `questions_filter_by_status_role_and_task`;
+    - `question_history_survives_a_restart`;
+    - `ask_answer_and_escalate_publish_studio_events`;
+    - `questions_need_team_mode` (no Studio module, no tools).
+  - `crates/concordia-studio/tests/hook_other_events.rs`:
+    - `subagent_start_lists_open_questions_for_the_role_and_answers_to_mine`;
+    - `post_tool_use_on_agent_returns_new_questions_to_the_director`;
+    - `user_prompt_submit_injects_new_human_answers`.
+  - `crates/concordia-studio/tests/sync_*`: the comms skill and the new hook entries in the snapshots; the hook count test changes deliberately.
+  - `crates/concordia-cli/tests/cli_studio.rs`: `studio_questions_and_answer_cli`.
+  - `tests/gates/m3s_team_questions.rs`: a **scripted twin** of the live loop. It feeds hook inputs shaped like Claude Code's through the real hook binary, then the hook's `updatedInput` into the real `concordia mcp`. A level designer asks the tech artist; the Director routes it; the tech artist answers; another question is escalated, a human answers over the Engine API, and the task unblocks. It asserts the journal, the attribution and the task status.
+  - `editor/ui` (vitest, mocked client):
+    - `questions_panel_shows_threads_with_actors_and_times`;
+    - `escalations_are_pinned_and_counted_on_the_badge`;
+    - `a_new_escalation_reveals_the_panel_and_shows_the_banner`;
+    - `the_banner_stays_until_every_escalation_is_answered`;
+    - `answering_calls_studio_answer_as_the_local_human`;
+    - `the_answer_box_enforces_the_length_cap`;
+    - `the_panel_is_hidden_outside_team_mode`.
+  - `editor/ui/tests/e2e/questions.spec.ts` (Playwright, headless engine on a Studio fixture project, an "agent" WebSocket client): an escalation from the client shows the banner and badge within 1 s (15 s in CI); the human answers in the panel; `studio.questions` shows the answer by `human:local`; and the task is back to `todo`.
+- **Implementation notes:** reuse the board lock and the journal (`TaskStore`/`StudioJournal`) for ids and events; there's no new storage. The panel builds on the 1.15 Activity dock patterns and the `studio` events topic, with no editor-only logic (ADR-0047). The editor sees live questions from agents once 3.5b shares the engine; before that, the panel reads the journal on refresh.
+- **Done criteria:** all of the above green; `just gate-tests M3S` includes `m3s_team_questions`; no live run is needed for this phase.
 
 ### Phase 3.7: `concordia-gen`: provider interface, procedural providers, Blender bridge
 *Interface and SFX after M0; mesh after M1 (glTF import); texture bake after M1 (render); music after M2 (audio).*
@@ -622,13 +816,14 @@ justfile                       (touched) `gate-live` recipe
 - **Implementation notes:** all panel state comes from the Engine API (principle 1): no editor-only logic, and approvals are just `task.approve` calls by `human:local`. Live updates use `events.subscribe` (`edit`, `scene` and the new `studio` topic). The headless launch passes `--max-budget-usd` from `[budgets] headless_max_budget_usd` (a client-side estimate per the docs; informational under a subscription, *verify at execution time*).
 - **Done criteria:** tests pass; manual run: launch the Director from the panel and watch cards move.
 
-### Studio checkpoint (after 3.3–3.6 and 3.8; ADR-0049)
+### Studio checkpoint (after 3.3–3.6, 3.6b and 3.8; ADR-0049)
 An interim gate that needs no replay or scripting, so it can pass before M2.
 1. **Deterministic (CI):** `just gate-tests M3S` runs `tests/gates/m3s_*.rs`, which asserts:
    - `concordia studio sync` generates `.claude/agents/*`, skills, settings hooks, `.mcp.json` and the `CLAUDE.md` block from `studio/team.toml`, matching snapshots, idempotently;
    - the hooks block out-of-scope writes;
    - `concordia-mcp` stamps and enforces each role's actor;
-   - the task board's state machine and approval gates hold.
+   - the task board's state machine and approval gates hold;
+   - team questions route, escalate and unblock (`m3s_team_questions`, scripted).
 2. **Live (subscription):** `just gate-live M3S` (`tools/gates/m3s_live.sh`). The Director assigns a task, "build a lit physics playground in `scenes/playground.scene.ron`", to the Level Designer role. A reviewing role (QA) verifies it with queries and `capture.screenshot`, then approves. A checker asserts:
    - the task's final status;
    - every edit is attributed to the Level Designer's actor;
@@ -729,6 +924,7 @@ The milestone is **Gate passed** when (1) is green in CI and (2) has passed at l
 | 3.4 Sync compiler | 1.5 weeks |
 | 3.5 Attribution + enforcement + doctor | 1.5 weeks |
 | 3.6 Roster, prompts, skills | 1 week (+ iteration during 3.9) |
+| 3.6b Team questions and answers | 1 week |
 | 3.7 concordia-gen + Blender bridge | 2 weeks |
 | 3.8 Studio panel + launcher | 1.5 weeks |
 | 3.9 Fixture, scripted + live gate | 1 week |

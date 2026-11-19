@@ -17,7 +17,6 @@ enum Request {
     Close(SessionId),
     Sink(SessionId, crate::events::EventSink),
     Run(Box<dyn FnOnce(&mut Engine) + Send>),
-    SceneText(oneshot::Sender<Result<String, ApiError>>),
     Rpc {
         session: SessionId,
         text: String,
@@ -90,9 +89,6 @@ fn serve(engine: &mut Engine, request: Request) {
         Request::Close(session) => engine.close_session(session),
         Request::Sink(session, sink) => engine.set_event_sink(session, sink),
         Request::Run(f) => f(engine),
-        Request::SceneText(reply) => {
-            let _ = reply.send(engine.scene_text());
-        }
         Request::Rpc {
             session,
             text,
@@ -151,13 +147,6 @@ impl EngineHandle {
     /// Lets `session` receive pushed events (see [`Engine::set_event_sink`]).
     pub fn set_event_sink(&self, session: SessionId, sink: crate::events::EventSink) {
         let _ = self.send(Request::Sink(session, sink));
-    }
-
-    /// The open scene as canonical RON (see [`Engine::scene_text`]).
-    pub async fn scene_text(&self) -> Result<String, ApiError> {
-        let (reply, rx) = oneshot::channel();
-        self.send(Request::SceneText(reply))?;
-        rx.await.map_err(internal)?
     }
 
     /// Handles one JSON-RPC message.

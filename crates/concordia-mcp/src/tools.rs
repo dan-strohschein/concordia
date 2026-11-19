@@ -17,9 +17,9 @@ use rmcp::model::{
 };
 use rmcp::service::RequestContext;
 use rmcp::{ErrorData as McpError, RoleServer, ServerHandler};
-use serde_json::Value;
+use serde_json::{Value, json};
 
-use crate::{ConcordiaServer, resources};
+use crate::{ConcordiaServer, Connection, resources};
 
 const INSTRUCTIONS: &str = "Concordia game engine, headless. Start with scene_new or scene_open, \
 discover component shapes with schema_get, edit with entity_spawn / component_set / component_patch, \
@@ -150,24 +150,56 @@ impl ConcordiaServer {
         if let Some(error) = reject_human(&arguments) {
             return Ok(tool_error(&error));
         }
-        Ok(
-            match self
-                .handle
-                .call(self.session, method.name, Value::Object(arguments))
-                .await
-            {
-                Ok(value) => tool_result(method, value),
-                Err(error) => tool_error(&error),
-            },
-        )
+        let connection = match self.connection().await {
+            Ok(connection) => connection,
+            Err(error) => return Ok(tool_error(&error)),
+        };
+        let result = self.dispatch(&connection, method, arguments).await;
+        if let Err(error) = &result {
+            self.forget_if_exited(&connection, error).await;
+        }
+        Ok(match result {
+            Ok(value) => tool_result(method, value),
+            Err(error) => tool_error(&error),
+        })
     }
 
+    /// Admits the call (Studio mode) and runs it in the right engine session.
+    async fn dispatch(
+        &self,
+        connection: &Connection,
+        method: &MethodInfo,
+        mut arguments: JsonObject,
+    ) -> Result<Value, ApiError> {
+        let link = connection.link();
+        let session = match self.studio() {
+            Some(gate) => {
+                gate.admit(link, connection.base(), method, &mut arguments)
+                    .await?
+            }
+            None => connection.base(),
+        };
+        link.call(session, method.name, Value::Object(arguments))
+            .await
+    }
+
+    /// Calls `method` in the base session (resources), reconnecting after a host exit.
     pub(crate) async fn engine_call(&self, method: &str, params: Value) -> Result<Value, ApiError> {
-        self.handle.call(self.session, method, params).await
+        let connection = self.connection().await?;
+        let result = connection
+            .link()
+            .call(connection.base(), method, params)
+            .await;
+        if let Err(error) = &result {
+            self.forget_if_exited(&connection, error).await;
+        }
+        result
     }
 
+    /// The open scene's text (`scene.text`).
     pub(crate) async fn scene_text(&self) -> Result<String, ApiError> {
-        self.handle.scene_text().await
+        let result = self.engine_call("scene.text", json!({})).await?;
+        Ok(result["text"].as_str().unwrap_or_default().to_owned())
     }
 }
 

@@ -6,6 +6,7 @@ pub mod id;
 pub mod jobs;
 pub mod log;
 pub mod math;
+pub mod process;
 pub mod rng;
 pub mod suggest;
 pub mod time;

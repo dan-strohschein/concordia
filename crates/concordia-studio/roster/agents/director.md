@@ -6,7 +6,7 @@ model: opus
 harness_tools: ["read", "search"]
 mcp_tools: ["task_*", "studio_*", "scene_info", "entity_get", "component_get", "query_run", "schema_get", "txn_history", "log_tail", "capture_screenshot", "render_stats"]
 paths:
-  write: ["studio/tasks/**"]
+  write: []
 color: purple
 ---
 # Director

@@ -21,10 +21,12 @@ concordia-rhi-metal.workspace = true
 concordia-studio.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 toml.workspace = true
 
 [dev-dependencies]
 base64.workspace = true
+futures.workspace = true
 concordia-rhi.workspace = true
 concordia-testkit.workspace = true
 png = "0.18.1"

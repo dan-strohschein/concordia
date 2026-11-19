@@ -13,6 +13,7 @@ use crate::error::StudioError;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ToolCatalog {
     names: BTreeSet<String>,
+    read_only: BTreeSet<String>,
 }
 
 impl ToolCatalog {
@@ -20,15 +21,27 @@ impl ToolCatalog {
     pub fn from_names<S: Into<String>>(names: impl IntoIterator<Item = S>) -> Self {
         Self {
             names: names.into_iter().map(Into::into).collect(),
+            read_only: BTreeSet::new(),
         }
+    }
+
+    /// Marks tools that only read (never change the project); unknown agents may call only these.
+    pub fn with_read_only<S: Into<String>>(mut self, names: impl IntoIterator<Item = S>) -> Self {
+        self.read_only.extend(names.into_iter().map(Into::into));
+        self
+    }
+
+    /// The read-only tools, sorted.
+    pub fn read_only(&self) -> impl Iterator<Item = &str> {
+        self.read_only.iter().map(String::as_str)
     }
 
     /// The agent tools of an engine's methods (what `concordia mcp` lists).
     pub fn from_methods(methods: &MethodRegistry) -> Self {
-        Self::from_names(
-            methods
-                .iter()
-                .filter(|m| m.is_agent_tool())
+        let tools = || methods.iter().filter(|m| m.is_agent_tool());
+        Self::from_names(tools().map(concordia_api::MethodInfo::tool_name)).with_read_only(
+            tools()
+                .filter(|m| !m.mutates)
                 .map(concordia_api::MethodInfo::tool_name),
         )
     }

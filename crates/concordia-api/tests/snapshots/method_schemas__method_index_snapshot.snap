@@ -104,6 +104,11 @@ expression: index
     "name": "scene.save"
   },
   {
+    "description": "The open scene as canonical RON, exactly as `scene.save` would write it, without saving.",
+    "mutates": false,
+    "name": "scene.text"
+  },
+  {
     "description": "Get the JSON Schema of a component, type or method; with no name, the index of all types and methods.",
     "mutates": false,
     "name": "schema.get"
