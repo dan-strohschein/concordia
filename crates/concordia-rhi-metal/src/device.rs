@@ -5,10 +5,10 @@ use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
 use concordia_rhi::{
-    BindlessIndex, Buffer, BufferDesc, BufferUsage, ComputePipelineDesc, Device, DeviceCaps,
-    GraphicsPipelineDesc, Heap, HeapDesc, MemoryLocation, MeshPipelineDesc, Pipeline, RhiError,
-    SampleCount, ShaderSource, Slots, StaticSampler, Submit, Texture, TextureDesc, TextureUsage,
-    Timeline,
+    BindlessIndex, Buffer, BufferDesc, BufferUsage, CommandList, ComputePipelineDesc, Device,
+    DeviceCaps, Format, GraphicsPipelineDesc, Heap, HeapDesc, MemoryLocation, MeshPipelineDesc,
+    Pipeline, RhiError, SampleCount, ShaderSource, Slots, StaticSampler, Submit, Surface,
+    SurfaceTarget, Texture, TextureDesc, TextureUsage, Timeline,
 };
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
@@ -20,6 +20,7 @@ use objc2_metal::{
     MTLRenderPipelineDescriptor, MTLRenderPipelineState, MTLResource, MTLSharedEvent, MTLSize,
     MTLTextureDescriptor, MTLTextureType,
 };
+use objc2_quartz_core::CAMetalDrawable;
 
 use crate::bindless::{
     MtlBuffer, MtlSampler, MtlTexture, Table, buffer_entry, install_static_samplers, texture_entry,
@@ -66,6 +67,7 @@ pub(crate) struct Inner {
     pub(crate) textures: Slots<TextureEntry>,
     pub(crate) pipelines: Slots<PipelineEntry>,
     pub(crate) heaps: Slots<Retained<MtlHeap>>,
+    pub(crate) surfaces: Slots<crate::surface::SurfaceEntry>,
     pub(crate) timelines: Slots<Retained<MtlEvent>>,
     pub(crate) buffer_table: Table,
     pub(crate) texture_table: Table,
@@ -113,6 +115,7 @@ impl MetalDevice {
             textures: Slots::default(),
             pipelines: Slots::default(),
             heaps: Slots::default(),
+            surfaces: Slots::default(),
             timelines: Slots::default(),
             last: None,
         };
@@ -554,6 +557,77 @@ impl Device for MetalDevice {
             && let Some(slot) = entry.bindless
         {
             inner.texture_table.release(slot);
+        }
+    }
+
+    unsafe fn create_surface(
+        &self,
+        target: SurfaceTarget,
+        format: Format,
+    ) -> Result<Surface, RhiError> {
+        let inner = &mut *self.lock()?;
+        // SAFETY: forwarded from the caller (the layer outlives the surface).
+        let entry = unsafe { crate::surface::SurfaceEntry::new(&inner.device, target, format)? };
+        let (index, generation) = inner.surfaces.insert(entry);
+        Ok(Surface::from_raw(index, generation))
+    }
+
+    fn acquire(
+        &self,
+        surface: Surface,
+        width: u32,
+        height: u32,
+    ) -> Result<Option<Texture>, RhiError> {
+        let inner = &mut *self.lock()?;
+        let entry = inner
+            .surfaces
+            .get_mut(surface.index(), surface.generation())
+            .ok_or_else(|| stale("surface", surface.index(), surface.generation()))?;
+        let Some((drawable, desc)) = entry.next(width, height)? else {
+            return Ok(None);
+        };
+        let texture = self.register_texture(inner, drawable.texture(), &desc)?;
+        if let Some(entry) = inner
+            .surfaces
+            .get_mut(surface.index(), surface.generation())
+        {
+            entry.hold(drawable, texture);
+        }
+        Ok(Some(texture))
+    }
+
+    fn present(&self, surface: Surface, commands: &CommandList) -> Result<(), RhiError> {
+        commands.validate()?;
+        let mut inner = self.lock()?;
+        let (drawable, texture) = inner
+            .surfaces
+            .get_mut(surface.index(), surface.generation())
+            .ok_or_else(|| stale("surface", surface.index(), surface.generation()))?
+            .take()
+            .ok_or_else(|| {
+                RhiError::invalid("present", "acquire an image from the surface first")
+            })?;
+        let submit = Submit {
+            queue: concordia_rhi::QueueKind::Graphics,
+            commands,
+            wait: &[],
+            signal: &[],
+        };
+        let recorded = crate::encode::record(&inner, &submit);
+        inner.textures.remove(texture.index(), texture.generation());
+        let command_buffer = recorded?;
+        command_buffer.presentDrawable(objc2::runtime::ProtocolObject::from_ref(&*drawable));
+        command_buffer.commit();
+        inner.last = Some(command_buffer);
+        Ok(())
+    }
+
+    fn destroy_surface(&self, surface: Surface) {
+        let Ok(mut inner) = self.lock() else { return };
+        if let Some(mut entry) = inner.surfaces.remove(surface.index(), surface.generation())
+            && let Some((_, texture)) = entry.take()
+        {
+            inner.textures.remove(texture.index(), texture.generation());
         }
     }
 

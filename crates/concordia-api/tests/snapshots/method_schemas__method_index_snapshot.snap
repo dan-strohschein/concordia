@@ -39,6 +39,16 @@ expression: index
     "name": "entity.spawn"
   },
   {
+    "description": "Receive `events.event` notifications for the given topics (replaces earlier subscriptions). Needs a transport that can push (WebSocket or in-process); otherwise poll `log.tail`.",
+    "mutates": false,
+    "name": "events.subscribe"
+  },
+  {
+    "description": "Stop receiving events on this session.",
+    "mutates": false,
+    "name": "events.unsubscribe"
+  },
+  {
     "description": "Read recent engine log records (stderr logs are also kept in memory for this).",
     "mutates": false,
     "name": "log.tail"

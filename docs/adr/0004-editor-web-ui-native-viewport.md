@@ -1,5 +1,5 @@
 # ADR-0004: Editor = web UI + native viewport
-- Status: Accepted (shell choice confirmed in M1)
+- Status: Accepted (confirmed; see ADR-0043)
 - Date: 2026-11-17
 
 ## Decision

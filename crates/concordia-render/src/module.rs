@@ -41,6 +41,8 @@ impl RenderModule {
 struct RenderState {
     factory: DeviceFactory,
     renderer: Option<Renderer>,
+    /// The editor's native viewport, once a host attached one.
+    surface: Option<concordia_rhi::Surface>,
 }
 
 impl EngineModule for RenderModule {
@@ -56,13 +58,18 @@ impl EngineModule for RenderModule {
     }
 
     fn methods(&self) -> Vec<MethodInfo> {
-        vec![MethodInfo::of::<CaptureScreenshot>()]
+        vec![
+            MethodInfo::of::<CaptureScreenshot>(),
+            MethodInfo::of::<ViewportPick>(),
+            MethodInfo::of::<ViewportPresent>(),
+        ]
     }
 
     fn engine_state(&self) -> Option<Box<dyn std::any::Any + Send>> {
         Some(Box::new(RenderState {
             factory: self.factory.clone(),
             renderer: None,
+            surface: None,
         }))
     }
 }
@@ -78,6 +85,9 @@ pub struct CaptureScreenshotParams {
     /// Camera entity; default: the highest-priority Camera.
     #[serde(default)]
     pub camera: Option<EntityRef>,
+    /// Render from this viewpoint instead of a camera entity (the editor's view).
+    #[serde(default)]
+    pub view: Option<crate::View>,
     /// Width in pixels.
     #[serde(default = "default_width")]
     #[reflect(default = 1280, range(min = 1.0, max = 8192.0))]
@@ -128,6 +138,14 @@ impl Method for CaptureScreenshot {
         ctx: &CallCtx,
         p: CaptureScreenshotParams,
     ) -> Result<CaptureScreenshotResult, ApiError> {
+        if p.camera.is_some() && p.view.is_some() {
+            return Err(ApiError::new(
+                ApiErrorKind::InvalidParams,
+                "pass either camera or view, not both",
+            )
+            .at("/view"));
+        }
+        p.view.as_ref().map(check_view).transpose()?;
         let world = engine.world(p.world.unwrap_or_default())?;
         let camera = p.camera.as_ref().map(|c| c.resolve(world)).transpose()?;
         let sim_tick = world.resource::<SimClock>().map_or(0, |c| c.tick.0);
@@ -135,6 +153,7 @@ impl Method for CaptureScreenshot {
         let mut renderer = take_renderer(engine)?;
         let request = RenderRequest {
             camera,
+            view: p.view.clone(),
             width: p.width,
             height: p.height,
         };
@@ -150,7 +169,7 @@ impl Method for CaptureScreenshot {
             .as_ref()
             .map(ToString::to_string)
             .unwrap_or_default();
-        tracing::info!(target: "concordia::render", actor, width = p.width, height = p.height, sim_tick, frame, "captured screenshot");
+        tracing::debug!(target: "concordia::render", actor, width = p.width, height = p.height, sim_tick, frame, "captured screenshot");
         Ok(CaptureScreenshotResult {
             image: EncodedImage::png(&encode_png(&image)?),
             width: image.width,
@@ -217,5 +236,194 @@ fn api_error(error: RenderError) -> ApiError {
             ])
         }
         _ => ApiError::new(ApiErrorKind::Internal, message),
+    }
+}
+
+/// The entity whose mesh is under pixel (x, y) of a width×height image rendered from `view` (nearest first; bounds-based).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ViewportPick;
+
+/// `viewport.pick` params.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportPickParams {
+    /// The viewpoint.
+    pub view: crate::View,
+    /// Pixel column (0 = left).
+    pub x: u32,
+    /// Pixel row (0 = top).
+    pub y: u32,
+    /// Image width in pixels.
+    #[reflect(range(min = 1.0, max = 8192.0))]
+    pub width: u32,
+    /// Image height in pixels.
+    #[reflect(range(min = 1.0, max = 8192.0))]
+    pub height: u32,
+    /// Which world: edit (default) or play.
+    #[serde(default)]
+    pub world: Option<WorldSel>,
+}
+
+/// `viewport.pick` result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ViewportPickResult {
+    /// The entity hit, or null.
+    pub entity: Option<String>,
+    /// Its depth along the view direction from the eye.
+    pub distance: Option<f32>,
+}
+
+impl Method for ViewportPick {
+    const NAME: &'static str = "viewport.pick";
+    const MUTATES: bool = false;
+    type Params = ViewportPickParams;
+    type Result = ViewportPickResult;
+
+    fn call(
+        engine: &mut Engine,
+        _: &CallCtx,
+        p: ViewportPickParams,
+    ) -> Result<ViewportPickResult, ApiError> {
+        check_view(&p.view)?;
+        if p.x >= p.width || p.y >= p.height {
+            return Err(ApiError::new(
+                ApiErrorKind::InvalidParams,
+                format!(
+                    "pixel ({}, {}) is outside the {}×{} image",
+                    p.x, p.y, p.width, p.height
+                ),
+            )
+            .at("/x"));
+        }
+        let snapshot = RenderWorld::extract(engine.world(p.world.unwrap_or_default())?);
+        let mut memory = MemoryAssets::default();
+        let mut bounds = |mesh: &concordia_assets::AssetRef| {
+            let data = match engine.state_mut::<AssetDb>() {
+                Some(db) => crate::AssetSource::mesh(db, mesh),
+                None => crate::AssetSource::mesh(&mut memory, mesh),
+            };
+            data.ok().map(|m| {
+                (
+                    concordia_core::math::Vec3::from_array(m.aabb.0),
+                    concordia_core::math::Vec3::from_array(m.aabb.1),
+                )
+            })
+        };
+        let hit = crate::pick(
+            &snapshot,
+            &p.view,
+            (p.x, p.y),
+            (p.width, p.height),
+            &mut bounds,
+        )
+        .map_err(api_error)?;
+        Ok(ViewportPickResult {
+            entity: hit.map(|h| h.entity.to_string()),
+            distance: hit.map(|h| h.depth),
+        })
+    }
+}
+
+/// A view that cannot be used is a parameter error at `/view`.
+fn check_view(view: &crate::View) -> Result<(), ApiError> {
+    view.world_matrix()
+        .and_then(|_| view.projection.matrix(1.0))
+        .map(|_| ())
+        .map_err(|e| ApiError::new(ApiErrorKind::InvalidParams, e.to_string()).at("/view"))
+}
+
+/// Attaches a native window layer as the editor viewport that `viewport.present` draws into
+/// (in-process hosts only; run it on the engine thread, e.g. through `EngineHandle::run`).
+///
+/// # Safety
+/// The native object behind `target` must outlive the engine.
+pub unsafe fn attach_surface(
+    engine: &mut Engine,
+    target: concordia_rhi::SurfaceTarget,
+) -> Result<(), ApiError> {
+    let mut renderer = take_renderer(engine)?;
+    // SAFETY: forwarded from the caller.
+    let created = unsafe { renderer.create_surface(target) };
+    let old = engine
+        .state_mut::<RenderState>()
+        .and_then(|s| s.surface.take());
+    if let Some(old) = old {
+        renderer.destroy_surface(old);
+    }
+    let surface = created.map_err(api_error);
+    put_renderer(engine, renderer);
+    let surface = surface?;
+    if let Some(state) = engine.state_mut::<RenderState>() {
+        state.surface = Some(surface);
+    }
+    Ok(())
+}
+
+/// Draw `view` into the editor's native viewport (needs a host-attached window surface; elsewhere use capture.screenshot).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ViewportPresent;
+
+/// `viewport.present` params.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct ViewportPresentParams {
+    /// The viewpoint.
+    pub view: crate::View,
+    /// Width in physical pixels.
+    #[reflect(range(min = 1.0, max = 8192.0))]
+    pub width: u32,
+    /// Height in physical pixels.
+    #[reflect(range(min = 1.0, max = 8192.0))]
+    pub height: u32,
+    /// Which world: edit (default) or play.
+    #[serde(default)]
+    pub world: Option<WorldSel>,
+}
+
+/// `viewport.present` result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ViewportPresentResult {
+    /// False when the display had no free image (the frame was skipped).
+    pub presented: bool,
+}
+
+impl Method for ViewportPresent {
+    const NAME: &'static str = "viewport.present";
+    const MUTATES: bool = false;
+    type Params = ViewportPresentParams;
+    type Result = ViewportPresentResult;
+
+    fn call(
+        engine: &mut Engine,
+        _: &CallCtx,
+        p: ViewportPresentParams,
+    ) -> Result<ViewportPresentResult, ApiError> {
+        check_view(&p.view)?;
+        let surface = engine
+            .state::<RenderState>()
+            .and_then(|s| s.surface)
+            .ok_or_else(|| {
+                ApiError::new(
+                    ApiErrorKind::InvalidRequest,
+                    "no native viewport is attached",
+                )
+                .suggest(["use capture.screenshot (the editor streams it in a browser)".to_owned()])
+            })?;
+        let snapshot = RenderWorld::extract(engine.world(p.world.unwrap_or_default())?);
+        let mut renderer = take_renderer(engine)?;
+        let request = RenderRequest {
+            camera: None,
+            view: Some(p.view.clone()),
+            width: p.width,
+            height: p.height,
+        };
+        let presented = match engine.state_mut::<AssetDb>() {
+            Some(db) => renderer.present(&snapshot, db, &request, surface),
+            None => renderer.present(&snapshot, &mut MemoryAssets::default(), &request, surface),
+        };
+        put_renderer(engine, renderer);
+        Ok(ViewportPresentResult {
+            presented: presented.map_err(api_error)?,
+        })
     }
 }

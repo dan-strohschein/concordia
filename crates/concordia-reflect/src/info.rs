@@ -18,6 +18,8 @@ pub struct TypeInfo {
     pub shape: Shape,
     /// Structural types (`Option`, `Vec`, maps, arrays, tuples) have no registry entry of their own.
     pub structural: bool,
+    /// Editor widget hint (`x-concordia-widget`), e.g. `vec3`, `quat`.
+    pub widget: Option<&'static str>,
 }
 
 impl TypeInfo {
@@ -34,7 +36,14 @@ impl TypeInfo {
             docs,
             shape,
             structural: false,
+            widget: None,
         }
+    }
+
+    /// The same type with an editor widget hint.
+    pub fn with_widget(mut self, widget: &'static str) -> Self {
+        self.widget = Some(widget);
+        self
     }
 
     /// A structural type that is always inlined in schemas.
@@ -45,6 +54,7 @@ impl TypeInfo {
             docs: "",
             shape,
             structural: true,
+            widget: None,
         }
     }
 
@@ -187,6 +197,8 @@ pub struct FieldInfo {
     pub default: Option<fn() -> serde_json::Value>,
     /// `#[reflect(range(..))]`.
     pub range: Option<Range>,
+    /// `#[reflect(widget = "..")]`: editor widget hint, overriding the type's.
+    pub widget: Option<&'static str>,
     /// May be absent on input (`#[serde(default)]`, `skip_serializing_if`, or `Option`).
     pub optional: bool,
 }

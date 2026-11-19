@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Draws an imported or built-in mesh with a material (read by the renderer).",
+  "properties": {
+    "cast_shadows": {
+      "description": "Casts shadows.",
+      "type": "boolean"
+    },
+    "material": {
+      "description": "The material.\n\nAsset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+      "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+      "type": "string"
+    },
+    "mesh": {
+      "description": "The mesh.\n\nAsset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+      "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "mesh",
+    "material"
+  ],
+  "title": "MeshRenderer",
+  "type": "object",
+  "x-concordia-type": "MeshRenderer"
+}

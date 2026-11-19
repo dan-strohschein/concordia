@@ -18,6 +18,7 @@ concordia-rhi.workspace = true
 objc2 = "0.6.5"
 objc2-foundation = "0.3.2"
 objc2-metal = "0.3.2"
+objc2-quartz-core = "0.3.2"
 
 [dev-dependencies]
 concordia-rhi = { workspace = true, features = ["conformance"] }

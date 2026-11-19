@@ -41,6 +41,14 @@ impl<T> Slots<T> {
         }
     }
 
+    /// The value, mutably, if the handle is current.
+    pub fn get_mut(&mut self, index: u32, generation: u32) -> Option<&mut T> {
+        match self.items.get_mut(index as usize) {
+            Some((g, Some(v))) if *g == generation => Some(v),
+            _ => None,
+        }
+    }
+
     /// Removes the value, if the handle is current.
     pub fn remove(&mut self, index: u32, generation: u32) -> Option<T> {
         let slot = self

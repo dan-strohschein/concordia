@@ -1,0 +1,7 @@
+dist
+node_modules
+pnpm-lock.yaml
+pnpm-workspace.yaml
+test-results
+playwright-report
+tests/fixtures

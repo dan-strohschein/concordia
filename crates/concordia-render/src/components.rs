@@ -79,6 +79,7 @@ pub struct Camera {
     /// Projection.
     pub projection: Projection,
     /// Linear clear color (RGBA).
+    #[reflect(widget = "color")]
     pub clear: [f32; 4],
     /// Anti-aliasing.
     pub msaa: Msaa,
@@ -116,6 +117,7 @@ impl Camera {
 #[serde(default, deny_unknown_fields)]
 pub struct DirectionalLight {
     /// Linear color.
+    #[reflect(widget = "color")]
     pub color: [f32; 3],
     /// Illuminance in lux (direct sunlight ≈ 100 000).
     #[reflect(range(min = 0.0, max = 200000.0))]
@@ -139,6 +141,7 @@ impl Default for DirectionalLight {
 #[serde(default, deny_unknown_fields)]
 pub struct PointLight {
     /// Linear color.
+    #[reflect(widget = "color")]
     pub color: [f32; 3],
     /// Luminous power in lumens (a 60 W bulb ≈ 800).
     #[reflect(range(min = 0.0, max = 1000000.0))]
@@ -163,6 +166,7 @@ impl Default for PointLight {
 #[serde(default, deny_unknown_fields)]
 pub struct SpotLight {
     /// Linear color.
+    #[reflect(widget = "color")]
     pub color: [f32; 3],
     /// Luminous power in lumens (as if unshielded; the cone does not concentrate it).
     #[reflect(range(min = 0.0, max = 1000000.0))]

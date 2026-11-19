@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Multisample anti-aliasing.",
+  "oneOf": [
+    {
+      "const": "Off",
+      "description": "One sample per pixel."
+    },
+    {
+      "const": "X4",
+      "description": "Four samples per pixel."
+    }
+  ],
+  "title": "Msaa",
+  "x-concordia-type": "Msaa"
+}

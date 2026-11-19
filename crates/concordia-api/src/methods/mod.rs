@@ -2,6 +2,7 @@
 
 mod component;
 mod entity;
+mod events;
 mod log;
 mod query;
 mod scene;
@@ -24,7 +25,7 @@ use crate::error::{ApiError, ApiErrorKind};
 use crate::map::{self, Hints};
 use crate::method::{CallCtx, MethodInfo};
 
-/// Every M0 method.
+/// Every core method (M0, plus `events.*` from M1).
 pub(crate) fn all() -> Vec<MethodInfo> {
     let mut methods = Vec::new();
     methods.extend(session::methods());
@@ -36,6 +37,7 @@ pub(crate) fn all() -> Vec<MethodInfo> {
     methods.extend(txn::methods());
     methods.extend(sim::methods());
     methods.extend(log::methods());
+    methods.extend(events::methods());
     methods
 }
 

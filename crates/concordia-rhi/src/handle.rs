@@ -34,6 +34,7 @@ handle! {
     Pipeline: "A compute, graphics or mesh pipeline.";
     Heap: "Memory that placed (aliased) textures live in.";
     Timeline: "A monotonically increasing GPU/CPU sync value (Metal shared event, Vulkan timeline semaphore).";
+    Surface: "A presentable window surface (Metal: a `CAMetalLayer`).";
 }
 
 /// A resource's slot in the device's bindless table; stable for the resource's lifetime.

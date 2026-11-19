@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{run, stdout};
+use common::{run, stderr, stdout};
 use concordia_api::{Engine, EngineConfig, methods, params_schema};
 use serde_json::{Value, json};
 
@@ -57,4 +57,43 @@ fn concordia_schema_out_writes_one_sorted_file_per_type() {
         first,
         "deterministic"
     );
+}
+
+#[test]
+fn schema_out_with_project_includes_module_types_and_method_schemas() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = format!(
+        "{}/../../examples/m1-physics-stack",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let output = run(
+        &[
+            "schema",
+            "--project",
+            &project,
+            "--out",
+            dir.path().to_str().unwrap(),
+        ],
+        dir.path(),
+    );
+    assert!(output.status.success(), "{}", stderr(&output));
+    for file in [
+        "Camera.schema.json",
+        "MeshRenderer.schema.json",
+        "RigidBody.schema.json",
+        "methods/capture.screenshot.params.schema.json",
+        "methods/capture.screenshot.result.schema.json",
+        "methods/entity.spawn.params.schema.json",
+    ] {
+        assert!(dir.path().join(file).is_file(), "{file} written");
+    }
+    let result: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(
+            dir.path()
+                .join("methods/capture.screenshot.result.schema.json"),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(result["title"], "CaptureScreenshotResult");
 }

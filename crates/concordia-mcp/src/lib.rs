@@ -7,6 +7,8 @@
 mod resources;
 mod tools;
 
+pub use tools::is_tool;
+
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

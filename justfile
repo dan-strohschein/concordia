@@ -88,3 +88,34 @@ ci: lint test deny
 # Create a crate from tools/templates/crate
 new-crate name:
     tools/new-crate.sh {{name}}
+
+# Regenerate the editor's TypeScript types from the engine schemas (committed; CI checks drift).
+editor-schemas:
+    cargo run -q -p concordia-cli -- schema --project examples/m1-physics-stack --out target/editor-schemas
+    rm -rf editor/ui/tests/fixtures/schemas && mkdir -p editor/ui/tests/fixtures/schemas && cp target/editor-schemas/*.schema.json editor/ui/tests/fixtures/schemas/
+    cd editor/ui && node scripts/gen-schemas.mjs ../../target/editor-schemas && pnpm exec prettier --write src/api/generated --log-level warn
+
+# Editor UI: lint, unit tests, then browser end-to-end tests against a headless engine (macOS GPU).
+editor-test:
+    cd editor/ui && pnpm install --frozen-lockfile --ignore-scripts && pnpm lint && pnpm test
+    cargo build -q -p concordia-cli
+    cd editor/ui && pnpm e2e
+
+# Editor UI dev server (pass ?engine=ws://127.0.0.1:<port>/?token=<token> from `concordia headless --ws`).
+editor-dev:
+    cd editor/ui && pnpm exec vite
+
+# Production build of the editor UI.
+editor-build:
+    cd editor/ui && pnpm build
+
+# Run the native editor on a project (builds the UI first).
+editor project="examples/m1-physics-stack":
+    cd editor/ui && pnpm build
+    cargo run --manifest-path editor/src-tauri/Cargo.toml -- --project {{project}}
+
+# The native shell's tests: engine host and the smoke test (macOS GPU, GUI session).
+editor-shell-test:
+    cd editor/ui && pnpm build
+    cargo deny --manifest-path editor/src-tauri/Cargo.toml --config editor/src-tauri/deny.toml check
+    cargo test --manifest-path editor/src-tauri/Cargo.toml

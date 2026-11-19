@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Percentage-closer filter size.",
+  "oneOf": [
+    {
+      "const": "X3",
+      "description": "3×3 texels (tent-filtered)."
+    },
+    {
+      "const": "X5",
+      "description": "5×5 texels (softer)."
+    }
+  ],
+  "title": "PcfKernel",
+  "x-concordia-type": "PcfKernel"
+}

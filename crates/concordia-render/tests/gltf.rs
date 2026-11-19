@@ -173,6 +173,7 @@ fn render_model(model: &str, variant: &str, file: &str) -> Option<Image> {
             &mut db,
             &RenderRequest {
                 camera: None,
+                view: None,
                 width: 384,
                 height: 384,
             },

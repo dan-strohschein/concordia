@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "maximum": 2147483647,
+  "minimum": -2147483648,
+  "title": "i32",
+  "type": "integer",
+  "x-concordia-type": "i32"
+}

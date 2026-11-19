@@ -1,0 +1,63 @@
+// The Inspector dock: one collapsible section per component, generated from the engine's schemas.
+import { useCallback, useEffect, useState } from "react";
+
+import type { EditorSession } from "../engine/session";
+import { ValueEditor } from "./fields";
+import { label, widgetFor, type Widget } from "./widgets";
+
+interface Section {
+  name: string;
+  value: unknown;
+  widget: Widget;
+}
+
+async function load(session: EditorSession, entity: string): Promise<Section[]> {
+  const data = await session.entity(entity);
+  const names = Object.keys(data.components).sort();
+  return Promise.all(
+    names.map(async (name) => {
+      const schema = (await session.schema(name)) as Record<string, unknown>;
+      const defs = (schema["$defs"] as Record<string, unknown> | undefined) ?? {};
+      return { name, value: data.components[name], widget: widgetFor(schema, defs) };
+    }),
+  );
+}
+
+export function Inspector({ session, entity }: { session: EditorSession; entity: string | undefined }) {
+  const [sections, setSections] = useState<Section[]>([]);
+  const [error, setError] = useState<string>();
+  const refresh = useCallback(() => {
+    if (entity === undefined) return;
+    load(session, entity).then(setSections, (e: unknown) => setError(String(e)));
+  }, [session, entity]);
+  useEffect(refresh, [refresh]);
+  useEffect(
+    () =>
+      session.onEvent((event) => {
+        const touched = Array.isArray(event["entities"]) && entity !== undefined && event["entities"].includes(entity);
+        if (touched || event.topic === "scene") refresh();
+      }),
+    [session, entity, refresh],
+  );
+  if (entity === undefined) return <p style={{ opacity: 0.6, padding: 8 }}>Select an entity.</p>;
+  const commit = (name: string) => (value: unknown) => {
+    session.setComponent(entity, name, value).then(refresh, (e: unknown) => setError(String(e)));
+  };
+  return (
+    <div style={{ padding: 4 }}>
+      {error && (
+        <p role="alert" style={{ color: "#f88" }}>
+          {error}
+        </p>
+      )}
+      {sections.map((s) => (
+        <details key={s.name} open style={{ marginBottom: 6 }}>
+          <summary style={{ background: "#333", padding: "2px 6px", cursor: "pointer" }}>{s.name}</summary>
+          <div style={{ padding: "4px 6px" }}>
+            <ValueEditor label={label(s.name)} value={s.value} widget={s.widget} onCommit={commit(s.name)} />
+          </div>
+        </details>
+      ))}
+    </div>
+  );
+}

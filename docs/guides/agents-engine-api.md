@@ -41,8 +41,18 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `txn.history` | | `{limit?}` → `{entries}` |
 | `sim.play` / `sim.pause` / `sim.stop` | | `{rate_hz?}` / `{}` → `{state, tick}` |
 | `sim.step` | | `{ticks}` → `{tick, world_hash}` |
-| `capture.screenshot` | | `{width?, height?, camera?, world?}` → `{image, width, height, sim_tick, frame}` (projects with `[render]`) |
+| `capture.screenshot` | | `{width?, height?, camera? \| view?, world?}` → `{image, width, height, sim_tick, frame}` (projects with `[render]`) |
+| `viewport.pick` | | `{view, x, y, width, height, world?}` → `{entity, distance}` (projects with `[render]`) |
+| `viewport.present` | | `{view, width, height, world?}` → `{presented}` (the editor's native viewport only) |
 | `log.tail` | | `{since?, level?, limit?}` → `{records, next}` |
+| `events.subscribe` / `events.unsubscribe` | | `{topics: ["edit" \| "scene" \| "sim"]}` → `{topics}` (WebSocket only; not an MCP tool) |
+
+`events.subscribe` makes the WebSocket connection receive JSON-RPC notifications, `{"method": "events.event", "params": {"topic", ...}}`:
+- `edit`: one per committed transaction, undo or redo, with `method`, `txn`, `label`, `actor`, `entities` and `undo`;
+- `scene`: `event` is `opened`, `new` or `saved`, plus the `path`;
+- `sim`: `method`, `tick` and `state`.
+
+Edits made by other clients arrive too, which is how the editor sees agents work. Over stdio or MCP, poll `log.tail` instead. If a client falls more than 1,024 events behind, newer events are dropped, so re-read state with `query.run`.
 
 `capture.screenshot` renders offscreen at the requested size (default 1280×720) from the highest-priority `Camera`, unless `camera` names one. MCP clients receive `image` as PNG image content and the other fields as text. Pass `world: "play"` after `sim.step` to see the simulation. To be visible, a scene needs a `Transform` + `Camera` entity, `MeshRenderer` entities (e.g. `{"mesh": "builtin:mesh/cube", "material": "builtin:material/default"}`) and usually a `DirectionalLight`.
 

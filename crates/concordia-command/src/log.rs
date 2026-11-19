@@ -39,6 +39,11 @@ impl CommandLog {
         self.journal = Some(journal);
     }
 
+    /// Undone transactions, most recently undone last (the redo stack).
+    pub fn undone(&self) -> &[Transaction] {
+        &self.undone
+    }
+
     /// Committed transactions, oldest first (the undo stack).
     pub fn done(&self) -> &[Transaction] {
         &self.done

@@ -133,6 +133,7 @@ pub enum AlphaMode {
 #[serde(default, deny_unknown_fields)]
 pub struct MaterialData {
     /// Linear base color and alpha.
+    #[reflect(widget = "color")]
     pub base_color: [f32; 4],
     /// Base color texture (sRGB).
     pub base_color_texture: Option<AssetRef>,
@@ -154,6 +155,7 @@ pub struct MaterialData {
     #[reflect(range(min = 0.0, max = 1.0))]
     pub occlusion_strength: f32,
     /// Linear emissive color.
+    #[reflect(widget = "color")]
     pub emissive: [f32; 3],
     /// Emissive multiplier (KHR_materials_emissive_strength).
     #[reflect(range(min = 0.0, max = 1000000.0))]

@@ -1,0 +1,243 @@
+//! The editor's own view: `capture.screenshot` with a `view` override and `viewport.pick`
+//! (M1 phase 1.9). Picking is CPU-only; the capture cases skip without a GPU unless required.
+
+use std::sync::Arc;
+
+use concordia_api::{Engine, EngineConfig, EngineModule};
+use concordia_assets::AssetsModule;
+use concordia_core::id::SessionId;
+use concordia_render::{RenderModule, View};
+use concordia_rhi::RhiError;
+use concordia_testkit::gpu_required;
+use serde_json::{Value, json};
+
+struct Harness {
+    engine: Engine,
+    session: SessionId,
+    _dir: tempfile::TempDir,
+}
+
+impl Harness {
+    fn new() -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = EngineConfig::new(dir.path());
+        let modules: Vec<Arc<dyn EngineModule>> = vec![
+            Arc::new(AssetsModule::new(dir.path())),
+            Arc::new(RenderModule::new(Arc::new(
+                concordia_rhi_metal::new_headless,
+            ))),
+        ];
+        config.modules = modules;
+        let mut engine = Engine::new(config).unwrap();
+        let session = engine.open_session();
+        engine
+            .call(
+                session,
+                "scene.new",
+                json!({"path": "scenes/v.scene.ron", "name": "V", "actor": "agent:test"}),
+            )
+            .unwrap();
+        Self {
+            engine,
+            session,
+            _dir: dir,
+        }
+    }
+
+    fn call(&mut self, method: &str, params: Value) -> Result<Value, concordia_api::ApiError> {
+        self.engine.call(self.session, method, params)
+    }
+
+    fn ok(&mut self, method: &str, params: Value) -> Value {
+        self.call(method, params)
+            .unwrap_or_else(|e| panic!("{method}: {e:?}"))
+    }
+
+    /// Two unit cubes on the x axis: "Left" at x = -2 and "Right" at x = 2.
+    fn two_cubes(&mut self) -> (Value, Value) {
+        let mut cube = |name: &str, x: f32| {
+            self.ok("entity.spawn", json!({"actor": "agent:test", "components": {
+                "Name": name,
+                "Transform": {"translation": [x, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]},
+                "MeshRenderer": {"mesh": "builtin:mesh/cube", "material": "builtin:material/default"},
+            }}))["id"]
+                .clone()
+        };
+        (cube("Left", -2.0), cube("Right", 2.0))
+    }
+
+    fn gpu() -> Option<Self> {
+        if let Err(RhiError::NoDevice { reason }) = concordia_rhi_metal::new_headless() {
+            assert!(
+                !gpu_required(),
+                "CONCORDIA_REQUIRE_GPU=1 but no device: {reason}"
+            );
+            return None;
+        }
+        Some(Self::new())
+    }
+}
+
+fn front_view() -> Value {
+    json!({"eye": [0.0, 0.0, 10.0], "target": [0.0, 0.0, 0.0], "projection": {"Perspective": {"fov_y": 0.9, "near": 0.1, "far": 100.0}}})
+}
+
+#[test]
+fn pick_returns_the_mesh_under_the_cursor() {
+    let mut h = Harness::new();
+    let (left, right) = h.two_cubes();
+    let width = 400.0f32;
+    let half_width = 10.0 * (0.45f32).tan(); // world half-height at z=0; square image
+    let to_px = |x: f32| (width / 2.0 + x / half_width * width / 2.0) as u32;
+    let hit = h.ok(
+        "viewport.pick",
+        json!({"view": front_view(), "x": to_px(2.0), "y": 200, "width": 400, "height": 400}),
+    );
+    assert_eq!(hit["entity"], right, "{hit}");
+    assert!(
+        (hit["distance"].as_f64().unwrap() - 9.5).abs() < 0.05,
+        "front face is 9.5 away: {hit}"
+    );
+    let hit = h.ok(
+        "viewport.pick",
+        json!({"view": front_view(), "x": to_px(-2.0), "y": 200, "width": 400, "height": 400}),
+    );
+    assert_eq!(hit["entity"], left);
+    let miss = h.ok(
+        "viewport.pick",
+        json!({"view": front_view(), "x": 200, "y": 200, "width": 400, "height": 400}),
+    );
+    assert!(
+        miss["entity"].is_null(),
+        "nothing between the cubes: {miss}"
+    );
+}
+
+#[test]
+fn pick_respects_rotation_and_scale() {
+    let mut h = Harness::new();
+    let (_, right) = h.two_cubes();
+    // Top-down ortho, 20 px per unit: screen right is -X, screen up is +Z, so world (2, 0, -2.5) is pixel (160, 250).
+    let top = json!({"eye": [0.0, 20.0, 0.0], "target": [0.0, 0.0, 0.0], "projection": {"Orthographic": {"height": 20.0, "near": 0.1, "far": 100.0}}});
+    let at = |h: &mut Harness| {
+        h.ok(
+            "viewport.pick",
+            json!({"view": top, "x": 160, "y": 250, "width": 400, "height": 400}),
+        )
+    };
+    assert!(
+        at(&mut h)["entity"].is_null(),
+        "the unit cube at x = 2 does not reach z = -2.5"
+    );
+    // Stretch along local X by 6, then turn 90° about Y so the long axis runs along Z.
+    h.ok("component.patch", json!({"entity": right, "component": "Transform", "actor": "agent:test", "patch": {"scale": [6.0, 1.0, 1.0], "rotation": [0.0, 0.70710677, 0.0, 0.70710677]}}));
+    assert_eq!(
+        at(&mut h)["entity"],
+        right,
+        "the rotated, stretched cube now covers it"
+    );
+}
+
+#[test]
+fn view_params_are_validated() {
+    let mut h = Harness::new();
+    let degenerate = json!({"eye": [0.0, 0.0, 0.0], "target": [0.0, 0.0, 0.0], "projection": {"Perspective": {"fov_y": 0.9, "near": 0.1, "far": 100.0}}});
+    let err = h
+        .call(
+            "viewport.pick",
+            json!({"view": degenerate, "x": 0, "y": 0, "width": 10, "height": 10}),
+        )
+        .unwrap_err();
+    assert_eq!(err.data.kind, "InvalidParams", "{err:?}");
+    let err = h
+        .call(
+            "viewport.pick",
+            json!({"view": front_view(), "x": 50, "y": 0, "width": 10, "height": 10}),
+        )
+        .unwrap_err();
+    assert_eq!(
+        err.data.kind, "InvalidParams",
+        "x outside the image: {err:?}"
+    );
+    let err = h
+        .call(
+            "capture.screenshot",
+            json!({"view": front_view(), "camera": "0193a1c2-7e40-7000-8000-000000000001"}),
+        )
+        .unwrap_err();
+    assert_eq!(
+        err.data.kind, "InvalidParams",
+        "camera and view are exclusive: {err:?}"
+    );
+}
+
+#[test]
+fn capture_with_a_view_renders_from_that_viewpoint_without_a_scene_camera() {
+    let Some(mut h) = Harness::gpu() else { return };
+    h.two_cubes();
+    h.ok("entity.spawn", json!({"actor": "agent:test", "components": {
+        "Transform": {"translation": [0.0, 0.0, 0.0], "rotation": [-0.38, 0.0, 0.0, 0.92], "scale": [1.0, 1.0, 1.0]},
+        "DirectionalLight": {},
+    }}));
+    let toward = h.ok(
+        "capture.screenshot",
+        json!({"view": front_view(), "width": 64, "height": 64}),
+    );
+    let away = json!({"eye": [0.0, 0.0, 10.0], "target": [0.0, 0.0, 20.0], "projection": {"Perspective": {"fov_y": 0.9, "near": 0.1, "far": 100.0}}});
+    let empty = h.ok(
+        "capture.screenshot",
+        json!({"view": away, "width": 64, "height": 64}),
+    );
+    assert_ne!(
+        toward["image"], empty["image"],
+        "looking at the cubes differs from looking away"
+    );
+}
+
+#[test]
+fn view_round_trips_as_a_reflected_type() {
+    let view: View = serde_json::from_value(front_view()).unwrap();
+    let again: View = serde_json::from_value(serde_json::to_value(&view).unwrap()).unwrap();
+    assert_eq!(again, view, "f32 values survive serialization");
+}
+
+#[test]
+fn viewport_present_needs_an_attached_surface() {
+    let mut h = Harness::new();
+    let err = h
+        .call(
+            "viewport.present",
+            json!({"view": front_view(), "width": 64, "height": 64}),
+        )
+        .unwrap_err();
+    assert_eq!(err.data.kind, "InvalidRequest", "{err:?}");
+    assert!(
+        err.data
+            .suggestions
+            .iter()
+            .any(|s| s.contains("capture.screenshot")),
+        "{err:?}"
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn viewport_present_draws_into_the_attached_layer() {
+    let Some(mut h) = Harness::gpu() else { return };
+    h.two_cubes();
+    let layer = objc2_quartz_core::CAMetalLayer::new();
+    let target = concordia_rhi::SurfaceTarget::MetalLayer(std::ptr::NonNull::from(&*layer).cast());
+    // SAFETY: the layer outlives the engine (dropped at the end of the test, after `h`).
+    unsafe { concordia_render::attach_surface(&mut h.engine, target) }.unwrap();
+    let presented = (0..5)
+        .filter(|_| {
+            h.ok(
+                "viewport.present",
+                json!({"view": front_view(), "width": 64, "height": 48}),
+            )["presented"]
+                == true
+        })
+        .count();
+    assert!(presented >= 4, "{presented}");
+    drop(h);
+}

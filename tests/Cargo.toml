@@ -18,6 +18,7 @@ toml.workspace = true
 [dev-dependencies]
 concordia-api.workspace = true
 concordia-core.workspace = true
+concordia-mcp.workspace = true
 concordia-reflect.workspace = true
 concordia-scene.workspace = true
 insta.workspace = true

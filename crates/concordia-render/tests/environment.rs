@@ -160,6 +160,7 @@ fn environment_with_a_missing_map_names_it() {
             &mut s.assets,
             &RenderRequest {
                 camera: None,
+                view: None,
                 width: 8,
                 height: 8,
             },

@@ -125,6 +125,7 @@ pub struct Engine {
     pub(crate) scene: Option<OpenScene>,
     pub(crate) play: Option<Play>,
     pub(crate) ring: Arc<LogRing>,
+    pub(crate) events: crate::events::EventHub,
 }
 
 impl std::fmt::Debug for Engine {
@@ -169,6 +170,7 @@ impl Engine {
             scene: None,
             play: None,
             ring,
+            events: crate::events::EventHub::default(),
         })
     }
 
@@ -229,6 +231,7 @@ impl Engine {
     /// Ends a session, aborting any transaction it holds.
     pub fn close_session(&mut self, session: SessionId) {
         self.sessions.remove(&session);
+        self.events.remove(session);
         self.abort_held(|hold| hold.session == session, "session_closed");
     }
 
@@ -240,7 +243,17 @@ impl Engine {
         params: Value,
     ) -> Result<Value, ApiError> {
         self.poll(Instant::now());
-        crate::method::dispatch(self, session, method, params)
+        let before = crate::events::Marker::of(self);
+        let result = crate::method::dispatch(self, session, method, params);
+        if let Ok(value) = &result {
+            crate::events::publish_after(self, method, &before, value);
+        }
+        result
+    }
+
+    /// Lets `session` receive pushed events (transports that can push call this once per session).
+    pub fn set_event_sink(&mut self, session: SessionId, sink: crate::events::EventSink) {
+        self.events.set_sink(session, sink);
     }
 
     /// Housekeeping: expires transactions and advances a playing simulation.

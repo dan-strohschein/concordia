@@ -4,6 +4,117 @@ expression: "params_schema(&MethodInfo::of::<CaptureScreenshot>())"
 ---
 {
   "$defs": {
+    "Projection": {
+      "description": "How the camera projects (reverse-Z for both).",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Perspective with a vertical field of view in radians.",
+          "properties": {
+            "Perspective": {
+              "additionalProperties": false,
+              "properties": {
+                "far": {
+                  "description": "Far plane distance (> near).",
+                  "type": "number"
+                },
+                "fov_y": {
+                  "description": "Vertical field of view (radians).",
+                  "type": "number"
+                },
+                "near": {
+                  "description": "Near plane distance (> 0).",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "fov_y",
+                "near",
+                "far"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Perspective"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Orthographic; `height` world units fill the image vertically.",
+          "properties": {
+            "Orthographic": {
+              "additionalProperties": false,
+              "properties": {
+                "far": {
+                  "description": "Far plane distance (> near).",
+                  "type": "number"
+                },
+                "height": {
+                  "description": "Visible height in world units.",
+                  "type": "number"
+                },
+                "near": {
+                  "description": "Near plane distance (≥ 0).",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "height",
+                "near",
+                "far"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Orthographic"
+          ],
+          "type": "object"
+        }
+      ],
+      "title": "Projection",
+      "x-concordia-type": "Projection"
+    },
+    "View": {
+      "additionalProperties": false,
+      "description": "A viewpoint that is not a scene entity: eye, target and projection (up is +Y).",
+      "properties": {
+        "eye": {
+          "description": "Camera position.\n\n3D vector as [x, y, z].",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-concordia-widget": "vec3"
+        },
+        "projection": {
+          "$ref": "#/$defs/Projection",
+          "description": "Projection."
+        },
+        "target": {
+          "description": "Point looked at.\n\n3D vector as [x, y, z].",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-concordia-widget": "vec3"
+        }
+      },
+      "required": [
+        "eye",
+        "target",
+        "projection"
+      ],
+      "title": "View",
+      "type": "object",
+      "x-concordia-type": "View"
+    },
     "WorldSel": {
       "description": "Which world to read.",
       "oneOf": [
@@ -56,6 +167,17 @@ expression: "params_schema(&MethodInfo::of::<CaptureScreenshot>())"
       "maximum": 8192.0,
       "minimum": 1.0,
       "type": "integer"
+    },
+    "view": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/View"
+        }
+      ],
+      "description": "Render from this viewpoint instead of a camera entity (the editor's view)."
     },
     "width": {
       "default": 1280,

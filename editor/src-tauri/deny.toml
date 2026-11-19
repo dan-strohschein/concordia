@@ -1,0 +1,48 @@
+# cargo-deny policy for editor/src-tauri: the root deny.toml plus named MPL-2.0 exceptions.
+# cargo-deny policy: permissive licenses only (docs/clean-room.md, ADR-0022).
+[graph]
+all-features = true
+
+[advisories]
+yanked = "deny"
+ignore = [
+  { id = "RUSTSEC-2024-0370", reason = "proc-macro-error unmaintained; build-time macro of gtk-rs 0.18, Tauri's Linux-only GTK stack (not built on macOS)" },
+  # chrono is "unmaintained" (not a vulnerability). It is a required dependency of rmcp
+  # (and of rmcp's schemars). Re-check at every rmcp upgrade and drop this entry as soon
+  # as rmcp no longer needs chrono; fallback is rust-mcp-sdk (ADR-0033).
+  { id = "RUSTSEC-2026-0543", reason = "chrono unmaintained; required by rmcp 3.11 (ADR-0033)" },
+]
+
+[licenses]
+confidence-threshold = 0.9
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "Unicode-3.0",
+  "CC0-1.0",
+]
+# Editor shell only (author decision 2026-11-18): Tauri pulls these MPL-2.0 crates (Servo's CSS
+# parsing, and dirs' option-ext). Used unmodified as dependencies; the engine keeps permissive-only.
+exceptions = [
+  { allow = ["MPL-2.0"], crate = "cssparser" },
+  { allow = ["MPL-2.0"], crate = "cssparser-macros" },
+  { allow = ["MPL-2.0"], crate = "selectors" },
+  { allow = ["MPL-2.0"], crate = "dtoa-short" },
+  { allow = ["MPL-2.0"], crate = "option-ext" },
+]
+unused-allowed-license = "allow"
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

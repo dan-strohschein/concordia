@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (phase 1.8; 1.0, 1.2a, 1.1, 1.7, 1.2b, 1.3, 1.4, 1.5 and 1.6 done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (gate; 1.0–1.9 done, 1.10 stretch pending) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -154,6 +154,88 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 
 **Installs needing approval:** cmake (1.7a), Slang into `target/` (1.3), the Tauri CLI (1.8), and git-lfs only if D5 changes.
 
+### Phase 1.9c: Native editor shell (done)
+- **RHI window surfaces:** `create_surface` (unsafe; wraps a `CAMetalLayer`), `acquire`, `present` and `destroy_surface`, with Metal tests using a standalone layer (12 acquire/clear/present cycles, misuse errors).
+  - `Renderer::present` renders into a surface image: BGRA sRGB tonemap target, final Present layout, no readback. The tonemap pipeline is now per format.
+  - `concordia_render::attach_surface` plus the `viewport.present {view, width, height}` method.
+  - `EngineHandle::run` runs a closure on the engine thread, for in-process hosts.
+- **`editor/src-tauri` (Tauri 2.12.5, tauri-build 2.7.4, `@tauri-apps/api` 2.12.4; at least four weeks old; own Cargo workspace):**
+  - `EngineHost`: project modules, main scene, a token-protected WebSocket API and the connection file;
+  - the native viewport, ordered below the transparent webview;
+  - an injected engine URL;
+  - `--smoke-test`.
+- **The UI's native mode:** reports the slot through `invoke("slot_rect")` and presents with `viewport.present` at physical-pixel size, re-presenting every `requestAnimationFrame` (display-synced) while playing. The page is transparent over the slot. Overlays and all input stay in the web UI, so the camera, picking and gizmo are unchanged.
+- **Fixes:** two spike bugs found by capturing the real window (ADR-0043 amendment): the layering (below, not above) and the title-bar inset in the coordinate conversion. The spike's automated check had been tautological.
+- **Tests:**
+  - `api_server_rejects_connections_without_token`, main scene and connection file, bad project;
+  - `editor_shell_smoke_renders_native_viewport` (10 frames presented; capture with 62 colours);
+  - a visual check of the window capture, by eye.
+- **CI:** an editor shell job on macos-26 (UI build, cargo-deny with the shell's config, host and smoke tests).
+- **Licensing:** Tauri needs five MPL-2.0 crates (`cssparser`, `cssparser-macros`, `selectors`, `dtoa-short`, `option-ext`). By author decision, these are named exceptions in `editor/src-tauri/deny.toml` only; the engine stays permissive-only. RUSTSEC-2024-0370 (proc-macro-error unmaintained) is ignored there, since it's in Tauri's Linux-only GTK stack.
+- **Supply chain:** tauri 2.12.7 and tauri-build 2.7.6, used by the spike, were published the same day. The shell pins older releases.
+- **Deviations from the plan:**
+  - The display sync comes from WKWebView's `requestAnimationFrame` instead of a native display link.
+  - The smoke test checks a capture of the same view; `CaptureTarget::Viewport` (reading the presented image back) isn't needed.
+  - Window-pixel placement is verified locally by screen capture, which hosted CI can't permit.
+  - The streamed e2e tests stay the CI coverage for the UI.
+
+### Phase 1.9b: Editor camera, picking, gizmo, edit log (done)
+- **`View` (eye, target, projection):** `capture.screenshot {view}` renders the editor's own camera, reusing the scene camera's exposure, tonemap and clear colour (no scene camera needed). Passing both `camera` and `view` is `InvalidParams`.
+- **`viewport.pick {view, x, y, width, height}`:** the nearest mesh under a pixel, via ray tests against each mesh's object-space bounds. CPU-only; handles rotation and scale.
+- **Edits are logged:** `edit committed`, `edit undone` and `edit redone` (target `concordia::edit`) with the transaction's actor, label and op count. Previously only scene, sim and capture lines reached `log.tail`. The e2e attribution test had been passing on capture log lines, and is now exact.
+- **UI:**
+  - a Godot-style orbit camera: middle-drag orbits, Shift+middle-drag pans, the wheel zooms, Alt+left-drag emulates the middle button; numpad 1/3/7 views, 5 toggles ortho, F focuses, plus an isometric preset and a View menu;
+  - click-to-select through `viewport.pick`;
+  - the Move gizmo (an SVG axis-arrow overlay; a drag is one transaction, so one undo restores it);
+  - coalesced streamed captures (one in flight, newest queued).
+- **Tests:** 24 Vitest tests and 9 Playwright tests, including `viewport_click_selects_box_under_cursor`, the one-step-undo gizmo drag and orbiting.
+- **Deviations:**
+  - Picking is bounds-based (no per-triangle test or GPU id pass).
+  - The gizmo uses the local translation, which is exact for unparented entities.
+  - Rotate and scale gizmos come later, as the plan says.
+
+### Phase 1.9a: Events and editor UI (done)
+- **`events.subscribe` / `events.unsubscribe`** (core API; 27 methods). M0 had no change feed.
+  - `edit` events carry the actor, label and entities per commit, undo or redo; `scene` covers opened, new and saved; `sim` covers `sim.*`.
+  - Transports register per-session sinks; WebSocket pushes `events.event` notifications with a 1,024-event queue per connection.
+  - MCP excludes `events.*` via the shared `concordia_mcp::is_tool`, so M0's 24 tools are unchanged.
+- **Widget hints:** `x-concordia-widget` comes from types (`Vec3` → `vec3`, `Quat` → `quat`) and from `#[reflect(widget = "color")]` on colour fields.
+- **`concordia schema --project <dir> --out`:** module types plus `methods/<name>.{params,result}.schema.json`. `just editor-schemas` generates committed TypeScript types and test fixtures; CI checks drift.
+- **`editor/ui`** (React 19, TypeScript 5.9 strict, Vite 8, Vitest 5.1.0, Playwright 1.64.1; exact pins at least two weeks old, installed with `--ignore-scripts`):
+  - `EngineClient`;
+  - `EditorSession` (`human:local`);
+  - a schema-driven Inspector (number, bool, string, enum, vec3, quat as Euler YXZ, colour with sRGB picker, asset, entity, struct, option, JSON fallback; Godot-style labels; one commit per gesture);
+  - the Outliner (tree from `Parent`, stable sort, F2 rename, Delete);
+  - the streamed Viewport (approach D) with a Select/Move strip;
+  - the Output panel (`log.tail`);
+  - run controls and Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z, Cmd/Ctrl+S.
+  The layout follows Godot (`docs/design/editor-ux.md`).
+- **Tests:** 17 Vitest tests, and 6 Playwright browser-mode e2e tests against `concordia headless --ws` on a temporary copy of the example:
+  - outliner;
+  - inspector;
+  - an edit logged as `human:local`;
+  - undo shortcut;
+  - an agent edit live in under 500 ms;
+  - step changes the viewport image.
+- **CI:** `.github/workflows/editor.yml`, with a UI job (Ubuntu: lint, unit tests, schema drift) and an e2e job (macos-26 GPU).
+- **Moved to 1.9b:**
+  - the native shell (`editor/src-tauri`: in-process engine, token-protected API, Metal viewport with display-synced presentation per ADR-0043);
+  - viewport camera controls and an editor camera;
+  - click-to-select picking (`viewport_click_selects_box_under_cursor`);
+  - the translate gizmo;
+  - `api_server_rejects_connections_without_token`;
+  - the native smoke test.
+
+### Phase 1.8: Editor viewport spike (done)
+- **The spike** (Tauri 2.12.7, CLI 2.12.6 as a project-local devDependency, React 19, Vite 8) tried approach A (`NSView` + `CAMetalLayer` above the webview) and C (a docked child window). Both passed `spike_viewport_tracks_slot_rect_on_resize` exactly at 2× scale, and every manual check by the author: live resize, panel changes, move, displays, full screen, Stage Manager, mouse focus.
+- **Decision (ADR-0043):** A is the viewport, C the fallback, and D (streamed) is always built. ADR-0004's status now reads "confirmed".
+- **Not covered by the spike:**
+  - keyboard focus (the spike had no text field);
+  - display-synced pacing (the spike ticked on a timer, p50 10.4 ms);
+  - input-to-photon latency.
+  All three are Phase 1.9 requirements.
+- **The spike directory was removed,** as planned. Its essentials are in ADR-0043.
+
 ### Phase 1.6d: Transparency, glTF goldens, perf smoke (done)
 - **Transparency:**
   - `AlphaMode::Blend` uses premultiplied alpha and no depth write, drawn after opaques back to front;
@@ -162,7 +244,7 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 - **glTF conformance goldens:**
   - all eight listed models are imported, instantiated through the command log, framed by their bounds and lit by the HDRI plus a weak sun, at FLIP mean ≤ 0.02;
   - each was checked by eye against what the model is designed to show (label orientation, identical left and right tangent-space shading, alpha cutoffs at 0.25/0.5/0.75, readable text on BoomBox);
-  - not compared side by side with Khronos screenshots: the author should do that in the PR review.
+  - Author review (2026-11-18): the renders "look good" at their size; not compared side by side with the Khronos screenshots.
 - **Perf smoke:** `cargo bench -p concordia-render --bench many_lights` gives a median of 6.5 ms wall clock (CPU, submit and an 8 MB readback included) for 1,024 lights at 1080p ortho on the M3 Pro. GPU-only time isn't measured, since the RHI has no timestamp queries; adding them is follow-up work for checking the < 4 ms target.
 
 ### Phase 1.6c: Image-based lighting (done)
@@ -773,6 +855,7 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
 ---
 
 ### Phase 1.9: Minimal editor
+- **UX direction (author, 2026-11-18):** layout, widgets, gizmos and docking follow Godot 4.6; anything Godot lacks is marked *needs visual design* and kept basic; the look stays basic. See `docs/design/editor-ux.md`.
 - **Objective:** A Tauri v2 editor that is purely an Engine API client: outliner, schema-driven inspector generated from `concordia-reflect`, native viewport (approach from 1.8), log panel, undo/redo, play/pause/step.
 - **Deliverables**
   - `editor/src-tauri`: hosts an in-process engine (`EngineHost`) and starts the Engine API WebSocket server on `127.0.0.1:<random port>` with a per-launch bearer token; injects port and token into the webview. Hosts the native viewport (or the streamed fallback). Contains **no editing logic**; all edits are Engine API calls from the UI with `actor: "human:local"`.

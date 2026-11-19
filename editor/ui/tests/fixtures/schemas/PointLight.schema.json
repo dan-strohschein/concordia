@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Omnidirectional light at the entity's position.",
+  "properties": {
+    "color": {
+      "description": "Linear color.",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array",
+      "x-concordia-widget": "color"
+    },
+    "intensity_lumens": {
+      "description": "Luminous power in lumens (a 60 W bulb ≈ 800).",
+      "maximum": 1000000.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "range": {
+      "description": "Distance where the light fades to zero (also its clustering bound).",
+      "maximum": 1000.0,
+      "minimum": 0.01,
+      "type": "number"
+    }
+  },
+  "title": "PointLight",
+  "type": "object",
+  "x-concordia-type": "PointLight"
+}

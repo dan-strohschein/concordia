@@ -51,7 +51,8 @@ pub(crate) fn compile(
 /// Compiled shaders and lazily created pipelines.
 pub(crate) struct Pipelines {
     forward: (ShaderSource, ShaderSource),
-    tonemap: Pipeline,
+    tonemap: (ShaderSource, ShaderSource),
+    tonemaps: BTreeMap<u8, Pipeline>,
     shadow: Pipeline,
     sky: (ShaderSource, ShaderSource),
     skies: BTreeMap<u8, Pipeline>,
@@ -70,16 +71,10 @@ impl Pipelines {
             compile("forward.slang", "vs", Stage::Vertex)?,
             compile("forward.slang", "fs", Stage::Fragment)?,
         );
-        let tonemap = device.create_graphics_pipeline(&GraphicsPipelineDesc {
-            vertex: compile("tonemap.slang", "fullscreen", Stage::Vertex)?,
-            fragment: Some(compile("tonemap.slang", "tonemap", Stage::Fragment)?),
-            color_formats: vec![OUTPUT],
-            depth: None,
-            samples: SampleCount::X1,
-            cull: CullMode::None,
-            blend: BlendMode::Opaque,
-            label: "tonemap".into(),
-        })?;
+        let tonemap = (
+            compile("tonemap.slang", "fullscreen", Stage::Vertex)?,
+            compile("tonemap.slang", "tonemap", Stage::Fragment)?,
+        );
         let shadow = device.create_graphics_pipeline(&GraphicsPipelineDesc {
             vertex: compile("forward.slang", "shadow_vs", Stage::Vertex)?,
             fragment: None,
@@ -101,6 +96,7 @@ impl Pipelines {
         Ok(Self {
             forward,
             tonemap,
+            tonemaps: BTreeMap::new(),
             shadow,
             sky,
             skies: BTreeMap::new(),
@@ -108,8 +104,28 @@ impl Pipelines {
         })
     }
 
-    pub(crate) fn tonemap(&self) -> Pipeline {
-        self.tonemap
+    /// The tonemap pipeline writing `format` (sRGB RGBA for captures, BGRA for window surfaces).
+    pub(crate) fn tonemap(
+        &mut self,
+        device: &dyn Device,
+        format: Format,
+    ) -> Result<Pipeline, RenderError> {
+        let key = format as u8;
+        if let Some(p) = self.tonemaps.get(&key) {
+            return Ok(*p);
+        }
+        let pipeline = device.create_graphics_pipeline(&GraphicsPipelineDesc {
+            vertex: self.tonemap.0.clone(),
+            fragment: Some(self.tonemap.1.clone()),
+            color_formats: vec![format],
+            depth: None,
+            samples: SampleCount::X1,
+            cull: CullMode::None,
+            blend: BlendMode::Opaque,
+            label: format!("tonemap {format:?}"),
+        })?;
+        self.tonemaps.insert(key, pipeline);
+        Ok(pipeline)
     }
 
     /// The skybox pipeline for a sample count (drawn first, no depth test or write).
