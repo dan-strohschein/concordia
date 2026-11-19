@@ -253,7 +253,7 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 - **The outliner** rebuilds and sorts the whole 10k-entity tree on every change.
 
 
-### Phase 1.9e: Performance review fixes (in progress; author request 2026-11-18)
+### Phase 1.9e: Performance review fixes (done; author request 2026-11-18)
 A review compared Concordia against Unreal's public architecture and audited our own code. The author asked for every item, fixed in priority order, as one PR. Each item is test-first; the bench (`just editor-bench`) is re-run at the end against the 1.9d kill criteria.
 
 | # | Item | Status |
@@ -269,11 +269,28 @@ A review compared Concordia against Unreal's public architecture and audited our
 | 9 | Cached shadows for static casters | done: when no caster, light, cascade or map changed, the shadow passes are skipped and the maps reused (`RenderStats::shadows_cached`). Cascades follow the camera, so camera moves still redraw; caching across camera motion needs world-anchored (virtual) shadow maps, a later step |
 | 10 | Incremental outliner tree | done: `OutlinerTree` patches sorted sibling lists per edit (binary insertion; adoption of waiting children); cycles fall back to a full rebuild; a seeded property test checks it always equals `buildTree` |
 | 11 | Inspector refetches throttled during drags | done: `Coalescer` (one fetch in flight, one trailing) for the inspector and the gizmo overlay; a burst of 50 events costs at most 2 fetches |
-| 12 | Binary/low-overhead hot paths if JSON shows up in the bench | |
+| 12 | Binary/low-overhead hot paths if JSON shows up in the bench | measured, not needed: an in-process call through JSON dispatch costs 1.6–4.4 µs (`entity.get` 2.5, `component.get` 1.6, `component.set` in a transaction 4.4; text round trip 1.2), against 8,300 µs per frame at 120 Hz. The camera path no longer uses JSON at all |
 | 13 | First-use hitches: background IBL, shader compiles and texture uploads | done: environments prefilter on a background thread (viewport frames draw without them meanwhile; captures wait, so goldens are unchanged); compiled shaders are cached in the project DDC, so later starts skip `slangc`; texture uploads already ride in the frame's command list (item 1), leaving only a staging copy. Caching prefiltered environments in the DDC is a later step |
 | 14 | Optimized dev builds for the editor | done: the shell's dev profile builds the engine and other dependencies at `opt-level = 2` (one-time rebuild about 2 min); the shell itself stays quick to rebuild |
 | 15 | GPU timestamp queries in `viewport.stats` | done: each presented frame reports its command buffer's GPU time (`Present::on_gpu_time`, Metal `GPUStartTime`/`GPUEndTime`) as `gpu_ms`; the bench shows GPU p50. Per-pass timings need counter sample buffers, a later step |
 | 16 | Idle editor costs nothing (test) | done: the Output panel no longer polls `log.tail` every second; it fetches on the new `log` event topic. The render thread records its between-tick frames in `viewport.stats` too, and `an_idle_viewport_renders_nothing` checks that idle means no frames |
+
+**Results against the 1.9d kill criteria** (bench label `review`; +0 / +1k / +10k entities; M3 Pro at 120 Hz):
+
+| Criterion | Before (1.9d) | Now | Verdict |
+|---|---|---|---|
+| Orbit at full rate (≥108 fps) | 99 / 99 / 98 | 97 / 98 / 99 | fail |
+| Gizmo drag at full rate | 60 | **120 / 120 / 120**, 0 missed | pass |
+| Play without dropped frames | 60 | 112 / 115 / 120 (≥108) | pass |
+| Input→photon p95 < 25 ms | orbit 34–38, gizmo 30–38 | orbit 42 / 37 / 33; gizmo 41 / 41 / 41 (Rust-only baseline 32) | fail |
+| Agent edit→outliner ≤ 50 ms at 10k | p95 79 | p50 50, p95 61; at 1k p95 28 | fail (close) |
+
+**What remains:**
+- **The latency floor isn't the web layer.** The Rust-only baseline, with no page involved, also measures 32 ms p95, about four refreshes from event to `presentedTime`. A likely remaining step is compositing: the Metal layer sits under a transparent webview, so the window server composites every frame instead of flipping the layer directly to the display. That points at the layering, not at the web UI's code.
+- **Gizmo latency** includes a trip through the engine thread (`viewport.gizmo` edits the scene), which orbit no longer makes.
+- **Orbit at about 98 fps** is unexplained: native gizmo drags reach 120 fps through the same injector. It needs a profile; orbit redraws the shadow cascades every frame (they follow the camera), and the gizmo drag doesn't.
+- **The outliner at 10k** still flattens the whole tree per change; incremental flattening is the next step.
+
 
 ### Phase 1.9c: Native editor shell (done)
 - **RHI window surfaces:** `create_surface` (unsafe; wraps a `CAMetalLayer`), `acquire`, `present` and `destroy_surface`, with Metal tests using a standalone layer (12 acquire/clear/present cycles, misuse errors).
