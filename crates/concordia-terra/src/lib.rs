@@ -43,4 +43,4 @@ pub use query::{ElemAccess, QueryData, QueryElem, QueryFilter, QueryState, With,
 pub use resource::Resource;
 pub use schedule::{FnSystem, Schedule, System, SystemCtx, system};
 pub use sim::{SimClock, SimLoop};
-pub use world::{EntityWorldMut, World};
+pub use world::{Changes, EntityWorldMut, World};

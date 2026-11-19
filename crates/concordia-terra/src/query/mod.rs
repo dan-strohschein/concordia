@@ -64,6 +64,7 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
                 f(id, D::get(&mut slices, row));
             }
         }
+        self.mark_written(world);
     }
 
     /// Calls `f` for every matching entity in parallel, in fixed `chunk`-row pieces.
@@ -90,6 +91,21 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
                 }
             }
         });
+        drop(work);
+        self.mark_written(world);
+    }
+
+    /// A query with `&mut` access counts as changing every entity it visited.
+    fn mark_written(&self, world: &mut World) {
+        if !self.elems.iter().any(|e| e.mutable) {
+            return;
+        }
+        let tick = world.changes.bump();
+        for (arch, _) in matched(&mut world.archetypes.list, &self.columns) {
+            for &id in &arch.table.ids {
+                world.entities.touch(id, tick);
+            }
+        }
     }
 
     fn update(&mut self, world: &World) {

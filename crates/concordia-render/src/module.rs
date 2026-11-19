@@ -21,8 +21,9 @@ use concordia_assets::AssetRef;
 pub use crate::frame_log::FrameRecord;
 use crate::frame_log::{FrameLog, push_frame, remove_frame, unix_ms};
 use crate::orbit::{OrbitCamera, Preset};
-use crate::thread::{RenderThread, ViewportFrame};
+use crate::thread::{RenderThread, SceneUpdate, ViewportFrame};
 use crate::{Image, MemoryAssets, RenderError, RenderRequest, RenderWorld, Renderer};
+use crate::{SceneCache, SceneDelta};
 
 /// Creates the GPU device on first use (so engines start without one).
 pub type DeviceFactory = Arc<dyn Fn() -> Result<Box<dyn Device>, RhiError> + Send + Sync>;
@@ -53,6 +54,8 @@ struct RenderState {
     surface: bool,
     /// Meshes and textures already sent to the render thread (it keeps them).
     shipped: BTreeSet<AssetRef>,
+    /// What the render thread last saw of the edit and play worlds.
+    scenes: [SceneCache; 2],
     /// Recent native-viewport frames (for `viewport.stats`), keyed by frame number.
     frames: FrameLog,
     next_frame: u64,
@@ -90,6 +93,7 @@ impl EngineModule for RenderModule {
             thread: None,
             surface: false,
             shipped: BTreeSet::new(),
+            scenes: Default::default(),
             frames: FrameLog::default(),
             next_frame: 0,
             camera: OrbitCamera::default(),
@@ -173,17 +177,17 @@ impl Method for CaptureScreenshot {
         let world = engine.world(p.world.unwrap_or_default())?;
         let camera = p.camera.as_ref().map(|c| c.resolve(world)).transpose()?;
         let sim_tick = world.resource::<SimClock>().map_or(0, |c| c.tick.0);
-        let snapshot = RenderWorld::extract(world);
         let request = RenderRequest {
             camera,
             view: p.view.clone(),
             width: p.width,
             height: p.height,
         };
-        let assets = ship(engine, &snapshot)?;
-        let (image, frame) = render_thread(engine)?
-            .capture(snapshot, assets, request)
-            .map_err(api_error)?;
+        let scene = scene_update(engine, p.world.unwrap_or_default())?;
+        let slot = scene.slot;
+        let captured =
+            render_thread(engine).and_then(|t| t.capture(scene, request).map_err(api_error));
+        let (image, frame) = captured.inspect_err(|_| forget_scene(engine, slot))?;
         let actor = ctx
             .actor
             .as_ref()
@@ -220,6 +224,48 @@ fn make_renderer(factory: &DeviceFactory) -> Result<Renderer, RenderError> {
     let device = factory().map_err(RenderError::Gpu)?;
     let toolchain = SlangToolchain::locate().map_err(|e| RenderError::Shader(e.to_string()))?;
     Renderer::new(Arc::from(device), Box::new(SlangcCompiler::new(toolchain)))
+}
+
+/// The changes to world `sel` since the render thread last saw it, with the asset data they need.
+/// On error the scene is forgotten, so the next update is complete.
+fn scene_update(engine: &mut Engine, sel: WorldSel) -> Result<SceneUpdate, ApiError> {
+    let slot = match sel {
+        WorldSel::edit => 0,
+        WorldSel::play => 1,
+    };
+    let mut cache = engine
+        .state_mut::<RenderState>()
+        .map(|s| std::mem::take(&mut s.scenes[slot]))
+        .unwrap_or_default();
+    let delta = engine.world(sel).map(|w| cache.update(w));
+    if let Some(state) = engine.state_mut::<RenderState>() {
+        state.scenes[slot] = cache;
+    }
+    let delta = delta?;
+    let changed = match &delta {
+        SceneDelta::Full(items) => RenderWorld::assemble(items.values()),
+        SceneDelta::Changes { upserts, .. } => {
+            RenderWorld::assemble(upserts.iter().map(|(_, i)| i))
+        }
+    };
+    match ship(engine, &changed) {
+        Ok(assets) => Ok(SceneUpdate {
+            slot,
+            delta,
+            assets,
+        }),
+        Err(e) => {
+            forget_scene(engine, slot);
+            Err(e)
+        }
+    }
+}
+
+/// Drops what the render thread is believed to hold of a world (its next update is complete).
+fn forget_scene(engine: &mut Engine, slot: usize) {
+    if let Some(state) = engine.state_mut::<RenderState>() {
+        state.scenes[slot] = SceneCache::default();
+    }
 }
 
 /// The asset data `world` needs that the render thread has not been sent yet.
@@ -469,8 +515,8 @@ struct PresentTarget {
 
 /// Snapshots the world and queues a frame of `view` on the render thread.
 fn queue_present(engine: &mut Engine, view: crate::View, t: PresentTarget) -> Result<(), ApiError> {
-    let world = RenderWorld::extract(engine.world(t.world.unwrap_or_default())?);
-    let assets = ship(engine, &world)?;
+    let scene = scene_update(engine, t.world.unwrap_or_default())?;
+    let slot = scene.slot;
     let request = RenderRequest {
         camera: None,
         view: Some(view),
@@ -482,14 +528,14 @@ fn queue_present(engine: &mut Engine, view: crate::View, t: PresentTarget) -> Re
         state.viewport = Some((t.width, t.height, t.world));
     }
     let frame = ViewportFrame {
-        world,
-        assets,
+        scene,
         request,
         log: log.clone(),
         id,
     };
     if let Err(e) = render_thread(engine).and_then(|t| t.present(frame).map_err(api_error)) {
         remove_frame(&log, id);
+        forget_scene(engine, slot);
         return Err(e);
     }
     Ok(())

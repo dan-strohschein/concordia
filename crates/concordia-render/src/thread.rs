@@ -9,13 +9,21 @@ use std::time::{Instant, SystemTime};
 use concordia_rhi::{RhiError, Surface, SurfaceTarget};
 
 use crate::frame_log::{FrameLog, presented_callback, remove_frame, unix_ms, update_frame};
-use crate::{Image, MemoryAssets, RenderError, RenderRequest, RenderWorld, Renderer};
+use crate::{Image, MemoryAssets, RenderError, RenderRequest, RenderScene, Renderer, SceneDelta};
 
-/// A viewport frame to present: a world snapshot, asset data the thread has not seen yet, the
-/// view, and its `viewport.stats` record.
-pub(crate) struct ViewportFrame {
-    pub(crate) world: RenderWorld,
+/// Which world's scene a job updates: 0 = edit, 1 = play.
+pub(crate) type SceneSlot = usize;
+
+/// A world's changes since the thread last saw it, and asset data it has not seen yet.
+pub(crate) struct SceneUpdate {
+    pub(crate) slot: SceneSlot,
+    pub(crate) delta: SceneDelta,
     pub(crate) assets: MemoryAssets,
+}
+
+/// A viewport frame to present: the scene update, the view, and its `viewport.stats` record.
+pub(crate) struct ViewportFrame {
+    pub(crate) scene: SceneUpdate,
     pub(crate) request: RenderRequest,
     pub(crate) log: FrameLog,
     pub(crate) id: u64,
@@ -27,8 +35,7 @@ pub(crate) type Captured = Result<(Image, u64), RenderError>;
 enum Job {
     Present(ViewportFrame),
     Capture {
-        world: RenderWorld,
-        assets: MemoryAssets,
+        scene: SceneUpdate,
         request: RenderRequest,
         reply: mpsc::Sender<Captured>,
     },
@@ -76,16 +83,10 @@ impl RenderThread {
     }
 
     /// Renders offscreen and waits for the image.
-    pub(crate) fn capture(
-        &self,
-        world: RenderWorld,
-        assets: MemoryAssets,
-        request: RenderRequest,
-    ) -> Captured {
+    pub(crate) fn capture(&self, scene: SceneUpdate, request: RenderRequest) -> Captured {
         let (reply, answer) = mpsc::channel();
         self.send(Job::Capture {
-            world,
-            assets,
+            scene,
             request,
             reply,
         })?;
@@ -126,10 +127,12 @@ fn stopped() -> RenderError {
     ))
 }
 
-/// The thread's state: the renderer, every asset it has been sent, and the viewport surface.
+/// The thread's state: the renderer, every asset it has been sent, the edit and play scenes,
+/// and the viewport surface.
 struct Worker {
     renderer: Renderer,
     store: MemoryAssets,
+    scenes: [RenderScene; 2],
     surface: Option<Surface>,
 }
 
@@ -138,6 +141,7 @@ impl Worker {
         Self {
             renderer,
             store: MemoryAssets::default(),
+            scenes: Default::default(),
             surface: None,
         }
     }
@@ -161,20 +165,21 @@ impl Worker {
     fn handle(&mut self, job: Job, latest: Option<ViewportFrame>) -> Option<ViewportFrame> {
         match job {
             Job::Present(mut frame) => {
-                self.store.merge(std::mem::take(&mut frame.assets));
+                // Every delta is applied, even for frames that will be skipped.
+                self.update(&mut frame.scene);
                 if let Some(stale) = latest {
                     remove_frame(&stale.log, stale.id);
                 }
                 Some(frame)
             }
             Job::Capture {
-                world,
-                assets,
+                mut scene,
                 request,
                 reply,
             } => {
-                self.store.merge(assets);
-                let image = self.renderer.render(&world, &mut self.store, &request);
+                self.update(&mut scene);
+                let world = self.scenes[scene.slot].world();
+                let image = self.renderer.render(world, &mut self.store, &request);
                 let _ = reply.send(image.map(|image| (image, self.renderer.frames())));
                 latest
             }
@@ -183,6 +188,16 @@ impl Worker {
                 latest
             }
         }
+    }
+
+    /// Applies a scene update (taking its delta and assets).
+    fn update(&mut self, scene: &mut SceneUpdate) {
+        self.store.merge(std::mem::take(&mut scene.assets));
+        let empty = SceneDelta::Changes {
+            upserts: Vec::new(),
+            removed: Vec::new(),
+        };
+        self.scenes[scene.slot].apply(std::mem::replace(&mut scene.delta, empty));
     }
 
     fn attach(&mut self, target: SurfaceTarget) -> Result<(), RenderError> {
@@ -196,19 +211,19 @@ impl Worker {
 
     fn present(&mut self, frame: ViewportFrame) {
         let ViewportFrame {
-            world,
+            scene,
             request,
             log,
             id,
-            ..
         } = frame;
         let Some(surface) = self.surface else {
             return remove_frame(&log, id);
         };
         let start = Instant::now();
         let on_presented = presented_callback(log.clone(), id);
+        let world = self.scenes[scene.slot].world();
         let presented = self.renderer.present_with(
-            &world,
+            world,
             &mut self.store,
             &request,
             surface,

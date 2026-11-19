@@ -18,6 +18,7 @@ mod module;
 mod orbit;
 mod pipelines;
 mod renderer;
+mod scene_cache;
 pub mod shadow;
 mod shadow_pass;
 mod thread;
@@ -30,7 +31,9 @@ pub use components::{
     Camera, DirectionalLight, Environment, Msaa, PointLight, Projection, SpotLight, Tonemap,
 };
 pub use error::RenderError;
-pub use extract::{CameraView, DrawItem, LightView, PunctualKind, PunctualLight, RenderWorld};
+pub use extract::{
+    CameraView, DrawItem, EntityItems, LightView, PunctualKind, PunctualLight, RenderWorld,
+};
 pub use frame::DrawPush;
 pub use lighting::candela;
 pub use module::{
@@ -40,6 +43,7 @@ pub use module::{
 pub use orbit::{OrbitCamera, Preset};
 pub use pipelines::shader_dir;
 pub use renderer::{Image, MAX_SIZE, RenderRequest, RenderStats, Renderer};
+pub use scene_cache::{RenderScene, SceneCache, SceneDelta, SceneItems};
 pub use shadow_pass::ShadowPush;
 pub use view::{Pick, View, pick};
 

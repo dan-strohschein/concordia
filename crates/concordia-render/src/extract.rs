@@ -97,67 +97,24 @@ impl RenderWorld {
     /// Copies render components and world transforms out of `world`.
     pub fn extract(world: &World) -> Self {
         let transforms = world_transforms(world);
+        let items: Vec<EntityItems> = transforms
+            .iter()
+            .map(|(&entity, &matrix)| EntityItems::extract(world, entity, matrix))
+            .collect();
+        Self::assemble(items.iter())
+    }
+
+    /// Joins per-entity items (in entity-id order) into a render world.
+    pub fn assemble<'a>(items: impl Iterator<Item = &'a EntityItems>) -> Self {
         let mut out = Self::default();
-        for (&entity, &matrix) in transforms.iter() {
-            if let Some(r) = world.get::<MeshRenderer>(entity) {
-                out.draws.push(DrawItem {
-                    entity,
-                    world: matrix,
-                    mesh: r.mesh.clone(),
-                    material: r.material.clone(),
-                    cast_shadows: r.cast_shadows,
-                });
-            }
-            if let Some(light) = world.get::<DirectionalLight>(entity) {
-                let direction = matrix
-                    .transform_vector3(Vec3::NEG_Z)
-                    .normalize_or(Vec3::NEG_Z);
-                out.lights.push(LightView {
-                    entity,
-                    direction,
-                    light: light.clone(),
-                });
-            }
-            let position = matrix.transform_point3(Vec3::ZERO);
-            let forward = matrix
-                .transform_vector3(Vec3::NEG_Z)
-                .normalize_or(Vec3::NEG_Z);
-            if let Some(p) = world.get::<PointLight>(entity) {
-                out.punctual.push(PunctualLight {
-                    entity,
-                    position,
-                    direction: forward,
-                    kind: PunctualKind::Point,
-                    color: p.color,
-                    intensity_lumens: p.intensity_lumens,
-                    range: p.range,
-                });
-            }
-            if let Some(s) = world.get::<SpotLight>(entity) {
-                let kind = PunctualKind::Spot {
-                    inner: s.inner_angle.min(s.outer_angle),
-                    outer: s.outer_angle,
-                };
-                out.punctual.push(PunctualLight {
-                    entity,
-                    position,
-                    direction: forward,
-                    kind,
-                    color: s.color,
-                    intensity_lumens: s.intensity_lumens,
-                    range: s.range,
-                });
-            }
+        for item in items {
+            out.draws.extend(item.draw.iter().cloned());
+            out.lights.extend(item.light.iter().cloned());
+            out.punctual.extend(item.punctual.iter().cloned());
             if out.environment.is_none() {
-                out.environment = world.get::<Environment>(entity).cloned();
+                out.environment.clone_from(&item.environment);
             }
-            if let Some(camera) = world.get::<Camera>(entity) {
-                out.cameras.push(CameraView {
-                    entity,
-                    world: matrix,
-                    camera: camera.clone(),
-                });
-            }
+            out.cameras.extend(item.camera.iter().cloned());
         }
         out
     }
@@ -175,6 +132,85 @@ impl RenderWorld {
                 .iter()
                 .max_by_key(|c| (c.camera.priority, std::cmp::Reverse(c.entity)))
                 .ok_or(RenderError::NoCamera),
+        }
+    }
+}
+
+/// One entity's share of a [`RenderWorld`], plus its parent (for incremental updates).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct EntityItems {
+    /// Its mesh.
+    pub draw: Option<DrawItem>,
+    /// Its directional light.
+    pub light: Option<LightView>,
+    /// Its point and spot lights.
+    pub punctual: Vec<PunctualLight>,
+    /// Its environment.
+    pub environment: Option<Environment>,
+    /// Its camera.
+    pub camera: Option<CameraView>,
+    /// Its `Parent`, if any.
+    pub parent: Option<EntityId>,
+}
+
+impl EntityItems {
+    /// The render items of `entity`, whose world matrix is `matrix`.
+    pub fn extract(world: &World, entity: EntityId, matrix: Mat4) -> Self {
+        let position = matrix.transform_point3(Vec3::ZERO);
+        let forward = matrix
+            .transform_vector3(Vec3::NEG_Z)
+            .normalize_or(Vec3::NEG_Z);
+        let mut punctual = Vec::new();
+        if let Some(p) = world.get::<PointLight>(entity) {
+            punctual.push(PunctualLight {
+                entity,
+                position,
+                direction: forward,
+                kind: PunctualKind::Point,
+                color: p.color,
+                intensity_lumens: p.intensity_lumens,
+                range: p.range,
+            });
+        }
+        if let Some(s) = world.get::<SpotLight>(entity) {
+            punctual.push(PunctualLight {
+                entity,
+                position,
+                direction: forward,
+                kind: PunctualKind::Spot {
+                    inner: s.inner_angle.min(s.outer_angle),
+                    outer: s.outer_angle,
+                },
+                color: s.color,
+                intensity_lumens: s.intensity_lumens,
+                range: s.range,
+            });
+        }
+        Self {
+            draw: world.get::<MeshRenderer>(entity).map(|r| DrawItem {
+                entity,
+                world: matrix,
+                mesh: r.mesh.clone(),
+                material: r.material.clone(),
+                cast_shadows: r.cast_shadows,
+            }),
+            light: world
+                .get::<DirectionalLight>(entity)
+                .map(|light| LightView {
+                    entity,
+                    direction: forward,
+                    light: light.clone(),
+                }),
+            punctual,
+            environment: world.get::<Environment>(entity).cloned(),
+            camera: world.get::<Camera>(entity).map(|camera| CameraView {
+                entity,
+                world: matrix,
+                camera: camera.clone(),
+            }),
+            parent: world
+                .get::<concordia_scene::builtin::Parent>(entity)
+                .map(|p| p.0),
         }
     }
 }
