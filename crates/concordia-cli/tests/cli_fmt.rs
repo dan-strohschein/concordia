@@ -85,3 +85,36 @@ fn fmt_knows_the_project_module_components() {
     let canonical = std::fs::read_to_string(dir.path().join("p.scene.ron")).unwrap();
     assert!(canonical.contains("\"RigidBody\": ("), "{canonical}");
 }
+
+const PHYSICS_SCENE: &str = r#"Scene(id: "0193a1c2-7e40-7000-8000-000000000001", format: 1, name: "P", entities: [
+    Entity(id: "0193a1c2-7e40-7000-8000-000000000002", components: {"Collider": (shape: Sphere(radius: 1.0))}),
+])"#;
+
+#[test]
+fn fmt_infers_project_from_nearest_manifest() {
+    let dir = tempfile::tempdir().unwrap();
+    let game = dir.path().join("game");
+    std::fs::create_dir_all(game.join("scenes")).unwrap();
+    std::fs::write(
+        game.join("concordia.toml"),
+        "[physics]\ngravity = [0.0, -9.81, 0.0]\n",
+    )
+    .unwrap();
+    std::fs::write(game.join("scenes/p.scene.ron"), PHYSICS_SCENE).unwrap();
+    // Run from the parent, which has no manifest and no --project.
+    let output = run(&["fmt", "game/scenes"], dir.path());
+    assert!(output.status.success(), "{}", stderr(&output));
+    let canonical = std::fs::read_to_string(game.join("scenes/p.scene.ron")).unwrap();
+    assert!(canonical.contains("\"Collider\": ("), "{canonical}");
+}
+
+#[test]
+fn fmt_reports_unknown_component_with_project_hint() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("p.scene.ron"), PHYSICS_SCENE).unwrap();
+    let output = run(&["fmt", "--check"], dir.path());
+    assert_eq!(output.status.code(), Some(2));
+    let err = stderr(&output);
+    assert!(err.contains("Collider"), "{err}");
+    assert!(err.contains("no concordia.toml"), "{err}");
+}

@@ -1279,7 +1279,12 @@ No snapping, freelook or light and camera icons in this phase (backlog).
 - **Bench** (`just editor-bench`, M3 Pro, 120 Hz; reports `pre-1.16` and `post-1.16` in `target/bench/`):
   - At 0 and 1k entities every scenario holds or improves (orbit about 115 fps, gizmo drag 120 fps).
   - At 10k, native orbit (112 → 117.5), orbit with agent edits (86 → 118.5), gizmo drag (103 → 120) and play hold or improve.
-  - **Open:** the browser-style orbit at 10k measured 112.9 fps before and 102.5 and 98.4 after (107.7 with the stats readout's polling disabled), with GPU time unchanged and CPU p50 within 0.3 ms. Nothing added scales with entity count, so it looks like run-to-run noise, but it isn't settled. Re-measure with more runs before the M1 gate.
+  - ~~**Open:**~~ *(resolved below)* the browser-style orbit at 10k measured 112.9 fps before and 102.5 and 98.4 after (107.7 with the stats readout's polling disabled), with GPU time unchanged and CPU p50 within 0.3 ms. Nothing added scales with entity count, so it looks like run-to-run noise, but it isn't settled. Re-measure with more runs before the M1 gate.
+  - **Resolved (2026-11-19, M3 phase 3.0): not a regression.** Release builds, browser-style orbit at 10k, 5 alternating runs each (median fps, CPU p50, GPU p50):
+    - before 1.16 (`a50de79`): 107.3 fps, 1.41 ms, 4.36 ms;
+    - at 1.16 (`b07d594`): 104.8 fps, 1.53 ms, 3.98 ms; the ranges overlap (93.8–112.7 vs 100.5–107.6);
+    - `main` on the 1.16-era scene: 107.3 fps, 1.49 ms, 4.44 ms, the same as before 1.16;
+    - `main` on the gate scene: 91.7 fps, 1.90 ms, 4.88 ms. The gate content (16 point lights, the HDRI sky, materials) costs the difference, not the code.
 - **Goldens:** the view-mode goldens' test scene made its cube explicitly non-metallic: `MaterialData` defaults to metallic 1 (glTF), which the roughness/metallic view showed.
 
 ## Milestone gate (the executable acceptance test: exact command and what it asserts)

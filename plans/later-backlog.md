@@ -71,6 +71,7 @@ Rules that still apply to everything here: subscription-first (no item may *requ
 - **GPU profiling** (after M1). Timestamp queries per render-graph pass, Metal frame-capture hooks, per-pass budgets shown in the editor.
 - **Memory profiling** (after M1). Allocation tracking per subsystem and asset; leak checks in CI for headless runs.
 - **Performance regression CI** (after M1). Benchmarks (`criterion` or `divan`) and frame-time captures of reference scenes, with thresholds; agents get structured reports when a change regresses.
+- **Lit-scene cost at scale in the editor** (after M1; author priority: large scenes must not destroy performance). The M1 gate scene (16 point lights, an HDRI sky, materials) drops the 10k-entity browser-style orbit from 107 to 92 fps median (CPU p50 1.49 → 1.90 ms, GPU p50 4.44 → 4.88 ms, about twice the missed 120 Hz refreshes; measured 2026-11-19, see the M1 plan, 1.16 As built). Profile where the time goes (light culling, the shadow and IBL passes, CPU extraction per frame), set a budget for a large lit scene and add it to the bench and perf CI.
 
 ## 11. Packaging and shipping
 - **Cooking and packaging** (after M2). `concordia package`: cook assets from the DDC into platform packs, strip editor-only data, produce a runnable build per platform.

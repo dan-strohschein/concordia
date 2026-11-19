@@ -99,6 +99,9 @@ The options differ in how a call's identity reaches `concordia mcp` and how hook
   - **`concordia fmt` infers the project** from each file's nearest `concordia.toml`. Today `--project .` silently loads no modules when run outside the project, so `Collider` is unknown. Tests: `fmt_infers_project_from_nearest_manifest`, `fmt_reports_unknown_component_with_project_hint`.
   - **Re-measure the 10k browser orbit** (`just editor-bench`, at least 5 runs each of `pre-1.16` and `post-1.16`) and close or confirm the M1 1.16 open item.
   - **Asynchronous browser captures stay in `later-backlog.md`.** Studio e2e uses the light fixture scene, and the native path is unaffected. Revisit if 3.8's e2e waits grow.
+  - **Done (2026-11-19). As built:**
+    - **`fmt`:** `--project` is now optional, and each file is formatted against its nearest `concordia.toml`, with one engine per project. A file with no manifest above it gets only built-in components, and an unknown component there says so with a `--project` hint.
+    - **Bench:** the 1.16 regression is not real. A `main` build on the 1.16-era scene matches pre-1.16 (107.3 fps median). The gate scene's content costs the rest; details are in the M1 plan, 1.16 As built.
 - **3.3** gains G3 (journal), G5, G6, G8, G14, decision (a) (`concordia new`, `concordia studio init`), and `studio.activity`.
 - **3.4:** G7, G11, G12; the `.mcp.json` key is `concordia`.
 - **3.5:** decision (b), G2, G9; the probe for `updatedInput` on MCP tools is the first task (a manual interactive check, then a scripted `claude -p` probe only with the author's go-ahead).
