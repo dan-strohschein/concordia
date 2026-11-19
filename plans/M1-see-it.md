@@ -1342,7 +1342,7 @@ It must pass on CI's macOS GPU job (`macos-26` arm64, or the `self-hosted-macos-
 
 **Agent demonstration (sign-off, recorded, not CI):** in this repo's Claude Code session (subscription, no API key) with `concordia-mcp` registered in `.mcp.json`, ask the agent to open the stack scene, step 180 ticks and call `capture_screenshot`; the agent describes the image it received (boxes, shadows, colored lights). Paste the transcript excerpt into the PR that flips M1's status to "Gate passed".
 
-**As built (gate tests written; the gate has not passed yet: CI, the live gate and the agent demonstration remain):**
+**As built (gate tests written; the live gate passed on 2026-11-19; CI on #19 and the agent demonstration remain):**
 - **Gate content**, authored through the Engine API by `tools/assets/build_m1_gate_scene.py` as `tool:gate-author`:
   - three `.material.ron` materials, on the pyramid and the dropped boxes;
   - a CC0 crate made by `tools/assets/make_crate.py`;
@@ -1361,6 +1361,7 @@ It must pass on CI's macOS GPU job (`macos-26` arm64, or the `self-hosted-macos-
   - the server's log (via a wrapper with `CONCORDIA_LOG=info,concordia::render=debug`), for the `sim stepped` and `captured screenshot` records;
   - the names of the agent's environment variables (no `*_API_KEY` or `*_AUTH_TOKEN`).
   The checker re-simulates the saved scene to see the boxes fall.
+- **Live gate result (2026-11-19, Claude Code 2.1.328):** passed on attempt 1. The first run of the script failed on a checker bug (a `query.run` limit above the API's 1000-row page), not the agent; re-checking those three sessions' artifacts with the fixed checker passed all three. Each session took about 30 turns and under a minute, and described the five fallen boxes and the crate.
 - **CI** runs `just gate-tests M1` on macOS (GPU required) and Linux (the image checks skip; the physics hash must still match).
 - **`just clean-builds`** empties the build outputs. Cargo never collects stale variants, which filled the disk after two days (99 GB in `target/`).
 

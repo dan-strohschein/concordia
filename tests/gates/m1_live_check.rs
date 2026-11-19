@@ -63,7 +63,7 @@ impl Check {
     fn rows(&mut self, with: &[&str], world: &str) -> Vec<Value> {
         let result = self.ok(
             "query.run",
-            json!({"with": with, "select": with, "world": world, "limit": 10000}),
+            json!({"with": with, "select": with, "world": world, "limit": 1000}),
         );
         result["rows"].as_array().unwrap().clone()
     }
