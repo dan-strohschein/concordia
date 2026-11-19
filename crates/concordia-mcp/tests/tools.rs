@@ -24,9 +24,9 @@ async fn tool_list_is_one_to_one_with_api_methods() {
         .map(|t| t.name.to_string())
         .collect();
     let expected: Vec<String> = methods()
-        .names()
+        .iter()
         .filter(|m| concordia_mcp::is_tool(m))
-        .map(tool_name)
+        .map(|m| tool_name(m.name))
         .collect();
     assert_eq!(names, expected);
 }

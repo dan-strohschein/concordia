@@ -1,7 +1,7 @@
 //! `viewport.gizmo`: the Move gizmo's drag, engine-side so native input and the page share it.
 //! A drag is one transaction (one undo step) on the caller's session, as the caller's actor.
 
-use concordia_api::{ApiError, ApiErrorKind, CallCtx, Engine, Method};
+use concordia_api::{ApiError, ApiErrorKind, Audience, CallCtx, Engine, Method};
 use concordia_core::id::EntityId;
 use concordia_core::math::Vec3;
 use concordia_reflect::Reflect;
@@ -87,6 +87,7 @@ pub struct ViewportGizmoResult {
 impl Method for ViewportGizmo {
     const NAME: &'static str = "viewport.gizmo";
     const MUTATES: bool = true;
+    const AUDIENCE: Audience = Audience::editor;
     type Params = ViewportGizmoParams;
     type Result = ViewportGizmoResult;
 

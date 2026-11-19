@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (editor v1, agent-first: 1.11 done, 1.12–1.16 next, then the gate; ADR-0049; 1.0–1.9 done, 1.10 stretch pending; ADR-0048) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (editor v1, agent-first: 1.11–1.12 done, 1.13–1.16 next, then the gate; ADR-0049; 1.0–1.9 done, 1.10 stretch pending; ADR-0048) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -1133,7 +1133,7 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
 
 **As built:** the Scene menu is the first menu of a data-driven `MenuBar` that phase 1.14 grows into the action registry; Open Recent lists recent scenes inline. The native shell disables Tauri's OS file-drop handler so the page's drag and drop works; OS file drops come later.
 
-### Phase 1.12: Agent surface (MCP coverage and tool quality)
+### Phase 1.12: Agent surface (MCP coverage and tool quality) (done)
 **Goal.** Agents see every M1 capability as a well-described MCP tool, and nothing they don't need.
 
 **MCP:**
@@ -1153,6 +1153,8 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
 - `every_tool_and_param_has_a_description` (non-empty, not just the name);
 - `capture_without_size_fits_the_agent_budget`;
 - `agent_guide_mentions_every_agent_tool`.
+
+**As built:** `Method::AUDIENCE` (default `agent`); MCP lists 33 tools for the M1 example. The old `capture_screenshot_defaults_to_1280_by_720` test was changed deliberately to the new 768 × 432 default. Known pre-existing e2e flakes (about 1 in 8 runs, same rate before this phase): `step_button_advances_sim_and_viewport_image_changes` and `gizmo_drag_moves_along_its_axis_as_one_undo_step`.
 
 ### Phase 1.13: Scene tree
 **Goal.** Agents can build an entity hierarchy in a few calls; the Scene dock exposes the same, minimally.

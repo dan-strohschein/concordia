@@ -14,12 +14,25 @@ use crate::engine::Engine;
 use crate::error::{ApiError, ApiErrorKind};
 use crate::module::{CoreModule, EngineModule};
 
+/// Who a method is for: agents (offered as an MCP tool) or the editor's own plumbing (WebSocket API only).
+#[allow(non_camel_case_types)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Audience {
+    /// Agents and every other client.
+    #[default]
+    agent,
+    /// The editor's viewport plumbing; not offered to agents.
+    editor,
+}
+
 /// One Engine API method. The marker type's doc comment is the method's agent-facing description.
 pub trait Method: Reflect {
     /// Wire name, `domain.verb`.
     const NAME: &'static str;
     /// True if the method changes the edit world (requires an actor).
     const MUTATES: bool;
+    /// Who the method is for (default: agents).
+    const AUDIENCE: Audience = Audience::agent;
     /// Params.
     type Params: Reflect;
     /// Result.
@@ -63,6 +76,8 @@ pub struct MethodInfo {
     pub mutates: bool,
     /// Agent-facing description.
     pub docs: &'static str,
+    /// Who the method is for.
+    pub audience: Audience,
     /// Params type.
     pub params: &'static TypeInfo,
     /// Result type.
@@ -86,6 +101,7 @@ impl MethodInfo {
             name: M::NAME,
             mutates: M::MUTATES,
             docs: M::type_info().docs,
+            audience: M::AUDIENCE,
             params: M::Params::type_info(),
             result: M::Result::type_info(),
             invoke: invoke::<M>,

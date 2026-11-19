@@ -56,9 +56,9 @@ async fn check_tools_and_schemas(client: &McpClient) {
     let mut names: Vec<String> = tools.iter().map(|t| t.name.to_string()).collect();
     names.sort();
     let mut expected: Vec<String> = methods()
-        .names()
+        .iter()
         .filter(|m| concordia_mcp::is_tool(m))
-        .map(|m| m.replace('.', "_"))
+        .map(|m| m.name.replace('.', "_"))
         .collect();
     expected.sort();
     assert_eq!(names, expected);

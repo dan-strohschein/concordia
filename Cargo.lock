@@ -755,6 +755,7 @@ dependencies = [
  "concordia-command",
  "concordia-core",
  "concordia-reflect",
+ "concordia-render",
  "rmcp",
  "serde",
  "serde_json",

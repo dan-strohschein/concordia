@@ -66,7 +66,7 @@ export interface MethodCaptureScreenshotParams {
    */
   view?: null | View;
   /**
-   * Width in pixels.
+   * Width in pixels (default 768 × 432, sized for an agent's context; ask for more when detail matters).
    */
   width?: number;
   /**

@@ -39,7 +39,7 @@ pub use events::{EventSink, Topic};
 pub use handle::EngineHandle;
 pub use image::{EncodedImage, image_fields};
 pub use method::{
-    CallCtx, Method, MethodInfo, MethodRegistry, methods, params_schema, result_schema,
+    Audience, CallCtx, Method, MethodInfo, MethodRegistry, methods, params_schema, result_schema,
 };
 pub use methods::{EntityRef, WorldSel};
 pub use module::{EngineModule, PlaySetup};
