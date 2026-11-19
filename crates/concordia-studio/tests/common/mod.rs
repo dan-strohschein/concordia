@@ -1,6 +1,7 @@
 //! Shared fixtures: a small team, its role files, and an engine with the Studio module.
 #![allow(dead_code)]
 
+pub mod hook;
 pub mod sync;
 
 use std::num::NonZeroUsize;

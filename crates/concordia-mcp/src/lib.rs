@@ -5,6 +5,7 @@
 //! rmcp-specific code lives only in `tools.rs` and `resources.rs` (ADR-0033).
 
 mod resources;
+mod studio;
 mod tools;
 
 pub use tools::is_tool;
@@ -36,6 +37,8 @@ pub struct Options {
     pub log_ring: Option<Arc<LogRing>>,
     /// Engine modules after the core module; their methods become tools (ADR-0046).
     pub modules: Vec<Arc<dyn EngineModule>>,
+    /// Agent Studio folder (project-relative) when `[studio]` is on: per-agent sessions and scopes (ADR-0080).
+    pub studio: Option<PathBuf>,
 }
 
 impl Options {
@@ -49,6 +52,7 @@ impl Options {
             threads: None,
             log_ring: None,
             modules: Vec::new(),
+            studio: None,
         }
     }
 }
@@ -71,6 +75,7 @@ pub enum StartError {
 pub struct ConcordiaServer {
     handle: EngineHandle,
     session: SessionId,
+    studio: Option<Arc<studio::StudioGate>>,
 }
 
 impl ConcordiaServer {
@@ -79,7 +84,8 @@ impl ConcordiaServer {
         if options.actor.is_human() {
             return Err(StartError::HumanActor(options.actor));
         }
-        let mut config = EngineConfig::new(&options.project);
+        let project = options.project.clone();
+        let mut config = EngineConfig::new(&project);
         config.deterministic_ids = options.deterministic_ids;
         config.log_ring = options.log_ring;
         config.modules = options.modules;
@@ -95,7 +101,14 @@ impl ConcordiaServer {
                 .call(session, "scene.open", json!({ "path": scene }))
                 .await?;
         }
-        Ok(Self { handle, session })
+        let studio = options
+            .studio
+            .map(|dir| Arc::new(studio::StudioGate::new(&options.project, &dir)));
+        Ok(Self {
+            handle,
+            session,
+            studio,
+        })
     }
 
     /// Every method the engine serves; one tool each, except `session.open`.
@@ -131,8 +144,9 @@ pub async fn run(args: Args) -> Result<(), Box<dyn std::error::Error + Send + Sy
         Err(LogError::AlreadyInitialized) => None,
         Err(e) => return Err(e.into()),
     };
-    let modules =
-        concordia_app::Project::load(&args.project).and_then(|project| project.modules())?;
+    let project = concordia_app::Project::load(&args.project)?;
+    let modules = project.modules()?;
+    let studio = project.manifest.studio.map(|s| PathBuf::from(s.dir));
     let options = Options {
         project: args.project,
         actor: args.actor,
@@ -141,6 +155,7 @@ pub async fn run(args: Args) -> Result<(), Box<dyn std::error::Error + Send + Sy
         threads: args.threads,
         log_ring: ring,
         modules,
+        studio,
     };
     let server = ConcordiaServer::start(options).await?;
     tracing::info!(target: "concordia::mcp", "MCP server ready on stdio");

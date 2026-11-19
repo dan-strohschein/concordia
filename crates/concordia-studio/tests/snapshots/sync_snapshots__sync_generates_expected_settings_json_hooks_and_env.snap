@@ -99,6 +99,22 @@ expression: "read(dir.path(), \".claude/settings.json\")"
           }
         ]
       }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "args": [
+              "studio",
+              "hook",
+              "session-end"
+            ],
+            "command": "concordia",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
     ]
   },
   "env": {

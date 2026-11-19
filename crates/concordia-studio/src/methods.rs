@@ -737,14 +737,15 @@ impl Method for StudioSync {
     ) -> Result<StudioSyncResult, ApiError> {
         let actor = ctx.actor()?.clone();
         let roster = roster(engine)?;
+        let catalog = crate::scope::ToolCatalog::from_methods(engine.methods());
         let root = engine.project().to_owned();
         let options = SyncOptions {
             check: p.check.unwrap_or(false),
             force: p.force.unwrap_or(false),
         };
         let state = state(engine)?;
-        let report =
-            sync(&root, &state.dir, &roster, options).map_err(crate::module::config_error)?;
+        let report = sync(&root, &state.dir, &roster, &catalog, options)
+            .map_err(crate::module::config_error)?;
         let changed: Vec<String> = report
             .changes
             .iter()

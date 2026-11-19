@@ -126,4 +126,5 @@ Every commit, undo, redo, abort and save is appended to `.concordia/journal/<sce
 
 ## Transports
 - stdio: one JSON-RPC message per line, one session per process.
+- MCP with Agent Studio (`[studio]`): every engine call made from Claude Code is stamped by the Studio hook with your role. Each agent instance gets its own session and actor (`agent:<role>#n`). Calls outside your role's tools or paths fail with `NotPermitted`, and so do edits when the hooks aren't running. Don't pass `actor`; it is ignored.
 - WebSocket: `ws://127.0.0.1:<port>/?token=<token>`, localhost only; the URL and token are in `.concordia/headless.json` (mode 0600). Browser origins other than localhost are rejected.

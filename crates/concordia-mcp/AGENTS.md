@@ -15,6 +15,13 @@ The MCP server (`concordia-mcp`, also `concordia mcp`): a thin rmcp adapter that
 - rmcp is used only in `src/tools.rs` and `src/resources.rs`.
 - Engine errors are tool errors; unknown tools are protocol errors.
 - `human:*` actors are rejected (startup and per call).
+- **Studio mode** (`Options::studio`, from `[studio]`; `src/studio.rs`, ADR-0080):
+  - each call's `_studio` stamp (added by the PreToolUse hook) and any `actor` argument are stripped;
+  - the role's scope is re-checked with the same `concordia_studio::Policy` the hook uses;
+  - each agent key gets its own engine session as `agent:<role>#n`, with slots shared with the hooks in `.concordia/studio/slots.json`;
+  - scene and asset writes are checked against the role's paths;
+  - calls without a stamp are read-only;
+  - per-task budgets block the task for a human when exceeded.
 - No API key or environment variable is required (tested with a cleared environment).
 
 ## How to test

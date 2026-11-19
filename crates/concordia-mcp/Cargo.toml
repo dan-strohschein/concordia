@@ -24,6 +24,7 @@ serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+concordia-studio.workspace = true
 
 [dev-dependencies]
 base64.workspace = true

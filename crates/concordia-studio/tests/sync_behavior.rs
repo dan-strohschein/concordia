@@ -365,9 +365,10 @@ fn hook_entries_run_concordia_with_a_short_timeout() {
             count += 1;
         }
     }
+    // 7 since 3.5: SessionEnd releases the main session's slot (the live probe found it held).
     assert_eq!(
-        count, 6,
-        "PreToolUse ×3, PostToolUse, SubagentStart, SubagentStop"
+        count, 7,
+        "PreToolUse ×3, PostToolUse, SubagentStart, SubagentStop, SessionEnd"
     );
 }
 

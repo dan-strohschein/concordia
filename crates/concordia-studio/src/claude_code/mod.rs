@@ -16,6 +16,7 @@ use owned::{Ownership, mark, ownership};
 
 use crate::error::StudioError;
 use crate::roster::Roster;
+use crate::scope::ToolCatalog;
 
 /// Subagent frontmatter fields documented by Claude Code 2.1.328; generated files use only these.
 pub const CLAUDE_AGENT_FIELDS: [&str; 19] = [
@@ -105,10 +106,17 @@ pub fn sync(
     root: &Path,
     studio: &Path,
     roster: &Roster,
+    catalog: &ToolCatalog,
     options: SyncOptions,
 ) -> Result<SyncReport, StudioError> {
     let mut desired = owned_files(root, studio, roster)?;
     desired.extend(merged_files(root, roster)?);
+    let hash = crate::policy::source_hash(&root.join(studio))?;
+    desired.push(Desired {
+        path: crate::policy::POLICY_PATH.into(),
+        content: Some(crate::policy::Policy::build(roster, catalog, studio, hash).to_text()),
+        owned: false,
+    });
     desired.extend(stale_owned(root, &desired)?);
     desired.sort_by(|a, b| a.path.cmp(&b.path));
     let mut report = SyncReport::default();

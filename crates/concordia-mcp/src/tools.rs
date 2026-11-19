@@ -146,14 +146,24 @@ impl ConcordiaServer {
                 None,
             ));
         };
-        let arguments = request.arguments.unwrap_or_default();
+        let mut arguments = request.arguments.unwrap_or_default();
         if let Some(error) = reject_human(&arguments) {
             return Ok(tool_error(&error));
         }
+        let session = match &self.studio {
+            Some(gate) => match gate
+                .admit(&self.handle, self.session, method, &mut arguments)
+                .await
+            {
+                Ok(session) => session,
+                Err(error) => return Ok(tool_error(&error)),
+            },
+            None => self.session,
+        };
         Ok(
             match self
                 .handle
-                .call(self.session, method.name, Value::Object(arguments))
+                .call(session, method.name, Value::Object(arguments))
                 .await
             {
                 Ok(value) => tool_result(method, value),
