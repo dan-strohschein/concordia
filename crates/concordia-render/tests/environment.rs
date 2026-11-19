@@ -163,6 +163,7 @@ fn environment_with_a_missing_map_names_it() {
                 view: None,
                 width: 8,
                 height: 8,
+                overlays: None,
             },
         )
         .unwrap_err();
@@ -170,4 +171,46 @@ fn environment_with_a_missing_map_names_it() {
         matches!(err, RenderError::Asset { .. }) && err.to_string().contains("0000000051e7"),
         "{err}"
     );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn the_viewport_does_not_wait_for_an_environment_to_prefilter() {
+    let Some(mut r) = renderer() else { return };
+    let mut s = Scene::new();
+    let grey = s.material("grey", MaterialData::default());
+    s.mesh("cube", grey, Vec3::ZERO, Quat::IDENTITY, Vec3::ONE);
+    environment(&mut s, true);
+    s.camera(Vec3::new(0.0, 0.0, 4.0), Vec3::ZERO, Camera::default());
+    let layer = objc2_quartz_core::CAMetalLayer::new();
+    // SAFETY: the layer outlives the surface, which the renderer releases when dropped.
+    let surface = unsafe {
+        r.create_surface(concordia_rhi::SurfaceTarget::MetalLayer(
+            std::ptr::NonNull::from(&*layer).cast(),
+        ))
+    }
+    .unwrap();
+    let rw = RenderWorld::extract(&s.world);
+    let request = RenderRequest {
+        camera: None,
+        view: None,
+        width: 64,
+        height: 64,
+        overlays: None,
+    };
+    r.present(&rw, &mut s.assets, &request, surface).unwrap();
+    assert!(
+        r.stats().environment_pending,
+        "the first frame does not block on prefiltering"
+    );
+    let start = std::time::Instant::now();
+    while r.stats().environment_pending {
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(120),
+            "prefiltering finishes"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        r.present(&rw, &mut s.assets, &request, surface).unwrap();
+    }
+    assert!(!r.has_pending_work());
 }

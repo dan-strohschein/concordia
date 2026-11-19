@@ -119,6 +119,7 @@ fn main() {
         view: None,
         width: 1920,
         height: 1080,
+        overlays: None,
     };
     for _ in 0..3 {
         renderer

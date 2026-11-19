@@ -86,3 +86,16 @@ fn emit_all_levels_after_init() {
         "second init is an error"
     );
 }
+
+#[test]
+fn the_ring_reports_its_next_sequence_number_without_copying() {
+    use std::num::NonZeroUsize;
+    use tracing_subscriber::layer::SubscriberExt;
+    let ring = std::sync::Arc::new(concordia_core::log::LogRing::new(
+        NonZeroUsize::new(4).unwrap(),
+    ));
+    assert_eq!(ring.next_seq(), 1);
+    let subscriber = tracing_subscriber::registry().with(ring.layer());
+    tracing::subscriber::with_default(subscriber, || tracing::info!("one"));
+    assert_eq!(ring.next_seq(), 2);
+}

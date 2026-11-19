@@ -2,6 +2,7 @@
 // events, paced by the display, and reports frame pacing, input-to-photon latency and panel
 // timings. Scenario setup and stats use a separate API connection, as an agent would.
 import { EngineClient, websocketTransport } from "../api/client";
+import { project, type Vec3, type View } from "../viewport/camera";
 import { percentile, summarize, type FrameRecord, type FrameSummary } from "./stats";
 
 declare global {
@@ -58,10 +59,6 @@ async function revealRow(prefix: string): Promise<void> {
     if (row) return row.scrollIntoView({ block: "center" });
   }
   throw new Error(`bench: no outliner row starts with ${prefix}`);
-}
-
-function mouse(target: EventTarget, type: string, x: number, y: number, button: number) {
-  target.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button, buttons: 1 << button }));
 }
 
 /** One scenario's result. */
@@ -131,19 +128,35 @@ class Bench {
     return performance.now() - start;
   }
 
-  /** Drags the selected entity's Move-x handle 1 px per display frame. */
-  async gizmo(probeName: string): Promise<ScenarioResult> {
+  /** Drags the selected entity's Move-x handle with native input, one step per display refresh. */
+  async gizmo(probeName: string, probe: string): Promise<ScenarioResult> {
+    const { invoke } = await import("@tauri-apps/api/core");
     await revealRow(probeName);
     (await waitFor(() => treeItem(probeName)?.querySelector<HTMLElement>(":scope > div"), "probe row")).click();
     (await waitFor(() => document.querySelector<HTMLElement>('button[title="Move (W)"]'), "Move tool")).click();
-    const handle = await waitFor(() => document.querySelector('[aria-label="Move x"] circle'), "Move x handle");
-    const box = handle.getBoundingClientRect();
-    const [x, y] = [box.left + box.width / 2, box.top + box.height / 2];
+    const slot = (await waitFor(() => document.getElementById("viewport-slot"), "viewport")).getBoundingClientRect();
+    const from = await this.gizmoTip(probe, slot.width, slot.height);
+    await nextFrame(); // let the overlays reach the engine
     await this.stats();
-    mouse(handle, "mousedown", x, y, 0);
-    const intervals = await paced(this.frames, (i) => mouse(window, "mousemove", x + (i % 120) - 60, y, 0));
-    mouse(window, "mouseup", x, y, 0);
+    const drag = invoke("bench_native_drag", { frames: this.frames * 2, from, alt: false });
+    const intervals = await paced(this.frames, () => undefined);
+    await drag;
     return this.result(await this.stats(), intervals);
+  }
+
+  /** Where the engine draws the Move gizmo's x arrow tip for `entity` (viewport points). */
+  private async gizmoTip(entity: string, width: number, height: number): Promise<[number, number]> {
+    const { view } = await this.client.call<{ view: View }>("viewport.navigate", {});
+    const t = await this.client.call<{ value: { translation: Vec3 } }>("component.get", {
+      entity,
+      component: "Transform",
+    });
+    const [x, y, z] = t.value.translation;
+    const o = project(view, [x, y, z], width, height);
+    const e = project(view, [x + 1, y, z], width, height);
+    if (!o || !e) throw new Error("bench: the gizmo is not in view");
+    const n = Math.hypot(e[0] - o[0], e[1] - o[1]);
+    return [o[0] + ((e[0] - o[0]) / n) * 60, o[1] + ((e[1] - o[1]) / n) * 60];
   }
 
   /** Plays the simulation (inspector open on the selection) for the scenario's frames. */
@@ -193,7 +206,7 @@ export async function runBench(url: string, frames: number): Promise<void> {
       orbit_with_agent_edits: await stage("orbit with agent edits", () => bench.orbitWithEdits(probe.id)),
       gizmo_drag: await stage("gizmo drag", async () => {
         const probeNow = await client.call<{ components: { Name: string } }>("entity.get", { id: probe.id });
-        return bench.gizmo(probeNow.components.Name);
+        return bench.gizmo(probeNow.components.Name, probe.id);
       }),
       play: await stage("play", () => bench.play()),
       refresh_ms: bench.refreshMs,

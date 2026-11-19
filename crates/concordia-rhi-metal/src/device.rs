@@ -632,6 +632,9 @@ impl Device for MetalDevice {
             let recorded = crate::encode::record(&inner, &submit);
             inner.textures.remove(texture.index(), texture.generation());
             let command_buffer = recorded?;
+            if let Some(callback) = present.on_gpu_time {
+                crate::surface::on_gpu_time(&command_buffer, callback);
+            }
             if let Some(callback) = present.on_presented {
                 crate::surface::on_presented(&drawable, callback);
             }

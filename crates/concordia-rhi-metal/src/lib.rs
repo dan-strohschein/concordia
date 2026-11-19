@@ -35,6 +35,8 @@ pub mod slots {
 
 #[cfg(target_os = "macos")]
 pub use device::MetalDevice;
+#[cfg(target_os = "macos")]
+pub use surface::{ViewLayer, layer_for_view};
 
 /// Capabilities of the system default Metal device.
 pub fn probe() -> Result<DeviceCaps, RhiError> {

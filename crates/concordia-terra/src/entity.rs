@@ -26,6 +26,8 @@ struct Slot {
     generation: NonZeroU32,
     id: Option<EntityId>,
     location: Location,
+    /// The world's change tick when this entity last changed.
+    changed: u64,
 }
 
 /// Slots plus the id → handle map (sorted, so iteration is deterministic).
@@ -65,6 +67,22 @@ impl EntityTable {
         Ok(self.slots[entity.index as usize].location)
     }
 
+    /// Records that `id` changed at `tick`.
+    pub(crate) fn touch(&mut self, id: EntityId, tick: u64) {
+        if let Some(entity) = self.ids.get(&id) {
+            self.slots[entity.index as usize].changed = tick;
+        }
+    }
+
+    /// Entities changed after `tick`, in id order.
+    pub(crate) fn changed_since(&self, tick: u64) -> Vec<EntityId> {
+        self.ids
+            .iter()
+            .filter(|(_, e)| self.slots[e.index as usize].changed > tick)
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
     pub(crate) fn set_location(&mut self, id: EntityId, location: Location) {
         if let Some(entity) = self.ids.get(&id) {
             self.slots[entity.index as usize].location = location;
@@ -78,6 +96,7 @@ impl EntityTable {
                 let slot = &mut self.slots[index as usize];
                 slot.id = Some(id);
                 slot.location = location;
+                slot.changed = 0;
                 Entity {
                     index,
                     generation: slot.generation,
@@ -96,6 +115,7 @@ impl EntityTable {
             generation,
             id: Some(id),
             location,
+            changed: 0,
         });
         Ok(Entity { index, generation })
     }

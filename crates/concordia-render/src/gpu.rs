@@ -10,6 +10,73 @@ use concordia_rhi::{
     QueueKind, RhiError, SampleCount, Submit, Texture, TextureDesc, TextureUsage,
 };
 
+/// Buffers reused across frames (per-frame data, staging, readback), matched by usage and memory.
+#[derive(Debug, Default)]
+pub(crate) struct BufferPool {
+    free: Vec<(Buffer, BufferDesc)>,
+    out: BTreeMap<Buffer, BufferDesc>,
+    /// Buffers created so far (for `RenderStats::allocations`).
+    pub(crate) created: usize,
+}
+
+/// A pool shared by the renderer and its per-frame uploads.
+pub(crate) type SharedPool = std::sync::Arc<std::sync::Mutex<BufferPool>>;
+
+impl BufferPool {
+    /// Free buffers kept for reuse; beyond this the oldest are destroyed.
+    const KEEP: usize = 64;
+
+    /// A buffer with `desc`'s usage and memory and at least its size (capacity is a power of two).
+    pub(crate) fn take(
+        &mut self,
+        device: &dyn Device,
+        desc: &BufferDesc,
+    ) -> Result<Buffer, RhiError> {
+        let fits = |d: &BufferDesc| {
+            d.usage == desc.usage
+                && d.memory == desc.memory
+                && d.size >= desc.size
+                && d.size.get() <= desc.size.get().next_power_of_two().max(256)
+        };
+        if let Some(i) = self.free.iter().position(|(_, d)| fits(d)) {
+            let (buffer, d) = self.free.swap_remove(i);
+            self.out.insert(buffer, d);
+            return Ok(buffer);
+        }
+        let size =
+            NonZeroU64::new(desc.size.get().next_power_of_two().max(256)).unwrap_or(desc.size);
+        let d = BufferDesc {
+            size,
+            ..desc.clone()
+        };
+        let buffer = device.create_buffer(&d)?;
+        self.created += 1;
+        self.out.insert(buffer, d);
+        Ok(buffer)
+    }
+
+    /// Takes back a buffer from [`BufferPool::take`] (the GPU must be done with it); `false` if it
+    /// is not the pool's.
+    pub(crate) fn give(&mut self, device: &dyn Device, buffer: Buffer) -> bool {
+        let Some(desc) = self.out.remove(&buffer) else {
+            return false;
+        };
+        self.free.push((buffer, desc));
+        if self.free.len() > Self::KEEP {
+            let (oldest, _) = self.free.remove(0);
+            device.destroy_buffer(oldest);
+        }
+        true
+    }
+
+    /// Destroys every free buffer.
+    pub(crate) fn clear(&mut self, device: &dyn Device) {
+        self.free
+            .drain(..)
+            .for_each(|(b, _)| device.destroy_buffer(b));
+    }
+}
+
 /// Copies recorded now and submitted together by [`Uploads::flush`], or recorded at the start of
 /// a frame by [`Uploads::into_commands`].
 pub(crate) struct Uploads {
@@ -17,6 +84,8 @@ pub(crate) struct Uploads {
     staging: Vec<Buffer>,
     buffers: Vec<Buffer>,
     textures: Vec<Texture>,
+    /// Where per-frame buffers come from (none: create and destroy them).
+    pool: Option<SharedPool>,
 }
 
 impl Uploads {
@@ -26,16 +95,39 @@ impl Uploads {
             staging: Vec::new(),
             buffers: Vec::new(),
             textures: Vec::new(),
+            pool: None,
+        }
+    }
+
+    /// Uploads whose buffers come from (and, once their frame retires, go back to) `pool`.
+    pub(crate) fn pooled(pool: SharedPool) -> Self {
+        Self {
+            pool: Some(pool),
+            ..Self::new()
+        }
+    }
+
+    /// A buffer for `desc`, from the pool when there is one.
+    pub(crate) fn alloc(&self, device: &dyn Device, desc: &BufferDesc) -> Result<Buffer, RhiError> {
+        match &self.pool {
+            Some(pool) => pool
+                .lock()
+                .map_err(|_| RhiError::invalid("buffer pool", "poisoned"))?
+                .take(device, desc),
+            None => device.create_buffer(desc),
         }
     }
 
     fn stage(&mut self, device: &dyn Device, bytes: &[u8]) -> Result<Buffer, RhiError> {
-        let staging = device.create_buffer(&BufferDesc {
-            size: nonzero(bytes.len()),
-            usage: BufferUsage::COPY_SRC,
-            memory: MemoryLocation::Upload,
-            label: "staging".into(),
-        })?;
+        let staging = self.alloc(
+            device,
+            &BufferDesc {
+                size: nonzero(bytes.len()),
+                usage: BufferUsage::COPY_SRC,
+                memory: MemoryLocation::Upload,
+                label: "staging".into(),
+            },
+        )?;
         device.write_buffer(staging, 0, bytes)?;
         self.staging.push(staging);
         Ok(staging)
@@ -57,12 +149,15 @@ impl Uploads {
             _ => bytes,
         };
         let usage = BufferUsage::STORAGE | BufferUsage::BINDLESS | BufferUsage::COPY_DST;
-        let gpu = device.create_buffer(&BufferDesc {
-            size: nonzero(bytes.len()),
-            usage,
-            memory: MemoryLocation::GpuOnly,
-            label: label.into(),
-        })?;
+        let gpu = self.alloc(
+            device,
+            &BufferDesc {
+                size: nonzero(bytes.len()),
+                usage,
+                memory: MemoryLocation::GpuOnly,
+                label: label.into(),
+            },
+        )?;
         let src = self.stage(device, bytes)?;
         self.buffers.push(gpu);
         self.list.push(Command::CopyBuffer {

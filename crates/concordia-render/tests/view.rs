@@ -274,6 +274,10 @@ fn viewport_stats_record_each_presented_frame_with_its_input_tag() {
     );
     for f in frames {
         assert!(f["cpu_ms"].as_f64().unwrap() > 0.0, "{f}");
+        assert!(
+            f["gpu_ms"].as_f64().is_some_and(|ms| ms >= 0.0),
+            "GPU time recorded: {f}"
+        );
         assert!(f["submitted_ms"].as_f64().unwrap() >= now_ms, "{f}");
         assert_eq!(f["input_time_ms"].as_f64(), Some(now_ms));
     }
@@ -374,4 +378,288 @@ fn viewport_navigate_moves_the_engine_side_editor_camera() {
         .call("viewport.navigate", json!({"pan": [1.0, 1.0], "height": 0}))
         .unwrap_err();
     assert_eq!(err.kind, concordia_api::ApiErrorKind::InvalidParams);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn a_playing_viewport_redraws_on_each_simulation_tick_without_being_asked() {
+    let Some(mut h) = Harness::gpu() else { return };
+    h.two_cubes();
+    let layer = objc2_quartz_core::CAMetalLayer::new();
+    let target = concordia_rhi::SurfaceTarget::MetalLayer(std::ptr::NonNull::from(&*layer).cast());
+    // SAFETY: the layer outlives the engine (dropped after `h`).
+    unsafe { concordia_render::attach_surface(&mut h.engine, target) }.unwrap();
+    h.ok("sim.play", json!({}));
+    h.ok(
+        "viewport.present",
+        json!({"view": front_view(), "width": 64, "height": 48, "world": "play"}),
+    );
+    wait_until_rendered(&mut h, 1);
+    h.ok("viewport.stats", json!({"clear": true}));
+    let start = std::time::Instant::now();
+    for i in 1..=5u64 {
+        h.engine
+            .poll(start + std::time::Duration::from_millis(20 * i));
+    }
+    wait_until_rendered(&mut h, 3);
+    h.ok("sim.pause", json!({}));
+}
+
+/// Polls `viewport.stats` until at least `n` frames have rendered (up to 10 s).
+#[cfg(target_os = "macos")]
+fn wait_until_rendered(h: &mut Harness, n: usize) {
+    for _ in 0..200 {
+        let stats = h.ok("viewport.stats", json!({}));
+        let rendered = stats["frames"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|f| !f["submitted_ms"].is_null())
+            .count();
+        if rendered >= n {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    panic!("fewer than {n} frames rendered");
+}
+
+fn translation_x(h: &mut Harness, id: &Value) -> f64 {
+    h.ok(
+        "component.get",
+        json!({"entity": id, "component": "Transform"}),
+    )["value"]["translation"][0]
+        .as_f64()
+        .unwrap()
+}
+
+#[test]
+fn viewport_gizmo_drags_an_entity_along_an_axis_as_one_undo_step() {
+    let mut h = Harness::new();
+    let id = h.ok(
+        "entity.spawn",
+        json!({"components": {"Name": "Box", "Transform": {"translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]}}, "actor": "human:local"}),
+    )["id"]
+        .clone();
+    h.ok(
+        "viewport.navigate",
+        json!({"preset": "front", "focus": [0.0, 0.0, 0.0]}),
+    );
+    let at = |x: f64| json!({"x": x, "y": 150.0, "width": 400.0, "height": 300.0, "actor": "human:local"});
+    let mut begin = at(200.0);
+    begin["action"] = json!("begin");
+    begin["entity"] = id.clone();
+    begin["axis"] = json!("x");
+    h.ok("viewport.gizmo", begin);
+    for x in [230.0, 260.0] {
+        let mut step = at(x);
+        step["action"] = json!("move");
+        h.ok("viewport.gizmo", step);
+    }
+    assert!(translation_x(&mut h, &id) > 0.5, "dragging right moves +x");
+    h.ok(
+        "viewport.gizmo",
+        json!({"action": "end", "actor": "human:local"}),
+    );
+    h.ok("txn.undo", json!({"actor": "human:local"}));
+    assert_eq!(
+        translation_x(&mut h, &id),
+        0.0,
+        "the whole drag is one undo step"
+    );
+    let err = h
+        .call(
+            "viewport.gizmo",
+            json!({"action": "move", "x": 1.0, "y": 1.0, "width": 10.0, "height": 10.0, "actor": "human:local"}),
+        )
+        .unwrap_err();
+    assert_eq!(
+        err.kind,
+        concordia_api::ApiErrorKind::InvalidRequest,
+        "no drag in progress"
+    );
+    // Without an entity, begin grabs the shown gizmo's handle under the pointer; none is shown.
+    let miss = h.ok("viewport.gizmo", json!({"action": "begin", "axis": "x", "x": 1.0, "y": 1.0, "width": 10.0, "height": 10.0, "actor": "human:local"}));
+    assert_eq!(miss["axis"], Value::Null, "{miss}");
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn camera_moves_through_the_viewport_control_skip_the_engine_thread() {
+    let Some(mut h) = Harness::gpu() else { return };
+    h.two_cubes();
+    let layer = objc2_quartz_core::CAMetalLayer::new();
+    let target = concordia_rhi::SurfaceTarget::MetalLayer(std::ptr::NonNull::from(&*layer).cast());
+    // SAFETY: the layer outlives the engine (dropped after `h`).
+    unsafe { concordia_render::attach_surface(&mut h.engine, target) }.unwrap();
+    h.ok(
+        "viewport.present",
+        json!({"view": front_view(), "width": 64, "height": 48}),
+    );
+    wait_until_rendered(&mut h, 1);
+    h.ok("viewport.stats", json!({"clear": true}));
+    let control = concordia_render::viewport_control(&mut h.engine).unwrap();
+    // The engine is neither polled nor called while the control works.
+    let moved = std::thread::spawn(move || {
+        control
+            .navigate(&concordia_render::ViewportNavigateParams {
+                orbit: Some([25.0, 0.0]),
+                seq: Some(77),
+                ..Default::default()
+            })
+            .unwrap()
+    })
+    .join()
+    .unwrap();
+    wait_until_rendered(&mut h, 1);
+    let stats = h.ok("viewport.stats", json!({}));
+    assert_eq!(stats["frames"][0]["seq"], 77, "{stats}");
+    let engine_view = h.ok("viewport.navigate", json!({}))["view"].clone();
+    assert_eq!(
+        engine_view,
+        serde_json::to_value(moved).unwrap(),
+        "one camera"
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn an_idle_viewport_renders_nothing() {
+    let Some(mut h) = Harness::gpu() else { return };
+    h.two_cubes();
+    let layer = objc2_quartz_core::CAMetalLayer::new();
+    let target = concordia_rhi::SurfaceTarget::MetalLayer(std::ptr::NonNull::from(&*layer).cast());
+    // SAFETY: the layer outlives the engine (dropped after `h`).
+    unsafe { concordia_render::attach_surface(&mut h.engine, target) }.unwrap();
+    h.ok(
+        "viewport.present",
+        json!({"view": front_view(), "width": 64, "height": 48}),
+    );
+    wait_until_rendered(&mut h, 1);
+    h.ok("viewport.stats", json!({"clear": true}));
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let stats = h.ok("viewport.stats", json!({}));
+    assert_eq!(stats["frames"], json!([]), "no work while nothing changes");
+}
+
+#[test]
+fn overlays_appear_in_captures_only_when_asked() {
+    let Some(mut h) = Harness::gpu() else { return };
+    let (left, _) = h.two_cubes();
+    h.ok(
+        "viewport.overlays",
+        json!({"selection": [left], "gizmo": {"entity": left}}),
+    );
+    let capture = |h: &mut Harness, overlays: bool| {
+        let r = h.ok(
+            "capture.screenshot",
+            json!({"view": front_view(), "width": 160, "height": 120, "overlays": overlays}),
+        );
+        decode(&r)
+    };
+    let orange = |img: &[u8]| {
+        img.chunks(4)
+            .filter(|p| p[0] > 200 && p[1] > 100 && p[1] < 190 && p[2] < 80)
+            .count()
+    };
+    assert!(
+        orange(&capture(&mut h, true)) > 30,
+        "selection outline drawn"
+    );
+    assert_eq!(
+        orange(&capture(&mut h, false)),
+        0,
+        "plain captures are unchanged"
+    );
+    h.ok("viewport.overlays", json!({}));
+    assert_eq!(orange(&capture(&mut h, true)), 0, "cleared");
+}
+
+/// RGBA pixels of a capture's PNG.
+fn decode(result: &Value) -> Vec<u8> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(result["image"]["data_base64"].as_str().unwrap())
+        .unwrap();
+    let mut reader = png::Decoder::new(std::io::Cursor::new(bytes))
+        .read_info()
+        .unwrap();
+    let mut rgba = vec![0; reader.output_buffer_size().unwrap()];
+    reader.next_frame(&mut rgba).unwrap();
+    rgba
+}
+
+#[test]
+fn a_gizmo_press_finds_its_handle_in_the_engine_and_a_miss_starts_nothing() {
+    let mut h = Harness::new();
+    let id = h.ok(
+        "entity.spawn",
+        json!({"components": {"Name": "Box", "Transform": {"translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]}}, "actor": "human:local"}),
+    )["id"]
+        .clone();
+    h.ok(
+        "viewport.navigate",
+        json!({"preset": "front", "focus": [0.0, 0.0, 0.0]}),
+    );
+    h.ok("viewport.overlays", json!({"gizmo": {"entity": id}}));
+    let press = |h: &mut Harness, x: f64| {
+        h.ok("viewport.gizmo", json!({"action": "begin", "x": x, "y": 150.0, "width": 400.0, "height": 300.0, "actor": "human:local"}))
+    };
+    let miss = press(&mut h, 30.0);
+    assert_eq!(
+        (miss["axis"].clone(), miss["translation"].clone()),
+        (Value::Null, Value::Null),
+        "{miss}"
+    );
+    assert!(
+        h.call(
+            "viewport.gizmo",
+            json!({"action": "end", "actor": "human:local"})
+        )
+        .is_err(),
+        "no drag after a miss"
+    );
+    let hit = press(&mut h, 258.0);
+    assert_eq!(hit["axis"], "x", "{hit}");
+    h.ok("viewport.gizmo", json!({"action": "move", "x": 300.0, "y": 150.0, "width": 400.0, "height": 300.0, "actor": "human:local"}));
+    h.ok(
+        "viewport.gizmo",
+        json!({"action": "end", "actor": "human:local"}),
+    );
+    assert!(translation_x(&mut h, &id) > 0.5);
+}
+
+#[test]
+fn the_viewport_control_hit_tests_the_gizmo_without_the_engine_thread() {
+    let mut h = Harness::new();
+    let id = h.ok(
+        "entity.spawn",
+        json!({"components": {"Name": "Box", "Transform": {"translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]}}, "actor": "human:local"}),
+    )["id"]
+        .clone();
+    h.ok(
+        "viewport.navigate",
+        json!({"preset": "front", "focus": [0.0, 0.0, 0.0]}),
+    );
+    h.ok("viewport.overlays", json!({"gizmo": {"entity": id}}));
+    let Ok(control) = concordia_render::viewport_control(&mut h.engine) else {
+        return;
+    };
+    let hit = control
+        .gizmo_hit(258.0, 150.0, 400.0, 300.0)
+        .map(|(e, a)| (e.to_string(), a));
+    assert_eq!(
+        hit,
+        Some((
+            id.as_str().unwrap().to_owned(),
+            concordia_render::GizmoAxis::x
+        ))
+    );
+    assert_eq!(control.gizmo_hit(30.0, 150.0, 400.0, 300.0), None);
+    h.ok("viewport.overlays", json!({}));
+    assert_eq!(
+        control.gizmo_hit(258.0, 150.0, 400.0, 300.0),
+        None,
+        "no gizmo, no hit"
+    );
 }

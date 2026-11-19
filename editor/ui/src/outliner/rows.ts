@@ -1,25 +1,5 @@
-// The Outliner's data at scale: rows patched from edit events, the tree flattened for display,
-// and the window of rows worth rendering.
-import type { EntityRow, TreeNode } from "./tree";
-
-/** One entity's new row, or `undefined` when it no longer exists. */
-export interface RowUpdate {
-  id: string;
-  row: EntityRow | undefined;
-}
-
-/** A copy of `rows` with `updates` applied (insertion order kept for unchanged rows). */
-export function withUpdates(
-  rows: ReadonlyMap<string, EntityRow>,
-  updates: readonly RowUpdate[],
-): Map<string, EntityRow> {
-  const next = new Map(rows);
-  for (const { id, row } of updates) {
-    if (row === undefined) next.delete(id);
-    else next.set(id, row);
-  }
-  return next;
-}
+// The Outliner at scale: the tree flattened for display, and the window of rows worth rendering.
+import type { TreeNode } from "./tree";
 
 /** A tree node at its display depth. */
 export interface FlatRow {

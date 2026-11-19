@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use common::Harness;
 use concordia_core::id::SessionId;
 use serde_json::{Value, json};
+use tracing_subscriber::layer::SubscriberExt;
 
 /// Gives `session` an event sink collecting every pushed notification.
 fn sink(h: &mut Harness, session: SessionId) -> Arc<Mutex<Vec<Value>>> {
@@ -230,4 +231,29 @@ fn edits_outside_transactions_are_not_pending() {
         events(&seen).is_empty(),
         "an auto-committed edit is never pending"
     );
+}
+
+#[test]
+fn log_topic_announces_new_log_records() {
+    let ring = std::sync::Arc::new(concordia_core::log::LogRing::new(
+        std::num::NonZeroUsize::new(64).unwrap(),
+    ));
+    let dir = tempfile::tempdir().unwrap();
+    let r = ring.clone();
+    let mut h = Harness::with_config(dir, move |c| c.log_ring = Some(r)).ready();
+    let session = h.session;
+    let seen = sink(&mut h, session);
+    h.ok("events.subscribe", json!({"topics": ["log"]}));
+    let subscriber = tracing_subscriber::registry().with(ring.layer());
+    tracing::subscriber::with_default(subscriber, || h.spawn("Logged", 0.0));
+    let got = events(&seen);
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert_eq!(got[0]["params"]["topic"], "log");
+    assert_eq!(
+        got[0]["params"]["latest"].as_u64(),
+        Some(ring.next_seq() - 1),
+        "the newest record's seq"
+    );
+    h.ok("scene.info", json!({}));
+    assert!(events(&seen).is_empty(), "no new records, no event");
 }

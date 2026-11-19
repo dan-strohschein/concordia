@@ -65,6 +65,59 @@ pub struct AssetDb {
     importers: Vec<Arc<dyn Importer>>,
     records: BTreeMap<AssetId, Record>,
     generations: BTreeMap<AssetId, u64>,
+    /// Each asset's import key as of its last import (sources are not re-hashed per load).
+    keys: BTreeMap<AssetId, DdcKey>,
+    /// Small artifacts already read, by asset and sub-asset.
+    memory: ArtifactMemory,
+}
+
+/// An artifact's kind and bytes.
+type KeptArtifact = (AssetKind, Arc<[u8]>);
+
+/// Recently loaded artifacts kept in memory (small ones only, within a total budget).
+#[derive(Default)]
+struct ArtifactMemory {
+    artifacts: BTreeMap<(AssetId, String), KeptArtifact>,
+    bytes: usize,
+}
+
+impl ArtifactMemory {
+    /// Largest artifact kept.
+    const MAX_ARTIFACT: usize = 4 << 20;
+    /// Total kept before the memory is emptied.
+    const BUDGET: usize = 256 << 20;
+
+    fn get(&self, id: AssetId, sub: &str) -> Option<(AssetKind, Vec<u8>)> {
+        let (kind, bytes) = self.artifacts.get(&(id, sub.to_owned()))?;
+        Some((*kind, bytes.to_vec()))
+    }
+
+    fn keep(&mut self, id: AssetId, sub: &str, kind: AssetKind, bytes: &[u8]) {
+        if bytes.len() > Self::MAX_ARTIFACT {
+            return;
+        }
+        if self.bytes + bytes.len() > Self::BUDGET {
+            self.artifacts.clear();
+            self.bytes = 0;
+        }
+        self.bytes += bytes.len();
+        self.artifacts
+            .insert((id, sub.to_owned()), (kind, Arc::from(bytes)));
+    }
+
+    fn forget(&mut self, id: AssetId) {
+        let stale: Vec<_> = self
+            .artifacts
+            .keys()
+            .filter(|(a, _)| *a == id)
+            .cloned()
+            .collect();
+        for key in stale {
+            if let Some((_, b)) = self.artifacts.remove(&key) {
+                self.bytes -= b.len();
+            }
+        }
+    }
 }
 
 impl std::fmt::Debug for AssetDb {
@@ -86,6 +139,8 @@ impl AssetDb {
             importers: vec![Arc::new(ImageImporter)],
             records: BTreeMap::new(),
             generations: BTreeMap::new(),
+            keys: BTreeMap::new(),
+            memory: ArtifactMemory::default(),
         };
         db.scan()?;
         Ok(db)
@@ -157,6 +212,8 @@ impl AssetDb {
             cached,
             sub_assets: sidecar.sub_assets.clone(),
         };
+        self.keys.insert(sidecar.id, report.key);
+        self.memory.forget(sidecar.id);
         self.records
             .insert(sidecar.id, Record { path: rel, sidecar });
         Ok(report)
@@ -257,9 +314,17 @@ impl AssetDb {
             .ok_or_else(|| AssetError::NotFound(reference.to_string()))?
             .clone();
         let sub = sub.clone().unwrap_or_default();
+        if let Some(hit) = self.memory.get(*id, &sub) {
+            return Ok(hit);
+        }
         for attempt in 0..2 {
-            let report = match attempt {
-                0 => self.key_of(&record)?,
+            let report = match (attempt, self.keys.get(id)) {
+                (0, Some(key)) => *key,
+                (0, None) => {
+                    let key = self.key_of(&record)?;
+                    self.keys.insert(*id, key);
+                    key
+                }
                 _ => self.import(&record.path)?.key,
             };
             let index: Option<ImportIndex> = self
@@ -273,6 +338,7 @@ impl AssetDb {
                 .and_then(|i| i.artifacts.iter().find(|(s, _)| *s == sub).map(|(_, k)| *k));
             let bytes = self.ddc.get(&artifact_key(&report, &sub)).ok().flatten();
             if let (Some(kind), Some(bytes)) = (kind, bytes) {
+                self.memory.keep(*id, &sub, kind, &bytes);
                 return Ok((kind, bytes));
             }
             if attempt == 0 && index.is_some() && kind.is_none() {

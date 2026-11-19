@@ -13,6 +13,7 @@ fn window_desc_round_trips_through_reflect() {
         width: NonZeroU32::new(1280).unwrap(),
         height: NonZeroU32::new(720).unwrap(),
         resizable: true,
+        fullscreen: true,
     };
     let text = write_document(&desc).unwrap();
     assert_eq!(read_document::<WindowDesc>(&text).unwrap(), desc);

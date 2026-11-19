@@ -17,6 +17,8 @@ struct Shell {
     slot_px: std::sync::Mutex<(u32, u32)>,
     /// The latest slot height in points (for panning).
     slot_height: std::sync::Mutex<f64>,
+    /// The latest slot size in points (for gizmo drags).
+    slot_size: std::sync::Mutex<(f64, f64)>,
     /// Where `--bench` writes its report.
     bench_out: Option<PathBuf>,
     bench_entities: usize,
@@ -64,43 +66,136 @@ async fn bench_native_orbit(
 /// Native input's `viewport.stats` tags start here, apart from the page's.
 const NATIVE_SEQ_BASE: u64 = 1 << 32;
 
-/// Applies viewport gestures to the editor camera in order (merging any that queued up) and
-/// sends each new view to the page for its overlays.
+/// Applies viewport gestures in order: camera moves (merging any that queued up) go straight to
+/// the engine camera and the page gets each new view; gizmo steps edit as `human:local`.
 #[cfg(target_os = "macos")]
 fn navigation_worker(
     host: &EngineHost,
+    control: &concordia_render::ViewportControl,
     shell: &Shell,
     app: &tauri::AppHandle,
-    queue: &std::sync::mpsc::Receiver<(concordia_editor::input::Nav, f64)>,
+    queue: &std::sync::mpsc::Receiver<(concordia_editor::input::Action, f64)>,
 ) {
+    use concordia_editor::input::Action;
+    let Ok(human) = host.session_as("human:local") else {
+        return eprintln!("concordia-editor: native input has no engine session");
+    };
     use tauri::Emitter;
     let mut seq = NATIVE_SEQ_BASE;
-    while let Ok((mut nav, mut earliest)) = queue.recv() {
+    let mut pending: Option<(Action, f64)> = None;
+    // Views for the page's overlays, at most every 16 ms (the page draws at 60 Hz).
+    let mut views = concordia_editor::input::Throttle::new(Duration::from_millis(16));
+    loop {
+        let next = match pending.take() {
+            Some(next) => next,
+            None if views.has_pending() => match queue.recv_timeout(Duration::from_millis(16)) {
+                Ok(next) => next,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    if let Some(view) = views.flush() {
+                        let _ = app.emit("viewport-view", view);
+                    }
+                    continue;
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+            },
+            None => match queue.recv() {
+                Ok(next) => next,
+                Err(_) => return,
+            },
+        };
+        let (mut action, mut earliest) = next;
+        // Merge what queued up behind it, as long as it is the same kind of step.
         while let Ok((more, at)) = queue.try_recv() {
-            nav = nav.merge(more);
-            earliest = earliest.min(at);
+            match merge(&action, &more) {
+                Some(merged) => {
+                    action = merged;
+                    earliest = earliest.min(at);
+                }
+                None => {
+                    pending = Some((more, at));
+                    break;
+                }
+            }
         }
         seq += 1;
-        let height = shell.slot_height.lock().map_or(360.0, |h| *h).max(1.0) as f32;
-        let params = concordia_render::ViewportNavigateParams {
-            orbit: nav.orbit,
-            pan: nav.pan,
-            zoom: nav.zoom,
-            height: Some(height),
-            seq: Some(seq),
-            input_time_ms: Some(concordia_editor::native::uptime_to_unix_ms(earliest)),
-            ..Default::default()
-        };
-        let moved = host.runtime().block_on(
-            host.handle()
-                .run(move |engine| concordia_render::navigate(engine, &params)),
-        );
-        match moved {
-            Ok(Ok(view)) => {
-                let _ = app.emit("viewport-view", view);
+        let input_time_ms = concordia_editor::native::uptime_to_unix_ms(earliest);
+        match action {
+            Action::Nav(nav) => {
+                if let Some(view) = navigate(control, shell, nav, seq, input_time_ms)
+                    && let Some(view) = views.offer(view, Instant::now())
+                {
+                    let _ = app.emit("viewport-view", view);
+                }
             }
-            Ok(Err(e)) | Err(e) => eprintln!("concordia-editor: navigation: {}", e.message),
+            Action::Gizmo(step) => gizmo(&human, shell, step, seq, input_time_ms),
         }
+    }
+}
+
+/// Two queued steps as one, if they combine (camera moves add; gizmo moves keep the latest).
+#[cfg(target_os = "macos")]
+fn merge(
+    a: &concordia_editor::input::Action,
+    b: &concordia_editor::input::Action,
+) -> Option<concordia_editor::input::Action> {
+    use concordia_editor::input::{Action, GizmoStep};
+    match (a, b) {
+        (Action::Nav(a), Action::Nav(b)) => Some(Action::Nav(a.merge(*b))),
+        (Action::Gizmo(GizmoStep::Move { .. }), Action::Gizmo(GizmoStep::Move { .. })) => {
+            Some(b.clone())
+        }
+        _ => None,
+    }
+}
+
+#[cfg(target_os = "macos")]
+/// Moves the camera; returns the new view for the page.
+fn navigate(
+    control: &concordia_render::ViewportControl,
+    shell: &Shell,
+    nav: concordia_editor::input::Nav,
+    seq: u64,
+    input_time_ms: f64,
+) -> Option<concordia_render::View> {
+    let height = shell.slot_height.lock().map_or(360.0, |h| *h).max(1.0) as f32;
+    let params = concordia_render::ViewportNavigateParams {
+        orbit: nav.orbit,
+        pan: nav.pan,
+        zoom: nav.zoom,
+        height: Some(height),
+        seq: Some(seq),
+        input_time_ms: Some(input_time_ms),
+        ..Default::default()
+    };
+    // Straight to the render thread: a busy engine thread never delays the camera.
+    control
+        .navigate(&params)
+        .inspect_err(|e| eprintln!("concordia-editor: navigation: {}", e.message))
+        .ok()
+}
+
+#[cfg(target_os = "macos")]
+fn gizmo(
+    human: &concordia_editor::ShellSession<'_>,
+    shell: &Shell,
+    step: concordia_editor::input::GizmoStep,
+    seq: u64,
+    input_time_ms: f64,
+) {
+    use concordia_editor::input::GizmoStep;
+    let (width, height) = shell.slot_size.lock().map_or((640.0, 360.0), |s| *s);
+    let params = match step {
+        GizmoStep::Begin { entity, axis, x, y } => {
+            serde_json::json!({"action": "begin", "entity": entity, "axis": axis, "x": x, "y": y})
+        }
+        GizmoStep::Move { x, y } => serde_json::json!({
+            "action": "move", "x": x, "y": y, "width": width, "height": height,
+            "seq": seq, "input_time_ms": input_time_ms,
+        }),
+        GizmoStep::End => serde_json::json!({"action": "end"}),
+    };
+    if let Err(e) = human.call("viewport.gizmo", params) {
+        eprintln!("concordia-editor: gizmo: {e}");
     }
 }
 
@@ -110,6 +205,8 @@ fn navigation_worker(
 #[tauri::command]
 async fn bench_native_drag(
     frames: usize,
+    from: Option<[f64; 2]>,
+    alt: Option<bool>,
     shell: tauri::State<'_, Arc<Shell>>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
@@ -124,13 +221,17 @@ async fn bench_native_drag(
         .and_then(|h| *h)
         .unwrap_or(60.0);
     tauri::async_runtime::spawn_blocking(move || {
+        let alt = alt.unwrap_or(true);
         let post = |step| {
-            app.run_on_main_thread(move || post_drag(step))
+            app.run_on_main_thread(move || post_drag(step, from, alt))
                 .map_err(|e| e.to_string())
         };
         post(DragStep::Down)?;
+        // Absolute deadlines: a fixed sleep per step drifts (it ran at ~100 Hz, not 120).
+        let (period, mut next) = (Duration::from_secs_f64(1.0 / hz), Instant::now());
         for i in 1..=frames {
-            std::thread::sleep(Duration::from_secs_f64(1.0 / hz));
+            next += period;
+            std::thread::sleep(next.saturating_duration_since(Instant::now()));
             post(DragStep::Move(3.0 * i as f64))?;
         }
         post(DragStep::Up(3.0 * frames as f64))
@@ -194,6 +295,9 @@ fn slot_rect(
     rect.validate()?;
     if let Ok(mut h) = shell.slot_height.lock() {
         *h = rect.height;
+    }
+    if let Ok(mut size) = shell.slot_size.lock() {
+        *size = (rect.width, rect.height);
     }
     if let Ok(mut px) = shell.slot_px.lock() {
         *px = (
@@ -260,6 +364,7 @@ fn main() {
         slot_seen: AtomicBool::new(false),
         slot_px: std::sync::Mutex::new((640, 360)),
         slot_height: std::sync::Mutex::new(360.0),
+        slot_size: std::sync::Mutex::new((640.0, 360.0)),
         bench_out,
         bench_entities,
         display_hz: std::sync::Mutex::new(None),
@@ -287,10 +392,23 @@ fn main() {
             #[cfg(target_os = "macos")]
             {
                 let target = concordia_editor::native::install(&window)?;
+                let control = host_setup
+                    .runtime()
+                    .block_on(host_setup.handle().run(concordia_render::viewport_control))
+                    .map_err(|e| e.message)?
+                    .map_err(|e| e.message)?;
                 let (moves, queue) = std::sync::mpsc::channel();
-                concordia_editor::native::install_input(move |nav, at| {
-                    let _ = moves.send((nav, at));
+                concordia_editor::native::install_input(move |action, at| {
+                    let _ = moves.send((action, at));
                 });
+                // Presses grab the gizmo where the engine draws it (ADR-0047).
+                let (hit_control, hit_shell) = (control.clone(), shell_setup.clone());
+                concordia_editor::native::set_hit_test(Box::new(move |x, y| {
+                    let (w, h) = hit_shell.slot_size.lock().map_or((0.0, 0.0), |s| *s);
+                    hit_control
+                        .gizmo_hit(x as f32, y as f32, w as f32, h as f32)
+                        .map(|(entity, axis)| (entity.to_string(), format!("{axis:?}")))
+                }));
                 let (host, shell, app) = (
                     host_setup.clone(),
                     shell_setup.clone(),
@@ -298,7 +416,7 @@ fn main() {
                 );
                 std::thread::Builder::new()
                     .name("concordia-navigation".into())
-                    .spawn(move || navigation_worker(&host, &shell, &app, &queue))?;
+                    .spawn(move || navigation_worker(&host, &control, &shell, &app, &queue))?;
                 if let Ok(mut hz) = shell_setup.display_hz.lock() {
                     *hz = concordia_editor::native::display_hz();
                 }

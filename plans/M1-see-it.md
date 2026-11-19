@@ -253,6 +253,94 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 - **The outliner** rebuilds and sorts the whole 10k-entity tree on every change.
 
 
+### Phase 1.9g: Viewport overlays drawn by the engine (done; ADR-0047)
+**Goal.** Everything inside the 3D viewport is drawn by the engine, at the viewport's own rate, so nothing the page draws trails a 120 Hz viewport, and the viewport looks the same under any future UI technology.
+
+**Built:**
+- **`Overlays` on `RenderRequest`** (selection, the Move gizmo with hover, grid, scale).
+  - Selection bounds and gizmo arrows are screen-space triangles drawn in the tonemap pass, from the frame's own `view_proj` (`overlay.slang`).
+  - The grid is a depth-tested quad on y = 0 in the forward pass: antialiased unit and decade lines, red X and blue Z axes, fading with distance.
+- **`viewport.overlays`** sets what is drawn; the native viewport redraws. `capture.screenshot {overlays: true}` includes overlays, and the browser editor's stream uses that.
+- **Handle geometry and hit-testing have one source** (`gizmo_handles`, `gizmo_hit`, ported from the UI):
+  - `viewport.gizmo` begin without an axis hit-tests the shown gizmo; a miss starts nothing.
+  - `ViewportControl::gizmo_hit` gives native input a synchronous test against a shared gizmo anchor.
+- **The page draws nothing in the viewport** (`Gizmo.tsx` removed). It sends the selection, tool and grid state; in a browser, `GizmoDrag` forwards the pointer.
+
+**Tests:**
+- goldens `overlay_selection_gizmo` and `overlay_grid` (checked by eye);
+- handle geometry and hit-test tests, plus overlays-only-on-request;
+- engine hit-test on press; `ViewportControl` hit-test;
+- `GizmoDrag` (coalescing, last position before the commit);
+- e2e drags the engine-drawn handle with one-step undo;
+- the bench shows no regression (orbit 114 fps at p95 26 ms; gizmo 120 fps).
+
+**Deviation:** no silhouette outline. Godot 4 shows selection as a wireframe box, which is what we draw.
+
+### Phase 1.9f: Latency isolation (in progress; author request 2026-11-18)
+**Goal.** Find where input-to-photon latency goes, with the engine alone, and get it to Unreal's range.
+
+**The harness.** `concordia run` now draws into its own window. `concordia run --bench-latency <out.json> [--bench-frames N] [--fullscreen]` drives the camera once per refresh through `ViewportControl`, with no editor and no webview; `tools/bench/latency.py` summarizes the report.
+
+**Findings** (M3 Pro at 120 Hz):
+
+| Setup | input→photon p50 | p95 |
+|---|---|---|
+| Engine window, before late latching | 31.4 | 32.8 |
+| Engine window, late latching (`Renderer::acquire_ahead`) | 22.5–29.5 (3 runs; mean ≈ 26) | 27–31 |
+| Engine, fullscreen (direct to display) | **14.5** | **18.7** |
+| Editor (webview over Metal), orbit | 25–30 | 29–40 (noisy) |
+| Editor, native gizmo drag | 29–33 | 30–33 |
+
+- **The webview isn't the latency.** The editor adds about 2 ms over the bare engine window.
+- **Windowed macOS compositing costs about 11 ms.** Fullscreen opaque layers get direct scanout; any windowed app pays this, the Unreal Editor included. A webview drawn *over* the viewport rules out direct scanout even in fullscreen, so that cost is structural to the web UI.
+- **Run-to-run spread is about one refresh,** because synthetic input at 120 Hz holds a fixed phase against the display. A real mouse lands at random phases, so read the mean.
+- **Two bench artifacts are fixed:**
+  - the native-drag injector drifted to about 100 Hz (fixed sleeps); it now uses absolute deadlines, and editor orbit then holds 108–117 fps;
+  - page view updates are throttled to 16 ms (`Throttle`).
+
+**Next:**
+- just-in-time latching (render as close to the refresh deadline as the GPU allows; about 3 ms estimated);
+- a like-for-like comparison with Unreal (external high-speed camera, since its internals can't be instrumented here).
+
+### Phase 1.9e: Performance review fixes (done; author request 2026-11-18)
+A review compared Concordia against Unreal's public architecture and audited our own code. The author asked for every item, fixed in priority order, as one PR. Each item is test-first; the bench (`just editor-bench`) is re-run at the end against the 1.9d kill criteria.
+
+| # | Item | Status |
+|---|---|---|
+| 1 | Decoded assets cached in memory (no per-frame source reads or hashing); materials sent only when they change | done |
+| 2 | Persistent render scene updated by deltas, not a full extract and transform pass per frame | done: Terra change ticks; `SceneCache` → `RenderScene` |
+| 3 | Shallow presentation queue for the editor viewport (latency) | done: two drawables; one frame in flight on the render thread |
+| 4 | Engine-driven redraws during play; native gizmo drags | done: `after_sim`; `viewport.gizmo` |
+| 5 | Camera moves skip the engine thread; read-only calls off the engine thread | camera: done (`ViewportControl`). Concurrent reads: **deferred**; they need snapshot isolation in the API layer (an ADR), and camera moves no longer wait on the engine thread, so a slow read cannot stall the viewport |
+| 6 | Simulation paced by the display (no 16 ms sleep steps), interpolated drawing | done: the engine wakes exactly at the next tick (`until_next_step`); the render thread presents every refresh between ticks, blending transforms (`RenderScene::world_at`) |
+| 7 | Frustum culling, instancing | done: CPU frustum test per mesh (shadow casters are not camera-culled); repeated mesh + material pairs are one instanced call (`SV_InstanceID`); `RenderStats` reports draws, culled and draw calls. GPU-driven culling stays a later step |
+| 8 | Persistent per-frame buffers and pooled textures | done: `BufferPool` for per-frame, staging and readback buffers; recycled heaps keep their placed textures; `RenderStats::allocations` is 0 for warm frames |
+| 9 | Cached shadows for static casters | done: when no caster, light, cascade or map changed, the shadow passes are skipped and the maps reused (`RenderStats::shadows_cached`). Cascades follow the camera, so camera moves still redraw; caching across camera motion needs world-anchored (virtual) shadow maps, a later step |
+| 10 | Incremental outliner tree | done: `OutlinerTree` patches sorted sibling lists per edit (binary insertion; adoption of waiting children); cycles fall back to a full rebuild; a seeded property test checks it always equals `buildTree` |
+| 11 | Inspector refetches throttled during drags | done: `Coalescer` (one fetch in flight, one trailing) for the inspector and the gizmo overlay; a burst of 50 events costs at most 2 fetches |
+| 12 | Binary/low-overhead hot paths if JSON shows up in the bench | measured, not needed: an in-process call through JSON dispatch costs 1.6–4.4 µs (`entity.get` 2.5, `component.get` 1.6, `component.set` in a transaction 4.4; text round trip 1.2), against 8,300 µs per frame at 120 Hz. The camera path no longer uses JSON at all |
+| 13 | First-use hitches: background IBL, shader compiles and texture uploads | done: environments prefilter on a background thread (viewport frames draw without them meanwhile; captures wait, so goldens are unchanged); compiled shaders are cached in the project DDC, so later starts skip `slangc`; texture uploads already ride in the frame's command list (item 1), leaving only a staging copy. Caching prefiltered environments in the DDC is a later step |
+| 14 | Optimized dev builds for the editor | done: the shell's dev profile builds the engine and other dependencies at `opt-level = 2` (one-time rebuild about 2 min); the shell itself stays quick to rebuild |
+| 15 | GPU timestamp queries in `viewport.stats` | done: each presented frame reports its command buffer's GPU time (`Present::on_gpu_time`, Metal `GPUStartTime`/`GPUEndTime`) as `gpu_ms`; the bench shows GPU p50. Per-pass timings need counter sample buffers, a later step |
+| 16 | Idle editor costs nothing (test) | done: the Output panel no longer polls `log.tail` every second; it fetches on the new `log` event topic. The render thread records its between-tick frames in `viewport.stats` too, and `an_idle_viewport_renders_nothing` checks that idle means no frames |
+
+**Results against the 1.9d kill criteria** (bench label `review`; +0 / +1k / +10k entities; M3 Pro at 120 Hz):
+
+| Criterion | Before (1.9d) | Now | Verdict |
+|---|---|---|---|
+| Orbit at full rate (≥108 fps) | 99 / 99 / 98 | 97 / 98 / 99 | fail |
+| Gizmo drag at full rate | 60 | **120 / 120 / 120**, 0 missed | pass |
+| Play without dropped frames | 60 | 112 / 115 / 120 (≥108) | pass |
+| Input→photon p95 < 25 ms | orbit 34–38, gizmo 30–38 | orbit 42 / 37 / 33; gizmo 41 / 41 / 41 (Rust-only baseline 32) | fail |
+| Agent edit→outliner ≤ 50 ms at 10k | p95 79 | p50 50, p95 61; at 1k p95 28 | fail (close) |
+
+**What remains:**
+- **The latency floor isn't the web layer.** The Rust-only baseline, with no page involved, also measures 32 ms p95, about four refreshes from event to `presentedTime`. A likely remaining step is compositing: the Metal layer sits under a transparent webview, so the window server composites every frame instead of flipping the layer directly to the display. That points at the layering, not at the web UI's code.
+- **Gizmo latency** includes a trip through the engine thread (`viewport.gizmo` edits the scene), which orbit no longer makes.
+- **Orbit at about 98 fps** is unexplained: native gizmo drags reach 120 fps through the same injector. It needs a profile; orbit redraws the shadow cascades every frame (they follow the camera), and the gizmo drag doesn't.
+- **The outliner at 10k** still flattens the whole tree per change; incremental flattening is the next step.
+
+
 ### Phase 1.9c: Native editor shell (done)
 - **RHI window surfaces:** `create_surface` (unsafe; wraps a `CAMetalLayer`), `acquire`, `present` and `destroy_surface`, with Metal tests using a standalone layer (12 acquire/clear/present cycles, misuse errors).
   - `Renderer::present` renders into a surface image: BGRA sRGB tonemap target, final Present layout, no readback. The tonemap pipeline is now per format.

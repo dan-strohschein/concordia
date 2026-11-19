@@ -129,6 +129,11 @@ impl EngineHost {
 
     /// Opens a shell session (actor `tool:editor-shell`), closed when dropped.
     pub fn session(&self) -> Result<ShellSession<'_>, String> {
+        self.session_as("tool:editor-shell")
+    }
+
+    /// Opens a session acting as `actor` (e.g. `human:local` for the user's own input).
+    pub fn session_as(&self, actor: &str) -> Result<ShellSession<'_>, String> {
         let id = self
             .runtime
             .block_on(self.handle.open_session())
@@ -136,7 +141,7 @@ impl EngineHost {
         let session = ShellSession { host: self, id };
         session.call(
             "session.open",
-            json!({"client": "editor-shell", "actor": "tool:editor-shell"}),
+            json!({"client": "editor-shell", "actor": actor}),
         )?;
         Ok(session)
     }

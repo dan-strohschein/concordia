@@ -1,7 +1,8 @@
-//! Native viewport input: mouse gestures over the viewport become editor-camera moves in Rust,
-//! so navigation never waits on the page. Godot-style, like the web UI: middle-drag orbits,
-//! Shift+middle-drag pans, Alt+left-drag emulates the middle button, the wheel zooms. Plain left
-//! clicks (selection, gizmos) stay with the page.
+//! Native viewport input: mouse gestures over the viewport become editor-camera moves and gizmo
+//! drags in Rust, so they never wait on the page. Godot-style, like the web UI: middle-drag
+//! orbits, Shift+middle-drag pans, Alt+left-drag emulates the middle button, the wheel zooms, and
+//! left-dragging a gizmo handle moves the entity. Other left clicks (selection) stay with the
+//! page. Positions are viewport pixels, y down.
 
 /// A mouse button.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -11,7 +12,7 @@ pub enum Button {
     Other,
 }
 
-/// A mouse event in window coordinates (AppKit: y grows upward).
+/// A mouse event, in viewport pixels (y down).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Input {
     Down {
@@ -63,24 +64,71 @@ impl Nav {
     }
 }
 
+/// A step of a native gizmo drag (`viewport.gizmo`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum GizmoStep {
+    Begin {
+        entity: String,
+        axis: String,
+        x: f64,
+        y: f64,
+    },
+    Move {
+        x: f64,
+        y: f64,
+    },
+    End,
+}
+
+/// What a consumed event does.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Action {
+    Nav(Nav),
+    Gizmo(GizmoStep),
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Mode {
+    Orbit,
+    Pan,
+    Gizmo,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct Drag {
     x: f64,
     y: f64,
-    pan: bool,
+    mode: Mode,
 }
 
-/// Tracks one navigation drag at a time.
-#[derive(Debug, Default)]
+/// Finds the gizmo handle under a press: (entity, axis), or `None`.
+pub type HitTest = Box<dyn Fn(f64, f64) -> Option<(String, String)>>;
+
+/// Tracks one drag at a time; asks the engine (through the hit-test) whether a press grabs the
+/// gizmo.
+#[derive(Default)]
 pub struct Navigator {
     drag: Option<Drag>,
+    hit: Option<HitTest>,
+}
+
+impl std::fmt::Debug for Navigator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Navigator")
+            .field("drag", &self.drag)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Navigator {
-    /// Handles an event; `in_slot` says whether it is over the viewport. Returns the camera move
-    /// (empty for presses and releases) when the viewport consumes the event, `None` when the page
-    /// should get it.
-    pub fn handle(&mut self, input: Input, in_slot: bool) -> Option<Nav> {
+    /// How to find the gizmo handle under a press (the engine's hit-test).
+    pub fn set_hit_test(&mut self, hit: HitTest) {
+        self.hit = Some(hit);
+    }
+
+    /// Handles an event; `in_slot` says whether it is over the viewport. Returns what it does when
+    /// the viewport consumes it, `None` when the page should get it.
+    pub fn handle(&mut self, input: Input, in_slot: bool) -> Option<Action> {
         match input {
             Input::Down {
                 button,
@@ -88,40 +136,109 @@ impl Navigator {
                 y,
                 alt,
                 shift,
-            } => {
-                let navigates = button == Button::Middle || (button == Button::Left && alt);
-                if !(in_slot && navigates) {
-                    return None;
-                }
-                self.drag = Some(Drag { x, y, pan: shift });
-                Some(Nav::default())
-            }
+            } => self.press(button, x, y, alt, shift, in_slot),
             Input::Drag { x, y } => {
                 let drag = self.drag.as_mut()?;
-                let delta = [(x - drag.x) as f32, (drag.y - y) as f32];
+                let delta = [(x - drag.x) as f32, (y - drag.y) as f32];
                 (drag.x, drag.y) = (x, y);
-                Some(match drag.pan {
-                    true => Nav {
-                        pan: Some(delta),
-                        ..Nav::default()
-                    },
-                    false => Nav {
+                Some(match drag.mode {
+                    Mode::Orbit => Action::Nav(Nav {
                         orbit: Some(delta),
                         ..Nav::default()
-                    },
+                    }),
+                    Mode::Pan => Action::Nav(Nav {
+                        pan: Some(delta),
+                        ..Nav::default()
+                    }),
+                    Mode::Gizmo => Action::Gizmo(GizmoStep::Move { x, y }),
                 })
             }
-            Input::Up => self.drag.take().map(|_| Nav::default()),
+            Input::Up => self.drag.take().map(|d| match d.mode {
+                Mode::Gizmo => Action::Gizmo(GizmoStep::End),
+                _ => Action::Nav(Nav::default()),
+            }),
             Input::Scroll { dy } => {
                 if !in_slot || dy == 0.0 || !dy.is_finite() {
                     return None;
                 }
                 // Scrolling the content up (dy > 0) is a wheel turn away: zoom in.
-                Some(Nav {
+                Some(Action::Nav(Nav {
                     zoom: Some(if dy > 0.0 { -1.0 } else { 1.0 }),
                     ..Nav::default()
-                })
+                }))
             }
         }
+    }
+
+    fn press(
+        &mut self,
+        button: Button,
+        x: f64,
+        y: f64,
+        alt: bool,
+        shift: bool,
+        in_slot: bool,
+    ) -> Option<Action> {
+        if !in_slot {
+            return None;
+        }
+        if button == Button::Middle || (button == Button::Left && alt) {
+            let mode = if shift { Mode::Pan } else { Mode::Orbit };
+            self.drag = Some(Drag { x, y, mode });
+            return Some(Action::Nav(Nav::default()));
+        }
+        if button != Button::Left {
+            return None;
+        }
+        let (entity, axis) = (self.hit.as_ref()?)(x, y)?;
+        self.drag = Some(Drag {
+            x,
+            y,
+            mode: Mode::Gizmo,
+        });
+        Some(Action::Gizmo(GizmoStep::Begin { entity, axis, x, y }))
+    }
+}
+
+/// Passes the latest value at most once per `interval`; a held value waits for [`Throttle::flush`].
+/// The page draws at 60 Hz, so sending it every native camera move only busies the main thread.
+#[derive(Debug)]
+pub struct Throttle<T> {
+    interval: std::time::Duration,
+    last: Option<std::time::Instant>,
+    pending: Option<T>,
+}
+
+impl<T> Throttle<T> {
+    pub fn new(interval: std::time::Duration) -> Self {
+        Self {
+            interval,
+            last: None,
+            pending: None,
+        }
+    }
+
+    /// `value` to send now, or `None` while it is held (replacing any older held value).
+    pub fn offer(&mut self, value: T, now: std::time::Instant) -> Option<T> {
+        if self
+            .last
+            .is_some_and(|t| now.duration_since(t) < self.interval)
+        {
+            self.pending = Some(value);
+            return None;
+        }
+        self.last = Some(now);
+        self.pending = None;
+        Some(value)
+    }
+
+    /// Whether a value is held.
+    pub fn has_pending(&self) -> bool {
+        self.pending.is_some()
+    }
+
+    /// The held value, if any.
+    pub fn flush(&mut self) -> Option<T> {
+        self.pending.take()
     }
 }

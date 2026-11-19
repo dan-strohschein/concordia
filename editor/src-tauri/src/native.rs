@@ -146,9 +146,9 @@ thread_local! {
     static MONITOR: RefCell<Option<Retained<objc2::runtime::AnyObject>>> = const { RefCell::new(None) };
 }
 
-/// Sends viewport navigation gestures to `on_nav` (with the event's uptime timestamp, seconds)
-/// before the page sees them; other events pass through. Main thread, after [`install`].
-pub fn install_input(on_nav: impl Fn(crate::input::Nav, f64) + 'static) {
+/// Sends viewport gestures to `on_action` (with the event's uptime timestamp, seconds) before the
+/// page sees them; other events pass through. Main thread, after [`install`].
+pub fn install_input(on_action: impl Fn(crate::input::Action, f64) + 'static) {
     use objc2_app_kit::{NSEvent, NSEventMask};
     let mask = NSEventMask::LeftMouseDown
         | NSEventMask::LeftMouseDragged
@@ -164,9 +164,10 @@ pub fn install_input(on_nav: impl Fn(crate::input::Nav, f64) + 'static) {
             return event.as_ptr();
         };
         match NAVIGATOR.with(|n| n.borrow_mut().handle(input, in_slot)) {
-            Some(nav) => {
-                if nav.is_move() {
-                    on_nav(nav, e.timestamp());
+            Some(action) => {
+                let empty = matches!(&action, crate::input::Action::Nav(n) if !n.is_move());
+                if !empty {
+                    on_action(action, e.timestamp());
                 }
                 std::ptr::null_mut()
             }
@@ -188,13 +189,14 @@ fn translate(e: &objc2_app_kit::NSEvent) -> Option<(crate::input::Input, bool)> 
         if e.windowNumber() != n.window.windowNumber() {
             return None;
         }
-        let at = e.locationInWindow();
-        let local = n.view.convertPoint_fromView(at, None);
+        let local = n.view.convertPoint_fromView(e.locationInWindow(), None);
         let bounds = n.view.bounds();
         let in_slot = local.x >= 0.0
             && local.y >= 0.0
             && local.x < bounds.size.width
             && local.y < bounds.size.height;
+        // Viewport pixels with y down, like the page's (the view's own y grows upward).
+        let at = NSPoint::new(local.x, bounds.size.height - local.y);
         let flags = e.modifierFlags();
         let down = |button| Input::Down {
             button,
@@ -220,6 +222,11 @@ fn translate(e: &objc2_app_kit::NSEvent) -> Option<(crate::input::Input, bool)> 
     })
 }
 
+/// Gives native input the engine's gizmo hit-test (viewport points). Main thread.
+pub fn set_hit_test(hit: crate::input::HitTest) {
+    NAVIGATOR.with(|n| n.borrow_mut().set_hit_test(hit));
+}
+
 /// One step of a synthetic Alt+left-drag across the viewport (benchmarks).
 #[derive(Debug, Clone, Copy)]
 pub enum DragStep {
@@ -229,8 +236,9 @@ pub enum DragStep {
     Up(f64),
 }
 
-/// Posts a synthetic drag step into the app's event queue, as if from the mouse. Main thread.
-pub fn post_drag(step: DragStep) {
+/// Posts a synthetic drag step into the app's event queue, as if from the mouse: from `start`
+/// (viewport pixels, y down; default the centre), with Option held when `alt`. Main thread.
+pub fn post_drag(step: DragStep, start: Option<[f64; 2]>, alt: bool) {
     use objc2_app_kit::{NSApplication, NSEvent, NSEventModifierFlags, NSEventType};
     let Some(mtm) = MainThreadMarker::new() else {
         return;
@@ -239,8 +247,8 @@ pub fn post_drag(step: DragStep) {
         let n = n.borrow();
         let Some(n) = n.as_ref() else { return };
         let bounds = n.view.bounds();
-        let centre = NSPoint::new(bounds.size.width / 2.0, bounds.size.height / 2.0);
-        let base = n.view.convertPoint_toView(centre, None);
+        let [sx, sy] = start.unwrap_or([bounds.size.width / 2.0, bounds.size.height / 2.0]);
+        let base = n.view.convertPoint_toView(NSPoint::new(sx, bounds.size.height - sy), None);
         let (kind, dx) = match step {
             DragStep::Down => (NSEventType::LeftMouseDown, 0.0),
             DragStep::Move(dx) => (NSEventType::LeftMouseDragged, dx),
@@ -250,7 +258,7 @@ pub fn post_drag(step: DragStep) {
         let event = NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
             kind,
             NSPoint::new(base.x + dx, base.y),
-            NSEventModifierFlags::Option,
+            if alt { NSEventModifierFlags::Option } else { NSEventModifierFlags::empty() },
             uptime,
             n.window.windowNumber(),
             None,

@@ -30,6 +30,9 @@ pub trait EngineModule: Send + Sync + fmt::Debug {
         None
     }
 
+    /// Called on the engine thread after a playing simulation advanced at least one tick.
+    fn after_sim(&self, _engine: &mut crate::Engine) {}
+
     /// Called once per new play world (which it may prepare, e.g. insert resources): systems to run after earlier modules', and state kept until the play world is discarded.
     fn start_play(&self, _world: &mut World) -> Result<PlaySetup, ApiError> {
         Ok(PlaySetup::default())

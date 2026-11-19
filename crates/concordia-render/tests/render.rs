@@ -382,6 +382,7 @@ fn invalid_sizes_and_cameras_are_errors() {
                     view: None,
                     width,
                     height,
+                    overlays: None,
                 },
             )
             .unwrap_err();
@@ -396,6 +397,7 @@ fn invalid_sizes_and_cameras_are_errors() {
                 view: None,
                 width: 8,
                 height: 8,
+                overlays: None,
             },
         )
         .unwrap_err();
@@ -421,6 +423,7 @@ fn missing_assets_name_the_reference() {
                 view: None,
                 width: 8,
                 height: 8,
+                overlays: None,
             },
         )
         .unwrap_err();
@@ -578,6 +581,7 @@ fn renderer_presents_frames_to_a_window_surface() {
         view: None,
         width: 96,
         height: 64,
+        overlays: None,
     };
     let presented = (0..10)
         .filter(|_| r.present(&rw, &mut s.assets, &request, surface).unwrap())
@@ -617,6 +621,7 @@ fn presented_frames_overlap_the_gpu_and_retire_their_memory() {
         view: None,
         width: 512,
         height: 512,
+        overlays: None,
     };
     assert!(r.present(&rw, &mut s.assets, &request, surface).unwrap());
     assert_eq!(
@@ -630,7 +635,10 @@ fn presented_frames_overlap_the_gpu_and_retire_their_memory() {
     let warm = r.allocated_bytes().expect("Metal reports allocations");
     for _ in 0..40 {
         r.present(&rw, &mut s.assets, &request, surface).unwrap();
-        assert!(r.frames_in_flight() <= concordia_render::Renderer::MAX_FRAMES_IN_FLIGHT);
+        assert!(
+            r.frames_in_flight() <= 2,
+            "the default keeps at most two frames in flight"
+        );
     }
     let grown = r.allocated_bytes().unwrap().saturating_sub(warm);
     assert!(
@@ -645,4 +653,291 @@ fn presented_frames_overlap_the_gpu_and_retire_their_memory() {
         "a readback finishes every earlier frame"
     );
     assert_eq!(pixel(&image, 256, 256)[..3], [231, 89, 89][..]);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn frames_in_flight_can_be_lowered_for_latency() {
+    let Some(mut r) = renderer() else { return };
+    assert!(r.set_frames_in_flight(0).is_err());
+    assert!(r.set_frames_in_flight(4).is_err());
+    r.set_frames_in_flight(1).unwrap();
+    let mut s = Scene::new();
+    let red = s.material("red", unlit([0.8, 0.1, 0.1, 1.0]));
+    s.mesh("cube", red, Vec3::ZERO, Quat::IDENTITY, Vec3::ONE);
+    s.camera(
+        Vec3::new(0.0, 0.0, 4.0),
+        Vec3::ZERO,
+        clamp_camera(Projection::default(), Msaa::X4),
+    );
+    let layer = objc2_quartz_core::CAMetalLayer::new();
+    // SAFETY: the layer outlives the surface, which the renderer releases when dropped.
+    let surface = unsafe {
+        r.create_surface(concordia_rhi::SurfaceTarget::MetalLayer(
+            std::ptr::NonNull::from(&*layer).cast(),
+        ))
+    }
+    .unwrap();
+    let rw = RenderWorld::extract(&s.world);
+    let request = RenderRequest {
+        camera: None,
+        view: None,
+        width: 128,
+        height: 128,
+        overlays: None,
+    };
+    for _ in 0..10 {
+        r.present(&rw, &mut s.assets, &request, surface).unwrap();
+        assert!(r.frames_in_flight() <= 1);
+    }
+}
+
+#[test]
+fn off_screen_meshes_are_culled_and_repeated_meshes_draw_as_one_instanced_call() {
+    let Some(mut r) = renderer() else { return };
+    let mut s = Scene::new();
+    let red = s.material("red", unlit([0.8, 0.1, 0.1, 1.0]));
+    for i in 0..10 {
+        s.mesh(
+            "cube",
+            red.clone(),
+            Vec3::new(i as f32 * 0.3 - 1.5, 0.0, 0.0),
+            Quat::IDENTITY,
+            Vec3::splat(0.2),
+        );
+    }
+    for i in 0..3 {
+        s.mesh(
+            "cube",
+            red.clone(),
+            Vec3::new(i as f32, 0.0, 20.0),
+            Quat::IDENTITY,
+            Vec3::ONE,
+        );
+    }
+    s.camera(
+        Vec3::new(0.0, 0.0, 4.0),
+        Vec3::ZERO,
+        clamp_camera(Projection::default(), Msaa::X4),
+    );
+    let rw = RenderWorld::extract(&s.world);
+    let request = RenderRequest {
+        camera: None,
+        view: None,
+        width: 96,
+        height: 64,
+        overlays: None,
+    };
+    let image = r.render(&rw, &mut s.assets, &request).unwrap();
+    let stats = r.stats();
+    assert_eq!((stats.draws, stats.culled), (10, 3), "{stats:?}");
+    assert_eq!(
+        stats.draw_calls, 1,
+        "ten identical cubes are one instanced draw: {stats:?}"
+    );
+    assert_eq!(pixel(&image, 48, 32)[..3], [231, 89, 89][..]);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn warm_frames_reuse_their_gpu_memory_instead_of_allocating() {
+    let Some(mut r) = renderer() else { return };
+    let mut s = Scene::new();
+    let red = s.material("red", unlit([0.8, 0.1, 0.1, 1.0]));
+    s.mesh("cube", red, Vec3::ZERO, Quat::IDENTITY, Vec3::ONE);
+    let lamp = s.entity(Vec3::new(1.0, 1.0, 2.0), Quat::IDENTITY, Vec3::ONE);
+    s.world
+        .insert(lamp, concordia_render::PointLight::default())
+        .unwrap();
+    s.camera(
+        Vec3::new(0.0, 0.0, 4.0),
+        Vec3::ZERO,
+        clamp_camera(Projection::default(), Msaa::X4),
+    );
+    let layer = objc2_quartz_core::CAMetalLayer::new();
+    // SAFETY: the layer outlives the surface, which the renderer releases when dropped.
+    let surface = unsafe {
+        r.create_surface(concordia_rhi::SurfaceTarget::MetalLayer(
+            std::ptr::NonNull::from(&*layer).cast(),
+        ))
+    }
+    .unwrap();
+    let rw = RenderWorld::extract(&s.world);
+    let request = RenderRequest {
+        camera: None,
+        view: None,
+        width: 256,
+        height: 256,
+        overlays: None,
+    };
+    for _ in 0..6 {
+        r.present(&rw, &mut s.assets, &request, surface).unwrap();
+    }
+    for frame in 0..6 {
+        r.present(&rw, &mut s.assets, &request, surface).unwrap();
+        assert_eq!(
+            r.stats().allocations,
+            0,
+            "warm frame {frame} created GPU objects"
+        );
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn a_drawable_acquired_ahead_is_used_by_the_next_present() {
+    let Some(mut r) = renderer() else { return };
+    let mut s = Scene::new();
+    let red = s.material("red", unlit([0.8, 0.1, 0.1, 1.0]));
+    s.mesh("cube", red, Vec3::ZERO, Quat::IDENTITY, Vec3::ONE);
+    s.camera(
+        Vec3::new(0.0, 0.0, 4.0),
+        Vec3::ZERO,
+        clamp_camera(Projection::default(), Msaa::X4),
+    );
+    let layer = objc2_quartz_core::CAMetalLayer::new();
+    // SAFETY: the layer outlives the surface, which the renderer releases when dropped.
+    let surface = unsafe {
+        r.create_surface(concordia_rhi::SurfaceTarget::MetalLayer(
+            std::ptr::NonNull::from(&*layer).cast(),
+        ))
+    }
+    .unwrap();
+    let rw = RenderWorld::extract(&s.world);
+    let request = |w, h| RenderRequest {
+        camera: None,
+        view: None,
+        width: w,
+        height: h,
+        overlays: None,
+    };
+    assert!(r.acquire_ahead(surface, 64, 64).unwrap());
+    assert!(
+        r.acquire_ahead(surface, 64, 64).unwrap(),
+        "holding one already is fine"
+    );
+    assert!(
+        r.present(&rw, &mut s.assets, &request(64, 64), surface)
+            .unwrap()
+    );
+    assert!(r.acquire_ahead(surface, 64, 64).unwrap());
+    assert!(
+        r.present(&rw, &mut s.assets, &request(32, 32), surface)
+            .unwrap(),
+        "a size change re-acquires"
+    );
+    for _ in 0..4 {
+        r.acquire_ahead(surface, 48, 48).unwrap();
+        r.present(&rw, &mut s.assets, &request(48, 48), surface)
+            .unwrap();
+    }
+}
+
+#[test]
+fn overlays_draw_the_selection_and_gizmo_on_top_and_are_off_by_default() {
+    let Some(mut r) = renderer() else { return };
+    let mut s = Scene::new();
+    let grey = s.material("grey", unlit([0.3, 0.3, 0.3, 1.0]));
+    s.mesh("cube", grey, Vec3::ZERO, Quat::IDENTITY, Vec3::ONE);
+    s.camera(
+        Vec3::new(0.0, 0.0, 6.0),
+        Vec3::ZERO,
+        clamp_camera(Projection::default(), Msaa::X4),
+    );
+    let rw = RenderWorld::extract(&s.world);
+    let cube = rw.draws[0].entity;
+    let plain = RenderRequest {
+        camera: None,
+        view: None,
+        width: 256,
+        height: 192,
+        overlays: None,
+    };
+    let before = r.render(&rw, &mut s.assets, &plain).unwrap();
+    let overlays = concordia_render::Overlays {
+        selection: vec![cube],
+        gizmo: Some(concordia_render::GizmoOverlay {
+            entity: cube,
+            hovered: None,
+        }),
+        grid: false,
+        scale: None,
+    };
+    let with = RenderRequest {
+        overlays: Some(overlays),
+        ..plain.clone()
+    };
+    let image = r.render(&rw, &mut s.assets, &with).unwrap();
+    golden("overlay_selection_gizmo", &image, 0.01);
+    let count = |img: &concordia_render::Image, f: &dyn Fn(&[u8]) -> bool| {
+        img.rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|p| f(&p[..]))
+            .count()
+    };
+    let red = |p: &[u8]| p[0] > 180 && p[1] < 90 && p[2] < 90;
+    let orange = |p: &[u8]| p[0] > 200 && p[1] > 100 && p[1] < 190 && p[2] < 80;
+    assert_eq!(count(&before, &red), 0);
+    assert!(count(&image, &red) > 40, "the x arrow is drawn");
+    assert!(count(&image, &orange) > 40, "the selection is outlined");
+    assert_eq!(
+        r.render(&rw, &mut s.assets, &plain).unwrap().rgba,
+        before.rgba,
+        "no overlays, no change"
+    );
+}
+
+#[test]
+fn the_grid_lies_on_the_ground_behind_objects() {
+    let Some(mut r) = renderer() else { return };
+    let mut s = Scene::new();
+    let grey = s.material("grey", unlit([0.6, 0.6, 0.6, 1.0]));
+    s.mesh(
+        "cube",
+        grey,
+        Vec3::new(0.0, 0.5, 0.0),
+        Quat::IDENTITY,
+        Vec3::ONE,
+    );
+    s.camera(
+        Vec3::new(6.0, 5.0, 8.0),
+        Vec3::ZERO,
+        clamp_camera(Projection::default(), Msaa::X4),
+    );
+    let rw = RenderWorld::extract(&s.world);
+    let plain = RenderRequest {
+        camera: None,
+        view: None,
+        width: 256,
+        height: 192,
+        overlays: None,
+    };
+    let grid = RenderRequest {
+        overlays: Some(concordia_render::Overlays {
+            grid: true,
+            ..Default::default()
+        }),
+        ..plain.clone()
+    };
+    let (without, with) = (
+        r.render(&rw, &mut s.assets, &plain).unwrap(),
+        r.render(&rw, &mut s.assets, &grid).unwrap(),
+    );
+    let changed: Vec<usize> = (0..without.rgba.len() / 4)
+        .filter(|i| without.rgba[i * 4..i * 4 + 3] != with.rgba[i * 4..i * 4 + 3])
+        .collect();
+    assert!(
+        changed.len() > 500,
+        "grid lines drawn: {} pixels",
+        changed.len()
+    );
+    let center = pixel(&with, 128, 96);
+    assert_eq!(
+        center[..3],
+        pixel(&without, 128, 96)[..3],
+        "the cube hides the grid behind it"
+    );
+    golden("overlay_grid", &with, 0.01);
 }

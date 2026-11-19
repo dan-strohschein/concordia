@@ -193,3 +193,41 @@ fn shifted_differences(a: &Image, b: &Image) -> usize {
     }
     n
 }
+
+#[test]
+fn unchanged_shadows_are_reused_and_moving_a_caster_redraws_them() {
+    let Some(mut r) = renderer() else { return };
+    let sun = Vec3::new(0.7, -1.0, -0.7);
+    let mut s = scene(true, sun, shadows(), Vec3::ZERO, Msaa::X4);
+    let first = s.render(&mut r, 192, 128);
+    assert!(
+        !r.stats().shadows_cached,
+        "the first frame draws its shadows"
+    );
+    let again = s.render(&mut r, 192, 128);
+    assert!(
+        r.stats().shadows_cached,
+        "nothing that casts or receives changed"
+    );
+    assert_eq!(first.rgba, again.rgba, "reused shadows look the same");
+    let boxes: Vec<_> = s.world.entity_ids_sorted();
+    let cube = boxes
+        .into_iter()
+        .find(|id| {
+            s.world
+                .get::<concordia_scene::builtin::Transform>(*id)
+                .is_some_and(|t| t.translation.y == 1.0)
+        })
+        .unwrap();
+    s.world
+        .get_mut::<concordia_scene::builtin::Transform>(cube)
+        .unwrap()
+        .translation
+        .x = 3.0;
+    let moved = s.render(&mut r, 192, 128);
+    assert!(
+        !r.stats().shadows_cached,
+        "a moved caster redraws the shadows"
+    );
+    assert_ne!(first.rgba, moved.rgba);
+}

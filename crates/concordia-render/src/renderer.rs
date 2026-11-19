@@ -20,7 +20,7 @@ use crate::camera::{eye, view_matrix};
 use crate::cluster::{ClusterBuffers, ClusterCuller, ClusterGrid, ClusterSettings};
 use crate::environment::EnvironmentCache;
 use crate::frame::{DrawPush, FrameParams, IblParams, frame_block, instance_block, material_block};
-use crate::gpu::{GpuAssets, GpuMesh, Uploads};
+use crate::gpu::{GpuAssets, GpuMesh, SharedPool, Uploads};
 use crate::graph::{GraphTexture, PassContext, RenderGraph, Use};
 use crate::lighting::punctual_lights;
 use crate::pipelines::{DEPTH, HDR, OUTPUT, Pipelines};
@@ -45,6 +45,8 @@ pub struct RenderRequest {
     pub width: u32,
     /// Height in pixels (1..=8192).
     pub height: u32,
+    /// Editor overlays to draw over the image (none for game views).
+    pub overlays: Option<crate::Overlays>,
 }
 
 /// A rendered image: sRGB-encoded RGBA8, rows top to bottom.
@@ -65,7 +67,9 @@ pub struct Renderer {
     culler: ClusterCuller,
     surfaces: Vec<Surface>,
     /// Called when the frame being rendered reaches the display (set by `present_with`).
-    on_presented: Option<concordia_rhi::PresentedCallback>,
+    callbacks: FrameCallbacks,
+    /// A surface image acquired ahead of its frame (`acquire_ahead`), with its size.
+    ahead: Option<(Surface, Texture, (u32, u32))>,
     environments: EnvironmentCache,
     shadow_maps: ShadowMaps,
     clusters: ClusterSettings,
@@ -75,8 +79,11 @@ pub struct Renderer {
     /// Signalled with a frame's number when the GPU finishes a presented frame.
     timeline: Option<concordia_rhi::Timeline>,
     in_flight: std::collections::VecDeque<InFlight>,
+    frames_in_flight: usize,
     /// Transient heaps of retired frames, reused by later ones.
-    free_heaps: Vec<(concordia_rhi::Heap, NonZeroU64)>,
+    recycle: Recycler,
+    /// What the shadow maps currently hold (see `shadow_key`).
+    shadow_key: Option<u64>,
 }
 
 /// A presented frame the GPU may still be working on.
@@ -99,12 +106,29 @@ enum Overflow {
     },
 }
 
+/// What a presented frame reports back, and when.
+#[derive(Default)]
+pub struct FrameCallbacks {
+    /// When the frame reached the display.
+    pub presented: Option<concordia_rhi::PresentedCallback>,
+    /// The frame's GPU time (ms).
+    pub gpu_time: Option<concordia_rhi::GpuTimeCallback>,
+}
+
+impl std::fmt::Debug for FrameCallbacks {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FrameCallbacks").finish_non_exhaustive()
+    }
+}
+
 /// Where a draw item goes this frame.
 struct DrawOrder {
     item: usize,
     material: u32,
     double_sided: bool,
     blend: bool,
+    /// Inside the camera's view.
+    visible: bool,
 }
 
 /// Per-frame instance and material bytes, and the draw order.
@@ -126,12 +150,17 @@ struct FramePlan<'a> {
     output: Output,
     /// Upload copies (and their barrier), recorded first.
     uploads: CommandList,
+    /// Editor overlay triangles (see `overlay::triangles`), drawn after tonemapping.
+    overlay: Vec<f32>,
+    /// The editor grid's pipeline and push constants, drawn after the scene in the forward pass.
+    grid: Option<(Pipeline, Vec<u8>)>,
 }
 
 /// The size and destination of one frame.
 struct FrameTarget {
     size: (NonZeroU32, NonZeroU32),
     output: Output,
+    overlays: Option<crate::Overlays>,
 }
 
 /// Where a frame ends up.
@@ -157,14 +186,18 @@ fn add_readback(
     frame: &mut FrameResources,
     device: &dyn Device,
     size: (NonZeroU32, NonZeroU32),
+    recycle: &Recycler,
 ) -> Result<Buffer, RenderError> {
     let (w, h) = (size.0.get(), size.1.get());
-    let readback = frame.keep(device.create_buffer(&BufferDesc {
-        size: NonZeroU64::new(u64::from(w) * u64::from(h) * 4).unwrap_or(NonZeroU64::MIN),
-        usage: BufferUsage::COPY_DST,
-        memory: MemoryLocation::Readback,
-        label: "readback".into(),
-    })?);
+    let readback = frame.keep(recycle.buffer(
+        device,
+        &BufferDesc {
+            size: NonZeroU64::new(u64::from(w) * u64::from(h) * 4).unwrap_or(NonZeroU64::MIN),
+            usage: BufferUsage::COPY_DST,
+            memory: MemoryLocation::Readback,
+            label: "readback".into(),
+        },
+    )?);
     graph.add_pass_recorded(
         "readback",
         |p| {
@@ -201,13 +234,29 @@ pub struct RenderStats {
     pub dropped_lights: usize,
     /// Cluster assignments dropped because a cluster was full (lights missing there).
     pub cluster_overflow: u32,
+    /// Meshes in view (drawn).
+    pub draws: usize,
+    /// Meshes outside the camera's view (not drawn by it; they may still cast shadows).
+    pub culled: usize,
+    /// Forward-pass draw calls (repeated mesh + material pairs are instanced into one).
+    pub draw_calls: usize,
+    /// GPU buffers, heaps and textures the frame had to create (0 once warm).
+    pub allocations: usize,
+    /// The sun's shadow maps were reused: no caster, light or cascade changed since they were drawn.
+    pub shadows_cached: bool,
+    /// The environment is still being prefiltered (this viewport frame was drawn without it).
+    pub environment_pending: bool,
 }
 
-/// One draw, ready to record.
+/// One draw call, ready to record: `instances` consecutive instances of one mesh and material.
 struct Draw {
     pipeline: Pipeline,
     push: Vec<u8>,
     vertices: u32,
+    instances: u32,
+    /// What may share the call: the pipeline, material and mesh streams.
+    batch: (Pipeline, u32, u32),
+    first: u32,
 }
 
 impl Renderer {
@@ -223,7 +272,8 @@ impl Renderer {
             pipelines,
             culler,
             surfaces: Vec::new(),
-            on_presented: None,
+            callbacks: FrameCallbacks::default(),
+            ahead: None,
             environments: EnvironmentCache::default(),
             shadow_maps: ShadowMaps::default(),
             clusters: ClusterSettings::default(),
@@ -232,16 +282,35 @@ impl Renderer {
             frames: 0,
             timeline: None,
             in_flight: std::collections::VecDeque::new(),
-            free_heaps: Vec::new(),
+            frames_in_flight: 2,
+            recycle: Recycler::default(),
+            shadow_key: None,
         })
     }
 
-    /// Presented frames the GPU may still be rendering, at most.
-    pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
+    /// The most presented frames the GPU may be rendering at once.
+    pub const MAX_FRAMES_IN_FLIGHT: usize = 3;
+
+    /// How many presented frames may be in flight (1 = lowest latency; default 2).
+    pub fn set_frames_in_flight(&mut self, frames: usize) -> Result<(), RenderError> {
+        if !(1..=Self::MAX_FRAMES_IN_FLIGHT).contains(&frames) {
+            return Err(RenderError::Gpu(concordia_rhi::RhiError::invalid(
+                "frames in flight",
+                format!("must be 1..={}, got {frames}", Self::MAX_FRAMES_IN_FLIGHT),
+            )));
+        }
+        self.frames_in_flight = frames;
+        Ok(())
+    }
 
     /// Presented frames not yet known to be finished (diagnostics).
     pub fn frames_in_flight(&self) -> usize {
         self.in_flight.len()
+    }
+
+    /// Whether background work (environment prefiltering) will change later frames.
+    pub fn has_pending_work(&self) -> bool {
+        self.environments.pending()
     }
 
     /// GPU memory the device has allocated, if the backend reports it (diagnostics).
@@ -297,22 +366,36 @@ impl Renderer {
         request: &RenderRequest,
         surface: Surface,
     ) -> Result<bool, RenderError> {
-        self.present_with(world, assets, request, surface, None)
+        self.present_with(world, assets, request, surface, FrameCallbacks::default())
     }
 
-    /// [`Renderer::present`], calling `on_presented` when the frame reaches the display.
+    /// [`Renderer::present`], reporting the frame's display and GPU times through `callbacks`.
     pub fn present_with(
         &mut self,
         world: &RenderWorld,
         assets: &mut dyn AssetSource,
         request: &RenderRequest,
         surface: Surface,
-        on_presented: Option<concordia_rhi::PresentedCallback>,
+        callbacks: FrameCallbacks,
     ) -> Result<bool, RenderError> {
-        self.on_presented = on_presented;
+        self.callbacks = callbacks;
         let (width, height) = check_size(request)?;
-        let Some(texture) = self.device.acquire(surface, width.get(), height.get())? else {
-            return Ok(false);
+        let held = match self.ahead.take() {
+            Some((s, texture, size)) if s == surface && size == (width.get(), height.get()) => {
+                Some(texture)
+            }
+            Some((s, _, _)) => {
+                self.hand_back(s);
+                None
+            }
+            None => None,
+        };
+        let texture = match held {
+            Some(texture) => texture,
+            None => match self.device.acquire(surface, width.get(), height.get())? {
+                Some(texture) => texture,
+                None => return Ok(false),
+            },
         };
         match self.frame(
             world,
@@ -326,14 +409,41 @@ impl Renderer {
         ) {
             Ok(_) => Ok(true),
             Err(e) => {
-                // Hand the image back so the surface is not left holding it.
-                let _ = self.device.present(
-                    surface,
-                    concordia_rhi::Present::new(&CommandList::new("abandoned frame")),
-                );
+                self.hand_back(surface);
                 Err(e)
             }
         }
+    }
+
+    /// Waits for and holds the surface's next image at `width`×`height`, so a following
+    /// [`Renderer::present_with`] can use the newest input (late latching). `false` if the display
+    /// has no image free.
+    pub fn acquire_ahead(
+        &mut self,
+        surface: Surface,
+        width: u32,
+        height: u32,
+    ) -> Result<bool, RenderError> {
+        match &self.ahead {
+            Some((s, _, size)) if *s == surface && *size == (width, height) => return Ok(true),
+            Some((s, _, _)) => {
+                let s = *s;
+                self.ahead = None;
+                self.hand_back(s);
+            }
+            None => {}
+        }
+        let texture = self.device.acquire(surface, width, height)?;
+        self.ahead = texture.map(|t| (surface, t, (width, height)));
+        Ok(self.ahead.is_some())
+    }
+
+    /// Returns an acquired image unused, so the surface is not left holding it.
+    fn hand_back(&mut self, surface: Surface) {
+        let _ = self.device.present(
+            surface,
+            concordia_rhi::Present::new(&CommandList::new("abandoned frame")),
+        );
     }
 
     fn frame(
@@ -355,10 +465,11 @@ impl Renderer {
         let aspect = width.get() as f32 / height.get() as f32;
         let grid = ClusterGrid::new(self.clusters, &view.camera.projection, aspect)?;
         let keep = match output {
-            Output::Surface { .. } => Self::MAX_FRAMES_IN_FLIGHT - 1,
+            Output::Surface { .. } => self.frames_in_flight - 1,
             Output::Readback => 0,
         };
         self.retire(keep)?;
+        let allocated = self.recycle.created();
         let mut frame = FrameResources::default();
         let result = self.render_frame(
             world,
@@ -368,10 +479,12 @@ impl Renderer {
             FrameTarget {
                 size: (width, height),
                 output,
+                overlays: request.overlays.clone(),
             },
             &mut frame,
         );
         self.frames += 1;
+        self.stats.allocations = self.recycle.created() - allocated;
         match result {
             Ok((
                 image,
@@ -390,13 +503,13 @@ impl Renderer {
                 Ok(image)
             }
             Ok((image, Overflow::Read(_))) => {
-                frame.release(self.device.as_ref(), &mut self.free_heaps);
+                frame.release(self.device.as_ref(), &mut self.recycle);
                 Ok(image)
             }
             Err(e) => {
                 // A failed frame may have submitted nothing; wait so its resources are safe to free.
                 let _ = self.device.wait_idle();
-                frame.release(self.device.as_ref(), &mut self.free_heaps);
+                frame.release(self.device.as_ref(), &mut self.recycle);
                 Err(e)
             }
         }
@@ -419,6 +532,7 @@ impl Renderer {
         let FrameTarget {
             size: (width, height),
             output,
+            overlays,
         } = target;
         let aspect = width.get() as f32 / height.get() as f32;
         let view_m = view_matrix(&view.world);
@@ -427,7 +541,7 @@ impl Renderer {
             Msaa::Off => SampleCount::X1,
             Msaa::X4 => SampleCount::X4,
         };
-        let mut up = Uploads::new();
+        let mut up = Uploads::pooled(self.recycle.pool.clone());
         let mut resolved = crate::assets::resolve(world, assets, &|r| self.holds(r))?;
         let materials = self.load_assets(&resolved, &mut up)?;
         let device = self.device.clone();
@@ -456,11 +570,18 @@ impl Renderer {
         });
         let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
         let shadows = self.prepare_shadows(world, view, aspect, dir)?;
-        let environment = match &world.environment {
+        // Captures wait for a new environment's prefiltering; viewport frames draw without it.
+        let wait = matches!(output, Output::Readback);
+        let gpu = match &world.environment {
             Some(env) => {
-                let gpu = self
-                    .environments
-                    .ensure(device, &mut up, &mut resolved, &env.map)?;
+                self.environments
+                    .ensure(device, &mut up, &mut resolved, &env.map, wait)?
+            }
+            None => None,
+        };
+        self.stats.environment_pending = world.environment.is_some() && gpu.is_none();
+        let environment = match (gpu, &world.environment) {
+            (Some(gpu), Some(env)) => {
                 let mut levels = [0u32; 6];
                 gpu.levels
                     .iter()
@@ -469,7 +590,7 @@ impl Renderer {
                     .for_each(|(i, (_, index))| levels[i] = *index);
                 Some((gpu.sh, levels, env.skybox))
             }
-            None => None,
+            _ => None,
         };
         let shadow_params = shadows.as_ref().map(|(cascades, settings, maps)| {
             let mut indices = [0u32; 4];
@@ -507,7 +628,12 @@ impl Renderer {
             instances,
             materials: material_bytes,
             order,
-        } = self.instance_data(world, &materials, &view_m);
+        } = self.instance_data(
+            world,
+            &materials,
+            &view_m,
+            &crate::cull::Frustum::new(view_proj),
+        );
         let inst_buf = frame.keep(up.buffer(device, &instances, "instances")?);
         let mat_buf = frame.keep(up.buffer(device, &material_bytes, "materials")?);
         let (uploads, staging) = up.into_commands();
@@ -515,8 +641,10 @@ impl Renderer {
             frame.keep(b);
         });
         let (frame_i, inst_i, mat_i) = (index(frame_buf)?, index(inst_buf)?, index(mat_buf)?);
-        let mut draws = Vec::with_capacity(order.len());
-        let mut casters = Vec::new();
+        let mut draws: Vec<Draw> = Vec::with_capacity(order.len());
+        let mut casters: Vec<ShadowDraw> = Vec::new();
+        let culled = order.iter().filter(|d| !d.visible).count();
+        let mut casting = std::hash::DefaultHasher::new();
         for (
             instance,
             DrawOrder {
@@ -524,27 +652,43 @@ impl Renderer {
                 material: material_index,
                 double_sided,
                 blend,
+                visible,
             },
         ) in order.into_iter().enumerate()
         {
+            let instance = instance as u32;
             let mesh = self.assets.meshes[&world.draws[item].mesh];
             if world.draws[item].cast_shadows {
-                casters.push(ShadowDraw {
-                    push: ShadowPush {
-                        frame: frame_i,
-                        instances: inst_i,
-                        instance: instance as u32,
-                        indices: mesh.indices,
-                        positions: mesh.positions,
-                        cascade: 0,
-                    },
-                    vertices: mesh.count,
-                });
+                std::hash::Hash::hash(&mesh.indices, &mut casting);
+                hash_matrix(&world.draws[item].world, &mut casting);
+                match casters.last_mut() {
+                    Some(c)
+                        if c.push.indices == mesh.indices
+                            && c.push.instance + c.instances == instance =>
+                    {
+                        c.instances += 1;
+                    }
+                    _ => casters.push(ShadowDraw {
+                        push: ShadowPush {
+                            frame: frame_i,
+                            instances: inst_i,
+                            instance,
+                            indices: mesh.indices,
+                            positions: mesh.positions,
+                            cascade: 0,
+                        },
+                        vertices: mesh.count,
+                        instances: 1,
+                    }),
+                }
+            }
+            if !visible {
+                continue;
             }
             let push = DrawPush {
                 frame: frame_i,
                 instances: inst_i,
-                instance: instance as u32,
+                instance,
                 materials: mat_i,
                 material: material_index,
                 indices: mesh.indices,
@@ -556,12 +700,24 @@ impl Renderer {
             let pipeline = self
                 .pipelines
                 .forward(device, samples, double_sided, blend)?;
-            draws.push(Draw {
-                pipeline,
-                push: push.bytes(),
-                vertices: mesh.count,
-            });
+            let batch = (pipeline, material_index, mesh.indices);
+            match draws.last_mut() {
+                Some(d) if d.batch == batch && d.first + d.instances == instance => {
+                    d.instances += 1
+                }
+                _ => draws.push(Draw {
+                    pipeline,
+                    push: push.bytes(),
+                    vertices: mesh.count,
+                    instances: 1,
+                    batch,
+                    first: instance,
+                }),
+            }
         }
+        self.stats.draws = world.draws.len() - culled;
+        self.stats.culled = culled;
+        self.stats.draw_calls = draws.len();
         let job = ClusterJob {
             buffers: &cluster,
             grid,
@@ -574,12 +730,28 @@ impl Renderer {
             )),
             false => None,
         };
-        let shadow = shadows.map(|(_, settings, maps)| ShadowJob {
-            maps,
-            resolution: settings.resolution,
-            pipeline: self.pipelines.shadow(),
-            casters,
+        let shadow = shadows.map(|(cascades, settings, maps)| {
+            let key = shadow_key(
+                std::hash::Hasher::finish(&casting),
+                &cascades,
+                settings.resolution,
+                &maps,
+            );
+            let reuse = self.shadow_key == Some(key);
+            self.shadow_key = Some(key);
+            self.stats.shadows_cached = reuse;
+            ShadowJob {
+                maps,
+                resolution: settings.resolution,
+                pipeline: self.pipelines.shadow(),
+                casters,
+                reuse,
+            }
         });
+        if shadow.is_none() {
+            self.shadow_key = None;
+            self.stats.shadows_cached = false;
+        }
         let plan = FramePlan {
             draws,
             samples,
@@ -589,6 +761,25 @@ impl Renderer {
             sky,
             output,
             uploads,
+            grid: match overlays.as_ref().is_some_and(|o| o.grid) {
+                true => {
+                    let height = eye(&view.world).y.abs();
+                    let extent = (height * 40.0).clamp(50.0, 2000.0);
+                    let mut push = frame_i.to_le_bytes().to_vec();
+                    push.extend(extent.to_le_bytes());
+                    Some((self.pipelines.grid(device, samples)?, push))
+                }
+                false => None,
+            },
+            overlay: overlays.as_ref().map_or_else(Vec::new, |o| {
+                let projector = crate::overlay::Projector::new(
+                    view_proj,
+                    width.get() as f32,
+                    height.get() as f32,
+                );
+                let bounds = |m: &AssetRef| self.assets.meshes.get(m).map(|g| g.aabb);
+                crate::overlay::triangles(o, world, &projector, &bounds)
+            }),
         };
         let (image, overflow) = self.execute(view, plan, frame)?;
         self.stats.punctual_lights = world.punctual.len();
@@ -674,6 +865,7 @@ impl Renderer {
         world: &RenderWorld,
         materials: &BTreeMap<AssetRef, MaterialData>,
         view: &Mat4,
+        frustum: &crate::cull::Frustum,
     ) -> FrameBlocks {
         let textures: BTreeMap<AssetRef, u32> = self
             .assets
@@ -699,6 +891,10 @@ impl Renderer {
                 material: indices[&d.material],
                 double_sided: materials[&d.material].double_sided,
                 blend: materials[&d.material].alpha_mode == AlphaMode::Blend,
+                visible: {
+                    let (lo, hi) = self.assets.meshes[&d.mesh].aabb;
+                    frustum.sees(&d.world, lo, hi)
+                },
             })
             .collect();
         let depth = |d: &DrawOrder| {
@@ -708,7 +904,18 @@ impl Renderer {
                 .z
         };
         order.sort_by(|a, b| match (a.blend, b.blend) {
-            (false, false) => (a.double_sided, a.item).cmp(&(b.double_sided, b.item)),
+            // Opaque: grouped by pipeline, material and mesh (so repeats instance), then entity.
+            (false, false) => {
+                let key = |d: &DrawOrder| {
+                    (
+                        d.double_sided,
+                        d.material,
+                        &world.draws[d.item].mesh,
+                        d.item,
+                    )
+                };
+                key(a).cmp(&key(b))
+            }
             (true, true) => depth(a).total_cmp(&depth(b)).then(a.item.cmp(&b.item)),
             (x, y) => x.cmp(&y),
         });
@@ -739,18 +946,23 @@ impl Renderer {
             sky,
             output,
             uploads,
+            overlay,
+            grid,
         } = plan;
         let job = &job;
         let device = self.device.clone();
         let device = device.as_ref();
         let (w, h) = (size.0.get(), size.1.get());
         let clusters = job.grid.len() as u64;
-        let overflow_rb = frame.keep(device.create_buffer(&BufferDesc {
-            size: NonZeroU64::new(clusters * 4).unwrap_or(NonZeroU64::MIN),
-            usage: BufferUsage::COPY_DST,
-            memory: MemoryLocation::Readback,
-            label: "cluster overflow".into(),
-        })?);
+        let overflow_rb = frame.keep(self.recycle.buffer(
+            device,
+            &BufferDesc {
+                size: NonZeroU64::new(clusters * 4).unwrap_or(NonZeroU64::MIN),
+                usage: BufferUsage::COPY_DST,
+                memory: MemoryLocation::Readback,
+                label: "cluster overflow".into(),
+            },
+        )?);
         let (texture, format, final_layout) = match output {
             Output::Readback => {
                 let usage = TextureUsage::RENDER_TARGET | TextureUsage::COPY_SRC;
@@ -787,23 +999,42 @@ impl Renderer {
         let shadow_maps = shadow
             .map(|s| add_shadow_passes(&mut graph, s))
             .unwrap_or_default();
-        let targets = add_forward(&mut graph, view, draws, samples, size, &shadow_maps, sky);
+        let targets = add_forward(
+            &mut graph,
+            view,
+            draws,
+            samples,
+            size,
+            &shadow_maps,
+            (sky, grid),
+        );
         let tonemap = self.pipelines.tonemap(device, format)?;
+        let overlay = match overlay.is_empty() {
+            true => None,
+            false => Some(self.overlay_draw(device, frame, &overlay, format, size)?),
+        };
         add_tonemap(
             &mut graph,
             targets.hdr,
             out,
-            tonemap,
+            (tonemap, overlay),
             view.camera.tonemap,
             self.device.clone(),
         );
         let readback = match output {
-            Output::Readback => Some(add_readback(&mut graph, out, frame, device, size)?),
+            Output::Readback => Some(add_readback(
+                &mut graph,
+                out,
+                frame,
+                device,
+                size,
+                &self.recycle,
+            )?),
             Output::Surface { .. } => None,
         };
         let compiled =
             graph.compile(&|d: &TextureDesc| device.texture_heap_footprint(d).unwrap_or((0, 1)))?;
-        let transients = frame.place(device, &graph, &compiled, &mut self.free_heaps)?;
+        let transients = frame.place(device, &graph, &compiled, &mut self.recycle)?;
         let mut list = uploads;
         list.label = "frame".into();
         let fragment_read = Access {
@@ -829,13 +1060,14 @@ impl Renderer {
         if let Output::Surface { surface, .. } = output {
             let value = self.frames + 1;
             let timeline = self.timeline(device)?;
-            let on_presented = self.on_presented.take();
+            let callbacks = std::mem::take(&mut self.callbacks);
             device.present(
                 surface,
                 concordia_rhi::Present {
                     commands: &list,
                     signal: &[(timeline, value)],
-                    on_presented,
+                    on_presented: callbacks.presented,
+                    on_gpu_time: callbacks.gpu_time,
                 },
             )?;
             let pending = Overflow::Pending {
@@ -864,6 +1096,34 @@ impl Renderer {
             image,
             Overflow::Read(read_overflow(device, overflow_rb, clusters)?),
         ))
+    }
+
+    /// Uploads overlay triangles for this frame and returns how to draw them.
+    fn overlay_draw(
+        &mut self,
+        device: &dyn Device,
+        frame: &mut FrameResources,
+        triangles: &[f32],
+        format: concordia_rhi::Format,
+        size: (NonZeroU32, NonZeroU32),
+    ) -> Result<OverlayDraw, RenderError> {
+        let bytes: Vec<u8> = triangles.iter().flat_map(|f| f.to_le_bytes()).collect();
+        let buffer = frame.keep(self.recycle.buffer(
+            device,
+            &BufferDesc {
+                size: NonZeroU64::new(bytes.len() as u64).unwrap_or(NonZeroU64::MIN),
+                usage: BufferUsage::STORAGE | BufferUsage::BINDLESS,
+                memory: MemoryLocation::Upload,
+                label: "editor overlays".into(),
+            },
+        )?);
+        device.write_buffer(buffer, 0, &bytes)?;
+        Ok(OverlayDraw {
+            pipeline: self.pipelines.overlay(device, format)?,
+            buffer: device.buffer_index(buffer)?.0,
+            vertices: (triangles.len() / crate::overlay::VERTEX_FLOATS) as u32,
+            size: [size.0.get() as f32, size.1.get() as f32],
+        })
     }
 
     /// The presented-frame timeline (created on first use).
@@ -912,7 +1172,7 @@ impl Renderer {
                 break;
             };
             let overflow = read_overflow(device.as_ref(), f.overflow, f.clusters);
-            f.resources.release(device.as_ref(), &mut self.free_heaps);
+            f.resources.release(device.as_ref(), &mut self.recycle);
             self.record_overflow(overflow?);
         }
         Ok(())
@@ -923,9 +1183,7 @@ impl Drop for Renderer {
     fn drop(&mut self) {
         let _ = self.device.wait_idle();
         let _ = self.retire(0);
-        self.free_heaps
-            .drain(..)
-            .for_each(|(heap, _)| self.device.destroy_heap(heap));
+        self.recycle.clear(self.device.as_ref());
         self.assets.destroy(self.device.as_ref());
         self.shadow_maps.destroy(self.device.as_ref());
         self.environments.destroy(self.device.as_ref());
@@ -995,6 +1253,9 @@ struct ForwardTargets {
 }
 
 /// Forward pass: draws into (multisampled) HDR + depth, resolving into single-sample HDR.
+/// A pipeline and its push constants, for a one-call draw (the sky, the grid).
+type FullDraw = Option<(Pipeline, Vec<u8>)>;
+
 fn add_forward(
     graph: &mut RenderGraph,
     view: &CameraView,
@@ -1002,7 +1263,7 @@ fn add_forward(
     samples: SampleCount,
     size: (NonZeroU32, NonZeroU32),
     shadow_maps: &[GraphTexture],
-    sky: Option<(Pipeline, Vec<u8>)>,
+    (sky, grid): (FullDraw, FullDraw),
 ) -> ForwardTargets {
     let shadow_maps = shadow_maps.to_vec();
     let hdr = graph.create_texture(desc(
@@ -1081,6 +1342,14 @@ fn add_forward(
                 ctx.commands.push(Command::PushConstants(draw.push.clone()));
                 ctx.commands.push(Command::Draw {
                     vertices: 0..draw.vertices,
+                    instances: 0..draw.instances,
+                });
+            }
+            if let Some((pipeline, push)) = &grid {
+                ctx.commands.push(Command::SetPipeline(*pipeline));
+                ctx.commands.push(Command::PushConstants(push.clone()));
+                ctx.commands.push(Command::Draw {
+                    vertices: 0..6,
                     instances: 0..1,
                 });
             }
@@ -1092,11 +1361,19 @@ fn add_forward(
 }
 
 /// Tonemap pass: HDR (read by bindless index) → sRGB output.
+/// Editor overlay triangles uploaded for one frame.
+struct OverlayDraw {
+    pipeline: Pipeline,
+    buffer: u32,
+    vertices: u32,
+    size: [f32; 2],
+}
+
 fn add_tonemap(
     graph: &mut RenderGraph,
     hdr: GraphTexture,
     out: GraphTexture,
-    pipeline: Pipeline,
+    (pipeline, overlay): (Pipeline, Option<OverlayDraw>),
     tonemap: Tonemap,
     device: Arc<dyn Device>,
 ) {
@@ -1126,6 +1403,18 @@ fn add_tonemap(
                 vertices: 0..3,
                 instances: 0..1,
             });
+            // Editor overlays in the same pass, over the tonemapped image.
+            if let Some(o) = &overlay {
+                ctx.commands.push(Command::SetPipeline(o.pipeline));
+                let mut push = o.buffer.to_le_bytes().to_vec();
+                push.extend(o.size[0].to_le_bytes());
+                push.extend(o.size[1].to_le_bytes());
+                ctx.commands.push(Command::PushConstants(push));
+                ctx.commands.push(Command::Draw {
+                    vertices: 0..o.vertices,
+                    instances: 0..1,
+                });
+            }
             ctx.commands.push(Command::EndRenderPass);
             Ok(())
         })),
@@ -1137,7 +1426,7 @@ fn add_tonemap(
 struct FrameResources {
     buffers: Vec<Buffer>,
     textures: Vec<Texture>,
-    heap: Option<(concordia_rhi::Heap, NonZeroU64)>,
+    heap: Option<HeapEntry>,
 }
 
 impl FrameResources {
@@ -1151,55 +1440,130 @@ impl FrameResources {
         texture
     }
 
-    /// One heap sized by the graph's memory plan; each transient placed at its offset.
+    /// One heap sized by the graph's memory plan; each transient placed at its offset. Recycled
+    /// heaps bring their placed textures, reused when the same texture lands at the same offset.
     fn place(
         &mut self,
         device: &dyn Device,
         graph: &RenderGraph,
         compiled: &crate::graph::CompiledGraph,
-        free: &mut Vec<(concordia_rhi::Heap, NonZeroU64)>,
+        recycle: &mut Recycler,
     ) -> Result<BTreeMap<GraphTexture, Texture>, RenderError> {
         let Some(size) = NonZeroU64::new(compiled.heap_size()) else {
             return Ok(BTreeMap::new());
         };
-        let heap = match free
+        let mut entry = match recycle
+            .heaps
             .iter()
-            .position(|(_, s)| *s >= size && s.get() <= size.get() * 2)
+            .position(|h| h.size >= size && h.size.get() <= size.get() * 2)
         {
-            Some(i) => free.swap_remove(i),
-            None => (
-                device.create_heap(&HeapDesc {
+            Some(i) => recycle.heaps.swap_remove(i),
+            None => {
+                recycle.created += 1;
+                HeapEntry {
+                    heap: device.create_heap(&HeapDesc {
+                        size,
+                        label: "frame transients".into(),
+                    })?,
                     size,
-                    label: "frame transients".into(),
-                })?,
-                size,
-            ),
+                    textures: Vec::new(),
+                }
+            }
         };
-        self.heap = Some(heap);
-        let heap = heap.0;
         let mut placed = BTreeMap::new();
+        let mut used = Vec::new();
         for (t, placement) in compiled.placements() {
-            let texture =
-                device.create_placed_texture(heap, placement.offset, graph.texture_desc(*t))?;
-            placed.insert(*t, self.texture(texture));
+            let desc = graph.texture_desc(*t);
+            let reuse = entry
+                .textures
+                .iter()
+                .position(|(d, offset, _)| d == desc && *offset == placement.offset);
+            let texture = match reuse {
+                Some(i) => entry.textures.swap_remove(i),
+                None => {
+                    recycle.created += 1;
+                    let texture =
+                        device.create_placed_texture(entry.heap, placement.offset, desc)?;
+                    (desc.clone(), placement.offset, texture)
+                }
+            };
+            placed.insert(*t, texture.2);
+            used.push(texture);
         }
+        // Textures this frame did not need stay with the heap for later frames.
+        entry.textures.extend(used);
+        self.heap = Some(entry);
         Ok(placed)
     }
 
-    /// Frees the frame's resources (the GPU must be done with them) and recycles its heap.
-    fn release(self, device: &dyn Device, free: &mut Vec<(concordia_rhi::Heap, NonZeroU64)>) {
+    /// Returns the frame's buffers and heap for reuse (the GPU must be done with them).
+    fn release(self, device: &dyn Device, recycle: &mut Recycler) {
         self.textures
             .into_iter()
             .for_each(|t| device.destroy_texture(t));
-        self.buffers
-            .into_iter()
-            .for_each(|b| device.destroy_buffer(b));
-        if let Some(heap) = self.heap {
-            free.push(heap);
-            if free.len() > Renderer::MAX_FRAMES_IN_FLIGHT + 1 {
-                let (oldest, _) = free.remove(0);
-                device.destroy_heap(oldest);
+        for buffer in self.buffers {
+            let pooled = recycle
+                .pool
+                .lock()
+                .is_ok_and(|mut p| p.give(device, buffer));
+            if !pooled {
+                device.destroy_buffer(buffer);
             }
+        }
+        if let Some(heap) = self.heap {
+            recycle.heaps.push(heap);
+            if recycle.heaps.len() > Renderer::MAX_FRAMES_IN_FLIGHT {
+                let oldest = recycle.heaps.remove(0);
+                oldest.destroy(device);
+            }
+        }
+    }
+}
+
+/// A transient heap and the textures placed in it (kept across frames).
+#[derive(Debug)]
+struct HeapEntry {
+    heap: concordia_rhi::Heap,
+    size: NonZeroU64,
+    textures: Vec<(TextureDesc, u64, Texture)>,
+}
+
+impl HeapEntry {
+    fn destroy(self, device: &dyn Device) {
+        self.textures
+            .into_iter()
+            .for_each(|(_, _, t)| device.destroy_texture(t));
+        device.destroy_heap(self.heap);
+    }
+}
+
+/// GPU memory retired frames hand back: pooled buffers and transient heaps.
+#[derive(Debug, Default)]
+struct Recycler {
+    pool: SharedPool,
+    heaps: Vec<HeapEntry>,
+    /// Heaps and placed textures created so far.
+    created: usize,
+}
+
+impl Recycler {
+    /// Everything created so far (buffers, heaps, placed textures).
+    fn created(&self) -> usize {
+        self.created + self.pool.lock().map_or(0, |p| p.created)
+    }
+
+    /// A pooled buffer for `desc`.
+    fn buffer(&self, device: &dyn Device, desc: &BufferDesc) -> Result<Buffer, RenderError> {
+        let mut pool = self.pool.lock().map_err(|_| {
+            RenderError::Gpu(concordia_rhi::RhiError::invalid("buffer pool", "poisoned"))
+        })?;
+        Ok(pool.take(device, desc)?)
+    }
+
+    fn clear(&mut self, device: &dyn Device) {
+        self.heaps.drain(..).for_each(|h| h.destroy(device));
+        if let Ok(mut pool) = self.pool.lock() {
+            pool.clear(device);
         }
     }
 }
@@ -1216,4 +1580,24 @@ fn read_overflow(device: &dyn Device, buffer: Buffer, clusters: u64) -> Result<u
         .iter()
         .map(|w| u32::from_le_bytes(*w))
         .sum())
+}
+
+fn hash_matrix(m: &Mat4, hasher: &mut impl std::hash::Hasher) {
+    m.to_cols_array()
+        .iter()
+        .for_each(|v| hasher.write_u32(v.to_bits()));
+}
+
+/// Identifies the shadow maps' contents: the casters (meshes and world matrices), the cascades
+/// and the maps themselves.
+fn shadow_key(casters: u64, cascades: &[Cascade], resolution: u32, maps: &[(Texture, u32)]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::hash::DefaultHasher::new();
+    casters.hash(&mut h);
+    resolution.hash(&mut h);
+    maps.hash(&mut h);
+    cascades
+        .iter()
+        .for_each(|c| hash_matrix(&c.view_proj, &mut h));
+    h.finish()
 }

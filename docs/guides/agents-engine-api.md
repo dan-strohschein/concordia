@@ -41,18 +41,21 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `txn.history` | | `{limit?}` → `{entries}` |
 | `sim.play` / `sim.pause` / `sim.stop` | | `{rate_hz?}` / `{}` → `{state, tick}` |
 | `sim.step` | | `{ticks}` → `{tick, world_hash}` |
-| `capture.screenshot` | | `{width?, height?, camera? \| view?, world?}` → `{image, width, height, sim_tick, frame}` (projects with `[render]`) |
+| `capture.screenshot` | | `{width?, height?, camera? \| view?, world?, overlays?}` → `{image, width, height, sim_tick, frame}` (projects with `[render]`; `overlays: true` adds the editor overlays) |
 | `viewport.pick` | | `{view, x, y, width, height, world?}` → `{entity, distance}` (projects with `[render]`) |
 | `viewport.present` | | `{view, width, height, world?, seq?, input_time_ms?}` → `{presented}` (the editor's native viewport only) |
+| `viewport.overlays` | | `{selection?, gizmo?: {entity, hovered?}, grid?, scale?}` → `{overlays}` (what the engine draws over the editor viewport) |
+| `viewport.gizmo` | yes | `{action: begin\|move\|end\|cancel, entity?, axis?, x?, y?, width?, height?}` → `{translation, axis}` (Move-gizmo drags; a begin without an axis grabs the shown gizmo's handle under the pointer, or misses) |
 | `viewport.stats` | | `{clear?}` → `{frames: [{seq, input_time_ms, cpu_ms, submitted_ms, presented_ms}]}` (recent native-viewport frames; times in Unix ms) |
 | `log.tail` | | `{since?, level?, limit?}` → `{records, next}` |
-| `events.subscribe` / `events.unsubscribe` | | `{topics: ["edit" \| "scene" \| "sim" \| "pending"]}` → `{topics}` (WebSocket only; not an MCP tool) |
+| `events.subscribe` / `events.unsubscribe` | | `{topics: ["edit" \| "scene" \| "sim" \| "pending" \| "log"]}` → `{topics}` (WebSocket only; not an MCP tool) |
 
 `events.subscribe` makes the WebSocket connection receive JSON-RPC notifications, `{"method": "events.event", "params": {"topic", ...}}`:
 - `edit`: one per committed transaction, undo or redo, with `method`, `txn`, `label`, `actor`, `entities` and `undo`;
 - `scene`: `event` is `opened`, `new` or `saved`, plus the `path`;
 - `sim`: `method`, `tick` and `state`;
-- `pending`: one per call that changes the world inside an open transaction (`pending: true`, with `method`, `txn`, `label`, `actor` and that call's `entities`), and one when a transaction is aborted (`aborted: true` and its `entities`). Use it to show work in progress, such as a gizmo drag, before the commit.
+- `pending`: one per call that changes the world inside an open transaction (`pending: true`, with `method`, `txn`, `label`, `actor` and that call's `entities`), and one when a transaction is aborted (`aborted: true` and its `entities`). Use it to show work in progress, such as a gizmo drag, before the commit;
+- `log`: `latest` (the newest log record's seq) after a call wrote log records; fetch them with `log.tail`.
 
 Edits made by other clients arrive too, which is how the editor sees agents work. Over stdio or MCP, poll `log.tail` instead. If a client falls more than 1,024 events behind, newer events are dropped, so re-read state with `query.run`.
 

@@ -132,6 +132,7 @@ impl Scene {
                     view: None,
                     width,
                     height,
+                    overlays: None,
                 },
             )
             .expect("render")

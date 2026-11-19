@@ -26,6 +26,8 @@ pub enum Topic {
     sim,
     /// Uncommitted edits inside open transactions (`pending: true`), and aborts (`aborted: true`).
     pending,
+    /// New log records (`latest`: the newest record's seq); fetch them with `log.tail`.
+    log,
 }
 
 /// Sinks and subscriptions by session.
@@ -79,6 +81,8 @@ impl EventHub {
 
 /// History lengths before a call, to tell commits, undos and redos apart afterwards.
 pub(crate) struct Marker {
+    /// The log ring's next sequence number.
+    log: u64,
     done: usize,
     undone: usize,
     /// The open transaction's id and op count.
@@ -92,6 +96,7 @@ impl Marker {
     pub(crate) fn of(engine: &Engine, method: &str) -> Self {
         let Some(scene) = engine.scene.as_ref() else {
             return Self {
+                log: engine.ring.next_seq(),
                 done: 0,
                 undone: 0,
                 open: None,
@@ -104,6 +109,7 @@ impl Marker {
             _ => Vec::new(),
         };
         Self {
+            log: engine.ring.next_seq(),
             done: scene.log.done().len(),
             undone: scene.log.undone().len(),
             open: open.map(|t| (t.id, t.op_count())),
@@ -112,7 +118,13 @@ impl Marker {
     }
 }
 
+/// Publishes the events a successful call caused (changes first, then any log records it wrote).
 pub(crate) fn publish_after(engine: &mut Engine, method: &str, before: &Marker, result: &Value) {
+    publish_changes(engine, method, before, result);
+    publish_log(engine, before);
+}
+
+fn publish_changes(engine: &mut Engine, method: &str, before: &Marker, result: &Value) {
     let path = engine.scene.as_ref().map(|s| s.path.clone());
     match method {
         "scene.open" | "scene.new" | "scene.save" if engine.events.wants(Topic::scene) => {
@@ -239,4 +251,14 @@ fn entities_of(ops: &[concordia_command::AppliedOp]) -> Vec<String> {
         }
     }
     entities
+}
+
+/// Announces log records the call wrote (no event when there are none).
+fn publish_log(engine: &mut Engine, before: &Marker) {
+    let next = engine.ring.next_seq();
+    if next > before.log && engine.events.wants(Topic::log) {
+        engine
+            .events
+            .publish(Topic::log, json!({"latest": next - 1}));
+    }
 }

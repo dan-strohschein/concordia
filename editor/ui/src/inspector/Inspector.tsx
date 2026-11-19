@@ -1,5 +1,7 @@
 // The Inspector dock: one collapsible section per component, generated from the engine's schemas.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { Coalescer } from "../engine/coalesce";
 
 import type { EditorSession } from "../engine/session";
 import { ValueEditor } from "./fields";
@@ -26,10 +28,16 @@ async function load(session: EditorSession, entity: string): Promise<Section[]> 
 export function Inspector({ session, entity }: { session: EditorSession; entity: string | undefined }) {
   const [sections, setSections] = useState<Section[]>([]);
   const [error, setError] = useState<string>();
-  const refresh = useCallback(() => {
-    if (entity === undefined) return;
-    load(session, entity).then(setSections, (e: unknown) => setError(String(e)));
-  }, [session, entity]);
+  // Coalesced: a drag's stream of change events costs two fetches, not one per event.
+  const loader = useMemo(
+    () =>
+      new Coalescer(async () => {
+        if (entity === undefined) return;
+        await load(session, entity).then(setSections, (e: unknown) => setError(String(e)));
+      }),
+    [session, entity],
+  );
+  const refresh = useCallback(() => loader.request(), [loader]);
   useEffect(refresh, [refresh]);
   useEffect(
     () =>

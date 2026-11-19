@@ -12,13 +12,14 @@ def f(x, width=6, digits=1):
 def row(name, s):
     v = s["viewport"]
     lat, iv, cpu, page = v["latency_ms"], v["interval_ms"], v["cpu_ms"], s["page_interval_ms"]
+    gpu = v.get("gpu_ms") or {"p50": None}
     if name == "play":  # no input during play: pacing only
         lat = {"p50": None, "p95": None}
     edits = s.get("edit_to_panel_ms")
     return (
         f"  {name:24} {f(v['fps'])} fps  missed {v['missed_refreshes']:4}  "
         f"latency p50 {f(lat['p50'])} p95 {f(lat['p95'])}  interval p95 {f(iv['p95'])}  "
-        f"cpu p50 {f(cpu['p50'], 5)} p95 {f(cpu['p95'], 5)}  page p95 {f(page['p95'])} max {f(page['max'])}"
+        f"cpu p50 {f(cpu['p50'], 5)} p95 {f(cpu['p95'], 5)}  gpu p50 {f(gpu['p50'], 5)}  page p95 {f(page['p95'])} max {f(page['max'])}"
         + (f"  edit→panel p50 {edits['p50']:.0f} p95 {edits['p95']:.0f} max {edits['max']:.0f}" if edits else "")
     )
 

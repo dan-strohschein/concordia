@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { EDITOR_ACTOR, type EditorSession } from "../engine/session";
-import { flatten, rowWindow, withUpdates, type FlatRow } from "./rows";
-import { buildTree, type EntityRow } from "./tree";
+import { flatten, rowWindow, type FlatRow } from "./rows";
+import { OutlinerTree, type TreeNode } from "./tree";
 
 interface Props {
   session: EditorSession;
@@ -17,22 +17,31 @@ const OVERSCAN = 10;
 /** Edits touching more entities than this refresh the whole list instead. */
 const PATCH_LIMIT = 200;
 
-/** The scene's rows, kept current from edit and scene events (updates applied in order). */
-function useEntityRows(session: EditorSession): Map<string, EntityRow> {
-  const [rows, setRows] = useState(() => new Map<string, EntityRow>());
+/** The scene's entity tree, patched from edit events and rebuilt on scene changes (in order). */
+function useEntityTree(session: EditorSession): TreeNode[] {
+  const tree = useRef(new OutlinerTree([]));
+  const [roots, setRoots] = useState<TreeNode[]>([]);
   const queue = useRef(Promise.resolve());
   const enqueue = useCallback((work: () => Promise<void>) => {
     queue.current = queue.current.then(work, work);
   }, []);
+  // The tree patches in place; a fresh (shallow) roots array tells React it changed.
+  const bump = useCallback(() => setRoots([...tree.current.roots()]), []);
   const refresh = useCallback(
     () =>
       enqueue(() =>
         session.entities().then(
-          (all) => setRows(new Map(all.map((r) => [r.id, r]))),
-          () => setRows(new Map()),
+          (all) => {
+            tree.current = new OutlinerTree(all);
+            bump();
+          },
+          () => {
+            tree.current = new OutlinerTree([]);
+            bump();
+          },
         ),
       ),
-    [session, enqueue],
+    [session, enqueue, bump],
   );
   useEffect(refresh, [refresh]);
   useEffect(
@@ -43,11 +52,16 @@ function useEntityRows(session: EditorSession): Map<string, EntityRow> {
         const ids = e["entities"];
         if (!Array.isArray(ids) || ids.length > PATCH_LIMIT) return refresh();
         const changed = ids.filter((id): id is string => typeof id === "string");
-        enqueue(() => session.entityRows(changed).then((updates) => setRows((prev) => withUpdates(prev, updates))));
+        enqueue(() =>
+          session.entityRows(changed).then((updates) => {
+            tree.current.apply(updates);
+            bump();
+          }),
+        );
       }),
-    [session, refresh, enqueue],
+    [session, refresh, enqueue, bump],
   );
-  return rows;
+  return roots;
 }
 
 /** The list's scroll position and height, for rendering only the rows in view. */
@@ -70,8 +84,8 @@ function useScrollWindow(count: number) {
 }
 
 export function Outliner({ session, selected, onSelect }: Props) {
-  const rows = useEntityRows(session);
-  const flat = useMemo(() => flatten(buildTree([...rows.values()])), [rows]);
+  const roots = useEntityTree(session);
+  const flat = useMemo(() => flatten(roots), [roots]);
   const { box, onScroll, range } = useScrollWindow(flat.length);
   const [renaming, setRenaming] = useState<string>();
 

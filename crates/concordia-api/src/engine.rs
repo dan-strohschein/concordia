@@ -260,17 +260,28 @@ impl Engine {
     pub fn poll(&mut self, now: Instant) {
         let timeout = self.config.txn_timeout;
         self.abort_held(|hold| now.duration_since(hold.since) >= timeout, "timeout");
+        let mut advanced = false;
         if let Some(play) = self.play.as_mut().filter(|p| p.playing) {
             let real = now.saturating_duration_since(play.last);
             play.last = now;
-            play.sim.advance(&mut play.world, &self.jobs, real);
+            advanced = play.sim.advance(&mut play.world, &self.jobs, real).steps > 0;
+        }
+        if advanced {
+            for module in self.modules.clone() {
+                module.after_sim(self);
+            }
         }
     }
 
     /// How long the engine thread may sleep before `poll` has work.
     pub(crate) fn idle_timeout(&self) -> Option<Duration> {
-        if self.play.as_ref().is_some_and(|p| p.playing) {
-            return Some(Duration::from_millis(16));
+        if let Some(play) = self.play.as_ref().filter(|p| p.playing) {
+            // Wake exactly when the next tick is due: one tick per wake, no judder.
+            return Some(
+                play.sim
+                    .until_next_step()
+                    .saturating_sub(play.last.elapsed()),
+            );
         }
         let hold = self.scene.as_ref()?.hold?;
         Some(self.config.txn_timeout.saturating_sub(hold.since.elapsed()))

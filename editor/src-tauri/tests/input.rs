@@ -1,35 +1,39 @@
-//! Native viewport input (M1 phase 1.9d): mouse gestures over the viewport become camera moves
-//! in Rust, matching the web UI's Godot-style navigation.
+//! Native viewport input (M1 phase 1.9d/e): mouse gestures over the viewport become camera moves
+//! and gizmo drags in Rust, matching the web UI's Godot-style navigation. Positions are viewport
+//! pixels with y down (like the page's).
 
-use concordia_editor::input::{Button, Input, Nav, Navigator};
+use concordia_editor::input::{Action, Button, GizmoStep, Input, Nav, Navigator};
 
-fn down(button: Button, alt: bool, shift: bool) -> Input {
+fn down(button: Button, x: f64, y: f64, alt: bool, shift: bool) -> Input {
     Input::Down {
         button,
-        x: 100.0,
-        y: 100.0,
+        x,
+        y,
         alt,
         shift,
     }
 }
 
+fn nav(n: Nav) -> Option<Action> {
+    Some(Action::Nav(n))
+}
+
 #[test]
-fn middle_drag_orbits_by_the_pointer_delta_with_screen_down_positive() {
+fn middle_drag_orbits_by_the_pointer_delta() {
     let mut n = Navigator::default();
     assert_eq!(
-        n.handle(down(Button::Middle, false, false), true),
-        Some(Nav::default())
+        n.handle(down(Button::Middle, 100.0, 100.0, false, false), true),
+        nav(Nav::default())
     );
-    // AppKit window y grows upward: moving the pointer down lowers y.
-    let nav = n.handle(Input::Drag { x: 110.0, y: 95.0 }, true);
+    let moved = n.handle(Input::Drag { x: 110.0, y: 105.0 }, true);
     assert_eq!(
-        nav,
-        Some(Nav {
+        moved,
+        nav(Nav {
             orbit: Some([10.0, 5.0]),
             ..Nav::default()
         })
     );
-    assert_eq!(n.handle(Input::Up, true), Some(Nav::default()));
+    assert_eq!(n.handle(Input::Up, true), nav(Nav::default()));
     assert_eq!(
         n.handle(Input::Drag { x: 120.0, y: 95.0 }, true),
         None,
@@ -40,11 +44,11 @@ fn middle_drag_orbits_by_the_pointer_delta_with_screen_down_positive() {
 #[test]
 fn shift_pans_and_alt_left_emulates_the_middle_button() {
     let mut n = Navigator::default();
-    n.handle(down(Button::Left, true, true), true);
-    let nav = n.handle(Input::Drag { x: 104.0, y: 100.0 }, true);
+    n.handle(down(Button::Left, 100.0, 100.0, true, true), true);
+    let moved = n.handle(Input::Drag { x: 104.0, y: 100.0 }, true);
     assert_eq!(
-        nav,
-        Some(Nav {
+        moved,
+        nav(Nav {
             pan: Some([4.0, 0.0]),
             ..Nav::default()
         })
@@ -55,13 +59,13 @@ fn shift_pans_and_alt_left_emulates_the_middle_button() {
 fn plain_left_clicks_and_presses_outside_the_viewport_go_to_the_page() {
     let mut n = Navigator::default();
     assert_eq!(
-        n.handle(down(Button::Left, false, false), true),
+        n.handle(down(Button::Left, 100.0, 100.0, false, false), true),
         None,
-        "selection and gizmos stay in the web UI"
+        "selection stays in the web UI"
     );
     assert_eq!(n.handle(Input::Drag { x: 150.0, y: 100.0 }, true), None);
     assert_eq!(
-        n.handle(down(Button::Middle, false, false), false),
+        n.handle(down(Button::Middle, 100.0, 100.0, false, false), false),
         None,
         "outside the slot"
     );
@@ -70,7 +74,7 @@ fn plain_left_clicks_and_presses_outside_the_viewport_go_to_the_page() {
 #[test]
 fn a_drag_that_leaves_the_viewport_keeps_steering() {
     let mut n = Navigator::default();
-    n.handle(down(Button::Middle, false, false), true);
+    n.handle(down(Button::Middle, 100.0, 100.0, false, false), true);
     assert!(
         n.handle(Input::Drag { x: 900.0, y: 100.0 }, false)
             .is_some()
@@ -80,20 +84,14 @@ fn a_drag_that_leaves_the_viewport_keeps_steering() {
 #[test]
 fn the_wheel_zooms_one_step_per_event_in_the_viewport() {
     let mut n = Navigator::default();
-    assert_eq!(
-        n.handle(Input::Scroll { dy: 3.5 }, true),
-        Some(Nav {
-            zoom: Some(-1.0),
+    let zoom = |z| {
+        nav(Nav {
+            zoom: Some(z),
             ..Nav::default()
         })
-    );
-    assert_eq!(
-        n.handle(Input::Scroll { dy: -0.2 }, true),
-        Some(Nav {
-            zoom: Some(1.0),
-            ..Nav::default()
-        })
-    );
+    };
+    assert_eq!(n.handle(Input::Scroll { dy: 3.5 }, true), zoom(-1.0));
+    assert_eq!(n.handle(Input::Scroll { dy: -0.2 }, true), zoom(1.0));
     assert_eq!(n.handle(Input::Scroll { dy: 0.0 }, true), None);
     assert_eq!(n.handle(Input::Scroll { dy: 1.0 }, false), None);
 }
@@ -116,5 +114,74 @@ fn queued_moves_merge_into_one() {
             zoom: Some(1.0),
             ..Nav::default()
         }
+    );
+}
+
+#[test]
+fn pressing_a_gizmo_handle_drags_it_natively() {
+    let mut n = Navigator::default();
+    let shown = std::rc::Rc::new(std::cell::Cell::new(true));
+    let gizmo = shown.clone();
+    // The engine's hit-test: the x handle's tip at (160, 100), within 10 px, while shown.
+    n.set_hit_test(Box::new(move |x, y| {
+        (gizmo.get() && (x - 160.0).hypot(y - 100.0) <= 10.0)
+            .then(|| ("e1".to_owned(), "x".to_owned()))
+    }));
+    let begin = n.handle(down(Button::Left, 163.0, 98.0, false, false), true);
+    assert_eq!(
+        begin,
+        Some(Action::Gizmo(GizmoStep::Begin {
+            entity: "e1".into(),
+            axis: "x".into(),
+            x: 163.0,
+            y: 98.0
+        }))
+    );
+    assert_eq!(
+        n.handle(Input::Drag { x: 180.0, y: 98.0 }, true),
+        Some(Action::Gizmo(GizmoStep::Move { x: 180.0, y: 98.0 }))
+    );
+    assert_eq!(
+        n.handle(Input::Up, true),
+        Some(Action::Gizmo(GizmoStep::End))
+    );
+    assert_eq!(
+        n.handle(down(Button::Left, 100.0, 100.0, false, false), true),
+        None,
+        "a miss is a page click"
+    );
+    shown.set(false);
+    assert_eq!(
+        n.handle(down(Button::Left, 160.0, 100.0, false, false), true),
+        None,
+        "no gizmo, no drag"
+    );
+}
+
+#[test]
+fn view_updates_to_the_page_are_throttled_but_the_last_always_arrives() {
+    use concordia_editor::input::Throttle;
+    use std::time::{Duration, Instant};
+    let t0 = Instant::now();
+    let ms = |n| t0 + Duration::from_millis(n);
+    let mut throttle = Throttle::new(Duration::from_millis(16));
+    assert_eq!(
+        throttle.offer(1, ms(0)),
+        Some(1),
+        "the first passes at once"
+    );
+    assert_eq!(throttle.offer(2, ms(5)), None, "too soon: held");
+    assert_eq!(throttle.offer(3, ms(9)), None, "a newer one replaces it");
+    assert!(throttle.has_pending());
+    assert_eq!(
+        throttle.flush(),
+        Some(3),
+        "the latest is delivered when things go quiet"
+    );
+    assert_eq!(throttle.flush(), None);
+    assert_eq!(
+        throttle.offer(4, ms(20)),
+        Some(4),
+        "after the interval, passes again"
     );
 }

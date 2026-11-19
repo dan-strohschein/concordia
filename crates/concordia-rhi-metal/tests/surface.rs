@@ -118,6 +118,7 @@ fn present_signals_timelines_and_reports_presentation() {
         commands: &clear(texture),
         signal: &[(timeline, 7)],
         on_presented: Some(Box::new(move |at| tx.send(at).unwrap())),
+        on_gpu_time: None,
     };
     device.present(surface, present).unwrap();
     device
@@ -184,5 +185,38 @@ fn frame_resources_are_freed_on_a_long_lived_thread() {
         "40 frames of a 32 MB target grew allocations by {} MB",
         grown >> 20
     );
+    device.destroy_surface(surface);
+}
+
+#[test]
+fn window_surfaces_keep_a_short_drawable_queue_for_low_latency() {
+    let Some(device) = device() else { return };
+    let layer = layer();
+    // SAFETY: the layer outlives the surface (destroyed below).
+    let surface = unsafe { device.create_surface(target(&layer), Format::Bgra8UnormSrgb) }.unwrap();
+    assert_eq!(layer.maximumDrawableCount(), 2);
+    device.destroy_surface(surface);
+}
+
+#[test]
+fn present_reports_the_gpu_time_of_its_commands() {
+    let Some(device) = device() else { return };
+    let layer = layer();
+    // SAFETY: the layer outlives the surface (destroyed below).
+    let surface = unsafe { device.create_surface(target(&layer), Format::Bgra8UnormSrgb) }.unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let texture = device
+        .acquire(surface, 64, 64)
+        .unwrap()
+        .expect("a drawable");
+    let commands = clear(texture);
+    let mut present = Present::new(&commands);
+    present.on_gpu_time = Some(Box::new(move |ms| tx.send(ms).unwrap()));
+    device.present(surface, present).unwrap();
+    let ms = rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("GPU time reported");
+    let ms = ms.expect("Metal measures command buffers");
+    assert!((0.0..1000.0).contains(&ms), "{ms} ms");
     device.destroy_surface(surface);
 }

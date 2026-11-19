@@ -2,16 +2,26 @@
 // pan, wheel zoom; Alt+left-drag emulates the middle button), click-to-select through
 // `viewport.pick`, and the Move gizmo. In a browser the picture is a streamed
 // `capture.screenshot` from the editor's own view (ADR-0043 approach D).
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { EDITOR_ACTOR, type EditorSession } from "../engine/session";
 import { type Preset, type Vec3, type View } from "./camera";
-import { Gizmo } from "./Gizmo";
+import { GizmoDrag } from "./gizmoDrag";
 import { inputTags } from "./latency";
 import { isNative, onNativeView, reportSlot } from "./native";
 import { type NavParams, useNavigate } from "./navigate";
 
 type Tool = "select" | "move";
+
+/** A mouse press in the viewport: where, which button, and whether it grabbed the gizmo. */
+interface Drag {
+  x: number;
+  y: number;
+  button: number;
+  shift: boolean;
+  moved: boolean;
+  grab: Promise<boolean> | undefined;
+}
 
 interface Capture {
   image: { mime_type: string; data_base64: string };
@@ -50,7 +60,13 @@ function useStreamedView(session: EditorSession, world: "edit" | "play") {
               })
               .then(() => setStatus(undefined))
           : session
-              .call<Capture>("capture.screenshot", { view: job.view, width: job.width, height: job.height, world })
+              .call<Capture>("capture.screenshot", {
+                view: job.view,
+                width: job.width,
+                height: job.height,
+                world,
+                overlays: true,
+              })
               .then((c) => {
                 setSrc(`data:${c.image.mime_type};base64,${c.image.data_base64}`);
                 setStatus(undefined);
@@ -72,14 +88,18 @@ function useStreamedView(session: EditorSession, world: "edit" | "play") {
 export function Viewport({ session, world, selected, onSelect }: Props) {
   const native = isNative();
   const [tool, setTool] = useState<Tool>("select");
+  const [grid, setGrid] = useState(true);
   const [view, setView] = useState<View>();
   const [size, setSize] = useState({ width: 640, height: 360 });
   const slot = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ x: number; y: number; button: number; shift: boolean; moved: boolean } | undefined>(undefined);
+  const drag = useRef<Drag | undefined>(undefined);
+  const gizmo = useMemo(() => new GizmoDrag(session, EDITOR_ACTOR), [session]);
   const { src, status, request } = useStreamedView(session, world);
   const navigate = useNavigate(session, setView);
   const latest = useRef({ view, size });
-  latest.current = { view, size };
+  useEffect(() => {
+    latest.current = { view, size };
+  }, [view, size]);
 
   useEffect(() => navigate({}), [navigate]);
   useEffect(() => (native ? onNativeView(setView) : undefined), [native]);
@@ -105,19 +125,21 @@ export function Viewport({ session, world, selected, onSelect }: Props) {
     if (!native) redraw();
   }, [native, redraw, view]);
   useEffect(() => session.onEvent(redraw), [session, redraw]);
-  // In the native shell: keep the Metal view on the slot, and redraw every display frame while playing.
+  // The engine draws the selection and the Move gizmo (ADR-0047); the page only says what to show.
+  useEffect(() => {
+    const overlays = {
+      selection: selected === undefined ? [] : [selected],
+      gizmo: tool === "move" && selected !== undefined ? { entity: selected } : null,
+      grid,
+      scale: window.devicePixelRatio || 1,
+    };
+    void session.call("viewport.overlays", overlays).then(() => (native ? undefined : redraw()));
+  }, [session, selected, tool, grid, native, redraw]);
+  // In the native shell: keep the Metal view on the slot (while playing, the engine redraws it each tick).
   useEffect(() => {
     if (!native || !slot.current) return;
     void reportSlot(slot.current);
   }, [native, size]);
-  useEffect(() => {
-    if (!native || world !== "play") return;
-    let frame = requestAnimationFrame(function tick() {
-      redraw();
-      frame = requestAnimationFrame(tick);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [native, world, redraw]);
 
   const focusSelection = useCallback(async () => {
     if (selected === undefined) return;
@@ -159,26 +181,31 @@ export function Viewport({ session, world, selected, onSelect }: Props) {
     return { x: Math.floor(e.clientX - (box?.left ?? 0)), y: Math.floor(e.clientY - (box?.top ?? 0)) };
   };
   const onMouseDown = (e: React.MouseEvent) => {
-    drag.current = {
-      x: e.clientX,
-      y: e.clientY,
-      button: e.altKey && e.button === 0 ? 1 : e.button,
-      shift: e.shiftKey,
-      moved: false,
-    };
+    const button = e.altKey && e.button === 0 ? 1 : e.button;
+    // In a browser, a left press may grab the engine-drawn gizmo (natively the shell does this).
+    const grab =
+      !native && button === 0 && tool === "move" && selected !== undefined
+        ? gizmo.start(local(e).x, local(e).y, size)
+        : undefined;
+    drag.current = { x: e.clientX, y: e.clientY, button, shift: e.shiftKey, moved: false, grab };
   };
   const onMouseMove = (e: React.MouseEvent) => {
     const d = drag.current;
     if (!d) return;
     const [dx, dy] = [e.clientX - d.x, e.clientY - d.y];
     if (Math.abs(dx) + Math.abs(dy) > 3) d.moved = true;
+    if (d.grab) gizmo.move(local(e).x, local(e).y, e.timeStamp);
     if (d.button !== 1) return;
     navigate(d.shift ? { pan: [dx, dy], height: size.height } : { orbit: [dx, dy] });
     [d.x, d.y] = [e.clientX, e.clientY];
   };
+  const release = (d: Drag | undefined) => {
+    if (d?.grab) void d.grab.then(() => gizmo.end());
+  };
   const onMouseUp = (e: React.MouseEvent) => {
     const d = drag.current;
     drag.current = undefined;
+    release(d);
     if (d && d.button === 0 && !d.moved) {
       const p = local(e);
       if (p.x >= 0 && p.y >= 0 && p.x < size.width && p.y < size.height) pick(p.x, p.y);
@@ -186,7 +213,8 @@ export function Viewport({ session, world, selected, onSelect }: Props) {
   };
   const onWheel = (e: React.WheelEvent) => navigate({ zoom: Math.sign(e.deltaY) });
   const onViewMenu = (choice: string) => {
-    if (choice === "ortho") navigate({ toggle_ortho: true });
+    if (choice === "grid") setGrid((g) => !g);
+    else if (choice === "ortho") navigate({ toggle_ortho: true });
     else if (choice === "focus") void focusSelection();
     else if (choice !== "") navigate({ preset: choice as Preset });
   };
@@ -207,6 +235,7 @@ export function Viewport({ session, world, selected, onSelect }: Props) {
         <span style={{ flex: 1 }} />
         <select aria-label="View" value="" onChange={(e) => onViewMenu(e.target.value)}>
           <option value="">View ▾</option>
+          <option value="grid">Toggle grid</option>
           <option value="ortho">Toggle orthographic (Num 5)</option>
           <option value="front">Front (Num 1)</option>
           <option value="right">Right (Num 3)</option>
@@ -229,7 +258,10 @@ export function Viewport({ session, world, selected, onSelect }: Props) {
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
-        onMouseLeave={() => (drag.current = undefined)}
+        onMouseLeave={() => {
+          release(drag.current);
+          drag.current = undefined;
+        }}
         onWheel={onWheel}
         onContextMenu={(e) => e.preventDefault()}
       >
@@ -239,16 +271,6 @@ export function Viewport({ session, world, selected, onSelect }: Props) {
             draggable={false}
             src={src}
             style={{ width: "100%", height: "100%", display: "block", pointerEvents: "none" }}
-          />
-        )}
-        {tool === "move" && selected !== undefined && view && (
-          <Gizmo
-            session={session}
-            entity={selected}
-            view={view}
-            width={size.width}
-            height={size.height}
-            actor={EDITOR_ACTOR}
           />
         )}
         {status && <p style={{ position: "absolute", bottom: 4, left: 8, color: "#f88" }}>{status}</p>}

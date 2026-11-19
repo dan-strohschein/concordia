@@ -111,6 +111,14 @@ pub fn world_transforms(world: &World) -> WorldTransforms {
     out
 }
 
+/// One entity's world matrix (`None` without a `Transform`); same rules as [`world_transforms`].
+pub fn world_transform(world: &World, id: EntityId) -> Option<concordia_core::math::Mat4> {
+    world.get::<Transform>(id)?;
+    let mut out = WorldTransforms::default();
+    resolve(world, id, &mut out);
+    out.transforms.get(&id).copied()
+}
+
 /// Walks up to the first resolved ancestor (or a root), then composes back down.
 fn resolve(world: &World, id: EntityId, out: &mut WorldTransforms) {
     let mut chain = vec![id];

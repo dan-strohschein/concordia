@@ -61,5 +61,15 @@ test("an agent's edit event refreshes the open inspector", async () => {
 test("the session opens as human:local and subscribes to live changes", async () => {
   const { engine } = await setup();
   expect(engine.called("session.open")[0]).toMatchObject({ actor: "human:local" });
-  expect(engine.called("events.subscribe")[0]).toEqual({ topics: ["edit", "scene", "sim", "pending"] });
+  expect(engine.called("events.subscribe")[0]).toEqual({ topics: ["edit", "scene", "sim", "pending", "log"] });
+});
+
+test("a burst of change events refetches the entity at most twice", async () => {
+  const { engine } = await setup();
+  const before = engine.called("entity.get").length;
+  await act(async () => {
+    for (let i = 0; i < 50; i++) engine.event({ topic: "pending", entities: ["e1"] });
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  expect(engine.called("entity.get").length - before).toBeLessThanOrEqual(2);
 });

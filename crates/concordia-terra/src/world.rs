@@ -23,6 +23,32 @@ pub struct World {
     pub(crate) archetypes: Archetypes,
     pub(crate) components: ComponentIndex,
     pub(crate) resources: Resources,
+    pub(crate) changes: ChangeLog,
+}
+
+/// The world's change clock and recent despawns.
+#[derive(Clone, Default)]
+pub(crate) struct ChangeLog {
+    tick: u64,
+    despawned: std::collections::VecDeque<(u64, EntityId)>,
+    /// Changes at or before this tick may be missing from `despawned`.
+    floor: u64,
+}
+
+impl ChangeLog {
+    pub(crate) fn bump(&mut self) -> u64 {
+        self.tick += 1;
+        self.tick
+    }
+}
+
+/// What changed in a world since a tick.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Changes {
+    /// Entities spawned or changed (component added, replaced, removed or mutably borrowed), in id order.
+    pub changed: Vec<EntityId>,
+    /// Entities despawned, oldest first.
+    pub despawned: Vec<EntityId>,
 }
 
 impl Default for World {
@@ -40,6 +66,7 @@ impl Clone for World {
             archetypes: self.archetypes.clone(),
             components: self.components.clone(),
             resources: self.resources.clone(),
+            changes: self.changes.clone(),
         }
     }
 }
@@ -93,7 +120,44 @@ impl World {
             archetypes: Archetypes::new(),
             components: ComponentIndex::default(),
             resources: Resources::default(),
+            changes: ChangeLog::default(),
         }
+    }
+
+    /// Despawns remembered for [`World::changes_since`].
+    pub const DESPAWN_HISTORY: usize = 4096;
+
+    /// This world's identity (a clone gets a new one), for caches keyed by world.
+    pub fn identity(&self) -> u64 {
+        self.uid
+    }
+
+    /// The current change tick: pass it to [`World::changes_since`] later.
+    pub fn change_tick(&self) -> u64 {
+        self.changes.tick
+    }
+
+    /// What changed after `tick`; `None` if `tick` predates the despawn history (re-read everything).
+    pub fn changes_since(&self, tick: u64) -> Option<Changes> {
+        if tick < self.changes.floor {
+            return None;
+        }
+        Some(Changes {
+            changed: self.entities.changed_since(tick),
+            despawned: self
+                .changes
+                .despawned
+                .iter()
+                .filter(|(t, _)| *t > tick)
+                .map(|(_, id)| *id)
+                .collect(),
+        })
+    }
+
+    /// Marks `id` changed now.
+    pub(crate) fn touch(&mut self, id: EntityId) {
+        let tick = self.changes.bump();
+        self.entities.touch(id, tick);
     }
 
     /// Number of entities.
@@ -150,6 +214,7 @@ impl World {
         };
         self.entities.alloc(id, location)?;
         table.ids.push(id);
+        self.touch(id);
         Ok(EntityWorldMut { world: self, id })
     }
 
@@ -163,6 +228,14 @@ impl World {
             self.entities.set_location(moved, loc);
         }
         self.entities.free(id);
+        let tick = self.changes.bump();
+        let log = &mut self.changes;
+        log.despawned.push_back((tick, id));
+        if log.despawned.len() > Self::DESPAWN_HISTORY
+            && let Some((dropped, _)) = log.despawned.pop_front()
+        {
+            log.floor = dropped;
+        }
         Ok(())
     }
 
@@ -174,6 +247,7 @@ impl World {
     ) -> Result<Option<C>, EcsError> {
         let loc = self.entities.location(id)?;
         let cid = self.components.register::<C>()?;
+        self.touch(id);
         if let Some(col) = self.archetypes.list[loc.archetype].column_index(cid) {
             let column = &mut *self.archetypes.list[loc.archetype].table.columns[col];
             return Ok(Some(std::mem::replace(
@@ -213,6 +287,7 @@ impl World {
     /// Mutably borrows a component.
     pub fn get_mut<C: Component>(&mut self, id: EntityId) -> Option<&mut C> {
         let (loc, col) = self.column_of(id, TypeId::of::<C>())?;
+        self.touch(id);
         typed_mut::<C>(&mut *self.archetypes.list[loc.archetype].table.columns[col])
             .get_mut(loc.row)
     }
@@ -303,6 +378,7 @@ impl World {
         cid: ComponentId,
     ) -> Result<Option<Box<dyn DynReflect>>, EcsError> {
         let loc = self.entities.location(id)?;
+        self.touch(id);
         let Some(col) = self.archetypes.list[loc.archetype].column_index(cid) else {
             return Ok(None);
         };
