@@ -776,5 +776,55 @@ expression: schemas
       "type": "object",
       "x-concordia-type": "StudioActivityParams"
     }
+  },
+  {
+    "docs": "Regenerate the Claude Code files (.claude/agents, .claude/skills, settings hooks, .mcp.json, the CLAUDE.md block) from studio/.",
+    "mutates": true,
+    "name": "studio.sync",
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`studio.sync` params.",
+      "properties": {
+        "actor": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "description": "Who makes a change: <human|agent|system|tool|script>:<name>[#n], e.g. agent:claude-code.",
+              "pattern": "^(human|agent|system|tool|script):[a-z0-9][a-z0-9._-]{0,63}(#[1-9][0-9]*)?$",
+              "type": "string"
+            }
+          ],
+          "description": "Actor (defaults to the session's)."
+        },
+        "check": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "boolean"
+            }
+          ],
+          "description": "Report what would change and write nothing."
+        },
+        "force": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "boolean"
+            }
+          ],
+          "description": "Overwrite generated files that were edited by hand."
+        }
+      },
+      "title": "StudioSyncParams",
+      "type": "object",
+      "x-concordia-type": "StudioSyncParams"
+    }
   }
 ]

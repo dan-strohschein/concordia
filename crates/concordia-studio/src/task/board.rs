@@ -381,8 +381,19 @@ fn check_update_status(from: TaskStatus, to: TaskStatus, actor: &Actor) -> Resul
     }
 }
 
-/// The reviewer must pass every gate on in_review → done and the role's own review rule.
+/// The reviewer passes every gate on in_review → done and the role's own review rule, and is not the assignee.
 fn check_reviewer(task: &Task, actor: &Actor, roster: &Roster) -> Result<(), BoardError> {
+    check_gates(task, actor, roster)?;
+    match task.meta.assignee.as_deref() == Some(actor.to_string().as_str()) {
+        true => Err(BoardError::NotPermitted(format!(
+            "{actor} holds {} and cannot review its own work; another reviewer must",
+            task.meta.id
+        ))),
+        false => Ok(()),
+    }
+}
+
+fn check_gates(task: &Task, actor: &Actor, roster: &Roster) -> Result<(), BoardError> {
     let gate_lists = roster.team.gates.iter().filter(|g| {
         g.on == GateOn::TaskTransition {
             from: TaskStatus::in_review,

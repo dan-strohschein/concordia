@@ -5,6 +5,7 @@
 //! (`.concordia/studio/journal.jsonl`, ADR-0080). [`StudioModule`] serves `task.*` and `studio.*`.
 //! It never calls an LLM (ADR-0002).
 
+mod claude_code;
 mod defaults;
 mod error;
 mod frontmatter;
@@ -18,6 +19,7 @@ mod scope;
 mod task;
 mod team;
 
+pub use claude_code::{CLAUDE_AGENT_FIELDS, FileChange, SyncAction, SyncOptions, SyncReport, sync};
 pub use defaults::{DefaultRoster, default_roster, init};
 pub use error::StudioError;
 pub use gate::{Gate, GateOn, GateParty};

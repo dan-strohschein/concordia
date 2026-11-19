@@ -102,3 +102,86 @@ fn studio_commands_outside_a_studio_project_explain_how_to_start() {
         stderr(&output)
     );
 }
+
+#[test]
+fn new_project_is_synced_for_claude_code() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = new_project(dir.path(), &[]);
+    assert!(root.join(".claude/agents/director.md").is_file());
+    assert!(root.join(".claude/settings.json").is_file());
+    let claude = std::fs::read_to_string(root.join("CLAUDE.md")).unwrap();
+    assert!(
+        claude.contains("<!-- concordia-studio:begin -->"),
+        "{claude}"
+    );
+    let check = run(&["studio", "sync", "--check"], &root);
+    assert!(
+        check.status.success(),
+        "a fresh project is in sync: {}",
+        stdout(&check)
+    );
+}
+
+#[test]
+fn concordia_studio_sync_dry_run_lists_changes_without_writing() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = new_project(dir.path(), &["--no-studio"]);
+    assert!(
+        run(&["studio", "init", "--no-sync"], &root)
+            .status
+            .success()
+    );
+    let output = run(&["studio", "sync", "--dry-run"], &root);
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(
+        stdout(&output).contains(".claude/agents/director.md"),
+        "{}",
+        stdout(&output)
+    );
+    assert!(!root.join(".claude").exists());
+}
+
+#[test]
+fn studio_sync_check_exits_nonzero_and_prints_diff_when_stale() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = new_project(dir.path(), &[]);
+    let role = root.join("studio/agents/writer.md");
+    let text = std::fs::read_to_string(&role).unwrap();
+    std::fs::write(
+        &role,
+        text.replace("Write the game's text", "Write all text"),
+    )
+    .unwrap();
+    let output = run(&["studio", "sync", "--check"], &root);
+    assert_eq!(output.status.code(), Some(1));
+    let out = stdout(&output);
+    assert!(
+        out.contains("+Write all text") && out.contains("concordia studio sync"),
+        "{out}"
+    );
+}
+
+#[test]
+fn studio_hook_passes_through_until_enforcement_lands() {
+    use std::io::Write;
+    let dir = tempfile::tempdir().unwrap();
+    let mut child = common::concordia()
+        .args(["studio", "hook", "pre-tool-use"])
+        .current_dir(dir.path())
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(br#"{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{}}"#)
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        output.stdout.is_empty(),
+        "no decision: Claude Code's own rules apply"
+    );
+}
