@@ -20,6 +20,7 @@ pub enum BodyKind {
 
 /// A rigid body; needs a `Transform` and a `Collider` on the same entity (root entities only).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Physics", default)]
 #[serde(default, deny_unknown_fields)]
 pub struct RigidBody {
     /// Static, dynamic or kinematic.
@@ -107,6 +108,7 @@ pub enum ColliderShape {
 
 /// The shape a rigid body collides with. `Transform.scale` does not scale it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Physics", default)]
 #[serde(deny_unknown_fields)]
 pub struct Collider {
     /// Geometry.
@@ -123,6 +125,15 @@ pub struct Collider {
     pub offset: Vec3,
 }
 
+impl Default for Collider {
+    /// A solid 1 m box.
+    fn default() -> Self {
+        Self::new(ColliderShape::Box {
+            half_extents: Vec3::splat(0.5),
+        })
+    }
+}
+
 impl Collider {
     /// A solid collider on layer 0 with no offset.
     pub fn new(shape: ColliderShape) -> Self {
@@ -137,6 +148,7 @@ impl Collider {
 
 /// A walking character (Jolt CharacterVirtual): moved by `CharacterMotion`, feet at `Transform.translation`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Physics", default)]
 #[serde(default, deny_unknown_fields)]
 pub struct CharacterController {
     /// Total capsule height in meters.
@@ -170,6 +182,7 @@ impl Default for CharacterController {
 
 /// Desired horizontal velocity of a character this tick (gameplay writes it; y is ignored).
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Physics", default)]
 #[serde(default, deny_unknown_fields)]
 pub struct CharacterMotion {
     /// Meters per second.

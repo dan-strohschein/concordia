@@ -1,6 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "default": {
+    "cast_shadows": true,
+    "material": "builtin:material/default",
+    "mesh": "builtin:mesh/cube"
+  },
   "description": "Draws an imported or built-in mesh with a material (read by the renderer).",
   "properties": {
     "cast_shadows": {
@@ -24,5 +29,6 @@
   ],
   "title": "MeshRenderer",
   "type": "object",
+  "x-concordia-category": "Rendering",
   "x-concordia-type": "MeshRenderer"
 }

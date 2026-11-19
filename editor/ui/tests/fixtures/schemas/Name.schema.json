@@ -1,7 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "default": "Entity",
   "description": "Human-readable entity name. Not required to be unique.",
   "title": "Name",
   "type": "string",
+  "x-concordia-category": "Core",
   "x-concordia-type": "Name"
 }

@@ -19,9 +19,17 @@ const VARIANT_SERDE_ALLOWED: &[&str] = &[];
 #[derive(Default)]
 pub struct ContainerAttrs {
     pub name: Option<LitStr>,
+    pub category: Option<LitStr>,
+    pub default: Option<ContainerDefault>,
     pub transparent: bool,
     pub deny_unknown: bool,
     pub serde_default: bool,
+}
+
+/// A type-level `#[reflect(default)]` (`Default::default()`) or `#[reflect(default = expr)]`.
+pub enum ContainerDefault {
+    Trait,
+    Expr(Box<Expr>),
 }
 
 /// Field-level attributes.
@@ -62,14 +70,7 @@ pub fn container(attrs: &[Attribute]) -> syn::Result<ContainerAttrs> {
     let mut out = ContainerAttrs::default();
     for attr in attrs {
         if attr.path().is_ident("reflect") {
-            attr.parse_nested_meta(|meta| {
-                if meta.path.is_ident("name") {
-                    out.name = Some(meta.value()?.parse()?);
-                    Ok(())
-                } else {
-                    Err(meta.error("unknown reflect attribute; expected `name = \"...\"`"))
-                }
-            })?;
+            attr.parse_nested_meta(|meta| parse_container_reflect(&meta, &mut out))?;
         } else if attr.path().is_ident("serde") {
             parse_serde(attr, CONTAINER_SERDE_ALLOWED, |name| match name {
                 "transparent" => out.transparent = true,
@@ -110,6 +111,29 @@ pub fn variant(attrs: &[Attribute]) -> syn::Result<()> {
                 "#[reflect] is not supported on enum variants",
             ));
         }
+    }
+    Ok(())
+}
+
+fn parse_container_reflect(meta: &ParseNestedMeta, out: &mut ContainerAttrs) -> syn::Result<()> {
+    if meta.path.is_ident("name") {
+        out.name = Some(meta.value()?.parse()?);
+    } else if meta.path.is_ident("category") {
+        let category: LitStr = meta.value()?.parse()?;
+        if category.value().trim().is_empty() {
+            return Err(meta.error("category must not be empty"));
+        }
+        out.category = Some(category);
+    } else if meta.path.is_ident("default") {
+        out.default = Some(if meta.input.peek(Token![=]) {
+            ContainerDefault::Expr(Box::new(meta.value()?.parse()?))
+        } else {
+            ContainerDefault::Trait
+        });
+    } else {
+        return Err(meta.error(
+            "unknown reflect attribute; expected `name = \"...\"`, `category = \"...\"`, `default` or `default = ...`",
+        ));
     }
     Ok(())
 }

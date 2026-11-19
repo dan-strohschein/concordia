@@ -1,10 +1,10 @@
 // The Inspector over a real EditorSession and a fake engine (M1 phase 1.9).
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 
 import { EngineClient } from "../../src/api/client";
 import { EditorSession } from "../../src/engine/session";
 import { Inspector } from "../../src/inspector/Inspector";
-import { FakeEngine, oneEntity } from "./support/engine";
+import { FakeEngine, oneEntity, schema } from "./support/engine";
 
 async function setup(translation = [1, 2, 3]) {
   const engine = new FakeEngine(oneEntity({ translation }));
@@ -72,4 +72,49 @@ test("a burst of change events refetches the entity at most twice", async () => 
     await new Promise((r) => setTimeout(r, 20));
   });
   expect(engine.called("entity.get").length - before).toBeLessThanOrEqual(2);
+});
+
+test("add component lists addable components and calls component.add; remove calls component.remove", async () => {
+  const engine = new FakeEngine({
+    ...oneEntity({ translation: [0, 0, 0] }),
+    "schema.get": (p) =>
+      p["name"] === undefined
+        ? {
+            schema: {
+              types: [],
+              methods: [],
+              components: [
+                { name: "Transform", category: "Core", description: "Local transform.", addable: true },
+                { name: "PointLight", category: "Lighting", description: "An omni light.", addable: true },
+                { name: "Parent", category: "Core", description: "Hierarchy link.", addable: false },
+              ],
+            },
+          }
+        : { schema: schema(String(p["name"])) },
+    "component.add": () => ({ value: {} }),
+    "component.remove": () => ({ previous: {} }),
+  });
+  const session = await EditorSession.open(new EngineClient(engine));
+  render(<Inspector session={session} entity="e1" />);
+  await screen.findByLabelText("Translation x");
+
+  fireEvent.click(screen.getByRole("button", { name: "Add Component" }));
+  const list = await screen.findByRole("listbox", { name: "Components" });
+  expect(
+    within(list)
+      .getAllByRole("option")
+      .map((o) => o.textContent),
+  ).toEqual([expect.stringContaining("PointLight")]);
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search components" }), { target: { value: "zz" } });
+  expect(within(list).queryAllByRole("option")).toHaveLength(0);
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search components" }), { target: { value: "point" } });
+  await act(async () => {
+    fireEvent.click(within(list).getByRole("option", { name: /PointLight/ }));
+  });
+  expect(engine.called("component.add")).toEqual([{ entity: "e1", component: "PointLight", actor: "human:local" }]);
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Remove Transform" }));
+  });
+  expect(engine.called("component.remove")).toEqual([{ entity: "e1", component: "Transform", actor: "human:local" }]);
 });

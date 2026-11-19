@@ -1,6 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "default": {
+    "color": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "intensity_lumens": 800.0,
+    "range": 10.0
+  },
   "description": "Omnidirectional light at the entity's position.",
   "properties": {
     "color": {
@@ -28,5 +37,6 @@
   },
   "title": "PointLight",
   "type": "object",
+  "x-concordia-category": "Lighting",
   "x-concordia-type": "PointLight"
 }

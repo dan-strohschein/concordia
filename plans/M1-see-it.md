@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (editor v1, agent-first: 1.11–1.13 done, 1.14–1.16 next, then the gate; ADR-0049; 1.0–1.9 done, 1.10 stretch pending; ADR-0048) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (editor v1, agent-first: 1.11–1.14 done, 1.15–1.16 next, then the gate; ADR-0049; 1.0–1.9 done, 1.10 stretch pending; ADR-0048) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -1182,7 +1182,7 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
 - Delete in the Scene dock now removes the subtree (Godot), and ⌘D duplicates.
 - The core MCP tool count went from 24 to 28; the count tests, including the M0 gate's, were updated deliberately.
 
-### Phase 1.14: Component discovery (Inspector)
+### Phase 1.14: Component discovery (Inspector) (done)
 **Goal.** Agents can find out which components exist, what they mean and their defaults, and add them. The Inspector can add and remove them.
 
 **Engine API:**
@@ -1195,6 +1195,14 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
 - `component_add_inserts_the_default_and_rejects_duplicates_and_unknown_names`
 - `schema_index_has_category_and_description_for_every_component`
 - e2e: add a PointLight from the Inspector, remove it, undo.
+
+**As built:**
+- **Category and default live in `concordia-reflect`,** as type-level `#[reflect(category = "..", default)]` (or `default = expr`) next to the existing field-level `default`. They become `TypeInfo::category`/`default`; a type's schema carries `default` and `x-concordia-category`, and its index row a `category`.
+- **`schema.get {}` gains a `components` list:** `{name, category, description, addable}` for each registered component. Categories: Core, Rendering, Lighting, Physics.
+- **`component.add` inserts `TypeInfo::default`** as one undo step. Duplicates fail with `ValueInvalid` (suggesting `component.patch`/`component.set`), and unknown names fail with `ComponentNotRegistered` and did-you-mean suggestions. `Parent` and `Environment` have no default, so they are not addable and their error says to use `component.set`.
+- **New defaults:** `MeshRenderer` (the built-in cube with the default material), `Collider` (a 1 m box) and `Name` (`"Entity"`).
+- **Inspector:** an Add Component button with a searchable list of addable components the entity lacks, and a × on each section header that removes the component.
+- **Counts:** the core method count went from 31 to 32 and the core MCP tool count from 28 to 29. The count tests, including the M0 gate's, were updated deliberately.
 
 ### Phase 1.15: Agent activity and minimal menus
 **Goal.** A human can see what the agents did and undo any of it. That is the editor's main job in an AI-first engine.

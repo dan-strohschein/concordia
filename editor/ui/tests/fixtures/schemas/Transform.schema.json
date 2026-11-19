@@ -1,6 +1,24 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "default": {
+    "rotation": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "scale": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "translation": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
   "description": "Local transform relative to `Parent` (or to the world if there is no parent).",
   "properties": {
     "rotation": {
@@ -41,5 +59,6 @@
   ],
   "title": "Transform",
   "type": "object",
+  "x-concordia-category": "Core",
   "x-concordia-type": "Transform"
 }

@@ -126,6 +126,24 @@
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "default": {
+    "is_sensor": false,
+    "layer": 0,
+    "offset": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "shape": {
+      "Box": {
+        "half_extents": [
+          0.5,
+          0.5,
+          0.5
+        ]
+      }
+    }
+  },
   "description": "The shape a rigid body collides with. `Transform.scale` does not scale it.",
   "properties": {
     "is_sensor": {
@@ -158,5 +176,6 @@
   ],
   "title": "Collider",
   "type": "object",
+  "x-concordia-category": "Physics",
   "x-concordia-type": "Collider"
 }

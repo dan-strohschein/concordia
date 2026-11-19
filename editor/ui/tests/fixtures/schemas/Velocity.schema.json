@@ -1,6 +1,18 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "default": {
+    "angular": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "linear": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
   "description": "Velocity integrated into `Transform` by `integrate_velocity` every fixed tick.",
   "properties": {
     "angular": {
@@ -30,5 +42,6 @@
   ],
   "title": "Velocity",
   "type": "object",
+  "x-concordia-category": "Core",
   "x-concordia-type": "Velocity"
 }

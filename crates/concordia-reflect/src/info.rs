@@ -20,6 +20,10 @@ pub struct TypeInfo {
     pub structural: bool,
     /// Editor widget hint (`x-concordia-widget`), e.g. `vec3`, `quat`.
     pub widget: Option<&'static str>,
+    /// `#[reflect(category = "..")]`: grouping for discovery, e.g. `Lighting`.
+    pub category: Option<&'static str>,
+    /// `#[reflect(default)]` or `#[reflect(default = ..)]`: the whole value's default as JSON.
+    pub default: Option<fn() -> serde_json::Value>,
 }
 
 impl TypeInfo {
@@ -37,12 +41,27 @@ impl TypeInfo {
             shape,
             structural: false,
             widget: None,
+            category: None,
+            default: None,
         }
     }
 
     /// The same type with an editor widget hint.
     pub fn with_widget(mut self, widget: &'static str) -> Self {
         self.widget = Some(widget);
+        self
+    }
+
+    /// The same type in a discovery category.
+    pub fn with_category(mut self, category: &'static str) -> Self {
+        debug_assert!(!category.trim().is_empty(), "empty category");
+        self.category = Some(category);
+        self
+    }
+
+    /// The same type with a default value.
+    pub fn with_default(mut self, default: fn() -> serde_json::Value) -> Self {
+        self.default = Some(default);
         self
     }
 
@@ -55,6 +74,8 @@ impl TypeInfo {
             shape,
             structural: true,
             widget: None,
+            category: None,
+            default: None,
         }
     }
 

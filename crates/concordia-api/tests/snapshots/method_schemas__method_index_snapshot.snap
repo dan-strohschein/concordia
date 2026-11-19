@@ -4,6 +4,11 @@ expression: index
 ---
 [
   {
+    "description": "Add a component with its default value (see the `components` list of schema.get for what is addable).",
+    "mutates": true,
+    "name": "component.add"
+  },
+  {
     "description": "Read one component value as JSON.",
     "mutates": false,
     "name": "component.get"

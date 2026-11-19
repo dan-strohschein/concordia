@@ -1,4 +1,4 @@
-//! `component.get`, `component.set`, `component.patch`, `component.remove`.
+//! `component.get`, `component.add`, `component.set`, `component.patch`, `component.remove`.
 
 use concordia_command::{Actor, EditOp};
 use concordia_core::id::EntityId;
@@ -34,6 +34,22 @@ pub struct ComponentGetParams {
 pub struct ValueResult {
     /// The value.
     pub value: Value,
+}
+
+/// Add a component with its default value (see the `components` list of schema.get for what is addable).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ComponentAdd;
+
+/// `component.add` params.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct ComponentAddParams {
+    /// The entity (it must not have the component yet).
+    pub entity: EntityRef,
+    /// Component name, e.g. "PointLight".
+    pub component: String,
+    /// Actor (defaults to the session's).
+    pub actor: Option<Actor>,
 }
 
 /// Insert or replace a component (the whole value; use component.patch to change some fields).
@@ -122,6 +138,36 @@ impl Method for ComponentGet {
     }
 }
 
+impl Method for ComponentAdd {
+    const NAME: &'static str = "component.add";
+    const MUTATES: bool = true;
+    type Params = ComponentAddParams;
+    type Result = ValueResult;
+
+    fn call(
+        engine: &mut Engine,
+        ctx: &CallCtx,
+        p: ComponentAddParams,
+    ) -> Result<ValueResult, ApiError> {
+        require_component(engine, &p.component)?;
+        let value = default_of(engine, &p.component)?;
+        let world = &engine.scene()?.world;
+        let id = resolve(world, &p.entity)?;
+        if world.get_json(id, &p.component).is_ok() {
+            return Err(already_has(id, &p.component));
+        }
+        let op = EditOp::SetComponent {
+            id,
+            component: p.component.clone(),
+            value,
+        };
+        edit(engine, ctx, Self::NAME, op, Some(&p.component))?;
+        Ok(ValueResult {
+            value: current(&engine.scene()?.world, id, &p.component)?,
+        })
+    }
+}
+
 impl Method for ComponentSet {
     const NAME: &'static str = "component.set";
     const MUTATES: bool = true;
@@ -204,6 +250,33 @@ impl Method for ComponentRemove {
     }
 }
 
+/// The registered default of `component`, or an error saying how to add it with a value.
+fn default_of(engine: &Engine, component: &str) -> Result<Value, ApiError> {
+    let info = engine
+        .registry
+        .get_by_name(component)
+        .map(|r| r.info())
+        .ok_or_else(|| crate::engine::internal(format!("{component} vanished")))?;
+    info.default.map(|default| default()).ok_or_else(|| {
+        ApiError::new(
+            ApiErrorKind::ValueInvalid,
+            format!("{component} has no default value"),
+        )
+        .suggest([format!(
+            "add it with component.set and a value; see schema.get {{\"name\": \"{component}\"}}"
+        )])
+        .see(format!("concordia://schema/component/{component}"))
+    })
+}
+
+fn already_has(id: EntityId, component: &str) -> ApiError {
+    ApiError::new(
+        ApiErrorKind::ValueInvalid,
+        format!("entity {id} already has a {component} component"),
+    )
+    .suggest(["change it with component.patch or replace it with component.set".to_owned()])
+}
+
 /// The component's current JSON value, or an error naming what the entity does have.
 fn current(world: &World, id: EntityId, component: &str) -> Result<Value, ApiError> {
     world.get_json(id, component).map_err(|_| {
@@ -219,6 +292,7 @@ fn current(world: &World, id: EntityId, component: &str) -> Result<Value, ApiErr
 pub(crate) fn methods() -> Vec<MethodInfo> {
     vec![
         MethodInfo::of::<ComponentGet>(),
+        MethodInfo::of::<ComponentAdd>(),
         MethodInfo::of::<ComponentSet>(),
         MethodInfo::of::<ComponentPatch>(),
         MethodInfo::of::<ComponentRemove>(),

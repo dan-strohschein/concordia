@@ -114,6 +114,25 @@
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "default": {
+    "clear": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "exposure_ev100": 15.0,
+    "msaa": "X4",
+    "priority": 0,
+    "projection": {
+      "Perspective": {
+        "far": 1000.0,
+        "fov_y": 1.0471975803375244,
+        "near": 0.10000000149011612
+      }
+    },
+    "tonemap": "AgX"
+  },
   "description": "A view into the world (the entity's `Transform` places it; it looks down its -Z).",
   "properties": {
     "clear": {
@@ -153,5 +172,6 @@
   },
   "title": "Camera",
   "type": "object",
+  "x-concordia-category": "Rendering",
   "x-concordia-type": "Camera"
 }

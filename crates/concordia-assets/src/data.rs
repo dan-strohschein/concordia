@@ -194,6 +194,7 @@ impl Default for MaterialData {
 
 /// Draws an imported or built-in mesh with a material (read by the renderer).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Rendering", default)]
 #[serde(deny_unknown_fields)]
 pub struct MeshRenderer {
     /// The mesh.
@@ -207,6 +208,21 @@ pub struct MeshRenderer {
 
 fn yes() -> bool {
     true
+}
+
+impl Default for MeshRenderer {
+    /// The built-in cube with the default material.
+    fn default() -> Self {
+        let builtin = |kind: &str, name: &str| AssetRef::Builtin {
+            kind: kind.to_owned(),
+            name: name.to_owned(),
+        };
+        Self {
+            mesh: builtin("mesh", "cube"),
+            material: builtin("material", "default"),
+            cast_shadows: true,
+        }
+    }
 }
 
 /// A skin: joints (prefab entity ids) and inverse bind matrices (column-major).

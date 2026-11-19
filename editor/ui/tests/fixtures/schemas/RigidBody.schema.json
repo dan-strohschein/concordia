@@ -22,6 +22,16 @@
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "default": {
+    "angular_damping": 0.05000000074505806,
+    "ccd": false,
+    "friction": 0.5,
+    "gravity_scale": 1.0,
+    "kind": "Dynamic",
+    "linear_damping": 0.05000000074505806,
+    "mass": null,
+    "restitution": 0.0
+  },
   "description": "A rigid body; needs a `Transform` and a `Collider` on the same entity (root entities only).",
   "properties": {
     "angular_damping": {
@@ -78,5 +88,6 @@
   },
   "title": "RigidBody",
   "type": "object",
+  "x-concordia-category": "Physics",
   "x-concordia-type": "RigidBody"
 }

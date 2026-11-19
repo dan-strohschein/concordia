@@ -7,8 +7,8 @@ use serde_json::json;
 fn registry_has_the_25_m0_methods_and_the_m1_core_methods() {
     assert_eq!(
         methods().iter().count(),
-        31,
-        "25 from M0, events.subscribe/unsubscribe (M1 phase 1.9) and entity.templates/create/duplicate/reparent (M1 phase 1.13)"
+        32,
+        "25 from M0, events.subscribe/unsubscribe (M1 phase 1.9), entity.templates/create/duplicate/reparent (M1 phase 1.13) and component.add (M1 phase 1.14)"
     );
     for name in [
         "session.open",
@@ -21,6 +21,7 @@ fn registry_has_the_25_m0_methods_and_the_m1_core_methods() {
         "log.tail",
         "events.subscribe",
         "events.unsubscribe",
+        "component.add",
     ] {
         assert!(methods().get(name).is_some(), "{name}");
     }

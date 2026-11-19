@@ -33,11 +33,15 @@ pub fn schema_for(info: &'static TypeInfo) -> Value {
 
 /// One row of the registry index.
 pub fn index_entry(info: &TypeInfo) -> Value {
-    json!({
+    let mut row = json!({
         "name": info.name,
         "kind": kind(&info.shape),
         "description": info.docs.lines().next().unwrap_or(""),
-    })
+    });
+    if let Some(category) = info.category {
+        row["category"] = category.into();
+    }
+    row
 }
 
 fn kind(shape: &Shape) -> &'static str {
@@ -65,6 +69,12 @@ impl Ctx {
         schema.insert("title".into(), info.name.into());
         describe(&mut schema, info.docs);
         schema.insert("x-concordia-type".into(), info.name.into());
+        if let Some(category) = info.category {
+            schema.insert("x-concordia-category".into(), category.into());
+        }
+        if let Some(default) = info.default {
+            schema.insert("default".into(), default());
+        }
         schema
     }
 

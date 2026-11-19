@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Coalescer } from "../engine/coalesce";
 
 import type { EditorSession } from "../engine/session";
+import { AddComponent } from "./AddComponent";
+import { removeComponent } from "./components";
 import { ValueEditor } from "./fields";
 import { label, widgetFor, type Widget } from "./widgets";
 
@@ -51,6 +53,10 @@ export function Inspector({ session, entity }: { session: EditorSession; entity:
   const commit = (name: string) => (value: unknown) => {
     session.setComponent(entity, name, value).then(refresh, (e: unknown) => setError(String(e)));
   };
+  const remove = (name: string) => (e: React.MouseEvent) => {
+    e.preventDefault(); // a button in <summary> would otherwise toggle the section
+    removeComponent(session, entity, name).catch((err: unknown) => setError(String(err)));
+  };
   return (
     <div style={{ padding: 4 }}>
       {error && (
@@ -59,13 +65,25 @@ export function Inspector({ session, entity }: { session: EditorSession; entity:
         </p>
       )}
       {sections.map((s) => (
-        <details key={s.name} open style={{ marginBottom: 6 }}>
-          <summary style={{ background: "#333", padding: "2px 6px", cursor: "pointer" }}>{s.name}</summary>
+        <details key={s.name} open role="group" aria-label={s.name} style={{ marginBottom: 6 }}>
+          <summary style={{ background: "#333", padding: "2px 6px", cursor: "pointer" }}>
+            <span>{s.name}</span>
+            <button
+              type="button"
+              aria-label={`Remove ${s.name}`}
+              title="Remove Component"
+              onClick={remove(s.name)}
+              style={{ float: "right" }}
+            >
+              ×
+            </button>
+          </summary>
           <div style={{ padding: "4px 6px" }}>
             <ValueEditor label={label(s.name)} value={s.value} widget={s.widget} onCommit={commit(s.name)} />
           </div>
         </details>
       ))}
+      <AddComponent session={session} entity={entity} present={sections.map((s) => s.name)} onError={setError} />
     </div>
   );
 }

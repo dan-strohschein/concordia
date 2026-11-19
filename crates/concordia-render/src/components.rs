@@ -74,6 +74,7 @@ impl Tonemap {
 
 /// A view into the world (the entity's `Transform` places it; it looks down its -Z).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Rendering", default)]
 #[serde(default, deny_unknown_fields)]
 pub struct Camera {
     /// Projection.
@@ -114,6 +115,7 @@ impl Camera {
 
 /// Sun-like light shining along the entity's -Z.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Lighting", default)]
 #[serde(default, deny_unknown_fields)]
 pub struct DirectionalLight {
     /// Linear color.
@@ -138,6 +140,7 @@ impl Default for DirectionalLight {
 
 /// Omnidirectional light at the entity's position.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Lighting", default)]
 #[serde(default, deny_unknown_fields)]
 pub struct PointLight {
     /// Linear color.
@@ -163,6 +166,7 @@ impl Default for PointLight {
 
 /// Cone light along the entity's -Z.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Lighting", default)]
 #[serde(default, deny_unknown_fields)]
 pub struct SpotLight {
     /// Linear color.
@@ -196,6 +200,7 @@ impl Default for SpotLight {
 
 /// Sky light and background from an HDR equirectangular texture (the first one in the world is used).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Lighting")]
 #[serde(deny_unknown_fields)]
 pub struct Environment {
     /// HDR equirectangular texture (an imported `.hdr`).
