@@ -64,15 +64,6 @@ impl Nav {
     }
 }
 
-/// A gizmo handle the page drew (viewport pixels).
-#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
-pub struct Handle {
-    pub axis: String,
-    pub x: f64,
-    pub y: f64,
-    pub radius: f64,
-}
-
 /// A step of a native gizmo drag (`viewport.gizmo`).
 #[derive(Debug, Clone, PartialEq)]
 pub enum GizmoStep {
@@ -110,17 +101,29 @@ struct Drag {
     mode: Mode,
 }
 
-/// Tracks one drag at a time, and the selected entity's gizmo handles.
-#[derive(Debug, Default)]
+/// Finds the gizmo handle under a press: (entity, axis), or `None`.
+pub type HitTest = Box<dyn Fn(f64, f64) -> Option<(String, String)>>;
+
+/// Tracks one drag at a time; asks the engine (through the hit-test) whether a press grabs the
+/// gizmo.
+#[derive(Default)]
 pub struct Navigator {
     drag: Option<Drag>,
-    gizmo: Option<(String, Vec<Handle>)>,
+    hit: Option<HitTest>,
+}
+
+impl std::fmt::Debug for Navigator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Navigator")
+            .field("drag", &self.drag)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Navigator {
-    /// The gizmo handles the page drew for `entity` (empty when there is no gizmo).
-    pub fn set_gizmo(&mut self, entity: &str, handles: Vec<Handle>) {
-        self.gizmo = (!handles.is_empty()).then(|| (entity.to_owned(), handles));
+    /// How to find the gizmo handle under a press (the engine's hit-test).
+    pub fn set_hit_test(&mut self, hit: HitTest) {
+        self.hit = Some(hit);
     }
 
     /// Handles an event; `in_slot` says whether it is over the viewport. Returns what it does when
@@ -187,21 +190,13 @@ impl Navigator {
         if button != Button::Left {
             return None;
         }
-        let (entity, handles) = self.gizmo.as_ref()?;
-        let hit = handles
-            .iter()
-            .find(|h| (h.x - x).hypot(h.y - y) <= h.radius)?;
+        let (entity, axis) = (self.hit.as_ref()?)(x, y)?;
         self.drag = Some(Drag {
             x,
             y,
             mode: Mode::Gizmo,
         });
-        Some(Action::Gizmo(GizmoStep::Begin {
-            entity: entity.clone(),
-            axis: hit.axis.clone(),
-            x,
-            y,
-        }))
+        Some(Action::Gizmo(GizmoStep::Begin { entity, axis, x, y }))
     }
 }
 

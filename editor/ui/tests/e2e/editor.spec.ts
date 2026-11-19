@@ -109,6 +109,26 @@ async function viewportPixel(page: Page, engine: Engine, name: string): Promise<
   return { x: box.x + p[0], y: box.y + p[1], id };
 }
 
+/** Where the engine draws the Move gizmo's x arrow tip for `id`, and the arrow's direction. */
+async function gizmoTip(page: Page, engine: Engine, id: string) {
+  const { project } = await import("../../src/viewport/camera");
+  const { view } = await engine.agent.call<{ view: import("../../src/viewport/camera").View }>("viewport.navigate", {});
+  const t = await engine.agent.call<{ value: { translation: [number, number, number] } }>("component.get", {
+    entity: id,
+    component: "Transform",
+  });
+  const box = await page.getByTestId("viewport").boundingBox();
+  if (!box) throw new Error("no viewport");
+  const [w, h] = [Math.round(box.width), Math.round(box.height)];
+  const [x0, y0, z0] = t.value.translation;
+  const o = project(view, [x0, y0, z0], w, h);
+  const e = project(view, [x0 + 1, y0, z0], w, h);
+  if (!o || !e) throw new Error("the gizmo is not in view");
+  const n = Math.hypot(e[0] - o[0], e[1] - o[1]);
+  const [dx, dy] = [(e[0] - o[0]) / n, (e[1] - o[1]) / n];
+  return { x: box.x + o[0] + dx * 60, y: box.y + o[1] + dy * 60, dx, dy };
+}
+
 test("viewport_click_selects_box_under_cursor", async ({ page, engine }) => {
   await openEditor(page, engine);
   await expect(page.getByRole("img", { name: "Viewport" })).toBeVisible({ timeout: 20_000 });
@@ -124,14 +144,14 @@ test("gizmo_drag_moves_along_its_axis_as_one_undo_step", async ({ page, engine }
   await expect(page.getByRole("treeitem", { name: "Dropped 0", exact: true })).toHaveAttribute("aria-selected", "true");
   const before = await translationX(engine, id);
   await page.getByRole("button", { name: "Move", exact: true }).click();
-  const handle = page.getByRole("button", { name: "Move x" }).locator("circle");
-  const start = await handle.boundingBox();
-  if (!start) throw new Error("no x handle");
-  await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
-  await page.mouse.down();
+  // The engine draws the gizmo now: its x arrow's tip is 60 points along the projected x axis.
+  const tip = await gizmoTip(page, engine, id);
   const image = page.getByRole("img", { name: "Viewport" });
+  await expect.poll(() => image.getAttribute("src")).toBeTruthy();
+  await page.mouse.move(tip.x, tip.y);
+  await page.mouse.down();
   const still = await image.getAttribute("src");
-  for (let i = 1; i <= 8; i++) await page.mouse.move(start.x + start.width / 2 + i * 10, start.y + start.height / 2);
+  for (let i = 1; i <= 8; i++) await page.mouse.move(tip.x + i * 10 * tip.dx, tip.y + i * 10 * tip.dy);
   // The viewport follows the drag live, before the transaction commits.
   await expect.poll(() => image.getAttribute("src")).not.toBe(still);
   await page.mouse.up();

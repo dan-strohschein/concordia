@@ -478,12 +478,9 @@ fn viewport_gizmo_drags_an_entity_along_an_axis_as_one_undo_step() {
         concordia_api::ApiErrorKind::InvalidRequest,
         "no drag in progress"
     );
-    let err = h.call("viewport.gizmo", json!({"action": "begin", "axis": "x", "x": 1.0, "y": 1.0, "width": 10.0, "height": 10.0, "actor": "human:local"})).unwrap_err();
-    assert_eq!(
-        err.kind,
-        concordia_api::ApiErrorKind::InvalidParams,
-        "begin needs an entity"
-    );
+    // Without an entity, begin grabs the shown gizmo's handle under the pointer; none is shown.
+    let miss = h.ok("viewport.gizmo", json!({"action": "begin", "axis": "x", "x": 1.0, "y": 1.0, "width": 10.0, "height": 10.0, "actor": "human:local"}));
+    assert_eq!(miss["axis"], Value::Null, "{miss}");
 }
 
 #[cfg(target_os = "macos")]
@@ -590,4 +587,79 @@ fn decode(result: &Value) -> Vec<u8> {
     let mut rgba = vec![0; reader.output_buffer_size().unwrap()];
     reader.next_frame(&mut rgba).unwrap();
     rgba
+}
+
+#[test]
+fn a_gizmo_press_finds_its_handle_in_the_engine_and_a_miss_starts_nothing() {
+    let mut h = Harness::new();
+    let id = h.ok(
+        "entity.spawn",
+        json!({"components": {"Name": "Box", "Transform": {"translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]}}, "actor": "human:local"}),
+    )["id"]
+        .clone();
+    h.ok(
+        "viewport.navigate",
+        json!({"preset": "front", "focus": [0.0, 0.0, 0.0]}),
+    );
+    h.ok("viewport.overlays", json!({"gizmo": {"entity": id}}));
+    let press = |h: &mut Harness, x: f64| {
+        h.ok("viewport.gizmo", json!({"action": "begin", "x": x, "y": 150.0, "width": 400.0, "height": 300.0, "actor": "human:local"}))
+    };
+    let miss = press(&mut h, 30.0);
+    assert_eq!(
+        (miss["axis"].clone(), miss["translation"].clone()),
+        (Value::Null, Value::Null),
+        "{miss}"
+    );
+    assert!(
+        h.call(
+            "viewport.gizmo",
+            json!({"action": "end", "actor": "human:local"})
+        )
+        .is_err(),
+        "no drag after a miss"
+    );
+    let hit = press(&mut h, 258.0);
+    assert_eq!(hit["axis"], "x", "{hit}");
+    h.ok("viewport.gizmo", json!({"action": "move", "x": 300.0, "y": 150.0, "width": 400.0, "height": 300.0, "actor": "human:local"}));
+    h.ok(
+        "viewport.gizmo",
+        json!({"action": "end", "actor": "human:local"}),
+    );
+    assert!(translation_x(&mut h, &id) > 0.5);
+}
+
+#[test]
+fn the_viewport_control_hit_tests_the_gizmo_without_the_engine_thread() {
+    let mut h = Harness::new();
+    let id = h.ok(
+        "entity.spawn",
+        json!({"components": {"Name": "Box", "Transform": {"translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]}}, "actor": "human:local"}),
+    )["id"]
+        .clone();
+    h.ok(
+        "viewport.navigate",
+        json!({"preset": "front", "focus": [0.0, 0.0, 0.0]}),
+    );
+    h.ok("viewport.overlays", json!({"gizmo": {"entity": id}}));
+    let Ok(control) = concordia_render::viewport_control(&mut h.engine) else {
+        return;
+    };
+    let hit = control
+        .gizmo_hit(258.0, 150.0, 400.0, 300.0)
+        .map(|(e, a)| (e.to_string(), a));
+    assert_eq!(
+        hit,
+        Some((
+            id.as_str().unwrap().to_owned(),
+            concordia_render::GizmoAxis::x
+        ))
+    );
+    assert_eq!(control.gizmo_hit(30.0, 150.0, 400.0, 300.0), None);
+    h.ok("viewport.overlays", json!({}));
+    assert_eq!(
+        control.gizmo_hit(258.0, 150.0, 400.0, 300.0),
+        None,
+        "no gizmo, no hit"
+    );
 }

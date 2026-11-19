@@ -2,7 +2,7 @@
 //! and gizmo drags in Rust, matching the web UI's Godot-style navigation. Positions are viewport
 //! pixels with y down (like the page's).
 
-use concordia_editor::input::{Action, Button, GizmoStep, Handle, Input, Nav, Navigator};
+use concordia_editor::input::{Action, Button, GizmoStep, Input, Nav, Navigator};
 
 fn down(button: Button, x: f64, y: f64, alt: bool, shift: bool) -> Input {
     Input::Down {
@@ -120,15 +120,13 @@ fn queued_moves_merge_into_one() {
 #[test]
 fn pressing_a_gizmo_handle_drags_it_natively() {
     let mut n = Navigator::default();
-    n.set_gizmo(
-        "e1",
-        vec![Handle {
-            axis: "x".into(),
-            x: 160.0,
-            y: 100.0,
-            radius: 10.0,
-        }],
-    );
+    let shown = std::rc::Rc::new(std::cell::Cell::new(true));
+    let gizmo = shown.clone();
+    // The engine's hit-test: the x handle's tip at (160, 100), within 10 px, while shown.
+    n.set_hit_test(Box::new(move |x, y| {
+        (gizmo.get() && (x - 160.0).hypot(y - 100.0) <= 10.0)
+            .then(|| ("e1".to_owned(), "x".to_owned()))
+    }));
     let begin = n.handle(down(Button::Left, 163.0, 98.0, false, false), true);
     assert_eq!(
         begin,
@@ -152,7 +150,7 @@ fn pressing_a_gizmo_handle_drags_it_natively() {
         None,
         "a miss is a page click"
     );
-    n.set_gizmo("e1", Vec::new());
+    shown.set(false);
     assert_eq!(
         n.handle(down(Button::Left, 160.0, 100.0, false, false), true),
         None,

@@ -222,9 +222,9 @@ fn translate(e: &objc2_app_kit::NSEvent) -> Option<(crate::input::Input, bool)> 
     })
 }
 
-/// Gives native input the selected entity's gizmo handles (viewport pixels). Main thread.
-pub fn set_gizmo_handles(entity: &str, handles: Vec<crate::input::Handle>) {
-    NAVIGATOR.with(|n| n.borrow_mut().set_gizmo(entity, handles));
+/// Gives native input the engine's gizmo hit-test (viewport points). Main thread.
+pub fn set_hit_test(hit: crate::input::HitTest) {
+    NAVIGATOR.with(|n| n.borrow_mut().set_hit_test(hit));
 }
 
 /// One step of a synthetic Alt+left-drag across the viewport (benchmarks).

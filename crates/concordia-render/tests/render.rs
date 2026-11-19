@@ -861,6 +861,7 @@ fn overlays_draw_the_selection_and_gizmo_on_top_and_are_off_by_default() {
             hovered: None,
         }),
         grid: false,
+        scale: None,
     };
     let with = RenderRequest {
         overlays: Some(overlays),

@@ -65,6 +65,8 @@ pub(crate) struct RenderState {
     pub(crate) viewport: Option<(u32, u32, Option<WorldSel>)>,
     /// What the editor draws over the viewport (`viewport.overlays`).
     pub(crate) overlays: crate::Overlays,
+    /// Where the gizmo is (its entity and world position), shared with `ViewportControl`.
+    pub(crate) anchor: GizmoAnchor,
     /// The gizmo drag in progress (`viewport.gizmo`).
     pub(crate) gizmo: Option<crate::gizmo::GizmoDrag>,
 }
@@ -128,6 +130,7 @@ impl EngineModule for RenderModule {
             camera: SharedCamera::default(),
             viewport: None,
             overlays: crate::Overlays::default(),
+            anchor: GizmoAnchor::default(),
             gizmo: None,
         }))
     }
@@ -598,6 +601,7 @@ pub(crate) fn queue_present(
     view: crate::View,
     t: PresentTarget,
 ) -> Result<(), ApiError> {
+    refresh_anchor(engine);
     let scene = scene_update(engine, t.world.unwrap_or_default(), t.tick)?;
     let slot = scene.slot;
     let request = RenderRequest {
@@ -833,6 +837,7 @@ impl SharedCamera {
 #[derive(Clone)]
 pub struct ViewportControl {
     camera: SharedCamera,
+    anchor: GizmoAnchor,
     redraw: crate::thread::Redrawer,
     frames: FrameLog,
     next_frame: Arc<std::sync::atomic::AtomicU64>,
@@ -845,6 +850,19 @@ impl std::fmt::Debug for ViewportControl {
 }
 
 impl ViewportControl {
+    /// The gizmo handle under (x, y) in a `width`×`height` viewport (points), with its entity.
+    pub fn gizmo_hit(
+        &self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+    ) -> Option<(concordia_core::id::EntityId, crate::GizmoAxis)> {
+        let (entity, at) = (*self.anchor.lock().ok()?)?;
+        let handles = crate::gizmo_handles(&self.camera.view(), at, width, height);
+        crate::gizmo_hit(&handles, x, y).map(|axis| (entity, axis))
+    }
+
     /// Like `viewport.navigate`, from any thread.
     pub fn navigate(&self, p: &ViewportNavigateParams) -> Result<crate::View, ApiError> {
         let view = self.camera.apply(p)?;
@@ -881,6 +899,7 @@ pub fn viewport_control(engine: &mut Engine) -> Result<ViewportControl, ApiError
         .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render module has no state"))?;
     Ok(ViewportControl {
         camera: state.camera.clone(),
+        anchor: state.anchor.clone(),
         redraw,
         frames: state.frames.clone(),
         next_frame: state.next_frame.clone(),
@@ -922,7 +941,32 @@ impl Method for ViewportOverlays {
             ApiError::new(ApiErrorKind::Internal, "the render module has no state")
         })?;
         state.overlays = p.clone();
+        refresh_anchor(engine);
         redraw_viewport(engine, None, None)?;
         Ok(ViewportOverlaysResult { overlays: p })
+    }
+}
+
+/// The gizmo's entity and world position, shared with [`ViewportControl`] for native hit-tests.
+pub(crate) type GizmoAnchor =
+    Arc<std::sync::Mutex<Option<(concordia_core::id::EntityId, concordia_core::math::Vec3)>>>;
+
+/// Updates the shared gizmo anchor from the overlays and the viewport's world.
+pub(crate) fn refresh_anchor(engine: &mut Engine) {
+    let Some(state) = engine.state::<RenderState>() else {
+        return;
+    };
+    let (anchor, gizmo) = (state.anchor.clone(), state.overlays.gizmo.clone());
+    let sel = state.viewport.and_then(|(_, _, w)| w).unwrap_or_default();
+    let at = gizmo.and_then(|g| {
+        let world = engine.world(sel).ok()?;
+        let m = concordia_scene::builtin::world_transform(world, g.entity)?;
+        Some((
+            g.entity,
+            m.transform_point3(concordia_core::math::Vec3::ZERO),
+        ))
+    });
+    if let Ok(mut a) = anchor.lock() {
+        *a = at;
     }
 }

@@ -41,18 +41,3 @@ export function onNativeView(onView: (view: import("./camera").View) => void): (
     stop?.();
   };
 }
-
-/** A gizmo handle the shell can hit-test natively (viewport pixels). */
-export interface GizmoHandle {
-  axis: "x" | "y" | "z";
-  x: number;
-  y: number;
-  radius: number;
-}
-
-/** Tells the shell where the selected entity's gizmo handles are (none to clear). */
-export function reportGizmoHandles(entity: string, handles: GizmoHandle[]): void {
-  void import("@tauri-apps/api/core").then(({ invoke }) =>
-    invoke("gizmo_handles", { entity, handles }).catch(() => undefined),
-  );
-}

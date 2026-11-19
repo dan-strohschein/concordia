@@ -66,6 +66,10 @@ pub struct Overlays {
     /// The ground grid.
     #[serde(default)]
     pub grid: bool,
+    /// Image pixels per UI point (the display's scale), so overlays keep their on-screen size.
+    #[serde(default)]
+    #[reflect(range(min = 0.5, max = 4.0))]
+    pub scale: Option<f32>,
 }
 
 /// One gizmo arrow on screen (pixels, y down).
@@ -127,10 +131,10 @@ impl Projector {
 
 /// The gizmo's arrows for an entity at `at`; an axis pointing at the eye gets none.
 pub fn gizmo_handles(view: &View, at: Vec3, width: f32, height: f32) -> Vec<GizmoHandle> {
-    Projector::of(view, width, height).map_or_else(Vec::new, |p| handles(&p, at))
+    Projector::of(view, width, height).map_or_else(Vec::new, |p| handles(&p, at, 1.0))
 }
 
-fn handles(projector: &Projector, at: Vec3) -> Vec<GizmoHandle> {
+fn handles(projector: &Projector, at: Vec3, scale: f32) -> Vec<GizmoHandle> {
     let Some(origin) = projector.project(at) else {
         return Vec::new();
     };
@@ -143,7 +147,10 @@ fn handles(projector: &Projector, at: Vec3) -> Vec<GizmoHandle> {
             (n >= 1e-3).then(|| GizmoHandle {
                 axis,
                 origin,
-                end: [origin[0] + dx / n * ARROW, origin[1] + dy / n * ARROW],
+                end: [
+                    origin[0] + dx / n * ARROW * scale,
+                    origin[1] + dy / n * ARROW * scale,
+                ],
             })
         })
         .collect()
@@ -178,6 +185,11 @@ pub(crate) fn triangles(
     bounds: &dyn Fn(&concordia_assets::AssetRef) -> Option<(Vec3, Vec3)>,
 ) -> Vec<f32> {
     let mut out = Vec::new();
+    let scale = overlays
+        .scale
+        .filter(|s| s.is_finite())
+        .unwrap_or(1.0)
+        .clamp(0.5, 4.0);
     let selection_color = linear([1.0, 0.6, 0.1]);
     for draw in world
         .draws
@@ -185,16 +197,24 @@ pub(crate) fn triangles(
         .filter(|d| overlays.selection.contains(&d.entity))
     {
         if let Some((lo, hi)) = bounds(&draw.mesh) {
-            box_edges(&mut out, projector, &draw.world, lo, hi, selection_color);
+            box_edges(
+                &mut out,
+                projector,
+                &draw.world,
+                lo,
+                hi,
+                2.0 * scale,
+                selection_color,
+            );
         }
     }
     if let Some(gizmo) = &overlays.gizmo
         && let Some(at) = position_of(world, gizmo.entity)
     {
-        for h in handles(projector, at) {
+        for h in handles(projector, at, scale) {
             let color = h.axis.color(gizmo.hovered == Some(h.axis));
-            line(&mut out, h.origin, h.end, 4.0, color);
-            disc(&mut out, h.end, TIP, color);
+            line(&mut out, h.origin, h.end, 4.0 * scale, color);
+            disc(&mut out, h.end, TIP * scale, color);
         }
     }
     out
@@ -223,7 +243,15 @@ fn position_of(world: &RenderWorld, entity: EntityId) -> Option<Vec3> {
         })
 }
 
-fn box_edges(out: &mut Vec<f32>, p: &Projector, world: &Mat4, lo: Vec3, hi: Vec3, color: [f32; 3]) {
+fn box_edges(
+    out: &mut Vec<f32>,
+    p: &Projector,
+    world: &Mat4,
+    lo: Vec3,
+    hi: Vec3,
+    width: f32,
+    color: [f32; 3],
+) {
     let corner = |i: usize| {
         let pick = |bit: usize, a: f32, b: f32| if i & bit == 0 { a } else { b };
         world.transform_point3(Vec3::new(
@@ -248,7 +276,7 @@ fn box_edges(out: &mut Vec<f32>, p: &Projector, world: &Mat4, lo: Vec3, hi: Vec3
     ];
     for (a, b) in EDGES {
         if let (Some(a), Some(b)) = (p.project(corner(a)), p.project(corner(b))) {
-            line(out, a, b, 2.0, color);
+            line(out, a, b, width, color);
         }
     }
 }

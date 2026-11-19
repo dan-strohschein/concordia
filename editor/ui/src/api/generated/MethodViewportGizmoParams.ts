@@ -19,11 +19,11 @@ export interface MethodViewportGizmoParams {
    */
   actor?: null | string;
   /**
-   * The handle's axis (begin).
+   * The handle's axis (begin; default: the shown gizmo's handle under the pointer).
    */
   axis?: null | GizmoAxis;
   /**
-   * The entity to move (begin).
+   * The entity to move (begin; default: the shown gizmo's entity).
    */
   entity?: null | string;
   /**

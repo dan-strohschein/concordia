@@ -71,6 +71,7 @@ const NATIVE_SEQ_BASE: u64 = 1 << 32;
 #[cfg(target_os = "macos")]
 fn navigation_worker(
     host: &EngineHost,
+    control: &concordia_render::ViewportControl,
     shell: &Shell,
     app: &tauri::AppHandle,
     queue: &std::sync::mpsc::Receiver<(concordia_editor::input::Action, f64)>,
@@ -78,13 +79,6 @@ fn navigation_worker(
     use concordia_editor::input::Action;
     let Ok(human) = host.session_as("human:local") else {
         return eprintln!("concordia-editor: native input has no engine session");
-    };
-    let control = host
-        .runtime()
-        .block_on(host.handle().run(concordia_render::viewport_control));
-    let control = match control {
-        Ok(Ok(control)) => control,
-        Ok(Err(e)) | Err(e) => return eprintln!("concordia-editor: native input: {}", e.message),
     };
     use tauri::Emitter;
     let mut seq = NATIVE_SEQ_BASE;
@@ -127,7 +121,7 @@ fn navigation_worker(
         let input_time_ms = concordia_editor::native::uptime_to_unix_ms(earliest);
         match action {
             Action::Nav(nav) => {
-                if let Some(view) = navigate(&control, shell, nav, seq, input_time_ms)
+                if let Some(view) = navigate(control, shell, nav, seq, input_time_ms)
                     && let Some(view) = views.offer(view, Instant::now())
                 {
                     let _ = app.emit("viewport-view", view);
@@ -203,30 +197,6 @@ fn gizmo(
     if let Err(e) = human.call("viewport.gizmo", params) {
         eprintln!("concordia-editor: gizmo: {e}");
     }
-}
-
-/// The page's gizmo handles, for native hit-testing (viewport pixels).
-#[cfg(target_os = "macos")]
-#[tauri::command]
-fn gizmo_handles(
-    entity: String,
-    handles: Vec<concordia_editor::input::Handle>,
-    app: tauri::AppHandle,
-) -> Result<(), String> {
-    if handles
-        .iter()
-        .any(|h| !(h.x.is_finite() && h.y.is_finite() && h.radius > 0.0))
-    {
-        return Err("gizmo handles need finite positions and a positive radius".into());
-    }
-    app.run_on_main_thread(move || concordia_editor::native::set_gizmo_handles(&entity, handles))
-        .map_err(|e| e.to_string())
-}
-
-#[cfg(not(target_os = "macos"))]
-#[tauri::command]
-fn gizmo_handles() -> Result<(), String> {
-    Err("native viewport input is macOS-only in M1".into())
 }
 
 /// Drags across the viewport with synthetic native mouse events, one step per display refresh
@@ -408,7 +378,6 @@ fn main() {
             bench_native_orbit,
             bench_progress,
             bench_native_drag,
-            gizmo_handles,
             bench_display_hz,
             bench_report
         ])
@@ -423,10 +392,23 @@ fn main() {
             #[cfg(target_os = "macos")]
             {
                 let target = concordia_editor::native::install(&window)?;
+                let control = host_setup
+                    .runtime()
+                    .block_on(host_setup.handle().run(concordia_render::viewport_control))
+                    .map_err(|e| e.message)?
+                    .map_err(|e| e.message)?;
                 let (moves, queue) = std::sync::mpsc::channel();
                 concordia_editor::native::install_input(move |action, at| {
                     let _ = moves.send((action, at));
                 });
+                // Presses grab the gizmo where the engine draws it (ADR-0047).
+                let (hit_control, hit_shell) = (control.clone(), shell_setup.clone());
+                concordia_editor::native::set_hit_test(Box::new(move |x, y| {
+                    let (w, h) = hit_shell.slot_size.lock().map_or((0.0, 0.0), |s| *s);
+                    hit_control
+                        .gizmo_hit(x as f32, y as f32, w as f32, h as f32)
+                        .map(|(entity, axis)| (entity.to_string(), format!("{axis:?}")))
+                }));
                 let (host, shell, app) = (
                     host_setup.clone(),
                     shell_setup.clone(),
@@ -434,7 +416,7 @@ fn main() {
                 );
                 std::thread::Builder::new()
                     .name("concordia-navigation".into())
-                    .spawn(move || navigation_worker(&host, &shell, &app, &queue))?;
+                    .spawn(move || navigation_worker(&host, &control, &shell, &app, &queue))?;
                 if let Ok(mut hz) = shell_setup.display_hz.lock() {
                     *hz = concordia_editor::native::display_hz();
                 }

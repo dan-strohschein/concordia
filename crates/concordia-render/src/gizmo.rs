@@ -46,10 +46,10 @@ pub struct ViewportGizmo;
 pub struct ViewportGizmoParams {
     /// What to do.
     pub action: GizmoAction,
-    /// The entity to move (begin).
+    /// The entity to move (begin; default: the shown gizmo's entity).
     #[serde(default)]
     pub entity: Option<EntityId>,
-    /// The handle's axis (begin).
+    /// The handle's axis (begin; default: the shown gizmo's handle under the pointer).
     #[serde(default)]
     pub axis: Option<GizmoAxis>,
     /// Pointer x in viewport pixels (begin, move).
@@ -78,8 +78,10 @@ pub struct ViewportGizmoParams {
 /// `viewport.gizmo` result.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 pub struct ViewportGizmoResult {
-    /// The entity's translation now (null after end or cancel).
+    /// The entity's translation now (null after end or cancel, or a press that missed).
     pub translation: Option<Vec3>,
+    /// The handle a begin grabbed (null if the press missed every handle).
+    pub axis: Option<GizmoAxis>,
 }
 
 impl Method for ViewportGizmo {
@@ -93,16 +95,19 @@ impl Method for ViewportGizmo {
         ctx: &CallCtx,
         p: ViewportGizmoParams,
     ) -> Result<ViewportGizmoResult, ApiError> {
-        let translation = match p.action {
-            GizmoAction::begin => Some(begin(engine, ctx, &p)?),
-            GizmoAction::r#move => Some(drag(engine, ctx, &p)?),
-            GizmoAction::end => finish(engine, ctx, "txn.commit").map(|_| None)?,
-            GizmoAction::cancel => finish(engine, ctx, "txn.abort").map(|_| None)?,
+        let (translation, axis) = match p.action {
+            GizmoAction::begin => match grabbed(engine, &p)? {
+                Some((entity, axis)) => (Some(begin(engine, ctx, &p, entity, axis)?), Some(axis)),
+                None => (None, None),
+            },
+            GizmoAction::r#move => (Some(drag(engine, ctx, &p)?), None),
+            GizmoAction::end => (finish(engine, ctx, "txn.commit").map(|_| None)?, None),
+            GizmoAction::cancel => (finish(engine, ctx, "txn.abort").map(|_| None)?, None),
         };
         if p.action != GizmoAction::begin {
             redraw_viewport(engine, p.seq, p.input_time_ms)?;
         }
-        Ok(ViewportGizmoResult { translation })
+        Ok(ViewportGizmoResult { translation, axis })
     }
 }
 
@@ -123,13 +128,45 @@ fn pointer(p: &ViewportGizmoParams) -> Result<[f32; 2], ApiError> {
     }
 }
 
-fn begin(engine: &mut Engine, ctx: &CallCtx, p: &ViewportGizmoParams) -> Result<Vec3, ApiError> {
-    let entity = p
-        .entity
-        .ok_or_else(|| invalid("begin needs the entity", "/entity"))?;
-    let axis = p
-        .axis
-        .ok_or_else(|| invalid("begin needs the axis", "/axis"))?;
+/// The entity and handle a begin grabs: as given, or the handle of the shown gizmo under the
+/// pointer (`None` when the press misses every handle).
+fn grabbed(
+    engine: &mut Engine,
+    p: &ViewportGizmoParams,
+) -> Result<Option<(EntityId, GizmoAxis)>, ApiError> {
+    if let (Some(entity), Some(axis)) = (p.entity, p.axis) {
+        return Ok(Some((entity, axis)));
+    }
+    let [x, y] = pointer(p)?;
+    let size = match (p.width, p.height) {
+        (Some(w), Some(h)) if w >= 1.0 && h >= 1.0 => [w, h],
+        _ => {
+            return Err(invalid(
+                "finding the handle needs the viewport width and height (≥ 1)",
+                "/width",
+            ));
+        }
+    };
+    crate::module::refresh_anchor(engine);
+    let state = state(engine)?;
+    let anchor = *state
+        .anchor
+        .lock()
+        .map_err(|_| ApiError::new(ApiErrorKind::Internal, "gizmo anchor poisoned"))?;
+    let Some((entity, at)) = anchor.filter(|(e, _)| p.entity.is_none_or(|want| want == *e)) else {
+        return Ok(None);
+    };
+    let handles = crate::gizmo_handles(&state.camera.view(), at, size[0], size[1]);
+    Ok(crate::gizmo_hit(&handles, x, y).map(|axis| (entity, axis)))
+}
+
+fn begin(
+    engine: &mut Engine,
+    ctx: &CallCtx,
+    p: &ViewportGizmoParams,
+    entity: EntityId,
+    axis: GizmoAxis,
+) -> Result<Vec3, ApiError> {
     let pointer = pointer(p)?;
     if state(engine)?.gizmo.is_some() {
         finish(engine, ctx, "txn.abort")?;

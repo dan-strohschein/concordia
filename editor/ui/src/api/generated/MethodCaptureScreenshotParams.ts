@@ -58,6 +58,10 @@ export interface MethodCaptureScreenshotParams {
    */
   height?: number;
   /**
+   * Draw the editor overlays (`viewport.overlays`: selection, gizmo) on top.
+   */
+  overlays?: null | boolean;
+  /**
    * Render from this viewpoint instead of a camera entity (the editor's view).
    */
   view?: null | View;
