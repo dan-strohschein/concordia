@@ -45,6 +45,8 @@ pub struct RenderRequest {
     pub width: u32,
     /// Height in pixels (1..=8192).
     pub height: u32,
+    /// Editor overlays to draw over the image (none for game views).
+    pub overlays: Option<crate::Overlays>,
 }
 
 /// A rendered image: sRGB-encoded RGBA8, rows top to bottom.
@@ -148,12 +150,15 @@ struct FramePlan<'a> {
     output: Output,
     /// Upload copies (and their barrier), recorded first.
     uploads: CommandList,
+    /// Editor overlay triangles (see `overlay::triangles`), drawn after tonemapping.
+    overlay: Vec<f32>,
 }
 
 /// The size and destination of one frame.
 struct FrameTarget {
     size: (NonZeroU32, NonZeroU32),
     output: Output,
+    overlays: Option<crate::Overlays>,
 }
 
 /// Where a frame ends up.
@@ -472,6 +477,7 @@ impl Renderer {
             FrameTarget {
                 size: (width, height),
                 output,
+                overlays: request.overlays.clone(),
             },
             &mut frame,
         );
@@ -524,6 +530,7 @@ impl Renderer {
         let FrameTarget {
             size: (width, height),
             output,
+            overlays,
         } = target;
         let aspect = width.get() as f32 / height.get() as f32;
         let view_m = view_matrix(&view.world);
@@ -752,6 +759,15 @@ impl Renderer {
             sky,
             output,
             uploads,
+            overlay: overlays.as_ref().map_or_else(Vec::new, |o| {
+                let projector = crate::overlay::Projector::new(
+                    view_proj,
+                    width.get() as f32,
+                    height.get() as f32,
+                );
+                let bounds = |m: &AssetRef| self.assets.meshes.get(m).map(|g| g.aabb);
+                crate::overlay::triangles(o, world, &projector, &bounds)
+            }),
         };
         let (image, overflow) = self.execute(view, plan, frame)?;
         self.stats.punctual_lights = world.punctual.len();
@@ -918,6 +934,7 @@ impl Renderer {
             sky,
             output,
             uploads,
+            overlay,
         } = plan;
         let job = &job;
         let device = self.device.clone();
@@ -971,11 +988,15 @@ impl Renderer {
             .unwrap_or_default();
         let targets = add_forward(&mut graph, view, draws, samples, size, &shadow_maps, sky);
         let tonemap = self.pipelines.tonemap(device, format)?;
+        let overlay = match overlay.is_empty() {
+            true => None,
+            false => Some(self.overlay_draw(device, frame, &overlay, format, size)?),
+        };
         add_tonemap(
             &mut graph,
             targets.hdr,
             out,
-            tonemap,
+            (tonemap, overlay),
             view.camera.tonemap,
             self.device.clone(),
         );
@@ -1054,6 +1075,34 @@ impl Renderer {
             image,
             Overflow::Read(read_overflow(device, overflow_rb, clusters)?),
         ))
+    }
+
+    /// Uploads overlay triangles for this frame and returns how to draw them.
+    fn overlay_draw(
+        &mut self,
+        device: &dyn Device,
+        frame: &mut FrameResources,
+        triangles: &[f32],
+        format: concordia_rhi::Format,
+        size: (NonZeroU32, NonZeroU32),
+    ) -> Result<OverlayDraw, RenderError> {
+        let bytes: Vec<u8> = triangles.iter().flat_map(|f| f.to_le_bytes()).collect();
+        let buffer = frame.keep(self.recycle.buffer(
+            device,
+            &BufferDesc {
+                size: NonZeroU64::new(bytes.len() as u64).unwrap_or(NonZeroU64::MIN),
+                usage: BufferUsage::STORAGE | BufferUsage::BINDLESS,
+                memory: MemoryLocation::Upload,
+                label: "editor overlays".into(),
+            },
+        )?);
+        device.write_buffer(buffer, 0, &bytes)?;
+        Ok(OverlayDraw {
+            pipeline: self.pipelines.overlay(device, format)?,
+            buffer: device.buffer_index(buffer)?.0,
+            vertices: (triangles.len() / crate::overlay::VERTEX_FLOATS) as u32,
+            size: [size.0.get() as f32, size.1.get() as f32],
+        })
     }
 
     /// The presented-frame timeline (created on first use).
@@ -1280,11 +1329,19 @@ fn add_forward(
 }
 
 /// Tonemap pass: HDR (read by bindless index) → sRGB output.
+/// Editor overlay triangles uploaded for one frame.
+struct OverlayDraw {
+    pipeline: Pipeline,
+    buffer: u32,
+    vertices: u32,
+    size: [f32; 2],
+}
+
 fn add_tonemap(
     graph: &mut RenderGraph,
     hdr: GraphTexture,
     out: GraphTexture,
-    pipeline: Pipeline,
+    (pipeline, overlay): (Pipeline, Option<OverlayDraw>),
     tonemap: Tonemap,
     device: Arc<dyn Device>,
 ) {
@@ -1314,6 +1371,18 @@ fn add_tonemap(
                 vertices: 0..3,
                 instances: 0..1,
             });
+            // Editor overlays in the same pass, over the tonemapped image.
+            if let Some(o) = &overlay {
+                ctx.commands.push(Command::SetPipeline(o.pipeline));
+                let mut push = o.buffer.to_le_bytes().to_vec();
+                push.extend(o.size[0].to_le_bytes());
+                push.extend(o.size[1].to_le_bytes());
+                ctx.commands.push(Command::PushConstants(push));
+                ctx.commands.push(Command::Draw {
+                    vertices: 0..o.vertices,
+                    instances: 0..1,
+                });
+            }
             ctx.commands.push(Command::EndRenderPass);
             Ok(())
         })),

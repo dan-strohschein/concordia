@@ -168,6 +168,17 @@ expression: "params_schema(&MethodInfo::of::<CaptureScreenshot>())"
       "minimum": 1.0,
       "type": "integer"
     },
+    "overlays": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        }
+      ],
+      "description": "Draw the editor overlays (`viewport.overlays`: selection, gizmo) on top."
+    },
     "view": {
       "anyOf": [
         {

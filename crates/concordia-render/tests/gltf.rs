@@ -176,6 +176,7 @@ fn render_model(model: &str, variant: &str, file: &str) -> Option<Image> {
                 view: None,
                 width: 384,
                 height: 384,
+                overlays: None,
             },
         )
         .unwrap(),

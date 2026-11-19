@@ -18,6 +18,7 @@ pub mod ibl;
 mod lighting;
 mod module;
 mod orbit;
+mod overlay;
 mod pipelines;
 mod renderer;
 mod scene_cache;
@@ -44,6 +45,7 @@ pub use module::{
     viewport_control,
 };
 pub use orbit::{OrbitCamera, Preset};
+pub use overlay::{GizmoAxis, GizmoHandle, GizmoOverlay, Overlays, gizmo_handles, gizmo_hit};
 pub use pipelines::shader_dir;
 pub use renderer::{FrameCallbacks, Image, MAX_SIZE, RenderRequest, RenderStats, Renderer};
 pub use scene_cache::{RenderScene, SceneCache, SceneDelta, SceneItems};

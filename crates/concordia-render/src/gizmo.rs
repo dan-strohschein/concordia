@@ -9,29 +9,8 @@ use concordia_scene::builtin::Transform;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::GizmoAxis;
 use crate::module::{RenderState, redraw_viewport};
-
-/// A gizmo axis.
-#[allow(non_camel_case_types)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Reflect)]
-pub enum GizmoAxis {
-    /// World +X.
-    x,
-    /// World +Y.
-    y,
-    /// World +Z.
-    z,
-}
-
-impl GizmoAxis {
-    fn vector(self) -> Vec3 {
-        match self {
-            Self::x => Vec3::X,
-            Self::y => Vec3::Y,
-            Self::z => Vec3::Z,
-        }
-    }
-}
 
 /// What a `viewport.gizmo` call does.
 #[allow(non_camel_case_types)]

@@ -53,6 +53,8 @@ pub(crate) struct Pipelines {
     forward: (ShaderSource, ShaderSource),
     tonemap: (ShaderSource, ShaderSource),
     tonemaps: BTreeMap<u8, Pipeline>,
+    overlay: (ShaderSource, ShaderSource),
+    overlays: BTreeMap<u8, Pipeline>,
     shadow: Pipeline,
     sky: (ShaderSource, ShaderSource),
     skies: BTreeMap<u8, Pipeline>,
@@ -70,6 +72,10 @@ impl Pipelines {
         let forward = (
             compile("forward.slang", "vs", Stage::Vertex)?,
             compile("forward.slang", "fs", Stage::Fragment)?,
+        );
+        let overlay = (
+            compile("overlay.slang", "overlay_vs", Stage::Vertex)?,
+            compile("overlay.slang", "overlay_fs", Stage::Fragment)?,
         );
         let tonemap = (
             compile("tonemap.slang", "fullscreen", Stage::Vertex)?,
@@ -100,6 +106,8 @@ impl Pipelines {
             shadow,
             sky,
             skies: BTreeMap::new(),
+            overlay,
+            overlays: BTreeMap::new(),
             variants: BTreeMap::new(),
         })
     }
@@ -125,6 +133,30 @@ impl Pipelines {
             label: format!("tonemap {format:?}"),
         })?;
         self.tonemaps.insert(key, pipeline);
+        Ok(pipeline)
+    }
+
+    /// The editor-overlay pipeline writing `format` (premultiplied alpha over the image).
+    pub(crate) fn overlay(
+        &mut self,
+        device: &dyn Device,
+        format: Format,
+    ) -> Result<Pipeline, RenderError> {
+        let key = format as u8;
+        if let Some(p) = self.overlays.get(&key) {
+            return Ok(*p);
+        }
+        let pipeline = device.create_graphics_pipeline(&GraphicsPipelineDesc {
+            vertex: self.overlay.0.clone(),
+            fragment: Some(self.overlay.1.clone()),
+            color_formats: vec![format],
+            depth: None,
+            samples: SampleCount::X1,
+            cull: CullMode::None,
+            blend: BlendMode::PremultipliedAlpha,
+            label: format!("overlay {format:?}"),
+        })?;
+        self.overlays.insert(key, pipeline);
         Ok(pipeline)
     }
 

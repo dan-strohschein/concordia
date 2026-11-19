@@ -63,6 +63,8 @@ pub(crate) struct RenderState {
     pub(crate) camera: SharedCamera,
     /// The native viewport's last size and world, so navigation can re-present it.
     pub(crate) viewport: Option<(u32, u32, Option<WorldSel>)>,
+    /// What the editor draws over the viewport (`viewport.overlays`).
+    pub(crate) overlays: crate::Overlays,
     /// The gizmo drag in progress (`viewport.gizmo`).
     pub(crate) gizmo: Option<crate::gizmo::GizmoDrag>,
 }
@@ -86,6 +88,7 @@ impl EngineModule for RenderModule {
             MethodInfo::of::<ViewportPresent>(),
             MethodInfo::of::<ViewportStats>(),
             MethodInfo::of::<ViewportNavigate>(),
+            MethodInfo::of::<ViewportOverlays>(),
             MethodInfo::of::<crate::gizmo::ViewportGizmo>(),
         ]
     }
@@ -124,6 +127,7 @@ impl EngineModule for RenderModule {
             next_frame: Arc::default(),
             camera: SharedCamera::default(),
             viewport: None,
+            overlays: crate::Overlays::default(),
             gizmo: None,
         }))
     }
@@ -157,6 +161,9 @@ pub struct CaptureScreenshotParams {
     /// Who is asking (attribution in the log only).
     #[serde(default)]
     pub actor: Option<Actor>,
+    /// Draw the editor overlays (`viewport.overlays`: selection, gizmo) on top.
+    #[serde(default)]
+    pub overlays: Option<bool>,
 }
 
 fn default_width() -> u32 {
@@ -209,6 +216,9 @@ impl Method for CaptureScreenshot {
             view: p.view.clone(),
             width: p.width,
             height: p.height,
+            overlays: (p.overlays == Some(true))
+                .then(|| engine.state::<RenderState>().map(|s| s.overlays.clone()))
+                .flatten(),
         };
         let scene = scene_update(engine, p.world.unwrap_or_default(), None)?;
         let slot = scene.slot;
@@ -595,6 +605,7 @@ pub(crate) fn queue_present(
         view: Some(view),
         width: t.width,
         height: t.height,
+        overlays: engine.state::<RenderState>().map(|s| s.overlays.clone()),
     };
     let (log, id) = queue_record(engine, &t);
     if let Some(state) = engine.state_mut::<RenderState>() {
@@ -882,4 +893,36 @@ fn play_tick(engine: &Engine) -> Option<std::time::Duration> {
     Some(std::time::Duration::from_secs_f64(
         1.0 / f64::from(clock.rate.hz()),
     ))
+}
+
+/// Set what the engine draws over the editor viewport: selection outlines, the Move gizmo, the
+/// grid. The native viewport redraws; captures include them with `overlays: true`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ViewportOverlays;
+
+/// `viewport.overlays` result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ViewportOverlaysResult {
+    /// The overlays now drawn.
+    pub overlays: crate::Overlays,
+}
+
+impl Method for ViewportOverlays {
+    const NAME: &'static str = "viewport.overlays";
+    const MUTATES: bool = false;
+    type Params = crate::Overlays;
+    type Result = ViewportOverlaysResult;
+
+    fn call(
+        engine: &mut Engine,
+        _: &CallCtx,
+        p: crate::Overlays,
+    ) -> Result<ViewportOverlaysResult, ApiError> {
+        let state = engine.state_mut::<RenderState>().ok_or_else(|| {
+            ApiError::new(ApiErrorKind::Internal, "the render module has no state")
+        })?;
+        state.overlays = p.clone();
+        redraw_viewport(engine, None, None)?;
+        Ok(ViewportOverlaysResult { overlays: p })
+    }
 }

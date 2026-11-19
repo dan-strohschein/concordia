@@ -57,3 +57,55 @@ fn gizmo_drags_convert_pointer_motion_along_the_axis_into_world_units() {
         "an axis pointing at the eye does not move"
     );
 }
+
+#[test]
+fn gizmo_handles_point_along_each_axis_at_a_constant_screen_length() {
+    use concordia_render::{GizmoAxis, gizmo_handles};
+    let view = front();
+    let handles = gizmo_handles(&view, Vec3::ZERO, 400.0, 300.0);
+    let axes: Vec<_> = handles.iter().map(|h| h.axis).collect();
+    assert_eq!(
+        axes,
+        [GizmoAxis::x, GizmoAxis::y],
+        "z points at the eye: no handle"
+    );
+    let x = &handles[0];
+    assert!((x.origin[0] - 200.0).abs() < 1e-3);
+    assert!((x.end[0] - 260.0).abs() < 1e-3, "60 px long: {:?}", x.end);
+    let far = OrbitCamera {
+        target: Vec3::ZERO,
+        yaw: 0.0,
+        pitch: 0.0,
+        distance: 80.0,
+        ortho: false,
+    }
+    .view();
+    let len =
+        |h: &concordia_render::GizmoHandle| (h.end[0] - h.origin[0]).hypot(h.end[1] - h.origin[1]);
+    assert!(
+        (len(&gizmo_handles(&far, Vec3::ZERO, 400.0, 300.0)[0]) - 60.0).abs() < 1e-3,
+        "zoom does not change it"
+    );
+}
+
+#[test]
+fn gizmo_hit_test_finds_the_handle_under_the_pointer() {
+    use concordia_render::{GizmoAxis, gizmo_handles, gizmo_hit};
+    let handles = gizmo_handles(&front(), Vec3::ZERO, 400.0, 300.0);
+    assert_eq!(
+        gizmo_hit(&handles, 258.0, 151.0),
+        Some(GizmoAxis::x),
+        "near the x arrow's tip"
+    );
+    assert_eq!(
+        gizmo_hit(&handles, 200.0, 95.0),
+        Some(GizmoAxis::y),
+        "the y arrow points up"
+    );
+    assert_eq!(
+        gizmo_hit(&handles, 230.0, 150.0),
+        Some(GizmoAxis::x),
+        "along the shaft"
+    );
+    assert_eq!(gizmo_hit(&handles, 330.0, 250.0), None);
+}

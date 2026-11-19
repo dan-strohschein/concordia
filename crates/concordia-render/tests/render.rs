@@ -382,6 +382,7 @@ fn invalid_sizes_and_cameras_are_errors() {
                     view: None,
                     width,
                     height,
+                    overlays: None,
                 },
             )
             .unwrap_err();
@@ -396,6 +397,7 @@ fn invalid_sizes_and_cameras_are_errors() {
                 view: None,
                 width: 8,
                 height: 8,
+                overlays: None,
             },
         )
         .unwrap_err();
@@ -421,6 +423,7 @@ fn missing_assets_name_the_reference() {
                 view: None,
                 width: 8,
                 height: 8,
+                overlays: None,
             },
         )
         .unwrap_err();
@@ -578,6 +581,7 @@ fn renderer_presents_frames_to_a_window_surface() {
         view: None,
         width: 96,
         height: 64,
+        overlays: None,
     };
     let presented = (0..10)
         .filter(|_| r.present(&rw, &mut s.assets, &request, surface).unwrap())
@@ -617,6 +621,7 @@ fn presented_frames_overlap_the_gpu_and_retire_their_memory() {
         view: None,
         width: 512,
         height: 512,
+        overlays: None,
     };
     assert!(r.present(&rw, &mut s.assets, &request, surface).unwrap());
     assert_eq!(
@@ -679,6 +684,7 @@ fn frames_in_flight_can_be_lowered_for_latency() {
         view: None,
         width: 128,
         height: 128,
+        overlays: None,
     };
     for _ in 0..10 {
         r.present(&rw, &mut s.assets, &request, surface).unwrap();
@@ -720,6 +726,7 @@ fn off_screen_meshes_are_culled_and_repeated_meshes_draw_as_one_instanced_call()
         view: None,
         width: 96,
         height: 64,
+        overlays: None,
     };
     let image = r.render(&rw, &mut s.assets, &request).unwrap();
     let stats = r.stats();
@@ -761,6 +768,7 @@ fn warm_frames_reuse_their_gpu_memory_instead_of_allocating() {
         view: None,
         width: 256,
         height: 256,
+        overlays: None,
     };
     for _ in 0..6 {
         r.present(&rw, &mut s.assets, &request, surface).unwrap();
@@ -801,6 +809,7 @@ fn a_drawable_acquired_ahead_is_used_by_the_next_present() {
         view: None,
         width: w,
         height: h,
+        overlays: None,
     };
     assert!(r.acquire_ahead(surface, 64, 64).unwrap());
     assert!(
@@ -822,4 +831,59 @@ fn a_drawable_acquired_ahead_is_used_by_the_next_present() {
         r.present(&rw, &mut s.assets, &request(48, 48), surface)
             .unwrap();
     }
+}
+
+#[test]
+fn overlays_draw_the_selection_and_gizmo_on_top_and_are_off_by_default() {
+    let Some(mut r) = renderer() else { return };
+    let mut s = Scene::new();
+    let grey = s.material("grey", unlit([0.3, 0.3, 0.3, 1.0]));
+    s.mesh("cube", grey, Vec3::ZERO, Quat::IDENTITY, Vec3::ONE);
+    s.camera(
+        Vec3::new(0.0, 0.0, 6.0),
+        Vec3::ZERO,
+        clamp_camera(Projection::default(), Msaa::X4),
+    );
+    let rw = RenderWorld::extract(&s.world);
+    let cube = rw.draws[0].entity;
+    let plain = RenderRequest {
+        camera: None,
+        view: None,
+        width: 256,
+        height: 192,
+        overlays: None,
+    };
+    let before = r.render(&rw, &mut s.assets, &plain).unwrap();
+    let overlays = concordia_render::Overlays {
+        selection: vec![cube],
+        gizmo: Some(concordia_render::GizmoOverlay {
+            entity: cube,
+            hovered: None,
+        }),
+        grid: false,
+    };
+    let with = RenderRequest {
+        overlays: Some(overlays),
+        ..plain.clone()
+    };
+    let image = r.render(&rw, &mut s.assets, &with).unwrap();
+    golden("overlay_selection_gizmo", &image, 0.01);
+    let count = |img: &concordia_render::Image, f: &dyn Fn(&[u8]) -> bool| {
+        img.rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|p| f(&p[..]))
+            .count()
+    };
+    let red = |p: &[u8]| p[0] > 180 && p[1] < 90 && p[2] < 90;
+    let orange = |p: &[u8]| p[0] > 200 && p[1] > 100 && p[1] < 190 && p[2] < 80;
+    assert_eq!(count(&before, &red), 0);
+    assert!(count(&image, &red) > 40, "the x arrow is drawn");
+    assert!(count(&image, &orange) > 40, "the selection is outlined");
+    assert_eq!(
+        r.render(&rw, &mut s.assets, &plain).unwrap().rgba,
+        before.rgba,
+        "no overlays, no change"
+    );
 }

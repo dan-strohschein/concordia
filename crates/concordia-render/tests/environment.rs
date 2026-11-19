@@ -163,6 +163,7 @@ fn environment_with_a_missing_map_names_it() {
                 view: None,
                 width: 8,
                 height: 8,
+                overlays: None,
             },
         )
         .unwrap_err();
@@ -195,6 +196,7 @@ fn the_viewport_does_not_wait_for_an_environment_to_prefilter() {
         view: None,
         width: 64,
         height: 64,
+        overlays: None,
     };
     r.present(&rw, &mut s.assets, &request, surface).unwrap();
     assert!(

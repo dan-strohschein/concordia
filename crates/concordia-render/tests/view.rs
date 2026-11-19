@@ -544,3 +544,50 @@ fn an_idle_viewport_renders_nothing() {
     let stats = h.ok("viewport.stats", json!({}));
     assert_eq!(stats["frames"], json!([]), "no work while nothing changes");
 }
+
+#[test]
+fn overlays_appear_in_captures_only_when_asked() {
+    let Some(mut h) = Harness::gpu() else { return };
+    let (left, _) = h.two_cubes();
+    h.ok(
+        "viewport.overlays",
+        json!({"selection": [left], "gizmo": {"entity": left}}),
+    );
+    let capture = |h: &mut Harness, overlays: bool| {
+        let r = h.ok(
+            "capture.screenshot",
+            json!({"view": front_view(), "width": 160, "height": 120, "overlays": overlays}),
+        );
+        decode(&r)
+    };
+    let orange = |img: &[u8]| {
+        img.chunks(4)
+            .filter(|p| p[0] > 200 && p[1] > 100 && p[1] < 190 && p[2] < 80)
+            .count()
+    };
+    assert!(
+        orange(&capture(&mut h, true)) > 30,
+        "selection outline drawn"
+    );
+    assert_eq!(
+        orange(&capture(&mut h, false)),
+        0,
+        "plain captures are unchanged"
+    );
+    h.ok("viewport.overlays", json!({}));
+    assert_eq!(orange(&capture(&mut h, true)), 0, "cleared");
+}
+
+/// RGBA pixels of a capture's PNG.
+fn decode(result: &Value) -> Vec<u8> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(result["image"]["data_base64"].as_str().unwrap())
+        .unwrap();
+    let mut reader = png::Decoder::new(std::io::Cursor::new(bytes))
+        .read_info()
+        .unwrap();
+    let mut rgba = vec![0; reader.output_buffer_size().unwrap()];
+    reader.next_frame(&mut rgba).unwrap();
+    rgba
+}
