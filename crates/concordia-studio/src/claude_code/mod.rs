@@ -18,6 +18,23 @@ use crate::error::StudioError;
 use crate::roster::Roster;
 use crate::scope::ToolCatalog;
 
+/// Skill frontmatter fields Claude Code documents (checked against Claude Code 2.1.328).
+pub const CLAUDE_SKILL_FIELDS: [&str; 13] = [
+    "name",
+    "description",
+    "when_to_use",
+    "argument-hint",
+    "disable-model-invocation",
+    "user-invocable",
+    "allowed-tools",
+    "model",
+    "effort",
+    "context",
+    "agent",
+    "hooks",
+    "paths",
+];
+
 /// Subagent frontmatter fields documented by Claude Code 2.1.328; generated files use only these.
 pub const CLAUDE_AGENT_FIELDS: [&str; 19] = [
     "name",
@@ -137,7 +154,7 @@ fn owned_files(root: &Path, studio: &Path, roster: &Roster) -> Result<Vec<Desire
             owned: true,
         })
         .collect();
-    for (name, text) in skills(&root.join(studio).join("skills"))? {
+    for (name, text) in crate::skill::load_all(&root.join(studio).join("skills"))? {
         let source = format!("{}/skills/{name}/SKILL.md", studio.display());
         files.push(Desired {
             path: format!(".claude/skills/{name}/SKILL.md"),
@@ -174,7 +191,7 @@ fn merged_files(root: &Path, roster: &Roster) -> Result<Vec<Desired>, StudioErro
 fn stale_owned(root: &Path, desired: &[Desired]) -> Result<Vec<Desired>, StudioError> {
     let wanted: Vec<&str> = desired.iter().map(|d| d.path.as_str()).collect();
     let mut candidates = markdown_in(&root.join(".claude/agents"), ".claude/agents")?;
-    for (name, _) in skills(&root.join(".claude/skills"))? {
+    for (name, _) in crate::skill::read_all(&root.join(".claude/skills"))? {
         candidates.push(format!(".claude/skills/{name}/SKILL.md"));
     }
     Ok(candidates
@@ -247,24 +264,6 @@ fn unified_diff(path: &str, old: &str, new: &str) -> String {
         .unified_diff()
         .header(&format!("a/{path}"), &format!("b/{path}"))
         .to_string()
-}
-
-/// `<dir>/<name>/SKILL.md` texts, sorted by name.
-fn skills(dir: &Path) -> Result<Vec<(String, String)>, StudioError> {
-    let mut out = Vec::new();
-    for sub in sorted_entries(dir)? {
-        let file = sub.join("SKILL.md");
-        if let (Some(name), Ok(text)) = (sub.file_name(), std::fs::read_to_string(&file)) {
-            if !text.starts_with("---\n") {
-                return Err(StudioError::Frontmatter {
-                    file: file.display().to_string(),
-                    message: "a skill must start with YAML frontmatter (`---`)".into(),
-                });
-            }
-            out.push((name.to_string_lossy().into_owned(), text));
-        }
-    }
-    Ok(out)
 }
 
 fn markdown_in(dir: &Path, relative: &str) -> Result<Vec<String>, StudioError> {

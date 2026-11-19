@@ -18,11 +18,14 @@ mod policy;
 mod role;
 mod roster;
 mod scope;
+mod skill;
 mod slots;
 mod task;
 mod team;
 
-pub use claude_code::{CLAUDE_AGENT_FIELDS, FileChange, SyncAction, SyncOptions, SyncReport, sync};
+pub use claude_code::{
+    CLAUDE_AGENT_FIELDS, CLAUDE_SKILL_FIELDS, FileChange, SyncAction, SyncOptions, SyncReport, sync,
+};
 pub use defaults::{DefaultRoster, default_roster, init};
 pub use error::StudioError;
 pub use gate::{Gate, GateOn, GateParty};
@@ -38,6 +41,7 @@ pub use policy::{
 pub use role::{Effort, HarnessTool, Review, RoleFile, RoleId, RolePaths, RoleSpec};
 pub use roster::{DisabledRole, ResolvedRole, Roster};
 pub use scope::{ToolCatalog, check_project_pattern};
+pub use skill::SkillFile;
 pub use slots::Slots;
 pub use task::{
     Acceptance, BoardError, LOCAL_HUMAN, NewTask, Priority, Task, TaskBoard, TaskEdit, TaskId,

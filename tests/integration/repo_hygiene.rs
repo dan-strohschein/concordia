@@ -256,6 +256,16 @@ fn root_agents_md_has_required_sections() {
     );
 }
 
+/// M3 refinement G13: the default Studio roster has one home, `crates/concordia-studio/roster/`.
+#[test]
+fn the_default_roster_has_no_second_home_at_the_repo_root() {
+    let stray: Vec<String> = tracked_files()
+        .into_iter()
+        .filter(|f| f.starts_with("studio/"))
+        .collect();
+    assert!(stray.is_empty(), "{stray:?}");
+}
+
 #[test]
 fn directory_skeleton_exists() {
     let tracked = tracked_files();
@@ -263,7 +273,6 @@ fn directory_skeleton_exists() {
         "crates/",
         "wit/",
         "editor/",
-        "studio/",
         "tests/gates/",
         "tests/golden/",
         "tests/replays/",

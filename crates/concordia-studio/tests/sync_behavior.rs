@@ -199,7 +199,7 @@ fn sync_check_reports_stale_files_with_a_diff_and_writes_nothing() {
         &role,
         std::fs::read_to_string(&role)
             .unwrap()
-            .replace("Write the game's text", "Write all text"),
+            .replace("Give the game its words", "Write all text"),
     )
     .unwrap();
     let stale = run(
@@ -217,7 +217,7 @@ fn sync_check_reports_stale_files_with_a_diff_and_writes_nothing() {
     assert_eq!(change.path, ".claude/agents/writer.md");
     let diff = change.diff.as_deref().unwrap();
     assert!(
-        diff.contains("-Write the game's text") && diff.contains("+Write all text"),
+        diff.contains("-Give the game its words") && diff.contains("+Write all text"),
         "{diff}"
     );
 }

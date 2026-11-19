@@ -12,7 +12,7 @@ The top-level design is in [`../docs/design.md`](../docs/design.md). This folder
 | M0 Headless core | [M0-headless-core.md](M0-headless-core.md) | M-1 | Ready to execute | Gate passed |
 | M1 See it | [M1-see-it.md](M1-see-it.md) | M0 | Ready to execute | Gate passed (2026-11-19) |
 | M2 Engine breadth (was Port begins; ADR-0048) | [M2-port-begins.md](M2-port-begins.md) | M1 | Needs refinement after M1 | Planned |
-| M3 Closed loop & Studio v1 | [M3-closed-loop-and-studio.md](M3-closed-loop-and-studio.md) | M2 (Studio phases may start after M0) | Needs refinement after M2 | In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b done); Studio phases 3.3–3.6, 3.8 run right after M1 (ADR-0049) |
+| M3 Closed loop & Studio v1 | [M3-closed-loop-and-studio.md](M3-closed-loop-and-studio.md) | M2 (Studio phases may start after M0) | Needs refinement after M2 | In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6 done); Studio phases 3.3–3.6, 3.8 run right after M1 (ADR-0049) |
 | M4 Unreal-class visuals | [M4-unreal-class-visuals.md](M4-unreal-class-visuals.md) | M1 (render), M2 (graphs) | Needs refinement after M3 | Planned |
 | M5 Bring your game | [M5-bring-your-game.md](M5-bring-your-game.md) | M2 (importer framework) | Needs refinement after M4 | Planned |
 | M6 Evolve (plugins) | [M6-evolve-plugins.md](M6-evolve-plugins.md) | M2 (parallel with M3) | Needs refinement after M2 | Planned |
@@ -67,7 +67,6 @@ plans/                # this folder
 crates/<crate-name>/  # every Rust crate; each has src/, tests/, AGENTS.md, README.md
 wit/                  # WIT packages for the WASM gameplay API (package: concordia:game@0.1.0)
 editor/               # Tauri v2 app: editor/ui (TypeScript + React + Vite, pnpm), editor/src-tauri
-studio/               # default Agent Studio config: team.toml, agents/<role>.md, skills/
 tests/                # cross-crate integration, gates/, golden/, replays/, fixtures/
 tools/                # dev scripts, exporter plugins (tools/unreal-exporter, tools/unity-exporter)
 third_party/          # vendored C/C++ sources (Jolt, Recast) with LICENSE files
@@ -100,7 +99,7 @@ examples/             # small sample projects used by tests and docs
 | `concordia-import-godot` | Godot 4 `.tscn`/`.tres`/`project.godot` importer, GDScript→Rust translation support | M2 |
 | `concordia-ui` | in-game UI (HUD, menus) | M2 |
 | `concordia-replay` | input/state recording, deterministic replay (minimal input log in M2), playtest assertions (M3) | M2 |
-| `concordia-studio` | Agent Studio: role configs, team, task board, `studio sync` → Claude Code files | M3 |
+| `concordia-studio` | Agent Studio: role configs, team, task board, `studio sync` → Claude Code files; the default roster and engine skills live in its `roster/` (a project gets its own editable `studio/`) | M3 |
 | `concordia-gen` | generated-content provider interface (procedural first, opt-in model providers) | M3 |
 | `concordia-graph` | visual graphs stored as text, compiler to fast code | M4 |
 | `concordia-ai` | runtime AI: behavior trees, utility AI, optional LLM planner plugins | M4 |

@@ -102,6 +102,8 @@ impl Roster {
         let team_path = studio.join("team.toml");
         let team = Team::parse(&read(&team_path)?)?;
         let roles = load_roles(&studio.join("agents"), catalog)?;
+        let skills = crate::skill::load_all(&studio.join("skills"))?;
+        check_skills(&roles, skills.iter().map(|(name, _)| name.as_str()))?;
         Self::resolve(&team, roles, catalog)
     }
 
@@ -196,6 +198,29 @@ fn resolve_role(
 }
 
 /// Parses and validates every `*.md` in `dir`, sorted by file name.
+/// Every skill a role preloads must exist in `studio/skills/`.
+fn check_skills<'a>(
+    roles: &[RoleFile],
+    skills: impl Iterator<Item = &'a str> + Clone,
+) -> Result<(), StudioError> {
+    for role in roles {
+        for skill in &role.spec.skills {
+            if skills.clone().any(|s| s == skill) {
+                continue;
+            }
+            let hint = did_you_mean(skill, skills.clone())
+                .first()
+                .map(|s| format!("; did you mean {s}?"))
+                .unwrap_or_default();
+            return Err(StudioError::invalid(format!(
+                "studio/agents/{}.md preloads skill {skill}, but studio/skills/{skill}/SKILL.md does not exist{hint}",
+                role.spec.role
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn load_roles(dir: &Path, catalog: &ToolCatalog) -> Result<Vec<RoleFile>, StudioError> {
     let entries = std::fs::read_dir(dir).map_err(|e| StudioError::io(dir, &e))?;
     let mut paths: Vec<_> = entries
