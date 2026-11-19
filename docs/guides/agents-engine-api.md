@@ -81,10 +81,11 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `task.comment` | yes | `{id, text}` → `{task}` (a note: what you did, evidence, questions) |
 | `task.approve` | yes | `{id, comment?}` → `{task}` (in_review → done; only reviewers the team's gates allow, else `NotPermitted`) |
 | `task.reject` | yes | `{id, comment}` → `{task}` (in_review → rejected; blocked for a human after `max_attempts_per_task` rejections) |
-| `studio.roster` | | `{}` → `{team, director, main_session_actor, roles: [{role, mcp_tools, write, ...}], disabled: [{role, reason}]}` |
-| `studio.status` | | `{}` → `{tasks: {<status>: count}, pending_approvals}` |
+| `studio.roster` | | `{}` → `{team, director, main_session_actor, roles: [{role, mcp_tools, write, ..., color, agent_color}], disabled: [{role, reason}]}` (`color` is the editor's `#rrggbb` for the role; `agent_color` is the Claude Code color its agent file gets) |
+| `studio.status` | | `{}` → `{tasks: {<status>: count}, pending_approvals, instances: [{role, slot, agent}], last_sync: {ts_ms, actor, changed} \| null, budgets}` (`budgets` are the team's limits; usage is counted by `concordia mcp`) |
 | `studio.activity` | | `{since?, actor?, role?, task?, kind?, limit?}` → `{entries, next}` (task changes, reviews and agents' file edits, oldest first) |
 | `studio.sync` | yes | `{check?, force?}` → `{changes: [{path, action, diff?}], refused, stale}` (regenerates `.claude/agents`, `.claude/skills`, the settings hooks, `.mcp.json` and the `CLAUDE.md` block from `studio/`; usually run by a human) |
+| `studio.doctor` | | `{}` → `{checks: [{id, status: ok\|note\|fail, text}], ok}` (Claude Code installed and logged in, an API key noted but never needed, `concordia` on PATH, Claude Code files in sync); **editor only, not an MCP tool** |
 | `studio.ask` | yes | `{to, text, task?, refs?}` → `{question}` (ask an enabled role or `human`; `text` ≤ 280 chars; returns at once with `Q-0001`: don't wait, carry on or report you're blocked; see `concordia-team-comms`) |
 | `studio.answer` | yes | `{id, text}` → `{question}` (≤ 500 chars; the addressed role, the director or a human; an escalated question takes only a human answer; the first answer closes it) |
 | `studio.escalate` | yes | `{id, reason}` → `{question}` (director only, when no role can answer; re-addresses it to `human` and blocks its unfinished task until a human answers) |

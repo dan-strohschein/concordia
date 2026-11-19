@@ -15,7 +15,7 @@ export class FakeEngine implements Transport {
     this.calls.push({ method: msg.method, params: msg.params });
     const handler = this.handlers[msg.method];
     const reply = handler
-      ? { jsonrpc: "2.0", id: msg.id, result: handler(msg.params) }
+      ? answer(msg.id, () => handler(msg.params))
       : { jsonrpc: "2.0", id: msg.id, error: { code: -32601, message: `no ${msg.method}` } };
     queueMicrotask(() => this.receive?.(JSON.stringify(reply)));
   }
@@ -29,6 +29,25 @@ export class FakeEngine implements Transport {
   }
   called(method: string): Record<string, unknown>[] {
     return this.calls.filter((c) => c.method === method).map((c) => c.params);
+  }
+}
+
+/** A JSON-RPC error a handler throws to make the call fail. */
+export class RpcFailure {
+  constructor(
+    readonly code: number,
+    readonly message: string,
+    readonly data: unknown = undefined,
+  ) {}
+}
+
+/** The reply to call `id`: the handler's result, or the RpcFailure it threw. */
+function answer(id: number, run: () => unknown): Record<string, unknown> {
+  try {
+    return { jsonrpc: "2.0", id, result: run() };
+  } catch (e) {
+    if (!(e instanceof RpcFailure)) throw e;
+    return { jsonrpc: "2.0", id, error: { code: e.code, message: e.message, data: e.data } };
   }
 }
 

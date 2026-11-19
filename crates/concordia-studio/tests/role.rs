@@ -2,7 +2,7 @@
 
 mod common;
 
-use concordia_studio::{RoleFile, RoleId, RoleSpec, StudioError, default_roster};
+use concordia_studio::{RoleColor, RoleFile, RoleId, RoleSpec, StudioError, default_roster};
 use proptest::prelude::*;
 
 #[test]
@@ -70,6 +70,49 @@ fn write_paths_outside_project_root_are_rejected() {
 }
 
 #[test]
+fn color_must_be_a_claude_code_name_or_a_hex_rgb() {
+    let with = |color: &str| {
+        common::role("writer", &["task_list"], &["content/**"])
+            .replace("mcp_tools:", &format!("color: \"{color}\"\nmcp_tools:"))
+    };
+    for good in ["red", "cyan", "#a1B2c3"] {
+        let role = RoleFile::parse(&with(good)).unwrap_or_else(|e| panic!("{good}: {e}"));
+        assert_eq!(
+            role.spec.color.map(|c| c.to_string()),
+            Some(good.to_owned())
+        );
+    }
+    for bad in ["teal", "Red", "#12345", "#gggggg", ""] {
+        let err = RoleFile::parse(&with(bad)).unwrap_err().to_string();
+        assert!(
+            err.contains("red, blue, green, yellow, purple, orange, pink or cyan")
+                && err.contains("#rrggbb"),
+            "{bad:?}: {err}"
+        );
+    }
+}
+
+#[test]
+fn a_hex_color_maps_to_the_nearest_claude_code_color() {
+    let cases = [
+        ("#ff7f50", "orange"),
+        ("#1e90ff", "blue"),
+        ("#00ced1", "cyan"),
+        ("#ff69b4", "pink"),
+        ("#228b22", "green"),
+        ("#8a2be2", "purple"),
+    ];
+    for (hex, name) in cases {
+        let color: RoleColor = hex.parse().unwrap();
+        assert_eq!(color.agent_color(), name, "{hex}");
+        assert_eq!(color.display_hex(), hex, "{hex}");
+    }
+    let named: RoleColor = "green".parse().unwrap();
+    assert_eq!(named.agent_color(), "green");
+    assert!(named.display_hex().starts_with('#') && named.display_hex().len() == 7);
+}
+
+#[test]
 fn missing_frontmatter_fence_is_a_parse_error() {
     let err = RoleFile::parse("# just markdown\n").unwrap_err();
     assert!(matches!(err, StudioError::Frontmatter { .. }), "{err}");
@@ -84,15 +127,23 @@ fn arb_spec() -> impl Strategy<Value = RoleSpec> {
         prop::collection::vec("[a-z]{1,8}(_[a-z]{1,8})?", 0..4),
         prop::collection::vec("[a-z]{1,6}/\\*\\*", 0..3),
         prop::option::of(1u32..200),
+        prop::option::of(prop_oneof![
+            Just("red".to_owned()),
+            Just("cyan".to_owned()),
+            "#[0-9a-f]{6}"
+        ]),
     )
-        .prop_map(|(id, display, description, count, tools, write, turns)| {
-            let mut spec = RoleSpec::new(RoleId::new(&id).unwrap(), display, description);
-            spec.count = std::num::NonZeroU32::new(count).unwrap();
-            spec.mcp_tools = tools;
-            spec.paths.write = write;
-            spec.max_turns = turns.and_then(std::num::NonZeroU32::new);
-            spec
-        })
+        .prop_map(
+            |(id, display, description, count, tools, write, turns, color)| {
+                let mut spec = RoleSpec::new(RoleId::new(&id).unwrap(), display, description);
+                spec.count = std::num::NonZeroU32::new(count).unwrap();
+                spec.mcp_tools = tools;
+                spec.paths.write = write;
+                spec.max_turns = turns.and_then(std::num::NonZeroU32::new);
+                spec.color = color.map(|c| c.parse().unwrap());
+                spec
+            },
+        )
 }
 
 proptest! {

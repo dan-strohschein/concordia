@@ -385,3 +385,14 @@ fn walk(dir: &Path) -> Vec<std::path::PathBuf> {
     out.sort();
     out
 }
+
+#[test]
+fn a_hex_role_color_is_written_as_the_nearest_claude_code_color() {
+    let dir = project();
+    let file = dir.path().join("studio/agents/writer.md");
+    let text = std::fs::read_to_string(&file).unwrap();
+    std::fs::write(&file, text.replace("color: yellow", "color: '#ff7f50'")).unwrap();
+    write(dir.path());
+    let agent = read(dir.path(), ".claude/agents/writer.md");
+    assert!(agent.contains("\ncolor: orange\n"), "{agent}");
+}

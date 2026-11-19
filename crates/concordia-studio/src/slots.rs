@@ -99,6 +99,22 @@ impl Slots {
         }))
     }
 
+    /// Every slot held by a live process, as (role, slot, agent), by role then slot.
+    pub fn held(&self) -> Result<Vec<(String, NonZeroU32, String)>, StudioError> {
+        let table = self.read_table()?;
+        Ok(table
+            .into_iter()
+            .flat_map(|(role, slots)| {
+                slots.into_iter().filter_map(move |(n, h)| {
+                    let live = concordia_core::process::alive(h.pid);
+                    NonZeroU32::new(n)
+                        .filter(|_| live)
+                        .map(|n| (role.clone(), n, h.agent))
+                })
+            })
+            .collect())
+    }
+
     fn update<R>(
         &self,
         change: impl FnOnce(&mut Table) -> Result<R, StudioError>,

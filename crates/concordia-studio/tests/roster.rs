@@ -293,3 +293,24 @@ fn director_prompt_routes_questions_and_escalates_only_when_no_role_can_answer()
         );
     }
 }
+
+#[test]
+fn every_default_role_has_a_color_and_enabled_roles_differ() {
+    for role in role_files() {
+        assert!(role.spec.color.is_some(), "{} has no color", role.spec.role);
+    }
+    let (_dir, roster) = roster();
+    let mut colors: Vec<&str> = roster
+        .roles()
+        .iter()
+        .map(|r| r.color.as_ref().map_or("", |c| c.agent_color()))
+        .collect();
+    colors.sort_unstable();
+    let count = colors.len();
+    colors.dedup();
+    assert_eq!(
+        colors.len(),
+        count,
+        "enabled roles share a color: {colors:?}"
+    );
+}

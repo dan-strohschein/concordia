@@ -40,7 +40,10 @@ pub(crate) fn agent_file(role: &ResolvedRole, roster: &Roster) -> String {
         effort: role.effort,
         max_turns: role.max_turns.map(std::num::NonZeroU32::get),
         skills: &role.skills,
-        color: role.color.as_deref(),
+        color: role
+            .color
+            .as_ref()
+            .map(crate::color::RoleColor::agent_color),
     };
     let yaml = serde_norway::to_string(&front).unwrap_or_default();
     let body = format!(

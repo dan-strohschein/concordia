@@ -56,6 +56,9 @@ export const test = base.extend<{ engine: Engine; studio: boolean }>({
       const agent = new EngineClient(await websocketTransport(url));
       await agent.call("session.open", { client: "e2e-agent", actor: "agent:test#1" });
       await agent.call("scene.open", { path: "scenes/stack.scene.ron" });
+      // The first capture builds the renderer's pipelines (about 1.5 s in a debug build) and the
+      // engine serves calls one at a time; do it now so it never lands inside a test's live window.
+      await agent.call("capture.screenshot", { width: 64, height: 64 });
       const idsByName = async () => {
         const result = await agent.call<{ rows: { id: string; components: { Name?: string } }[] }>("query.run", {
           with: ["Name"],

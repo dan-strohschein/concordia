@@ -2,14 +2,14 @@
 
 use std::collections::BTreeMap;
 
-use concordia_api::{ApiError, ApiErrorKind, CallCtx, Engine, Method, MethodInfo};
+use concordia_api::{ApiError, ApiErrorKind, Audience, CallCtx, Engine, Method, MethodInfo};
 use concordia_command::{Actor, ActorKind};
 use concordia_core::id::IdSource;
 use concordia_reflect::Reflect;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::claude_code::{SyncAction, SyncOptions, sync};
+use crate::claude_code::{SyncAction, SyncOptions, SyncReport, sync};
 use crate::gate::GateParty;
 use crate::journal::{JournalEntry, JournalEvent};
 use crate::module::{board_error, publish, roster, state};
@@ -33,6 +33,7 @@ pub(crate) fn all() -> Vec<MethodInfo> {
         MethodInfo::of::<StudioStatus>(),
         MethodInfo::of::<StudioActivity>(),
         MethodInfo::of::<StudioSync>(),
+        MethodInfo::of::<StudioDoctor>(),
     ]
     .into_iter()
     .chain(crate::question_methods::all())
@@ -281,6 +282,10 @@ pub struct RoleView {
     pub skills: Vec<String>,
     /// Turn limit.
     pub max_turns: Option<u32>,
+    /// The editor's color for the role, `#rrggbb`.
+    pub color: Option<String>,
+    /// The generated agent's Claude Code color name.
+    pub agent_color: Option<String>,
 }
 
 /// One disabled role.
@@ -318,6 +323,47 @@ pub struct StudioStatusResult {
     pub tasks: BTreeMap<String, u32>,
     /// Task ids in review, waiting for a reviewer.
     pub pending_approvals: Vec<String>,
+    /// Role instances agents hold now.
+    pub instances: Vec<InstanceView>,
+    /// The last sync that changed files.
+    pub last_sync: Option<SyncSummary>,
+    /// The team's limits (studio/team.toml [budgets]).
+    pub budgets: BudgetView,
+}
+
+/// A held role instance (`agent:<role>#<slot>`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct InstanceView {
+    /// Role id.
+    pub role: String,
+    /// Instance number.
+    pub slot: u32,
+    /// The Claude Code agent holding it (`<session_id>/<agent_id>`).
+    pub agent: String,
+}
+
+/// When files were last regenerated, and by whom.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct SyncSummary {
+    /// Unix milliseconds.
+    pub ts_ms: u64,
+    /// Who synced.
+    pub actor: String,
+    /// How many files changed.
+    pub changed: u32,
+}
+
+/// The team's budget limits (usage is counted by `concordia mcp`).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Reflect)]
+pub struct BudgetView {
+    /// Turns per subagent run.
+    pub max_turns_per_subagent: Option<u32>,
+    /// Engine MCP calls per task.
+    pub max_mcp_calls_per_task: Option<u32>,
+    /// Engine mutations per task.
+    pub max_mutations_per_task: Option<u32>,
+    /// `--max-budget-usd` for headless runs the editor launches.
+    pub headless_max_budget_usd: Option<f64>,
 }
 
 /// Studio activity from the Studio journal (task changes, reviews, file edits by agents), oldest first.
@@ -607,6 +653,8 @@ impl Method for StudioRoster {
                 review: strings(&r.review),
                 skills: r.skills.clone(),
                 max_turns: r.max_turns.map(std::num::NonZeroU32::get),
+                color: r.color.as_ref().map(crate::color::RoleColor::display_hex),
+                agent_color: r.color.as_ref().map(|c| c.agent_color().to_owned()),
             })
             .collect();
         let disabled = roster
@@ -633,8 +681,11 @@ impl Method for StudioStatus {
     type Params = NoParams;
     type Result = StudioStatusResult;
     fn call(engine: &mut Engine, _: &CallCtx, _: NoParams) -> Result<StudioStatusResult, ApiError> {
+        let budgets = budget_view(&roster(engine)?.team.budgets);
+        let instances = instances(engine.project())?;
         read(engine, |_, board| {
             let tasks = board.list()?;
+            let last_sync = last_sync(&board.journal().read(None)?);
             Ok(StudioStatusResult {
                 tasks: counts(&tasks),
                 pending_approvals: tasks
@@ -642,8 +693,48 @@ impl Method for StudioStatus {
                     .filter(|t| t.meta.status == TaskStatus::in_review)
                     .map(|t| t.meta.id.clone())
                     .collect(),
+                instances,
+                last_sync,
+                budgets,
             })
         })
+    }
+}
+
+/// The role instances live agents hold.
+fn instances(root: &std::path::Path) -> Result<Vec<InstanceView>, ApiError> {
+    let held = crate::Slots::of_project(root)
+        .held()
+        .map_err(crate::module::config_error)?;
+    Ok(held
+        .into_iter()
+        .map(|(role, slot, agent)| InstanceView {
+            role,
+            slot: slot.get(),
+            agent,
+        })
+        .collect())
+}
+
+/// The newest `sync` entry.
+fn last_sync(entries: &[JournalEntry]) -> Option<SyncSummary> {
+    entries.iter().rev().find_map(|e| match &e.event {
+        JournalEvent::Sync { changed } => Some(SyncSummary {
+            ts_ms: e.ts_ms,
+            actor: e.actor.to_string(),
+            changed: u32::try_from(changed.len()).unwrap_or(u32::MAX),
+        }),
+        _ => None,
+    })
+}
+
+fn budget_view(b: &crate::team::Budgets) -> BudgetView {
+    let get = |n: Option<std::num::NonZeroU32>| n.map(std::num::NonZeroU32::get);
+    BudgetView {
+        max_turns_per_subagent: get(b.max_turns_per_subagent),
+        max_mcp_calls_per_task: get(b.max_mcp_calls_per_task),
+        max_mutations_per_task: get(b.max_mutations_per_task),
+        headless_max_budget_usd: b.headless_max_budget_usd,
     }
 }
 
@@ -688,6 +779,26 @@ fn matches_filter(entry: &JournalEntry, p: &StudioActivityParams) -> bool {
             .as_ref()
             .is_none_or(|t| entry.event.task() == Some(t.as_str()))
         && p.kind.as_ref().is_none_or(|k| entry.event.kind() == k)
+}
+
+/// Runs sync on the engine's project.
+fn run_sync(engine: &mut Engine, options: SyncOptions) -> Result<SyncReport, ApiError> {
+    let roster = roster(engine)?;
+    let catalog = crate::scope::ToolCatalog::from_methods(engine.methods());
+    let root = engine.project().to_owned();
+    let dir = state(engine)?.dir.clone();
+    sync(&root, &dir, &roster, &catalog, options).map_err(crate::module::config_error)
+}
+
+/// What `studio.sync {check: true}` would report.
+fn check_sync(engine: &mut Engine) -> Result<SyncReport, ApiError> {
+    run_sync(
+        engine,
+        SyncOptions {
+            check: true,
+            force: false,
+        },
+    )
 }
 
 /// Regenerate the Claude Code files (.claude/agents, .claude/skills, settings hooks, .mcp.json, the CLAUDE.md block) from studio/.
@@ -739,16 +850,12 @@ impl Method for StudioSync {
         p: StudioSyncParams,
     ) -> Result<StudioSyncResult, ApiError> {
         let actor = ctx.actor()?.clone();
-        let roster = roster(engine)?;
-        let catalog = crate::scope::ToolCatalog::from_methods(engine.methods());
-        let root = engine.project().to_owned();
         let options = SyncOptions {
             check: p.check.unwrap_or(false),
             force: p.force.unwrap_or(false),
         };
+        let report = run_sync(engine, options)?;
         let state = state(engine)?;
-        let report = sync(&root, &state.dir, &roster, &catalog, options)
-            .map_err(crate::module::config_error)?;
         let changed: Vec<String> = report
             .changes
             .iter()
@@ -779,5 +886,37 @@ impl Method for StudioSync {
                 .collect(),
             refused: report.refused,
         })
+    }
+}
+
+/// Check that this machine can run Agent Studio: Claude Code installed and logged in (a subscription is enough; no API key), `concordia` on PATH, Claude Code files in sync.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct StudioDoctor;
+
+/// `studio.doctor` result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct StudioDoctorResult {
+    /// Every check, in order.
+    pub checks: Vec<crate::doctor::Check>,
+    /// True if no check failed.
+    pub ok: bool,
+}
+
+impl Method for StudioDoctor {
+    const NAME: &'static str = "studio.doctor";
+    const MUTATES: bool = false;
+    type Params = NoParams;
+    type Result = StudioDoctorResult;
+    const AUDIENCE: Audience = Audience::editor;
+    fn call(engine: &mut Engine, _: &CallCtx, _: NoParams) -> Result<StudioDoctorResult, ApiError> {
+        let mut checks = crate::doctor::machine_checks(&crate::doctor::DoctorEnv::from_process());
+        let stale = check_sync(engine)
+            .map(|r| r.is_stale())
+            .map_err(|e| e.message);
+        checks.push(crate::doctor::sync_check(stale));
+        let ok = checks
+            .iter()
+            .all(|c| c.status != crate::doctor::CheckStatus::fail);
+        Ok(StudioDoctorResult { checks, ok })
     }
 }

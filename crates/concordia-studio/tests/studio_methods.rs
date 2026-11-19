@@ -189,3 +189,100 @@ fn studio_sync_writes_claude_code_files_and_journals_a_sync_entry() {
         "an up-to-date sync journals nothing"
     );
 }
+
+#[test]
+fn status_reports_held_instances_last_sync_and_budget_limits() {
+    let mut fx = Fixture::new();
+    let team = std::fs::read_to_string(fx.path("studio/team.toml")).unwrap();
+    std::fs::write(
+        fx.path("studio/team.toml"),
+        format!("{team}\n[budgets]\nmax_mcp_calls_per_task = 400\nheadless_max_budget_usd = 2.5\n"),
+    )
+    .unwrap();
+    let slots = concordia_studio::Slots::of_project(fx.dir.path());
+    slots
+        .claim("level-designer", "s1/a7", 3, std::process::id())
+        .unwrap();
+    let before = fx.ok("studio.status", json!({}));
+    assert_eq!(before["last_sync"], Value::Null);
+    StudioJournal::new(fx.path(".concordia/studio/journal.jsonl"))
+        .append(
+            &"human:local".parse().unwrap(),
+            JournalEvent::Sync {
+                changed: vec![".claude/agents/writer.md".into()],
+            },
+        )
+        .unwrap();
+    let status = fx.ok("studio.status", json!({}));
+    assert_eq!(
+        status["instances"],
+        json!([{"role": "level-designer", "slot": 1, "agent": "s1/a7"}])
+    );
+    assert_eq!(status["last_sync"]["actor"], "human:local");
+    assert_eq!(status["last_sync"]["changed"], 1);
+    assert!(status["last_sync"]["ts_ms"].as_u64().unwrap() > 0);
+    assert_eq!(status["budgets"]["max_mcp_calls_per_task"], 400);
+    assert_eq!(status["budgets"]["max_mutations_per_task"], Value::Null);
+    assert_eq!(status["budgets"]["headless_max_budget_usd"], 2.5);
+}
+
+#[test]
+fn roster_returns_each_roles_display_color_and_agent_color() {
+    let mut fx = Fixture::new();
+    for (role, color) in [("director", "purple"), ("level-designer", "'#ff7f50'")] {
+        let file = fx.path(&format!("studio/agents/{role}.md"));
+        let text = std::fs::read_to_string(&file).unwrap();
+        std::fs::write(
+            &file,
+            text.replacen("mcp_tools:", &format!("color: {color}\nmcp_tools:"), 1),
+        )
+        .unwrap();
+    }
+    let roster = fx.ok("studio.roster", json!({}));
+    let role = |id: &str| {
+        roster["roles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["role"] == id)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(role("level-designer")["color"], "#ff7f50");
+    assert_eq!(role("level-designer")["agent_color"], "orange");
+    assert_eq!(role("director")["agent_color"], "purple");
+    assert!(role("director")["color"].as_str().unwrap().starts_with('#'));
+    assert_eq!(role("qa-playtester")["color"], Value::Null);
+}
+
+#[test]
+fn doctor_is_an_editor_method_and_not_an_agent_tool() {
+    let fx = Fixture::new();
+    let doctor = fx
+        .engine
+        .methods()
+        .get("studio.doctor")
+        .expect("studio.doctor is registered");
+    assert!(!doctor.is_agent_tool());
+}
+
+#[test]
+fn doctor_reports_machine_checks_and_sync_freshness() {
+    let mut fx = Fixture::new();
+    let report = fx.ok("studio.doctor", json!({}));
+    let checks = report["checks"].as_array().unwrap();
+    let ids: Vec<&str> = checks.iter().map(|c| c["id"].as_str().unwrap()).collect();
+    for id in ["claude", "concordia", "sync"] {
+        assert!(ids.contains(&id), "{ids:?}");
+    }
+    // The fixture was never synced, so its Claude Code files are missing.
+    let sync = checks.iter().find(|c| c["id"] == "sync").unwrap();
+    assert_eq!(sync["status"], "fail", "{sync}");
+    assert!(
+        sync["text"]
+            .as_str()
+            .unwrap()
+            .contains("concordia studio sync")
+    );
+    assert_eq!(report["ok"], false);
+}

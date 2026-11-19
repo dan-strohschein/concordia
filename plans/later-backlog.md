@@ -55,6 +55,8 @@ Rules that still apply to everything here: subscription-first (no item may *requ
 - **Optional direct-API runner** (after M3). Opt-in plugin that orchestrates roles with the user's own API key or a local model; never required, never default (ADR-0002).
 - **Local-model provider plugins for generated content** (after M3). `concordia-gen` providers for local image/3D/audio models, opt-in.
 - **Studio analytics** (after M3). Per-role throughput, review rejection rates, budget use, visualized in the editor's Studio panel.
+- **Embedded terminal in the editor** (author request, M3 phase 3.8, ADR-0083). A full, multi-color terminal inside the editor (a PTY in the shell plus a terminal view in the page), so the Director's interactive session runs in the editor instead of an external terminal app. 3.8 opens Terminal (or the user's choice) on a `.command` file.
+- **Live budget usage in the Studio panel** (ADR-0083). `studio.status` reports only the team's limits; per-task call and mutation counts live in `concordia mcp`'s memory. Move the counters into the engine (or the Studio journal) and show usage beside the limits.
 
 ## 8. Name and governance
 - **Engine rename** (after M3, before the first public release). Pick a name, check trademarks and crate/domain availability, then do the mechanical rename from ADR-0008 (`concordia-` prefix, `concordia` binary, `concordia:game` WIT package, `concordia.toml`).

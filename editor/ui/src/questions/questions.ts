@@ -1,9 +1,9 @@
 // Team questions (ADR-0081): the editor's view of studio.questions, refreshed by `studio` events.
 import { useEffect, useMemo, useState } from "react";
 
-import { JsonRpcError } from "../api/client";
 import { Coalescer } from "../engine/coalesce";
 import { EDITOR_ACTOR, type EditorSession } from "../engine/session";
+import { callStudio } from "../studio/studio";
 
 /** Longest answer the engine accepts (`studio.answer`). */
 export const ANSWER_LIMIT = 500;
@@ -30,17 +30,9 @@ export interface TeamState {
   reload: () => void;
 }
 
-/** JSON-RPC "method not found": the engine has no Studio module. */
-const METHOD_NOT_FOUND = -32601;
-
 /** The questions, or `undefined` outside team mode. */
 export async function loadQuestions(session: EditorSession): Promise<Question[] | undefined> {
-  try {
-    return (await session.call<{ questions: Question[] }>("studio.questions", {})).questions;
-  } catch (e) {
-    if (e instanceof JsonRpcError && e.code === METHOD_NOT_FOUND) return undefined;
-    throw e;
-  }
+  return (await callStudio<{ questions: Question[] }>(session, "studio.questions"))?.questions;
 }
 
 /** Escalated questions, oldest first: they wait for the human. */
