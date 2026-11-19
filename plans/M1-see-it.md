@@ -270,7 +270,7 @@ A review compared Concordia against Unreal's public architecture and audited our
 | 10 | Incremental outliner tree | done: `OutlinerTree` patches sorted sibling lists per edit (binary insertion; adoption of waiting children); cycles fall back to a full rebuild; a seeded property test checks it always equals `buildTree` |
 | 11 | Inspector refetches throttled during drags | done: `Coalescer` (one fetch in flight, one trailing) for the inspector and the gizmo overlay; a burst of 50 events costs at most 2 fetches |
 | 12 | Binary/low-overhead hot paths if JSON shows up in the bench | |
-| 13 | First-use hitches: background IBL, shader compiles and texture uploads | |
+| 13 | First-use hitches: background IBL, shader compiles and texture uploads | done: environments prefilter on a background thread (viewport frames draw without them meanwhile; captures wait, so goldens are unchanged); compiled shaders are cached in the project DDC, so later starts skip `slangc`; texture uploads already ride in the frame's command list (item 1), leaving only a staging copy. Caching prefiltered environments in the DDC is a later step |
 | 14 | Optimized dev builds for the editor | |
 | 15 | GPU timestamp queries in `viewport.stats` | |
 | 16 | Idle editor costs nothing (test) | |

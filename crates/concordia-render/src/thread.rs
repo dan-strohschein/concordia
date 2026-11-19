@@ -204,6 +204,10 @@ impl Worker {
                 },
             };
             let Some(first) = first else {
+                if !self.ticking() {
+                    // Waiting on background work, not motion: no need to redraw every refresh.
+                    std::thread::sleep(Duration::from_millis(16));
+                }
                 self.present_between_ticks();
                 continue;
             };
@@ -219,12 +223,20 @@ impl Worker {
         }
     }
 
-    /// Whether the viewport shows a scene that ticked within the last two tick lengths.
+    /// Whether the viewport needs redrawing without new jobs: its scene is ticking, or background
+    /// work (environment prefiltering) is about to change it.
     fn animating(&self) -> bool {
+        self.last.is_some()
+            && self.surface.is_some()
+            && (self.ticking() || self.renderer.has_pending_work())
+    }
+
+    /// Whether the viewport shows a scene that ticked within the last two tick lengths.
+    fn ticking(&self) -> bool {
         let Some((slot, _)) = &self.last else {
             return false;
         };
-        self.surface.is_some() && self.ticks[*slot].is_some_and(|(at, dt)| at.elapsed() < dt * 2)
+        self.ticks[*slot].is_some_and(|(at, dt)| at.elapsed() < dt * 2)
     }
 
     /// How far between its last two ticks scene `slot` should be drawn now (1 = the latest).

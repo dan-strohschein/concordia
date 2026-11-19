@@ -220,6 +220,8 @@ pub struct RenderStats {
     pub allocations: usize,
     /// The sun's shadow maps were reused: no caster, light or cascade changed since they were drawn.
     pub shadows_cached: bool,
+    /// The environment is still being prefiltered (this viewport frame was drawn without it).
+    pub environment_pending: bool,
 }
 
 /// One draw call, ready to record: `instances` consecutive instances of one mesh and material.
@@ -279,6 +281,11 @@ impl Renderer {
     /// Presented frames not yet known to be finished (diagnostics).
     pub fn frames_in_flight(&self) -> usize {
         self.in_flight.len()
+    }
+
+    /// Whether background work (environment prefiltering) will change later frames.
+    pub fn has_pending_work(&self) -> bool {
+        self.environments.pending()
     }
 
     /// GPU memory the device has allocated, if the backend reports it (diagnostics).
@@ -495,11 +502,18 @@ impl Renderer {
         });
         let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
         let shadows = self.prepare_shadows(world, view, aspect, dir)?;
-        let environment = match &world.environment {
+        // Captures wait for a new environment's prefiltering; viewport frames draw without it.
+        let wait = matches!(output, Output::Readback);
+        let gpu = match &world.environment {
             Some(env) => {
-                let gpu = self
-                    .environments
-                    .ensure(device, &mut up, &mut resolved, &env.map)?;
+                self.environments
+                    .ensure(device, &mut up, &mut resolved, &env.map, wait)?
+            }
+            None => None,
+        };
+        self.stats.environment_pending = world.environment.is_some() && gpu.is_none();
+        let environment = match (gpu, &world.environment) {
+            (Some(gpu), Some(env)) => {
                 let mut levels = [0u32; 6];
                 gpu.levels
                     .iter()
@@ -508,7 +522,7 @@ impl Renderer {
                     .for_each(|(i, (_, index))| levels[i] = *index);
                 Some((gpu.sh, levels, env.skybox))
             }
-            None => None,
+            _ => None,
         };
         let shadow_params = shadows.as_ref().map(|(cascades, settings, maps)| {
             let mut indices = [0u32; 4];

@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 struct Harness {
     engine: Engine,
     session: SessionId,
-    _dir: tempfile::TempDir,
+    dir: tempfile::TempDir,
 }
 
 impl Harness {
@@ -34,7 +34,7 @@ impl Harness {
         Self {
             engine,
             session,
-            _dir: dir,
+            dir,
         }
     }
 
@@ -181,4 +181,33 @@ fn render_module_registers_components_and_the_method() {
 #[test]
 fn capture_screenshot_schema_is_reflect_generated() {
     insta::assert_json_snapshot!(params_schema(&MethodInfo::of::<CaptureScreenshot>()));
+}
+
+#[test]
+fn compiled_shaders_are_kept_in_the_project_ddc_for_the_next_start() {
+    let Some(mut h) = Harness::gpu() else { return };
+    h.cube_scene();
+    h.ok("capture.screenshot", json!({"width": 32, "height": 32}));
+    let ddc = h.dir.path().join(".concordia/ddc");
+    let entries = walk(&ddc);
+    assert!(
+        entries >= 4,
+        "shader modules cached in {}: {entries} files",
+        ddc.display()
+    );
+}
+
+fn walk(dir: &std::path::Path) -> usize {
+    std::fs::read_dir(dir).map_or(0, |entries| {
+        entries
+            .flatten()
+            .map(|e| {
+                if e.path().is_dir() {
+                    walk(&e.path())
+                } else {
+                    1
+                }
+            })
+            .sum()
+    })
 }

@@ -233,13 +233,14 @@ impl Method for CaptureScreenshot {
 
 /// The render thread, started on first use (with its device and renderer).
 fn render_thread(engine: &mut Engine) -> Result<&RenderThread, ApiError> {
+    let ddc = engine.project().join(".concordia/ddc");
     let state = engine
         .state_mut::<RenderState>()
         .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render module has no state"))?;
     if state.thread.is_none() {
         let factory = state.factory.clone();
         state.thread =
-            Some(RenderThread::spawn(move || make_renderer(&factory)).map_err(api_error)?);
+            Some(RenderThread::spawn(move || make_renderer(&factory, ddc)).map_err(api_error)?);
     }
     state
         .thread
@@ -247,10 +248,19 @@ fn render_thread(engine: &mut Engine) -> Result<&RenderThread, ApiError> {
         .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render thread did not start"))
 }
 
-fn make_renderer(factory: &DeviceFactory) -> Result<Renderer, RenderError> {
+/// A renderer whose compiled shaders are cached in the project's DDC (`ddc`), so later starts
+/// skip the shader compiler.
+fn make_renderer(
+    factory: &DeviceFactory,
+    ddc: std::path::PathBuf,
+) -> Result<Renderer, RenderError> {
     let device = factory().map_err(RenderError::Gpu)?;
     let toolchain = SlangToolchain::locate().map_err(|e| RenderError::Shader(e.to_string()))?;
-    Renderer::new(Arc::from(device), Box::new(SlangcCompiler::new(toolchain)))
+    let compiler = concordia_shaders::CachedCompiler::new(
+        SlangcCompiler::new(toolchain),
+        concordia_core::ddc::Ddc::new(ddc),
+    );
+    Renderer::new(Arc::from(device), Box::new(compiler))
 }
 
 /// The changes to world `sel` since the render thread last saw it, with the asset data they need.
