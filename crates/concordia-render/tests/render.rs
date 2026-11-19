@@ -730,3 +730,47 @@ fn off_screen_meshes_are_culled_and_repeated_meshes_draw_as_one_instanced_call()
     );
     assert_eq!(pixel(&image, 48, 32)[..3], [231, 89, 89][..]);
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn warm_frames_reuse_their_gpu_memory_instead_of_allocating() {
+    let Some(mut r) = renderer() else { return };
+    let mut s = Scene::new();
+    let red = s.material("red", unlit([0.8, 0.1, 0.1, 1.0]));
+    s.mesh("cube", red, Vec3::ZERO, Quat::IDENTITY, Vec3::ONE);
+    let lamp = s.entity(Vec3::new(1.0, 1.0, 2.0), Quat::IDENTITY, Vec3::ONE);
+    s.world
+        .insert(lamp, concordia_render::PointLight::default())
+        .unwrap();
+    s.camera(
+        Vec3::new(0.0, 0.0, 4.0),
+        Vec3::ZERO,
+        clamp_camera(Projection::default(), Msaa::X4),
+    );
+    let layer = objc2_quartz_core::CAMetalLayer::new();
+    // SAFETY: the layer outlives the surface, which the renderer releases when dropped.
+    let surface = unsafe {
+        r.create_surface(concordia_rhi::SurfaceTarget::MetalLayer(
+            std::ptr::NonNull::from(&*layer).cast(),
+        ))
+    }
+    .unwrap();
+    let rw = RenderWorld::extract(&s.world);
+    let request = RenderRequest {
+        camera: None,
+        view: None,
+        width: 256,
+        height: 256,
+    };
+    for _ in 0..6 {
+        r.present(&rw, &mut s.assets, &request, surface).unwrap();
+    }
+    for frame in 0..6 {
+        r.present(&rw, &mut s.assets, &request, surface).unwrap();
+        assert_eq!(
+            r.stats().allocations,
+            0,
+            "warm frame {frame} created GPU objects"
+        );
+    }
+}

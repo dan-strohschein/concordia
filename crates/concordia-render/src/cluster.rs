@@ -271,12 +271,15 @@ impl ClusterCuller {
         let aabbs = up.buffer(device, &boxes, "cluster aabbs")?;
         let bounds = up.buffer(device, &bounds, "light bounds")?;
         let output = |bytes: usize, label: &str| {
-            device.create_buffer(&BufferDesc {
-                size: NonZeroU64::new(bytes as u64).unwrap_or(NonZeroU64::MIN),
-                usage: BufferUsage::STORAGE | BufferUsage::BINDLESS | BufferUsage::COPY_SRC,
-                memory: MemoryLocation::GpuOnly,
-                label: label.into(),
-            })
+            up.alloc(
+                device,
+                &BufferDesc {
+                    size: NonZeroU64::new(bytes as u64).unwrap_or(NonZeroU64::MIN),
+                    usage: BufferUsage::STORAGE | BufferUsage::BINDLESS | BufferUsage::COPY_SRC,
+                    memory: MemoryLocation::GpuOnly,
+                    label: label.into(),
+                },
+            )
         };
         let counts = output(grid.len() * 8, "cluster counts")?;
         let indices = output(

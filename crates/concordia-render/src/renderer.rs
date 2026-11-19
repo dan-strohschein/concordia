@@ -20,7 +20,7 @@ use crate::camera::{eye, view_matrix};
 use crate::cluster::{ClusterBuffers, ClusterCuller, ClusterGrid, ClusterSettings};
 use crate::environment::EnvironmentCache;
 use crate::frame::{DrawPush, FrameParams, IblParams, frame_block, instance_block, material_block};
-use crate::gpu::{GpuAssets, GpuMesh, Uploads};
+use crate::gpu::{GpuAssets, GpuMesh, SharedPool, Uploads};
 use crate::graph::{GraphTexture, PassContext, RenderGraph, Use};
 use crate::lighting::punctual_lights;
 use crate::pipelines::{DEPTH, HDR, OUTPUT, Pipelines};
@@ -77,7 +77,7 @@ pub struct Renderer {
     in_flight: std::collections::VecDeque<InFlight>,
     frames_in_flight: usize,
     /// Transient heaps of retired frames, reused by later ones.
-    free_heaps: Vec<(concordia_rhi::Heap, NonZeroU64)>,
+    recycle: Recycler,
 }
 
 /// A presented frame the GPU may still be working on.
@@ -160,14 +160,18 @@ fn add_readback(
     frame: &mut FrameResources,
     device: &dyn Device,
     size: (NonZeroU32, NonZeroU32),
+    recycle: &Recycler,
 ) -> Result<Buffer, RenderError> {
     let (w, h) = (size.0.get(), size.1.get());
-    let readback = frame.keep(device.create_buffer(&BufferDesc {
-        size: NonZeroU64::new(u64::from(w) * u64::from(h) * 4).unwrap_or(NonZeroU64::MIN),
-        usage: BufferUsage::COPY_DST,
-        memory: MemoryLocation::Readback,
-        label: "readback".into(),
-    })?);
+    let readback = frame.keep(recycle.buffer(
+        device,
+        &BufferDesc {
+            size: NonZeroU64::new(u64::from(w) * u64::from(h) * 4).unwrap_or(NonZeroU64::MIN),
+            usage: BufferUsage::COPY_DST,
+            memory: MemoryLocation::Readback,
+            label: "readback".into(),
+        },
+    )?);
     graph.add_pass_recorded(
         "readback",
         |p| {
@@ -210,6 +214,8 @@ pub struct RenderStats {
     pub culled: usize,
     /// Forward-pass draw calls (repeated mesh + material pairs are instanced into one).
     pub draw_calls: usize,
+    /// GPU buffers, heaps and textures the frame had to create (0 once warm).
+    pub allocations: usize,
 }
 
 /// One draw call, ready to record: `instances` consecutive instances of one mesh and material.
@@ -246,7 +252,7 @@ impl Renderer {
             timeline: None,
             in_flight: std::collections::VecDeque::new(),
             frames_in_flight: 2,
-            free_heaps: Vec::new(),
+            recycle: Recycler::default(),
         })
     }
 
@@ -385,6 +391,7 @@ impl Renderer {
             Output::Readback => 0,
         };
         self.retire(keep)?;
+        let allocated = self.recycle.created();
         let mut frame = FrameResources::default();
         let result = self.render_frame(
             world,
@@ -398,6 +405,7 @@ impl Renderer {
             &mut frame,
         );
         self.frames += 1;
+        self.stats.allocations = self.recycle.created() - allocated;
         match result {
             Ok((
                 image,
@@ -416,13 +424,13 @@ impl Renderer {
                 Ok(image)
             }
             Ok((image, Overflow::Read(_))) => {
-                frame.release(self.device.as_ref(), &mut self.free_heaps);
+                frame.release(self.device.as_ref(), &mut self.recycle);
                 Ok(image)
             }
             Err(e) => {
                 // A failed frame may have submitted nothing; wait so its resources are safe to free.
                 let _ = self.device.wait_idle();
-                frame.release(self.device.as_ref(), &mut self.free_heaps);
+                frame.release(self.device.as_ref(), &mut self.recycle);
                 Err(e)
             }
         }
@@ -453,7 +461,7 @@ impl Renderer {
             Msaa::Off => SampleCount::X1,
             Msaa::X4 => SampleCount::X4,
         };
-        let mut up = Uploads::new();
+        let mut up = Uploads::pooled(self.recycle.pool.clone());
         let mut resolved = crate::assets::resolve(world, assets, &|r| self.holds(r))?;
         let materials = self.load_assets(&resolved, &mut up)?;
         let device = self.device.clone();
@@ -819,12 +827,15 @@ impl Renderer {
         let device = device.as_ref();
         let (w, h) = (size.0.get(), size.1.get());
         let clusters = job.grid.len() as u64;
-        let overflow_rb = frame.keep(device.create_buffer(&BufferDesc {
-            size: NonZeroU64::new(clusters * 4).unwrap_or(NonZeroU64::MIN),
-            usage: BufferUsage::COPY_DST,
-            memory: MemoryLocation::Readback,
-            label: "cluster overflow".into(),
-        })?);
+        let overflow_rb = frame.keep(self.recycle.buffer(
+            device,
+            &BufferDesc {
+                size: NonZeroU64::new(clusters * 4).unwrap_or(NonZeroU64::MIN),
+                usage: BufferUsage::COPY_DST,
+                memory: MemoryLocation::Readback,
+                label: "cluster overflow".into(),
+            },
+        )?);
         let (texture, format, final_layout) = match output {
             Output::Readback => {
                 let usage = TextureUsage::RENDER_TARGET | TextureUsage::COPY_SRC;
@@ -872,12 +883,19 @@ impl Renderer {
             self.device.clone(),
         );
         let readback = match output {
-            Output::Readback => Some(add_readback(&mut graph, out, frame, device, size)?),
+            Output::Readback => Some(add_readback(
+                &mut graph,
+                out,
+                frame,
+                device,
+                size,
+                &self.recycle,
+            )?),
             Output::Surface { .. } => None,
         };
         let compiled =
             graph.compile(&|d: &TextureDesc| device.texture_heap_footprint(d).unwrap_or((0, 1)))?;
-        let transients = frame.place(device, &graph, &compiled, &mut self.free_heaps)?;
+        let transients = frame.place(device, &graph, &compiled, &mut self.recycle)?;
         let mut list = uploads;
         list.label = "frame".into();
         let fragment_read = Access {
@@ -986,7 +1004,7 @@ impl Renderer {
                 break;
             };
             let overflow = read_overflow(device.as_ref(), f.overflow, f.clusters);
-            f.resources.release(device.as_ref(), &mut self.free_heaps);
+            f.resources.release(device.as_ref(), &mut self.recycle);
             self.record_overflow(overflow?);
         }
         Ok(())
@@ -997,9 +1015,7 @@ impl Drop for Renderer {
     fn drop(&mut self) {
         let _ = self.device.wait_idle();
         let _ = self.retire(0);
-        self.free_heaps
-            .drain(..)
-            .for_each(|(heap, _)| self.device.destroy_heap(heap));
+        self.recycle.clear(self.device.as_ref());
         self.assets.destroy(self.device.as_ref());
         self.shadow_maps.destroy(self.device.as_ref());
         self.environments.destroy(self.device.as_ref());
@@ -1211,7 +1227,7 @@ fn add_tonemap(
 struct FrameResources {
     buffers: Vec<Buffer>,
     textures: Vec<Texture>,
-    heap: Option<(concordia_rhi::Heap, NonZeroU64)>,
+    heap: Option<HeapEntry>,
 }
 
 impl FrameResources {
@@ -1225,55 +1241,130 @@ impl FrameResources {
         texture
     }
 
-    /// One heap sized by the graph's memory plan; each transient placed at its offset.
+    /// One heap sized by the graph's memory plan; each transient placed at its offset. Recycled
+    /// heaps bring their placed textures, reused when the same texture lands at the same offset.
     fn place(
         &mut self,
         device: &dyn Device,
         graph: &RenderGraph,
         compiled: &crate::graph::CompiledGraph,
-        free: &mut Vec<(concordia_rhi::Heap, NonZeroU64)>,
+        recycle: &mut Recycler,
     ) -> Result<BTreeMap<GraphTexture, Texture>, RenderError> {
         let Some(size) = NonZeroU64::new(compiled.heap_size()) else {
             return Ok(BTreeMap::new());
         };
-        let heap = match free
+        let mut entry = match recycle
+            .heaps
             .iter()
-            .position(|(_, s)| *s >= size && s.get() <= size.get() * 2)
+            .position(|h| h.size >= size && h.size.get() <= size.get() * 2)
         {
-            Some(i) => free.swap_remove(i),
-            None => (
-                device.create_heap(&HeapDesc {
+            Some(i) => recycle.heaps.swap_remove(i),
+            None => {
+                recycle.created += 1;
+                HeapEntry {
+                    heap: device.create_heap(&HeapDesc {
+                        size,
+                        label: "frame transients".into(),
+                    })?,
                     size,
-                    label: "frame transients".into(),
-                })?,
-                size,
-            ),
+                    textures: Vec::new(),
+                }
+            }
         };
-        self.heap = Some(heap);
-        let heap = heap.0;
         let mut placed = BTreeMap::new();
+        let mut used = Vec::new();
         for (t, placement) in compiled.placements() {
-            let texture =
-                device.create_placed_texture(heap, placement.offset, graph.texture_desc(*t))?;
-            placed.insert(*t, self.texture(texture));
+            let desc = graph.texture_desc(*t);
+            let reuse = entry
+                .textures
+                .iter()
+                .position(|(d, offset, _)| d == desc && *offset == placement.offset);
+            let texture = match reuse {
+                Some(i) => entry.textures.swap_remove(i),
+                None => {
+                    recycle.created += 1;
+                    let texture =
+                        device.create_placed_texture(entry.heap, placement.offset, desc)?;
+                    (desc.clone(), placement.offset, texture)
+                }
+            };
+            placed.insert(*t, texture.2);
+            used.push(texture);
         }
+        // Textures this frame did not need stay with the heap for later frames.
+        entry.textures.extend(used);
+        self.heap = Some(entry);
         Ok(placed)
     }
 
-    /// Frees the frame's resources (the GPU must be done with them) and recycles its heap.
-    fn release(self, device: &dyn Device, free: &mut Vec<(concordia_rhi::Heap, NonZeroU64)>) {
+    /// Returns the frame's buffers and heap for reuse (the GPU must be done with them).
+    fn release(self, device: &dyn Device, recycle: &mut Recycler) {
         self.textures
             .into_iter()
             .for_each(|t| device.destroy_texture(t));
-        self.buffers
-            .into_iter()
-            .for_each(|b| device.destroy_buffer(b));
-        if let Some(heap) = self.heap {
-            free.push(heap);
-            if free.len() > Renderer::MAX_FRAMES_IN_FLIGHT {
-                let (oldest, _) = free.remove(0);
-                device.destroy_heap(oldest);
+        for buffer in self.buffers {
+            let pooled = recycle
+                .pool
+                .lock()
+                .is_ok_and(|mut p| p.give(device, buffer));
+            if !pooled {
+                device.destroy_buffer(buffer);
             }
+        }
+        if let Some(heap) = self.heap {
+            recycle.heaps.push(heap);
+            if recycle.heaps.len() > Renderer::MAX_FRAMES_IN_FLIGHT {
+                let oldest = recycle.heaps.remove(0);
+                oldest.destroy(device);
+            }
+        }
+    }
+}
+
+/// A transient heap and the textures placed in it (kept across frames).
+#[derive(Debug)]
+struct HeapEntry {
+    heap: concordia_rhi::Heap,
+    size: NonZeroU64,
+    textures: Vec<(TextureDesc, u64, Texture)>,
+}
+
+impl HeapEntry {
+    fn destroy(self, device: &dyn Device) {
+        self.textures
+            .into_iter()
+            .for_each(|(_, _, t)| device.destroy_texture(t));
+        device.destroy_heap(self.heap);
+    }
+}
+
+/// GPU memory retired frames hand back: pooled buffers and transient heaps.
+#[derive(Debug, Default)]
+struct Recycler {
+    pool: SharedPool,
+    heaps: Vec<HeapEntry>,
+    /// Heaps and placed textures created so far.
+    created: usize,
+}
+
+impl Recycler {
+    /// Everything created so far (buffers, heaps, placed textures).
+    fn created(&self) -> usize {
+        self.created + self.pool.lock().map_or(0, |p| p.created)
+    }
+
+    /// A pooled buffer for `desc`.
+    fn buffer(&self, device: &dyn Device, desc: &BufferDesc) -> Result<Buffer, RenderError> {
+        let mut pool = self.pool.lock().map_err(|_| {
+            RenderError::Gpu(concordia_rhi::RhiError::invalid("buffer pool", "poisoned"))
+        })?;
+        Ok(pool.take(device, desc)?)
+    }
+
+    fn clear(&mut self, device: &dyn Device) {
+        self.heaps.drain(..).for_each(|h| h.destroy(device));
+        if let Ok(mut pool) = self.pool.lock() {
+            pool.clear(device);
         }
     }
 }
