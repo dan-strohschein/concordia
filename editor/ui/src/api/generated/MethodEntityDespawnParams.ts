@@ -14,4 +14,8 @@ export interface MethodEntityDespawnParams {
    * Entity id (UUID string). If you pass a name instead, the error suggests the matching id.
    */
   id: string;
+  /**
+   * Also remove all its descendants, in the same undo step (default false: children become top-level).
+   */
+  recursive?: null | boolean;
 }

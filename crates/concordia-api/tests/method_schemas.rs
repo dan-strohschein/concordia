@@ -4,11 +4,11 @@ use concordia_api::{methods, params_schema, result_schema};
 use serde_json::json;
 
 #[test]
-fn registry_has_the_25_m0_methods_and_the_m1_event_methods() {
+fn registry_has_the_25_m0_methods_and_the_m1_core_methods() {
     assert_eq!(
         methods().iter().count(),
-        27,
-        "25 from M0 plus events.subscribe/unsubscribe (M1 phase 1.9)"
+        31,
+        "25 from M0, events.subscribe/unsubscribe (M1 phase 1.9) and entity.templates/create/duplicate/reparent (M1 phase 1.13)"
     );
     for name in [
         "session.open",

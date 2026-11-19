@@ -37,8 +37,8 @@ pub fn instantiate_prefab(
     Ok((mapping[&prefab.root.to_string()], ops))
 }
 
-/// Replaces every string equal to an old id with the new id.
-fn remap(value: Value, mapping: &HashMap<String, EntityId>) -> Value {
+/// Replaces every string in `value` equal to an old id (a key of `mapping`) with its new id.
+pub fn remap(value: Value, mapping: &HashMap<String, EntityId>) -> Value {
     match value {
         Value::String(s) => match mapping.get(&s) {
             Some(new) => Value::String(new.to_string()),

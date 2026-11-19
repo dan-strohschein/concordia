@@ -30,7 +30,7 @@ mod write;
 pub use document::{read_document, write_document};
 pub use error::SceneError;
 pub use model::{EntityDoc, FORMAT_VERSION, PrefabDoc, SceneDoc, SceneMeta};
-pub use prefab::instantiate_prefab;
+pub use prefab::{instantiate_prefab, remap};
 pub use read::{read_prefab, read_scene};
 pub use world::{load_into_world, snapshot_world};
 pub use write::{format, write_prefab, write_scene};

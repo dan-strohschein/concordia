@@ -26,7 +26,8 @@ const top = (open: boolean): React.CSSProperties => ({
   padding: "3px 8px",
   font: "inherit",
 });
-const popup: React.CSSProperties = {
+/** The look of a dropdown or context menu. */
+export const popup: React.CSSProperties = {
   position: "absolute",
   top: "100%",
   zIndex: 20,
@@ -52,20 +53,7 @@ const entry = (enabled: boolean): React.CSSProperties => ({
 export function MenuBar({ menus }: { menus: Menu[] }) {
   const [open, setOpen] = useState<string>();
   const root = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (open === undefined) return;
-    const close = (e: Event) => {
-      if (e instanceof KeyboardEvent && e.key !== "Escape") return;
-      if (e instanceof MouseEvent && root.current?.contains(e.target as Node)) return;
-      setOpen(undefined);
-    };
-    window.addEventListener("keydown", close);
-    window.addEventListener("mousedown", close);
-    return () => {
-      window.removeEventListener("keydown", close);
-      window.removeEventListener("mousedown", close);
-    };
-  }, [open]);
+  useDismiss(root, open !== undefined, () => setOpen(undefined));
   return (
     <div ref={root} role="menubar" style={bar}>
       {menus.map((menu) => (
@@ -80,18 +68,53 @@ export function MenuBar({ menus }: { menus: Menu[] }) {
           >
             {menu.label}
           </button>
-          {open === menu.label && <MenuPopup menu={menu} onDone={() => setOpen(undefined)} />}
+          {open === menu.label && (
+            <MenuList label={menu.label} items={menu.items} style={popup} onDone={() => setOpen(undefined)} />
+          )}
         </div>
       ))}
     </div>
   );
 }
 
-function MenuPopup({ menu, onDone }: { menu: Menu; onDone: () => void }) {
+/** Calls `onClose` on Escape or a press outside `root`, while `active`. */
+export function useDismiss(root: React.RefObject<HTMLElement | null>, active: boolean, onClose: () => void): void {
+  const latest = useRef(onClose);
+  useEffect(() => {
+    latest.current = onClose;
+  });
+  useEffect(() => {
+    if (!active) return;
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent && e.key !== "Escape") return;
+      if (e instanceof MouseEvent && root.current?.contains(e.target as Node)) return;
+      latest.current();
+    };
+    window.addEventListener("keydown", close);
+    window.addEventListener("mousedown", close);
+    return () => {
+      window.removeEventListener("keydown", close);
+      window.removeEventListener("mousedown", close);
+    };
+  }, [root, active]);
+}
+
+/** A list of menu entries (a menu bar popup or a context menu); choosing one calls `onDone`, then the item. */
+export function MenuList({
+  label,
+  items,
+  style,
+  onDone,
+}: {
+  label: string;
+  items: Menu["items"];
+  style: React.CSSProperties;
+  onDone: () => void;
+}) {
   return (
-    <div role="menu" aria-label={menu.label} style={popup}>
-      {menu.items.length === 0 && <div style={{ ...entry(false), fontStyle: "italic" }}>Nothing here yet</div>}
-      {menu.items.map((item, i) =>
+    <div role="menu" aria-label={label} style={style}>
+      {items.length === 0 && <div style={{ ...entry(false), fontStyle: "italic" }}>Nothing here yet</div>}
+      {items.map((item, i) =>
         item === "separator" ? (
           <hr key={i} style={{ border: "none", borderTop: "1px solid #3c3c3c", margin: "4px 0" }} />
         ) : (

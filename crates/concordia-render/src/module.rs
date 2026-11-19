@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use concordia_api::{
-    ApiError, ApiErrorKind, CallCtx, EncodedImage, Engine, EngineModule, EntityRef, Method,
-    MethodInfo, WorldSel,
+    ApiError, ApiErrorKind, Audience, CallCtx, EncodedImage, Engine, EngineModule, EntityRef,
+    Method, MethodInfo, WorldSel,
 };
 use concordia_assets::AssetDb;
 use concordia_command::Actor;
@@ -84,6 +84,10 @@ impl EngineModule for RenderModule {
         crate::register_types(registry)
     }
 
+    fn templates(&self) -> Vec<concordia_api::EntityTemplate> {
+        crate::templates::templates()
+    }
+
     fn methods(&self) -> Vec<MethodInfo> {
         vec![
             MethodInfo::of::<CaptureScreenshot>(),
@@ -152,13 +156,13 @@ pub struct CaptureScreenshotParams {
     /// Render from this viewpoint instead of a camera entity (the editor's view).
     #[serde(default)]
     pub view: Option<crate::View>,
-    /// Width in pixels.
+    /// Width in pixels (default 768 × 432, sized for an agent's context; ask for more when detail matters).
     #[serde(default = "default_width")]
-    #[reflect(default = 1280, range(min = 1.0, max = 8192.0))]
+    #[reflect(default = 768, range(min = 1.0, max = 8192.0))]
     pub width: u32,
     /// Height in pixels.
     #[serde(default = "default_height")]
-    #[reflect(default = 720, range(min = 1.0, max = 8192.0))]
+    #[reflect(default = 432, range(min = 1.0, max = 8192.0))]
     pub height: u32,
     /// Which world to render: edit (default) or play.
     #[serde(default)]
@@ -172,11 +176,11 @@ pub struct CaptureScreenshotParams {
 }
 
 fn default_width() -> u32 {
-    1280
+    768
 }
 
 fn default_height() -> u32 {
-    720
+    432
 }
 
 /// `capture.screenshot` result (MCP returns `image` as image content).
@@ -575,6 +579,7 @@ pub struct ViewportPresentResult {
 impl Method for ViewportPresent {
     const NAME: &'static str = "viewport.present";
     const MUTATES: bool = false;
+    const AUDIENCE: Audience = Audience::editor;
     type Params = ViewportPresentParams;
     type Result = ViewportPresentResult;
 
@@ -718,6 +723,7 @@ pub struct ViewportStatsResult {
 impl Method for ViewportStats {
     const NAME: &'static str = "viewport.stats";
     const MUTATES: bool = false;
+    const AUDIENCE: Audience = Audience::editor;
     type Params = ViewportStatsParams;
     type Result = ViewportStatsResult;
 
@@ -790,6 +796,7 @@ pub struct ViewportNavigateResult {
 impl Method for ViewportNavigate {
     const NAME: &'static str = "viewport.navigate";
     const MUTATES: bool = false;
+    const AUDIENCE: Audience = Audience::editor;
     type Params = ViewportNavigateParams;
     type Result = ViewportNavigateResult;
 
@@ -973,6 +980,7 @@ pub struct ViewportOverlaysResult {
 impl Method for ViewportOverlays {
     const NAME: &'static str = "viewport.overlays";
     const MUTATES: bool = false;
+    const AUDIENCE: Audience = Audience::editor;
     type Params = crate::Overlays;
     type Result = ViewportOverlaysResult;
 

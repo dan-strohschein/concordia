@@ -3,6 +3,7 @@
 mod component;
 mod entity;
 mod events;
+mod hierarchy;
 mod log;
 mod query;
 mod scene;
@@ -31,6 +32,7 @@ pub(crate) fn all() -> Vec<MethodInfo> {
     methods.extend(session::methods());
     methods.extend(scene::methods());
     methods.extend(entity::methods());
+    methods.extend(hierarchy::methods());
     methods.extend(component::methods());
     methods.extend(query::methods());
     methods.extend(schema::methods());

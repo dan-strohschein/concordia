@@ -162,7 +162,7 @@ expression: "params_schema(&MethodInfo::of::<CaptureScreenshot>())"
       "description": "Camera entity; default: the highest-priority Camera."
     },
     "height": {
-      "default": 720,
+      "default": 432,
       "description": "Height in pixels.",
       "maximum": 8192.0,
       "minimum": 1.0,
@@ -191,8 +191,8 @@ expression: "params_schema(&MethodInfo::of::<CaptureScreenshot>())"
       "description": "Render from this viewpoint instead of a camera entity (the editor's view)."
     },
     "width": {
-      "default": 1280,
-      "description": "Width in pixels.",
+      "default": 768,
+      "description": "Width in pixels (default 768 × 432, sized for an agent's context; ask for more when detail matters).",
       "maximum": 8192.0,
       "minimum": 1.0,
       "type": "integer"

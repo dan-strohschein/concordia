@@ -100,13 +100,10 @@ fn capture_screenshot_is_the_requested_size() {
 }
 
 #[test]
-fn capture_screenshot_defaults_to_1280_by_720() {
+fn capture_screenshot_defaults_to_an_agent_sized_768_by_432() {
     let Some(mut h) = Harness::gpu() else { return };
     h.cube_scene();
-    assert_eq!(
-        png_size(&h.ok("capture.screenshot", json!({}))),
-        (1280, 720)
-    );
+    assert_eq!(png_size(&h.ok("capture.screenshot", json!({}))), (768, 432));
 }
 
 #[test]

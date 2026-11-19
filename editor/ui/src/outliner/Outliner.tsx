@@ -1,8 +1,11 @@
-// The Scene dock (Godot) / Outliner: the entity tree; click selects, F2 renames, Delete despawns.
+// The Scene dock (Godot) / Outliner: the entity tree; click selects, F2 renames, Delete removes the
+// subtree, ⌘D duplicates, right-click adds templates (EntityMenu).
 // Edits patch only the entities they touched, and only the rows in view are rendered.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { EDITOR_ACTOR, type EditorSession } from "../engine/session";
+import type { EditorSession } from "../engine/session";
+import { deleteEntity, duplicateEntity } from "./actions";
+import { EntityMenu, type MenuTarget } from "./EntityMenu";
 import { flatten, rowWindow, type FlatRow } from "./rows";
 import { OutlinerTree, type TreeNode } from "./tree";
 
@@ -88,6 +91,8 @@ export function Outliner({ session, selected, onSelect }: Props) {
   const flat = useMemo(() => flatten(roots), [roots]);
   const { box, onScroll, range } = useScrollWindow(flat.length);
   const [renaming, setRenaming] = useState<string>();
+  const [menu, setMenu] = useState<MenuTarget>();
+  const select = (work: Promise<string | undefined>) => void work.then(onSelect, (e: unknown) => console.warn(e));
 
   const rename = (id: string, name: string) => {
     setRenaming(undefined);
@@ -96,9 +101,10 @@ export function Outliner({ session, selected, onSelect }: Props) {
   const onKey = (e: React.KeyboardEvent) => {
     if (selected === undefined) return;
     if (e.key === "F2") setRenaming(selected);
-    if (e.key === "Delete" || e.key === "Backspace") {
-      void session.call("entity.despawn", { id: selected, actor: EDITOR_ACTOR });
-      onSelect(undefined);
+    if (e.key === "Delete" || e.key === "Backspace") select(deleteEntity(session, selected));
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "d") {
+      e.preventDefault();
+      select(duplicateEntity(session, selected));
     }
   };
   const item = ({ node, depth }: FlatRow) => (
@@ -106,6 +112,12 @@ export function Outliner({ session, selected, onSelect }: Props) {
       <div
         onClick={() => onSelect(node.id)}
         onDoubleClick={() => setRenaming(node.id)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onSelect(node.id);
+          setMenu({ id: node.id, x: e.clientX, y: e.clientY });
+        }}
         style={{
           height: ROW_HEIGHT,
           lineHeight: `${ROW_HEIGHT}px`,
@@ -138,6 +150,10 @@ export function Outliner({ session, selected, onSelect }: Props) {
       onScroll={onScroll}
       data-testid="outliner-scroll"
       style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setMenu({ x: e.clientX, y: e.clientY });
+      }}
     >
       <ul
         role="tree"
@@ -156,6 +172,15 @@ export function Outliner({ session, selected, onSelect }: Props) {
       >
         {flat.slice(range.start, range.end).map(item)}
       </ul>
+      {menu && (
+        <EntityMenu
+          session={session}
+          target={menu}
+          onClose={() => setMenu(undefined)}
+          onSelect={onSelect}
+          onRename={setRenaming}
+        />
+      )}
     </div>
   );
 }

@@ -24,9 +24,9 @@ async fn tool_list_is_one_to_one_with_api_methods() {
         .map(|t| t.name.to_string())
         .collect();
     let expected: Vec<String> = methods()
-        .names()
+        .iter()
         .filter(|m| concordia_mcp::is_tool(m))
-        .map(tool_name)
+        .map(|m| tool_name(m.name))
         .collect();
     assert_eq!(names, expected);
 }
@@ -238,7 +238,7 @@ async fn handshake_works_with_protocol_2025_11_25_and_2026_07_28() {
         assert_eq!(server.as_deref(), Some("concordia"), "{version:?}");
         assert_eq!(
             client.list_all_tools().await.unwrap().len(),
-            24,
+            28, // 24 from M0, plus entity.templates/create/duplicate/reparent (M1 1.13)
             "{version:?}"
         );
     }

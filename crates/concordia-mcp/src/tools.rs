@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use concordia_api::{
-    ApiError, ApiErrorKind, EncodedImage, MethodInfo, MethodRegistry, image_fields, params_schema,
-    result_schema,
+    ApiError, ApiErrorKind, Audience, EncodedImage, MethodInfo, MethodRegistry, image_fields,
+    params_schema, result_schema,
 };
 use concordia_core::suggest::did_you_mean;
 use concordia_reflect::example_json;
@@ -34,15 +34,17 @@ fn tool_name(method: &str) -> String {
     method.replace('.', "_")
 }
 
-/// The engine's methods exposed as tools: `session.open` is handled by the adapter, and
-/// `events.*` need a push channel that MCP tool calls do not have.
+/// The engine's methods exposed as tools.
 fn tool_methods(methods: &MethodRegistry) -> impl Iterator<Item = &MethodInfo> {
-    methods.iter().filter(|m| is_tool(m.name))
+    methods.iter().filter(|m| is_tool(m))
 }
 
-/// True for methods MCP exposes as tools.
-pub fn is_tool(method: &str) -> bool {
-    method != "session.open" && !method.starts_with("events.")
+/// True for methods MCP exposes as tools: agent-audience methods, except `session.open` (handled by
+/// the adapter) and `events.*` (they need a push channel that MCP tool calls do not have).
+pub fn is_tool(method: &MethodInfo) -> bool {
+    method.audience == Audience::agent
+        && method.name != "session.open"
+        && !method.name.starts_with("events.")
 }
 
 fn tool(method: &MethodInfo) -> Tool {

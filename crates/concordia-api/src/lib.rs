@@ -31,6 +31,7 @@ mod methods;
 mod module;
 mod patch;
 mod rpc;
+mod template;
 pub mod transport;
 
 pub use engine::{Engine, EngineConfig};
@@ -39,11 +40,12 @@ pub use events::{EventSink, Topic};
 pub use handle::EngineHandle;
 pub use image::{EncodedImage, image_fields};
 pub use method::{
-    CallCtx, Method, MethodInfo, MethodRegistry, methods, params_schema, result_schema,
+    Audience, CallCtx, Method, MethodInfo, MethodRegistry, methods, params_schema, result_schema,
 };
 pub use methods::{EntityRef, WorldSel};
 pub use module::{EngineModule, PlaySetup};
 pub use patch::merge_patch;
+pub use template::EntityTemplate;
 
 /// Engine API protocol version reported by `session.open`.
 pub const PROTOCOL_VERSION: u32 = 1;

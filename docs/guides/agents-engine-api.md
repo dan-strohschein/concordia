@@ -11,6 +11,14 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 6. `scene.save {}` writes canonical RON. `txn.undo` / `txn.redo` work across restarts when the file is unchanged.
 7. Simulate without touching the scene: `sim.step {"ticks": 60}`, then read with `"world": "play"`; `sim.stop {}` discards the play world.
 
+## Building a scene (M1)
+1. Look around: `project.files {}` lists the project's files with their kind and import status.
+2. Bring in a model: `asset.import {"path": "models/crate.glb"}`, then `prefab.instantiate {"asset": "asset:<id>", "translation": [0, 0, 0]}` (one undo step).
+3. Add ready-made entities: `entity.templates {}` lists them; `entity.create {"template": "Cube", "translation": [0, 0.5, 0]}`, `{"template": "Directional Light"}`, `{"template": "Camera"}`. Group with `"parent"`, copy with `entity.duplicate`, regroup with `entity.reparent`. For physics add `RigidBody` + `Collider`; for a sky add `Environment` with an imported `.hdr`. (`entity.spawn` still takes raw components.)
+4. Look at it: `capture.screenshot {}` returns an image (768 × 432 by default; pass `width`/`height` for detail, `camera` or `view` to choose the viewpoint, `"world": "play"` to see the simulation). `viewport.pick` tells you which entity is at a pixel of that image; `viewport.drop` where something placed there would land.
+5. Run it: `sim.step {"ticks": 120}`, `input.inject` to press actions, `physics.raycast` to probe, then read with `"world": "play"`.
+6. `scene.save {}`.
+
 ## Rules
 - Every mutating call needs an actor: `"actor": "agent:<role>"` or the session default. Grammar: `<human|agent|system|tool|script>:<name>[#n]`, lowercase names.
 - Entity ids are UUID strings. If you pass a name instead, the error tells you the matching id.
@@ -27,8 +35,14 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `scene.save` | | `{path?}` → `{path, bytes, hash}` |
 | `scene.info` | | `{}` → `{scene_id, name, path, dirty, entity_count, components_in_use}` |
 | `project.files` | | `{dir?}` → `{files: [{path, kind, size, asset, importer}]}` (projects with `[assets]`; skips hidden, git-ignored and sidecar files) |
+| `asset.import` | | `{path}` → `{id, cached, sub_assets}` (import or re-import a project file; idempotent; refer to it as `"asset:<id>"`) |
+| `asset.list` | | `{}` → `{assets: [{id, path, importer, sub_assets}]}` |
 | `entity.spawn` | yes | `{components, id?}` → `{id}` |
-| `entity.despawn` | yes | `{id}` → `{}` |
+| `entity.despawn` | yes | `{id, recursive?}` → `{}` (`recursive: true` also removes all descendants, one undo step) |
+| `entity.templates` | | `{}` → `{templates: [{name, description, components}]}` (ready-made entities: Empty, Cube, Sphere, Plane, Camera, Directional/Point/Spot Light, plus any from plugins) |
+| `entity.create` | yes | `{template, parent?, name?, translation?}` → `{id}` (spawns a template; sibling names stay unique, "Cube 2") |
+| `entity.duplicate` | yes | `{ids}` → `{ids}` (copies with all descendants, new ids, references remapped; one undo step) |
+| `entity.reparent` | yes | `{id, parent \| null, keep_world?}` → `{}` (keeps the world pose by default; rejects cycles) |
 | `prefab.instantiate` | yes | `{asset, parent?, translation?}` → `{root, entities}` (an imported model's hierarchy, one undo step; joins an open transaction) |
 | `entity.get` | | `{id, world?}` → `{id, components}` |
 | `component.get` | | `{entity, component, world?}` → `{value}` |
@@ -43,13 +57,16 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `txn.history` | | `{limit?}` → `{entries}` |
 | `sim.play` / `sim.pause` / `sim.stop` | | `{rate_hz?}` / `{}` → `{state, tick}` |
 | `sim.step` | | `{ticks}` → `{tick, world_hash}` |
+| `input.inject` | | `{events: [{tick?, event}], actor?}` → `{accepted, next_tick}` (raw input into the play world, e.g. `{"event": {"Key": {"key": "Space", "pressed": true}}}`; the project's `.input.ron` maps it to actions) |
+| `physics.raycast` | | `{origin, direction, max_distance, layers?, world?}` → `{hit: {entity, point, normal, distance} \| null}` |
 | `capture.screenshot` | | `{width?, height?, camera? \| view?, world?, overlays?}` → `{image, width, height, sim_tick, frame}` (projects with `[render]`; `overlays: true` adds the editor overlays) |
 | `viewport.pick` | | `{view, x, y, width, height, world?}` → `{entity, distance}` (projects with `[render]`) |
 | `viewport.drop` | | `{view, x, y, width, height, world?}` → `{position, entity}` (where a dragged-in asset lands: the mesh under the pointer, else the ground plane y = 0) |
-| `viewport.present` | | `{view, width, height, world?, seq?, input_time_ms?}` → `{presented}` (the editor's native viewport only) |
-| `viewport.overlays` | | `{selection?, gizmo?: {entity, hovered?}, grid?, scale?}` → `{overlays}` (what the engine draws over the editor viewport) |
-| `viewport.gizmo` | yes | `{action: begin\|move\|end\|cancel, entity?, axis?, x?, y?, width?, height?}` → `{translation, axis}` (Move-gizmo drags; a begin without an axis grabs the shown gizmo's handle under the pointer, or misses) |
-| `viewport.stats` | | `{clear?}` → `{frames: [{seq, input_time_ms, cpu_ms, submitted_ms, presented_ms}]}` (recent native-viewport frames; times in Unix ms) |
+| `viewport.present` | | `{view, width, height, world?, seq?, input_time_ms?}` → `{presented}` (the editor's native viewport only); **editor only, not an MCP tool** |
+| `viewport.navigate` | | `{orbit?, pan?, zoom?, preset?, focus?, toggle_ortho?}` → `{view}` (moves the editor's camera; **editor only, not an MCP tool**) |
+| `viewport.overlays` | | `{selection?, gizmo?: {entity, hovered?}, grid?, scale?}` → `{overlays}` (what the engine draws over the editor viewport); **editor only, not an MCP tool** |
+| `viewport.gizmo` | yes | `{action: begin\|move\|end\|cancel, entity?, axis?, x?, y?, width?, height?}` → `{translation, axis}` (Move-gizmo drags; a begin without an axis grabs the shown gizmo's handle under the pointer, or misses); **editor only, not an MCP tool** |
+| `viewport.stats` | | `{clear?}` → `{frames: [{seq, input_time_ms, cpu_ms, submitted_ms, presented_ms}]}` (recent native-viewport frames; times in Unix ms); **editor only, not an MCP tool** |
 | `log.tail` | | `{since?, level?, limit?}` → `{records, next}` |
 | `events.subscribe` / `events.unsubscribe` | | `{topics: ["edit" \| "scene" \| "sim" \| "pending" \| "log"]}` → `{topics}` (WebSocket only; not an MCP tool) |
 
