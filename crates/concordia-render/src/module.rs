@@ -630,6 +630,7 @@ fn queue_record(engine: &mut Engine, p: &PresentTarget) -> (FrameLog, u64) {
         cpu_ms: 0.0,
         submitted_ms: None,
         presented_ms: None,
+        gpu_ms: None,
     };
     push_frame(&state.frames, id, record);
     (state.frames.clone(), id)
@@ -847,6 +848,7 @@ impl ViewportControl {
             cpu_ms: 0.0,
             submitted_ms: None,
             presented_ms: None,
+            gpu_ms: None,
         };
         push_frame(&self.frames, id, record);
         if self

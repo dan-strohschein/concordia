@@ -274,6 +274,10 @@ fn viewport_stats_record_each_presented_frame_with_its_input_tag() {
     );
     for f in frames {
         assert!(f["cpu_ms"].as_f64().unwrap() > 0.0, "{f}");
+        assert!(
+            f["gpu_ms"].as_f64().is_some_and(|ms| ms >= 0.0),
+            "GPU time recorded: {f}"
+        );
         assert!(f["submitted_ms"].as_f64().unwrap() >= now_ms, "{f}");
         assert_eq!(f["input_time_ms"].as_f64(), Some(now_ms));
     }

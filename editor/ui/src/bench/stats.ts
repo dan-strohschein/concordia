@@ -8,6 +8,7 @@ export interface FrameRecord {
   cpu_ms: number;
   submitted_ms: number | null;
   presented_ms: number | null;
+  gpu_ms?: number | null;
 }
 
 /** Percentiles of one measure (ms). */
@@ -32,6 +33,8 @@ export interface FrameSummary {
   /** Inputs that reached a presented frame. */
   inputs: number;
   cpu_ms: Distribution;
+  /** GPU time per frame (frames whose GPU time was measured). */
+  gpu_ms: Distribution;
 }
 
 /** Nearest-rank percentile; NaN for no values. */
@@ -80,5 +83,6 @@ export function summarize(frames: readonly FrameRecord[], refreshMs: number): Fr
     latency_ms: distribution(latencies),
     inputs: latencies.length,
     cpu_ms: distribution(frames.map((f) => f.cpu_ms)),
+    gpu_ms: distribution(frames.flatMap((f) => (typeof f.gpu_ms === "number" ? [f.gpu_ms] : []))),
   };
 }

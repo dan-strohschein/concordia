@@ -23,6 +23,8 @@ pub struct FrameRecord {
     pub submitted_ms: Option<f64>,
     /// When it reached the display (Unix ms); null if it has not (yet), or never did.
     pub presented_ms: Option<f64>,
+    /// GPU time of the frame's commands (ms); null until measured.
+    pub gpu_ms: Option<f64>,
 }
 
 /// Frames kept for `viewport.stats`.
@@ -61,6 +63,11 @@ pub(crate) fn remove_frame(log: &FrameLog, id: u64) {
     if let Ok(mut list) = log.lock() {
         list.retain(|(i, _)| *i != id);
     }
+}
+
+/// Records frame `id`'s GPU time.
+pub(crate) fn gpu_time_callback(log: FrameLog, id: u64) -> concordia_rhi::GpuTimeCallback {
+    Box::new(move |ms| update_frame(&log, id, |f| f.gpu_ms = ms))
 }
 
 /// Records when frame `id` reached the display.

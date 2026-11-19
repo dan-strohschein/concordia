@@ -65,7 +65,7 @@ pub struct Renderer {
     culler: ClusterCuller,
     surfaces: Vec<Surface>,
     /// Called when the frame being rendered reaches the display (set by `present_with`).
-    on_presented: Option<concordia_rhi::PresentedCallback>,
+    callbacks: FrameCallbacks,
     environments: EnvironmentCache,
     shadow_maps: ShadowMaps,
     clusters: ClusterSettings,
@@ -100,6 +100,21 @@ enum Overflow {
         clusters: u64,
         value: u64,
     },
+}
+
+/// What a presented frame reports back, and when.
+#[derive(Default)]
+pub struct FrameCallbacks {
+    /// When the frame reached the display.
+    pub presented: Option<concordia_rhi::PresentedCallback>,
+    /// The frame's GPU time (ms).
+    pub gpu_time: Option<concordia_rhi::GpuTimeCallback>,
+}
+
+impl std::fmt::Debug for FrameCallbacks {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FrameCallbacks").finish_non_exhaustive()
+    }
 }
 
 /// Where a draw item goes this frame.
@@ -248,7 +263,7 @@ impl Renderer {
             pipelines,
             culler,
             surfaces: Vec::new(),
-            on_presented: None,
+            callbacks: FrameCallbacks::default(),
             environments: EnvironmentCache::default(),
             shadow_maps: ShadowMaps::default(),
             clusters: ClusterSettings::default(),
@@ -341,19 +356,19 @@ impl Renderer {
         request: &RenderRequest,
         surface: Surface,
     ) -> Result<bool, RenderError> {
-        self.present_with(world, assets, request, surface, None)
+        self.present_with(world, assets, request, surface, FrameCallbacks::default())
     }
 
-    /// [`Renderer::present`], calling `on_presented` when the frame reaches the display.
+    /// [`Renderer::present`], reporting the frame's display and GPU times through `callbacks`.
     pub fn present_with(
         &mut self,
         world: &RenderWorld,
         assets: &mut dyn AssetSource,
         request: &RenderRequest,
         surface: Surface,
-        on_presented: Option<concordia_rhi::PresentedCallback>,
+        callbacks: FrameCallbacks,
     ) -> Result<bool, RenderError> {
-        self.on_presented = on_presented;
+        self.callbacks = callbacks;
         let (width, height) = check_size(request)?;
         let Some(texture) = self.device.acquire(surface, width.get(), height.get())? else {
             return Ok(false);
@@ -959,13 +974,14 @@ impl Renderer {
         if let Output::Surface { surface, .. } = output {
             let value = self.frames + 1;
             let timeline = self.timeline(device)?;
-            let on_presented = self.on_presented.take();
+            let callbacks = std::mem::take(&mut self.callbacks);
             device.present(
                 surface,
                 concordia_rhi::Present {
                     commands: &list,
                     signal: &[(timeline, value)],
-                    on_presented,
+                    on_presented: callbacks.presented,
+                    on_gpu_time: callbacks.gpu_time,
                 },
             )?;
             let pending = Overflow::Pending {

@@ -8,8 +8,13 @@ use std::time::{Duration, Instant, SystemTime};
 
 use concordia_rhi::{RhiError, Surface, SurfaceTarget};
 
-use crate::frame_log::{FrameLog, presented_callback, remove_frame, unix_ms, update_frame};
-use crate::{Image, MemoryAssets, RenderError, RenderRequest, RenderScene, Renderer, SceneDelta};
+use crate::frame_log::{
+    FrameLog, gpu_time_callback, presented_callback, remove_frame, unix_ms, update_frame,
+};
+use crate::{
+    FrameCallbacks, Image, MemoryAssets, RenderError, RenderRequest, RenderScene, Renderer,
+    SceneDelta,
+};
 
 /// Which world's scene a job updates: 0 = edit, 1 = play.
 pub(crate) type SceneSlot = usize;
@@ -255,10 +260,13 @@ impl Worker {
             return;
         };
         let world = self.scenes[slot].world_at(self.alpha(slot));
-        if let Err(e) = self
-            .renderer
-            .present_with(&world, &mut self.store, &request, surface, None)
-        {
+        if let Err(e) = self.renderer.present_with(
+            &world,
+            &mut self.store,
+            &request,
+            surface,
+            FrameCallbacks::default(),
+        ) {
             tracing::warn!(target: "concordia::render", error = %e, "viewport frame failed");
         }
     }
@@ -354,15 +362,14 @@ impl Worker {
             return remove_frame(&log, id);
         };
         let start = Instant::now();
-        let on_presented = presented_callback(log.clone(), id);
+        let callbacks = FrameCallbacks {
+            presented: Some(presented_callback(log.clone(), id)),
+            gpu_time: Some(gpu_time_callback(log.clone(), id)),
+        };
         let world = self.scenes[scene.slot].world_at(self.alpha(scene.slot));
-        let presented = self.renderer.present_with(
-            &world,
-            &mut self.store,
-            &request,
-            surface,
-            Some(on_presented),
-        );
+        let presented =
+            self.renderer
+                .present_with(&world, &mut self.store, &request, surface, callbacks);
         match presented {
             Ok(true) => {
                 let cpu_ms = start.elapsed().as_secs_f64() * 1000.0;

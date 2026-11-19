@@ -26,7 +26,12 @@ pub struct Present<'a> {
     pub signal: &'a [(crate::Timeline, u64)],
     /// Called once the image is on screen.
     pub on_presented: Option<PresentedCallback>,
+    /// Called with the GPU time of the commands (ms) once they finish, `None` if unmeasured.
+    pub on_gpu_time: Option<GpuTimeCallback>,
 }
+
+/// Receives a submission's GPU time in milliseconds (`None` if the backend cannot measure it).
+pub type GpuTimeCallback = Box<dyn FnOnce(Option<f64>) + Send>;
 
 impl<'a> Present<'a> {
     /// Just the commands: no signals, no callback.
@@ -35,6 +40,7 @@ impl<'a> Present<'a> {
             commands,
             signal: &[],
             on_presented: None,
+            on_gpu_time: None,
         }
     }
 }
@@ -45,6 +51,7 @@ impl std::fmt::Debug for Present<'_> {
             .field("commands", &self.commands.label)
             .field("signal", &self.signal)
             .field("on_presented", &self.on_presented.is_some())
+            .field("on_gpu_time", &self.on_gpu_time.is_some())
             .finish()
     }
 }

@@ -45,7 +45,7 @@ pub use module::{
 };
 pub use orbit::{OrbitCamera, Preset};
 pub use pipelines::shader_dir;
-pub use renderer::{Image, MAX_SIZE, RenderRequest, RenderStats, Renderer};
+pub use renderer::{FrameCallbacks, Image, MAX_SIZE, RenderRequest, RenderStats, Renderer};
 pub use scene_cache::{RenderScene, SceneCache, SceneDelta, SceneItems};
 pub use shadow_pass::ShadowPush;
 pub use view::{Pick, View, axis_delta, pick};

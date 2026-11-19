@@ -18,6 +18,10 @@ export interface FrameRecord {
    */
   cpu_ms: number;
   /**
+   * GPU time of the frame's commands (ms); null until measured.
+   */
+  gpu_ms?: null | number;
+  /**
    * When the input behind this view happened (Unix ms, from the caller).
    */
   input_time_ms?: null | number;
