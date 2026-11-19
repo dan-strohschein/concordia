@@ -208,3 +208,37 @@ fn walk(dir: &std::path::Path) -> usize {
             .sum()
     })
 }
+
+#[test]
+fn render_stats_reports_the_last_frame() {
+    let Some(mut h) = Harness::gpu() else { return };
+    assert_eq!(
+        h.ok("render.stats", json!({}))["frame"],
+        Value::Null,
+        "nothing rendered yet"
+    );
+    h.cube_scene();
+    h.ok(
+        "capture.screenshot",
+        json!({"width": 320, "height": 180, "view_mode": "wireframe"}),
+    );
+    // The GPU time arrives from the device's completion handler, just after the readback.
+    let mut frame = Value::Null;
+    for _ in 0..100 {
+        frame = h.ok("render.stats", json!({}))["frame"].clone();
+        if frame["gpu_ms"].is_number() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(frame["width"], 320, "{frame}");
+    assert_eq!(frame["height"], 180);
+    assert_eq!(frame["view_mode"], "wireframe");
+    assert_eq!(frame["draws"], 1);
+    assert_eq!(frame["culled"], 0);
+    assert_eq!(frame["draw_calls"], 1);
+    assert_eq!(frame["triangles"], 12, "a cube");
+    assert!(frame["cpu_ms"].as_f64().unwrap() > 0.0, "{frame}");
+    assert!(frame["gpu_ms"].as_f64().unwrap() > 0.0, "{frame}");
+    assert!(frame["memory_bytes"].as_u64().unwrap() > 0, "{frame}");
+}

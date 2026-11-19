@@ -80,6 +80,63 @@ pub fn axis_delta(
     (delta[0] * s[0] + delta[1] * s[1]) / length2
 }
 
+/// Rotation (radians, right-handed about `axis`) for a pointer moved from `from` to `to`: the
+/// angle swept around the entity's screen position, counter-clockwise on screen being positive
+/// when the axis points at the eye; 0 when a point is on the entity or it is out of view.
+pub fn rotate_angle(
+    view: &View,
+    origin: Vec3,
+    axis: Vec3,
+    from: [f32; 2],
+    to: [f32; 2],
+    width: f32,
+    height: f32,
+) -> f32 {
+    let Some(o) = view.project(origin, width, height) else {
+        return 0.0;
+    };
+    let (a, b) = (
+        [from[0] - o[0], from[1] - o[1]],
+        [to[0] - o[0], to[1] - o[1]],
+    );
+    if a[0].hypot(a[1]) < 1e-3 || b[0].hypot(b[1]) < 1e-3 {
+        return 0.0;
+    }
+    // Screen y points down, so a positive cross product is clockwise on screen.
+    let clockwise = (a[0] * b[1] - a[1] * b[0]).atan2(a[0] * b[0] + a[1] * b[1]);
+    let facing = if axis.dot(view.eye - origin) < 0.0 {
+        -1.0
+    } else {
+        1.0
+    };
+    -clockwise * facing
+}
+
+/// Scale factor along `axis` for a pointer `delta` (pixels): 1 plus the drag along the axis'
+/// on-screen direction in arrow lengths, at least 0.01; 1 when the axis points at the eye.
+pub fn scale_factor(
+    view: &View,
+    origin: Vec3,
+    axis: Vec3,
+    delta: [f32; 2],
+    width: f32,
+    height: f32,
+) -> f32 {
+    let (Some(a), Some(b)) = (
+        view.project(origin, width, height),
+        view.project(origin + axis, width, height),
+    ) else {
+        return 1.0;
+    };
+    let s = [b[0] - a[0], b[1] - a[1]];
+    let length = s[0].hypot(s[1]);
+    if length < 1e-3 {
+        return 1.0;
+    }
+    let along = (delta[0] * s[0] + delta[1] * s[1]) / length;
+    (1.0 + along / crate::overlay::ARROW).max(0.01)
+}
+
 /// A pick hit: the entity and its depth along the view direction from the eye.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Pick {

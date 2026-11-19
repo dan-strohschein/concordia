@@ -96,6 +96,32 @@ fn stale(kind: &'static str, index: u32, generation: u32) -> RhiError {
 }
 
 impl MetalDevice {
+    /// Records and commits `submit`, reporting its GPU time to `on_gpu_time` when it completes.
+    fn commit(
+        &self,
+        submit: Submit<'_>,
+        on_gpu_time: Option<concordia_rhi::GpuTimeCallback>,
+    ) -> Result<(), RhiError> {
+        // Metal returns autoreleased objects (command buffers, encoders, drawables) that retain
+        // every resource they touch; drain them per call, as the engine thread never exits.
+        objc2::rc::autoreleasepool(|_| {
+            submit.commands.validate()?;
+            if self.lost.load(Ordering::SeqCst) {
+                return Err(RhiError::DeviceLost(
+                    "simulated device loss (test hook)".into(),
+                ));
+            }
+            let mut inner = self.lock()?;
+            let command_buffer = crate::encode::record(&inner, &submit)?;
+            if let Some(callback) = on_gpu_time {
+                crate::surface::on_gpu_time(&command_buffer, callback);
+            }
+            command_buffer.commit();
+            inner.last = Some(command_buffer);
+            Ok(())
+        })
+    }
+
     /// The system default GPU, headless.
     pub fn system_default() -> Result<Self, RhiError> {
         let device = probe::default_device()?;
@@ -517,21 +543,15 @@ impl Device for MetalDevice {
     }
 
     fn submit(&self, submit: Submit<'_>) -> Result<(), RhiError> {
-        // Metal returns autoreleased objects (command buffers, encoders, drawables) that retain
-        // every resource they touch; drain them per call, as the engine thread never exits.
-        objc2::rc::autoreleasepool(|_| {
-            submit.commands.validate()?;
-            if self.lost.load(Ordering::SeqCst) {
-                return Err(RhiError::DeviceLost(
-                    "simulated device loss (test hook)".into(),
-                ));
-            }
-            let mut inner = self.lock()?;
-            let command_buffer = crate::encode::record(&inner, &submit)?;
-            command_buffer.commit();
-            inner.last = Some(command_buffer);
-            Ok(())
-        })
+        self.commit(submit, None)
+    }
+
+    fn submit_timed(
+        &self,
+        submit: Submit<'_>,
+        on_gpu_time: concordia_rhi::GpuTimeCallback,
+    ) -> Result<(), RhiError> {
+        self.commit(submit, Some(on_gpu_time))
     }
 
     fn wait_idle(&self) -> Result<(), RhiError> {

@@ -115,6 +115,49 @@ expression: "params_schema(&MethodInfo::of::<CaptureScreenshot>())"
       "type": "object",
       "x-concordia-type": "View"
     },
+    "ViewMode": {
+      "description": "How the scene is drawn: the lit image, or a debug view of one input or cost.",
+      "oneOf": [
+        {
+          "const": "lit",
+          "description": "The final lit image."
+        },
+        {
+          "const": "unlit",
+          "description": "Base color and emission without lighting."
+        },
+        {
+          "const": "wireframe",
+          "description": "Triangle edges only, hidden ones included."
+        },
+        {
+          "const": "normals",
+          "description": "Shading normals as colors (x, y, z → red, green, blue)."
+        },
+        {
+          "const": "albedo",
+          "description": "Base color only."
+        },
+        {
+          "const": "roughness_metallic",
+          "description": "Roughness in green, metallic in blue."
+        },
+        {
+          "const": "overdraw",
+          "description": "How many surfaces each pixel shades (brighter: more)."
+        },
+        {
+          "const": "shadow_cascades",
+          "description": "The lit image tinted by shadow cascade (red, green, blue, yellow from near to far)."
+        },
+        {
+          "const": "light_clusters",
+          "description": "Lights per cluster as a heat map (blue: none, green: 8, red: 16 or more)."
+        }
+      ],
+      "title": "ViewMode",
+      "x-concordia-type": "ViewMode"
+    },
     "WorldSel": {
       "description": "Which world to read.",
       "oneOf": [
@@ -189,6 +232,17 @@ expression: "params_schema(&MethodInfo::of::<CaptureScreenshot>())"
         }
       ],
       "description": "Render from this viewpoint instead of a camera entity (the editor's view)."
+    },
+    "view_mode": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/ViewMode"
+        }
+      ],
+      "description": "Draw a debug view instead of the lit image, e.g. \"wireframe\" or \"normals\" (see ViewMode)."
     },
     "width": {
       "default": 768,

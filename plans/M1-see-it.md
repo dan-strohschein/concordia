@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (editor v1, agent-first: 1.11–1.15 done, 1.16 next, then the gate; ADR-0049; 1.0–1.9 done, 1.10 stretch pending; ADR-0048) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (editor v1, agent-first: 1.11–1.16 done, the gate next, then the gate; ADR-0049; 1.0–1.9 done, 1.10 stretch pending; ADR-0048) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -1233,7 +1233,7 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
 - **Menus:** the Edit menu has Undo and Redo. The View menu toggles each dock (`menuitemcheckbox` items) and the grid; the grid state moved from the Viewport up to the Editor.
 - **Counts:** the core method count went from 32 to 33 and the core MCP tool count from 29 to 30. The count tests, including the M0 gate's, were updated deliberately.
 
-### Phase 1.16: Viewport views for agents
+### Phase 1.16: Viewport views for agents (done)
 **Goal.** Agents and humans can see what the renderer is doing, which is how gaps in the 3D engine get found.
 
 **Engine API:**
@@ -1259,6 +1259,28 @@ No snapping, freelook or light and camera icons in this phase (backlog).
 - rotate and scale drag math with one-step undo;
 - an MCP test: `capture_screenshot {view_mode: "wireframe"}` returns an image that differs from the lit one;
 - the bench: no regression in orbit and gizmo frame rates.
+
+**As built:**
+- **View modes are one shader branch.** `ViewMode` (a reflected enum) reaches `forward.slang` as `Frame.debug.x`.
+  - Data views (unlit, wireframe, normals, albedo, roughness/metallic, overdraw) skip the tonemap curve (`Linear`) and, except unlit, the sky.
+  - Wireframe needs no RHI fill mode: vertex pulling gives each triangle corner's index, so the fragment shader draws barycentric edges.
+  - Wireframe and overdraw use a new `Pipelines::debug` variant: no culling, no depth test. Overdraw blends with a new `BlendMode::Additive` (with an RHI conformance case).
+  - Lights per cluster uses a fixed heat scale (blue: 0, green: 8, red: 16 or more), because scaling to the cluster budget hid typical counts.
+- **`render.stats`** (agent audience) reports the last frame drawn by a capture or the editor. Fields: size, view mode, CPU and GPU ms, draws, culled, draw calls, triangles, punctual lights, cached shadows, GPU memory.
+  - GPU time comes from the device's completion handler. Captures get it through a new `Device::submit_timed` (Metal overrides it; the default reports `None`), and viewport frames through the existing present callback. A time that arrives before its frame is recorded is held until then.
+  - Memory is `Device::allocated_bytes`.
+- **The `viewport.overlays` params (`Overlays`) gain `view_mode`** for the native viewport. `capture.screenshot` takes its own.
+- **Gizmos:** `GizmoMode` (move, rotate, scale) on `GizmoOverlay` and `viewport.gizmo`.
+  - Rings are projected unit circles, scaled to the arrow length on screen.
+  - Rotate turns by the angle swept around the entity on screen.
+  - Scale grows by one per arrow length dragged, never below 0.01.
+  - The native hit-test anchor carries the mode.
+- **UI:** Rotate and Scale buttons, Q/W/E/R (ignored with ⌘ or Ctrl), view modes under Display in the viewport's View menu, and a one-line stats readout refreshed every second.
+- **Bench** (`just editor-bench`, M3 Pro, 120 Hz; reports `pre-1.16` and `post-1.16` in `target/bench/`):
+  - At 0 and 1k entities every scenario holds or improves (orbit about 115 fps, gizmo drag 120 fps).
+  - At 10k, native orbit (112 → 117.5), orbit with agent edits (86 → 118.5), gizmo drag (103 → 120) and play hold or improve.
+  - **Open:** the browser-style orbit at 10k measured 112.9 fps before and 102.5 and 98.4 after (107.7 with the stats readout's polling disabled), with GPU time unchanged and CPU p50 within 0.3 ms. Nothing added scales with entity count, so it looks like run-to-run noise, but it isn't settled. Re-measure with more runs before the M1 gate.
+- **Goldens:** the view-mode goldens' test scene made its cube explicitly non-metallic: `MaterialData` defaults to metallic 1 (glTF), which the roughness/metallic view showed.
 
 ## Milestone gate (the executable acceptance test: exact command and what it asserts)
 

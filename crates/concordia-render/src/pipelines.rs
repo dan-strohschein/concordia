@@ -61,6 +61,7 @@ pub(crate) struct Pipelines {
     grid: (ShaderSource, ShaderSource),
     grids: BTreeMap<u8, Pipeline>,
     variants: BTreeMap<(u8, bool, bool), Pipeline>,
+    debug: BTreeMap<(u8, bool), Pipeline>,
 }
 
 impl Pipelines {
@@ -117,6 +118,7 @@ impl Pipelines {
             grid,
             grids: BTreeMap::new(),
             variants: BTreeMap::new(),
+            debug: BTreeMap::new(),
         })
     }
 
@@ -225,6 +227,44 @@ impl Pipelines {
     /// Depth-only pipeline for shadow casters.
     pub(crate) fn shadow(&self) -> Pipeline {
         self.shadow
+    }
+
+    /// The forward pipeline for the wireframe (`additive` false) and overdraw (`additive` true) view
+    /// modes: every face of every surface, no depth test or write.
+    pub(crate) fn debug(
+        &mut self,
+        device: &dyn Device,
+        samples: SampleCount,
+        additive: bool,
+    ) -> Result<Pipeline, RenderError> {
+        let key = (samples.get(), additive);
+        if let Some(p) = self.debug.get(&key) {
+            return Ok(*p);
+        }
+        let pipeline = device.create_graphics_pipeline(&GraphicsPipelineDesc {
+            vertex: self.forward.0.clone(),
+            fragment: Some(self.forward.1.clone()),
+            color_formats: vec![HDR],
+            depth: Some(DepthState {
+                format: DEPTH,
+                compare: CompareOp::Always,
+                write: false,
+            }),
+            samples,
+            cull: CullMode::None,
+            blend: if additive {
+                BlendMode::Additive
+            } else {
+                BlendMode::Opaque
+            },
+            label: format!(
+                "forward x{} {}",
+                samples.get(),
+                if additive { "overdraw" } else { "wireframe" }
+            ),
+        })?;
+        self.debug.insert(key, pipeline);
+        Ok(pipeline)
     }
 
     /// The forward pipeline for a sample count, face culling and blending (premultiplied alpha,

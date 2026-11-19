@@ -12,6 +12,7 @@ use crate::frame_log::{
     FrameLog, FrameRecord, gpu_time_callback, presented_callback, push_frame, remove_frame,
     unix_ms, update_frame,
 };
+use crate::stats::{self, LastFrame};
 use crate::{
     FrameCallbacks, Image, MemoryAssets, RenderError, RenderRequest, RenderScene, Renderer,
     SceneDelta,
@@ -69,6 +70,7 @@ impl RenderThread {
     /// Starts the thread and makes the renderer on it, reporting device or shader errors.
     pub(crate) fn spawn(
         make: impl FnOnce() -> Result<Renderer, RenderError> + Send + 'static,
+        last: LastFrame,
     ) -> Result<Self, RenderError> {
         let (jobs, queue) = mpsc::channel();
         let (ready, started) = mpsc::channel();
@@ -79,7 +81,7 @@ impl RenderThread {
                     // The editor viewport favours latency: its GPU frames are short.
                     let _ = renderer.set_frames_in_flight(1);
                     let _ = ready.send(Ok(()));
-                    Worker::new(renderer).run(&queue);
+                    Worker::new(renderer, last).run(&queue);
                 }
                 Err(e) => {
                     let _ = ready.send(Err(e));
@@ -182,10 +184,12 @@ struct Worker {
     /// counted from 2^63 so they never meet the engine's.
     log: Option<FrameLog>,
     own_ids: u64,
+    /// The last frame drawn, for `render.stats`.
+    last_frame: LastFrame,
 }
 
 impl Worker {
-    fn new(renderer: Renderer) -> Self {
+    fn new(renderer: Renderer, last_frame: LastFrame) -> Self {
         Self {
             renderer,
             store: MemoryAssets::default(),
@@ -195,6 +199,7 @@ impl Worker {
             ticks: [None; 2],
             log: None,
             own_ids: 1 << 63,
+            last_frame,
         }
     }
 
@@ -334,7 +339,20 @@ impl Worker {
             } => {
                 self.update(&mut scene);
                 let world = self.scenes[scene.slot].world();
-                let image = self.renderer.render(world, &mut self.store, &request);
+                let number = self.renderer.frames() + 1;
+                let start = Instant::now();
+                let callbacks = FrameCallbacks {
+                    presented: None,
+                    gpu_time: Some(stats::gpu_callback(self.last_frame.clone(), number)),
+                };
+                let image = self
+                    .renderer
+                    .render_with(world, &mut self.store, &request, callbacks);
+                if image.is_ok() {
+                    let cpu_ms = start.elapsed().as_secs_f64() * 1000.0;
+                    let frame_stats = self.renderer.stats();
+                    stats::record(&self.last_frame, number, &request, frame_stats, cpu_ms);
+                }
                 let _ = reply.send(image.map(|image| (image, self.renderer.frames())));
                 latest
             }
@@ -406,9 +424,17 @@ impl Worker {
             return remove_frame(&log, id);
         };
         let start = Instant::now();
+        let number = self.renderer.frames() + 1;
+        let (to_log, to_stats) = (
+            gpu_time_callback(log.clone(), id),
+            stats::gpu_callback(self.last_frame.clone(), number),
+        );
         let callbacks = FrameCallbacks {
             presented: Some(presented_callback(log.clone(), id)),
-            gpu_time: Some(gpu_time_callback(log.clone(), id)),
+            gpu_time: Some(Box::new(move |ms| {
+                to_log(ms);
+                to_stats(ms);
+            })),
         };
         let world = self.scenes[scene.slot].world_at(self.alpha(scene.slot));
         let presented =
@@ -417,6 +443,8 @@ impl Worker {
         match presented {
             Ok(true) => {
                 let cpu_ms = start.elapsed().as_secs_f64() * 1000.0;
+                let frame_stats = self.renderer.stats();
+                stats::record(&self.last_frame, number, &request, frame_stats, cpu_ms);
                 let submitted = unix_ms(SystemTime::now());
                 update_frame(&log, id, |f| {
                     f.cpu_ms = cpu_ms;

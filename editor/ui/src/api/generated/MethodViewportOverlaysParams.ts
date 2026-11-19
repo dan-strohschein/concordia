@@ -4,6 +4,23 @@
  * A gizmo axis.
  */
 export type GizmoAxis = "x" | "y" | "z";
+/**
+ * Move (default), rotate or scale.
+ */
+export type GizmoMode = "move" | "rotate" | "scale";
+/**
+ * How the native viewport draws the scene (lit, or a debug view).
+ */
+export type ViewMode =
+  | "lit"
+  | "unlit"
+  | "wireframe"
+  | "normals"
+  | "albedo"
+  | "roughness_metallic"
+  | "overdraw"
+  | "shadow_cascades"
+  | "light_clusters";
 
 /**
  * What the engine draws over the viewport.
@@ -27,9 +44,10 @@ export interface MethodViewportOverlaysParams {
    * Items: Stable entity id (UUID string).
    */
   selection?: string[];
+  view_mode?: ViewMode;
 }
 /**
- * The Move gizmo on an entity.
+ * The transform gizmo on an entity.
  */
 export interface GizmoOverlay {
   /**
@@ -42,4 +60,5 @@ export interface GizmoOverlay {
    * The handle under the pointer, drawn highlighted.
    */
   hovered?: null | GizmoAxis;
+  mode?: GizmoMode;
 }

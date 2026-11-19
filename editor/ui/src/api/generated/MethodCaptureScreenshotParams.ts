@@ -37,6 +37,19 @@ export type Projection =
       };
     };
 /**
+ * How the scene is drawn: the lit image, or a debug view of one input or cost.
+ */
+export type ViewMode =
+  | "lit"
+  | "unlit"
+  | "wireframe"
+  | "normals"
+  | "albedo"
+  | "roughness_metallic"
+  | "overdraw"
+  | "shadow_cascades"
+  | "light_clusters";
+/**
  * Which world to read.
  */
 export type WorldSel = "edit" | "play";
@@ -65,6 +78,10 @@ export interface MethodCaptureScreenshotParams {
    * Render from this viewpoint instead of a camera entity (the editor's view).
    */
   view?: null | View;
+  /**
+   * Draw a debug view instead of the lit image, e.g. "wireframe" or "normals" (see ViewMode).
+   */
+  view_mode?: null | ViewMode;
   /**
    * Width in pixels (default 768 × 432, sized for an agent's context; ask for more when detail matters).
    */

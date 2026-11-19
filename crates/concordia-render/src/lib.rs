@@ -24,10 +24,12 @@ mod renderer;
 mod scene_cache;
 pub mod shadow;
 mod shadow_pass;
+mod stats;
 mod templates;
 mod thread;
 pub mod tonemap;
 mod view;
+mod view_mode;
 
 pub use assets::{AssetSource, MemoryAssets, resolve};
 pub use camera::view_matrix;
@@ -46,12 +48,17 @@ pub use module::{
     viewport_control,
 };
 pub use orbit::{OrbitCamera, Preset};
-pub use overlay::{GizmoAxis, GizmoHandle, GizmoOverlay, Overlays, gizmo_handles, gizmo_hit};
+pub use overlay::{
+    GizmoAxis, GizmoHandle, GizmoMode, GizmoOverlay, GizmoRing, Overlays, gizmo_handles, gizmo_hit,
+    gizmo_pick, gizmo_rings, ring_hit,
+};
 pub use pipelines::shader_dir;
 pub use renderer::{FrameCallbacks, Image, MAX_SIZE, RenderRequest, RenderStats, Renderer};
 pub use scene_cache::{RenderScene, SceneCache, SceneDelta, SceneItems};
 pub use shadow_pass::ShadowPush;
-pub use view::{Landing, Pick, View, axis_delta, landing, pick};
+pub use stats::{FrameStats, RenderStatsGet, RenderStatsParams, RenderStatsResult};
+pub use view::{Landing, Pick, View, axis_delta, landing, pick, rotate_angle, scale_factor};
+pub use view_mode::ViewMode;
 
 /// Registers the render components.
 pub fn register_types(

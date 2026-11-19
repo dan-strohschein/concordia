@@ -15,7 +15,7 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 1. Look around: `project.files {}` lists the project's files with their kind and import status.
 2. Bring in a model: `asset.import {"path": "models/crate.glb"}`, then `prefab.instantiate {"asset": "asset:<id>", "translation": [0, 0, 0]}` (one undo step).
 3. Add ready-made entities: `entity.templates {}` lists them; `entity.create {"template": "Cube", "translation": [0, 0.5, 0]}`, `{"template": "Directional Light"}`, `{"template": "Camera"}`. Group with `"parent"`, copy with `entity.duplicate`, regroup with `entity.reparent`. For physics, `component.add` `RigidBody` and `Collider` (a 1 m box by default), then `component.patch` the shape; for a sky add `Environment` with an imported `.hdr`. (`entity.spawn` still takes raw components.)
-4. Look at it: `capture.screenshot {}` returns an image (768 × 432 by default; pass `width`/`height` for detail, `camera` or `view` to choose the viewpoint, `"world": "play"` to see the simulation). `viewport.pick` tells you which entity is at a pixel of that image; `viewport.drop` where something placed there would land.
+4. Look at it: `capture.screenshot {}` returns an image (768 × 432 by default; pass `width`/`height` for detail, `camera` or `view` to choose the viewpoint, `"world": "play"` to see the simulation, `view_mode` for a debug view such as `"wireframe"`, `"normals"`, `"overdraw"` or `"light_clusters"`). `render.stats {}` then reports that frame's cost (draws, triangles, CPU and GPU ms, GPU memory): use it to find what makes a scene slow or why something is missing. `viewport.pick` tells you which entity is at a pixel of that image; `viewport.drop` where something placed there would land.
 5. Run it: `sim.step {"ticks": 120}`, `input.inject` to press actions, `physics.raycast` to probe, then read with `"world": "play"`.
 6. `scene.save {}`.
 
@@ -61,7 +61,8 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `sim.step` | | `{ticks}` → `{tick, world_hash}` |
 | `input.inject` | | `{events: [{tick?, event}], actor?}` → `{accepted, next_tick}` (raw input into the play world, e.g. `{"event": {"Key": {"key": "Space", "pressed": true}}}`; the project's `.input.ron` maps it to actions) |
 | `physics.raycast` | | `{origin, direction, max_distance, layers?, world?}` → `{hit: {entity, point, normal, distance} \| null}` |
-| `capture.screenshot` | | `{width?, height?, camera? \| view?, world?, overlays?}` → `{image, width, height, sim_tick, frame}` (projects with `[render]`; `overlays: true` adds the editor overlays) |
+| `capture.screenshot` | | `{width?, height?, camera? \| view?, world?, overlays?, view_mode?}` → `{image, width, height, sim_tick, frame}` (projects with `[render]`; `overlays: true` adds the editor overlays; `view_mode`: `lit` (default), `unlit`, `wireframe`, `normals`, `albedo`, `roughness_metallic`, `overdraw`, `shadow_cascades`, `light_clusters`) |
+| `render.stats` | | `{}` → `{frame: {frame, width, height, view_mode, cpu_ms, gpu_ms, draws, culled, draw_calls, triangles, punctual_lights, shadows_cached, memory_bytes} \| null}` (the last frame drawn, by a capture or the editor; `gpu_ms` may be null for a moment) |
 | `viewport.pick` | | `{view, x, y, width, height, world?}` → `{entity, distance}` (projects with `[render]`) |
 | `viewport.drop` | | `{view, x, y, width, height, world?}` → `{position, entity}` (where a dragged-in asset lands: the mesh under the pointer, else the ground plane y = 0) |
 | `viewport.present` | | `{view, width, height, world?, seq?, input_time_ms?}` → `{presented}` (the editor's native viewport only); **editor only, not an MCP tool** |
@@ -81,7 +82,7 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 
 Edits made by other clients arrive too, which is how the editor sees agents work. Over stdio or MCP, poll `log.tail` instead. If a client falls more than 1,024 events behind, newer events are dropped, so re-read state with `query.run`.
 
-`capture.screenshot` renders offscreen at the requested size (default 1280×720) from the highest-priority `Camera`, unless `camera` names one. MCP clients receive `image` as PNG image content and the other fields as text. Pass `world: "play"` after `sim.step` to see the simulation. To be visible, a scene needs a `Transform` + `Camera` entity, `MeshRenderer` entities (e.g. `{"mesh": "builtin:mesh/cube", "material": "builtin:material/default"}`) and usually a `DirectionalLight`.
+`capture.screenshot` renders offscreen at the requested size (default 768×432) from the highest-priority `Camera`, unless `camera` names one. MCP clients receive `image` as PNG image content and the other fields as text. Pass `world: "play"` after `sim.step` to see the simulation. To be visible, a scene needs a `Transform` + `Camera` entity, `MeshRenderer` entities (e.g. `{"mesh": "builtin:mesh/cube", "material": "builtin:material/default"}`) and usually a `DirectionalLight`.
 
 `query.run` `where` entries are `{"path": "Transform/translation/0", "op": "gt", "value": 4}` with `op` one of `eq ne lt le gt ge contains`. Rows are sorted by id; pass `next_cursor` back as `cursor` for the next page (default limit 100).
 

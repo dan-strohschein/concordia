@@ -122,6 +122,16 @@ impl Scene {
     }
 
     pub fn render(&mut self, renderer: &mut Renderer, width: u32, height: u32) -> Image {
+        self.render_mode(renderer, width, height, concordia_render::ViewMode::lit)
+    }
+
+    pub fn render_mode(
+        &mut self,
+        renderer: &mut Renderer,
+        width: u32,
+        height: u32,
+        view_mode: concordia_render::ViewMode,
+    ) -> Image {
         let rw = RenderWorld::extract(&self.world);
         renderer
             .render(
@@ -133,6 +143,7 @@ impl Scene {
                     width,
                     height,
                     overlays: None,
+                    view_mode,
                 },
             )
             .expect("render")

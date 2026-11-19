@@ -47,6 +47,8 @@ pub struct RenderRequest {
     pub height: u32,
     /// Editor overlays to draw over the image (none for game views).
     pub overlays: Option<crate::Overlays>,
+    /// The lit image or a debug view.
+    pub view_mode: crate::ViewMode,
 }
 
 /// A rendered image: sRGB-encoded RGBA8, rows top to bottom.
@@ -154,6 +156,8 @@ struct FramePlan<'a> {
     overlay: Vec<f32>,
     /// The editor grid's pipeline and push constants, drawn after the scene in the forward pass.
     grid: Option<(Pipeline, Vec<u8>)>,
+    /// The tonemapper (`Linear` for debug views, which show their data as is).
+    tonemap: Tonemap,
 }
 
 /// The size and destination of one frame.
@@ -161,6 +165,7 @@ struct FrameTarget {
     size: (NonZeroU32, NonZeroU32),
     output: Output,
     overlays: Option<crate::Overlays>,
+    view_mode: crate::ViewMode,
 }
 
 /// Where a frame ends up.
@@ -240,6 +245,10 @@ pub struct RenderStats {
     pub culled: usize,
     /// Forward-pass draw calls (repeated mesh + material pairs are instanced into one).
     pub draw_calls: usize,
+    /// Triangles the forward pass drew.
+    pub triangles: u64,
+    /// GPU memory the device has allocated, in bytes (if the backend can tell).
+    pub memory_bytes: Option<u64>,
     /// GPU buffers, heaps and textures the frame had to create (0 once warm).
     pub allocations: usize,
     /// The sun's shadow maps were reused: no caster, light or cascade changed since they were drawn.
@@ -337,6 +346,20 @@ impl Renderer {
                     "no image was read back",
                 ))
             })
+    }
+
+    /// [`Renderer::render`], reporting the frame's GPU time through `callbacks.gpu_time`.
+    pub fn render_with(
+        &mut self,
+        world: &RenderWorld,
+        assets: &mut dyn AssetSource,
+        request: &RenderRequest,
+        callbacks: FrameCallbacks,
+    ) -> Result<Image, RenderError> {
+        self.callbacks = callbacks;
+        let image = self.render(world, assets, request);
+        self.callbacks = FrameCallbacks::default();
+        image
     }
 
     /// Wraps a native window layer for [`Renderer::present`]; the renderer releases it when dropped.
@@ -480,6 +503,7 @@ impl Renderer {
                 size: (width, height),
                 output,
                 overlays: request.overlays.clone(),
+                view_mode: request.view_mode,
             },
             &mut frame,
         );
@@ -533,6 +557,7 @@ impl Renderer {
             size: (width, height),
             output,
             overlays,
+            view_mode,
         } = target;
         let aspect = width.get() as f32 / height.get() as f32;
         let view_m = view_matrix(&view.world);
@@ -622,6 +647,7 @@ impl Renderer {
                 levels: *levels,
             }),
             lut: self.environments.lut_index(),
+            view_mode: view_mode.shader_index(),
         });
         let frame_buf = frame.keep(up.buffer(device, &block, "frame")?);
         let FrameBlocks {
@@ -697,9 +723,13 @@ impl Renderer {
                 tangents: mesh.tangents,
                 uvs: mesh.uvs,
             };
-            let pipeline = self
-                .pipelines
-                .forward(device, samples, double_sided, blend)?;
+            let pipeline = match view_mode {
+                crate::ViewMode::wireframe => self.pipelines.debug(device, samples, false)?,
+                crate::ViewMode::overdraw => self.pipelines.debug(device, samples, true)?,
+                _ => self
+                    .pipelines
+                    .forward(device, samples, double_sided, blend)?,
+            };
             let batch = (pipeline, material_index, mesh.indices);
             match draws.last_mut() {
                 Some(d) if d.batch == batch && d.first + d.instances == instance => {
@@ -718,12 +748,18 @@ impl Renderer {
         self.stats.draws = world.draws.len() - culled;
         self.stats.culled = culled;
         self.stats.draw_calls = draws.len();
+        self.stats.triangles = draws
+            .iter()
+            .map(|d| u64::from(d.vertices / 3) * u64::from(d.instances))
+            .sum();
+        self.stats.memory_bytes = device.allocated_bytes();
         let job = ClusterJob {
             buffers: &cluster,
             grid,
             light_count: lights.bounds.len(),
         };
-        let sky = match environment.as_ref().is_some_and(|(_, _, skybox)| *skybox) {
+        let sky_shown = view_mode.draws_sky();
+        let sky = match sky_shown && environment.as_ref().is_some_and(|(_, _, skybox)| *skybox) {
             true => Some((
                 self.pipelines.sky(device, samples)?,
                 frame_i.to_le_bytes().to_vec(),
@@ -780,6 +816,10 @@ impl Renderer {
                 let bounds = |m: &AssetRef| self.assets.meshes.get(m).map(|g| g.aabb);
                 crate::overlay::triangles(o, world, &projector, &bounds)
             }),
+            tonemap: match view_mode.tonemapped() {
+                true => view.camera.tonemap,
+                false => Tonemap::Linear,
+            },
         };
         let (image, overflow) = self.execute(view, plan, frame)?;
         self.stats.punctual_lights = world.punctual.len();
@@ -948,6 +988,7 @@ impl Renderer {
             uploads,
             overlay,
             grid,
+            tonemap: tonemap_mode,
         } = plan;
         let job = &job;
         let device = self.device.clone();
@@ -1018,7 +1059,7 @@ impl Renderer {
             targets.hdr,
             out,
             (tonemap, overlay),
-            view.camera.tonemap,
+            tonemap_mode,
             self.device.clone(),
         );
         let readback = match output {
@@ -1077,12 +1118,16 @@ impl Renderer {
             };
             return Ok((None, pending));
         }
-        device.submit(Submit {
+        let submit = Submit {
             queue: QueueKind::Graphics,
             commands: &list,
             wait: &[],
             signal: &[],
-        })?;
+        };
+        match std::mem::take(&mut self.callbacks).gpu_time {
+            Some(on_gpu_time) => device.submit_timed(submit, on_gpu_time)?,
+            None => device.submit(submit)?,
+        }
         device.wait_idle()?;
         let image = match readback {
             Some(buffer) => Some(Image {

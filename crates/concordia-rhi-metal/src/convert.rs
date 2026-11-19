@@ -80,5 +80,6 @@ pub(crate) fn blend(mode: BlendMode) -> Option<(MTLBlendFactor, MTLBlendFactor)>
         BlendMode::PremultipliedAlpha => {
             Some((MTLBlendFactor::One, MTLBlendFactor::OneMinusSourceAlpha))
         }
+        BlendMode::Additive => Some((MTLBlendFactor::One, MTLBlendFactor::One)),
     }
 }

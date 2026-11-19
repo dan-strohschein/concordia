@@ -13,7 +13,9 @@ The renderer (ADR-0040): render graph, forward PBR, cameras, headless capture, a
 - `RenderWorld::extract(&World)` copies draws, lights and cameras with world transforms, in entity-id order. `camera(Option<EntityId>)` picks the requested camera, or else the highest priority.
 - `Renderer::new(Arc<dyn Device>, Box<dyn ShaderCompiler>)` and `render(&RenderWorld, &mut dyn AssetSource, &RenderRequest) -> Image` (sRGB RGBA8).
 - `AssetSource` is implemented for `AssetDb` and `MemoryAssets` (tests, procedural content, built-ins).
-- `RenderModule::new(DeviceFactory)` provides `capture.screenshot` (result `image: EncodedImage`, which MCP returns as image content).
+- `RenderModule::new(DeviceFactory)` provides `capture.screenshot` (result `image: EncodedImage`, which MCP returns as image content) and `render.stats` (the last frame's `FrameStats`, recorded by the render thread).
+- `ViewMode` (`RenderRequest::view_mode`, `capture.screenshot` / `viewport.overlays` `view_mode`): lit, unlit, wireframe, normals, albedo, roughness_metallic, overdraw, shadow_cascades, light_clusters.
+- Gizmos: `GizmoMode` (move, rotate, scale) on `GizmoOverlay`; `gizmo_handles` / `gizmo_rings`, `gizmo_hit` / `ring_hit`, `gizmo_pick(mode, ..)`; drag math `axis_delta`, `rotate_angle`, `scale_factor`.
 
 ## Invariants
 - Frame: light clustering (compute) → one depth pass per shadow cascade (persistent maps imported into the graph) → forward pass (HDR `Rgba16Float`, depth `Depth32Float` cleared to 0 with `GreaterEqual`, optional 4× MSAA resolved into HDR) → tonemap (Khronos PBR Neutral or clamp) → sRGB output → readback. All of it is scheduled by the render graph, with transients placed in one heap per frame.
@@ -24,6 +26,9 @@ The renderer (ADR-0040): render graph, forward PBR, cameras, headless capture, a
 - Punctual lights: intensity = lumens / 4π cd (spots are not concentrated by their cone); inverse-square falloff windowed to zero at `range`. Clusters hold at most `max_per_cluster` lights, in ascending index order; dropped assignments are counted (`RenderStats::cluster_overflow`) and logged, never silent.
 - Transparency: `AlphaMode::Blend` draws after the opaque ones, back to front by the view depth of their bounds' center, with premultiplied alpha and no depth write; `Mask` discards below the cutoff.
 - Rendering is deterministic on one device (same scene → same bytes); draws are ordered by pipeline, then entity id.
+- View modes are one branch in `forward.slang`'s `fs` on `Frame.debug.x` (the `ViewMode` order). Debug data views (unlit, wireframe, normals, albedo, roughness/metallic, overdraw) skip the tonemap curve (`Linear`, clamped) and, except unlit, the sky. Wireframe draws barycentric edges from the corner index (vertices are pulled per triangle corner), so no fill-mode support is needed; it and overdraw use `Pipelines::debug` (no culling, no depth test; overdraw blends additively).
+- `render.stats` GPU time comes from the device's completion handler (`Device::submit_timed` for captures, the present callback for viewport frames); it may arrive before the frame is recorded, and `stats::Last` keeps it until then.
+- Gizmo rings are unit circles projected and scaled about the entity's screen position to the arrow length (60 px), so an edge-on ring is a line. Rotate angles are measured around the entity on screen (counter-clockwise is positive when the axis faces the eye); scale grows by one per arrow length dragged outward, never below 0.01.
 - The device and shaders are created on the first capture, so engines start without a GPU. A missing device is `GpuUnavailable`.
 
 ## How to test
@@ -52,7 +57,7 @@ The renderer (ADR-0040): render graph, forward PBR, cameras, headless capture, a
 - Olsson, Billeter & Assarsson, "Clustered Deferred and Forward Shading" (HPG 2012); Emil Persson, "Practical Clustered Shading" (SIGGRAPH 2015).
 
 ## Status
-M1 phase 1.6 complete: tonemappers, clustered lights, cascaded shadows, IBL, transparency and glTF goldens.
+M1 phase 1.6 complete: tonemappers, clustered lights, cascaded shadows, IBL, transparency and glTF goldens. Phase 1.16: view modes, `render.stats`, rotate and scale gizmos.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.
