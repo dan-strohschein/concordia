@@ -5,7 +5,7 @@ import { act, render, screen } from "@testing-library/react";
 import { EngineClient } from "../../src/api/client";
 import { EditorSession } from "../../src/engine/session";
 import { Outliner } from "../../src/outliner/Outliner";
-import { flatten, rowWindow } from "../../src/outliner/rows";
+import { flatten, rowWindow, scrollToShow } from "../../src/outliner/rows";
 import { buildTree, type EntityRow } from "../../src/outliner/tree";
 import { FakeEngine, oneEntity } from "./support/engine";
 
@@ -30,6 +30,14 @@ test("the row window covers the visible rows plus overscan, clamped to the list"
   });
   expect(rowWindow({ count: 3, scrollTop: 0, height: 400, rowHeight: 20, overscan: 5 })).toEqual({ start: 0, end: 3 });
   expect(() => rowWindow({ count: 1, scrollTop: 0, height: 400, rowHeight: 0, overscan: 0 })).toThrow(RangeError);
+});
+
+test("scrolling to the selection moves only as far as needed, and not when the row is in view", () => {
+  const view = { scrollTop: 200, height: 100, rowHeight: 20 };
+  expect(scrollToShow({ ...view, index: 12 })).toBeUndefined();
+  expect(scrollToShow({ ...view, index: 3 })).toBe(60);
+  expect(scrollToShow({ ...view, index: 20 })).toBe(320);
+  expect(scrollToShow({ ...view, index: -1 })).toBeUndefined();
 });
 
 function bigScene(n: number) {

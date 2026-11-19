@@ -16,6 +16,7 @@ use crate::error::{AssetError, io};
 use crate::image_importer::ImageImporter;
 use crate::importer::{AssetKind, ImportInput, Importer, SubIds, encode};
 use crate::key::{PLATFORM, artifact_key, import_key};
+use crate::material_importer::MaterialImporter;
 use crate::reference::AssetRef;
 use crate::sidecar::Sidecar;
 
@@ -130,13 +131,14 @@ impl std::fmt::Debug for AssetDb {
 }
 
 impl AssetDb {
-    /// The database of the project at `root` (DDC at `.concordia/ddc`), with the image importer, scanned.
+    /// The database of the project at `root` (DDC at `.concordia/ddc`), with the image and
+    /// material importers, scanned.
     pub fn new(root: &Path, ids: Box<dyn IdSource + Send>) -> Result<Self, AssetError> {
         let mut db = Self {
             root: root.to_path_buf(),
             ddc: Ddc::new(root.join(".concordia/ddc")),
             ids,
-            importers: vec![Arc::new(ImageImporter)],
+            importers: vec![Arc::new(ImageImporter), Arc::new(MaterialImporter)],
             records: BTreeMap::new(),
             generations: BTreeMap::new(),
             keys: BTreeMap::new(),
@@ -279,7 +281,13 @@ impl AssetDb {
         self.importer_for(rel).ok().map(|i| i.name())
     }
 
+    /// The importer claiming `rel`'s name suffix (`png`, `material.ron`, ...).
     fn importer_for(&self, rel: &Path) -> Result<Arc<dyn Importer>, AssetError> {
+        let name = rel
+            .file_name()
+            .and_then(|e| e.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
         let extension = rel
             .extension()
             .and_then(|e| e.to_str())
@@ -287,7 +295,11 @@ impl AssetDb {
             .to_ascii_lowercase();
         self.importers
             .iter()
-            .find(|i| i.extensions().contains(&extension.as_str()))
+            .find(|i| {
+                i.extensions()
+                    .iter()
+                    .any(|e| name.ends_with(&format!(".{e}")))
+            })
             .cloned()
             .ok_or_else(|| {
                 let known: Vec<&str> = self

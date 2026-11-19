@@ -3,7 +3,7 @@
 /**
  * What it is.
  */
-export type FileKind = "scene" | "prefab" | "model" | "image" | "other";
+export type FileKind = "scene" | "prefab" | "model" | "image" | "material" | "other";
 
 /**
  * `project.files` result.

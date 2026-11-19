@@ -3,7 +3,7 @@
 /** A project file as `project.files` lists it. */
 export interface ProjectFile {
   path: string;
-  kind: "scene" | "prefab" | "model" | "image" | "other";
+  kind: "scene" | "prefab" | "model" | "image" | "material" | "other";
   size: number;
   /** The asset id once imported. */
   asset: string | null;

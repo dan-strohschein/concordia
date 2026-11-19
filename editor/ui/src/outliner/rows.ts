@@ -18,6 +18,21 @@ export function flatten(roots: readonly TreeNode[]): FlatRow[] {
   return out;
 }
 
+/** The scroll position that brings row `index` into view (moving as little as possible), or
+ * `undefined` when it is already in view or there is no such row. */
+export function scrollToShow(p: {
+  index: number;
+  scrollTop: number;
+  height: number;
+  rowHeight: number;
+}): number | undefined {
+  if (p.index < 0) return undefined;
+  const top = p.index * p.rowHeight;
+  if (top < p.scrollTop) return top;
+  if (top + p.rowHeight > p.scrollTop + p.height) return top + p.rowHeight - p.height;
+  return undefined;
+}
+
 /** Which rows a scrolled list should render: `[start, end)`. */
 export function rowWindow(p: {
   count: number;

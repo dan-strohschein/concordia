@@ -38,6 +38,8 @@ pub enum FileKind {
     model,
     /// An image (`.png`, `.jpg`, `.jpeg`, `.hdr`).
     image,
+    /// A `.material.ron` material.
+    material,
     /// Anything else.
     other,
 }
@@ -152,6 +154,7 @@ fn kind_of(path: &str) -> FileKind {
         _ if ends(&[".prefab.ron"]) => FileKind::prefab,
         _ if ends(&[".gltf", ".glb"]) => FileKind::model,
         _ if ends(&[".png", ".jpg", ".jpeg", ".hdr"]) => FileKind::image,
+        _ if ends(&[".material.ron"]) => FileKind::material,
         _ => FileKind::other,
     }
 }

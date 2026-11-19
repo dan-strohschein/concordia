@@ -74,6 +74,10 @@ bench *args:
     cargo bench --workspace {{args}}
 
 # Download the pinned Slang toolchain into target/toolchain/slang/ (prints its directory)
+# Delete build outputs (stale variants pile up), keeping target/'s toolchains, fixtures and bench reports
+clean-builds:
+    rm -rf target/debug target/release editor/src-tauri/target
+
 slang-fetch:
     tools/slang/fetch.sh
 

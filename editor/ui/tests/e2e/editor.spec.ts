@@ -21,7 +21,18 @@ test("outliner_lists_scene_entities", async ({ page, engine }) => {
   await openEditor(page, engine);
   const names = Object.keys(await engine.idsByName());
   for (const name of ["Ground", "Camera", "Sun", "Pyramid 0.0", "Dropped 2"]) expect(names).toContain(name);
-  for (const name of names) await expect(page.getByRole("treeitem", { name, exact: true }).first()).toBeVisible();
+  // The dock renders only the rows in view: scroll through it, collecting every row's name.
+  const tree = page.getByRole("tree", { name: "Scene" });
+  const scroller = page.getByTestId("outliner-scroll");
+  const seen = new Set<string>();
+  for (let top = 0; ; top += 100) {
+    await scroller.evaluate((el, t) => (el.scrollTop = t), top);
+    await page.waitForTimeout(50);
+    for (const text of await tree.getByRole("treeitem").allInnerTexts()) seen.add(text.trim());
+    const end = await scroller.evaluate((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 1);
+    if (end) break;
+  }
+  for (const name of names) expect(seen).toContain(name);
 });
 
 test("selecting_entity_shows_its_components_in_inspector", async ({ page, engine }) => {

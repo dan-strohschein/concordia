@@ -943,11 +943,15 @@ dependencies = [
 name = "concordia-tests"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
  "concordia-api",
+ "concordia-app",
  "concordia-core",
  "concordia-mcp",
  "concordia-reflect",
+ "concordia-render",
  "concordia-scene",
+ "concordia-testkit",
  "insta",
  "regex",
  "rmcp",

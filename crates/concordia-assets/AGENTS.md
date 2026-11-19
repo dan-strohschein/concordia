@@ -5,7 +5,7 @@ The asset pipeline: source files with `<file>.import.ron` sidecars holding stabl
 
 ## Public entry points
 - `AssetDb` (`new`, `register`, `scan`, `import` → `ImportReport`, `load_texture` / `load_mesh` / `load_material`, `load_artifact`, `list`, `path_of`, `generation`, `on_files_changed`)
-- `Importer` (trait), `ImportInput`, `ImportOutput`, `Artifact`, `AssetKind`, `SubIds`; `ImageImporter` (`png`, `jpg`, `hdr`) and `ImageSettings`
+- `Importer` (trait), `ImportInput`, `ImportOutput`, `Artifact`, `AssetKind`, `SubIds`; `ImageImporter` (`png`, `jpg`, `hdr`) and `ImageSettings`; `MaterialImporter` (`.material.ron`, read with the engine's RON reader into `MaterialData`)
 - `AssetRef` (`"asset:<uuid>[#sub]"`, `"builtin:<kind>/<name>"`), `Builtin` / `BuiltinAsset`
 - Data: `TextureData`, `MeshData`, `MaterialData` (`.material.ron`), `AlphaMode`
 - `Sidecar`, `import_key`, `PLATFORM`; `AssetsModule` (EngineModule)
@@ -21,7 +21,7 @@ The asset pipeline: source files with `<file>.import.ron` sidecars holding stabl
 `cargo nextest run -p concordia-assets`
 
 ## Common tasks
-- **Add an importer:** implement `Importer` (deterministic; settings via serde from `ImportInput::settings`), `AssetDb::register` it from the composition root, and add tests for the sidecar, determinism and a missing DDC.
+- **Add an importer:** importers claim file-name suffixes (`png`, `material.ron`), so a compound suffix never captures `.scene.ron` or `.prefab.ron`. Implement `Importer` (deterministic; settings via serde from `ImportInput::settings`), `AssetDb::register` it from the composition root, and add tests for the sidecar, determinism and a missing DDC.
 - **Add a built-in:** extend `Builtin::of` and the `refs` test.
 
 ## Don'ts

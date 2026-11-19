@@ -1342,6 +1342,28 @@ It must pass on CI's macOS GPU job (`macos-26` arm64, or the `self-hosted-macos-
 
 **Agent demonstration (sign-off, recorded, not CI):** in this repo's Claude Code session (subscription, no API key) with `concordia-mcp` registered in `.mcp.json`, ask the agent to open the stack scene, step 180 ticks and call `capture_screenshot`; the agent describes the image it received (boxes, shadows, colored lights). Paste the transcript excerpt into the PR that flips M1's status to "Gate passed".
 
+**As built (gate tests written; the gate has not passed yet: CI, the live gate and the agent demonstration remain):**
+- **Gate content**, authored through the Engine API by `tools/assets/build_m1_gate_scene.py` as `tool:gate-author`:
+  - three `.material.ron` materials, on the pyramid and the dropped boxes;
+  - a CC0 crate made by `tools/assets/make_crate.py`;
+  - the fixture HDRI as `assets/sky.hdr`;
+  - a ring of 16 point lights;
+  - `gate_cam` at priority -1, so the editor's camera stays the default.
+  The existing entities and their ids are unchanged. The sky (3000) and the lights (1,000,000 lm at 0.6 m) were tuned against renders, so the gate's shadow and hue checks hold with margin.
+- **New engine pieces the gate needed:**
+  - `MaterialImporter` for `.material.ron`. Importers now match file-name suffixes, and `project.files` has a `material` kind.
+  - An `Environment` without a `Transform` is now rendered. It was silently dropped by both extraction paths, a trap for agents.
+  - `RgbaImage::from_png` in testkit.
+  - The MCP test client keeps `SLANG_DIR` and `CONCORDIA_*` (the plan's allowlist) and has `call_raw` for image content.
+- **The plan's `EngineHost`** is the in-process `Engine` with the project's modules (`concordia_app::Project`). The server has no `--gpu` flag: the project's `[render]` section enables rendering.
+- **The shadow check uses fixed 5×5 regions** of the deterministic image. With the sky at 3000, the pyramid's shadow measures 108 against 186 for the ground beside it.
+- **The live gate** (`tools/gates/m1_live.sh`, prompt `m1_live_prompt.md`, checker `m1_live_check.rs`) keeps evidence that outlives the agent's server:
+  - the server's log (via a wrapper with `CONCORDIA_LOG=info,concordia::render=debug`), for the `sim stepped` and `captured screenshot` records;
+  - the names of the agent's environment variables (no `*_API_KEY` or `*_AUTH_TOKEN`).
+  The checker re-simulates the saved scene to see the boxes fall.
+- **CI** runs `just gate-tests M1` on macOS (GPU required) and Linux (the image checks skip; the physics hash must still match).
+- **`just clean-builds`** empties the build outputs. Cargo never collects stale variants, which filled the disk after two days (99 GB in `target/`).
+
 ## Risks & mitigations
 | Risk | Mitigation |
 |---|---|

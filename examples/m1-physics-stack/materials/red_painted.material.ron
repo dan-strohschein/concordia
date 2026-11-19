@@ -1,0 +1,5 @@
+(
+    base_color: (0.7, 0.08, 0.06, 1.0),
+    metallic: 0.0,
+    roughness: 0.6,
+)

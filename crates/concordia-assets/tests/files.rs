@@ -41,6 +41,7 @@ fn project_files_lists_project_relative_paths_and_skips_engine_state() {
     write(root, "concordia.toml", "[project]\nname = \"p\"\n");
     write(root, "scenes/main.scene.ron", "()");
     write(root, "notes.txt", "hi");
+    write(root, "materials/red.material.ron", "(metallic: 0.0)");
     write(root, ".gitignore", "build/\n");
     write(root, "build/out.bin", "x");
     write(root, ".git/HEAD", "ref");
@@ -55,6 +56,7 @@ fn project_files_lists_project_relative_paths_and_skips_engine_state() {
         paths(&listing),
         [
             "concordia.toml",
+            "materials/red.material.ron",
             "notes.txt",
             "scenes/main.scene.ron",
             "tex/crate.png"
@@ -72,6 +74,8 @@ fn project_files_lists_project_relative_paths_and_skips_engine_state() {
     };
     assert_eq!(file("scenes/main.scene.ron")["kind"], "scene");
     assert_eq!(file("notes.txt")["kind"], "other");
+    assert_eq!(file("materials/red.material.ron")["kind"], "material");
+    assert_eq!(file("materials/red.material.ron")["importer"], "material");
     let png = file("tex/crate.png");
     assert_eq!(png["kind"], "image");
     assert_eq!(

@@ -242,3 +242,46 @@ fn render_stats_reports_the_last_frame() {
     assert!(frame["gpu_ms"].as_f64().unwrap() > 0.0, "{frame}");
     assert!(frame["memory_bytes"].as_u64().unwrap() > 0, "{frame}");
 }
+
+/// An `Environment` on an entity without a `Transform` still lights a capture (agents add the
+/// component to a bare entity).
+#[test]
+fn an_environment_without_a_transform_lights_captures() {
+    let Some(mut h) = Harness::gpu() else { return };
+    let hdr = "../../tests/fixtures/hdri/kloofendal_48d_partly_cloudy_puresky_512.hdr";
+    std::fs::copy(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(hdr),
+        h.dir.path().join("sky.hdr"),
+    )
+    .unwrap();
+    let map = h.ok("asset.import", json!({"path": "sky.hdr"}))["id"].clone();
+    h.cube_scene();
+    let dark = h.ok("capture.screenshot", json!({"width": 64, "height": 64}));
+    h.ok("entity.spawn", json!({"actor": "agent:test", "components": {
+        "Environment": {"map": format!("asset:{}", map.as_str().unwrap()), "intensity": 40000.0},
+    }}));
+    let lit = h.ok("capture.screenshot", json!({"width": 64, "height": 64}));
+    assert_ne!(
+        dark["image"], lit["image"],
+        "the environment changed the image"
+    );
+    // The play world (a copy of the edit world) is lit the same way.
+    h.ok("sim.step", json!({"ticks": 1}));
+    let play = h.ok(
+        "capture.screenshot",
+        json!({"width": 64, "height": 64, "world": "play"}),
+    );
+    assert_eq!(
+        play["image"], lit["image"],
+        "the play world shows the environment too"
+    );
+    // And so is the scene reopened from its file.
+    h.ok("sim.stop", json!({}));
+    h.ok("scene.save", json!({}));
+    h.ok("scene.open", json!({"path": "scenes/test.scene.ron"}));
+    let reopened = h.ok("capture.screenshot", json!({"width": 64, "height": 64}));
+    assert_eq!(
+        reopened["image"], lit["image"],
+        "a loaded scene shows its environment"
+    );
+}

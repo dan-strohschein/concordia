@@ -1,0 +1,5 @@
+---
+source: tests/gates/m1_physics_golden.rs
+expression: hash
+---
+3b19ed5f3affa2dfe1ea6cd5abfbafd07950a2f774d1a66cb0280da0b44f9bce
