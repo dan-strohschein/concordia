@@ -14,7 +14,6 @@ export class GizmoDrag {
   private busy = false;
   private size: Size = { width: 1, height: 1 };
   private latest: { x: number; y: number; seq?: number; input_time_ms?: number } | undefined;
-  private sending: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly session: EditorSession,
@@ -42,16 +41,20 @@ export class GizmoDrag {
     if (this.active) this.flush();
   }
 
-  /** Releases: commits the move as one undo step. */
-  async end(): Promise<void> {
-    if (!this.active) return;
-    // Let the last position land before committing.
-    while (this.busy || this.latest !== undefined) {
-      if (!this.busy) this.flush();
-      await this.sending;
-    }
+  /**
+   * Releases: sends the last position and the commit (one undo step) at once. Calls reach the engine
+   * in order, so anything sent after this, such as an undo, lands after the commit.
+   */
+  end(): Promise<void> {
+    if (!this.active) return Promise.resolve();
     this.active = false;
-    await this.session.call("viewport.gizmo", { action: "end", actor: this.actor });
+    const last = this.latest;
+    this.latest = undefined;
+    const calls = [
+      ...(last === undefined ? [] : [this.send({ action: "move", ...last, ...this.size })]),
+      this.send({ action: "end" }),
+    ];
+    return Promise.all(calls).then(() => undefined);
   }
 
   private flush(): void {
@@ -59,8 +62,7 @@ export class GizmoDrag {
     if (this.busy || next === undefined) return;
     this.latest = undefined;
     this.busy = true;
-    this.sending = this.session
-      .call("viewport.gizmo", { action: "move", ...next, ...this.size, actor: this.actor })
+    this.send({ action: "move", ...next, ...this.size })
       .then(
         () => undefined,
         () => undefined,
@@ -69,5 +71,9 @@ export class GizmoDrag {
         this.busy = false;
         if (this.active) this.flush();
       });
+  }
+
+  private send(params: Record<string, unknown>): Promise<unknown> {
+    return this.session.call("viewport.gizmo", { ...params, actor: this.actor });
   }
 }

@@ -1154,7 +1154,7 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
 - `capture_without_size_fits_the_agent_budget`;
 - `agent_guide_mentions_every_agent_tool`.
 
-**As built:** `Method::AUDIENCE` (default `agent`); MCP lists 33 tools for the M1 example. The old `capture_screenshot_defaults_to_1280_by_720` test was changed deliberately to the new 768 × 432 default. Known pre-existing e2e flakes (about 1 in 8 runs, same rate before this phase): `step_button_advances_sim_and_viewport_image_changes` and `gizmo_drag_moves_along_its_axis_as_one_undo_step`.
+**As built:** `Method::AUDIENCE` (default `agent`); MCP lists 33 tools for the M1 example. The old `capture_screenshot_defaults_to_1280_by_720` test was changed deliberately to the new 768 × 432 default. Two pre-existing e2e flakes were real editor races, fixed after this phase: the browser frame queue rendered queued frames with a stale world (fixed by `FrameQueue`, whose jobs carry their world), and a gizmo release waited for an in-flight move before committing, so an immediate undo could land first (the release now sends the last move and the commit at once). The full e2e suite passed 96 of 96 repeated runs.
 
 ### Phase 1.13: Scene tree
 **Goal.** Agents can build an entity hierarchy in a few calls; the Scene dock exposes the same, minimally.

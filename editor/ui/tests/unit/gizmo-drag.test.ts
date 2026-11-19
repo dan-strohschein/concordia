@@ -36,3 +36,22 @@ test("a press that misses every handle starts nothing", async () => {
   await drag.end();
   expect(engine.called("viewport.gizmo").map((c) => c["action"])).toEqual(["begin"]);
 });
+
+test("release sends the last move and the commit at once, so a following undo lands after them", async () => {
+  const { engine, drag } = await setup("x");
+  await drag.start(10, 20, { width: 400, height: 300 });
+  drag.move(11, 20); // in flight
+  drag.move(12, 20); // pending behind it
+  void drag.end();
+  // An undo issued right after the release (the next keypress) must reach the engine after the commit.
+  void engine.send(JSON.stringify({ jsonrpc: "2.0", id: 999, method: "txn.undo", params: {} }));
+  const order = engine.calls.map((c) => (c.method === "viewport.gizmo" ? String(c.params["action"]) : c.method));
+  const tail = order.slice(order.indexOf("begin"));
+  expect(tail).toEqual(["begin", "move", "move", "end", "txn.undo"]);
+  expect(
+    engine
+      .called("viewport.gizmo")
+      .filter((c) => c["action"] === "move")
+      .at(-1),
+  ).toMatchObject({ x: 12 });
+});

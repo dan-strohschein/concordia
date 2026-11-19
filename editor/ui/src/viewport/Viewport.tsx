@@ -9,6 +9,7 @@ import { type Preset, type Vec3, type View } from "./camera";
 import { FILE_DRAG_TYPE } from "../files/FileSystem";
 import { placeAsset } from "../files/place";
 import type { ProjectFile } from "../files/tree";
+import { FrameQueue } from "./frameQueue";
 import { GizmoDrag } from "./gizmoDrag";
 import { inputTags } from "./latency";
 import { isNative, onNativeView, reportSlot } from "./native";
@@ -38,19 +39,14 @@ interface Props {
 }
 
 /** Renders the latest view: streamed `capture.screenshot` in a browser, `viewport.present` into the
- * native view in the shell. At most one request in flight; the newest one queued. */
+ * native view in the shell, through a `FrameQueue`. */
 function useStreamedView(session: EditorSession, world: "edit" | "play") {
   const native = isNative();
   const [src, setSrc] = useState<string>();
   const [status, setStatus] = useState<string>();
-  const state = useRef({ busy: false, next: undefined as undefined | { view: View; width: number; height: number } });
-  const request = useCallback(
-    (view: View, width: number, height: number) => {
-      state.current.next = { view, width, height };
-      const run = () => {
-        const job = state.current.next;
-        if (state.current.busy || job === undefined) return;
-        state.current = { busy: true, next: undefined };
+  const queue = useMemo(
+    () =>
+      new FrameQueue<Frame>((job) => {
         const dpr = window.devicePixelRatio || 1;
         const call = native
           ? session
@@ -58,7 +54,7 @@ function useStreamedView(session: EditorSession, world: "edit" | "play") {
                 view: job.view,
                 width: Math.round(job.width * dpr),
                 height: Math.round(job.height * dpr),
-                world,
+                world: job.world,
                 ...inputTags.current(),
               })
               .then(() => setStatus(undefined))
@@ -67,25 +63,30 @@ function useStreamedView(session: EditorSession, world: "edit" | "play") {
                 view: job.view,
                 width: job.width,
                 height: job.height,
-                world,
+                world: job.world,
                 overlays: true,
               })
               .then((c) => {
                 setSrc(`data:${c.image.mime_type};base64,${c.image.data_base64}`);
                 setStatus(undefined);
               });
-        call
-          .catch((e: unknown) => setStatus(String(e)))
-          .finally(() => {
-            state.current.busy = false;
-            run();
-          });
-      };
-      run();
-    },
-    [session, world, native],
+        return call.catch((e: unknown) => setStatus(String(e)));
+      }),
+    [session, native],
+  );
+  const request = useCallback(
+    (view: View, width: number, height: number) => queue.request({ view, width, height, world }),
+    [queue, world],
   );
   return { src, status, request };
+}
+
+/** One viewport frame to draw. */
+interface Frame {
+  view: View;
+  width: number;
+  height: number;
+  world: "edit" | "play";
 }
 
 export function Viewport({ session, world, selected, onSelect }: Props) {
