@@ -79,3 +79,8 @@ toml = "1.2"
 
 [profile.dev.package."*"]
 opt-level = 1
+
+# The CPU image-based-lighting prefilter runs on the first capture of a scene with a sky; unoptimized
+# it blocks the engine for seconds (and timed out the editor's e2e tests in CI).
+[profile.dev.package.concordia-render]
+opt-level = 2
