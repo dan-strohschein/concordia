@@ -9,6 +9,8 @@ export interface MenuItem {
   shortcut?: string;
   /** Default true. */
   enabled?: boolean;
+  /** A check box item (View menu toggles) when defined. */
+  checked?: boolean;
   run: () => void;
 }
 
@@ -120,7 +122,8 @@ export function MenuList({
         ) : (
           <button
             key={item.label}
-            role="menuitem"
+            role={item.checked === undefined ? "menuitem" : "menuitemcheckbox"}
+            aria-checked={item.checked}
             aria-disabled={item.enabled === false}
             style={entry(item.enabled !== false)}
             onClick={() => {
@@ -129,7 +132,10 @@ export function MenuList({
               item.run();
             }}
           >
-            <span>{item.label}</span>
+            <span>
+              {item.checked === undefined ? "" : item.checked ? "✓ " : "\u2003"}
+              {item.label}
+            </span>
             {item.shortcut !== undefined && <span style={{ opacity: 0.6 }}>{item.shortcut}</span>}
           </button>
         ),

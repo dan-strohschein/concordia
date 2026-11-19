@@ -36,6 +36,9 @@ interface Props {
   world: "edit" | "play";
   selected: string | undefined;
   onSelect: (id: string | undefined) => void;
+  /** Draw the ground grid (View menu). */
+  grid: boolean;
+  onToggleGrid: () => void;
 }
 
 /** Renders the latest view: streamed `capture.screenshot` in a browser, `viewport.present` into the
@@ -89,10 +92,9 @@ interface Frame {
   world: "edit" | "play";
 }
 
-export function Viewport({ session, world, selected, onSelect }: Props) {
+export function Viewport({ session, world, selected, onSelect, grid, onToggleGrid }: Props) {
   const native = isNative();
   const [tool, setTool] = useState<Tool>("select");
-  const [grid, setGrid] = useState(true);
   const [view, setView] = useState<View>();
   const [size, setSize] = useState({ width: 640, height: 360 });
   const slot = useRef<HTMLDivElement>(null);
@@ -217,7 +219,7 @@ export function Viewport({ session, world, selected, onSelect }: Props) {
   };
   const onWheel = (e: React.WheelEvent) => navigate({ zoom: Math.sign(e.deltaY) });
   const onViewMenu = (choice: string) => {
-    if (choice === "grid") setGrid((g) => !g);
+    if (choice === "grid") onToggleGrid();
     else if (choice === "ortho") navigate({ toggle_ortho: true });
     else if (choice === "focus") void focusSelection();
     else if (choice !== "") navigate({ preset: choice as Preset });

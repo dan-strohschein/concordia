@@ -164,6 +164,8 @@ pub(crate) fn command(e: CommandError, component: Option<&str>, hints: &Hints<'_
             format!("nothing to undo: {reason}"),
         ),
         CommandError::NothingToRedo => ApiError::from_kind(ApiErrorKind::NothingToRedo),
+        CommandError::NotUndoable { .. } => ApiError::new(ApiErrorKind::TxnNotFound, e.to_string())
+            .suggest(["pick a commit with \"undone\": false from txn.history".to_owned()]),
         CommandError::Journal(j) => ApiError::new(ApiErrorKind::SceneIo, j.to_string()),
         other => crate::engine::internal(other),
     }

@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (editor v1, agent-first: 1.11–1.14 done, 1.15–1.16 next, then the gate; ADR-0049; 1.0–1.9 done, 1.10 stretch pending; ADR-0048) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (editor v1, agent-first: 1.11–1.15 done, 1.16 next, then the gate; ADR-0049; 1.0–1.9 done, 1.10 stretch pending; ADR-0048) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -1204,7 +1204,7 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
 - **Inspector:** an Add Component button with a searchable list of addable components the entity lacks, and a × on each section header that removes the component.
 - **Counts:** the core method count went from 31 to 32 and the core MCP tool count from 28 to 29. The count tests, including the M0 gate's, were updated deliberately.
 
-### Phase 1.15: Agent activity and minimal menus
+### Phase 1.15: Agent activity and minimal menus (done)
 **Goal.** A human can see what the agents did and undo any of it. That is the editor's main job in an AI-first engine.
 
 **Engine API:**
@@ -1224,6 +1224,14 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
 - `undo_to_reverts_every_later_transaction_attributed_to_the_caller`
 - the panel's filter logic (unit);
 - e2e: an agent makes three edits; the panel shows them; "Undo to here" on the first restores the scene.
+
+**As built:**
+- **`txn.history` rows gain `time_ms`, `entities` and `undone`.** Time comes from the journal entry's existing `ts_ms`. A commit's entities come from its ops (`EditOp::entity`); undo and redo rows copy their target's. The journal format is unchanged.
+- **`txn.undo_to {txn}`** is `CommandLog::undo_to`: a run of ordinary attributed undos, one journal entry each, so redo replays them. It returns `{undone, by}`, latest first. A transaction that is unknown or already undone fails with `TxnNotFound`.
+- **MCP tool names keep the method's verb underscores** (`txn_undo_to`). The MCP tests mapped tool names back with `replace('_', ".")`, which breaks on such verbs, so they now use `replacen('_', ".", 1)`.
+- **The Agent Activity dock** sits under the Inspector. It refreshes on `edit` and `scene` events and lists commits newest first, with an actor filter. The editor has single selection, so clicking an entry selects the first entity it touched.
+- **Menus:** the Edit menu has Undo and Redo. The View menu toggles each dock (`menuitemcheckbox` items) and the grid; the grid state moved from the Viewport up to the Editor.
+- **Counts:** the core method count went from 32 to 33 and the core MCP tool count from 29 to 30. The count tests, including the M0 gate's, were updated deliberately.
 
 ### Phase 1.16: Viewport views for agents
 **Goal.** Agents and humans can see what the renderer is doing, which is how gaps in the 3D engine get found.

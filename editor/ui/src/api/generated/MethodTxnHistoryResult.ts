@@ -20,6 +20,12 @@ export interface HistoryRow {
    */
   actor: string;
   /**
+   * Entities the transaction touched (commit, undo, redo).
+   *
+   * Items: Stable entity id (UUID string).
+   */
+  entities: string[];
+  /**
    * "commit", "undo", "redo", "abort" or "save".
    */
   kind: string;
@@ -44,7 +50,15 @@ export interface HistoryRow {
    */
   target?: null | string;
   /**
+   * When, in milliseconds since the Unix epoch.
+   */
+  time_ms: number;
+  /**
    * The transaction (commit, abort).
    */
   txn?: null | string;
+  /**
+   * For a commit: whether it is currently undone.
+   */
+  undone: boolean;
 }

@@ -64,11 +64,11 @@ async fn check_tools_and_schemas(client: &McpClient) {
     assert_eq!(names, expected);
     assert_eq!(
         names.len(),
-        29,
-        "the 24 M0 tools plus M1 1.13's entity.templates/create/duplicate/reparent and M1 1.14's component.add"
+        30,
+        "the 24 M0 tools plus M1 1.13's entity.templates/create/duplicate/reparent, M1 1.14's component.add and M1 1.15's txn.undo_to"
     );
     for tool in &tools {
-        let method = methods().get(&tool.name.replace('_', ".")).unwrap();
+        let method = methods().get(&tool.name.replacen('_', ".", 1)).unwrap();
         let generated = serde_json::to_string(&params_schema(method)).unwrap();
         let served = serde_json::to_string(tool.input_schema.as_ref()).unwrap();
         assert_eq!(

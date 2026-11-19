@@ -212,6 +212,25 @@ impl CommandLog {
         Ok(id)
     }
 
+    /// Undoes every commit down to and including `target`, latest first, each attributed to `author`.
+    pub fn undo_to(
+        &mut self,
+        world: &mut World,
+        reg: &TypeRegistry,
+        author: &Author,
+        target: TxnId,
+    ) -> Result<Vec<TxnId>, CommandError> {
+        self.ensure_closed()?;
+        if !self.done.iter().any(|t| t.id == target) {
+            return Err(CommandError::NotUndoable { txn: target });
+        }
+        let mut undone = Vec::new();
+        while undone.last() != Some(&target) {
+            undone.push(self.undo(world, reg, author.clone())?);
+        }
+        Ok(undone)
+    }
+
     /// Redoes the latest undone transaction, attributed to `author`.
     pub fn redo(
         &mut self,
@@ -259,7 +278,10 @@ impl CommandLog {
     pub fn resume(entries: &[JournalEntry], current: WorldHash) -> (Self, History) {
         let mut log = Self::new();
         log.next_seq = entries.last().map_or(1, |e| e.seq + 1);
-        log.history = entries.iter().map(summarize).collect();
+        for entry in entries {
+            let row = summarize(entry, &log.history);
+            log.history.push(row);
+        }
         let Some(last) = entries.iter().rev().find_map(|e| e.event.hash_after()) else {
             return (log, History::None);
         };
@@ -316,7 +338,8 @@ impl CommandLog {
         if let Some(journal) = &mut self.journal {
             journal.append(&entry)?;
         }
-        self.history.push(summarize(&entry));
+        let row = summarize(&entry, &self.history);
+        self.history.push(row);
         self.next_seq += 1;
         Ok(())
     }
@@ -383,7 +406,16 @@ fn move_top(
     }
 }
 
-fn summarize(entry: &JournalEntry) -> HistoryEntry {
+/// The history row for `entry`; undo and redo rows take their target's entities from `earlier`.
+fn summarize(entry: &JournalEntry, earlier: &[HistoryEntry]) -> HistoryEntry {
+    let entities_of = |target: &TxnId| {
+        earlier
+            .iter()
+            .rev()
+            .find(|e| e.kind == EntryKind::Commit && e.txn == Some(*target))
+            .map(|e| e.entities.clone())
+            .unwrap_or_default()
+    };
     let base = |kind, actor: &crate::actor::Actor| HistoryEntry {
         seq: entry.seq,
         kind,
@@ -393,6 +425,8 @@ fn summarize(entry: &JournalEntry) -> HistoryEntry {
         label: String::new(),
         ops: 0,
         reason: None,
+        ts_ms: entry.ts_ms,
+        entities: Vec::new(),
     };
     match &entry.event {
         Event::Commit {
@@ -405,14 +439,17 @@ fn summarize(entry: &JournalEntry) -> HistoryEntry {
             txn: Some(*txn),
             label: label.clone(),
             ops: ops.len(),
+            entities: touched(ops),
             ..base(EntryKind::Commit, actor)
         },
         Event::Undo { target, actor, .. } => HistoryEntry {
             target: Some(*target),
+            entities: entities_of(target),
             ..base(EntryKind::Undo, actor)
         },
         Event::Redo { target, actor, .. } => HistoryEntry {
             target: Some(*target),
+            entities: entities_of(target),
             ..base(EntryKind::Redo, actor)
         },
         Event::Abort {
@@ -431,6 +468,12 @@ fn summarize(entry: &JournalEntry) -> HistoryEntry {
             ..base(EntryKind::Save, actor)
         },
     }
+}
+
+/// The entities `ops` touch, sorted and unique.
+fn touched(ops: &[AppliedOp]) -> Vec<concordia_core::id::EntityId> {
+    let set: std::collections::BTreeSet<_> = ops.iter().map(|o| o.op.entity()).collect();
+    set.into_iter().collect()
 }
 
 fn now_ms() -> u64 {
