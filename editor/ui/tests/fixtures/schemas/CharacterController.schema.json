@@ -1,0 +1,58 @@
+{
+  "$defs": {
+    "PhysicsLayer": {
+      "description": "A collision layer, 0..=15 (validated by [`PhysicsLayer::new`] and by the runtime).",
+      "maximum": 255,
+      "minimum": 0,
+      "title": "PhysicsLayer",
+      "type": "integer",
+      "x-concordia-type": "PhysicsLayer"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "height": 1.7999999523162842,
+    "layer": 0,
+    "max_slope_deg": 45.0,
+    "radius": 0.30000001192092896,
+    "step_height": 0.30000001192092896
+  },
+  "description": "A walking character (Jolt CharacterVirtual): moved by `CharacterMotion`, feet at `Transform.translation`.",
+  "properties": {
+    "height": {
+      "description": "Total capsule height in meters.",
+      "maximum": 100.0,
+      "minimum": 0.1,
+      "type": "number"
+    },
+    "layer": {
+      "$ref": "#/$defs/PhysicsLayer",
+      "description": "Collision layer (0..=15).",
+      "maximum": 15.0,
+      "minimum": 0.0
+    },
+    "max_slope_deg": {
+      "description": "Steepest walkable slope in degrees.",
+      "maximum": 89.0,
+      "minimum": 1.0,
+      "type": "number"
+    },
+    "radius": {
+      "description": "Capsule radius in meters.",
+      "maximum": 50.0,
+      "minimum": 0.01,
+      "type": "number"
+    },
+    "step_height": {
+      "description": "Tallest step it climbs, in meters.",
+      "maximum": 10.0,
+      "minimum": 0.0,
+      "type": "number"
+    }
+  },
+  "title": "CharacterController",
+  "type": "object",
+  "x-concordia-category": "Physics",
+  "x-concordia-type": "CharacterController"
+}

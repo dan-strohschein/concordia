@@ -43,6 +43,35 @@ pub fn tracked_files() -> Vec<String> {
         .collect()
 }
 
+/// Copies `examples/<name>` into `to`, skipping engine state (`.concordia/`), so a test works on a
+/// fresh project with the example's committed files.
+pub fn copy_example(name: &str, to: &std::path::Path) -> std::io::Result<()> {
+    assert!(
+        !name.is_empty() && !name.contains(['/', '.']),
+        "invalid example {name:?}"
+    );
+    copy_project(&repo_root().join("examples").join(name), to)
+}
+
+/// Copies the project at `from` into `to`, skipping engine state (`.concordia/`).
+pub fn copy_project(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        if name == ".concordia" {
+            continue;
+        }
+        let target = to.join(&name);
+        if entry.file_type()?.is_dir() {
+            copy_project(&entry.path(), &target)?;
+        } else {
+            std::fs::copy(entry.path(), target)?;
+        }
+    }
+    Ok(())
+}
+
 /// Gate test-binary prefix for a milestone: `M-1` → `m_minus1`, `M3` → `m3`.
 pub fn gate_prefix(milestone: &str) -> Result<String, String> {
     let number = milestone

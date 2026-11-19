@@ -256,3 +256,84 @@ fn play_world_mut_creates_a_paused_play_world() {
     assert_eq!(world.resource::<Prepared>(), Some(&Prepared(1)));
     assert_eq!(h.ok("sim.pause", json!({}))["state"], "paused");
 }
+
+/// Engine-lifetime state of the counter module.
+#[derive(Debug, Default)]
+struct Counter(u32);
+
+/// Increments the counter module's engine state.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+struct Bump;
+
+impl Method for Bump {
+    const NAME: &'static str = "counter.bump";
+    const MUTATES: bool = false;
+    type Params = ProbeParams;
+    type Result = ProbeResult;
+
+    fn call(engine: &mut Engine, _: &CallCtx, _: ProbeParams) -> Result<ProbeResult, ApiError> {
+        let counter = engine
+            .state_mut::<Counter>()
+            .ok_or_else(|| ApiError::from_kind(ApiErrorKind::Internal))?;
+        counter.0 += 1;
+        Ok(ProbeResult { value: counter.0 })
+    }
+}
+
+#[derive(Debug)]
+struct CounterModule;
+
+impl EngineModule for CounterModule {
+    fn name(&self) -> &'static str {
+        "counter"
+    }
+
+    fn methods(&self) -> Vec<MethodInfo> {
+        vec![MethodInfo::of::<Bump>()]
+    }
+
+    fn engine_state(&self) -> Option<Box<dyn std::any::Any + Send>> {
+        Some(Box::new(Counter::default()))
+    }
+}
+
+#[test]
+fn engine_state_lives_for_the_engine_and_survives_play_sessions() {
+    let mut h = with_modules(vec![Arc::new(CounterModule)]);
+    assert_eq!(h.ok("counter.bump", json!({}))["value"], 1);
+    h.ok("sim.step", json!({"ticks": 1}));
+    h.ok("sim.stop", json!({}));
+    assert_eq!(h.ok("counter.bump", json!({}))["value"], 2);
+    assert!(h.engine.state::<Counter>().is_some());
+    assert!(h.engine.state::<Seen>().is_none());
+}
+
+/// Counts `after_sim` calls.
+#[derive(Debug)]
+struct SimWatcher(Arc<AtomicUsize>);
+
+impl EngineModule for SimWatcher {
+    fn name(&self) -> &'static str {
+        "sim-watcher"
+    }
+
+    fn after_sim(&self, _: &mut Engine) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+#[test]
+fn modules_hear_about_each_simulation_advance() {
+    let seen = Arc::new(AtomicUsize::new(0));
+    let mut h = with_modules(vec![Arc::new(SimWatcher(seen.clone()))]).ready();
+    h.ok("sim.play", json!({}));
+    let start = std::time::Instant::now();
+    h.engine.poll(start + std::time::Duration::from_millis(100));
+    let after_play = seen.load(Ordering::SeqCst);
+    assert!(after_play >= 1, "a tick advanced");
+    h.engine.poll(start + std::time::Duration::from_millis(100));
+    assert_eq!(seen.load(Ordering::SeqCst), after_play, "no tick, no call");
+    h.ok("sim.pause", json!({}));
+    h.engine.poll(start + std::time::Duration::from_millis(500));
+    assert_eq!(seen.load(Ordering::SeqCst), after_play, "paused");
+}

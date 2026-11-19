@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "3D vector as [x, y, z].",
+  "items": {
+    "type": "number"
+  },
+  "maxItems": 3,
+  "minItems": 3,
+  "title": "Vec3",
+  "type": "array",
+  "x-concordia-type": "Vec3"
+}

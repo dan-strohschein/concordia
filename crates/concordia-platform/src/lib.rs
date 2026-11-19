@@ -10,4 +10,4 @@ mod window;
 pub use error::PlatformError;
 pub use keys::{key_from_winit, mouse_button_from_winit};
 pub use watch::{ChangeKind, FileChanged, FileWatcher};
-pub use window::{Flow, RunOptions, WindowApp, WindowDesc, WindowEvent, run_window};
+pub use window::{Flow, NativeView, RunOptions, WindowApp, WindowDesc, WindowEvent, run_window};

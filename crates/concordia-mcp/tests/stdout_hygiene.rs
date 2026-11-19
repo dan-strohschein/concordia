@@ -86,7 +86,8 @@ fn runs_with_empty_environment() {
     let mut child = spawn(&dir, true);
     let (frames, _) = session(&mut child);
     assert_eq!(frames[0]["result"]["serverInfo"]["name"], "concordia");
-    assert_eq!(frames[1]["result"]["tools"].as_array().unwrap().len(), 24);
+    // 24 core tools from M0, entity.templates/create/duplicate/reparent (M1 1.13), component.add (M1 1.14), txn.undo_to (M1 1.15).
+    assert_eq!(frames[1]["result"]["tools"].as_array().unwrap().len(), 30);
     assert_eq!(
         frames[2]["result"]["isError"], true,
         "scene_info without a scene is a tool error: {}",
@@ -107,7 +108,7 @@ fn binary_serves_tools_of_the_project_modules() {
     let mut child = spawn(&dir, false);
     let (frames, _) = session(&mut child);
     let tools = frames[1]["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 25);
+    assert_eq!(tools.len(), 31, "30 core tools plus the module's");
     assert!(
         tools.iter().any(|t| t["name"] == "input_inject"),
         "{tools:?}"

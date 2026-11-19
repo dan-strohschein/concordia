@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Hierarchy link to the parent entity's stable id.",
+  "format": "uuid",
+  "title": "Parent",
+  "type": "string",
+  "x-concordia-category": "Core",
+  "x-concordia-type": "Parent"
+}

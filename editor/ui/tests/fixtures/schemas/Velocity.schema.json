@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "angular": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "linear": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "description": "Velocity integrated into `Transform` by `integrate_velocity` every fixed tick.",
+  "properties": {
+    "angular": {
+      "description": "Rotation axis scaled by radians per second.\n\n3D vector as [x, y, z].",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array",
+      "x-concordia-widget": "vec3"
+    },
+    "linear": {
+      "description": "Meters per second.\n\n3D vector as [x, y, z].",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array",
+      "x-concordia-widget": "vec3"
+    }
+  },
+  "required": [
+    "linear",
+    "angular"
+  ],
+  "title": "Velocity",
+  "type": "object",
+  "x-concordia-category": "Core",
+  "x-concordia-type": "Velocity"
+}

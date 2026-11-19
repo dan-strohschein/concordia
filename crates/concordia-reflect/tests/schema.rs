@@ -71,3 +71,36 @@ fn non_zero_integers_have_minimum_one_and_reject_zero() {
         serde_json::json!(1)
     );
 }
+
+mod widgets {
+    use concordia_core::math::{Quat, Vec3};
+    use concordia_reflect::{Reflect, schema_for};
+    use serde::{Deserialize, Serialize};
+
+    /// A lamp.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+    struct Lamp {
+        /// Where.
+        position: Vec3,
+        /// Facing.
+        rotation: Quat,
+        /// Light color.
+        #[reflect(widget = "color")]
+        color: [f32; 3],
+        /// Not a color, just three numbers.
+        weights: [f32; 3],
+    }
+
+    #[test]
+    fn widget_hints_come_from_math_types_and_field_attributes() {
+        let schema = schema_for(Lamp::type_info());
+        let widget = |field: &str| schema["properties"][field]["x-concordia-widget"].clone();
+        assert_eq!(widget("position"), "vec3");
+        assert_eq!(widget("rotation"), "quat");
+        assert_eq!(widget("color"), "color");
+        assert!(
+            widget("weights").is_null(),
+            "no hint without a type or attribute"
+        );
+    }
+}

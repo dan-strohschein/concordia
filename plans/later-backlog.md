@@ -85,3 +85,7 @@ Rules that still apply to everything here: subscription-first (no item may *requ
 - **Terrain, foliage, water, volumetrics** (after M4). Each a separate plan; terrain ties into world partition.
 - **Motion matching, full-body IK, physics-based animation** (after M2, realistically after M4). Extends `concordia-anim`.
 - **Web export via WebGPU** (after M1). Investigate a `wgpu`-style backend or WebGPU RHI for browser demos; WASM host already exists.
+- **Jolt GPU strand hair** (after M8). Wrap Jolt's Cosserat-rod hair (v5.6, work in progress upstream) once stable, bridging its compute interface to `concordia-rhi`.
+- **Flesh, muscles and panel-sewn garments** (after M8). Volumetric soft tissue and 2D-pattern garment authoring.
+- **Networked destruction** (with multiplayer). Replicate breaks and debris.
+- **Asynchronous browser-viewport captures** (after M1). `capture.screenshot` renders and reads back on the engine thread, so in the browser path the editor's other calls wait behind viewport frames (seconds each on a virtual GPU). Queue the readback on the render thread and reply when it lands, as `viewport.present` already does.

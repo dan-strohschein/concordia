@@ -1,31 +1,35 @@
 # concordia-rhi-metal: agent guide
 
 ## Purpose
-The Metal implementation of `concordia-rhi` through `objc2-metal`. In phase 1.2a it only probes the system default device.
+The Metal implementation of `concordia-rhi` (ADR-0040): `MetalDevice` over `objc2-metal` using the Metal 3 API, bindless argument-buffer tables and tracked hazards.
 
 ## Public entry points
-- `probe()` → `DeviceCaps` of the system default `MTLDevice`, or `RhiError::NoDevice`
+- `new_headless()` → `Box<dyn Device>`; `MetalDevice::system_default()`, `MetalDevice::simulate_device_lost()` (test hook)
+- `probe()` → `DeviceCaps` (used by `concordia gpu-probe`)
+- `slots` (shader buffer slots: 0 buffers, 1 textures, 2 storage textures, 3 push constants), `BINDLESS_CAPACITY`
 
 ## Invariants
 - Builds on every platform: Apple dependencies are `cfg(target_os = "macos")` only, and off macOS every entry point returns `RhiError::NoDevice`.
-- No `unsafe` in the probe; later FFI `unsafe` blocks carry `// SAFETY:` comments and stay in this crate.
-- `metal-rs` is deprecated; use `objc2-metal` only.
+- Resources and heaps are hazard-tracked; bindless resources are declared with `useResource` on every encoder; an RHI barrier ends the current encoder. Push constants are re-applied whenever an encoder starts.
+- `unsafe` stays in this crate; every block has a `// SAFETY:` comment. All mutable state is behind one Mutex.
+- Unsupported on Metal 3 here: mesh pipelines and `R64Uint` (M4).
 
 ## How to test
-`cargo nextest run -p concordia-rhi-metal`
+`CONCORDIA_REQUIRE_GPU=1 cargo nextest run -p concordia-rhi-metal` (conformance suite and goldens in `tests/golden/rhi/`). Without the variable, the tests skip when there is no device.
 
 ## Common tasks
-- **Report a new GPU family:** add it to `FAMILIES` in `src/probe.rs` (the output stays sorted).
+- **Translate a new command:** add it to `encode.rs` (choose or open the right encoder) and run the conformance suite.
+- **Bless goldens:** `just bless`, then check the PNGs by eye.
 
 ## Don'ts
-- Don't call Metal outside `cfg(target_os = "macos")` modules.
-- Don't assume a device exists: hosted CI runners may have none, or only a paravirtual one.
+- Don't use metal-rs (deprecated).
+- Don't create untracked resources until the Metal 4 path adds explicit barriers.
 
 ## References
-- Apple *Metal Feature Set Tables* and `MTLDevice` documentation; `objc2-metal` (MIT/Zlib/Apache-2.0) bindings.
+- Apple *Metal Feature Set Tables*, *Metal Shading Language Specification* 3.x, WWDC 2022 "Go bindless with Metal 3"; `objc2-metal` (MIT/Zlib/Apache-2.0).
 
 ## Status
-M1 phase 1.2a: device probe (`concordia gpu-probe`).
+M1 phase 1.2b (surfaces and presentation arrive with rendering in 1.5).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

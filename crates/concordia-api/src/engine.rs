@@ -18,7 +18,7 @@ use concordia_terra::{SimLoop, World};
 use serde_json::Value;
 
 use crate::error::{ApiError, ApiErrorKind};
-use crate::method::MethodRegistry;
+use crate::method::{CallCtx, MethodRegistry};
 use crate::methods::{WorldSel, world_of};
 use crate::module::{CoreModule, EngineModule};
 
@@ -118,12 +118,14 @@ pub struct Engine {
     pub(crate) registry: TypeRegistry,
     pub(crate) modules: Vec<Arc<dyn EngineModule>>,
     pub(crate) methods: Arc<MethodRegistry>,
+    pub(crate) states: Vec<Box<dyn Any + Send>>,
     pub(crate) ids: Ids,
     pub(crate) jobs: JobSystem,
     pub(crate) sessions: HashMap<SessionId, Session>,
     pub(crate) scene: Option<OpenScene>,
     pub(crate) play: Option<Play>,
     pub(crate) ring: Arc<LogRing>,
+    pub(crate) events: crate::events::EventHub,
 }
 
 impl std::fmt::Debug for Engine {
@@ -146,6 +148,7 @@ impl Engine {
         require_unique_names(&modules)?;
         let registry = register_types(&modules)?;
         let methods = Arc::new(MethodRegistry::build(&modules)?);
+        let states = modules.iter().filter_map(|m| m.engine_state()).collect();
         let jobs = JobSystem::new(config.threads).map_err(internal)?;
         let ids = match config.deterministic_ids {
             Some(seed) => Ids::Deterministic(DeterministicIdGen::new(seed)),
@@ -160,12 +163,14 @@ impl Engine {
             registry,
             modules,
             methods,
+            states,
             ids,
             jobs,
             sessions: HashMap::new(),
             scene: None,
             play: None,
             ring,
+            events: crate::events::EventHub::default(),
         })
     }
 
@@ -189,6 +194,16 @@ impl Engine {
         crate::methods::sim::ensure_play(self, None).map(|play| &mut play.world)
     }
 
+    /// A module's engine-lifetime state of type `T`, if any.
+    pub fn state<T: Any>(&self) -> Option<&T> {
+        self.states.iter().find_map(|s| s.downcast_ref::<T>())
+    }
+
+    /// A module's engine-lifetime state of type `T`, mutable.
+    pub fn state_mut<T: Any>(&mut self) -> Option<&mut T> {
+        self.states.iter_mut().find_map(|s| s.downcast_mut::<T>())
+    }
+
     /// The state of type `T` a module created for the current play session, if any.
     pub fn play_state<T: Any>(&self) -> Option<&T> {
         self.play
@@ -196,6 +211,22 @@ impl Engine {
             .states
             .iter()
             .find_map(|s| s.downcast_ref::<T>())
+    }
+
+    /// The engine's id source (deterministic when configured), for ids a module's edits introduce.
+    pub fn ids_mut(&mut self) -> &mut impl IdSource {
+        &mut self.ids
+    }
+
+    /// Applies `ops` for the caller as one undo step labelled `label`, or inside the caller's
+    /// open transaction. On failure nothing is applied (and an open transaction is rolled back).
+    pub fn apply_edits(
+        &mut self,
+        ctx: &CallCtx,
+        label: &str,
+        ops: Vec<concordia_command::EditOp>,
+    ) -> Result<(), ApiError> {
+        crate::methods::edit_all(self, ctx, label, ops, None)
     }
 
     /// The project root.
@@ -216,6 +247,7 @@ impl Engine {
     /// Ends a session, aborting any transaction it holds.
     pub fn close_session(&mut self, session: SessionId) {
         self.sessions.remove(&session);
+        self.events.remove(session);
         self.abort_held(|hold| hold.session == session, "session_closed");
     }
 
@@ -227,24 +259,45 @@ impl Engine {
         params: Value,
     ) -> Result<Value, ApiError> {
         self.poll(Instant::now());
-        crate::method::dispatch(self, session, method, params)
+        let before = crate::events::Marker::of(self, method);
+        let result = crate::method::dispatch(self, session, method, params);
+        if let Ok(value) = &result {
+            crate::events::publish_after(self, method, &before, value);
+        }
+        result
+    }
+
+    /// Lets `session` receive pushed events (transports that can push call this once per session).
+    pub fn set_event_sink(&mut self, session: SessionId, sink: crate::events::EventSink) {
+        self.events.set_sink(session, sink);
     }
 
     /// Housekeeping: expires transactions and advances a playing simulation.
     pub fn poll(&mut self, now: Instant) {
         let timeout = self.config.txn_timeout;
         self.abort_held(|hold| now.duration_since(hold.since) >= timeout, "timeout");
+        let mut advanced = false;
         if let Some(play) = self.play.as_mut().filter(|p| p.playing) {
             let real = now.saturating_duration_since(play.last);
             play.last = now;
-            play.sim.advance(&mut play.world, &self.jobs, real);
+            advanced = play.sim.advance(&mut play.world, &self.jobs, real).steps > 0;
+        }
+        if advanced {
+            for module in self.modules.clone() {
+                module.after_sim(self);
+            }
         }
     }
 
     /// How long the engine thread may sleep before `poll` has work.
     pub(crate) fn idle_timeout(&self) -> Option<Duration> {
-        if self.play.as_ref().is_some_and(|p| p.playing) {
-            return Some(Duration::from_millis(16));
+        if let Some(play) = self.play.as_ref().filter(|p| p.playing) {
+            // Wake exactly when the next tick is due: one tick per wake, no judder.
+            return Some(
+                play.sim
+                    .until_next_step()
+                    .saturating_sub(play.last.elapsed()),
+            );
         }
         let hold = self.scene.as_ref()?.hold?;
         Some(self.config.txn_timeout.saturating_sub(hold.since.elapsed()))

@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "maximum": 255,
+  "minimum": 0,
+  "title": "u8",
+  "type": "integer",
+  "x-concordia-type": "u8"
+}

@@ -28,6 +28,9 @@ pub struct WindowDesc {
     pub height: NonZeroU32,
     /// Whether the user can resize it.
     pub resizable: bool,
+    /// Borderless fullscreen on the current display.
+    #[serde(default)]
+    pub fullscreen: bool,
 }
 
 impl Default for WindowDesc {
@@ -37,9 +40,15 @@ impl Default for WindowDesc {
             width: NonZeroU32::new(1280).expect("non-zero literal"),
             height: NonZeroU32::new(720).expect("non-zero literal"),
             resizable: true,
+            fullscreen: false,
         }
     }
 }
+
+/// The window's native content view (on macOS an `NSView`), for attaching a GPU surface. Valid
+/// while the window is open; use it on the main thread.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NativeView(pub std::ptr::NonNull<std::ffi::c_void>);
 
 /// Something that happened to the window (engine-owned, not winit's).
 #[derive(Debug, Clone, PartialEq)]
@@ -52,6 +61,8 @@ pub enum WindowEvent {
         height: u32,
         /// Physical pixels per logical pixel.
         scale_factor: f64,
+        /// The content view, when the platform exposes one.
+        view: Option<NativeView>,
     },
     /// New size in physical pixels.
     Resized {
@@ -137,7 +148,12 @@ impl Runner<'_> {
                 self.desc.width.get(),
                 self.desc.height.get(),
             ))
-            .with_resizable(self.desc.resizable);
+            .with_resizable(self.desc.resizable)
+            .with_fullscreen(
+                self.desc
+                    .fullscreen
+                    .then_some(winit::window::Fullscreen::Borderless(None)),
+            );
         let window = event_loop
             .create_window(attributes)
             .map_err(|e| PlatformError::Window(e.to_string()))?;
@@ -146,6 +162,7 @@ impl Runner<'_> {
             width: size.width,
             height: size.height,
             scale_factor: window.scale_factor(),
+            view: native_view(&window),
         };
         self.window = Some(window);
         Ok(opened)
@@ -197,6 +214,14 @@ impl ApplicationHandler for Runner<'_> {
             Some(deadline) => event_loop.set_control_flow(ControlFlow::WaitUntil(deadline)),
             None => event_loop.set_control_flow(ControlFlow::Wait),
         }
+    }
+}
+
+fn native_view(window: &Window) -> Option<NativeView> {
+    use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    match window.window_handle().ok()?.as_raw() {
+        RawWindowHandle::AppKit(handle) => Some(NativeView(handle.ns_view)),
+        _ => None,
     }
 }
 

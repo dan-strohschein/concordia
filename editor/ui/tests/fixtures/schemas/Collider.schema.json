@@ -1,0 +1,181 @@
+{
+  "$defs": {
+    "ColliderShape": {
+      "description": "A collision shape, centered on the entity (plus the collider's offset).",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A box.",
+          "properties": {
+            "Box": {
+              "additionalProperties": false,
+              "properties": {
+                "half_extents": {
+                  "description": "Half the size along each axis, in meters.\n\n3D vector as [x, y, z].",
+                  "items": {
+                    "type": "number"
+                  },
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "type": "array",
+                  "x-concordia-widget": "vec3"
+                }
+              },
+              "required": [
+                "half_extents"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Box"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A sphere.",
+          "properties": {
+            "Sphere": {
+              "additionalProperties": false,
+              "properties": {
+                "radius": {
+                  "description": "Radius in meters.",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "radius"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Sphere"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A Y-aligned capsule.",
+          "properties": {
+            "Capsule": {
+              "additionalProperties": false,
+              "properties": {
+                "half_height": {
+                  "description": "Half the height of the cylindrical part.",
+                  "type": "number"
+                },
+                "radius": {
+                  "description": "Radius.",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "half_height",
+                "radius"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Capsule"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A Y-aligned cylinder.",
+          "properties": {
+            "Cylinder": {
+              "additionalProperties": false,
+              "properties": {
+                "half_height": {
+                  "description": "Half the height.",
+                  "type": "number"
+                },
+                "radius": {
+                  "description": "Radius.",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "half_height",
+                "radius"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Cylinder"
+          ],
+          "type": "object"
+        }
+      ],
+      "title": "ColliderShape",
+      "x-concordia-type": "ColliderShape"
+    },
+    "PhysicsLayer": {
+      "description": "A collision layer, 0..=15 (validated by [`PhysicsLayer::new`] and by the runtime).",
+      "maximum": 255,
+      "minimum": 0,
+      "title": "PhysicsLayer",
+      "type": "integer",
+      "x-concordia-type": "PhysicsLayer"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "is_sensor": false,
+    "layer": 0,
+    "offset": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "shape": {
+      "Box": {
+        "half_extents": [
+          0.5,
+          0.5,
+          0.5
+        ]
+      }
+    }
+  },
+  "description": "The shape a rigid body collides with. `Transform.scale` does not scale it.",
+  "properties": {
+    "is_sensor": {
+      "description": "Detects overlaps (collision events) without pushing anything.",
+      "type": "boolean"
+    },
+    "layer": {
+      "$ref": "#/$defs/PhysicsLayer",
+      "description": "Collision layer (0..=15).",
+      "maximum": 15.0,
+      "minimum": 0.0
+    },
+    "offset": {
+      "description": "Shape offset from the entity's origin, in local space.\n\n3D vector as [x, y, z].",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array",
+      "x-concordia-widget": "vec3"
+    },
+    "shape": {
+      "$ref": "#/$defs/ColliderShape",
+      "description": "Geometry."
+    }
+  },
+  "required": [
+    "shape"
+  ],
+  "title": "Collider",
+  "type": "object",
+  "x-concordia-category": "Physics",
+  "x-concordia-type": "Collider"
+}

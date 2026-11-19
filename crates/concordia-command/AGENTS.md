@@ -4,7 +4,7 @@
 The single path for mutating an edit world. Every change is an `EditOp` (data, not closures) applied inside an attributed, atomic transaction with linear undo/redo, and recorded in an append-only JSON Lines journal that can be replayed and resumed.
 
 ## Public entry points
-- `CommandLog` (`begin`, `apply`, `commit`, `abort`, `apply_one`, `undo`, `redo`, `record_save`, `history`, `resume`, `attach_journal`)
+- `CommandLog` (`begin`, `apply`, `commit`, `abort`, `apply_one`, `undo`, `undo_to`, `redo`, `record_save`, `history`, `resume`, `attach_journal`)
 - `EditOp` (`Spawn`, `Despawn`, `SetComponent`, `RemoveComponent`) and `AppliedOp`
 - `Actor` (`<human|agent|system|tool|script>:<name>[#n]`, reflected as a string with `ACTOR_PATTERN`) and `Author` (actor + session)
 - `Journal` (`open`, `load`, `append`), `JournalEntry`, `Event`, `replay_journal`
@@ -16,7 +16,8 @@ The single path for mutating an edit world. Every change is an `EditOp` (data, n
 - A failing op rolls back its whole transaction. In an explicit transaction this records an `abort` with reason `op_failed`; an implicit single-op transaction that fails records nothing.
 - A commit, undo or redo is journaled before it counts: if the journal write fails, the world is rolled back.
 - Empty commits are not recorded.
-- Undo and redo are rejected while a transaction is open; any actor may undo, and the undo is attributed to that actor.
+- Undo and redo are rejected while a transaction is open; any actor may undo, and the undo is attributed to that actor. `undo_to` is a run of ordinary undos (one journal entry each).
+- `HistoryEntry` carries the journal time and the entities a commit touched (undo/redo rows copy their target's); nothing new is journaled for them.
 - The journal is append-only JSONL with `v: 1`; `seq` increases by 1 across restarts; `ts_ms` is audit-only and never read by replay.
 
 ## Journal format

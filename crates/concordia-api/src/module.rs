@@ -25,6 +25,19 @@ pub trait EngineModule: Send + Sync + fmt::Debug {
         Vec::new()
     }
 
+    /// Ready-made entities the module offers to `entity.templates` / `entity.create` (e.g. lights).
+    fn templates(&self) -> Vec<crate::EntityTemplate> {
+        Vec::new()
+    }
+
+    /// State that lives as long as the engine (e.g. an asset database), reachable through `Engine::state`.
+    fn engine_state(&self) -> Option<Box<dyn Any + Send>> {
+        None
+    }
+
+    /// Called on the engine thread after a playing simulation advanced at least one tick.
+    fn after_sim(&self, _engine: &mut crate::Engine) {}
+
     /// Called once per new play world (which it may prepare, e.g. insert resources): systems to run after earlier modules', and state kept until the play world is discarded.
     fn start_play(&self, _world: &mut World) -> Result<PlaySetup, ApiError> {
         Ok(PlaySetup::default())
@@ -64,6 +77,20 @@ impl EngineModule for CoreModule {
 
     fn methods(&self) -> Vec<MethodInfo> {
         crate::methods::all()
+    }
+
+    fn templates(&self) -> Vec<crate::EntityTemplate> {
+        vec![crate::EntityTemplate::new(
+            "Empty",
+            "An entity with only a name and a transform: a group or pivot for other entities.",
+            [
+                ("Name", serde_json::json!("Empty")),
+                (
+                    "Transform",
+                    serde_json::to_value(builtin::Transform::default()).unwrap_or_default(),
+                ),
+            ],
+        )]
     }
 
     fn start_play(&self, _: &mut World) -> Result<PlaySetup, ApiError> {

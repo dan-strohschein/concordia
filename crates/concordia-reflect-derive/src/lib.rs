@@ -20,6 +20,29 @@ pub fn derive_reflect(input: TokenStream) -> TokenStream {
         .into()
 }
 
+/// Builder calls for the optional type-level `category` and `default`.
+fn extras(container: &attrs::ContainerAttrs) -> proc_macro2::TokenStream {
+    let category = container
+        .category
+        .as_ref()
+        .map(|c| quote! { .with_category(#c) });
+    let default = container.default.as_ref().map(|d| {
+        let value = match d {
+            attrs::ContainerDefault::Trait => {
+                quote! { <Self as ::std::default::Default>::default() }
+            }
+            attrs::ContainerDefault::Expr(expr) => quote! { #expr },
+        };
+        quote! {
+            .with_default(|| {
+                let value: Self = #value;
+                ::concordia_reflect::__private::default_json(value)
+            })
+        }
+    });
+    quote! { #category #default }
+}
+
 fn expand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     if !input.generics.params.is_empty() {
         return Err(syn::Error::new_spanned(
@@ -44,6 +67,7 @@ fn expand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
         .as_ref()
         .map_or_else(|| ident.to_string(), syn::LitStr::value);
     let docs = attrs::docs(&input.attrs);
+    let extras = extras(&container);
     Ok(quote! {
         impl ::concordia_reflect::Reflect for #ident {
             fn type_info() -> &'static ::concordia_reflect::TypeInfo {
@@ -56,6 +80,7 @@ fn expand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
                         #docs,
                         #shape,
                     )
+                    #extras
                 })
             }
         }

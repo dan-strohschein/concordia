@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "color": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "inner_angle": 0.30000001192092896,
+    "intensity_lumens": 800.0,
+    "outer_angle": 0.5,
+    "range": 10.0
+  },
+  "description": "Cone light along the entity's -Z.",
+  "properties": {
+    "color": {
+      "description": "Linear color.",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array",
+      "x-concordia-widget": "color"
+    },
+    "inner_angle": {
+      "description": "Half-angle (radians) of full intensity.",
+      "maximum": 1.57,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "intensity_lumens": {
+      "description": "Luminous power in lumens (as if unshielded; the cone does not concentrate it).",
+      "maximum": 1000000.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "outer_angle": {
+      "description": "Half-angle (radians) where the light reaches zero (≥ inner).",
+      "maximum": 1.57,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "range": {
+      "description": "Distance where the light fades to zero.",
+      "maximum": 1000.0,
+      "minimum": 0.01,
+      "type": "number"
+    }
+  },
+  "title": "SpotLight",
+  "type": "object",
+  "x-concordia-category": "Lighting",
+  "x-concordia-type": "SpotLight"
+}

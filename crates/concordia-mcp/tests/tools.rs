@@ -24,9 +24,9 @@ async fn tool_list_is_one_to_one_with_api_methods() {
         .map(|t| t.name.to_string())
         .collect();
     let expected: Vec<String> = methods()
-        .names()
-        .filter(|m| *m != "session.open")
-        .map(tool_name)
+        .iter()
+        .filter(|m| concordia_mcp::is_tool(m))
+        .map(|m| tool_name(m.name))
         .collect();
     assert_eq!(names, expected);
 }
@@ -36,7 +36,7 @@ async fn tool_input_schemas_equal_generated_param_schemas() {
     let dir = tempfile::tempdir().unwrap();
     let client = connect(&dir).await;
     for tool in client.list_all_tools().await.unwrap() {
-        let method = methods().get(&tool.name.replace('_', ".")).unwrap();
+        let method = methods().get(&tool.name.replacen('_', ".", 1)).unwrap();
         assert_eq!(
             serde_json::to_string(tool.input_schema.as_ref()).unwrap(),
             serde_json::to_string(&params_schema(method)).unwrap(),
@@ -51,7 +51,7 @@ async fn tool_output_schemas_present() {
     let dir = tempfile::tempdir().unwrap();
     let client = connect(&dir).await;
     for tool in client.list_all_tools().await.unwrap() {
-        let method = methods().get(&tool.name.replace('_', ".")).unwrap();
+        let method = methods().get(&tool.name.replacen('_', ".", 1)).unwrap();
         let output = tool
             .output_schema
             .as_ref()
@@ -70,7 +70,7 @@ async fn tool_annotations_reflect_mutation() {
     let dir = tempfile::tempdir().unwrap();
     let client = connect(&dir).await;
     for tool in client.list_all_tools().await.unwrap() {
-        let method = methods().get(&tool.name.replace('_', ".")).unwrap();
+        let method = methods().get(&tool.name.replacen('_', ".", 1)).unwrap();
         let annotations = tool.annotations.as_ref().unwrap();
         assert_eq!(
             annotations.read_only_hint,
@@ -238,7 +238,7 @@ async fn handshake_works_with_protocol_2025_11_25_and_2026_07_28() {
         assert_eq!(server.as_deref(), Some("concordia"), "{version:?}");
         assert_eq!(
             client.list_all_tools().await.unwrap().len(),
-            24,
+            30, // 24 from M0, entity.templates/create/duplicate/reparent (M1 1.13), component.add (M1 1.14), txn.undo_to (M1 1.15)
             "{version:?}"
         );
     }
@@ -333,5 +333,82 @@ mod module_tools {
             .await
             .expect("module method schema resource");
         assert!(format!("{schema:?}").contains("probe.ping"));
+    }
+
+    /// Return a tiny image.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+    struct Snap;
+
+    /// `probe.snap` result: an image plus metadata.
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+    struct SnapResult {
+        /// The picture.
+        image: concordia_api::EncodedImage,
+        /// Width.
+        width: u32,
+    }
+
+    impl Method for Snap {
+        const NAME: &'static str = "probe.snap";
+        const MUTATES: bool = false;
+        type Params = PingParams;
+        type Result = SnapResult;
+
+        fn call(_: &mut Engine, _: &CallCtx, _: PingParams) -> Result<SnapResult, ApiError> {
+            Ok(SnapResult {
+                image: concordia_api::EncodedImage::png(b"not really a png"),
+                width: 3,
+            })
+        }
+    }
+
+    #[derive(Debug)]
+    struct Camera;
+
+    impl EngineModule for Camera {
+        fn name(&self) -> &'static str {
+            "camera"
+        }
+
+        fn methods(&self) -> Vec<MethodInfo> {
+            vec![MethodInfo::of::<Snap>()]
+        }
+    }
+
+    #[tokio::test]
+    async fn image_results_become_mcp_image_content() {
+        use base64::Engine as _;
+        let dir = tempfile::tempdir().unwrap();
+        let mut opts = options(&dir);
+        opts.modules = vec![Arc::new(Camera)];
+        let client = connect_with(opts, Default::default()).await;
+        let result = call(&client, "probe_snap", json!({})).await;
+        assert_ne!(result.is_error, Some(true), "{}", text(&result));
+        let image = result.content[0]
+            .as_image()
+            .expect("first item is an image");
+        assert_eq!(image.mime_type, "image/png");
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(&image.data)
+                .unwrap(),
+            b"not really a png"
+        );
+        let rest: serde_json::Value = serde_json::from_str(&text(&result)).unwrap();
+        assert_eq!(
+            rest,
+            json!({"width": 3}),
+            "metadata is a text item without the image"
+        );
+        assert!(
+            result.structured_content.is_none(),
+            "no duplicate base64 in structured content"
+        );
+        let tools = client.list_all_tools().await.unwrap();
+        let snap = tools.iter().find(|t| t.name == "probe_snap").unwrap();
+        assert!(
+            snap.output_schema.is_none(),
+            "image tools return content, not structured output"
+        );
     }
 }

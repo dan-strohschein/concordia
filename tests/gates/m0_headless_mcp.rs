@@ -56,15 +56,19 @@ async fn check_tools_and_schemas(client: &McpClient) {
     let mut names: Vec<String> = tools.iter().map(|t| t.name.to_string()).collect();
     names.sort();
     let mut expected: Vec<String> = methods()
-        .names()
-        .filter(|m| *m != "session.open")
-        .map(|m| m.replace('.', "_"))
+        .iter()
+        .filter(|m| concordia_mcp::is_tool(m))
+        .map(|m| m.name.replace('.', "_"))
         .collect();
     expected.sort();
     assert_eq!(names, expected);
-    assert_eq!(names.len(), 24);
+    assert_eq!(
+        names.len(),
+        30,
+        "the 24 M0 tools plus M1 1.13's entity.templates/create/duplicate/reparent, M1 1.14's component.add and M1 1.15's txn.undo_to"
+    );
     for tool in &tools {
-        let method = methods().get(&tool.name.replace('_', ".")).unwrap();
+        let method = methods().get(&tool.name.replacen('_', ".", 1)).unwrap();
         let generated = serde_json::to_string(&params_schema(method)).unwrap();
         let served = serde_json::to_string(tool.input_schema.as_ref()).unwrap();
         assert_eq!(

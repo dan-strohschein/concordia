@@ -148,3 +148,120 @@ async fn connection_file_is_private_and_complete() {
         );
     }
 }
+
+type Socket =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+/// Sends a request and returns its response, collecting any notifications that arrive first.
+async fn request(
+    socket: &mut Socket,
+    id: u64,
+    method: &str,
+    params: Value,
+    notes: &mut Vec<Value>,
+) -> Value {
+    let message = json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params});
+    socket
+        .send(Message::text(message.to_string()))
+        .await
+        .unwrap();
+    loop {
+        let reply = socket.next().await.unwrap().unwrap();
+        let value: Value = serde_json::from_str(reply.to_text().unwrap()).unwrap();
+        match value.get("id") {
+            Some(got) if got == id => return value,
+            _ => notes.push(value),
+        }
+    }
+}
+
+#[tokio::test]
+async fn ws_subscriber_receives_another_clients_edits_as_notifications() {
+    let (_dir, server) = ws_server().await;
+    let url = format!("{}?token={}", server.url(), server.token);
+    let (mut editor, _) = tokio_tungstenite::connect_async(url.clone()).await.unwrap();
+    let (mut agent, _) = tokio_tungstenite::connect_async(url).await.unwrap();
+    let mut notes = Vec::new();
+    request(
+        &mut editor,
+        1,
+        "session.open",
+        json!({"client": "editor", "actor": "human:local"}),
+        &mut notes,
+    )
+    .await;
+    request(
+        &mut editor,
+        2,
+        "scene.new",
+        json!({"path": "scenes/a.scene.ron", "name": "A"}),
+        &mut notes,
+    )
+    .await;
+    let sub = request(
+        &mut editor,
+        3,
+        "events.subscribe",
+        json!({"topics": ["edit"]}),
+        &mut notes,
+    )
+    .await;
+    assert!(sub.get("result").is_some(), "{sub}");
+    request(
+        &mut agent,
+        1,
+        "session.open",
+        json!({"client": "agent", "actor": "agent:test#1"}),
+        &mut notes,
+    )
+    .await;
+    let spawned = request(
+        &mut agent,
+        2,
+        "entity.spawn",
+        json!({"components": {"Name": "Crate"}}),
+        &mut notes,
+    )
+    .await;
+    let id = spawned["result"]["id"].clone();
+    let note = tokio::time::timeout(std::time::Duration::from_secs(2), editor.next())
+        .await
+        .expect("a notification within 2 s")
+        .unwrap()
+        .unwrap();
+    let note: Value = serde_json::from_str(note.to_text().unwrap()).unwrap();
+    assert_eq!(note["method"], "events.event", "{note}");
+    assert!(
+        note.get("id").is_none(),
+        "notifications carry no id: {note}"
+    );
+    assert_eq!(
+        (
+            note["params"]["actor"].as_str(),
+            &note["params"]["entities"][0]
+        ),
+        (Some("agent:test#1"), &id)
+    );
+}
+
+#[tokio::test]
+async fn handle_run_executes_on_the_engine_thread_in_order() {
+    let (_dir, handle) = engine();
+    let session = handle.open_session().await.unwrap();
+    handle
+        .call(
+            session,
+            "session.open",
+            json!({"client": "t", "actor": "agent:t"}),
+        )
+        .await
+        .unwrap();
+    let seen = handle
+        .run(Box::new(|engine: &mut Engine| {
+            engine.methods().get("schema.get").is_some()
+                && std::thread::current().name() == Some("concordia-engine")
+        }))
+        .await
+        .unwrap();
+    assert!(seen, "the closure ran with the engine, on its thread");
+}

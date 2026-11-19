@@ -1,4 +1,6 @@
-//! Dev-only test helpers: GPU test guards (and, from M1 phase 1.5, golden-image comparison).
+//! Dev-only test helpers: GPU test guards and golden-image comparison with NVIDIA FLIP.
+
+pub mod golden;
 
 /// Environment variable that makes GPU tests fail instead of skipping when no device exists.
 pub const REQUIRE_GPU_ENV: &str = "CONCORDIA_REQUIRE_GPU";

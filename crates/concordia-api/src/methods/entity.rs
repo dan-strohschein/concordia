@@ -48,6 +48,9 @@ pub struct EntityDespawn;
 pub struct EntityDespawnParams {
     /// The entity.
     pub id: EntityRef,
+    /// Also remove all its descendants, in the same undo step (default false: children become top-level).
+    #[serde(default)]
+    pub recursive: Option<bool>,
     /// Actor (defaults to the session's).
     pub actor: Option<Actor>,
 }
@@ -128,8 +131,18 @@ impl Method for EntityDespawn {
     type Result = Empty;
 
     fn call(engine: &mut Engine, ctx: &CallCtx, p: EntityDespawnParams) -> Result<Empty, ApiError> {
-        let id = resolve(&engine.scene()?.world, &p.id)?;
-        edit(engine, ctx, Self::NAME, EditOp::Despawn { id }, None)?;
+        let world = &engine.scene()?.world;
+        let id = resolve(world, &p.id)?;
+        if !p.recursive.unwrap_or(false) {
+            edit(engine, ctx, Self::NAME, EditOp::Despawn { id }, None)?;
+            return Ok(Empty {});
+        }
+        let ops = super::hierarchy::subtree(&super::hierarchy::children_of(world), id)
+            .into_iter()
+            .rev()
+            .map(|id| EditOp::Despawn { id })
+            .collect();
+        engine.apply_edits(ctx, Self::NAME, ops)?;
         Ok(Empty {})
     }
 }

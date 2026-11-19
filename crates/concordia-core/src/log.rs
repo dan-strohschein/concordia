@@ -160,6 +160,11 @@ impl LogRing {
         }
     }
 
+    /// The sequence number the next record will get (1 for an empty ring).
+    pub fn next_seq(&self) -> u64 {
+        self.lock().next_seq
+    }
+
     /// Records with `seq` greater than `since` (all if `None`), oldest first.
     pub fn tail(&self, since: Option<u64>) -> Vec<LogRecord> {
         let floor = since.unwrap_or(0);

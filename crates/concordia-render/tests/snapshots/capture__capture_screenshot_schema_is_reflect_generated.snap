@@ -1,0 +1,269 @@
+---
+source: crates/concordia-render/tests/capture.rs
+expression: "params_schema(&MethodInfo::of::<CaptureScreenshot>())"
+---
+{
+  "$defs": {
+    "Projection": {
+      "description": "How the camera projects (reverse-Z for both).",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Perspective with a vertical field of view in radians.",
+          "properties": {
+            "Perspective": {
+              "additionalProperties": false,
+              "properties": {
+                "far": {
+                  "description": "Far plane distance (> near).",
+                  "type": "number"
+                },
+                "fov_y": {
+                  "description": "Vertical field of view (radians).",
+                  "type": "number"
+                },
+                "near": {
+                  "description": "Near plane distance (> 0).",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "fov_y",
+                "near",
+                "far"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Perspective"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Orthographic; `height` world units fill the image vertically.",
+          "properties": {
+            "Orthographic": {
+              "additionalProperties": false,
+              "properties": {
+                "far": {
+                  "description": "Far plane distance (> near).",
+                  "type": "number"
+                },
+                "height": {
+                  "description": "Visible height in world units.",
+                  "type": "number"
+                },
+                "near": {
+                  "description": "Near plane distance (≥ 0).",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "height",
+                "near",
+                "far"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Orthographic"
+          ],
+          "type": "object"
+        }
+      ],
+      "title": "Projection",
+      "x-concordia-type": "Projection"
+    },
+    "View": {
+      "additionalProperties": false,
+      "description": "A viewpoint that is not a scene entity: eye, target and projection (up is +Y).",
+      "properties": {
+        "eye": {
+          "description": "Camera position.\n\n3D vector as [x, y, z].",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-concordia-widget": "vec3"
+        },
+        "projection": {
+          "$ref": "#/$defs/Projection",
+          "description": "Projection."
+        },
+        "target": {
+          "description": "Point looked at.\n\n3D vector as [x, y, z].",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-concordia-widget": "vec3"
+        }
+      },
+      "required": [
+        "eye",
+        "target",
+        "projection"
+      ],
+      "title": "View",
+      "type": "object",
+      "x-concordia-type": "View"
+    },
+    "ViewMode": {
+      "description": "How the scene is drawn: the lit image, or a debug view of one input or cost.",
+      "oneOf": [
+        {
+          "const": "lit",
+          "description": "The final lit image."
+        },
+        {
+          "const": "unlit",
+          "description": "Base color and emission without lighting."
+        },
+        {
+          "const": "wireframe",
+          "description": "Triangle edges only, hidden ones included."
+        },
+        {
+          "const": "normals",
+          "description": "Shading normals as colors (x, y, z → red, green, blue)."
+        },
+        {
+          "const": "albedo",
+          "description": "Base color only."
+        },
+        {
+          "const": "roughness_metallic",
+          "description": "Roughness in green, metallic in blue."
+        },
+        {
+          "const": "overdraw",
+          "description": "How many surfaces each pixel shades (brighter: more)."
+        },
+        {
+          "const": "shadow_cascades",
+          "description": "The lit image tinted by shadow cascade (red, green, blue, yellow from near to far)."
+        },
+        {
+          "const": "light_clusters",
+          "description": "Lights per cluster as a heat map (blue: none, green: 8, red: 16 or more)."
+        }
+      ],
+      "title": "ViewMode",
+      "x-concordia-type": "ViewMode"
+    },
+    "WorldSel": {
+      "description": "Which world to read.",
+      "oneOf": [
+        {
+          "const": "edit",
+          "description": "The scene being edited (default)."
+        },
+        {
+          "const": "play",
+          "description": "The running simulation (exists after sim.play or sim.step)."
+        }
+      ],
+      "title": "WorldSel",
+      "x-concordia-type": "WorldSel"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`capture.screenshot` params.",
+  "properties": {
+    "actor": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Who makes a change: <human|agent|system|tool|script>:<name>[#n], e.g. agent:claude-code.",
+          "pattern": "^(human|agent|system|tool|script):[a-z0-9][a-z0-9._-]{0,63}(#[1-9][0-9]*)?$",
+          "type": "string"
+        }
+      ],
+      "description": "Who is asking (attribution in the log only)."
+    },
+    "camera": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Entity id (UUID string). If you pass a name instead, the error suggests the matching id.",
+          "format": "uuid",
+          "type": "string"
+        }
+      ],
+      "description": "Camera entity; default: the highest-priority Camera."
+    },
+    "height": {
+      "default": 432,
+      "description": "Height in pixels.",
+      "maximum": 8192.0,
+      "minimum": 1.0,
+      "type": "integer"
+    },
+    "overlays": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        }
+      ],
+      "description": "Draw the editor overlays (`viewport.overlays`: selection, gizmo) on top."
+    },
+    "view": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/View"
+        }
+      ],
+      "description": "Render from this viewpoint instead of a camera entity (the editor's view)."
+    },
+    "view_mode": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/ViewMode"
+        }
+      ],
+      "description": "Draw a debug view instead of the lit image, e.g. \"wireframe\" or \"normals\" (see ViewMode)."
+    },
+    "width": {
+      "default": 768,
+      "description": "Width in pixels (default 768 × 432, sized for an agent's context; ask for more when detail matters).",
+      "maximum": 8192.0,
+      "minimum": 1.0,
+      "type": "integer"
+    },
+    "world": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/WorldSel"
+        }
+      ],
+      "description": "Which world to render: edit (default) or play."
+    }
+  },
+  "title": "CaptureScreenshotParams",
+  "type": "object",
+  "x-concordia-type": "CaptureScreenshotParams"
+}

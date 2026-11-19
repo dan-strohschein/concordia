@@ -1,0 +1,53 @@
+[package]
+name = "concordia-editor"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.100"
+license = "MIT OR Apache-2.0"
+description = "The Concordia editor shell: Tauri v2 window, in-process engine, native Metal viewport."
+publish = false
+
+# Standalone workspace: Tauri stays out of the engine workspace and its CI (editor CI builds this).
+[workspace]
+
+[lib]
+name = "concordia_editor"
+path = "src/lib.rs"
+
+[[bin]]
+name = "concordia-editor"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "=2.7.4", features = [] }
+
+[dependencies]
+concordia-api = { path = "../../crates/concordia-api" }
+concordia-app = { path = "../../crates/concordia-app" }
+concordia-core = { path = "../../crates/concordia-core" }
+concordia-render = { path = "../../crates/concordia-render" }
+concordia-rhi = { path = "../../crates/concordia-rhi" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "=2.12.5", features = ["macos-private-api"] }
+thiserror = "2"
+tokio = { version = "1.54", features = ["rt-multi-thread", "macros"] }
+base64 = "0.22.1"
+png = "0.18.1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.5"
+objc2-app-kit = "0.3.2"
+objc2-foundation = "0.3.2"
+objc2-quartz-core = "0.3.2"
+block2 = "0.6.2"
+
+[dev-dependencies]
+futures = "0.3"
+tempfile = "3"
+tokio-tungstenite = "0.30"
+
+# Everyday `just editor` runs: optimize the engine and other dependencies (the shell itself stays
+# quick to rebuild). The debug engine is several times slower, which hides real performance.
+[profile.dev.package."*"]
+opt-level = 2

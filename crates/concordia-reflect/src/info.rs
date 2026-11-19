@@ -18,6 +18,12 @@ pub struct TypeInfo {
     pub shape: Shape,
     /// Structural types (`Option`, `Vec`, maps, arrays, tuples) have no registry entry of their own.
     pub structural: bool,
+    /// Editor widget hint (`x-concordia-widget`), e.g. `vec3`, `quat`.
+    pub widget: Option<&'static str>,
+    /// `#[reflect(category = "..")]`: grouping for discovery, e.g. `Lighting`.
+    pub category: Option<&'static str>,
+    /// `#[reflect(default)]` or `#[reflect(default = ..)]`: the whole value's default as JSON.
+    pub default: Option<fn() -> serde_json::Value>,
 }
 
 impl TypeInfo {
@@ -34,7 +40,29 @@ impl TypeInfo {
             docs,
             shape,
             structural: false,
+            widget: None,
+            category: None,
+            default: None,
         }
+    }
+
+    /// The same type with an editor widget hint.
+    pub fn with_widget(mut self, widget: &'static str) -> Self {
+        self.widget = Some(widget);
+        self
+    }
+
+    /// The same type in a discovery category.
+    pub fn with_category(mut self, category: &'static str) -> Self {
+        debug_assert!(!category.trim().is_empty(), "empty category");
+        self.category = Some(category);
+        self
+    }
+
+    /// The same type with a default value.
+    pub fn with_default(mut self, default: fn() -> serde_json::Value) -> Self {
+        self.default = Some(default);
+        self
     }
 
     /// A structural type that is always inlined in schemas.
@@ -45,6 +73,9 @@ impl TypeInfo {
             docs: "",
             shape,
             structural: true,
+            widget: None,
+            category: None,
+            default: None,
         }
     }
 
@@ -187,6 +218,8 @@ pub struct FieldInfo {
     pub default: Option<fn() -> serde_json::Value>,
     /// `#[reflect(range(..))]`.
     pub range: Option<Range>,
+    /// `#[reflect(widget = "..")]`: editor widget hint, overriding the type's.
+    pub widget: Option<&'static str>,
     /// May be absent on input (`#[serde(default)]`, `skip_serializing_if`, or `Option`).
     pub optional: bool,
 }

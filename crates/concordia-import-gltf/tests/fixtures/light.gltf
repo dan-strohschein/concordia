@@ -1,0 +1,98 @@
+{
+ "asset": {
+  "version": "2.0"
+ },
+ "buffers": [
+  {
+   "byteLength": 44,
+   "uri": "data:application/octet-stream;base64,AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAABAAIAAAA="
+  }
+ ],
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteOffset": 0,
+   "byteLength": 36
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 36,
+   "byteLength": 6
+  }
+ ],
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5126,
+   "count": 3,
+   "type": "VEC3",
+   "min": [
+    0,
+    0,
+    0
+   ],
+   "max": [
+    1,
+    1,
+    0
+   ]
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5123,
+   "count": 3,
+   "type": "SCALAR"
+  }
+ ],
+ "meshes": [
+  {
+   "name": "Tri",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0
+     },
+     "indices": 1
+    }
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "name": "Lamp",
+   "extensions": {
+    "KHR_lights_punctual": {
+     "light": 0
+    }
+   }
+  }
+ ],
+ "scenes": [
+  {
+   "nodes": [
+    0
+   ]
+  }
+ ],
+ "scene": 0,
+ "extensionsUsed": [
+  "KHR_lights_punctual"
+ ],
+ "extensions": {
+  "KHR_lights_punctual": {
+   "lights": [
+    {
+     "name": "Lamp",
+     "type": "point",
+     "color": [
+      1,
+      0.5,
+      0.25
+     ],
+     "intensity": 40,
+     "range": 12
+    }
+   ]
+  }
+ }
+}

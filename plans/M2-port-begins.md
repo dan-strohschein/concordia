@@ -1,5 +1,7 @@
 # M2: Port begins
 
+> **Renamed 'M2: Engine breadth' by ADR-0048.** Phases 2.3–2.8 stay here. Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) move to M5. The refinement pass restructures this plan accordingly.
+
 Status: Planned · Depends on: M1 (and through it M0, M-1) · Detail level: **Needs refinement after M1** · Estimated effort: ~22–26 calendar weeks (author + agents, phases partly parallel)
 
 > This plan has full phase breakdowns and test lists, but it was written before M0/M1 exist. When M1's gate passes, do a refinement pass: re-check every M0/M1 API this plan assumes (marked "assumes M1"), re-measure the slice closure with the real `port.scan`, and re-estimate.

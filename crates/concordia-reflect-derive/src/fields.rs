@@ -68,6 +68,10 @@ fn field_info(field: &Field, all_optional: bool) -> syn::Result<Option<TokenStre
         },
         None => quote! { ::std::option::Option::None },
     };
+    let widget = match &attrs.widget {
+        Some(w) => quote! { ::std::option::Option::Some(#w) },
+        None => quote! { ::std::option::Option::None },
+    };
     Ok(Some(quote! {
         ::concordia_reflect::FieldInfo {
             name: #name,
@@ -75,6 +79,7 @@ fn field_info(field: &Field, all_optional: bool) -> syn::Result<Option<TokenStre
             docs: #docs,
             default: #default,
             range: #range,
+            widget: #widget,
             optional: #optional,
         }
     }))

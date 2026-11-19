@@ -44,6 +44,11 @@ Scene(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
                 ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a1f460-1d20-762c-9877-79f144f9f0f0",
+                    mesh: "builtin:mesh/cube",
+                ),
                 "Name": "Pyramid 0.0",
                 "RigidBody": (
                     angular_damping: 0.05,
@@ -72,6 +77,11 @@ Scene(
                     shape: Box(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a1f460-1d21-70a2-82b8-1f9f06117569",
+                    mesh: "builtin:mesh/cube",
                 ),
                 "Name": "Pyramid 0.1",
                 "RigidBody": (
@@ -102,6 +112,11 @@ Scene(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
                 ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a1f460-1d20-762c-9877-79f144f9f0f0",
+                    mesh: "builtin:mesh/cube",
+                ),
                 "Name": "Pyramid 0.2",
                 "RigidBody": (
                     angular_damping: 0.05,
@@ -130,6 +145,11 @@ Scene(
                     shape: Box(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a1f460-1d21-70a2-82b8-1f9f06117569",
+                    mesh: "builtin:mesh/cube",
                 ),
                 "Name": "Pyramid 0.3",
                 "RigidBody": (
@@ -160,6 +180,11 @@ Scene(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
                 ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a1f460-1d21-70a2-82b8-1f9f06117569",
+                    mesh: "builtin:mesh/cube",
+                ),
                 "Name": "Pyramid 1.0",
                 "RigidBody": (
                     angular_damping: 0.05,
@@ -188,6 +213,11 @@ Scene(
                     shape: Box(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a1f460-1d20-762c-9877-79f144f9f0f0",
+                    mesh: "builtin:mesh/cube",
                 ),
                 "Name": "Pyramid 1.1",
                 "RigidBody": (
@@ -218,6 +248,11 @@ Scene(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
                 ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a1f460-1d21-70a2-82b8-1f9f06117569",
+                    mesh: "builtin:mesh/cube",
+                ),
                 "Name": "Pyramid 1.2",
                 "RigidBody": (
                     angular_damping: 0.05,
@@ -246,6 +281,11 @@ Scene(
                     shape: Box(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a1f460-1d20-762c-9877-79f144f9f0f0",
+                    mesh: "builtin:mesh/cube",
                 ),
                 "Name": "Pyramid 2.0",
                 "RigidBody": (
@@ -276,6 +316,11 @@ Scene(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
                 ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a1f460-1d21-70a2-82b8-1f9f06117569",
+                    mesh: "builtin:mesh/cube",
+                ),
                 "Name": "Pyramid 2.1",
                 "RigidBody": (
                     angular_damping: 0.05,
@@ -304,6 +349,11 @@ Scene(
                     shape: Box(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a1f460-1d21-70a2-82b8-1f9f06117569",
+                    mesh: "builtin:mesh/cube",
                 ),
                 "Name": "Pyramid 3.0",
                 "RigidBody": (
@@ -334,6 +384,11 @@ Scene(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
                 ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a1f460-1d21-70a2-82b8-1fa0e05b4ff9",
+                    mesh: "builtin:mesh/cube",
+                ),
                 "Name": "Dropped 0",
                 "RigidBody": (
                     angular_damping: 0.05,
@@ -362,6 +417,11 @@ Scene(
                     shape: Box(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
+                ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a1f460-1d21-70a2-82b8-1fa0e05b4ff9",
+                    mesh: "builtin:mesh/cube",
                 ),
                 "Name": "Dropped 1",
                 "RigidBody": (
@@ -392,6 +452,11 @@ Scene(
                         half_extents: (0.5, 0.5, 0.5),
                     ),
                 ),
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a1f460-1d21-70a2-82b8-1fa0e05b4ff9",
+                    mesh: "builtin:mesh/cube",
+                ),
                 "Name": "Dropped 2",
                 "RigidBody": (
                     angular_damping: 0.05,
@@ -407,6 +472,406 @@ Scene(
                     rotation: (0.140378, -0.339047, 0.051242, 0.928825),
                     scale: (1.0, 1.0, 1.0),
                     translation: (0.1, 6.0, 1.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-000000000200",
+            components: {
+                "Camera": (
+                    clear: (0.25, 0.35, 0.5, 1.0),
+                    exposure_ev100: 15.0,
+                    msaa: X4,
+                    priority: 0,
+                    projection: Perspective(
+                        far: 200.0,
+                        fov_y: 0.9,
+                        near: 0.1,
+                    ),
+                    tonemap: AgX,
+                ),
+                "Name": "Camera",
+                "Transform": (
+                    rotation: (-0.150378, 0.296879, 0.047402, 0.941808),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (7.0, 5.5, 10.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-000000000201",
+            components: {
+                "DirectionalLight": (
+                    color: (1.0, 0.96, 0.9),
+                    illuminance_lux: 100000.0,
+                    shadows: Some((
+                        cascades: 3,
+                        depth_bias: 0.02,
+                        max_distance: 40.0,
+                        normal_bias: 1.5,
+                        pcf: X3,
+                        resolution: 2048,
+                        split_lambda: 0.75,
+                        stabilize: true,
+                    )),
+                ),
+                "Name": "Sun",
+                "Transform": (
+                    rotation: (-0.429612, -0.343689, -0.0, 0.835052),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.0, 10.0, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-000000000202",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "builtin:material/default",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Ground visual",
+                "Parent": "0193a1c2-7e40-7000-8000-000000000101",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (30.0, 0.5, 30.0),
+                    translation: (0.0, 0.0, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a1f469-8140-7704-98fb-8d1a7a3f41bd",
+            components: {
+                "Name": "Crate prop",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-5.0, 0.5, 3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a1f469-8141-7133-8fd0-b621e37beaac",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a1f460-1cfa-7420-b9d7-9203d43b3931#material/Panels",
+                    mesh: "asset:01a1f460-1cfa-7420-b9d7-9203d43b3931#mesh/Crate/1",
+                ),
+                "Name": "Crate primitive 1",
+                "Parent": "01a1f469-8141-7133-8fd0-b622d0b6f0f2",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.0, 0.0, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a1f469-8141-7133-8fd0-b622d0b6f0f2",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a1f460-1cfa-7420-b9d7-9203d43b3931#material/Beams",
+                    mesh: "asset:01a1f460-1cfa-7420-b9d7-9203d43b3931#mesh/Crate/0",
+                ),
+                "Name": "Crate",
+                "Parent": "01a1f469-8140-7704-98fb-8d1a7a3f41bd",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.0, 0.0, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a1f469-8141-7133-8fd0-b623a1f74e4b",
+            components: {
+                "Environment": (
+                    intensity: 3000.0,
+                    map: "asset:01a1f460-1cfe-7589-9c7e-2bef906dc7dc",
+                    skybox: true,
+                ),
+                "Name": "Sky",
+            },
+        ),
+        Entity(
+            id: "01a1f469-8141-7133-8fd0-b6249ab86975",
+            components: {
+                "Name": "Ring light 0",
+                "PointLight": (
+                    color: (1.0, 0.0, 0.0),
+                    intensity_lumens: 1000000.0,
+                    range: 7.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (9.0, 0.6, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a1f469-8141-7133-8fd0-b625a3bdb080",
+            components: {
+                "Name": "Ring light 1",
+                "PointLight": (
+                    color: (1.0, 0.375, 0.0),
+                    intensity_lumens: 1000000.0,
+                    range: 7.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (8.314916, 0.6, 3.444151),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a1f469-8141-7133-8fd0-b6264cc58881",
+            components: {
+                "Name": "Ring light 2",
+                "PointLight": (
+                    color: (1.0, 0.75, 0.0),
+                    intensity_lumens: 1000000.0,
+                    range: 7.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (6.363961, 0.6, 6.363961),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a1f469-8141-7133-8fd0-b62704475fbf",
+            components: {
+                "Name": "Ring light 3",
+                "PointLight": (
+                    color: (0.875, 1.0, 0.0),
+                    intensity_lumens: 1000000.0,
+                    range: 7.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.444151, 0.6, 8.314916),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a1f469-8141-7133-8fd0-b628eed67f7f",
+            components: {
+                "Name": "Ring light 4",
+                "PointLight": (
+                    color: (0.5, 1.0, 0.0),
+                    intensity_lumens: 1000000.0,
+                    range: 7.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (5.5109107e-16, 0.6, 9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a1f469-8141-7133-8fd0-b629bb0d5ff0",
+            components: {
+                "Name": "Ring light 5",
+                "PointLight": (
+                    color: (0.125, 1.0, 0.0),
+                    intensity_lumens: 1000000.0,
+                    range: 7.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.444151, 0.6, 8.314916),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a1f469-8142-757b-a5a9-a6edd2697e7b",
+            components: {
+                "Name": "Ring light 6",
+                "PointLight": (
+                    color: (0.0, 1.0, 0.25),
+                    intensity_lumens: 1000000.0,
+                    range: 7.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-6.363961, 0.6, 6.363961),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a1f469-8142-757b-a5a9-a6ee76ddb0b0",
+            components: {
+                "Name": "Ring light 7",
+                "PointLight": (
+                    color: (0.0, 1.0, 0.625),
+                    intensity_lumens: 1000000.0,
+                    range: 7.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-8.314916, 0.6, 3.444151),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a1f469-8142-757b-a5a9-a6ef504754c8",
+            components: {
+                "Name": "Ring light 8",
+                "PointLight": (
+                    color: (0.0, 1.0, 1.0),
+                    intensity_lumens: 1000000.0,
+                    range: 7.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-9.0, 0.6, 1.1021821e-15),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a1f469-8142-757b-a5a9-a6f084d6a074",
+            components: {
+                "Name": "Ring light 9",
+                "PointLight": (
+                    color: (0.0, 0.625, 1.0),
+                    intensity_lumens: 1000000.0,
+                    range: 7.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-8.314916, 0.6, -3.444151),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a1f469-8142-757b-a5a9-a6f1f7d76922",
+            components: {
+                "Name": "Ring light 10",
+                "PointLight": (
+                    color: (0.0, 0.25, 1.0),
+                    intensity_lumens: 1000000.0,
+                    range: 7.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-6.363961, 0.6, -6.363961),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a1f469-8142-757b-a5a9-a6f277d1d52f",
+            components: {
+                "Name": "Ring light 11",
+                "PointLight": (
+                    color: (0.125, 0.0, 1.0),
+                    intensity_lumens: 1000000.0,
+                    range: 7.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.444151, 0.6, -8.314916),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a1f469-8142-757b-a5a9-a6f3c5846be0",
+            components: {
+                "Name": "Ring light 12",
+                "PointLight": (
+                    color: (0.5, 0.0, 1.0),
+                    intensity_lumens: 1000000.0,
+                    range: 7.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.6532732e-15, 0.6, -9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a1f469-8142-757b-a5a9-a6f4de1fcf1e",
+            components: {
+                "Name": "Ring light 13",
+                "PointLight": (
+                    color: (0.875, 0.0, 1.0),
+                    intensity_lumens: 1000000.0,
+                    range: 7.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.444151, 0.6, -8.314916),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a1f469-8142-757b-a5a9-a6f52e9eb1a7",
+            components: {
+                "Name": "Ring light 14",
+                "PointLight": (
+                    color: (1.0, 0.0, 0.75),
+                    intensity_lumens: 1000000.0,
+                    range: 7.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (6.363961, 0.6, -6.363961),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a1f469-8142-757b-a5a9-a6f61d253906",
+            components: {
+                "Name": "Ring light 15",
+                "PointLight": (
+                    color: (1.0, 0.0, 0.375),
+                    intensity_lumens: 1000000.0,
+                    range: 7.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (8.314916, 0.6, -3.444151),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a1f469-8143-77b2-8022-106230d5de5e",
+            components: {
+                "Camera": (
+                    clear: (0.25, 0.35, 0.5, 1.0),
+                    exposure_ev100: 15.0,
+                    msaa: X4,
+                    priority: -1,
+                    projection: Orthographic(
+                        far: 100.0,
+                        height: 18.0,
+                        near: 0.1,
+                    ),
+                    tonemap: AgX,
+                ),
+                "Name": "gate_cam",
+                "Transform": (
+                    rotation: (-0.27984515, 0.3647056, 0.115915656, 0.8804772),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (23.094122, 24.093788, 23.094122),
                 ),
             },
         ),

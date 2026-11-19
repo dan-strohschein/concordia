@@ -114,4 +114,15 @@ impl Accumulator {
     pub fn rate(&self) -> TickRate {
         self.rate
     }
+
+    /// Real time still needed before the next step is due (rounded up to whole ns).
+    pub fn until_next_step(&self) -> Duration {
+        let left = NANOS_PER_SEC - self.scaled_remainder;
+        Duration::from_nanos(left.div_ceil(u128::from(self.rate.hz())) as u64)
+    }
+
+    /// How far toward the next step the accumulated time is, in [0, 1) (for interpolation).
+    pub fn fraction(&self) -> f32 {
+        (self.scaled_remainder as f64 / NANOS_PER_SEC as f64) as f32
+    }
 }

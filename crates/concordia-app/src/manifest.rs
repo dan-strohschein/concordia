@@ -21,7 +21,21 @@ pub struct Manifest {
     pub input: InputSection,
     /// `[physics]`; the physics module runs only if this section exists.
     pub physics: Option<PhysicsSection>,
+    /// `[assets]`; the asset database (image and glTF importers) runs only if this section exists.
+    pub assets: Option<AssetsSection>,
+    /// `[render]`; render components and `capture.screenshot` exist only if this section exists.
+    pub render: Option<RenderSection>,
 }
+
+/// `[render]` (no settings yet; the device is created on the first capture).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct RenderSection {}
+
+/// `[assets]` (no settings yet).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AssetsSection {}
 
 /// `[project]`.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

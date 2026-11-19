@@ -1,0 +1,12 @@
+Sidecar(
+    id: "01a1f460-1cfa-7420-b9d7-9203d43b3931",
+    importer: "gltf",
+    importer_version: 1,
+    settings: {},
+    sub_assets: {
+        "material/Beams": "ca2320b3-594b-5c7b-865b-7aad4301b9f3",
+        "material/Panels": "53bd09d0-423e-59e3-b422-997989ee30bc",
+        "mesh/Crate/0": "6a82add2-3cc2-5beb-a69c-207e4bfa3e2d",
+        "mesh/Crate/1": "5128f3b1-1030-5705-91d3-34bdc810b46d",
+    },
+)

@@ -5,7 +5,7 @@ use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{MTLArgumentBuffersTier, MTLCreateSystemDefaultDevice, MTLDevice, MTLGPUFamily};
 
-type Device = ProtocolObject<dyn MTLDevice>;
+pub(crate) type Device = ProtocolObject<dyn MTLDevice>;
 
 /// Named Metal GPU families reported in `feature_sets`.
 const FAMILIES: [(&str, MTLGPUFamily); 9] = [
@@ -21,14 +21,18 @@ const FAMILIES: [(&str, MTLGPUFamily); 9] = [
 ];
 
 pub(crate) fn system_default() -> Result<DeviceCaps, RhiError> {
-    let device = MTLCreateSystemDefaultDevice().ok_or_else(|| RhiError::NoDevice {
-        reason: "MTLCreateSystemDefaultDevice returned nil (no Metal device in this session)"
-            .into(),
-    })?;
-    Ok(caps(&device))
+    Ok(caps(&default_device()?))
 }
 
-fn caps(device: &Retained<Device>) -> DeviceCaps {
+/// The system default device.
+pub(crate) fn default_device() -> Result<Retained<Device>, RhiError> {
+    MTLCreateSystemDefaultDevice().ok_or_else(|| RhiError::NoDevice {
+        reason: "MTLCreateSystemDefaultDevice returned nil (no Metal device in this session)"
+            .into(),
+    })
+}
+
+pub(crate) fn caps(device: &Retained<Device>) -> DeviceCaps {
     let feature_sets = feature_sets(device);
     DeviceCaps {
         backend: Backend::Metal,
@@ -39,6 +43,8 @@ fn caps(device: &Retained<Device>) -> DeviceCaps {
         mesh_shaders: feature_sets.iter().any(|f| f == "metal3"),
         ray_tracing: device.supportsRaytracing(),
         max_buffer_bytes: device.maxBufferLength() as u64,
+        max_bindless_textures: crate::BINDLESS_CAPACITY,
+        max_bindless_buffers: crate::BINDLESS_CAPACITY,
         feature_sets,
     }
 }

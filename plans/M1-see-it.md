@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (phase 1.2b; 1.0, 1.2a, 1.1 and 1.7 done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: Gate passed (2026-11-19; phases 1.0–1.9 and 1.11–1.16 done, 1.10 stretch not done; ADR-0048, ADR-0049) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -153,6 +153,426 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 - the gate agent demo.
 
 **Installs needing approval:** cmake (1.7a), Slang into `target/` (1.3), the Tauri CLI (1.8), and git-lfs only if D5 changes.
+
+### Phase 1.9d: Editor performance review (in progress; author request 2026-11-18)
+**Goal.** Decide whether the web-based editor UI can keep up, on numbers. First fix the two engine-side bottlenecks (a synchronous renderer, and one thread for both the API and rendering), so what remains is the web layer's true cost.
+
+**a. Bench harness (done).**
+- **RHI:**
+  - `Present {commands, signal, on_presented}` (timeline signals and the display's presented time);
+  - `Device::allocated_bytes`.
+- **`viewport.present`** takes `seq` and `input_time_ms`; `viewport.stats` returns per-frame CPU time and submit and display times.
+- **UI:** input tags on every camera and gizmo input; a bench driver with synthetic mouse events paced by `requestAnimationFrame`.
+- **Shell:**
+  - `--bench <out.json> [--bench-entities N] [--bench-frames N]`, with the window kept on top, since WebKit pauses rAF in occluded windows;
+  - a Rust-driven orbit with no web layer as the baseline;
+  - the display's real refresh rate.
+- **Running it:** `just editor-bench <label>` builds release and runs +0, +1k and +10k entity scenes; `tools/bench/summary.py` prints the table.
+- **Bugs the harness found, each fixed test-first:**
+  - **Metal objects leaked on the long-lived engine thread.** No autorelease pool was ever drained, so each frame's command buffer kept its ~125 MB of transients alive: about 7 GB/s during play. Fixed with per-call pools; test `frame_resources_are_freed_on_a_long_lived_thread`.
+  - **Gizmo drags weren't live.** In-transaction edits emitted no events, so the viewport froze until mouse-up. Fixed with the new `pending` event topic; the `edit` topic is unchanged.
+  - **The outliner silently stopped at 1,000 entities.** It now follows query cursors.
+  - **The shell host never captured logs,** so the Output panel was empty. Fixed with `EngineHost::start_with_log`.
+- **Baseline ("before"; M3 Pro, 120 Hz ProMotion, 2× scale):**
+
+  | | +0 | +1k | +10k |
+  |---|---|---|---|
+  | Web orbit: fps, input→photon p50 | 60, 28 ms | 60, 28 ms | 60, 37 ms |
+  | Rust-driven orbit (no web): fps | 120 | 118 | 77 |
+  | Agent edits while orbiting: edit→outliner p95 | 43 ms | 65 ms | 220 ms |
+  | CPU per frame p50 (render + GPU wait) | 7.0 ms | 6.6 ms | 6.9 ms |
+
+  - WebKit caps `requestAnimationFrame` at 60 Hz, so the web UI presents at most every other refresh on a 120 Hz display.
+  - The Rust-driven baseline queues frames back to back, so its latency includes drawable queueing; read it as throughput.
+
+**b. Engine fixes (done).**
+- **Asynchronous frames:**
+  - Presented frames signal a timeline and stay in flight, at most two (`Renderer::MAX_FRAMES_IN_FLIGHT`).
+  - Their resources free when they retire; transient heaps are recycled.
+  - Uploads are recorded into the frame's own command list behind a barrier; a separate submit and `wait_idle` was a second full stall per frame.
+  - Cluster-overflow stats are read a frame late.
+  - Readbacks still wait.
+- **Render thread** (`concordia-render::thread`):
+  - It owns the `Renderer`. `viewport.present` snapshots the world and returns at once.
+  - Queued frames coalesce, so the newest view wins.
+  - `capture.screenshot` and surface attachment are requests to the thread.
+  - Asset data reaches it through `resolve`, the same walk the renderer uses, so only new meshes and textures (plus materials) are sent.
+- **`viewport.stats`** gains `queued_ms`; `submitted_ms` is null until a frame renders.
+- **Tests:**
+  - `presented_frames_overlap_the_gpu_and_retire_their_memory`
+  - `queued_viewport_frames_coalesce_to_the_newest_view` (failed first: all 20 rendered on the engine thread)
+  - `resolve_returns_unheld_meshes_and_every_material`
+  - The stats test now waits for each frame, since back-to-back frames deliberately coalesce.
+
+**c. After both fixes ("after"; same machine):**
+
+| | +0 | +1k | +10k |
+|---|---|---|---|
+| Web orbit: fps, input→photon p50 | 60, 29 ms | 60, 29 ms | 60, 30 ms (was 37) |
+| Rust-driven orbit (no web): fps | 120 | 120 | 120 (was 77) |
+| Agent edits while orbiting: edit→outliner p95 | 18 ms | 26 ms | 117 ms (was 220) |
+| Engine CPU per frame p50 | 1.2 ms | 0.8 ms | 0.3 ms (was ~7) |
+
+- The engine now keeps up with 120 Hz at every size.
+- What's left is web-side:
+  - **The 60 Hz cap:** WebKit's `requestAnimationFrame` limit means the web UI misses every other refresh. Input-to-photon latency stays about 29 ms.
+  - **Outliner refreshes at 10k entities:** a full refetch and re-render costs 74–117 ms per agent edit, with dropped frames while orbiting.
+- The Rust-driven baseline's 40 ms latency is queue depth (two frames in flight, plus drawables), not work. Its job is to show throughput.
+
+**d. Kill criteria (approved by the author on 2026-11-18).** The web UI is replaced if any of these still fail after reasonable web-side fixes:
+- orbit and gizmo drag at the display's full rate (120 fps here), or within 10% of the Rust-driven baseline;
+- input→photon p95 under 25 ms;
+- an agent's edit visible in the outliner within 50 ms at 10k entities, with no dropped viewport frames;
+- the inspector following a moving entity during play without dropping viewport frames;
+- the author's hands-on feel check.
+
+**e. Web-side fixes (done; bench label `webfix`):**
+- **Native viewport input.**
+  - The editor camera moved into the engine (`OrbitCamera`, `viewport.navigate`, one implementation; the UI's camera tests moved with it to `tests/orbit.rs`).
+  - An AppKit event monitor sends viewport gestures to it from Rust, before the page sees them; the engine redraws.
+  - The page gets each new view for its overlays.
+- **Outliner.**
+  - Edit events re-fetch only the entities they name; edits touching more than 200 entities, and scene changes, refresh everything.
+  - Only the visible rows are rendered (a flat tree with `aria-level`).
+
+**Results against the criteria** (+0 / +1k / +10k entities):
+
+| Criterion | Result | Verdict |
+|---|---|---|
+| Orbit at full rate (≥108 fps, within 10% of the 120 fps baseline) | 99 / 99 / 98 fps, up from 60 | fail (close) |
+| Gizmo drag at full rate | 60 fps (still page-driven) | fail |
+| Input→photon p95 < 25 ms | orbit 34 / 38 / 35 ms; gizmo 30 / 30 / 38 ms | fail |
+| Agent edit → outliner within 50 ms at 10k, no dropped frames | p50 50, p95 79 ms (was 117); orbit unaffected | fail (close) |
+| Play without dropped viewport frames | 60 fps (presents are page-driven) | fail |
+| Author's feel check | — | pending |
+
+**Analysis.**
+- **Orbit and latency.** These don't touch the page any more. The Rust-only baseline shows the same latency floor (about 40 ms when it queues frames back to back), so the latency is the engine's presentation queue: two frames in flight plus three drawables at 120 Hz. A native UI would share it.
+- **The orbit rate** is partly the bench's synthetic-input injector, which posts on a timer.
+- **The gizmo and play** are still paced by the page's 60 Hz `requestAnimationFrame`.
+- **The outliner** rebuilds and sorts the whole 10k-entity tree on every change.
+
+
+### Phase 1.9g: Viewport overlays drawn by the engine (done; ADR-0047)
+**Goal.** Everything inside the 3D viewport is drawn by the engine, at the viewport's own rate, so nothing the page draws trails a 120 Hz viewport, and the viewport looks the same under any future UI technology.
+
+**Built:**
+- **`Overlays` on `RenderRequest`** (selection, the Move gizmo with hover, grid, scale).
+  - Selection bounds and gizmo arrows are screen-space triangles drawn in the tonemap pass, from the frame's own `view_proj` (`overlay.slang`).
+  - The grid is a depth-tested quad on y = 0 in the forward pass: antialiased unit and decade lines, red X and blue Z axes, fading with distance.
+- **`viewport.overlays`** sets what is drawn; the native viewport redraws. `capture.screenshot {overlays: true}` includes overlays, and the browser editor's stream uses that.
+- **Handle geometry and hit-testing have one source** (`gizmo_handles`, `gizmo_hit`, ported from the UI):
+  - `viewport.gizmo` begin without an axis hit-tests the shown gizmo; a miss starts nothing.
+  - `ViewportControl::gizmo_hit` gives native input a synchronous test against a shared gizmo anchor.
+- **The page draws nothing in the viewport** (`Gizmo.tsx` removed). It sends the selection, tool and grid state; in a browser, `GizmoDrag` forwards the pointer.
+
+**Tests:**
+- goldens `overlay_selection_gizmo` and `overlay_grid` (checked by eye);
+- handle geometry and hit-test tests, plus overlays-only-on-request;
+- engine hit-test on press; `ViewportControl` hit-test;
+- `GizmoDrag` (coalescing, last position before the commit);
+- e2e drags the engine-drawn handle with one-step undo;
+- the bench shows no regression (orbit 114 fps at p95 26 ms; gizmo 120 fps).
+
+**Deviation:** no silhouette outline. Godot 4 shows selection as a wireframe box, which is what we draw.
+
+### Phase 1.9f: Latency isolation (in progress; author request 2026-11-18)
+**Goal.** Find where input-to-photon latency goes, with the engine alone, and get it to Unreal's range.
+
+**The harness.** `concordia run` now draws into its own window. `concordia run --bench-latency <out.json> [--bench-frames N] [--fullscreen]` drives the camera once per refresh through `ViewportControl`, with no editor and no webview; `tools/bench/latency.py` summarizes the report.
+
+**Findings** (M3 Pro at 120 Hz):
+
+| Setup | input→photon p50 | p95 |
+|---|---|---|
+| Engine window, before late latching | 31.4 | 32.8 |
+| Engine window, late latching (`Renderer::acquire_ahead`) | 22.5–29.5 (3 runs; mean ≈ 26) | 27–31 |
+| Engine, fullscreen (direct to display) | **14.5** | **18.7** |
+| Editor (webview over Metal), orbit | 25–30 | 29–40 (noisy) |
+| Editor, native gizmo drag | 29–33 | 30–33 |
+
+- **The webview isn't the latency.** The editor adds about 2 ms over the bare engine window.
+- **Windowed macOS compositing costs about 11 ms.** Fullscreen opaque layers get direct scanout; any windowed app pays this, the Unreal Editor included. A webview drawn *over* the viewport rules out direct scanout even in fullscreen, so that cost is structural to the web UI.
+- **Run-to-run spread is about one refresh,** because synthetic input at 120 Hz holds a fixed phase against the display. A real mouse lands at random phases, so read the mean.
+- **Two bench artifacts are fixed:**
+  - the native-drag injector drifted to about 100 Hz (fixed sleeps); it now uses absolute deadlines, and editor orbit then holds 108–117 fps;
+  - page view updates are throttled to 16 ms (`Throttle`).
+
+**Next:**
+- just-in-time latching (render as close to the refresh deadline as the GPU allows; about 3 ms estimated);
+- a like-for-like comparison with Unreal (external high-speed camera, since its internals can't be instrumented here).
+
+### Phase 1.9e: Performance review fixes (done; author request 2026-11-18)
+A review compared Concordia against Unreal's public architecture and audited our own code. The author asked for every item, fixed in priority order, as one PR. Each item is test-first; the bench (`just editor-bench`) is re-run at the end against the 1.9d kill criteria.
+
+| # | Item | Status |
+|---|---|---|
+| 1 | Decoded assets cached in memory (no per-frame source reads or hashing); materials sent only when they change | done |
+| 2 | Persistent render scene updated by deltas, not a full extract and transform pass per frame | done: Terra change ticks; `SceneCache` → `RenderScene` |
+| 3 | Shallow presentation queue for the editor viewport (latency) | done: two drawables; one frame in flight on the render thread |
+| 4 | Engine-driven redraws during play; native gizmo drags | done: `after_sim`; `viewport.gizmo` |
+| 5 | Camera moves skip the engine thread; read-only calls off the engine thread | camera: done (`ViewportControl`). Concurrent reads: **deferred**; they need snapshot isolation in the API layer (an ADR), and camera moves no longer wait on the engine thread, so a slow read cannot stall the viewport |
+| 6 | Simulation paced by the display (no 16 ms sleep steps), interpolated drawing | done: the engine wakes exactly at the next tick (`until_next_step`); the render thread presents every refresh between ticks, blending transforms (`RenderScene::world_at`) |
+| 7 | Frustum culling, instancing | done: CPU frustum test per mesh (shadow casters are not camera-culled); repeated mesh + material pairs are one instanced call (`SV_InstanceID`); `RenderStats` reports draws, culled and draw calls. GPU-driven culling stays a later step |
+| 8 | Persistent per-frame buffers and pooled textures | done: `BufferPool` for per-frame, staging and readback buffers; recycled heaps keep their placed textures; `RenderStats::allocations` is 0 for warm frames |
+| 9 | Cached shadows for static casters | done: when no caster, light, cascade or map changed, the shadow passes are skipped and the maps reused (`RenderStats::shadows_cached`). Cascades follow the camera, so camera moves still redraw; caching across camera motion needs world-anchored (virtual) shadow maps, a later step |
+| 10 | Incremental outliner tree | done: `OutlinerTree` patches sorted sibling lists per edit (binary insertion; adoption of waiting children); cycles fall back to a full rebuild; a seeded property test checks it always equals `buildTree` |
+| 11 | Inspector refetches throttled during drags | done: `Coalescer` (one fetch in flight, one trailing) for the inspector and the gizmo overlay; a burst of 50 events costs at most 2 fetches |
+| 12 | Binary/low-overhead hot paths if JSON shows up in the bench | measured, not needed: an in-process call through JSON dispatch costs 1.6–4.4 µs (`entity.get` 2.5, `component.get` 1.6, `component.set` in a transaction 4.4; text round trip 1.2), against 8,300 µs per frame at 120 Hz. The camera path no longer uses JSON at all |
+| 13 | First-use hitches: background IBL, shader compiles and texture uploads | done: environments prefilter on a background thread (viewport frames draw without them meanwhile; captures wait, so goldens are unchanged); compiled shaders are cached in the project DDC, so later starts skip `slangc`; texture uploads already ride in the frame's command list (item 1), leaving only a staging copy. Caching prefiltered environments in the DDC is a later step |
+| 14 | Optimized dev builds for the editor | done: the shell's dev profile builds the engine and other dependencies at `opt-level = 2` (one-time rebuild about 2 min); the shell itself stays quick to rebuild |
+| 15 | GPU timestamp queries in `viewport.stats` | done: each presented frame reports its command buffer's GPU time (`Present::on_gpu_time`, Metal `GPUStartTime`/`GPUEndTime`) as `gpu_ms`; the bench shows GPU p50. Per-pass timings need counter sample buffers, a later step |
+| 16 | Idle editor costs nothing (test) | done: the Output panel no longer polls `log.tail` every second; it fetches on the new `log` event topic. The render thread records its between-tick frames in `viewport.stats` too, and `an_idle_viewport_renders_nothing` checks that idle means no frames |
+
+**Results against the 1.9d kill criteria** (bench label `review`; +0 / +1k / +10k entities; M3 Pro at 120 Hz):
+
+| Criterion | Before (1.9d) | Now | Verdict |
+|---|---|---|---|
+| Orbit at full rate (≥108 fps) | 99 / 99 / 98 | 97 / 98 / 99 | fail |
+| Gizmo drag at full rate | 60 | **120 / 120 / 120**, 0 missed | pass |
+| Play without dropped frames | 60 | 112 / 115 / 120 (≥108) | pass |
+| Input→photon p95 < 25 ms | orbit 34–38, gizmo 30–38 | orbit 42 / 37 / 33; gizmo 41 / 41 / 41 (Rust-only baseline 32) | fail |
+| Agent edit→outliner ≤ 50 ms at 10k | p95 79 | p50 50, p95 61; at 1k p95 28 | fail (close) |
+
+**What remains:**
+- **The latency floor isn't the web layer.** The Rust-only baseline, with no page involved, also measures 32 ms p95, about four refreshes from event to `presentedTime`. A likely remaining step is compositing: the Metal layer sits under a transparent webview, so the window server composites every frame instead of flipping the layer directly to the display. That points at the layering, not at the web UI's code.
+- **Gizmo latency** includes a trip through the engine thread (`viewport.gizmo` edits the scene), which orbit no longer makes.
+- **Orbit at about 98 fps** is unexplained: native gizmo drags reach 120 fps through the same injector. It needs a profile; orbit redraws the shadow cascades every frame (they follow the camera), and the gizmo drag doesn't.
+- **The outliner at 10k** still flattens the whole tree per change; incremental flattening is the next step.
+
+
+### Phase 1.9c: Native editor shell (done)
+- **RHI window surfaces:** `create_surface` (unsafe; wraps a `CAMetalLayer`), `acquire`, `present` and `destroy_surface`, with Metal tests using a standalone layer (12 acquire/clear/present cycles, misuse errors).
+  - `Renderer::present` renders into a surface image: BGRA sRGB tonemap target, final Present layout, no readback. The tonemap pipeline is now per format.
+  - `concordia_render::attach_surface` plus the `viewport.present {view, width, height}` method.
+  - `EngineHandle::run` runs a closure on the engine thread, for in-process hosts.
+- **`editor/src-tauri` (Tauri 2.12.5, tauri-build 2.7.4, `@tauri-apps/api` 2.12.4; at least four weeks old; own Cargo workspace):**
+  - `EngineHost`: project modules, main scene, a token-protected WebSocket API and the connection file;
+  - the native viewport, ordered below the transparent webview;
+  - an injected engine URL;
+  - `--smoke-test`.
+- **The UI's native mode:** reports the slot through `invoke("slot_rect")` and presents with `viewport.present` at physical-pixel size, re-presenting every `requestAnimationFrame` (display-synced) while playing. The page is transparent over the slot. Overlays and all input stay in the web UI, so the camera, picking and gizmo are unchanged.
+- **Fixes:** two spike bugs found by capturing the real window (ADR-0043 amendment): the layering (below, not above) and the title-bar inset in the coordinate conversion. The spike's automated check had been tautological.
+- **Tests:**
+  - `api_server_rejects_connections_without_token`, main scene and connection file, bad project;
+  - `editor_shell_smoke_renders_native_viewport` (10 frames presented; capture with 62 colours);
+  - a visual check of the window capture, by eye.
+- **CI:** an editor shell job on macos-26 (UI build, cargo-deny with the shell's config, host and smoke tests).
+- **Licensing:** Tauri needs five MPL-2.0 crates (`cssparser`, `cssparser-macros`, `selectors`, `dtoa-short`, `option-ext`). By author decision, these are named exceptions in `editor/src-tauri/deny.toml` only; the engine stays permissive-only. RUSTSEC-2024-0370 (proc-macro-error unmaintained) is ignored there, since it's in Tauri's Linux-only GTK stack.
+- **Supply chain:** tauri 2.12.7 and tauri-build 2.7.6, used by the spike, were published the same day. The shell pins older releases.
+- **Deviations from the plan:**
+  - The display sync comes from WKWebView's `requestAnimationFrame` instead of a native display link.
+  - The smoke test checks a capture of the same view; `CaptureTarget::Viewport` (reading the presented image back) isn't needed.
+  - Window-pixel placement is verified locally by screen capture, which hosted CI can't permit.
+  - The streamed e2e tests stay the CI coverage for the UI.
+
+### Phase 1.9b: Editor camera, picking, gizmo, edit log (done)
+- **`View` (eye, target, projection):** `capture.screenshot {view}` renders the editor's own camera, reusing the scene camera's exposure, tonemap and clear colour (no scene camera needed). Passing both `camera` and `view` is `InvalidParams`.
+- **`viewport.pick {view, x, y, width, height}`:** the nearest mesh under a pixel, via ray tests against each mesh's object-space bounds. CPU-only; handles rotation and scale.
+- **Edits are logged:** `edit committed`, `edit undone` and `edit redone` (target `concordia::edit`) with the transaction's actor, label and op count. Previously only scene, sim and capture lines reached `log.tail`. The e2e attribution test had been passing on capture log lines, and is now exact.
+- **UI:**
+  - a Godot-style orbit camera: middle-drag orbits, Shift+middle-drag pans, the wheel zooms, Alt+left-drag emulates the middle button; numpad 1/3/7 views, 5 toggles ortho, F focuses, plus an isometric preset and a View menu;
+  - click-to-select through `viewport.pick`;
+  - the Move gizmo (an SVG axis-arrow overlay; a drag is one transaction, so one undo restores it);
+  - coalesced streamed captures (one in flight, newest queued).
+- **Tests:** 24 Vitest tests and 9 Playwright tests, including `viewport_click_selects_box_under_cursor`, the one-step-undo gizmo drag and orbiting.
+- **Deviations:**
+  - Picking is bounds-based (no per-triangle test or GPU id pass).
+  - The gizmo uses the local translation, which is exact for unparented entities.
+  - Rotate and scale gizmos come later, as the plan says.
+
+### Phase 1.9a: Events and editor UI (done)
+- **`events.subscribe` / `events.unsubscribe`** (core API; 27 methods). M0 had no change feed.
+  - `edit` events carry the actor, label and entities per commit, undo or redo; `scene` covers opened, new and saved; `sim` covers `sim.*`.
+  - Transports register per-session sinks; WebSocket pushes `events.event` notifications with a 1,024-event queue per connection.
+  - MCP excludes `events.*` via the shared `concordia_mcp::is_tool`, so M0's 24 tools are unchanged.
+- **Widget hints:** `x-concordia-widget` comes from types (`Vec3` → `vec3`, `Quat` → `quat`) and from `#[reflect(widget = "color")]` on colour fields.
+- **`concordia schema --project <dir> --out`:** module types plus `methods/<name>.{params,result}.schema.json`. `just editor-schemas` generates committed TypeScript types and test fixtures; CI checks drift.
+- **`editor/ui`** (React 19, TypeScript 5.9 strict, Vite 8, Vitest 5.1.0, Playwright 1.64.1; exact pins at least two weeks old, installed with `--ignore-scripts`):
+  - `EngineClient`;
+  - `EditorSession` (`human:local`);
+  - a schema-driven Inspector (number, bool, string, enum, vec3, quat as Euler YXZ, colour with sRGB picker, asset, entity, struct, option, JSON fallback; Godot-style labels; one commit per gesture);
+  - the Outliner (tree from `Parent`, stable sort, F2 rename, Delete);
+  - the streamed Viewport (approach D) with a Select/Move strip;
+  - the Output panel (`log.tail`);
+  - run controls and Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z, Cmd/Ctrl+S.
+  The layout follows Godot (`docs/design/editor-ux.md`).
+- **Tests:** 17 Vitest tests, and 6 Playwright browser-mode e2e tests against `concordia headless --ws` on a temporary copy of the example:
+  - outliner;
+  - inspector;
+  - an edit logged as `human:local`;
+  - undo shortcut;
+  - an agent edit live in under 500 ms;
+  - step changes the viewport image.
+- **CI:** `.github/workflows/editor.yml`, with a UI job (Ubuntu: lint, unit tests, schema drift) and an e2e job (macos-26 GPU).
+- **Moved to 1.9b:**
+  - the native shell (`editor/src-tauri`: in-process engine, token-protected API, Metal viewport with display-synced presentation per ADR-0043);
+  - viewport camera controls and an editor camera;
+  - click-to-select picking (`viewport_click_selects_box_under_cursor`);
+  - the translate gizmo;
+  - `api_server_rejects_connections_without_token`;
+  - the native smoke test.
+
+### Phase 1.8: Editor viewport spike (done)
+- **The spike** (Tauri 2.12.7, CLI 2.12.6 as a project-local devDependency, React 19, Vite 8) tried approach A (`NSView` + `CAMetalLayer` above the webview) and C (a docked child window). Both passed `spike_viewport_tracks_slot_rect_on_resize` exactly at 2× scale, and every manual check by the author: live resize, panel changes, move, displays, full screen, Stage Manager, mouse focus.
+- **Decision (ADR-0043):** A is the viewport, C the fallback, and D (streamed) is always built. ADR-0004's status now reads "confirmed".
+- **Not covered by the spike:**
+  - keyboard focus (the spike had no text field);
+  - display-synced pacing (the spike ticked on a timer, p50 10.4 ms);
+  - input-to-photon latency.
+  All three are Phase 1.9 requirements.
+- **The spike directory was removed,** as planned. Its essentials are in ADR-0043.
+
+### Phase 1.6d: Transparency, glTF goldens, perf smoke (done)
+- **Transparency:**
+  - `AlphaMode::Blend` uses premultiplied alpha and no depth write, drawn after opaques back to front;
+  - the result doesn't depend on spawn order (tested);
+  - `Mask` cutoff is tested.
+- **glTF conformance goldens:**
+  - all eight listed models are imported, instantiated through the command log, framed by their bounds and lit by the HDRI plus a weak sun, at FLIP mean ≤ 0.02;
+  - each was checked by eye against what the model is designed to show (label orientation, identical left and right tangent-space shading, alpha cutoffs at 0.25/0.5/0.75, readable text on BoomBox);
+  - Author review (2026-11-18): the renders "look good" at their size; not compared side by side with the Khronos screenshots.
+- **Perf smoke:** `cargo bench -p concordia-render --bench many_lights` gives a median of 6.5 ms wall clock (CPU, submit and an 8 MB readback included) for 1,024 lights at 1080p ortho on the M3 Pro. GPU-only time isn't measured, since the RHI has no timestamp queries; adding them is follow-up work for checking the < 4 ms target.
+
+### Phase 1.6c: Image-based lighting (done)
+- **HDRI fixture:** Poly Haven "Kloofendal 48d Partly Cloudy (Pure Sky)", CC0 (author approved the download). Fetched via the Poly Haven API, MD5-verified, downsampled 2×2 in linear light to 512×256 flat RGBE (524 KB), and committed in `tests/fixtures/hdri/` with `LICENSE.md` (source, authors, changes, SHA-256).
+- **`ibl` module (CPU):**
+  - equirect mapping and SH9 irradiance (exact row solid angles over eight sub-bands; band terms of a uniform map < 1e-4);
+  - GGX prefiltering with filtered importance sampling (roughness 0 = source; energy conserved);
+  - the split-sum BRDF table at 4,096 samples, within 1e-3 of a 16k-sample reference (measured: 1,024 samples gives 4e-3, too coarse).
+- **`Environment` component:** diffuse from SH9, specular from two lerped levels with the BRDF table, and a skybox drawn first in the forward pass (works for ortho).
+- **Tests:** golden `pbr_spheres_ibl`, checked by eye (mirror metal reflects the sky the right way up); sky light reaches the sun-shadowed side; a missing map names its reference.
+- **Deviations from the plan:**
+  - Environments are equirect levels, not cubemaps: the RHI has no cube or array textures yet.
+  - Prefiltering runs on the CPU when an environment is first rendered and is cached per renderer, not computed on the GPU and stored in the DDC. It's deterministic and testable; moving it to the GPU and DDC is follow-up work if import time matters.
+  - `Environment` has a single `map` plus a `skybox` flag, rather than separate skybox and IBL references.
+  - The BRDF table uses Schlick-GGX visibility (k = α/2, as Karis), while direct lights use height-correlated Smith.
+  - Rough levels are stored at 1/4 of the source width and below; the BRDF table is built lazily, so renderers without environments don't pay for it.
+
+### Phase 1.6b: Cascaded shadows (done)
+- **Cascade fitting (`shadow` module, CPU-tested):**
+  - practical splits (exact formula);
+  - per-cascade bounding spheres (radius rounded to 1/16) snapped to the texel grid in a world-fixed light frame;
+  - light depth range covering every caster's bounds;
+  - tight bounds (all slice corners inside; area ≤ 1.5× the slice's sphere).
+- **GPU:**
+  - one persistent `Depth32Float` map per cascade, imported into the graph; a depth-only pipeline;
+  - filtered PCF (3×3 / 5×5) with constant, normal-offset and slope-scaled bias;
+  - golden `shadow_box_plane_iso` checked by eye; grazing-sun acne under 0.1%.
+- **The shimmer test was rewritten after it passed with stabilization off,** so it couldn't detect shimmer. It now uses coarse maps and a 1-level threshold, and requires 0-ish changes when stabilized and more than 5× that when not: measured 0 vs 923.
+- **Writing the tests caught:** acne from the PCF footprint, fixed with the slope-scaled bias.
+- **Test-scene fixes:** two golden scenes hid their own shadow; the sun was moved, not the checks.
+- **Example:** the stack scene's sun now casts shadows.
+- **Deviations from the plan:**
+  - Separate textures per cascade instead of an atlas (the RHI has no viewport command yet).
+  - Manual compares instead of hardware comparison samplers.
+  - No blending across cascade seams yet.
+  - `normal_bias` is in texels, `depth_bias` in world units.
+
+### Phase 1.6a: Tonemapping and clustered point/spot lights (done)
+- **Tonemappers:** AgX (default), Khronos PBR Neutral, ACES fitted and Linear, each with a CPU reference (`tonemap::apply`); a GPU test matches them within 1/255. AgX maps mid-grey 0.18 to sRGB 128.
+  - Plan-test corrections: PBR Neutral is checked as "offset identity" below the compression start (the spec subtracts a 0.04 toe offset, so it isn't a pure identity); the AgX mid-grey value is pinned from an independent computation rather than being circular.
+- **Lights:** `PointLight` / `SpotLight` components and extraction.
+- **Clustering:**
+  - a `ClusterGrid` with linear (ortho) or exponential (perspective) slices, snapshot-tested;
+  - a CPU reference `assign`, and a GPU `ClusterCuller` that matches it exactly for 1,024 random lights under both projections;
+  - overflow counted and reported through `Renderer::stats()`;
+  - an inverse-square check;
+  - goldens `many_lights_iso` (512 lights) and `spot_light_cone`, checked by eye.
+- **Deviations from the plan:**
+  - Fixed per-cluster slots replace the global atomic allocator: lists stay deterministic and ascending, and overflow is counted per cluster.
+  - Cluster AABBs and view-space light bounds are computed on the CPU and uploaded, so the GPU and the reference share geometry exactly.
+  - No depth prepass yet (a perf optimization, not needed for correctness).
+  - Cluster and light settings are fixed defaults (16×9×24, 4,096 lights, 128 per cluster) rather than a `RenderSettings` resource.
+  - The perf smoke benchmark runs with 1.6d.
+
+### Phase 1.5b: Forward PBR, capture, MCP image (done)
+- **RHI additions:**
+  - static samplers (linear/nearest × repeat/clamp), appended to the texture argument buffer, so no new slot; a conformance test covers them;
+  - `Device::destroy_heap`;
+  - record functions may fail (`GraphError::Record`).
+- **`concordia-render`:**
+  - `Camera`/`Projection`/`DirectionalLight` components, reverse-Z with glam's `directx` (Y-up NDC, depth [0, 1]);
+  - `RenderWorld::extract`, `Renderer` and `AssetSource` (`AssetDb`, `MemoryAssets`);
+  - a forward PBR shader (GGX, height-correlated Smith, Schlick, Lambert; normal, occlusion and emissive maps; alpha mask) and a tonemap pass (Khronos PBR Neutral or clamp, ahead of 1.6);
+  - goldens `unlit_cube`, `pbr_sphere_grid_directional`, `orthographic_isometric` and `msaa_resolve`, checked by eye;
+  - invariant tests: reverse-Z at 5 km, ortho and perspective agreeing at the center, sRGB decoding, texture orientation, determinism.
+- **`capture.screenshot`:** in `RenderModule`, enabled by a `[render]` manifest section. The device is created on first capture; with no device the error is `GpuUnavailable` (−32013, a new code).
+- **Images in results:** `concordia_api::EncodedImage`. MCP returns fields of that type as image content plus a JSON text item, and image tools declare no output schema. This is keyed on the type rather than a reflect attribute, and needs no derive change.
+- **End-to-end tests:** `concordia mcp` on `examples/m1-physics-stack` returns PNG image content. The example scene now has a camera, a sun and mesh visuals; its settled capture was checked by eye.
+- **Deviations from the plan:**
+  - `CaptureTarget::Viewport` and `format` are deferred until a viewport exists (1.8/1.9); only offscreen PNG for now.
+  - "Independent of window size" is covered by requested-size tests, since M1 headless has no window.
+  - `concordia headless --gpu` isn't needed (the device is lazy).
+  - Only the first `DirectionalLight` is used (clustered lights come in 1.6).
+  - `AlphaMode::Blend` draws opaque until transparency sorting lands.
+  - Meshes and textures are cached by reference, with no invalidation on asset hot-reload yet.
+  - Readback is synchronous, and each capture places its transients in a fresh heap.
+  - Not yet done: the manual check that `capture_screenshot` works from Claude Code through `.mcp.json`. The end-to-end MCP test covers the protocol path, and the manual check is part of the gate demo.
+
+### Phase 1.5a: World transforms and render graph (done)
+- `concordia_scene::builtin::world_transforms(&World)` computes world matrices from the `Parent` chain in id order. Missing parents and cycles are reported and treated as roots. It's a computed snapshot, not a stored `GlobalTransform` component, so there's nothing to keep in sync and nothing that can drift.
+- `concordia-render::graph` covers culling, ordering, barriers, aliasing, DOT output and `execute` (recording into an RHI `CommandList`). Every listed CPU test passes, plus the execute tests. Writing them caught a missing `Undefined →` first-use transition for transients.
+- `GraphBuffer` waits until a pass needs it; buffers are persistent in M1.
+- The gate tests are written with the gate, not committed failing here (author's commit rule).
+
+### Phase 1.4: Assets, DDC, glTF (done)
+- **`concordia_core::ddc::Ddc`:** the one DDC store (sharded, atomic, safe to delete), used by shaders and assets.
+- **`concordia-assets`:**
+  - sidecars with stable ids that survive re-imports and moves;
+  - `Importer` and `SubIds` (UUIDv5, recorded in the sidecar);
+  - an import key over importer, version, platform, settings and source;
+  - `AssetDb` (re-imports on a DDC miss; hot-reload generations);
+  - `AssetRef` with a schema pattern, and built-ins;
+  - the image importer (sRGB or linear RGBA8 with mips; HDR as RGBA16F);
+  - `MaterialData` (`.material.ron`), and `MeshRenderer`, skin, clip, light and camera data;
+  - `AssetsModule` with `asset.import` (attributed, idempotent, D9) and `asset.list`.
+- **`concordia-import-gltf`:**
+  - meshes, with normals and MikkTSpace tangents generated (V flipped for glTF; the test caught an all-inverted `w`);
+  - materials and textures (color space by usage);
+  - the prefab with name-derived entity ids (stable under reordering);
+  - skins and clips, lights and cameras;
+  - unsupported required extensions are errors that name the extension.
+- **Samples:** `just gltf-assets` fetches 11 license-checked samples (34 files, about 74 MB) from a pinned commit, SHA-256-verified, with attribution in `tests/fixtures/gltf-sample-assets/manifest.ron`; CI caches them.
+- **Wiring:** a `[assets]` manifest section enables the module with the glTF importer; `concordia import <paths>` is added. `EngineModule::engine_state` gives engine-lifetime state. ADR-0044 is written.
+- **Deviations from the plan:**
+  - `MeshRenderer` lives in `concordia-assets` (asset-binding data), so the importer doesn't depend on the renderer.
+  - glTF lights and cameras are stored as data and become components in 1.5/1.6.
+  - The material test uses 98 materials (the real count, not the plan's 49).
+  - `KHR_texture_transform` is accepted but not yet applied.
+  - Meshes keep f32 normals and tangents; oct-encoding is a later optimization.
+  - Handles are generation counters on `AssetDb`.
+
+### Phase 1.3: Slang shaders (done)
+- Slang **v2026.22** is pinned in `tools/slang/slang.toml` with SHA-256s and fetched by `just slang-fetch` into `target/toolchain/slang/`; CI caches it (`actions/cache`).
+- **`concordia-shaders`:**
+  - `SlangcCompiler` (diagnostics parsed to file, line and column);
+  - reflection: thread group size, bindings, push layout;
+  - `cache_key` over every import and include, `CachedCompiler` over the shared `concordia_core::ddc::Ddc` (moved to core in 1.4);
+  - `shader_struct!` and `check_layout`;
+  - `ShaderLibrary` with keep-last-good hot reload (GPU-tested).
+- **Shader ABI (ADR-0045):** `import bindless;` and `uniform push` as an entry-point parameter. Global push declarations land on slot 0, ahead of the imported tables, so they're out.
+- **Conformance:** the shaders are now Slang (`crates/concordia-rhi/conformance/*.slang`), compiled per backend through `ShaderProvider`; the hand-written MSL is gone. Both goldens still match.
+- ADR-0045 and ADR-0042 are written. ADR-0042 records that hosted `macos-26` runs the GPU suite and goldens: the paravirtual device passed PR #6.
+- **Deviations from the plan:**
+  - `shader_struct!` uses `offset_of!` instead of a derive (no proc-macro crate).
+  - File watching for hot reload is wired by the renderer in 1.5; `on_files_changed` is the seam.
+  - `compiles_to_spirv` checks the SPIR-V magic number; `spirv-val` arrives with Vulkan (1.10).
+  - The `reflection_lists_push_constant_size_and_fields` snapshot uses the fill fixture until `pbr_forward.slang` exists (1.5).
+  - Metal `float3` is 16 bytes and 16-byte aligned, so Rust mirrors need padding (`check_layout` catches it).
+
+### Phase 1.2b: RHI and Metal backend (done; CI green on hosted macos-26)
+- **`concordia-rhi`:** validated descriptors, generation-checked handles (`Slots<T>`), `CommandList` as data with `validate`, sync2 barriers, bindless indices, an object-safe `Device`, and the `conformance` suite (14 cases, run through `conformance_tests!`, goldens through `GoldenCheck`). ADR-0040 is written.
+- **`concordia-rhi-metal`:** `MetalDevice` (Metal 3 API), bindless argument-buffer tables (`gpuAddress` / `gpuResourceID`; slots 0 buffers, 1 textures, 2 storage textures, 3 push constants), tracked hazards, shared-event timelines, placed textures in tracked heaps, and a device-lost test hook. The full conformance suite passes on the M3 Pro.
+- **`concordia-testkit` golden harness** (moved up from 1.5a): FLIP via `nv-flip` (builds on macOS; Linux is checked in CI), bless rules, and failure artifacts. Goldens `tests/golden/rhi/{triangle,msaa_edge}.png` were blessed and checked by eye.
+- **CI:** the macOS gate job moves to `macos-26` with `CONCORDIA_REQUIRE_GPU=1`; the probe output is logged and golden failures are uploaded. The separate probe job is gone.
+- **Hosted probe (PR #5):** an "Apple Paravirtual device" with families common3 and mac2 only (no `metal3`), argument buffers tier 2, MSAA 1/2/4. It meets `Requirement::M1`, but the Metal 3 bindless path is untested there until this branch's CI runs. If it fails, D2 goes back to the author.
+- **Deviations from the plan:**
+  - Hazards are tracked on Metal; RHI barriers only end encoders (ADR-0040).
+  - `ComputePipelineDesc` gains `threads_per_group`.
+  - Mesh pipelines and `R64Uint` are `Unsupported` on Metal until M4.
+  - `CAMetalLayer` surfaces move to 1.5, with presentation.
+  - A golden size-cap hygiene test is added (D5).
 
 ### Phase 1.7b: concordia-physics (done)
 - **The crate:**
@@ -622,6 +1042,7 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
 ---
 
 ### Phase 1.9: Minimal editor
+- **UX direction (author, 2026-11-18):** layout, widgets, gizmos and docking follow Godot 4.6; anything Godot lacks is marked *needs visual design* and kept basic; the look stays basic. See `docs/design/editor-ux.md`.
 - **Objective:** A Tauri v2 editor that is purely an Engine API client: outliner, schema-driven inspector generated from `concordia-reflect`, native viewport (approach from 1.8), log panel, undo/redo, play/pause/step.
 - **Deliverables**
   - `editor/src-tauri`: hosts an in-process engine (`EngineHost`) and starts the Engine API WebSocket server on `127.0.0.1:<random port>` with a per-launch bearer token; injects port and token into the webview. Hosts the native viewport (or the streamed fallback). Contains **no editing logic**; all edits are Engine API calls from the UI with `actor: "human:local"`.
@@ -668,6 +1089,199 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
 
 ---
 
+### Editor v1, agent-first (phases 1.11–1.16; ADR-0048, amended by ADR-0049)
+**Goal.** Everything a game developer does in M1 can be done by their agent (or team of agents) through MCP. The editor is where a human **watches agents work and overrides them**, not the main way in.
+- **Deliverable of every phase:** the Engine API method, its MCP tool and the agent guide entry. The UI for it is the thinnest usable view; polish is out of scope.
+- **ADR-0047 still applies:**
+  - panels are thin clients of the Engine API;
+  - shared behaviour lives in the engine;
+  - the engine draws the viewport.
+- **UX follows Godot 4.6** where there is UI at all.
+- **Each phase is test-first:**
+  - Rust tests for methods;
+  - MCP tests that each new method appears as a tool;
+  - Vitest only for UI logic that exists;
+  - one e2e per workflow.
+
+### Phase 1.11: Files (done)
+**Goal.** Create, open and save scenes from the editor, browse the project's files, and bring assets into a scene.
+
+**Engine API:**
+- `project.files {dir?, pattern?}` lists project files (project-relative, with size, kind and import status; skips `.concordia/` and git-ignored paths); read-only.
+- `prefab.instantiate {asset, parent?, translation?}` spawns an imported glTF scene's node hierarchy as one transaction (the importer already stores it as a prefab, phase 1.4).
+- `viewport.drop {view, x, y, width, height}` returns where a dragged asset lands: the surface under the pointer, else the ground plane.
+
+**UI:**
+- **Scene menu items:** New, Open, Open Recent (per-user, kept in the page), Save, Save As.
+- **An unsaved-changes guard:** a `*` in the window title, and a prompt before New, Open or quitting with changes.
+- **The FileSystem dock:**
+  - a project file tree;
+  - double-click a `.scene.ron` to open it;
+  - an Import action for unimported images and glTF;
+  - drag a model into the viewport to instance it there.
+
+**Tests first:**
+- `project_files_lists_project_relative_paths_and_skips_engine_state`
+- `prefab_instantiate_spawns_the_hierarchy_as_one_undo_step`
+- `viewport_drop_lands_on_the_surface_under_the_pointer_else_the_ground`
+- e2e:
+  - new scene, add an entity, save as, reopen, and the entity is there;
+  - import a glTF, drag it in, and its meshes render;
+  - the unsaved prompt guards New.
+
+**Done when** a scene can be built, saved and reopened entirely from the editor.
+
+**As built:** the Scene menu is the first menu of a data-driven `MenuBar` that phase 1.14 grows into the action registry; Open Recent lists recent scenes inline. The native shell disables Tauri's OS file-drop handler so the page's drag and drop works; OS file drops come later.
+
+### Phase 1.12: Agent surface (MCP coverage and tool quality) (done)
+**Goal.** Agents see every M1 capability as a well-described MCP tool, and nothing they don't need.
+
+**MCP:**
+- **The repo's MCP launcher** (`tools/mcp/concordia-mcp.sh`) defaults to `examples/m1-physics-stack`, so this repo's Claude Code session gets the asset, render, physics and input tools (done with ADR-0049).
+- **`MethodInfo` gains an audience: `agent` (default) or `editor`.** Editor plumbing is not offered as an MCP tool, but stays callable over the WebSocket API:
+  - `viewport.present`, `viewport.stats`, `viewport.navigate`, `viewport.overlays`, `viewport.gizmo`.
+- **`capture.screenshot`** defaults to an agent-friendly size (longest side 768 px) when no size is given, to save the agent's context.
+
+**Docs:** the agent guide (`concordia://docs/agent-guide`) gains the M1 workflows:
+- import a model and place it;
+- add lights and a camera;
+- make bodies dynamic, play and step;
+- capture and inspect.
+
+**Tests first:**
+- `every_agent_method_is_an_mcp_tool_and_no_editor_method_is` (over the full M1 module set);
+- `every_tool_and_param_has_a_description` (non-empty, not just the name);
+- `capture_without_size_fits_the_agent_budget`;
+- `agent_guide_mentions_every_agent_tool`.
+
+**As built:** `Method::AUDIENCE` (default `agent`); MCP lists 33 tools for the M1 example. The old `capture_screenshot_defaults_to_1280_by_720` test was changed deliberately to the new 768 × 432 default. Two pre-existing e2e flakes were real editor races, fixed after this phase: the browser frame queue rendered queued frames with a stale world (fixed by `FrameQueue`, whose jobs carry their world), and a gizmo release waited for an in-flight move before committing, so an immediate undo could land first (the release now sends the last move and the commit at once). The full e2e suite passed 96 of 96 repeated runs.
+
+### Phase 1.13: Scene tree (done)
+**Goal.** Agents can build an entity hierarchy in a few calls; the Scene dock exposes the same, minimally.
+
+**Engine API:**
+- `entity.templates` lists ready-made entities: Empty, Cube, Sphere, Plane, Camera, Directional/Point/Spot Light, Environment. They are data, so agents see the same list.
+- `entity.create {template, parent?, name?, translation?}` spawns one.
+- `entity.duplicate {ids}` copies with children, new ids and unique names, as one transaction.
+- `entity.reparent {id, parent | null, keep_world?}` keeps the world pose by default and rejects cycles with a clear error.
+- `entity.despawn {id, recursive?}`.
+
+**UI (minimal):** a right-click menu in the Scene dock with Create (template list), Rename, Duplicate and Delete. No drag-and-drop reparenting, no multi-select.
+
+**Tests first:**
+- `entity_duplicate_copies_components_and_children_with_new_ids_in_one_undo`
+- `entity_reparent_keeps_the_world_transform_and_rejects_cycles`
+- `entity_create_spawns_each_template_renderable`
+- `despawn_recursive_removes_the_subtree_in_one_undo`
+- e2e: create from the menu, duplicate, delete, undo.
+
+**As built:**
+- Templates come from modules through `EngineModule::templates()`: the core supplies Empty; the render module supplies Cube, Sphere, Plane, Camera and the three lights.
+- **Environment is not a template.** It needs an imported `.hdr` (there is no built-in sky), so agents add the component with their own map.
+- `entity.duplicate` reuses `concordia_scene::remap` (prefab instancing's id remapping).
+- Delete in the Scene dock now removes the subtree (Godot), and ⌘D duplicates.
+- The core MCP tool count went from 24 to 28; the count tests, including the M0 gate's, were updated deliberately.
+
+### Phase 1.14: Component discovery (Inspector) (done)
+**Goal.** Agents can find out which components exist, what they mean and their defaults, and add them. The Inspector can add and remove them.
+
+**Engine API:**
+- `component.add {entity, component}` inserts the type's default value.
+- `schema.get` lists components with a `category` and a one-line description for each.
+
+**UI (minimal):** Add Component (a searchable list) and Remove Component on the existing generic schema-driven fields. No new custom widgets.
+
+**Tests first:**
+- `component_add_inserts_the_default_and_rejects_duplicates_and_unknown_names`
+- `schema_index_has_category_and_description_for_every_component`
+- e2e: add a PointLight from the Inspector, remove it, undo.
+
+**As built:**
+- **Category and default live in `concordia-reflect`,** as type-level `#[reflect(category = "..", default)]` (or `default = expr`) next to the existing field-level `default`. They become `TypeInfo::category`/`default`; a type's schema carries `default` and `x-concordia-category`, and its index row a `category`.
+- **`schema.get {}` gains a `components` list:** `{name, category, description, addable}` for each registered component. Categories: Core, Rendering, Lighting, Physics.
+- **`component.add` inserts `TypeInfo::default`** as one undo step. Duplicates fail with `ValueInvalid` (suggesting `component.patch`/`component.set`), and unknown names fail with `ComponentNotRegistered` and did-you-mean suggestions. `Parent` and `Environment` have no default, so they are not addable and their error says to use `component.set`.
+- **New defaults:** `MeshRenderer` (the built-in cube with the default material), `Collider` (a 1 m box) and `Name` (`"Entity"`).
+- **Inspector:** an Add Component button with a searchable list of addable components the entity lacks, and a × on each section header that removes the component.
+- **Counts:** the core method count went from 31 to 32 and the core MCP tool count from 28 to 29. The count tests, including the M0 gate's, were updated deliberately.
+
+### Phase 1.15: Agent activity and minimal menus (done)
+**Goal.** A human can see what the agents did and undo any of it. That is the editor's main job in an AI-first engine.
+
+**Engine API:**
+- `txn.history` entries carry the actor, label, time and affected entities.
+- `txn.undo_to {txn}` undoes back to a point as one call (attributed).
+
+**UI:**
+- **An Agent Activity panel:** a live list of transactions by actor (agent roles or human), filterable by actor. Clicking an entry selects the entities it touched; "Undo to here" undoes back to that point.
+- **Menus,** on the 1.11 `MenuBar`:
+  - Edit: Undo and Redo;
+  - View: dock toggles and the grid.
+
+  No command palette, native menu bar or full shortcut table (later, if wanted).
+
+**Tests first:**
+- `history_entries_name_actor_and_entities`
+- `undo_to_reverts_every_later_transaction_attributed_to_the_caller`
+- the panel's filter logic (unit);
+- e2e: an agent makes three edits; the panel shows them; "Undo to here" on the first restores the scene.
+
+**As built:**
+- **`txn.history` rows gain `time_ms`, `entities` and `undone`.** Time comes from the journal entry's existing `ts_ms`. A commit's entities come from its ops (`EditOp::entity`); undo and redo rows copy their target's. The journal format is unchanged.
+- **`txn.undo_to {txn}`** is `CommandLog::undo_to`: a run of ordinary attributed undos, one journal entry each, so redo replays them. It returns `{undone, by}`, latest first. A transaction that is unknown or already undone fails with `TxnNotFound`.
+- **MCP tool names keep the method's verb underscores** (`txn_undo_to`). The MCP tests mapped tool names back with `replace('_', ".")`, which breaks on such verbs, so they now use `replacen('_', ".", 1)`.
+- **The Agent Activity dock** sits under the Inspector. It refreshes on `edit` and `scene` events and lists commits newest first, with an actor filter. The editor has single selection, so clicking an entry selects the first entity it touched.
+- **Menus:** the Edit menu has Undo and Redo. The View menu toggles each dock (`menuitemcheckbox` items) and the grid; the grid state moved from the Viewport up to the Editor.
+- **Counts:** the core method count went from 32 to 33 and the core MCP tool count from 29 to 30. The count tests, including the M0 gate's, were updated deliberately.
+
+### Phase 1.16: Viewport views for agents (done)
+**Goal.** Agents and humans can see what the renderer is doing, which is how gaps in the 3D engine get found.
+
+**Engine API:**
+- **`capture.screenshot` and `viewport.overlays` take a `view_mode`:**
+  - lit, unlit, wireframe;
+  - normals, albedo, roughness/metallic;
+  - overdraw;
+  - shadow cascades;
+  - lights per cluster.
+- **`render.stats`** reports the last frame: CPU and GPU time, draw calls, culled meshes, triangles, memory.
+- **`viewport.gizmo {mode}`** adds Rotate and Scale beside Move (editor audience).
+
+**UI (minimal):**
+- view modes in the viewport's View menu;
+- E and R switch the gizmo;
+- a small stats readout.
+
+No snapping, freelook or light and camera icons in this phase (backlog).
+
+**Tests first:**
+- view-mode goldens (each checked by eye once);
+- `render_stats_reports_the_last_frame`;
+- rotate and scale drag math with one-step undo;
+- an MCP test: `capture_screenshot {view_mode: "wireframe"}` returns an image that differs from the lit one;
+- the bench: no regression in orbit and gizmo frame rates.
+
+**As built:**
+- **View modes are one shader branch.** `ViewMode` (a reflected enum) reaches `forward.slang` as `Frame.debug.x`.
+  - Data views (unlit, wireframe, normals, albedo, roughness/metallic, overdraw) skip the tonemap curve (`Linear`) and, except unlit, the sky.
+  - Wireframe needs no RHI fill mode: vertex pulling gives each triangle corner's index, so the fragment shader draws barycentric edges.
+  - Wireframe and overdraw use a new `Pipelines::debug` variant: no culling, no depth test. Overdraw blends with a new `BlendMode::Additive` (with an RHI conformance case).
+  - Lights per cluster uses a fixed heat scale (blue: 0, green: 8, red: 16 or more), because scaling to the cluster budget hid typical counts.
+- **`render.stats`** (agent audience) reports the last frame drawn by a capture or the editor. Fields: size, view mode, CPU and GPU ms, draws, culled, draw calls, triangles, punctual lights, cached shadows, GPU memory.
+  - GPU time comes from the device's completion handler. Captures get it through a new `Device::submit_timed` (Metal overrides it; the default reports `None`), and viewport frames through the existing present callback. A time that arrives before its frame is recorded is held until then.
+  - Memory is `Device::allocated_bytes`.
+- **The `viewport.overlays` params (`Overlays`) gain `view_mode`** for the native viewport. `capture.screenshot` takes its own.
+- **Gizmos:** `GizmoMode` (move, rotate, scale) on `GizmoOverlay` and `viewport.gizmo`.
+  - Rings are projected unit circles, scaled to the arrow length on screen.
+  - Rotate turns by the angle swept around the entity on screen.
+  - Scale grows by one per arrow length dragged, never below 0.01.
+  - The native hit-test anchor carries the mode.
+- **UI:** Rotate and Scale buttons, Q/W/E/R (ignored with ⌘ or Ctrl), view modes under Display in the viewport's View menu, and a one-line stats readout refreshed every second.
+- **Bench** (`just editor-bench`, M3 Pro, 120 Hz; reports `pre-1.16` and `post-1.16` in `target/bench/`):
+  - At 0 and 1k entities every scenario holds or improves (orbit about 115 fps, gizmo drag 120 fps).
+  - At 10k, native orbit (112 → 117.5), orbit with agent edits (86 → 118.5), gizmo drag (103 → 120) and play hold or improve.
+  - **Open:** the browser-style orbit at 10k measured 112.9 fps before and 102.5 and 98.4 after (107.7 with the stats readout's polling disabled), with GPU time unchanged and CPU p50 within 0.3 ms. Nothing added scales with entity count, so it looks like run-to-run noise, but it isn't settled. Re-measure with more runs before the M1 gate.
+- **Goldens:** the view-mode goldens' test scene made its cube explicitly non-metallic: `MaterialData` defaults to metallic 1 (glTF), which the roughness/metallic view showed.
+
 ## Milestone gate (the executable acceptance test: exact command and what it asserts)
 
 **Command:**
@@ -708,7 +1322,51 @@ It must pass on CI's macOS GPU job (`macos-26` arm64, or the `self-hosted-macos-
   5. Assert the result has `isError: false` and a content item `{ "type": "image", "mimeType": "image/png", "data": <base64> }`; base64-decode → valid PNG 1280×720; FLIP vs the same golden `m1_physics_stack.png` within the same tolerance.
   6. `tools/call log_tail` shows the `sim stepped` record with `actor` = `agent:gate` (emitted since phase 1.0).
 
+**`tests/gates/m1_mcp_coverage.rs`** (added by ADR-0049)
+- `m1_gate_every_agent_method_is_a_described_mcp_tool`: the full M1 module set's agent-audience methods are all MCP tools, each with descriptions, and no editor-audience method is.
+
+**Live agent gate (`just gate-live M1`, on the author's subscription; outcomes asserted, never transcripts)** (added by ADR-0049)
+- `tools/gates/m1_live.sh` copies a project skeleton (manifest and a CC0 model file only, no scene) to a temp folder and runs `claude -p` with only the Concordia MCP server. The prompt asks it to build a small physics scene from nothing, using MCP only:
+  - import the model and place it;
+  - add a ground, a sun and a camera;
+  - add five dynamic boxes above the ground;
+  - save the scene as `scenes/agent.scene.ron`;
+  - step the simulation for two seconds;
+  - capture a screenshot and describe it.
+- A checker then asserts:
+  - the saved scene exists and holds an instance of the imported model, a DirectionalLight, a Camera and five or more RigidBody entities;
+  - in the play world, the boxes ended lower than they started;
+  - `log.tail` shows the `sim stepped` and `capture` records attributed to the agent;
+  - the command log attributes every edit to the agent's actor;
+  - no LLM API key is in the environment.
+
 **Agent demonstration (sign-off, recorded, not CI):** in this repo's Claude Code session (subscription, no API key) with `concordia-mcp` registered in `.mcp.json`, ask the agent to open the stack scene, step 180 ticks and call `capture_screenshot`; the agent describes the image it received (boxes, shadows, colored lights). Paste the transcript excerpt into the PR that flips M1's status to "Gate passed".
+
+**As built (gate passed 2026-11-19: CI on #19 green on macOS and Linux, the live gate passed, the author's agent demonstration signed off):**
+- **Gate content**, authored through the Engine API by `tools/assets/build_m1_gate_scene.py` as `tool:gate-author`:
+  - three `.material.ron` materials, on the pyramid and the dropped boxes;
+  - a CC0 crate made by `tools/assets/make_crate.py`;
+  - the fixture HDRI as `assets/sky.hdr`;
+  - a ring of 16 point lights;
+  - `gate_cam` at priority -1, so the editor's camera stays the default.
+  The existing entities and their ids are unchanged. The sky (3000) and the lights (1,000,000 lm at 0.6 m) were tuned against renders, so the gate's shadow and hue checks hold with margin.
+- **New engine pieces the gate needed:**
+  - `MaterialImporter` for `.material.ron`. Importers now match file-name suffixes, and `project.files` has a `material` kind.
+  - An `Environment` without a `Transform` is now rendered. It was silently dropped by both extraction paths, a trap for agents.
+  - `RgbaImage::from_png` in testkit.
+  - The MCP test client keeps `SLANG_DIR` and `CONCORDIA_*` (the plan's allowlist) and has `call_raw` for image content.
+- **The plan's `EngineHost`** is the in-process `Engine` with the project's modules (`concordia_app::Project`). The server has no `--gpu` flag: the project's `[render]` section enables rendering.
+- **The shadow check uses fixed 5×5 regions** of the deterministic image. With the sky at 3000, the pyramid's shadow measures 108 against 186 for the ground beside it.
+- **The live gate** (`tools/gates/m1_live.sh`, prompt `m1_live_prompt.md`, checker `m1_live_check.rs`) keeps evidence that outlives the agent's server:
+  - the server's log (via a wrapper with `CONCORDIA_LOG=info,concordia::render=debug`), for the `sim stepped` and `captured screenshot` records;
+  - the names of the agent's environment variables (no `*_API_KEY` or `*_AUTH_TOKEN`).
+  The checker re-simulates the saved scene to see the boxes fall.
+- **Live gate result (2026-11-19, Claude Code 2.1.328):** passed on attempt 1. The first run of the script failed on a checker bug (a `query.run` limit above the API's 1000-row page), not the agent; re-checking those three sessions' artifacts with the fixed checker passed all three. Each session took about 30 turns and under a minute, and described the five fallen boxes and the crate.
+- **The editor e2e tests use the light pre-gate scene** (`editor/ui/tests/fixtures/scenes/stack.scene.ron`). On CI's virtual GPU each gate-scene frame costs seconds, and the browser viewport's queued captures held editor calls (undo, undo-to) past the tests' 5 s waits. The gate scene is for render checks; the editor tests check interaction. In the same change the IBL prefilter's crate (`concordia-render`) builds at `opt-level = 2` in dev: a fresh engine's first capture of a sky went from 1.4 s to 0.25 s.
+- **Known limit (backlog):** in the browser viewport path, `capture.screenshot` renders and reads back synchronously on the engine thread, so the editor's other calls wait behind its frames. On CI's virtual GPU that is seconds per frame, so the e2e assertions wait 15 s in CI (5 s locally). The native viewport presents off the engine thread and is unaffected.
+- **Agent demonstration (sign-off, 2026-11-19):** in this repo's Claude Code session, the agent opened `scenes/stack.scene.ron`, stepped 180 ticks and captured `gate_cam`. It reported world hash `3b19ed5f…9bce`, the gate's snapshotted state, and described the pyramid, the three fallen tan boxes with shadows toward the lower right, the crate and the 16-light ring. It asked whether the near-black background was intended: it is. The sky (`skybox: true`) is drawn instead of the clear color, and through an orthographic camera every pixel samples the one direction below the horizon.
+- **CI** runs `just gate-tests M1` on macOS (GPU required) and Linux (the image checks skip; the physics hash must still match).
+- **`just clean-builds`** empties the build outputs. Cargo never collects stale variants, which filled the disk after two days (99 GB in `target/`).
 
 ## Risks & mitigations
 | Risk | Mitigation |

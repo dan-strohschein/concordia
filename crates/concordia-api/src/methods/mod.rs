@@ -2,6 +2,8 @@
 
 mod component;
 mod entity;
+mod events;
+mod hierarchy;
 mod log;
 mod query;
 mod scene;
@@ -24,18 +26,20 @@ use crate::error::{ApiError, ApiErrorKind};
 use crate::map::{self, Hints};
 use crate::method::{CallCtx, MethodInfo};
 
-/// Every M0 method.
+/// Every core method (M0, plus `events.*` from M1).
 pub(crate) fn all() -> Vec<MethodInfo> {
     let mut methods = Vec::new();
     methods.extend(session::methods());
     methods.extend(scene::methods());
     methods.extend(entity::methods());
+    methods.extend(hierarchy::methods());
     methods.extend(component::methods());
     methods.extend(query::methods());
     methods.extend(schema::methods());
     methods.extend(txn::methods());
     methods.extend(sim::methods());
     methods.extend(log::methods());
+    methods.extend(events::methods());
     methods
 }
 
@@ -73,6 +77,13 @@ pub enum WorldSel {
 pub struct Empty {}
 
 /// Resolves a client entity reference in `world`.
+impl EntityRef {
+    /// The entity this names in `world`, or `EntityNotFound` with suggestions.
+    pub fn resolve(&self, world: &World) -> Result<EntityId, ApiError> {
+        resolve(world, self)
+    }
+}
+
 pub(crate) fn resolve(world: &World, given: &EntityRef) -> Result<EntityId, ApiError> {
     match given.0.parse::<EntityId>() {
         Ok(id) if world.contains(id) => Ok(id),
@@ -132,6 +143,17 @@ pub(crate) fn edit(
     op: EditOp,
     component: Option<&str>,
 ) -> Result<(), ApiError> {
+    edit_all(engine, ctx, label, vec![op], component)
+}
+
+/// Applies edits inside the caller's open transaction, or as one new transaction (one undo step).
+pub(crate) fn edit_all(
+    engine: &mut Engine,
+    ctx: &CallCtx,
+    label: &str,
+    ops: Vec<EditOp>,
+    component: Option<&str>,
+) -> Result<(), ApiError> {
     let author = Author {
         actor: ctx.actor()?.clone(),
         session: Some(ctx.session),
@@ -153,12 +175,21 @@ pub(crate) fn edit(
         }
         None => false,
     };
-    let result = match mine {
-        true => scene.log.apply(&mut scene.world, registry, op),
-        false => scene
+    let result = match (mine, ops.len()) {
+        (_, 0) => Ok(()),
+        (true, _) => apply_each(scene, registry, ops),
+        (false, 1) => {
+            let op = ops.into_iter().next().expect("one op");
+            scene
+                .log
+                .apply_one(&mut scene.world, registry, author, label, op, ids)
+                .map(|_| ())
+        }
+        (false, _) => scene
             .log
-            .apply_one(&mut scene.world, registry, author, label, op, ids)
-            .map(|_| ()),
+            .begin(&scene.world, author, label, ids)
+            .and_then(|_| apply_each(scene, registry, ops))
+            .and_then(|()| scene.log.commit(&mut scene.world, registry).map(|_| ())),
     };
     if let Err(e) = result {
         if mine {
@@ -178,6 +209,16 @@ pub(crate) fn edit(
     }
     scene.dirty = true;
     Ok(())
+}
+
+/// Applies ops inside the open transaction (the log rolls it back on the first failure).
+fn apply_each(
+    scene: &mut OpenScene,
+    registry: &concordia_reflect::TypeRegistry,
+    ops: Vec<EditOp>,
+) -> Result<(), concordia_command::CommandError> {
+    ops.into_iter()
+        .try_for_each(|op| scene.log.apply(&mut scene.world, registry, op))
 }
 
 /// Parses a txn id given by a client.

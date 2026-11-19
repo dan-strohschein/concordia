@@ -1,0 +1,93 @@
+{
+  "$defs": {
+    "BodyKind": {
+      "description": "How a body moves.",
+      "oneOf": [
+        {
+          "const": "Static",
+          "description": "Never moves (ground, walls)."
+        },
+        {
+          "const": "Dynamic",
+          "description": "Moved by the simulation."
+        },
+        {
+          "const": "Kinematic",
+          "description": "Follows its `Transform`, pushing dynamic bodies."
+        }
+      ],
+      "title": "BodyKind",
+      "x-concordia-type": "BodyKind"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "angular_damping": 0.05000000074505806,
+    "ccd": false,
+    "friction": 0.5,
+    "gravity_scale": 1.0,
+    "kind": "Dynamic",
+    "linear_damping": 0.05000000074505806,
+    "mass": null,
+    "restitution": 0.0
+  },
+  "description": "A rigid body; needs a `Transform` and a `Collider` on the same entity (root entities only).",
+  "properties": {
+    "angular_damping": {
+      "description": "Angular velocity damping per second.",
+      "maximum": 100.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "ccd": {
+      "description": "Continuous collision detection for fast bodies.",
+      "type": "boolean"
+    },
+    "friction": {
+      "description": "Friction coefficient.",
+      "maximum": 10.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "gravity_scale": {
+      "description": "Multiplier on world gravity.",
+      "maximum": 100.0,
+      "minimum": -100.0,
+      "type": "number"
+    },
+    "kind": {
+      "$ref": "#/$defs/BodyKind",
+      "description": "Static, dynamic or kinematic."
+    },
+    "linear_damping": {
+      "description": "Linear velocity damping per second.",
+      "maximum": 100.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "mass": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "Mass in kg (default: from the shape at 1000 kg/m³).",
+      "maximum": 1000000.0,
+      "minimum": 0.0
+    },
+    "restitution": {
+      "description": "Bounciness (0 = none, 1 = elastic).",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    }
+  },
+  "title": "RigidBody",
+  "type": "object",
+  "x-concordia-category": "Physics",
+  "x-concordia-type": "RigidBody"
+}
