@@ -15,6 +15,10 @@ The Concordia editor (ADR-0004, ADR-0043): React panels in a Tauri v2 shell arou
 - **Types in `src/api/generated/` come from the engine** (`just editor-schemas`). Never edit them; CI fails when they are stale.
 - **The inspector is schema-driven** (`src/inspector/widgets.ts`); unknown shapes fall back to a JSON editor and never crash.
 
+## Rules (ADR-0047)
+- **The viewport belongs to the engine:** input, camera, picking, gizmo drags and (from phase 1.9g) everything drawn in the viewport. Never draw over the viewport from the page.
+- **Panels are thin:** they show engine state and send Engine API calls. Behaviour that more than one panel or client needs goes into the engine behind a method, not into TypeScript.
+
 ## Native viewport coordinates
 The webview spans the window's content view including the area under the title bar, while the page starts below it. Measure the slot inside the webview, offset by `webview height − window.innerHeight` (`native::content_rect`). Verify placement by capturing the window (`screencapture -l <window>`; `CONCORDIA_EDITOR_PRINT_WINDOW=1` prints the number), not by reading the frame back through the same formula.
 
