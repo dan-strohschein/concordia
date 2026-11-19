@@ -40,16 +40,17 @@ enum StudioCommand {
         #[arg(long)]
         force: bool,
     },
-    /// Claude Code hook entry point (reads the hook's JSON on stdin). Until enforcement lands
-    /// (M3 phase 3.5) it decides nothing, so Claude Code's own permission rules apply.
+    /// Claude Code hook entry point: reads the hook's JSON on stdin, answers with a decision (ADR-0080).
     Hook {
-        /// pre-tool-use, post-tool-use, subagent-start or subagent-stop.
+        /// pre-tool-use, post-tool-use, subagent-start, subagent-stop or session-end.
         event: String,
     },
     /// Print the resolved team (enabled roles with tools and paths, disabled roles with reasons).
     Roster,
     /// Print task counts and tasks waiting for approval.
     Status,
+    /// Check the environment: Claude Code installed and logged in, `concordia` on PATH, files in sync.
+    Doctor,
 }
 
 /// `concordia task` arguments.
@@ -145,7 +146,8 @@ pub(crate) fn run_studio(args: &StudioArgs) -> Result<(), Failure> {
             dry_run,
             force,
         } => sync(&args.project, *check, *dry_run, *force),
-        StudioCommand::Hook { event } => hook(event),
+        StudioCommand::Hook { event } => hook(&args.project, event),
+        StudioCommand::Doctor => super::doctor::run(&args.project),
         StudioCommand::Roster => call(&args.project, "studio.roster", json!({})),
         StudioCommand::Status => call(&args.project, "studio.status", json!({})),
     }
@@ -284,24 +286,34 @@ pub(crate) fn sync(project: &Path, check: bool, dry_run: bool, force: bool) -> R
     }
 }
 
-/// The hook entry point: consumes the hook input and makes no decision (phase 3.5 adds enforcement).
-fn hook(event: &str) -> Result<(), Failure> {
-    const EVENTS: [&str; 4] = [
-        "pre-tool-use",
-        "post-tool-use",
-        "subagent-start",
-        "subagent-stop",
-    ];
-    if !EVENTS.contains(&event) {
-        return Err(Failure::usage(format!(
-            "unknown hook event {event:?}; expected one of {}",
-            EVENTS.join(", ")
-        )));
-    }
-    let mut input = Vec::new();
-    std::io::Read::read_to_end(&mut std::io::stdin(), &mut input)
+/// The hook entry point: stdin → decision JSON on stdout; exits 2 to block when the input is unreadable.
+fn hook(project: &Path, event: &str) -> Result<(), Failure> {
+    let event = concordia_studio::HookEvent::from_cli(event).ok_or_else(|| {
+        Failure::usage(format!(
+            "unknown hook event {event:?}; expected pre-tool-use, post-tool-use, subagent-start, subagent-stop or session-end"
+        ))
+    })?;
+    let root =
+        std::env::var_os("CLAUDE_PROJECT_DIR").map_or_else(|| project.to_owned(), PathBuf::from);
+    let mut input = String::new();
+    std::io::Read::read_to_string(&mut std::io::stdin(), &mut input)
         .map_err(|e| Failure::usage(format!("reading the hook input: {e}")))?;
-    Ok(())
+    let outcome = concordia_studio::hook::run(event, &input, &root);
+    if !outcome.stdout.is_empty() {
+        println!("{}", outcome.stdout);
+    }
+    match outcome.exit {
+        0 => {
+            if !outcome.stderr.is_empty() {
+                eprintln!("{}", outcome.stderr);
+            }
+            Ok(())
+        }
+        code => Err(Failure {
+            code: u8::try_from(code).unwrap_or(2),
+            message: outcome.stderr,
+        }),
+    }
 }
 
 fn without_nulls(mut params: Value) -> Value {

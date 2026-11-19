@@ -10,12 +10,15 @@ mod defaults;
 mod error;
 mod frontmatter;
 mod gate;
+pub mod hook;
 mod journal;
 mod methods;
 mod module;
+mod policy;
 mod role;
 mod roster;
 mod scope;
+mod slots;
 mod task;
 mod team;
 
@@ -23,14 +26,19 @@ pub use claude_code::{CLAUDE_AGENT_FIELDS, FileChange, SyncAction, SyncOptions, 
 pub use defaults::{DefaultRoster, default_roster, init};
 pub use error::StudioError;
 pub use gate::{Gate, GateOn, GateParty};
+pub use hook::{HookEvent, HookOutcome};
 pub use journal::{
     Change, JournalEntry, JournalEvent, STUDIO_JOURNAL_PATH, STUDIO_JOURNAL_VERSION, StudioJournal,
 };
 pub use methods::{RoleView, TaskView};
 pub use module::StudioModule;
+pub use policy::{
+    Decision, POLICY_PATH, PathGate, Policy, RolePolicy, TaskBudgets, project_relative, source_hash,
+};
 pub use role::{Effort, HarnessTool, Review, RoleFile, RoleId, RolePaths, RoleSpec};
 pub use roster::{DisabledRole, ResolvedRole, Roster};
 pub use scope::{ToolCatalog, check_project_pattern};
+pub use slots::Slots;
 pub use task::{
     Acceptance, BoardError, LOCAL_HUMAN, NewTask, Priority, Task, TaskBoard, TaskEdit, TaskId,
     TaskMeta, TaskStatus, TaskStore, can_move, next_statuses,

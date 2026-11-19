@@ -1,7 +1,7 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: In progress (Studio track: 3.0, 3.3 and 3.4 done, 3.5 next; refinement approved 2026-11-19) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Needs refinement after M2** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0, 3.3, 3.4 and 3.5 done (3.5's live probe pending), 3.5b next; refinement approved 2026-11-19) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Needs refinement after M2** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
@@ -500,7 +500,7 @@ justfile                       (touched) `gate-live` recipe
   - The no-secrets test passed vacuously against the red-run stub (no files written); it checks real output now.
 - **Not done here:** the `roster.ron` cache for fast hooks belongs to 3.5, and the manual `/agents` check in an interactive session is left to the author.
 
-### Phase 3.5: Actor attribution + per-role enforcement (hooks + `concordia-mcp`)
+### Phase 3.5: Actor attribution + per-role enforcement (hooks + `concordia-mcp`) (done)
 *Can start right after M0.*
 
 - **Objective:** Every Engine MCP call made by a subagent is attributed to `agent:<role>#<n>` without trusting the model to say who it is. Each role can touch only its own tools and paths, enforced twice: in Claude Code hooks (before the call) and in `concordia-mcp` (on the server).
@@ -541,6 +541,65 @@ justfile                       (touched) `gate-live` recipe
     - `doctor_reports_missing_claude_cli_with_install_hint`.
 - **Implementation notes:** `scope.rs` is shared by the hook and `concordia-mcp`, so both enforce the same rules. The hook binary path is the same `concordia` CLI; its startup must be fast (no world load; read the roster from a cached `.concordia/studio/roster.ron` written by sync). Hook output JSON exactly as documented: `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow|deny","permissionDecisionReason":"…","updatedInput":{…}}}`.
 - **Done criteria:** tests pass; a manual interactive check in the fixture project shows a QA subagent's attempted `Edit` of `scripts/**` blocked with our reason, and its MCP calls appear in `concordia log tail --actor agent:qa-playtester#1`.
+
+**As built (2026-11-19, decision B1 / ADR-0080):**
+- **The policy is the one rulebook.** `concordia_studio::Policy` holds:
+  - per role: engine tools, write paths, bash patterns (`None` = no shell) and count;
+  - `[paths] deny`;
+  - path gates;
+  - read-only tools (from the method registry's `mutates`);
+  - per-task budgets;
+  - a hash of `team.toml` and `agents/*.md`.
+
+  Sync writes it to `.claude/concordia/policy.json` (committed with the other generated files, so a fresh clone works). `concordia mcp` builds the same policy from the engine and rebuilds it when the hash changes.
+- **`concordia studio hook <event>`** reads only the policy file. It starts no engine, and runs in about 17 ms per call including process start in release (the test budget is p95 < 50 ms).
+  - **PreToolUse:**
+    - `mcp__concordia__*` is checked against the role's tools, and if allowed, gets `allow` plus `updatedInput` = the input with `_studio: {role, agent: "<session_id>/<agent_id|main>", tool_use_id}`.
+    - Edit, Write, MultiEdit and NotebookEdit paths are resolved inside the project (`..` and symlinked parents can't escape), then checked against deny paths, then path gates (human-only unless a gate names the role), then the role's write paths.
+    - Bash is matched against `bash_allow`; roles without a shell are denied.
+    - Other tools get no decision.
+    - The caller is the subagent's `agent_type`, else the team's main-session role (the director). An agent type outside the team (`Explore`, ...) gets read-only engine tools and no file writes.
+    - Unreadable input exits 2; a missing or stale policy denies with a "run `concordia studio sync`" hint.
+  - **PostToolUse** appends `file_edit {path, tool, before, after}` to the Studio journal. Before-hashes are kept by PreToolUse in `.concordia/studio/pending/<tool_use_id>`. The actor is `agent:<role>#n` once the engine has assigned a slot, else `agent:<role>`.
+  - **SubagentStart** injects the actor and the role's open tasks as `additionalContext`.
+  - **SubagentStop** releases the agent's slot.
+  - Everything except PreToolUse fails open with a warning.
+- **`concordia mcp` in Studio mode** (`Options::studio`, from `[studio]`):
+  - it strips `_studio` and any `actor`;
+  - it re-checks the tool against the policy;
+  - it checks the write path of `scene.new`, `scene.save` (the open scene's path if none is given) and `asset.import`;
+  - each agent key gets its own engine session as `agent:<role>#n` (G2), so a second role's write during another's transaction gets `TxnConflict`, naming the holder;
+  - calls without a stamp are read-only, with an error that points at the hooks.
+- **Slots:** `.concordia/studio/slots.json`, under a file lock and shared by the server and the hooks. A slot held by a dead server PID is reclaimed, so crashes can't leak capacity, and a full role errors with "at capacity".
+- **Budgets:** per (actor, in-progress task), counting calls and mutations in server memory (reset on restart). Going over blocks the task for `human:local`, attributed to `system:studio`.
+- **`concordia studio doctor`** checks:
+  - `claude --version`;
+  - `claude auth status` (a subscription login is ok; other methods are notes; "none" fails);
+  - `ANTHROPIC_API_KEY` (a note only);
+  - `concordia` on PATH;
+  - sync freshness.
+
+  It exits 1 on any failure.
+- **Tests:**
+  - `crates/concordia-studio/tests/hook_pre_tool_use.rs` (13) and `hook_other_events.rs` (5);
+  - `crates/concordia-mcp/tests/role_scope.rs` (8);
+  - `crates/concordia-cli/tests/doctor.rs` (2);
+  - `cli_studio.rs`: the binary's hook answers, and the release-only latency test.
+  - 3.4's pass-through test was replaced deliberately, now that enforcement exists.
+- **Live probe (2026-11-19, Claude Code 2.1.328, subscription login, no API key):** one `claude -p --agent director` run in a fresh `concordia new` project. It took 5 turns and $0.44 estimated. It passed on the first attempt, so check mode is not needed.
+  - **`updatedInput` is honored for MCP tools:** the debug log shows the hook adding `_studio` on 11 calls.
+  - **No schema rejection,** despite `additionalProperties: false`.
+  - **Attribution:** the Studio journal shows `agent:director#1` creating T-0001 and `agent:level-designer#1` claiming, commenting and submitting it. The scene's command log has the Wall spawn and save as `agent:level-designer#1`.
+  - **Generated agents load,** with the marker comment as the first frontmatter line.
+  - **Hooks fire** in `-p` in an untrusted folder, and subagents' `agent_type` reaches the hook.
+  - **One finding,** fixed in the same phase: the main session gets no SubagentStop, so the director's slot stayed held. A **SessionEnd** hook (`concordia studio hook session-end`) now frees every slot of the ended session. The hook count test went from 6 to 7 deliberately.
+- **Not done, deliberately:**
+  - **Smaller gaps:**
+    - the HMAC actor proof (open question 2);
+    - `studio.release_actor` (the hook releases slots directly);
+    - flagging tasks left `in_progress` at SubagentStop;
+    - PostToolUse quick checks;
+    - making the read-only rule for unknown agent types configurable.
 
 ### Phase 3.6: Default roster, starter prompts, engine skills
 *Can start after 3.3/3.4. Artist roles become fully useful after 3.7.*

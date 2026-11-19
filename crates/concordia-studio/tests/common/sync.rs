@@ -24,7 +24,14 @@ pub fn roster(root: &Path) -> Roster {
 
 /// Syncs with the given options.
 pub fn run(root: &Path, options: SyncOptions) -> SyncReport {
-    sync(root, Path::new("studio"), &roster(root), options).unwrap()
+    sync(
+        root,
+        Path::new("studio"),
+        &roster(root),
+        &super::catalog(),
+        options,
+    )
+    .unwrap()
 }
 
 /// Syncs and writes.

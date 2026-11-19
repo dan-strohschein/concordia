@@ -161,27 +161,61 @@ fn studio_sync_check_exits_nonzero_and_prints_diff_when_stale() {
     );
 }
 
-#[test]
-fn studio_hook_passes_through_until_enforcement_lands() {
+/// Runs `concordia studio hook <event>` in `project` with `input` on stdin.
+fn hook(project: &std::path::Path, event: &str, input: &serde_json::Value) -> std::process::Output {
     use std::io::Write;
-    let dir = tempfile::tempdir().unwrap();
     let mut child = common::concordia()
-        .args(["studio", "hook", "pre-tool-use"])
-        .current_dir(dir.path())
+        .args(["studio", "hook", event])
+        .current_dir(project)
+        .env("CLAUDE_PROJECT_DIR", project)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .spawn()
         .unwrap();
     child
         .stdin
         .take()
         .unwrap()
-        .write_all(br#"{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{}}"#)
+        .write_all(input.to_string().as_bytes())
         .unwrap();
-    let output = child.wait_with_output().unwrap();
-    assert_eq!(output.status.code(), Some(0));
-    assert!(
-        output.stdout.is_empty(),
-        "no decision: Claude Code's own rules apply"
-    );
+    child.wait_with_output().unwrap()
+}
+
+// Replaces 3.4's `studio_hook_passes_through_until_enforcement_lands` (deliberately: enforcement landed in 3.5).
+#[test]
+fn studio_hook_answers_claude_code_with_a_decision() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = new_project(dir.path(), &[]);
+    let input = serde_json::json!({
+        "session_id": "s", "hook_event_name": "PreToolUse", "agent_type": "writer", "agent_id": "a",
+        "tool_name": "Edit", "tool_input": {"file_path": root.join("scenes/main.scene.ron")}, "tool_use_id": "t1"
+    });
+    let output = hook(&root, "pre-tool-use", &input);
+    assert_eq!(output.status.code(), Some(0), "{}", stderr(&output));
+    let answer: Value = serde_json::from_str(&stdout(&output)).unwrap();
+    assert_eq!(answer["hookSpecificOutput"]["permissionDecision"], "deny");
+    let malformed = hook(&root, "pre-tool-use", &serde_json::json!("not an object"));
+    assert_eq!(malformed.status.code(), Some(2), "fails closed");
+}
+
+#[test]
+#[cfg_attr(debug_assertions, ignore = "timing budget applies to release builds")]
+fn hook_completes_under_50ms_p95() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = new_project(dir.path(), &[]);
+    let input = serde_json::json!({
+        "session_id": "s", "hook_event_name": "PreToolUse", "agent_type": "level-designer", "agent_id": "a",
+        "tool_name": "mcp__concordia__entity_spawn", "tool_input": {"components": {}}, "tool_use_id": "t1"
+    });
+    let mut times: Vec<std::time::Duration> = (0..40)
+        .map(|_| {
+            let start = std::time::Instant::now();
+            assert!(hook(&root, "pre-tool-use", &input).status.success());
+            start.elapsed()
+        })
+        .collect();
+    times.sort();
+    let p95 = times[times.len() * 95 / 100];
+    assert!(p95 < std::time::Duration::from_millis(50), "p95 {p95:?}");
 }
