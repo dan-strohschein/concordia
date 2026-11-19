@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (editor v1, agent-first: 1.11–1.16 done, the gate next, then the gate; ADR-0049; 1.0–1.9 done, 1.10 stretch pending; ADR-0048) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: Gate passed (2026-11-19; phases 1.0–1.9 and 1.11–1.16 done, 1.10 stretch not done; ADR-0048, ADR-0049) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -1342,7 +1342,7 @@ It must pass on CI's macOS GPU job (`macos-26` arm64, or the `self-hosted-macos-
 
 **Agent demonstration (sign-off, recorded, not CI):** in this repo's Claude Code session (subscription, no API key) with `concordia-mcp` registered in `.mcp.json`, ask the agent to open the stack scene, step 180 ticks and call `capture_screenshot`; the agent describes the image it received (boxes, shadows, colored lights). Paste the transcript excerpt into the PR that flips M1's status to "Gate passed".
 
-**As built (gate tests written; the live gate passed on 2026-11-19; CI on #19 and the agent demonstration remain):**
+**As built (gate passed 2026-11-19: CI on #19 green on macOS and Linux, the live gate passed, the author's agent demonstration signed off):**
 - **Gate content**, authored through the Engine API by `tools/assets/build_m1_gate_scene.py` as `tool:gate-author`:
   - three `.material.ron` materials, on the pyramid and the dropped boxes;
   - a CC0 crate made by `tools/assets/make_crate.py`;
@@ -1364,6 +1364,7 @@ It must pass on CI's macOS GPU job (`macos-26` arm64, or the `self-hosted-macos-
 - **Live gate result (2026-11-19, Claude Code 2.1.328):** passed on attempt 1. The first run of the script failed on a checker bug (a `query.run` limit above the API's 1000-row page), not the agent; re-checking those three sessions' artifacts with the fixed checker passed all three. Each session took about 30 turns and under a minute, and described the five fallen boxes and the crate.
 - **The editor e2e tests use the light pre-gate scene** (`editor/ui/tests/fixtures/scenes/stack.scene.ron`). On CI's virtual GPU each gate-scene frame costs seconds, and the browser viewport's queued captures held editor calls (undo, undo-to) past the tests' 5 s waits. The gate scene is for render checks; the editor tests check interaction. In the same change the IBL prefilter's crate (`concordia-render`) builds at `opt-level = 2` in dev: a fresh engine's first capture of a sky went from 1.4 s to 0.25 s.
 - **Known limit (backlog):** in the browser viewport path, `capture.screenshot` renders and reads back synchronously on the engine thread, so the editor's other calls wait behind its frames. On CI's virtual GPU that is seconds per frame, so the e2e assertions wait 15 s in CI (5 s locally). The native viewport presents off the engine thread and is unaffected.
+- **Agent demonstration (sign-off, 2026-11-19):** in this repo's Claude Code session, the agent opened `scenes/stack.scene.ron`, stepped 180 ticks and captured `gate_cam`. It reported world hash `3b19ed5f…9bce`, the gate's snapshotted state, and described the pyramid, the three fallen tan boxes with shadows toward the lower right, the crate and the 16-light ring. It asked whether the near-black background was intended: it is. The sky (`skybox: true`) is drawn instead of the clear color, and through an orthographic camera every pixel samples the one direction below the horizon.
 - **CI** runs `just gate-tests M1` on macOS (GPU required) and Linux (the image checks skip; the physics hash must still match).
 - **`just clean-builds`** empties the build outputs. Cargo never collects stale variants, which filled the disk after two days (99 GB in `target/`).
 
