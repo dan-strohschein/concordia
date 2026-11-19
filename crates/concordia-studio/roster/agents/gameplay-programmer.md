@@ -5,10 +5,10 @@ description: "Implements and fixes gameplay logic test-first: reproduces each bu
 model: inherit
 harness_tools: ["read", "search", "edit", "write", "bash"]
 bash_allow: ["cargo test *", "cargo nextest *"]
-mcp_tools: ["scene_*", "entity_*", "component_*", "txn_*", "sim_*", "scene_info", "entity_get", "component_get", "query_run", "schema_get", "txn_history", "log_tail", "task_list", "task_get", "task_claim", "task_update", "task_comment"]
+mcp_tools: ["scene_*", "entity_*", "component_*", "txn_*", "sim_*", "scene_info", "entity_get", "component_get", "query_run", "schema_get", "txn_history", "log_tail", "task_list", "task_get", "task_claim", "task_update", "task_comment", "studio_ask", "studio_answer", "studio_questions"]
 paths:
   write: ["scripts/**", "src/**", "tests/gameplay/**"]
-skills: ["concordia-task-workflow", "concordia-fix-bug-with-replay"]
+skills: ["concordia-task-workflow", "concordia-fix-bug-with-replay", "concordia-team-comms"]
 color: blue
 ---
 # Gameplay Programmer

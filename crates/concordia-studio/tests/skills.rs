@@ -6,8 +6,8 @@ use std::path::Path;
 
 use concordia_studio::{CLAUDE_SKILL_FIELDS, Roster, SkillFile, default_roster, init};
 
-/// The eight built-in skills the plan names (3.6).
-const PLANNED: [&str; 8] = [
+/// The eight built-in skills the plan names (3.6), plus the team-comms skill (3.6b).
+const PLANNED: [&str; 9] = [
     "concordia-add-material",
     "concordia-director-planning",
     "concordia-fix-bug-with-replay",
@@ -15,6 +15,7 @@ const PLANNED: [&str; 8] = [
     "concordia-record-replay",
     "concordia-synthesize-sfx",
     "concordia-task-workflow",
+    "concordia-team-comms",
     "concordia-write-playtest",
 ];
 
@@ -27,7 +28,7 @@ fn skills() -> Vec<SkillFile> {
 }
 
 #[test]
-fn the_default_roster_ships_the_eight_planned_skills() {
+fn the_default_roster_ships_the_planned_skills() {
     let names: Vec<&str> = default_roster().skills.iter().map(|(n, _)| *n).collect();
     assert_eq!(names, PLANNED);
 }
@@ -148,4 +149,27 @@ fn mentioned_tools(text: &str) -> Vec<String> {
                 .collect()
         })
         .collect()
+}
+
+#[test]
+fn team_comms_skill_teaches_the_caps_glossary_ids_and_when_to_ask() {
+    let comms = skills()
+        .into_iter()
+        .find(|s| s.name == "concordia-team-comms")
+        .expect("3.6b adds concordia-team-comms");
+    for needle in [
+        "280",
+        "500",
+        "## Glossary",
+        "## When to ask",
+        "Q-",
+        "T-",
+        "mcp__concordia__studio_ask",
+    ] {
+        assert!(comms.body.contains(needle), "missing {needle}");
+    }
+    assert!(
+        comms.body.contains("Don't wait"),
+        "asking never blocks: return to the director instead"
+    );
 }

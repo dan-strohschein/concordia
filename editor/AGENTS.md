@@ -6,6 +6,10 @@ The Concordia editor (ADR-0004, ADR-0043): React panels in a Tauri v2 shell arou
 - **`editor/src-tauri`:** the native shell (its own Cargo workspace).
   - `EngineHost` joins the project's shared engine (ADR-0082). With no live engine, it hosts one in-process, serves the token-protected WebSocket API and writes `.concordia/headless.json`, so `concordia mcp` attaches to the editor. With a live one (e.g. Claude Code started first), it attaches; the native viewport is then off (`__CONCORDIA_NATIVE__ = false`) and the page renders the viewport. Either way it opens the main scene if the engine has none open.
   - If the engine's host exits, `EngineClient` rejects calls and the `EngineLost` banner asks the user to restart the editor.
+- **Team Questions** (`editor/ui/src/questions/`, ADR-0081): a dock shown only in Studio projects (when `studio.questions` exists), with threads, filters and pinned escalations.
+  - A badge on the dock title and in the title bar counts escalations.
+  - A banner stays up until every escalation is answered, and a new escalation reveals the dock.
+  - Answers go to `studio.answer` as `human:local`. There is no editor-only logic; the panel follows `studio` events.
   - It opens a transparent window and injects the engine URL and `__CONCORDIA_NATIVE__`.
   - The Metal viewport is an `NSView` + `CAMetalLayer` **below** the webview at the page's slot (ADR-0043 as amended), attached with `concordia_render::attach_surface`. The UI calls `viewport.present`, every animation frame during play.
 

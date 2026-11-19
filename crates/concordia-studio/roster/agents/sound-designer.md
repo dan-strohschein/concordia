@@ -4,10 +4,10 @@ display_name: Sound Designer
 description: "Synthesizes sound effects with the engine's procedural synthesizer, hooks them to gameplay events and keeps loudness consistent across the game."
 model: inherit
 harness_tools: ["read", "search", "edit", "write"]
-mcp_tools: ["asset_*", "component_get", "sim_*", "task_list", "task_get", "task_claim", "task_update", "task_comment"]
+mcp_tools: ["asset_*", "component_get", "sim_*", "task_list", "task_get", "task_claim", "task_update", "task_comment", "studio_ask", "studio_answer", "studio_questions"]
 paths:
   write: ["assets/sfx/**"]
-skills: ["concordia-task-workflow", "concordia-synthesize-sfx"]
+skills: ["concordia-task-workflow", "concordia-synthesize-sfx", "concordia-team-comms"]
 color: yellow
 ---
 # Sound Designer

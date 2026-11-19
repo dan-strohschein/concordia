@@ -16,6 +16,7 @@ Agent Studio's harness-neutral source of truth and its engine module: role files
 - `Policy`: who may call which tools, write which paths, run which commands; written by sync to `.claude/concordia/policy.json`, rebuilt from the engine by `concordia mcp`.
 - `hook::run`: the `concordia studio hook <event>` logic (pure; the CLI only does stdin/stdout).
 - `Slots`: role instance slots shared by `concordia mcp` and the hooks.
+- Team questions (ADR-0081): `studio.ask/answer/escalate/questions` (`question_methods.rs`), the board's desk (`task/desk.rs`), and `Question`, derived from the journal (`task/question.rs`). Hook context comes from `team_context.rs`.
 
 ## Invariants
 - Text files are the source of truth; task history lives only in the Studio journal, never in task files.
@@ -28,6 +29,8 @@ Agent Studio's harness-neutral source of truth and its engine module: role files
 - Generated agent frontmatter uses only `CLAUDE_AGENT_FIELDS` and never `hooks`, `mcpServers` or `permissionMode` (they don't load in untrusted `claude -p`). Non-director agents never get the `Agent` tool.
 - The hook never starts an engine: it reads only the policy file. PreToolUse fails closed (unreadable input exits 2; a missing or stale policy denies). The other events fail open with a warning.
 - Engine calls are stamped with a reserved `_studio` key that only `concordia mcp` reads and strips; engine params never see it.
+- Questions are journal entries only (`question_asked`, `question_answered`, `question_escalated`), with no question files. Ids (`Q-0001`) are allocated under the board lock. Only the addressed role, the director or a human may answer, and only a human once escalated. Only the director escalates, which blocks the task as `system:studio`; a human answer moves it back to `todo`. Text caps: 280, 500 and 280 characters.
+- Question hooks only add context and never block: SubagentStart (questions for the role, and new answers to its questions), PostToolUse on `Agent` (the director's changes since its last turn) and UserPromptSubmit (new human answers). What each has delivered is kept in `.concordia/studio/cursors.json`.
 - The default roster lives only in `roster/`. Its tool scopes name only tools that exist today (M3 refinement G10).
 - Every role prompt has the sections Mission, You own, You never, Workflow, How you verify, When to escalate and Output contract (with a fenced example). Enabled roles' prompts name only tools in their scope.
 - A role's `skills` must exist in `studio/skills/`. Skill frontmatter uses only `CLAUDE_SKILL_FIELDS`, `name` matches the folder, and description plus `when_to_use` stay within 1,536 chars.
@@ -53,7 +56,7 @@ Agent Studio's harness-neutral source of truth and its engine module: role files
 - YAML via `serde_norway` 0.9 (MIT OR Apache-2.0), a maintained fork of `serde_yaml`; globs via `globset` (Unlicense OR MIT).
 
 ## Status
-M3 phases 3.3 (config model, task board, Studio journal), 3.4 (sync), 3.5 (hooks, policy, slots) and 3.6 (default prompts and engine skills). Team questions (3.6b) come next.
+M3 phases 3.3 (config model, task board, Studio journal), 3.4 (sync), 3.5 (hooks, policy, slots), 3.6 (default prompts and engine skills) and 3.6b (team questions). The editor Studio panel (3.8) comes next.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

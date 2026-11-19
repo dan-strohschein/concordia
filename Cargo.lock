@@ -982,6 +982,7 @@ dependencies = [
  "concordia-reflect",
  "concordia-render",
  "concordia-scene",
+ "concordia-studio",
  "concordia-testkit",
  "insta",
  "regex",

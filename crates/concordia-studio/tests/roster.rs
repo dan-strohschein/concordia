@@ -253,3 +253,43 @@ fn mentioned_tools(text: &str) -> Vec<String> {
         })
         .collect()
 }
+
+#[test]
+fn every_enabled_role_can_ask_answer_and_read_questions() {
+    let (_dir, roster) = roster();
+    for role in roster.roles() {
+        for tool in ["studio_ask", "studio_answer", "studio_questions"] {
+            assert!(
+                role.mcp_tools.iter().any(|t| t == tool),
+                "{} lacks {tool}",
+                role.role
+            );
+        }
+        assert!(
+            role.skills.iter().any(|s| s == "concordia-team-comms"),
+            "{} preloads concordia-team-comms",
+            role.role
+        );
+        let escalates = role.mcp_tools.iter().any(|t| t == "studio_escalate");
+        assert_eq!(escalates, role.role.as_str() == "director", "{}", role.role);
+    }
+}
+
+#[test]
+fn director_prompt_routes_questions_and_escalates_only_when_no_role_can_answer() {
+    let director = role_files()
+        .into_iter()
+        .find(|r| r.spec.role.as_str() == "director")
+        .unwrap();
+    for needle in [
+        "mcp__concordia__studio_escalate",
+        "mcp__concordia__studio_answer",
+        "never guess a design decision",
+        "## Routing questions",
+    ] {
+        assert!(
+            director.body.contains(needle),
+            "director prompt lacks {needle:?}"
+        );
+    }
+}

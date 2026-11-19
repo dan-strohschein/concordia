@@ -150,3 +150,208 @@ fn session_end_releases_every_slot_the_session_held() {
         "other sessions keep theirs"
     );
 }
+
+// --- Team questions (M3 phase 3.6b, ADR-0081): context injection, no polling.
+
+fn record(root: &std::path::Path, actor: &str, event: concordia_studio::JournalEvent) {
+    StudioJournal::of_project(root)
+        .append(&actor.parse().unwrap(), event)
+        .unwrap();
+}
+
+fn asked(id: &str, to: &str, text: &str) -> concordia_studio::JournalEvent {
+    concordia_studio::JournalEvent::QuestionAsked {
+        question: id.into(),
+        to: to.into(),
+        text: text.into(),
+        task: None,
+        refs: Vec::new(),
+    }
+}
+
+fn answered(id: &str, text: &str) -> concordia_studio::JournalEvent {
+    concordia_studio::JournalEvent::QuestionAnswered {
+        question: id.into(),
+        text: text.into(),
+    }
+}
+
+fn context(outcome: &concordia_studio::HookOutcome, event: &str) -> String {
+    assert_eq!(outcome.exit, 0, "{}", outcome.stderr);
+    if outcome.stdout.is_empty() {
+        return String::new();
+    }
+    let out: Value = serde_json::from_str(&outcome.stdout).unwrap();
+    assert_eq!(out["hookSpecificOutput"]["hookEventName"], event, "{out}");
+    out["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned()
+}
+
+fn agent_returned() -> Value {
+    let mut input = base("PostToolUse", None);
+    input["tool_name"] = json!("Agent");
+    input["tool_input"] = json!({"subagent_type": "level-designer", "prompt": "Work task T-0001"});
+    input["tool_use_id"] = json!("toolu_9");
+    input
+}
+
+#[test]
+fn subagent_start_lists_open_questions_for_the_role_and_answers_to_mine() {
+    let dir = project();
+    let root = dir.path();
+    record(
+        root,
+        "agent:level-designer#1",
+        asked("Q-0001", "tech-artist", "metal or stone floor?"),
+    );
+    record(
+        root,
+        "agent:tech-artist#1",
+        answered("Q-0001", "stone; T-0004 has the texture"),
+    );
+    record(
+        root,
+        "agent:qa-playtester#1",
+        asked("Q-0002", "level-designer", "spawn height?"),
+    );
+    record(
+        root,
+        "agent:director#1",
+        asked("Q-0003", "tech-artist", "not for you"),
+    );
+
+    let start = base("SubagentStart", Some("level-designer"));
+    let text = context(
+        &run(root, HookEvent::SubagentStart, &start),
+        "SubagentStart",
+    );
+    assert!(
+        text.contains("Q-0002") && text.contains("spawn height?"),
+        "{text}"
+    );
+    assert!(text.contains("from agent:qa-playtester#1"), "{text}");
+    assert!(
+        text.contains("Q-0001") && text.contains("stone; T-0004 has the texture"),
+        "answers to my role's questions: {text}"
+    );
+    assert!(!text.contains("Q-0003"), "{text}");
+    assert!(text.contains("studio_answer"), "says how to answer: {text}");
+
+    // Answers are delivered once per role; open questions stay listed until answered.
+    let again = context(
+        &run(root, HookEvent::SubagentStart, &start),
+        "SubagentStart",
+    );
+    assert!(!again.contains("stone; T-0004"), "{again}");
+    assert!(again.contains("Q-0002"), "{again}");
+}
+
+#[test]
+fn post_tool_use_on_agent_returns_new_questions_to_the_director() {
+    let dir = project();
+    let root = dir.path();
+    record(
+        root,
+        "agent:level-designer#1",
+        asked("Q-0001", "tech-artist", "metal or stone floor?"),
+    );
+    let text = context(
+        &run(root, HookEvent::PostToolUse, &agent_returned()),
+        "PostToolUse",
+    );
+    assert!(
+        text.contains("Q-0001") && text.contains("metal or stone floor?"),
+        "{text}"
+    );
+    assert!(
+        text.contains("agent:level-designer#1") && text.contains("tech-artist"),
+        "{text}"
+    );
+    assert!(
+        text.contains("studio_escalate"),
+        "says how to route: {text}"
+    );
+
+    // Next turn: only what changed since.
+    record(root, "agent:tech-artist#1", answered("Q-0001", "stone"));
+    record(
+        root,
+        "agent:qa-playtester#1",
+        asked("Q-0002", "director", "retest T-0001?"),
+    );
+    let next = context(
+        &run(root, HookEvent::PostToolUse, &agent_returned()),
+        "PostToolUse",
+    );
+    assert!(
+        next.contains("Q-0002") && next.contains("Q-0001") && next.contains("stone"),
+        "{next}"
+    );
+    assert!(
+        !next.contains("metal or stone floor?"),
+        "already seen: {next}"
+    );
+    let quiet = run(root, HookEvent::PostToolUse, &agent_returned());
+    assert!(
+        quiet.stdout.is_empty(),
+        "nothing new, no context: {}",
+        quiet.stdout
+    );
+}
+
+#[test]
+fn post_tool_use_on_agent_says_nothing_to_a_subagent() {
+    let dir = project();
+    let root = dir.path();
+    record(
+        root,
+        "agent:level-designer#1",
+        asked("Q-0001", "director", "go?"),
+    );
+    let mut input = agent_returned();
+    input["agent_type"] = json!("level-designer");
+    input["agent_id"] = json!("a-1");
+    assert!(run(root, HookEvent::PostToolUse, &input).stdout.is_empty());
+}
+
+#[test]
+fn user_prompt_submit_injects_new_human_answers() {
+    let dir = project();
+    let root = dir.path();
+    record(
+        root,
+        "agent:level-designer#1",
+        asked("Q-0001", "director", "arena size?"),
+    );
+    record(
+        root,
+        "agent:director#1",
+        concordia_studio::JournalEvent::QuestionEscalated {
+            question: "Q-0001".into(),
+            reason: "design call".into(),
+        },
+    );
+    let mut prompt = base("UserPromptSubmit", None);
+    prompt["prompt"] = json!("carry on");
+    let first = run(root, HookEvent::UserPromptSubmit, &prompt);
+    assert!(first.stdout.is_empty() || !context(&first, "UserPromptSubmit").contains("40 m"));
+
+    record(root, "human:local", answered("Q-0001", "40 m square"));
+    let text = context(
+        &run(root, HookEvent::UserPromptSubmit, &prompt),
+        "UserPromptSubmit",
+    );
+    assert!(
+        text.contains("Q-0001") && text.contains("40 m square"),
+        "{text}"
+    );
+    assert!(text.contains("human:local"), "{text}");
+    let again = run(root, HookEvent::UserPromptSubmit, &prompt);
+    assert!(again.stdout.is_empty(), "delivered once: {}", again.stdout);
+    assert_eq!(
+        HookEvent::from_cli("user-prompt-submit"),
+        Some(HookEvent::UserPromptSubmit)
+    );
+}

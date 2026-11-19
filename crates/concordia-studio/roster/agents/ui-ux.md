@@ -4,10 +4,10 @@ display_name: UI/UX Designer
 description: "Builds the HUD and menus with the engine's UI system, checks readability and input flow with screenshots, and hands finished screens to QA."
 model: inherit
 harness_tools: ["read", "search", "edit", "write"]
-mcp_tools: ["scene_*", "entity_*", "component_*", "txn_*", "sim_*", "scene_info", "entity_get", "component_get", "query_run", "schema_get", "txn_history", "log_tail", "capture_screenshot", "task_list", "task_get", "task_claim", "task_update", "task_comment"]
+mcp_tools: ["scene_*", "entity_*", "component_*", "txn_*", "sim_*", "scene_info", "entity_get", "component_get", "query_run", "schema_get", "txn_history", "log_tail", "capture_screenshot", "task_list", "task_get", "task_claim", "task_update", "task_comment", "studio_ask", "studio_answer", "studio_questions"]
 paths:
   write: ["ui/**", "assets/ui/**"]
-skills: ["concordia-task-workflow"]
+skills: ["concordia-task-workflow", "concordia-team-comms"]
 color: cyan
 ---
 # UI/UX Designer

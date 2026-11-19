@@ -78,6 +78,35 @@ pub enum JournalEvent {
         #[serde(default)]
         changed: Vec<String>,
     },
+    /// A team member asked a question (ADR-0081).
+    QuestionAsked {
+        /// Question id (`Q-0001`).
+        question: String,
+        /// Addressee: a role id or `human`.
+        to: String,
+        /// The question.
+        text: String,
+        /// The task it is about.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        task: Option<String>,
+        /// Related ids (tasks, questions).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        refs: Vec<String>,
+    },
+    /// A question was answered (the first answer closes it).
+    QuestionAnswered {
+        /// Question id.
+        question: String,
+        /// The answer.
+        text: String,
+    },
+    /// The director escalated a question to the human.
+    QuestionEscalated {
+        /// Question id.
+        question: String,
+        /// Why no one on the team can answer.
+        reason: String,
+    },
 }
 
 impl JournalEvent {
@@ -88,7 +117,11 @@ impl JournalEvent {
             | Self::TaskChanged { task, .. }
             | Self::TaskComment { task, .. }
             | Self::TaskReview { task, .. } => Some(task),
-            Self::FileEdit { .. } | Self::Sync { .. } => None,
+            Self::QuestionAsked { task, .. } => task.as_deref(),
+            Self::FileEdit { .. }
+            | Self::Sync { .. }
+            | Self::QuestionAnswered { .. }
+            | Self::QuestionEscalated { .. } => None,
         }
     }
 
@@ -101,6 +134,9 @@ impl JournalEvent {
             Self::TaskReview { .. } => "task_review",
             Self::FileEdit { .. } => "file_edit",
             Self::Sync { .. } => "sync",
+            Self::QuestionAsked { .. } => "question_asked",
+            Self::QuestionAnswered { .. } => "question_answered",
+            Self::QuestionEscalated { .. } => "question_escalated",
         }
     }
 }

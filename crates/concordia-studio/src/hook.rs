@@ -28,6 +28,8 @@ pub enum HookEvent {
     SubagentStop,
     /// The session ended: release every slot it held (the main session gets no SubagentStop).
     SessionEnd,
+    /// The human sent a prompt: give the director new human answers.
+    UserPromptSubmit,
 }
 
 impl HookEvent {
@@ -39,6 +41,7 @@ impl HookEvent {
             "subagent-start" => Some(Self::SubagentStart),
             "subagent-stop" => Some(Self::SubagentStop),
             "session-end" => Some(Self::SessionEnd),
+            "user-prompt-submit" => Some(Self::UserPromptSubmit),
             _ => None,
         }
     }
@@ -58,6 +61,8 @@ pub struct HookOutcome {
 /// The engine MCP server's tool prefix.
 const ENGINE_TOOLS: &str = "mcp__concordia__";
 const FILE_TOOLS: [&str; 4] = ["Edit", "Write", "MultiEdit", "NotebookEdit"];
+/// The subagent tool (`Task` is its older name).
+const AGENT_TOOLS: [&str; 2] = ["Agent", "Task"];
 
 /// The documented hook input fields Studio uses (others are ignored).
 #[derive(Debug, Deserialize)]
@@ -99,6 +104,7 @@ pub fn run(event: HookEvent, input: &str, root: &Path) -> HookOutcome {
         HookEvent::SubagentStop => {
             subagent_stop(&input, root).unwrap_or_else(|e| failure(event, e))
         }
+        HookEvent::UserPromptSubmit => user_prompt_submit(&input, root),
         HookEvent::SessionEnd => Slots::of_project(root)
             .release_session(&input.session_id)
             .map(|()| HookOutcome::default())
@@ -230,6 +236,9 @@ fn remember_before(root: &Path, tool_use_id: Option<&str>, relative: &str) {
 
 fn post_tool_use(input: &Input, root: &Path) -> Result<HookOutcome, String> {
     let tool = input.tool_name.as_deref().unwrap_or_default();
+    if AGENT_TOOLS.contains(&tool) {
+        return agent_returned(input, root);
+    }
     let tool_input = input.tool_input.clone().unwrap_or_default();
     let (true, Some(path)) = (FILE_TOOLS.contains(&tool), file_path(&tool_input)) else {
         return Ok(HookOutcome::default());
@@ -250,6 +259,43 @@ fn post_tool_use(input: &Input, root: &Path) -> Result<HookOutcome, String> {
         .append(&actor, event)
         .map_err(|e| e.to_string())?;
     Ok(HookOutcome::default())
+}
+
+/// A subagent returned to the main session: give the director the team questions since its last turn.
+fn agent_returned(input: &Input, root: &Path) -> Result<HookOutcome, String> {
+    if !is_main_session(input) {
+        return Ok(HookOutcome::default());
+    }
+    let context = crate::team_context::for_director(root, &input.session_id)?;
+    Ok(context.map_or_else(HookOutcome::default, |text| {
+        with_context("PostToolUse", &text)
+    }))
+}
+
+/// The human sent a prompt: give an interactive director the human answers since its last prompt.
+fn user_prompt_submit(input: &Input, root: &Path) -> HookOutcome {
+    if !is_main_session(input) {
+        return HookOutcome::default();
+    }
+    match crate::team_context::human_answers(root, &input.session_id) {
+        Ok(Some(text)) => with_context("UserPromptSubmit", &text),
+        Ok(None) => HookOutcome::default(),
+        Err(e) => failure(HookEvent::UserPromptSubmit, e),
+    }
+}
+
+/// True for the main session (the director), which has no `agent_type`.
+fn is_main_session(input: &Input) -> bool {
+    input.agent_type.as_deref().is_none_or(str::is_empty)
+}
+
+/// Hook output that adds `text` to the model's context.
+fn with_context(event: &str, text: &str) -> HookOutcome {
+    let out = json!({"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}});
+    HookOutcome {
+        stdout: out.to_string(),
+        ..HookOutcome::default()
+    }
 }
 
 fn take_before(root: &Path, tool_use_id: Option<&str>) -> Option<String> {
@@ -297,11 +343,7 @@ fn subagent_start(input: &Input, root: &Path) -> HookOutcome {
         Ok(policy) => start_context(&policy, &caller(input, &policy), root),
         Err(_) => return HookOutcome::default(),
     };
-    let out = json!({"hookSpecificOutput": {"hookEventName": "SubagentStart", "additionalContext": context}});
-    HookOutcome {
-        stdout: out.to_string(),
-        ..HookOutcome::default()
-    }
+    with_context("SubagentStart", &context)
 }
 
 fn start_context(policy: &Policy, caller: &Caller, root: &Path) -> String {
@@ -316,8 +358,13 @@ fn start_context(policy: &Policy, caller: &Caller, root: &Path) -> String {
         true => "No open tasks for your role yet.".to_owned(),
         false => format!("Open tasks for your role:\n{}", tasks.join("\n")),
     };
+    let questions = crate::team_context::for_role(root, role).unwrap_or_default();
+    let questions = match questions.is_empty() {
+        true => String::new(),
+        false => format!("\n{questions}"),
+    };
     format!(
-        "Agent Studio: you act as agent:{role} (the engine numbers your instance on your first engine call). Change the game only through your mcp__concordia__* tools; every change is recorded under your actor.\n{tasks}"
+        "Agent Studio: you act as agent:{role} (the engine numbers your instance on your first engine call). Change the game only through your mcp__concordia__* tools; every change is recorded under your actor.\n{tasks}{questions}"
     )
 }
 

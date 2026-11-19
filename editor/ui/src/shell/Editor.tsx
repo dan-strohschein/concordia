@@ -1,13 +1,15 @@
 // The editor window, laid out like Godot 4 (docs/design/editor-ux.md): menu bar with run controls,
 // Scene + FileSystem docks on the left, the viewport in the center, the Inspector on the right and
 // the Output panel at the bottom, plus the Agent Activity dock under the Inspector. Shortcuts follow Godot.
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Activity } from "../activity/Activity";
 import { EDITOR_ACTOR, type EditorSession } from "../engine/session";
 import { FileSystem } from "../files/FileSystem";
 import { Inspector } from "../inspector/Inspector";
 import { Outliner } from "../outliner/Outliner";
+import { EscalationBadge, TeamDesk } from "../questions/TeamQuestions";
+import { useTeamQuestions } from "../questions/questions";
 import { Output } from "../output/Output";
 import { isNative } from "../viewport/native";
 import { Viewport } from "../viewport/Viewport";
@@ -24,6 +26,8 @@ export function Editor({ session }: { session: EditorSession }) {
   const scene = useSceneMenu(session);
   const [shown, setShown] = useState<DockSet>(ALL_DOCKS);
   const [grid, setGrid] = useState(true);
+  const team = useTeamQuestions(session);
+  const revealQuestions = useCallback(() => setShown((s) => ({ ...s, "Team Questions": true })), []);
   const layout = windowGrid(shown);
   const act = (method: string, params: Record<string, unknown> = {}) =>
     void session.call(method, { ...params, actor: EDITOR_ACTOR });
@@ -49,7 +53,11 @@ export function Editor({ session }: { session: EditorSession }) {
   const viewMenu: Menu = {
     label: "View",
     items: [
-      ...DOCKS.map((d) => ({ label: d, checked: shown[d], run: () => setShown((s) => ({ ...s, [d]: !s[d] })) })),
+      ...DOCKS.filter((d) => d !== "Team Questions" || team.teamMode).map((d) => ({
+        label: d,
+        checked: shown[d],
+        run: () => setShown((s) => ({ ...s, [d]: !s[d] })),
+      })),
       "separator",
       { label: "Grid", checked: grid, run: () => setGrid((g) => !g) },
     ],
@@ -87,7 +95,10 @@ export function Editor({ session }: { session: EditorSession }) {
             ...["Project", "Debug", "Editor", "Help"].map((label) => ({ label, items: [] })),
           ]}
         />
-        <span style={{ flex: 1, textAlign: "center", fontWeight: 600 }}>3D</span>
+        <span style={{ flex: 1, textAlign: "center", fontWeight: 600 }}>
+          3D
+          <EscalationBadge team={team} />
+        </span>
         {scene.error !== undefined && (
           <span role="alert" style={{ color: "#e88", maxWidth: 400, overflow: "hidden", textOverflow: "ellipsis" }}>
             {scene.error}
@@ -148,6 +159,7 @@ export function Editor({ session }: { session: EditorSession }) {
             <Activity session={session} onSelect={setSelected} />
           </section>
         )}
+        <TeamDesk session={session} team={team} shown={shown["Team Questions"]} onReveal={revealQuestions} />
       </div>
       {shown.Output && (
         <footer style={{ gridColumn: "1 / 4", ...dock, borderTop: "1px solid #111" }} aria-label="Output panel">

@@ -66,6 +66,21 @@ expression: "read(dir.path(), \".claude/settings.json\")"
           }
         ],
         "matcher": "Edit|Write|NotebookEdit"
+      },
+      {
+        "hooks": [
+          {
+            "args": [
+              "studio",
+              "hook",
+              "post-tool-use"
+            ],
+            "command": "concordia",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "Agent"
       }
     ],
     "SubagentStart": [
@@ -108,6 +123,22 @@ expression: "read(dir.path(), \".claude/settings.json\")"
               "studio",
               "hook",
               "session-end"
+            ],
+            "command": "concordia",
+            "timeout": 5,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "args": [
+              "studio",
+              "hook",
+              "user-prompt-submit"
             ],
             "command": "concordia",
             "timeout": 5,

@@ -15,6 +15,7 @@ mod journal;
 mod methods;
 mod module;
 mod policy;
+mod question_methods;
 mod role;
 mod roster;
 mod scope;
@@ -22,6 +23,7 @@ mod skill;
 mod slots;
 mod task;
 mod team;
+mod team_context;
 
 pub use claude_code::{
     CLAUDE_AGENT_FIELDS, CLAUDE_SKILL_FIELDS, FileChange, SyncAction, SyncOptions, SyncReport, sync,
@@ -44,7 +46,8 @@ pub use scope::{ToolCatalog, check_project_pattern};
 pub use skill::SkillFile;
 pub use slots::Slots;
 pub use task::{
-    Acceptance, BoardError, LOCAL_HUMAN, NewTask, Priority, Task, TaskBoard, TaskEdit, TaskId,
-    TaskMeta, TaskStatus, TaskStore, can_move, next_statuses,
+    Acceptance, BoardError, LOCAL_HUMAN, NewQuestion, NewTask, Priority, Question, QuestionAnswer,
+    QuestionEscalation, QuestionStatus, Task, TaskBoard, TaskEdit, TaskId, TaskMeta, TaskStatus,
+    TaskStore, can_move, next_statuses,
 };
 pub use team::{Budgets, Concurrency, Escalation, RoleOverride, Team, TeamPaths, TeamSection};
