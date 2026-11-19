@@ -488,7 +488,7 @@ Scene(
                         fov_y: 0.9,
                         near: 0.1,
                     ),
-                    tonemap: Neutral,
+                    tonemap: AgX,
                 ),
                 "Name": "Camera",
                 "Transform": (
@@ -504,10 +504,20 @@ Scene(
                 "DirectionalLight": (
                     color: (1.0, 0.96, 0.9),
                     illuminance_lux: 100000.0,
+                    shadows: Some((
+                        cascades: 3,
+                        depth_bias: 0.02,
+                        max_distance: 40.0,
+                        normal_bias: 1.5,
+                        pcf: X3,
+                        resolution: 2048,
+                        split_lambda: 0.75,
+                        stabilize: true,
+                    )),
                 ),
                 "Name": "Sun",
                 "Transform": (
-                    rotation: (-0.561583, 0.224633, 0.0, 0.796344),
+                    rotation: (-0.429612, -0.343689, -0.0, 0.835052),
                     scale: (1.0, 1.0, 1.0),
                     translation: (0.0, 10.0, 0.0),
                 ),

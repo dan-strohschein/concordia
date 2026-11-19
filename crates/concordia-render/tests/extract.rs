@@ -40,6 +40,10 @@ fn extract_collects_draws_lights_and_cameras_with_world_transforms() {
     world.get_mut::<Transform>(sun).unwrap().rotation =
         Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2);
     world.insert(sun, DirectionalLight::default()).unwrap();
+    assert!(
+        DirectionalLight::default().shadows.is_none(),
+        "shadows are opt-in"
+    );
     let cam = at(&mut world, &mut ids, Vec3::new(0.0, 0.0, 10.0));
     world.insert(cam, Camera::default()).unwrap();
 
@@ -127,4 +131,59 @@ fn render_components_register_with_schemas() {
     for name in ["Camera", "DirectionalLight"] {
         assert!(registry.schema_for(name).is_some(), "{name}");
     }
+}
+
+#[test]
+fn point_and_spot_lights_are_extracted_in_world_space() {
+    use concordia_render::{PointLight, PunctualKind, SpotLight};
+    let (mut world, mut ids) = (World::new(), DeterministicIdGen::new(5));
+    let lamp = at(&mut world, &mut ids, Vec3::new(1.0, 2.0, 3.0));
+    world
+        .insert(
+            lamp,
+            PointLight {
+                range: 7.0,
+                ..PointLight::default()
+            },
+        )
+        .unwrap();
+    let spot = at(&mut world, &mut ids, Vec3::new(0.0, 5.0, 0.0));
+    world.get_mut::<Transform>(spot).unwrap().rotation =
+        Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2);
+    world
+        .insert(
+            spot,
+            SpotLight {
+                inner_angle: 0.2,
+                outer_angle: 0.4,
+                ..SpotLight::default()
+            },
+        )
+        .unwrap();
+    let rw = RenderWorld::extract(&world);
+    assert_eq!(rw.punctual.len(), 2);
+    assert!(
+        rw.punctual[0]
+            .position
+            .abs_diff_eq(Vec3::new(1.0, 2.0, 3.0), 1e-6)
+            && rw.punctual[0].range == 7.0
+    );
+    assert!(matches!(rw.punctual[0].kind, PunctualKind::Point));
+    assert!(
+        rw.punctual[1].direction.abs_diff_eq(Vec3::NEG_Y, 1e-5),
+        "{}",
+        rw.punctual[1].direction
+    );
+    assert!(
+        matches!(rw.punctual[1].kind, PunctualKind::Spot { inner, outer } if inner == 0.2 && outer == 0.4)
+    );
+}
+
+#[test]
+fn light_components_register() {
+    let mut registry = concordia_reflect::TypeRegistry::new();
+    concordia_render::register_types(&mut registry).unwrap();
+    assert!(
+        registry.schema_for("PointLight").is_some() && registry.schema_for("SpotLight").is_some()
+    );
 }

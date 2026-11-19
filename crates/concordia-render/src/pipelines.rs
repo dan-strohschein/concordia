@@ -7,7 +7,7 @@ use concordia_rhi::{
     Backend, BlendMode, CompareOp, CullMode, DepthState, Device, Format, GraphicsPipelineDesc,
     Pipeline, SampleCount, ShaderSource,
 };
-use concordia_shaders::{CompileRequest, ShaderCompiler, Stage, Target};
+use concordia_shaders::{CompileRequest, ShaderCompiler, ShaderModule, Stage, Target};
 
 use crate::RenderError;
 
@@ -23,11 +23,39 @@ pub fn shader_dir() -> PathBuf {
     PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/shaders"))
 }
 
+/// Compiles one entry point of a render shader for the device's backend.
+pub(crate) fn compile(
+    device: &dyn Device,
+    compiler: &dyn ShaderCompiler,
+    file: &str,
+    entry: &str,
+    stage: Stage,
+) -> Result<ShaderModule, RenderError> {
+    let target = match device.caps().backend {
+        Backend::Metal => Target::Msl,
+        Backend::Vulkan => Target::SpirV,
+    };
+    let request = CompileRequest {
+        path: shader_dir().join(file),
+        entry: entry.into(),
+        stage,
+        target,
+        defines: Default::default(),
+        include_dirs: vec![concordia_shaders::builtin_dir()],
+    };
+    compiler
+        .compile(&request)
+        .map_err(|e| RenderError::Shader(e.to_string()))
+}
+
 /// Compiled shaders and lazily created pipelines.
 pub(crate) struct Pipelines {
     forward: (ShaderSource, ShaderSource),
     tonemap: Pipeline,
-    variants: BTreeMap<(u8, bool), Pipeline>,
+    shadow: Pipeline,
+    sky: (ShaderSource, ShaderSource),
+    skies: BTreeMap<u8, Pipeline>,
+    variants: BTreeMap<(u8, bool, bool), Pipeline>,
 }
 
 impl Pipelines {
@@ -35,25 +63,9 @@ impl Pipelines {
         device: &dyn Device,
         compiler: &dyn ShaderCompiler,
     ) -> Result<Self, RenderError> {
-        let target = match device.caps().backend {
-            Backend::Metal => Target::Msl,
-            Backend::Vulkan => Target::SpirV,
+        let compile = |file: &str, entry: &str, stage: Stage| {
+            compile(device, compiler, file, entry, stage).map(|m| m.source())
         };
-        let compile =
-            |file: &str, entry: &str, stage: Stage| -> Result<ShaderSource, RenderError> {
-                let request = CompileRequest {
-                    path: shader_dir().join(file),
-                    entry: entry.into(),
-                    stage,
-                    target,
-                    defines: Default::default(),
-                    include_dirs: vec![concordia_shaders::builtin_dir()],
-                };
-                compiler
-                    .compile(&request)
-                    .map(|m| m.source())
-                    .map_err(|e| RenderError::Shader(e.to_string()))
-            };
         let forward = (
             compile("forward.slang", "vs", Stage::Vertex)?,
             compile("forward.slang", "fs", Stage::Fragment)?,
@@ -68,9 +80,30 @@ impl Pipelines {
             blend: BlendMode::Opaque,
             label: "tonemap".into(),
         })?;
+        let shadow = device.create_graphics_pipeline(&GraphicsPipelineDesc {
+            vertex: compile("forward.slang", "shadow_vs", Stage::Vertex)?,
+            fragment: None,
+            color_formats: Vec::new(),
+            depth: Some(DepthState {
+                format: DEPTH,
+                compare: CompareOp::GreaterEqual,
+                write: true,
+            }),
+            samples: SampleCount::X1,
+            cull: CullMode::None,
+            blend: BlendMode::Opaque,
+            label: "shadow depth".into(),
+        })?;
+        let sky = (
+            compile("forward.slang", "sky_vs", Stage::Vertex)?,
+            compile("forward.slang", "sky_fs", Stage::Fragment)?,
+        );
         Ok(Self {
             forward,
             tonemap,
+            shadow,
+            sky,
+            skies: BTreeMap::new(),
             variants: BTreeMap::new(),
         })
     }
@@ -79,14 +112,48 @@ impl Pipelines {
         self.tonemap
     }
 
-    /// The forward pipeline for a sample count and face culling.
+    /// The skybox pipeline for a sample count (drawn first, no depth test or write).
+    pub(crate) fn sky(
+        &mut self,
+        device: &dyn Device,
+        samples: SampleCount,
+    ) -> Result<Pipeline, RenderError> {
+        if let Some(p) = self.skies.get(&samples.get()) {
+            return Ok(*p);
+        }
+        let pipeline = device.create_graphics_pipeline(&GraphicsPipelineDesc {
+            vertex: self.sky.0.clone(),
+            fragment: Some(self.sky.1.clone()),
+            color_formats: vec![HDR],
+            depth: Some(DepthState {
+                format: DEPTH,
+                compare: CompareOp::Always,
+                write: false,
+            }),
+            samples,
+            cull: CullMode::None,
+            blend: BlendMode::Opaque,
+            label: format!("sky x{}", samples.get()),
+        })?;
+        self.skies.insert(samples.get(), pipeline);
+        Ok(pipeline)
+    }
+
+    /// Depth-only pipeline for shadow casters.
+    pub(crate) fn shadow(&self) -> Pipeline {
+        self.shadow
+    }
+
+    /// The forward pipeline for a sample count, face culling and blending (premultiplied alpha,
+    /// no depth write).
     pub(crate) fn forward(
         &mut self,
         device: &dyn Device,
         samples: SampleCount,
         double_sided: bool,
+        blend: bool,
     ) -> Result<Pipeline, RenderError> {
-        let key = (samples.get(), double_sided);
+        let key = (samples.get(), double_sided, blend);
         if let Some(p) = self.variants.get(&key) {
             return Ok(*p);
         }
@@ -97,7 +164,7 @@ impl Pipelines {
             depth: Some(DepthState {
                 format: DEPTH,
                 compare: CompareOp::GreaterEqual,
-                write: true,
+                write: !blend,
             }),
             samples,
             cull: if double_sided {
@@ -105,15 +172,16 @@ impl Pipelines {
             } else {
                 CullMode::Back
             },
-            blend: BlendMode::Opaque,
+            blend: if blend {
+                BlendMode::PremultipliedAlpha
+            } else {
+                BlendMode::Opaque
+            },
             label: format!(
-                "forward x{} {}",
+                "forward x{}{}{}",
                 samples.get(),
-                if double_sided {
-                    "double-sided"
-                } else {
-                    "culled"
-                }
+                if double_sided { " double-sided" } else { "" },
+                if blend { " blended" } else { "" }
             ),
         })?;
         self.variants.insert(key, pipeline);

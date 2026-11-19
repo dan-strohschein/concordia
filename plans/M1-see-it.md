@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (phase 1.6; 1.0, 1.2a, 1.1, 1.7, 1.2b, 1.3, 1.4 and 1.5 done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (phase 1.8; 1.0, 1.2a, 1.1, 1.7, 1.2b, 1.3, 1.4, 1.5 and 1.6 done) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -153,6 +153,69 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 - the gate agent demo.
 
 **Installs needing approval:** cmake (1.7a), Slang into `target/` (1.3), the Tauri CLI (1.8), and git-lfs only if D5 changes.
+
+### Phase 1.6d: Transparency, glTF goldens, perf smoke (done)
+- **Transparency:**
+  - `AlphaMode::Blend` uses premultiplied alpha and no depth write, drawn after opaques back to front;
+  - the result doesn't depend on spawn order (tested);
+  - `Mask` cutoff is tested.
+- **glTF conformance goldens:**
+  - all eight listed models are imported, instantiated through the command log, framed by their bounds and lit by the HDRI plus a weak sun, at FLIP mean ≤ 0.02;
+  - each was checked by eye against what the model is designed to show (label orientation, identical left and right tangent-space shading, alpha cutoffs at 0.25/0.5/0.75, readable text on BoomBox);
+  - not compared side by side with Khronos screenshots: the author should do that in the PR review.
+- **Perf smoke:** `cargo bench -p concordia-render --bench many_lights` gives a median of 6.5 ms wall clock (CPU, submit and an 8 MB readback included) for 1,024 lights at 1080p ortho on the M3 Pro. GPU-only time isn't measured, since the RHI has no timestamp queries; adding them is follow-up work for checking the < 4 ms target.
+
+### Phase 1.6c: Image-based lighting (done)
+- **HDRI fixture:** Poly Haven "Kloofendal 48d Partly Cloudy (Pure Sky)", CC0 (author approved the download). Fetched via the Poly Haven API, MD5-verified, downsampled 2×2 in linear light to 512×256 flat RGBE (524 KB), and committed in `tests/fixtures/hdri/` with `LICENSE.md` (source, authors, changes, SHA-256).
+- **`ibl` module (CPU):**
+  - equirect mapping and SH9 irradiance (exact row solid angles over eight sub-bands; band terms of a uniform map < 1e-4);
+  - GGX prefiltering with filtered importance sampling (roughness 0 = source; energy conserved);
+  - the split-sum BRDF table at 4,096 samples, within 1e-3 of a 16k-sample reference (measured: 1,024 samples gives 4e-3, too coarse).
+- **`Environment` component:** diffuse from SH9, specular from two lerped levels with the BRDF table, and a skybox drawn first in the forward pass (works for ortho).
+- **Tests:** golden `pbr_spheres_ibl`, checked by eye (mirror metal reflects the sky the right way up); sky light reaches the sun-shadowed side; a missing map names its reference.
+- **Deviations from the plan:**
+  - Environments are equirect levels, not cubemaps: the RHI has no cube or array textures yet.
+  - Prefiltering runs on the CPU when an environment is first rendered and is cached per renderer, not computed on the GPU and stored in the DDC. It's deterministic and testable; moving it to the GPU and DDC is follow-up work if import time matters.
+  - `Environment` has a single `map` plus a `skybox` flag, rather than separate skybox and IBL references.
+  - The BRDF table uses Schlick-GGX visibility (k = α/2, as Karis), while direct lights use height-correlated Smith.
+  - Rough levels are stored at 1/4 of the source width and below; the BRDF table is built lazily, so renderers without environments don't pay for it.
+
+### Phase 1.6b: Cascaded shadows (done)
+- **Cascade fitting (`shadow` module, CPU-tested):**
+  - practical splits (exact formula);
+  - per-cascade bounding spheres (radius rounded to 1/16) snapped to the texel grid in a world-fixed light frame;
+  - light depth range covering every caster's bounds;
+  - tight bounds (all slice corners inside; area ≤ 1.5× the slice's sphere).
+- **GPU:**
+  - one persistent `Depth32Float` map per cascade, imported into the graph; a depth-only pipeline;
+  - filtered PCF (3×3 / 5×5) with constant, normal-offset and slope-scaled bias;
+  - golden `shadow_box_plane_iso` checked by eye; grazing-sun acne under 0.1%.
+- **The shimmer test was rewritten after it passed with stabilization off,** so it couldn't detect shimmer. It now uses coarse maps and a 1-level threshold, and requires 0-ish changes when stabilized and more than 5× that when not: measured 0 vs 923.
+- **Writing the tests caught:** acne from the PCF footprint, fixed with the slope-scaled bias.
+- **Test-scene fixes:** two golden scenes hid their own shadow; the sun was moved, not the checks.
+- **Example:** the stack scene's sun now casts shadows.
+- **Deviations from the plan:**
+  - Separate textures per cascade instead of an atlas (the RHI has no viewport command yet).
+  - Manual compares instead of hardware comparison samplers.
+  - No blending across cascade seams yet.
+  - `normal_bias` is in texels, `depth_bias` in world units.
+
+### Phase 1.6a: Tonemapping and clustered point/spot lights (done)
+- **Tonemappers:** AgX (default), Khronos PBR Neutral, ACES fitted and Linear, each with a CPU reference (`tonemap::apply`); a GPU test matches them within 1/255. AgX maps mid-grey 0.18 to sRGB 128.
+  - Plan-test corrections: PBR Neutral is checked as "offset identity" below the compression start (the spec subtracts a 0.04 toe offset, so it isn't a pure identity); the AgX mid-grey value is pinned from an independent computation rather than being circular.
+- **Lights:** `PointLight` / `SpotLight` components and extraction.
+- **Clustering:**
+  - a `ClusterGrid` with linear (ortho) or exponential (perspective) slices, snapshot-tested;
+  - a CPU reference `assign`, and a GPU `ClusterCuller` that matches it exactly for 1,024 random lights under both projections;
+  - overflow counted and reported through `Renderer::stats()`;
+  - an inverse-square check;
+  - goldens `many_lights_iso` (512 lights) and `spot_light_cone`, checked by eye.
+- **Deviations from the plan:**
+  - Fixed per-cluster slots replace the global atomic allocator: lists stay deterministic and ascending, and overflow is counted per cluster.
+  - Cluster AABBs and view-space light bounds are computed on the CPU and uploaded, so the GPU and the reference share geometry exactly.
+  - No depth prepass yet (a perf optimization, not needed for correctness).
+  - Cluster and light settings are fixed defaults (16×9×24, 4,096 lights, 128 per cluster) rather than a `RenderSettings` resource.
+  - The perf smoke benchmark runs with 1.6d.
 
 ### Phase 1.5b: Forward PBR, capture, MCP image (done)
 - **RHI additions:**
