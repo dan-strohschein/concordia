@@ -34,6 +34,12 @@ pub(crate) type Captured = Result<(Image, u64), RenderError>;
 
 enum Job {
     Present(ViewportFrame),
+    /// Present the latest scene again from another view (camera moves off the engine thread).
+    Redraw {
+        view: crate::View,
+        log: FrameLog,
+        id: u64,
+    },
     Capture {
         scene: SceneUpdate,
         request: RenderRequest,
@@ -105,6 +111,11 @@ impl RenderThread {
         answer.recv().map_err(|_| stopped())?
     }
 
+    /// A handle that asks this thread for redraws from any thread.
+    pub(crate) fn redrawer(&self) -> Redrawer {
+        Redrawer(self.jobs.clone())
+    }
+
     fn send(&self, job: Job) -> Result<(), RenderError> {
         self.jobs
             .as_ref()
@@ -122,6 +133,25 @@ impl Drop for RenderThread {
     }
 }
 
+/// Sends redraw requests to the render thread.
+#[derive(Clone)]
+pub(crate) struct Redrawer(Option<mpsc::Sender<Job>>);
+
+impl Redrawer {
+    /// Queues a redraw of the latest scene from `view`, logged as frame `id`.
+    pub(crate) fn redraw(
+        &self,
+        view: crate::View,
+        log: FrameLog,
+        id: u64,
+    ) -> Result<(), RenderError> {
+        self.0
+            .as_ref()
+            .and_then(|jobs| jobs.send(Job::Redraw { view, log, id }).ok())
+            .ok_or_else(stopped)
+    }
+}
+
 fn stopped() -> RenderError {
     RenderError::Gpu(RhiError::invalid(
         "render thread",
@@ -136,6 +166,8 @@ struct Worker {
     store: MemoryAssets,
     scenes: [RenderScene; 2],
     surface: Option<Surface>,
+    /// The latest viewport frame's scene and request, which redraws reuse.
+    last: Option<(SceneSlot, RenderRequest)>,
 }
 
 impl Worker {
@@ -145,6 +177,7 @@ impl Worker {
             store: MemoryAssets::default(),
             scenes: Default::default(),
             surface: None,
+            last: None,
         }
     }
 
@@ -169,6 +202,7 @@ impl Worker {
             Job::Present(mut frame) => {
                 // Every delta is applied, even for frames that will be skipped.
                 self.update(&mut frame.scene);
+                self.last = Some((frame.scene.slot, frame.request.clone()));
                 if let Some(stale) = latest {
                     remove_frame(&stale.log, stale.id);
                 }
@@ -184,6 +218,29 @@ impl Worker {
                 let image = self.renderer.render(world, &mut self.store, &request);
                 let _ = reply.send(image.map(|image| (image, self.renderer.frames())));
                 latest
+            }
+            Job::Redraw { view, log, id } => {
+                let Some((slot, mut request)) = self.last.clone() else {
+                    remove_frame(&log, id);
+                    return latest;
+                };
+                request.view = Some(view);
+                if let Some(stale) = latest {
+                    remove_frame(&stale.log, stale.id);
+                }
+                Some(ViewportFrame {
+                    scene: SceneUpdate {
+                        slot,
+                        delta: SceneDelta::Changes {
+                            upserts: Vec::new(),
+                            removed: Vec::new(),
+                        },
+                        assets: MemoryAssets::default(),
+                    },
+                    request,
+                    log,
+                    id,
+                })
             }
             Job::Attach { target, reply } => {
                 let _ = reply.send(self.attach(target));

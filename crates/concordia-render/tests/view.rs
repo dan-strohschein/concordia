@@ -481,3 +481,42 @@ fn viewport_gizmo_drags_an_entity_along_an_axis_as_one_undo_step() {
         "begin needs an entity"
     );
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn camera_moves_through_the_viewport_control_skip_the_engine_thread() {
+    let Some(mut h) = Harness::gpu() else { return };
+    h.two_cubes();
+    let layer = objc2_quartz_core::CAMetalLayer::new();
+    let target = concordia_rhi::SurfaceTarget::MetalLayer(std::ptr::NonNull::from(&*layer).cast());
+    // SAFETY: the layer outlives the engine (dropped after `h`).
+    unsafe { concordia_render::attach_surface(&mut h.engine, target) }.unwrap();
+    h.ok(
+        "viewport.present",
+        json!({"view": front_view(), "width": 64, "height": 48}),
+    );
+    wait_until_rendered(&mut h, 1);
+    h.ok("viewport.stats", json!({"clear": true}));
+    let control = concordia_render::viewport_control(&mut h.engine).unwrap();
+    // The engine is neither polled nor called while the control works.
+    let moved = std::thread::spawn(move || {
+        control
+            .navigate(&concordia_render::ViewportNavigateParams {
+                orbit: Some([25.0, 0.0]),
+                seq: Some(77),
+                ..Default::default()
+            })
+            .unwrap()
+    })
+    .join()
+    .unwrap();
+    wait_until_rendered(&mut h, 1);
+    let stats = h.ok("viewport.stats", json!({}));
+    assert_eq!(stats["frames"][0]["seq"], 77, "{stats}");
+    let engine_view = h.ok("viewport.navigate", json!({}))["view"].clone();
+    assert_eq!(
+        engine_view,
+        serde_json::to_value(moved).unwrap(),
+        "one camera"
+    );
+}

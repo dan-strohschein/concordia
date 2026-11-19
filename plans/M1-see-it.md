@@ -258,11 +258,11 @@ A review compared Concordia against Unreal's public architecture and audited our
 
 | # | Item | Status |
 |---|---|---|
-| 1 | Decoded assets cached in memory (no per-frame source reads or hashing); materials sent only when they change | |
-| 2 | Persistent render scene updated by deltas, not a full extract and transform pass per frame | |
-| 3 | Shallow presentation queue for the editor viewport (latency) | |
-| 4 | Engine-driven redraws during play; native gizmo drags | |
-| 5 | Camera moves skip the engine thread; read-only calls off the engine thread | |
+| 1 | Decoded assets cached in memory (no per-frame source reads or hashing); materials sent only when they change | done |
+| 2 | Persistent render scene updated by deltas, not a full extract and transform pass per frame | done: Terra change ticks; `SceneCache` → `RenderScene` |
+| 3 | Shallow presentation queue for the editor viewport (latency) | done: two drawables; one frame in flight on the render thread |
+| 4 | Engine-driven redraws during play; native gizmo drags | done: `after_sim`; `viewport.gizmo` |
+| 5 | Camera moves skip the engine thread; read-only calls off the engine thread | camera: done (`ViewportControl`). Concurrent reads: **deferred**; they need snapshot isolation in the API layer (an ADR), and camera moves no longer wait on the engine thread, so a slow read cannot stall the viewport |
 | 6 | Simulation paced by the display (no 16 ms sleep steps), interpolated drawing | |
 | 7 | Frustum culling, instancing | |
 | 8 | Persistent per-frame buffers and pooled textures | |

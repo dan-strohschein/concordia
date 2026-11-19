@@ -79,6 +79,13 @@ fn navigation_worker(
     let Ok(human) = host.session_as("human:local") else {
         return eprintln!("concordia-editor: native input has no engine session");
     };
+    let control = host
+        .runtime()
+        .block_on(host.handle().run(concordia_render::viewport_control));
+    let control = match control {
+        Ok(Ok(control)) => control,
+        Ok(Err(e)) | Err(e) => return eprintln!("concordia-editor: native input: {}", e.message),
+    };
     let mut seq = NATIVE_SEQ_BASE;
     let mut pending: Option<(Action, f64)> = None;
     loop {
@@ -106,7 +113,7 @@ fn navigation_worker(
         seq += 1;
         let input_time_ms = concordia_editor::native::uptime_to_unix_ms(earliest);
         match action {
-            Action::Nav(nav) => navigate(host, shell, app, nav, seq, input_time_ms),
+            Action::Nav(nav) => navigate(&control, shell, app, nav, seq, input_time_ms),
             Action::Gizmo(step) => gizmo(&human, shell, step, seq, input_time_ms),
         }
     }
@@ -130,7 +137,7 @@ fn merge(
 
 #[cfg(target_os = "macos")]
 fn navigate(
-    host: &EngineHost,
+    control: &concordia_render::ViewportControl,
     shell: &Shell,
     app: &tauri::AppHandle,
     nav: concordia_editor::input::Nav,
@@ -148,15 +155,12 @@ fn navigate(
         input_time_ms: Some(input_time_ms),
         ..Default::default()
     };
-    let moved = host.runtime().block_on(
-        host.handle()
-            .run(move |engine| concordia_render::navigate(engine, &params)),
-    );
-    match moved {
-        Ok(Ok(view)) => {
+    // Straight to the render thread: a busy engine thread never delays the camera.
+    match control.navigate(&params) {
+        Ok(view) => {
             let _ = app.emit("viewport-view", view);
         }
-        Ok(Err(e)) | Err(e) => eprintln!("concordia-editor: navigation: {}", e.message),
+        Err(e) => eprintln!("concordia-editor: navigation: {}", e.message),
     }
 }
 

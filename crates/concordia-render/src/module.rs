@@ -58,9 +58,9 @@ pub(crate) struct RenderState {
     scenes: [SceneCache; 2],
     /// Recent native-viewport frames (for `viewport.stats`), keyed by frame number.
     frames: FrameLog,
-    next_frame: u64,
+    next_frame: Arc<std::sync::atomic::AtomicU64>,
     /// The editor's camera (`viewport.navigate`).
-    pub(crate) camera: OrbitCamera,
+    pub(crate) camera: SharedCamera,
     /// The native viewport's last size and world, so navigation can re-present it.
     pub(crate) viewport: Option<(u32, u32, Option<WorldSel>)>,
     /// The gizmo drag in progress (`viewport.gizmo`).
@@ -120,8 +120,8 @@ impl EngineModule for RenderModule {
             shipped: BTreeSet::new(),
             scenes: Default::default(),
             frames: FrameLog::default(),
-            next_frame: 0,
-            camera: OrbitCamera::default(),
+            next_frame: Arc::default(),
+            camera: SharedCamera::default(),
             viewport: None,
             gizmo: None,
         }))
@@ -599,7 +599,10 @@ fn queue_record(engine: &mut Engine, p: &PresentTarget) -> (FrameLog, u64) {
     let Some(state) = engine.state_mut::<RenderState>() else {
         return (FrameLog::default(), 0);
     };
-    state.next_frame += 1;
+    let id = state
+        .next_frame
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        + 1;
     let record = FrameRecord {
         seq: p.seq,
         input_time_ms: p.input_time_ms,
@@ -608,8 +611,8 @@ fn queue_record(engine: &mut Engine, p: &PresentTarget) -> (FrameLog, u64) {
         submitted_ms: None,
         presented_ms: None,
     };
-    push_frame(&state.frames, state.next_frame, record);
-    (state.frames.clone(), state.next_frame)
+    push_frame(&state.frames, id, record);
+    (state.frames.clone(), id)
 }
 
 /// Recent native-viewport frames: input tag, CPU time, submission and display times.
@@ -724,40 +727,10 @@ impl Method for ViewportNavigate {
 /// Applies `p` to the editor camera, redraws the native viewport if one is attached, and returns
 /// the new view (for in-process hosts' native input, and `viewport.navigate`).
 pub fn navigate(engine: &mut Engine, p: &ViewportNavigateParams) -> Result<crate::View, ApiError> {
-    let pan_height = match (p.pan, p.height) {
-        (Some(_), Some(h)) if h.is_finite() && h >= 1.0 => h,
-        (Some(_), _) => {
-            return Err(ApiError::new(
-                ApiErrorKind::InvalidParams,
-                "pan needs the viewport height in pixels (≥ 1)",
-            )
-            .at("/height"));
-        }
-        _ => 1.0,
-    };
     let state = engine
         .state_mut::<RenderState>()
         .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render module has no state"))?;
-    let camera = &mut state.camera;
-    if let Some(preset) = p.preset {
-        camera.preset(preset);
-    }
-    if p.toggle_ortho == Some(true) {
-        camera.ortho = !camera.ortho;
-    }
-    if let Some(point) = p.focus.filter(|v| v.is_finite()) {
-        camera.target = point;
-    }
-    if let Some([dx, dy]) = p.orbit {
-        camera.orbit(dx, dy);
-    }
-    if let Some([dx, dy]) = p.pan {
-        camera.pan(dx, dy, pan_height);
-    }
-    if let Some(steps) = p.zoom {
-        camera.zoom(steps);
-    }
-    let view = camera.view();
+    let view = state.camera.apply(p)?;
     let redraw = state.surface.then_some(state.viewport).flatten();
     if let Some((width, height, world)) = redraw {
         let target = PresentTarget {
@@ -770,4 +743,112 @@ pub fn navigate(engine: &mut Engine, p: &ViewportNavigateParams) -> Result<crate
         queue_present(engine, view.clone(), target)?;
     }
     Ok(view)
+}
+
+/// The editor camera, shared with [`ViewportControl`] (which moves it off the engine thread).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SharedCamera(Arc<std::sync::Mutex<OrbitCamera>>);
+
+impl SharedCamera {
+    /// The current view.
+    pub(crate) fn view(&self) -> crate::View {
+        self.0
+            .lock()
+            .map(|c| c.view())
+            .unwrap_or_else(|e| e.into_inner().view())
+    }
+
+    /// Applies a navigation (in order: preset, toggle_ortho, focus, orbit, pan, zoom).
+    fn apply(&self, p: &ViewportNavigateParams) -> Result<crate::View, ApiError> {
+        let pan_height = match (p.pan, p.height) {
+            (Some(_), Some(h)) if h.is_finite() && h >= 1.0 => h,
+            (Some(_), _) => {
+                return Err(ApiError::new(
+                    ApiErrorKind::InvalidParams,
+                    "pan needs the viewport height in pixels (≥ 1)",
+                )
+                .at("/height"));
+            }
+            _ => 1.0,
+        };
+        let mut camera = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(preset) = p.preset {
+            camera.preset(preset);
+        }
+        if p.toggle_ortho == Some(true) {
+            camera.ortho = !camera.ortho;
+        }
+        if let Some(point) = p.focus.filter(|v| v.is_finite()) {
+            camera.target = point;
+        }
+        if let Some([dx, dy]) = p.orbit {
+            camera.orbit(dx, dy);
+        }
+        if let Some([dx, dy]) = p.pan {
+            camera.pan(dx, dy, pan_height);
+        }
+        if let Some(steps) = p.zoom {
+            camera.zoom(steps);
+        }
+        Ok(camera.view())
+    }
+}
+
+/// Moves the editor camera and redraws the native viewport without the engine thread, so a busy
+/// engine (a long agent query, a big transaction) never delays navigation. The render thread
+/// redraws its latest scene; world changes still arrive through the engine as usual.
+#[derive(Clone)]
+pub struct ViewportControl {
+    camera: SharedCamera,
+    redraw: crate::thread::Redrawer,
+    frames: FrameLog,
+    next_frame: Arc<std::sync::atomic::AtomicU64>,
+}
+
+impl std::fmt::Debug for ViewportControl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ViewportControl").finish_non_exhaustive()
+    }
+}
+
+impl ViewportControl {
+    /// Like `viewport.navigate`, from any thread.
+    pub fn navigate(&self, p: &ViewportNavigateParams) -> Result<crate::View, ApiError> {
+        let view = self.camera.apply(p)?;
+        let id = self
+            .next_frame
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            + 1;
+        let record = FrameRecord {
+            seq: p.seq,
+            input_time_ms: p.input_time_ms,
+            queued_ms: unix_ms(std::time::SystemTime::now()),
+            cpu_ms: 0.0,
+            submitted_ms: None,
+            presented_ms: None,
+        };
+        push_frame(&self.frames, id, record);
+        if self
+            .redraw
+            .redraw(view.clone(), self.frames.clone(), id)
+            .is_err()
+        {
+            remove_frame(&self.frames, id);
+        }
+        Ok(view)
+    }
+}
+
+/// The engine's [`ViewportControl`] (starting the render thread if needed).
+pub fn viewport_control(engine: &mut Engine) -> Result<ViewportControl, ApiError> {
+    let redraw = render_thread(engine)?.redrawer();
+    let state = engine
+        .state::<RenderState>()
+        .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render module has no state"))?;
+    Ok(ViewportControl {
+        camera: state.camera.clone(),
+        redraw,
+        frames: state.frames.clone(),
+        next_frame: state.next_frame.clone(),
+    })
 }

@@ -39,7 +39,8 @@ pub use frame::DrawPush;
 pub use lighting::candela;
 pub use module::{
     CaptureScreenshot, CaptureScreenshotParams, CaptureScreenshotResult, DeviceFactory,
-    RenderModule, ViewportNavigateParams, attach_surface, navigate,
+    RenderModule, ViewportControl, ViewportNavigateParams, attach_surface, navigate,
+    viewport_control,
 };
 pub use orbit::{OrbitCamera, Preset};
 pub use pipelines::shader_dir;
