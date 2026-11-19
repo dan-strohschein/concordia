@@ -16,7 +16,7 @@ The Concordia editor (ADR-0004, ADR-0043): React panels in a Tauri v2 shell arou
 - **The inspector is schema-driven** (`src/inspector/widgets.ts`); unknown shapes fall back to a JSON editor and never crash.
 
 ## Rules (ADR-0047)
-- **The viewport belongs to the engine:** input, camera, picking, gizmo drags and (from phase 1.9g) everything drawn in the viewport. Never draw over the viewport from the page.
+- **The viewport belongs to the engine:** input, camera, picking, gizmo drags and everything drawn in it (selection, gizmo, grid: `viewport.overlays`). Never draw over the viewport from the page.
 - **Panels are thin:** they show engine state and send Engine API calls. Behaviour that more than one panel or client needs goes into the engine behind a method, not into TypeScript.
 
 ## Native viewport coordinates

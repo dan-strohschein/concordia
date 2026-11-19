@@ -253,31 +253,28 @@ Reconciled with M0 as built (`main` @ 0f4621a) and with dependency versions chec
 - **The outliner** rebuilds and sorts the whole 10k-entity tree on every change.
 
 
-### Phase 1.9g: Viewport overlays drawn by the engine (next; ADR-0047)
-**Goal.** Everything inside the 3D viewport is drawn by the engine, at the viewport's own rate. Page-drawn overlays (today the Move gizmo's SVG) trail a 120 Hz viewport, because the page draws at 60 Hz. This also leaves the viewport identical under any future UI technology.
+### Phase 1.9g: Viewport overlays drawn by the engine (done; ADR-0047)
+**Goal.** Everything inside the 3D viewport is drawn by the engine, at the viewport's own rate, so nothing the page draws trails a 120 Hz viewport, and the viewport looks the same under any future UI technology.
 
-**Scope:**
-- **An editor-overlay pass in the render graph,** after tonemapping, drawn into the native viewport and into captures (`capture.screenshot {overlays: true}`, so agents can see the selection and gizmo when they want to):
-  - an infinite ground grid (Godot-style);
-  - selection outlines;
-  - the Move gizmo: axis arrows with a hover highlight, at a constant screen size.
-- **Overlay state in the engine,** set by `viewport.overlays {selection, gizmo: {entity, tool} | null, grid}`. The page tells the engine what's selected and which tool is active; it draws nothing in the viewport.
-- **Gizmo hit-testing in the engine.**
-  - `viewport.gizmo {action: "begin", x, y}` finds the handle under the pointer; begin no longer takes an axis from the page.
-  - Native input asks `ViewportControl` for the handles of the current view, synchronously, so a left press is consumed only when it hits one.
-  - The page's handle reporting (`gizmo_handles`) and `Gizmo.tsx`'s drawing are removed.
-- **Browser mode** gets the same overlays through the streamed capture.
+**Built:**
+- **`Overlays` on `RenderRequest`** (selection, the Move gizmo with hover, grid, scale).
+  - Selection bounds and gizmo arrows are screen-space triangles drawn in the tonemap pass, from the frame's own `view_proj` (`overlay.slang`).
+  - The grid is a depth-tested quad on y = 0 in the forward pass: antialiased unit and decade lines, red X and blue Z axes, fading with distance.
+- **`viewport.overlays`** sets what is drawn; the native viewport redraws. `capture.screenshot {overlays: true}` includes overlays, and the browser editor's stream uses that.
+- **Handle geometry and hit-testing have one source** (`gizmo_handles`, `gizmo_hit`, ported from the UI):
+  - `viewport.gizmo` begin without an axis hit-tests the shown gizmo; a miss starts nothing.
+  - `ViewportControl::gizmo_hit` gives native input a synchronous test against a shared gizmo anchor.
+- **The page draws nothing in the viewport** (`Gizmo.tsx` removed). It sends the selection, tool and grid state; in a browser, `GizmoDrag` forwards the pointer.
 
-**Tests first:**
-- overlay goldens (grid, selection outline, gizmo; checked by eye);
-- `gizmo_hit_test_finds_the_handle_under_the_pointer` (screen-space; handles stay a constant pixel size as the camera zooms);
-- `overlays_follow_the_camera_in_the_same_frame` (a camera move and its overlay land in one presented frame);
-- `capture_without_overlays_is_unchanged` (existing goldens);
-- e2e: select, then drag the engine-drawn handle (located via `viewport.overlays` handles), with one-step undo;
-- the native input tests updated for engine-side hit-testing;
-- the bench: gizmo and orbit still hold the display rate.
+**Tests:**
+- goldens `overlay_selection_gizmo` and `overlay_grid` (checked by eye);
+- handle geometry and hit-test tests, plus overlays-only-on-request;
+- engine hit-test on press; `ViewportControl` hit-test;
+- `GizmoDrag` (coalescing, last position before the commit);
+- e2e drags the engine-drawn handle with one-step undo;
+- the bench shows no regression (orbit 114 fps at p95 26 ms; gizmo 120 fps).
 
-**Done when:** no page-drawn element covers the viewport, the tests above are green, and the bench shows no regression.
+**Deviation:** no silhouette outline. Godot 4 shows selection as a wireframe box, which is what we draw.
 
 ### Phase 1.9f: Latency isolation (in progress; author request 2026-11-18)
 **Goal.** Find where input-to-photon latency goes, with the engine alone, and get it to Unreal's range.

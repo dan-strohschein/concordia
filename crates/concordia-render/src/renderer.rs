@@ -152,6 +152,8 @@ struct FramePlan<'a> {
     uploads: CommandList,
     /// Editor overlay triangles (see `overlay::triangles`), drawn after tonemapping.
     overlay: Vec<f32>,
+    /// The editor grid's pipeline and push constants, drawn after the scene in the forward pass.
+    grid: Option<(Pipeline, Vec<u8>)>,
 }
 
 /// The size and destination of one frame.
@@ -759,6 +761,16 @@ impl Renderer {
             sky,
             output,
             uploads,
+            grid: match overlays.as_ref().is_some_and(|o| o.grid) {
+                true => {
+                    let height = eye(&view.world).y.abs();
+                    let extent = (height * 40.0).clamp(50.0, 2000.0);
+                    let mut push = frame_i.to_le_bytes().to_vec();
+                    push.extend(extent.to_le_bytes());
+                    Some((self.pipelines.grid(device, samples)?, push))
+                }
+                false => None,
+            },
             overlay: overlays.as_ref().map_or_else(Vec::new, |o| {
                 let projector = crate::overlay::Projector::new(
                     view_proj,
@@ -935,6 +947,7 @@ impl Renderer {
             output,
             uploads,
             overlay,
+            grid,
         } = plan;
         let job = &job;
         let device = self.device.clone();
@@ -986,7 +999,15 @@ impl Renderer {
         let shadow_maps = shadow
             .map(|s| add_shadow_passes(&mut graph, s))
             .unwrap_or_default();
-        let targets = add_forward(&mut graph, view, draws, samples, size, &shadow_maps, sky);
+        let targets = add_forward(
+            &mut graph,
+            view,
+            draws,
+            samples,
+            size,
+            &shadow_maps,
+            (sky, grid),
+        );
         let tonemap = self.pipelines.tonemap(device, format)?;
         let overlay = match overlay.is_empty() {
             true => None,
@@ -1232,6 +1253,9 @@ struct ForwardTargets {
 }
 
 /// Forward pass: draws into (multisampled) HDR + depth, resolving into single-sample HDR.
+/// A pipeline and its push constants, for a one-call draw (the sky, the grid).
+type FullDraw = Option<(Pipeline, Vec<u8>)>;
+
 fn add_forward(
     graph: &mut RenderGraph,
     view: &CameraView,
@@ -1239,7 +1263,7 @@ fn add_forward(
     samples: SampleCount,
     size: (NonZeroU32, NonZeroU32),
     shadow_maps: &[GraphTexture],
-    sky: Option<(Pipeline, Vec<u8>)>,
+    (sky, grid): (FullDraw, FullDraw),
 ) -> ForwardTargets {
     let shadow_maps = shadow_maps.to_vec();
     let hdr = graph.create_texture(desc(
@@ -1319,6 +1343,14 @@ fn add_forward(
                 ctx.commands.push(Command::Draw {
                     vertices: 0..draw.vertices,
                     instances: 0..draw.instances,
+                });
+            }
+            if let Some((pipeline, push)) = &grid {
+                ctx.commands.push(Command::SetPipeline(*pipeline));
+                ctx.commands.push(Command::PushConstants(push.clone()));
+                ctx.commands.push(Command::Draw {
+                    vertices: 0..6,
+                    instances: 0..1,
                 });
             }
             ctx.commands.push(Command::EndRenderPass);

@@ -58,6 +58,8 @@ pub(crate) struct Pipelines {
     shadow: Pipeline,
     sky: (ShaderSource, ShaderSource),
     skies: BTreeMap<u8, Pipeline>,
+    grid: (ShaderSource, ShaderSource),
+    grids: BTreeMap<u8, Pipeline>,
     variants: BTreeMap<(u8, bool, bool), Pipeline>,
 }
 
@@ -72,6 +74,10 @@ impl Pipelines {
         let forward = (
             compile("forward.slang", "vs", Stage::Vertex)?,
             compile("forward.slang", "fs", Stage::Fragment)?,
+        );
+        let grid = (
+            compile("forward.slang", "grid_vs", Stage::Vertex)?,
+            compile("forward.slang", "grid_fs", Stage::Fragment)?,
         );
         let overlay = (
             compile("overlay.slang", "overlay_vs", Stage::Vertex)?,
@@ -108,6 +114,8 @@ impl Pipelines {
             skies: BTreeMap::new(),
             overlay,
             overlays: BTreeMap::new(),
+            grid,
+            grids: BTreeMap::new(),
             variants: BTreeMap::new(),
         })
     }
@@ -184,6 +192,33 @@ impl Pipelines {
             label: format!("sky x{}", samples.get()),
         })?;
         self.skies.insert(samples.get(), pipeline);
+        Ok(pipeline)
+    }
+
+    /// The editor grid pipeline for a sample count (depth-tested, no depth write, blended).
+    pub(crate) fn grid(
+        &mut self,
+        device: &dyn Device,
+        samples: SampleCount,
+    ) -> Result<Pipeline, RenderError> {
+        if let Some(p) = self.grids.get(&samples.get()) {
+            return Ok(*p);
+        }
+        let pipeline = device.create_graphics_pipeline(&GraphicsPipelineDesc {
+            vertex: self.grid.0.clone(),
+            fragment: Some(self.grid.1.clone()),
+            color_formats: vec![HDR],
+            depth: Some(DepthState {
+                format: DEPTH,
+                compare: CompareOp::GreaterEqual,
+                write: false,
+            }),
+            samples,
+            cull: CullMode::None,
+            blend: BlendMode::PremultipliedAlpha,
+            label: format!("grid x{}", samples.get()),
+        })?;
+        self.grids.insert(samples.get(), pipeline);
         Ok(pipeline)
     }
 

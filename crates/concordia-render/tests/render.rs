@@ -888,3 +888,56 @@ fn overlays_draw_the_selection_and_gizmo_on_top_and_are_off_by_default() {
         "no overlays, no change"
     );
 }
+
+#[test]
+fn the_grid_lies_on_the_ground_behind_objects() {
+    let Some(mut r) = renderer() else { return };
+    let mut s = Scene::new();
+    let grey = s.material("grey", unlit([0.6, 0.6, 0.6, 1.0]));
+    s.mesh(
+        "cube",
+        grey,
+        Vec3::new(0.0, 0.5, 0.0),
+        Quat::IDENTITY,
+        Vec3::ONE,
+    );
+    s.camera(
+        Vec3::new(6.0, 5.0, 8.0),
+        Vec3::ZERO,
+        clamp_camera(Projection::default(), Msaa::X4),
+    );
+    let rw = RenderWorld::extract(&s.world);
+    let plain = RenderRequest {
+        camera: None,
+        view: None,
+        width: 256,
+        height: 192,
+        overlays: None,
+    };
+    let grid = RenderRequest {
+        overlays: Some(concordia_render::Overlays {
+            grid: true,
+            ..Default::default()
+        }),
+        ..plain.clone()
+    };
+    let (without, with) = (
+        r.render(&rw, &mut s.assets, &plain).unwrap(),
+        r.render(&rw, &mut s.assets, &grid).unwrap(),
+    );
+    let changed: Vec<usize> = (0..without.rgba.len() / 4)
+        .filter(|i| without.rgba[i * 4..i * 4 + 3] != with.rgba[i * 4..i * 4 + 3])
+        .collect();
+    assert!(
+        changed.len() > 500,
+        "grid lines drawn: {} pixels",
+        changed.len()
+    );
+    let center = pixel(&with, 128, 96);
+    assert_eq!(
+        center[..3],
+        pixel(&without, 128, 96)[..3],
+        "the cube hides the grid behind it"
+    );
+    golden("overlay_grid", &with, 0.01);
+}

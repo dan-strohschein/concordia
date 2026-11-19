@@ -280,3 +280,44 @@ float4 fs(VsOut i, bool front : SV_IsFrontFace, uniform DrawPush push) : SV_Targ
     float3 lit = (sun + punctual(frame, i.position, i.world, n, v, base.rgb, metallic, a) + ambient(frame, n, v, base.rgb, metallic, roughness)) * occlusion;
     return finish(m, lit + emissive, base.a);
 }
+
+// The editor's ground grid (ADR-0047): a quad on y = 0 under the eye, depth-tested against the
+// scene; antialiased lines every unit, brighter every ten, red X and blue Z axes, fading out.
+struct GridPush { uint frame; float extent; };
+struct GridOut { float4 position : SV_Position; float3 world : WORLD; };
+
+[shader("vertex")]
+GridOut grid_vs(uint vid : SV_VertexID, uniform GridPush push) {
+    Frame* frame = (Frame*)g_buffers.ptr[push.frame];
+    const float2 corners[6] = { float2(-1, -1), float2(1, -1), float2(1, 1), float2(-1, -1), float2(1, 1), float2(-1, 1) };
+    float2 c = corners[vid] * push.extent + frame.eye.xz;
+    GridOut o;
+    o.world = float3(c.x, 0.0, c.y);
+    o.position = xform(frame.view_proj, float4(o.world, 1.0));
+    return o;
+}
+
+/// Coverage of lines every `spacing` units at `p` (antialiased over about a pixel).
+float grid_lines(float2 p, float spacing) {
+    float2 q = p / spacing;
+    float2 g = abs(frac(q - 0.5) - 0.5) / max(fwidth(q), 1e-4);
+    return 1.0 - min(min(g.x, g.y), 1.0);
+}
+
+[shader("fragment")]
+float4 grid_fs(GridOut i, uniform GridPush push) : SV_Target {
+    Frame* frame = (Frame*)g_buffers.ptr[push.frame];
+    float2 p = i.world.xz;
+    float minor = grid_lines(p, 1.0) * 0.35;
+    float major = grid_lines(p, 10.0) * 0.6;
+    float2 w = max(fwidth(p), 1e-4);
+    float x_axis = 1.0 - min(abs(p.y) / w.y, 1.0);
+    float z_axis = 1.0 - min(abs(p.x) / w.x, 1.0);
+    float3 color = float3(0.35, 0.35, 0.35);
+    float alpha = max(minor, major);
+    if (x_axis > 0.0) { color = lerp(color, float3(0.75, 0.15, 0.15), x_axis); alpha = max(alpha, x_axis); }
+    if (z_axis > 0.0) { color = lerp(color, float3(0.15, 0.3, 0.8), z_axis); alpha = max(alpha, z_axis); }
+    float fade = 1.0 - smoothstep(push.extent * 0.4, push.extent, length(p - frame.eye.xz));
+    alpha *= fade;
+    return float4(color * alpha, alpha);
+}

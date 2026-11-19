@@ -88,6 +88,7 @@ function useStreamedView(session: EditorSession, world: "edit" | "play") {
 export function Viewport({ session, world, selected, onSelect }: Props) {
   const native = isNative();
   const [tool, setTool] = useState<Tool>("select");
+  const [grid, setGrid] = useState(true);
   const [view, setView] = useState<View>();
   const [size, setSize] = useState({ width: 640, height: 360 });
   const slot = useRef<HTMLDivElement>(null);
@@ -129,10 +130,11 @@ export function Viewport({ session, world, selected, onSelect }: Props) {
     const overlays = {
       selection: selected === undefined ? [] : [selected],
       gizmo: tool === "move" && selected !== undefined ? { entity: selected } : null,
+      grid,
       scale: window.devicePixelRatio || 1,
     };
     void session.call("viewport.overlays", overlays).then(() => (native ? undefined : redraw()));
-  }, [session, selected, tool, native, redraw]);
+  }, [session, selected, tool, grid, native, redraw]);
   // In the native shell: keep the Metal view on the slot (while playing, the engine redraws it each tick).
   useEffect(() => {
     if (!native || !slot.current) return;
@@ -211,7 +213,8 @@ export function Viewport({ session, world, selected, onSelect }: Props) {
   };
   const onWheel = (e: React.WheelEvent) => navigate({ zoom: Math.sign(e.deltaY) });
   const onViewMenu = (choice: string) => {
-    if (choice === "ortho") navigate({ toggle_ortho: true });
+    if (choice === "grid") setGrid((g) => !g);
+    else if (choice === "ortho") navigate({ toggle_ortho: true });
     else if (choice === "focus") void focusSelection();
     else if (choice !== "") navigate({ preset: choice as Preset });
   };
@@ -232,6 +235,7 @@ export function Viewport({ session, world, selected, onSelect }: Props) {
         <span style={{ flex: 1 }} />
         <select aria-label="View" value="" onChange={(e) => onViewMenu(e.target.value)}>
           <option value="">View ▾</option>
+          <option value="grid">Toggle grid</option>
           <option value="ortho">Toggle orthographic (Num 5)</option>
           <option value="front">Front (Num 1)</option>
           <option value="right">Right (Num 3)</option>
