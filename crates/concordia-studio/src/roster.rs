@@ -43,7 +43,7 @@ pub struct ResolvedRole {
     /// Turn limit (the lower of the role's and the team's).
     pub max_turns: Option<NonZeroU32>,
     /// Display color.
-    pub color: Option<String>,
+    pub color: Option<crate::color::RoleColor>,
     /// The role's instructions.
     pub body: String,
 }

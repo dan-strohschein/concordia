@@ -4,7 +4,9 @@
 //! editing logic.
 
 pub mod bench;
+pub mod claude_launcher;
 pub mod input;
+pub mod launcher_commands;
 #[cfg(target_os = "macos")]
 pub mod native;
 

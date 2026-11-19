@@ -1,7 +1,7 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6 and 3.6b done; 3.8 next; refinement approved 2026-11-19) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Needs refinement after M2** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; the Studio checkpoint is next; refinement approved 2026-11-19) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Needs refinement after M2** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
@@ -884,7 +884,7 @@ justfile                       (touched) `gate-live` recipe
   - check the request fields (`provider`, `request`, `seed`, `path`) and the Blender script contract against the built bridge;
   - add `gen_*` to the modeler, animator, tech-artist (texture) and sound-designer scopes, and enable the modeler (and the vfx artist for textures) in the default `team.toml`, each with a test.
 
-### Phase 3.8: Editor Studio panel + Claude Code launcher
+### Phase 3.8: Editor Studio panel + Claude Code launcher (done)
 *Needs the M1 editor shell. API side after 3.3.*
 
 - **Objective:** The human sees and steers the team: a live task board, a command log with actor attribution, and approve/reject for gates. Optionally the human can start their own logged-in Claude Code from the editor. The editor never touches credentials.
@@ -911,6 +911,51 @@ justfile                       (touched) `gate-live` recipe
     - `approve_in_panel_moves_task_to_done_and_logs_human_actor`.
 - **Implementation notes:** all panel state comes from the Engine API (principle 1): no editor-only logic, and approvals are just `task.approve` calls by `human:local`. Live updates use `events.subscribe` (`edit`, `scene` and the new `studio` topic). The headless launch passes `--max-budget-usd` from `[budgets] headless_max_budget_usd` (a client-side estimate per the docs; informational under a subscription, *verify at execution time*).
 - **Done criteria:** tests pass; manual run: launch the Director from the panel and watch cards move.
+
+**As built (2026-11-19, ADR-0083):**
+- **Author decisions:**
+  - doctor results come from a new `studio.doctor` method;
+  - the launcher opens a `.command` file with `open -a <app>`. An embedded, multi-color terminal is wanted later (`later-backlog.md`).
+  - a role's `color` stays the single source, but it may also be any `#rrggbb`, so the author can pick a color for every role in a team of any size;
+  - budgets show their limits now, and usage comes later (`later-backlog.md`).
+- **Engine (Studio module; the core counts are unchanged):**
+  - `concordia_studio::doctor` holds the checks: Claude Code, its login, an API key (noted only), `concordia` on PATH, and sync freshness. `concordia studio doctor` (CLI), `studio.doctor` and the launcher all use it, so the CLI's private copy is gone. `studio.doctor` has editor audience, so it is not an agent tool, and the director's `studio_*` scope and the sync snapshots are unchanged.
+  - `studio.status` adds `instances` (live slot holders, via the new `Slots::held`), `last_sync` and `budgets` (the team's limits).
+  - `studio.roster` adds `color` (the editor's hex) and `agent_color` (a Claude Code name).
+  - `RoleColor` accepts one of the 8 names or `#rrggbb`, and sync writes the nearest name (CIELAB) into the agent file.
+- **Editor UI (`editor/ui/src/studio/`, not the planned `panels/studio/`, to match `activity/` and `questions/`):**
+  - **Studio** is a bottom-panel tab beside Output, shown only in Studio projects. The bottom panel grows to 280 px when Studio is shown.
+  - Its tabs are **Board** (drag and drop), **Approvals**, **Status** (instances, limits, last sync, doctor, Sync now) and **Claude Code** (desktop only).
+  - `useStudio` follows `studio` events. `callStudio` is now the one "method not found means no team mode" check, shared with Team Questions.
+  - **Agent Activity** merges `txn.history` with `studio.activity`, newest first. It reads the journal forward with a cursor, filters by actor, role, task and kind, and shows role-colored actor badges. "Undo to here" stays on scene commits.
+- **Shell:**
+  - `claude_launcher.rs`: `Launcher::detect`, `open_terminal`, `run_headless[_in]` (stoppable through a `RunSlot`), `headless_argv`, `redact` and `parse_stream_line`.
+  - `launcher_commands.rs`: the Tauri commands `launcher_detect/open_terminal/run/stop`, with the events `launcher://event` and `launcher://done`.
+  - The UI checks IPC payloads at runtime (`launcherShell.ts`).
+  - Children inherit the environment unchanged, and the log redacts every environment value of six or more characters.
+- **Tests:**
+  - `concordia-studio`: `doctor.rs` (5), `role.rs` (+2), `roster.rs` (+1), `studio_methods.rs` (+4), `sync_behavior.rs` (+1);
+  - shell `tests/launcher.rs` (8: the plan's 5, plus the interactive command file, stream summaries and event order);
+  - vitest `studio.test.tsx` (15: the plan's 7, plus evidence, drops on done and rejected, status, sync, live events, team mode, merge order and the non-team log), `launcher.test.tsx` (5) and `docks.test.ts` (2);
+  - e2e `studio.spec.ts` (2).
+- **Red runs:**
+  - Every new engine, shell and UI test failed first for the right reason, against stubs. The exception is `the_studio_panel_is_hidden_outside_team_mode`, a guard that passed at once.
+  - The e2e tests were written after the panel. I checked them red by removing the panel from the editor (both failed with no board or panel), then restored it.
+  - The CLI's doctor tests were the refactor's safety net and stayed green.
+- **Changed deliberately:**
+  - the Studio method schema snapshot (`studio.doctor`);
+  - `activity.test.ts` moved from `activityRows`/`actorsOf` to `timeline`/`filterRows`/`valuesOf`, with the same assertions plus one for the merge;
+  - the Activity list is now named "Activity" (was "Transactions");
+  - the unit tests' fake engine can return JSON-RPC errors (`RpcFailure`);
+  - `shared-engine.spec.ts` uses the new shared MCP client (`tests/e2e/mcp.ts`);
+  - Output now sits in a tabbed bottom panel (the footer is "Bottom panel", and Output's section is still "Output panel");
+  - the e2e fixture now takes one small capture before it hands the engine to a test. The first capture builds the renderer's pipelines (1.47 s in a debug build, then 7 ms each), and the engine serves calls one at a time. With the Studio panel's calls when the editor opens, the page's first frame landed inside `questions.spec.ts`'s 1 s window: the banner took 1.85 s, against 118 ms on main's UI. I bisected this to timing, not cost: a stubbed `useStudio` brought it back to 68 ms. The assertions and budgets are unchanged. Asynchronous browser captures stay in `later-backlog.md` (3.0).
+- **Deviations:**
+  - `studio_panel_reflects_task_updates_made_over_mcp_within_one_second` drives the real `concordia mcp`, with the `_studio` stamp the PreToolUse hook would add.
+  - The approval test sets up its task over the WebSocket API.
+- **Not done here:**
+  - the manual run (launch the Director from the panel and watch cards move): it uses the author's subscription, so it waits for their go-ahead;
+  - the embedded terminal and live budget usage (backlog).
 
 ### Studio checkpoint (after 3.3–3.6, 3.6b and 3.8; ADR-0049)
 An interim gate that needs no replay or scripting, so it can pass before M2.

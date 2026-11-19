@@ -828,6 +828,20 @@ expression: schemas
     }
   },
   {
+    "docs": "Check that this machine can run Agent Studio: Claude Code installed and logged in (a subscription is enough; no API key), `concordia` on PATH, Claude Code files in sync.",
+    "mutates": false,
+    "name": "studio.doctor",
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "No params.",
+      "properties": {},
+      "title": "NoParams",
+      "type": "object",
+      "x-concordia-type": "NoParams"
+    }
+  },
+  {
     "docs": "Ask a teammate a question (telegraphic, ≤ 280 chars; refer to ids, don't restate context). Returns at once with an id; don't wait for the answer.",
     "mutates": true,
     "name": "studio.ask",

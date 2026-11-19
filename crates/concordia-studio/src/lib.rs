@@ -6,7 +6,9 @@
 //! It never calls an LLM (ADR-0002).
 
 mod claude_code;
+mod color;
 mod defaults;
+pub mod doctor;
 mod error;
 mod frontmatter;
 mod gate;
@@ -28,6 +30,7 @@ mod team_context;
 pub use claude_code::{
     CLAUDE_AGENT_FIELDS, CLAUDE_SKILL_FIELDS, FileChange, SyncAction, SyncOptions, SyncReport, sync,
 };
+pub use color::RoleColor;
 pub use defaults::{DefaultRoster, default_roster, init};
 pub use error::StudioError;
 pub use gate::{Gate, GateOn, GateParty};

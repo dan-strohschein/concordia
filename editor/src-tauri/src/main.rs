@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use concordia_editor::EngineHost;
+use concordia_editor::launcher_commands::{self as launcher, LauncherState};
 use tauri::{WebviewUrl, WebviewWindowBuilder};
 
 /// Set once the page has reported its viewport slot (the UI is up).
@@ -381,7 +382,12 @@ fn main() {
     let result = tauri::Builder::default()
         .manage(shell)
         .manage(host.clone())
+        .manage(LauncherState::new(&project))
         .invoke_handler(tauri::generate_handler![
+            launcher::launcher_detect,
+            launcher::launcher_open_terminal,
+            launcher::launcher_run,
+            launcher::launcher_stop,
             slot_rect,
             bench_native_orbit,
             bench_progress,

@@ -1,6 +1,7 @@
 // The editor window, laid out like Godot 4 (docs/design/editor-ux.md): menu bar with run controls,
 // Scene + FileSystem docks on the left, the viewport in the center, the Inspector on the right and
-// the Output panel at the bottom, plus the Agent Activity dock under the Inspector. Shortcuts follow Godot.
+// the Output panel at the bottom, plus the Agent Activity dock under the Inspector. In Agent Studio
+// projects the bottom panel also has a Studio tab (ADR-0083). Shortcuts follow Godot.
 import { useCallback, useEffect, useState } from "react";
 
 import { Activity } from "../activity/Activity";
@@ -11,9 +12,11 @@ import { Outliner } from "../outliner/Outliner";
 import { EscalationBadge, TeamDesk } from "../questions/TeamQuestions";
 import { useTeamQuestions } from "../questions/questions";
 import { Output } from "../output/Output";
+import { StudioPanel } from "../studio/StudioPanel";
+import { useStudio } from "../studio/studio";
 import { isNative } from "../viewport/native";
 import { Viewport } from "../viewport/Viewport";
-import { ALL_DOCKS, DOCKS, windowGrid, type DockSet } from "./docks";
+import { ALL_DOCKS, DOCKS, TEAM_DOCKS, visibleDocks, windowGrid, type DockSet } from "./docks";
 import { MenuBar, type Menu } from "./MenuBar";
 import { useSceneMenu } from "./useSceneMenu";
 
@@ -27,8 +30,14 @@ export function Editor({ session }: { session: EditorSession }) {
   const [shown, setShown] = useState<DockSet>(ALL_DOCKS);
   const [grid, setGrid] = useState(true);
   const team = useTeamQuestions(session);
+  const studio = useStudio(session);
+  const teamMode = studio.teamMode || team.teamMode;
+  const [bottom, setBottom] = useState<"Output" | "Studio">("Studio");
   const revealQuestions = useCallback(() => setShown((s) => ({ ...s, "Team Questions": true })), []);
-  const layout = windowGrid(shown);
+  const visible = visibleDocks(shown, teamMode);
+  const layout = windowGrid(visible);
+  const bottomTabs = (["Output", "Studio"] as const).filter((d) => visible[d]);
+  const bottomTab = bottomTabs.includes(bottom) ? bottom : bottomTabs[0];
   const act = (method: string, params: Record<string, unknown> = {}) =>
     void session.call(method, { ...params, actor: EDITOR_ACTOR });
   useEffect(() => {
@@ -53,7 +62,7 @@ export function Editor({ session }: { session: EditorSession }) {
   const viewMenu: Menu = {
     label: "View",
     items: [
-      ...DOCKS.filter((d) => d !== "Team Questions" || team.teamMode).map((d) => ({
+      ...DOCKS.filter((d) => teamMode || !TEAM_DOCKS.includes(d)).map((d) => ({
         label: d,
         checked: shown[d],
         run: () => setShown((s) => ({ ...s, [d]: !s[d] })),
@@ -156,15 +165,51 @@ export function Editor({ session }: { session: EditorSession }) {
         {shown["Agent Activity"] && (
           <section style={{ ...dock, borderTop: "1px solid #111" }} aria-label="Agent Activity dock">
             <div style={title}>Agent Activity</div>
-            <Activity session={session} onSelect={setSelected} />
+            <Activity session={session} onSelect={setSelected} studio={studio} />
           </section>
         )}
         <TeamDesk session={session} team={team} shown={shown["Team Questions"]} onReveal={revealQuestions} />
       </div>
-      {shown.Output && (
-        <footer style={{ gridColumn: "1 / 4", ...dock, borderTop: "1px solid #111" }} aria-label="Output panel">
-          <div style={title}>Output</div>
-          <Output session={session} />
+      {bottomTab !== undefined && (
+        <footer
+          style={{
+            gridColumn: "1 / 4",
+            ...dock,
+            borderTop: "1px solid #111",
+            display: "flex",
+            flexDirection: "column",
+          }}
+          aria-label="Bottom panel"
+        >
+          <div role="tablist" aria-label="Bottom panel" style={{ ...title, display: "flex", gap: 12 }}>
+            {bottomTabs.map((d) => (
+              <button
+                key={d}
+                type="button"
+                role="tab"
+                aria-selected={d === bottomTab}
+                onClick={() => setBottom(d)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "inherit",
+                  font: "inherit",
+                  opacity: d === bottomTab ? 1 : 0.55,
+                  padding: 0,
+                }}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+          <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+            {bottomTab === "Output" && (
+              <section aria-label="Output panel">
+                <Output session={session} />
+              </section>
+            )}
+            {bottomTab === "Studio" && <StudioPanel session={session} studio={studio} />}
+          </div>
         </footer>
       )}
       {scene.dialogs}

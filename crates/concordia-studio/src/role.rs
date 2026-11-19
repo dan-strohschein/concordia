@@ -186,7 +186,7 @@ pub struct RoleSpec {
     pub max_turns: Option<NonZeroU32>,
     /// Display color (matches the generated agent's `color`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub color: Option<String>,
+    pub color: Option<crate::color::RoleColor>,
 }
 
 /// The frontmatter keys a role file may use.
