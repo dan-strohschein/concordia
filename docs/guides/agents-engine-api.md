@@ -8,7 +8,7 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 3. Discover shapes with `schema.get {}` (index), `schema.get {"name": "Transform"}` (component) or `schema.get {"name": "entity.spawn"}` (method). The index's `components` list gives each component's `category`, a one-line `description` and whether it is `addable`; a component's schema carries its `default`.
 4. Edit with `entity.spawn`, `component.add` (the default value, then patch what differs), `component.set` (whole value), `component.patch` (merge patch, e.g. `{"scale": [2, 2, 2]}`), `component.remove`, `entity.despawn`. Group edits with `txn.begin {"label": ...}` … `txn.commit {"txn": ...}` so they undo as one step.
 5. Check your work with `entity.get`, `component.get` and `query.run`.
-6. `scene.save {}` writes canonical RON. `txn.undo` / `txn.redo` work across restarts when the file is unchanged.
+6. `scene.save {}` writes canonical RON. `txn.undo` / `txn.redo` work across restarts when the file is unchanged. `txn.history` shows who changed which entities and when; `txn.undo_to {"txn": ...}` rewinds back to and including a commit.
 7. Simulate without touching the scene: `sim.step {"ticks": 60}`, then read with `"world": "play"`; `sim.stop {}` discards the play world.
 
 ## Building a scene (M1)
@@ -55,7 +55,8 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `txn.begin` | yes | `{label}` → `{txn}` |
 | `txn.commit` / `txn.abort` | yes | `{txn}` → `{ops}` |
 | `txn.undo` / `txn.redo` | yes | `{}` → `{txn, label, by}` |
-| `txn.history` | | `{limit?}` → `{entries}` |
+| `txn.undo_to` | yes | `{txn}` → `{undone, by}` (undoes that commit and every later one, latest first; `txn.redo` replays them) |
+| `txn.history` | | `{limit?}` → `{entries: [{seq, kind, txn, target, actor, label, ops, time_ms, entities, undone}]}` |
 | `sim.play` / `sim.pause` / `sim.stop` | | `{rate_hz?}` / `{}` → `{state, tick}` |
 | `sim.step` | | `{ticks}` → `{tick, world_hash}` |
 | `input.inject` | | `{events: [{tick?, event}], actor?}` → `{accepted, next_tick}` (raw input into the play world, e.g. `{"event": {"Key": {"key": "Space", "pressed": true}}}`; the project's `.input.ron` maps it to actions) |

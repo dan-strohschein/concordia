@@ -82,6 +82,10 @@ pub struct HistoryEntry {
     pub ops: usize,
     /// Abort reason.
     pub reason: Option<String>,
+    /// When, in milliseconds since the Unix epoch.
+    pub ts_ms: u64,
+    /// Entities the transaction touched (commit, undo, redo), sorted and unique.
+    pub entities: Vec<concordia_core::id::EntityId>,
 }
 
 /// Whether persisted history could be restored for the current scene.

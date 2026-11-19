@@ -36,7 +36,7 @@ async fn tool_input_schemas_equal_generated_param_schemas() {
     let dir = tempfile::tempdir().unwrap();
     let client = connect(&dir).await;
     for tool in client.list_all_tools().await.unwrap() {
-        let method = methods().get(&tool.name.replace('_', ".")).unwrap();
+        let method = methods().get(&tool.name.replacen('_', ".", 1)).unwrap();
         assert_eq!(
             serde_json::to_string(tool.input_schema.as_ref()).unwrap(),
             serde_json::to_string(&params_schema(method)).unwrap(),
@@ -51,7 +51,7 @@ async fn tool_output_schemas_present() {
     let dir = tempfile::tempdir().unwrap();
     let client = connect(&dir).await;
     for tool in client.list_all_tools().await.unwrap() {
-        let method = methods().get(&tool.name.replace('_', ".")).unwrap();
+        let method = methods().get(&tool.name.replacen('_', ".", 1)).unwrap();
         let output = tool
             .output_schema
             .as_ref()
@@ -70,7 +70,7 @@ async fn tool_annotations_reflect_mutation() {
     let dir = tempfile::tempdir().unwrap();
     let client = connect(&dir).await;
     for tool in client.list_all_tools().await.unwrap() {
-        let method = methods().get(&tool.name.replace('_', ".")).unwrap();
+        let method = methods().get(&tool.name.replacen('_', ".", 1)).unwrap();
         let annotations = tool.annotations.as_ref().unwrap();
         assert_eq!(
             annotations.read_only_hint,
@@ -238,7 +238,7 @@ async fn handshake_works_with_protocol_2025_11_25_and_2026_07_28() {
         assert_eq!(server.as_deref(), Some("concordia"), "{version:?}");
         assert_eq!(
             client.list_all_tools().await.unwrap().len(),
-            29, // 24 from M0, entity.templates/create/duplicate/reparent (M1 1.13), component.add (M1 1.14)
+            30, // 24 from M0, entity.templates/create/duplicate/reparent (M1 1.13), component.add (M1 1.14), txn.undo_to (M1 1.15)
             "{version:?}"
         );
     }

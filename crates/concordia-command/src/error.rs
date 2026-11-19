@@ -39,6 +39,14 @@ pub enum CommandError {
     /// The redo stack is empty.
     #[error("nothing to redo: redo is only available right after an undo; see txn.history")]
     NothingToRedo,
+    /// `undo_to` named a transaction that is not on the undo stack.
+    #[error(
+        "transaction {txn} is not on the undo stack (unknown, or already undone); see txn.history"
+    )]
+    NotUndoable {
+        /// The transaction.
+        txn: TxnId,
+    },
     /// Replay found a different world state than the journal recorded.
     #[error("journal entry {seq}: expected world hash {expected}, found {found}")]
     Diverged {

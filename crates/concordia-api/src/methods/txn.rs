@@ -1,7 +1,7 @@
-//! `txn.begin`, `txn.commit`, `txn.abort`, `txn.undo`, `txn.redo`, `txn.history`.
+//! `txn.begin`, `txn.commit`, `txn.abort`, `txn.undo`, `txn.undo_to`, `txn.redo`, `txn.history`.
 
 use concordia_command::{Actor, Author, EntryKind};
-use concordia_core::id::TxnId;
+use concordia_core::id::{EntityId, TxnId};
 use concordia_reflect::Reflect;
 use serde::{Deserialize, Serialize};
 
@@ -61,6 +61,29 @@ pub struct OpsResult {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 pub struct TxnUndo;
 
+/// Undo every transaction back to and including `txn` (from txn.history), each attributed to the caller.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct TxnUndoTo;
+
+/// `txn.undo_to` params.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct TxnUndoToParams {
+    /// The oldest transaction to undo (a commit's `txn` from txn.history).
+    pub txn: String,
+    /// Actor (defaults to the session's).
+    pub actor: Option<Actor>,
+}
+
+/// `txn.undo_to` result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct UndoToResult {
+    /// The transactions undone, latest first (txn.redo replays them oldest first).
+    pub undone: Vec<TxnId>,
+    /// Who undid them.
+    pub by: Actor,
+}
+
 /// Redo the latest undone transaction, attributed to the caller.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 pub struct TxnRedo;
@@ -116,6 +139,12 @@ pub struct HistoryRow {
     pub ops: u64,
     /// Abort reason.
     pub reason: Option<String>,
+    /// When, in milliseconds since the Unix epoch.
+    pub time_ms: u64,
+    /// Entities the transaction touched (commit, undo, redo).
+    pub entities: Vec<EntityId>,
+    /// For a commit: whether it is currently undone.
+    pub undone: bool,
 }
 
 /// `txn.history` result.
@@ -264,6 +293,49 @@ impl Method for TxnUndo {
     }
 }
 
+impl Method for TxnUndoTo {
+    const NAME: &'static str = "txn.undo_to";
+    const MUTATES: bool = true;
+    type Params = TxnUndoToParams;
+    type Result = UndoToResult;
+
+    fn call(
+        engine: &mut Engine,
+        ctx: &CallCtx,
+        p: TxnUndoToParams,
+    ) -> Result<UndoToResult, ApiError> {
+        let target = txn_id(&p.txn)?;
+        if let Some(err) = conflict(engine.scene()?, ctx) {
+            return Err(err);
+        }
+        let author = author(ctx)?;
+        let by = author.actor.clone();
+        let Engine {
+            scene, registry, ..
+        } = engine;
+        let scene = scene
+            .as_mut()
+            .ok_or_else(|| ApiError::from_kind(ApiErrorKind::NoSceneOpen))?;
+        let result = scene
+            .log
+            .undo_to(&mut scene.world, registry, &author, target);
+        // Undos that succeeded before a failure stay undone, so the scene is dirty either way.
+        scene.dirty = true;
+        let undone = result.map_err(|e| {
+            map::command(
+                e,
+                None,
+                &Hints {
+                    registry,
+                    world: Some(&scene.world),
+                },
+            )
+            .at("/txn")
+        })?;
+        Ok(UndoToResult { undone, by })
+    }
+}
+
 impl Method for TxnRedo {
     const NAME: &'static str = "txn.redo";
     const MUTATES: bool = true;
@@ -324,12 +396,15 @@ impl Method for TxnHistory {
         _: &CallCtx,
         p: TxnHistoryParams,
     ) -> Result<TxnHistoryResult, ApiError> {
-        let entries = engine
-            .scene()?
-            .log
+        let log = &engine.scene()?.log;
+        let is_undone = |txn: Option<TxnId>| log.undone().iter().any(|t| Some(t.id) == txn);
+        let entries = log
             .history(p.limit.unwrap_or(50) as usize)
             .into_iter()
             .map(|e| HistoryRow {
+                undone: e.kind == EntryKind::Commit && is_undone(e.txn),
+                time_ms: e.ts_ms,
+                entities: e.entities,
                 seq: e.seq,
                 kind: kind(e.kind).to_owned(),
                 txn: e.txn,
@@ -367,6 +442,7 @@ pub(crate) fn methods() -> Vec<MethodInfo> {
         MethodInfo::of::<TxnCommit>(),
         MethodInfo::of::<TxnAbort>(),
         MethodInfo::of::<TxnUndo>(),
+        MethodInfo::of::<TxnUndoTo>(),
         MethodInfo::of::<TxnRedo>(),
         MethodInfo::of::<TxnHistory>(),
     ]

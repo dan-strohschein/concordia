@@ -162,5 +162,10 @@ expression: index
     "description": "Undo the latest committed transaction (any session's), attributed to the caller.",
     "mutates": true,
     "name": "txn.undo"
+  },
+  {
+    "description": "Undo every transaction back to and including `txn` (from txn.history), each attributed to the caller.",
+    "mutates": true,
+    "name": "txn.undo_to"
   }
 ]

@@ -41,6 +41,16 @@ pub enum EditOp {
 }
 
 impl EditOp {
+    /// The entity the op touches.
+    pub fn entity(&self) -> EntityId {
+        match self {
+            Self::Spawn { id, .. }
+            | Self::Despawn { id }
+            | Self::SetComponent { id, .. }
+            | Self::RemoveComponent { id, .. } => *id,
+        }
+    }
+
     /// Label for an implicit single-op transaction.
     pub fn default_label(&self) -> &'static str {
         match self {
