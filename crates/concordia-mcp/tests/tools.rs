@@ -238,7 +238,7 @@ async fn handshake_works_with_protocol_2025_11_25_and_2026_07_28() {
         assert_eq!(server.as_deref(), Some("concordia"), "{version:?}");
         assert_eq!(
             client.list_all_tools().await.unwrap().len(),
-            24,
+            28, // 24 from M0, plus entity.templates/create/duplicate/reparent (M1 1.13)
             "{version:?}"
         );
     }

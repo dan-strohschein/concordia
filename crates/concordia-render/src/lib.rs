@@ -24,6 +24,7 @@ mod renderer;
 mod scene_cache;
 pub mod shadow;
 mod shadow_pass;
+mod templates;
 mod thread;
 pub mod tonemap;
 mod view;

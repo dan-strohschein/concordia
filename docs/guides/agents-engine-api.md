@@ -14,7 +14,7 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 ## Building a scene (M1)
 1. Look around: `project.files {}` lists the project's files with their kind and import status.
 2. Bring in a model: `asset.import {"path": "models/crate.glb"}`, then `prefab.instantiate {"asset": "asset:<id>", "translation": [0, 0, 0]}` (one undo step).
-3. Add built-in shapes: `entity.spawn` with `Transform`, `MeshRenderer {"mesh": "builtin:mesh/cube", "material": "builtin:material/default"}`, and for physics `RigidBody` + `Collider`. Light the scene with `DirectionalLight`, `PointLight` or `Environment`; add a `Camera`.
+3. Add ready-made entities: `entity.templates {}` lists them; `entity.create {"template": "Cube", "translation": [0, 0.5, 0]}`, `{"template": "Directional Light"}`, `{"template": "Camera"}`. Group with `"parent"`, copy with `entity.duplicate`, regroup with `entity.reparent`. For physics add `RigidBody` + `Collider`; for a sky add `Environment` with an imported `.hdr`. (`entity.spawn` still takes raw components.)
 4. Look at it: `capture.screenshot {}` returns an image (768 × 432 by default; pass `width`/`height` for detail, `camera` or `view` to choose the viewpoint, `"world": "play"` to see the simulation). `viewport.pick` tells you which entity is at a pixel of that image; `viewport.drop` where something placed there would land.
 5. Run it: `sim.step {"ticks": 120}`, `input.inject` to press actions, `physics.raycast` to probe, then read with `"world": "play"`.
 6. `scene.save {}`.
@@ -38,7 +38,11 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `asset.import` | | `{path}` → `{id, cached, sub_assets}` (import or re-import a project file; idempotent; refer to it as `"asset:<id>"`) |
 | `asset.list` | | `{}` → `{assets: [{id, path, importer, sub_assets}]}` |
 | `entity.spawn` | yes | `{components, id?}` → `{id}` |
-| `entity.despawn` | yes | `{id}` → `{}` |
+| `entity.despawn` | yes | `{id, recursive?}` → `{}` (`recursive: true` also removes all descendants, one undo step) |
+| `entity.templates` | | `{}` → `{templates: [{name, description, components}]}` (ready-made entities: Empty, Cube, Sphere, Plane, Camera, Directional/Point/Spot Light, plus any from plugins) |
+| `entity.create` | yes | `{template, parent?, name?, translation?}` → `{id}` (spawns a template; sibling names stay unique, "Cube 2") |
+| `entity.duplicate` | yes | `{ids}` → `{ids}` (copies with all descendants, new ids, references remapped; one undo step) |
+| `entity.reparent` | yes | `{id, parent \| null, keep_world?}` → `{}` (keeps the world pose by default; rejects cycles) |
 | `prefab.instantiate` | yes | `{asset, parent?, translation?}` → `{root, entities}` (an imported model's hierarchy, one undo step; joins an open transaction) |
 | `entity.get` | | `{id, world?}` → `{id, components}` |
 | `component.get` | | `{entity, component, world?}` → `{value}` |

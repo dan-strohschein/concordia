@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (editor v1, agent-first: 1.11–1.12 done, 1.13–1.16 next, then the gate; ADR-0049; 1.0–1.9 done, 1.10 stretch pending; ADR-0048) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (editor v1, agent-first: 1.11–1.13 done, 1.14–1.16 next, then the gate; ADR-0049; 1.0–1.9 done, 1.10 stretch pending; ADR-0048) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -1156,7 +1156,7 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
 
 **As built:** `Method::AUDIENCE` (default `agent`); MCP lists 33 tools for the M1 example. The old `capture_screenshot_defaults_to_1280_by_720` test was changed deliberately to the new 768 × 432 default. Two pre-existing e2e flakes were real editor races, fixed after this phase: the browser frame queue rendered queued frames with a stale world (fixed by `FrameQueue`, whose jobs carry their world), and a gizmo release waited for an in-flight move before committing, so an immediate undo could land first (the release now sends the last move and the commit at once). The full e2e suite passed 96 of 96 repeated runs.
 
-### Phase 1.13: Scene tree
+### Phase 1.13: Scene tree (done)
 **Goal.** Agents can build an entity hierarchy in a few calls; the Scene dock exposes the same, minimally.
 
 **Engine API:**
@@ -1174,6 +1174,13 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
 - `entity_create_spawns_each_template_renderable`
 - `despawn_recursive_removes_the_subtree_in_one_undo`
 - e2e: create from the menu, duplicate, delete, undo.
+
+**As built:**
+- Templates come from modules through `EngineModule::templates()`: the core supplies Empty; the render module supplies Cube, Sphere, Plane, Camera and the three lights.
+- **Environment is not a template.** It needs an imported `.hdr` (there is no built-in sky), so agents add the component with their own map.
+- `entity.duplicate` reuses `concordia_scene::remap` (prefab instancing's id remapping).
+- Delete in the Scene dock now removes the subtree (Godot), and ⌘D duplicates.
+- The core MCP tool count went from 24 to 28; the count tests, including the M0 gate's, were updated deliberately.
 
 ### Phase 1.14: Component discovery (Inspector)
 **Goal.** Agents can find out which components exist, what they mean and their defaults, and add them. The Inspector can add and remove them.

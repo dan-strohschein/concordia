@@ -24,9 +24,19 @@ expression: index
     "name": "component.set"
   },
   {
+    "description": "Spawn a ready-made entity (see entity.templates), optionally named, parented and placed; sibling names are kept unique (\"Cube 2\").",
+    "mutates": true,
+    "name": "entity.create"
+  },
+  {
     "description": "Delete an entity and all its components (undoable).",
     "mutates": true,
     "name": "entity.despawn"
+  },
+  {
+    "description": "Copy entities with all their descendants (new ids; references inside the copies point at the copies) as one undo step. Copies sit beside their originals with unique names (\"Crate 2\").",
+    "mutates": true,
+    "name": "entity.duplicate"
   },
   {
     "description": "Read an entity's components.",
@@ -34,9 +44,19 @@ expression: index
     "name": "entity.get"
   },
   {
+    "description": "Move an entity under a new parent (null: top level). By default its world position, rotation and scale stay the same; a move that would make an entity its own ancestor is rejected.",
+    "mutates": true,
+    "name": "entity.reparent"
+  },
+  {
     "description": "Create an entity with components (values as JSON; see concordia://schema/component/{name}).",
     "mutates": true,
     "name": "entity.spawn"
+  },
+  {
+    "description": "List the ready-made entities (templates) that entity.create can spawn, with what each is for and its components.",
+    "mutates": false,
+    "name": "entity.templates"
   },
   {
     "description": "Receive `events.event` notifications for the given topics (replaces earlier subscriptions). Needs a transport that can push (WebSocket or in-process); otherwise poll `log.tail`.",
