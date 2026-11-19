@@ -75,6 +75,7 @@ pub struct Renderer {
     /// Signalled with a frame's number when the GPU finishes a presented frame.
     timeline: Option<concordia_rhi::Timeline>,
     in_flight: std::collections::VecDeque<InFlight>,
+    frames_in_flight: usize,
     /// Transient heaps of retired frames, reused by later ones.
     free_heaps: Vec<(concordia_rhi::Heap, NonZeroU64)>,
 }
@@ -232,12 +233,25 @@ impl Renderer {
             frames: 0,
             timeline: None,
             in_flight: std::collections::VecDeque::new(),
+            frames_in_flight: 2,
             free_heaps: Vec::new(),
         })
     }
 
-    /// Presented frames the GPU may still be rendering, at most.
-    pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
+    /// The most presented frames the GPU may be rendering at once.
+    pub const MAX_FRAMES_IN_FLIGHT: usize = 3;
+
+    /// How many presented frames may be in flight (1 = lowest latency; default 2).
+    pub fn set_frames_in_flight(&mut self, frames: usize) -> Result<(), RenderError> {
+        if !(1..=Self::MAX_FRAMES_IN_FLIGHT).contains(&frames) {
+            return Err(RenderError::Gpu(concordia_rhi::RhiError::invalid(
+                "frames in flight",
+                format!("must be 1..={}, got {frames}", Self::MAX_FRAMES_IN_FLIGHT),
+            )));
+        }
+        self.frames_in_flight = frames;
+        Ok(())
+    }
 
     /// Presented frames not yet known to be finished (diagnostics).
     pub fn frames_in_flight(&self) -> usize {
@@ -355,7 +369,7 @@ impl Renderer {
         let aspect = width.get() as f32 / height.get() as f32;
         let grid = ClusterGrid::new(self.clusters, &view.camera.projection, aspect)?;
         let keep = match output {
-            Output::Surface { .. } => Self::MAX_FRAMES_IN_FLIGHT - 1,
+            Output::Surface { .. } => self.frames_in_flight - 1,
             Output::Readback => 0,
         };
         self.retire(keep)?;
@@ -1196,7 +1210,7 @@ impl FrameResources {
             .for_each(|b| device.destroy_buffer(b));
         if let Some(heap) = self.heap {
             free.push(heap);
-            if free.len() > Renderer::MAX_FRAMES_IN_FLIGHT + 1 {
+            if free.len() > Renderer::MAX_FRAMES_IN_FLIGHT {
                 let (oldest, _) = free.remove(0);
                 device.destroy_heap(oldest);
             }

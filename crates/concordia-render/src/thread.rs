@@ -61,7 +61,9 @@ impl RenderThread {
         let thread = std::thread::Builder::new()
             .name("concordia-render".into())
             .spawn(move || match make() {
-                Ok(renderer) => {
+                Ok(mut renderer) => {
+                    // The editor viewport favours latency: its GPU frames are short.
+                    let _ = renderer.set_frames_in_flight(1);
                     let _ = ready.send(Ok(()));
                     Worker::new(renderer).run(&queue);
                 }

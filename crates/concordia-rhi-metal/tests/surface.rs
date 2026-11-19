@@ -186,3 +186,13 @@ fn frame_resources_are_freed_on_a_long_lived_thread() {
     );
     device.destroy_surface(surface);
 }
+
+#[test]
+fn window_surfaces_keep_a_short_drawable_queue_for_low_latency() {
+    let Some(device) = device() else { return };
+    let layer = layer();
+    // SAFETY: the layer outlives the surface (destroyed below).
+    let surface = unsafe { device.create_surface(target(&layer), Format::Bgra8UnormSrgb) }.unwrap();
+    assert_eq!(layer.maximumDrawableCount(), 2);
+    device.destroy_surface(surface);
+}

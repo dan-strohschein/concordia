@@ -630,7 +630,10 @@ fn presented_frames_overlap_the_gpu_and_retire_their_memory() {
     let warm = r.allocated_bytes().expect("Metal reports allocations");
     for _ in 0..40 {
         r.present(&rw, &mut s.assets, &request, surface).unwrap();
-        assert!(r.frames_in_flight() <= concordia_render::Renderer::MAX_FRAMES_IN_FLIGHT);
+        assert!(
+            r.frames_in_flight() <= 2,
+            "the default keeps at most two frames in flight"
+        );
     }
     let grown = r.allocated_bytes().unwrap().saturating_sub(warm);
     assert!(
@@ -645,4 +648,40 @@ fn presented_frames_overlap_the_gpu_and_retire_their_memory() {
         "a readback finishes every earlier frame"
     );
     assert_eq!(pixel(&image, 256, 256)[..3], [231, 89, 89][..]);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn frames_in_flight_can_be_lowered_for_latency() {
+    let Some(mut r) = renderer() else { return };
+    assert!(r.set_frames_in_flight(0).is_err());
+    assert!(r.set_frames_in_flight(4).is_err());
+    r.set_frames_in_flight(1).unwrap();
+    let mut s = Scene::new();
+    let red = s.material("red", unlit([0.8, 0.1, 0.1, 1.0]));
+    s.mesh("cube", red, Vec3::ZERO, Quat::IDENTITY, Vec3::ONE);
+    s.camera(
+        Vec3::new(0.0, 0.0, 4.0),
+        Vec3::ZERO,
+        clamp_camera(Projection::default(), Msaa::X4),
+    );
+    let layer = objc2_quartz_core::CAMetalLayer::new();
+    // SAFETY: the layer outlives the surface, which the renderer releases when dropped.
+    let surface = unsafe {
+        r.create_surface(concordia_rhi::SurfaceTarget::MetalLayer(
+            std::ptr::NonNull::from(&*layer).cast(),
+        ))
+    }
+    .unwrap();
+    let rw = RenderWorld::extract(&s.world);
+    let request = RenderRequest {
+        camera: None,
+        view: None,
+        width: 128,
+        height: 128,
+    };
+    for _ in 0..10 {
+        r.present(&rw, &mut s.assets, &request, surface).unwrap();
+        assert!(r.frames_in_flight() <= 1);
+    }
 }

@@ -58,6 +58,8 @@ impl SurfaceEntry {
             .ok_or_else(|| RhiError::invalid("surface", "null layer"))?;
         layer.setDevice(Some(device));
         layer.setPixelFormat(pixel);
+        // Two drawables (Metal's minimum) keep input-to-display latency short.
+        layer.setMaximumDrawableCount(2);
         Ok(Self {
             layer,
             format,
