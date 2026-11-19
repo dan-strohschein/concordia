@@ -1,5 +1,5 @@
 # M1: See it
-Status: In progress (editor v1, phases 1.11–1.15, then the gate; 1.0–1.9 done, 1.10 stretch pending; ADR-0048) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
+Status: In progress (editor v1: 1.11 done, 1.12–1.15 next, then the gate; 1.0–1.9 done, 1.10 stretch pending; ADR-0048) · Depends on: M0 (headless core) · Detail level: Ready to execute · Estimated effort: 16–22 weeks (author + agents), see [Effort estimate](#effort-estimate)
 
 ## Goal & context
 M0 gave us a headless engine: ECS, reflection, command log, RON scenes, the Engine API (JSON-RPC 2.0) with its MCP adapter, and the `concordia` CLI. M1 makes the engine **visible and physical**. It adds a window, input, a thin future-proof RHI with a Metal backend, Slang shaders, a render graph, clustered forward+ PBR with shadows and IBL, an asset pipeline with glTF import, Jolt physics, and a minimal editor that is just another Engine API client.
@@ -1098,7 +1098,7 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
   - everything inside the viewport is drawn by the engine.
 - **Each phase is test-first:** Rust tests for new methods, Vitest for panels and widgets, Playwright e2e for workflows, and the bench must show no regression.
 
-### Phase 1.11: Files
+### Phase 1.11: Files (done)
 **Goal.** Create, open and save scenes from the editor, browse the project's files, and bring assets into a scene.
 
 **Engine API:**
@@ -1125,6 +1125,8 @@ Phase order respects dependencies. 1.1 and 1.7 (physics) have no rendering depen
   - the unsaved prompt guards New.
 
 **Done when** a scene can be built, saved and reopened entirely from the editor.
+
+**As built:** the Scene menu is the first menu of a data-driven `MenuBar` that phase 1.14 grows into the action registry; Open Recent lists recent scenes inline. The native shell disables Tauri's OS file-drop handler so the page's drag and drop works; OS file drops come later.
 
 ### Phase 1.12: Scene tree
 **Goal.** The Scene dock does what Godot's does.
