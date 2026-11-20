@@ -166,9 +166,11 @@ pub(crate) fn ensure_play(
         world.insert_resource(SimRng::new(engine.config.sim_seed));
         let (schedule, states) = start_modules(engine, &mut world)?;
         let rate = rate.unwrap_or(engine.config.sim_rate);
+        let sim = SimLoop::new(rate, schedule, &mut world)
+            .map_err(|e| ApiError::new(ApiErrorKind::Internal, e.to_string()))?;
         engine.play = Some(Play {
             world,
-            sim: SimLoop::new(rate, schedule),
+            sim,
             playing: false,
             last: std::time::Instant::now(),
             states,

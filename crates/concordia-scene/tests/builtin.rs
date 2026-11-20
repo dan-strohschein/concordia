@@ -59,7 +59,9 @@ fn integrate_velocity_moves_and_rotates_each_tick() {
     world.insert(still, Transform::default()).unwrap();
 
     let jobs = JobSystem::new(NonZeroUsize::new(2).unwrap()).unwrap();
-    SimLoop::new(TickRate::HZ_60, builtin::headless_schedule()).step(&mut world, &jobs, 1);
+    SimLoop::new(TickRate::HZ_60, builtin::headless_schedule(), &mut world)
+        .unwrap()
+        .step(&mut world, &jobs, 1);
     let t = world.get::<Transform>(id).unwrap();
     assert!((t.translation.x - 1.0).abs() < 1e-5);
     assert!((t.rotation.angle_between(Quat::IDENTITY) - 1.0).abs() < 1e-4);

@@ -36,7 +36,7 @@ fn simulate(threads: usize, ticks: &[u32]) -> Vec<concordia_terra::WorldHash> {
     let mut world = moving_world(5_000);
     world.insert_resource(SimRng::new(77));
     let jobs = JobSystem::new(NonZeroUsize::new(threads).unwrap()).unwrap();
-    let mut sim = SimLoop::new(TickRate::HZ_60, schedule());
+    let mut sim = SimLoop::new(TickRate::HZ_60, schedule(), &mut world).unwrap();
     let mut done = 0;
     ticks
         .iter()
@@ -118,7 +118,7 @@ fn hash_covers_clock_and_rng() {
 fn sim_loop_steps_exactly_n_ticks() {
     let mut world = World::new();
     let jobs = JobSystem::new(NonZeroUsize::new(1).unwrap()).unwrap();
-    let mut sim = SimLoop::new(TickRate::HZ_60, Schedule::new());
+    let mut sim = SimLoop::new(TickRate::HZ_60, Schedule::new(), &mut world).unwrap();
     sim.step(&mut world, &jobs, 7);
     assert_eq!(world.resource::<SimClock>().unwrap().tick, Tick(7));
     let steps = sim.advance(&mut world, &jobs, std::time::Duration::from_millis(50));
@@ -138,7 +138,9 @@ fn systems_run_in_declared_order() {
     assert_eq!(order.names(), vec!["first", "second"]);
     let mut world = World::new();
     let jobs = JobSystem::new(NonZeroUsize::new(1).unwrap()).unwrap();
-    SimLoop::new(TickRate::HZ_60, order).step(&mut world, &jobs, 1);
+    SimLoop::new(TickRate::HZ_60, order, &mut world)
+        .unwrap()
+        .step(&mut world, &jobs, 1);
     assert_eq!(
         world.resource::<Vec<&str>>().unwrap(),
         &vec!["first", "second"]
@@ -168,7 +170,7 @@ fn set_rate_changes_dt_and_clock_without_resetting_tick() {
     schedule.add(system("dt", |world: &mut World, ctx: &SystemCtx| {
         world.insert_resource(ctx.dt);
     }));
-    let mut sim = SimLoop::new(TickRate::HZ_60, schedule);
+    let mut sim = SimLoop::new(TickRate::HZ_60, schedule, &mut world).unwrap();
     sim.step(&mut world, &jobs, 3);
     let thirty = TickRate::from_hz(30).unwrap();
     sim.set_rate(&mut world, thirty);

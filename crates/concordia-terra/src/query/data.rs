@@ -13,6 +13,18 @@ pub struct TableAccess<'a>(pub(crate) &'a mut [Box<dyn Column>]);
 #[doc(hidden)]
 pub struct ColumnAccess<'a>(&'a mut dyn Column);
 
+/// A column as a processor's view holds it (implementation detail of [`QueryElem`]).
+#[doc(hidden)]
+pub struct ViewColumn<'a>(pub(crate) ViewCol<'a>);
+
+/// Shared for reads, exclusive for writes.
+pub(crate) enum ViewCol<'a> {
+    /// Read-only.
+    Read(&'a dyn Column),
+    /// Writable.
+    Write(&'a mut dyn Column),
+}
+
 /// Which component an element touches, and how.
 #[derive(Debug, Clone, Copy)]
 pub struct ElemAccess {
@@ -35,6 +47,8 @@ pub trait QueryElem {
     #[doc(hidden)]
     fn slice<'a>(column: ColumnAccess<'a>) -> Self::Slice<'a>;
     #[doc(hidden)]
+    fn slice_view<'a>(column: ViewColumn<'a>) -> Self::Slice<'a>;
+    #[doc(hidden)]
     fn get<'s>(slice: &'s mut Self::Slice<'_>, row: usize) -> Self::Item<'s>;
     #[doc(hidden)]
     fn split_at<'a>(slice: Self::Slice<'a>, mid: usize) -> (Self::Slice<'a>, Self::Slice<'a>);
@@ -53,6 +67,12 @@ impl<T: Component> QueryElem for &T {
     }
     fn slice<'a>(column: ColumnAccess<'a>) -> &'a [T] {
         typed::<T>(column.0)
+    }
+    fn slice_view<'a>(column: ViewColumn<'a>) -> &'a [T] {
+        match column.0 {
+            ViewCol::Read(c) => typed::<T>(c),
+            ViewCol::Write(c) => typed::<T>(c),
+        }
     }
     fn get<'s>(slice: &'s mut &[T], row: usize) -> &'s T {
         &slice[row]
@@ -76,6 +96,16 @@ impl<T: Component> QueryElem for &mut T {
     fn slice<'a>(column: ColumnAccess<'a>) -> &'a mut [T] {
         typed_mut::<T>(column.0)
     }
+    fn slice_view<'a>(column: ViewColumn<'a>) -> &'a mut [T] {
+        match column.0 {
+            ViewCol::Write(c) => typed_mut::<T>(c),
+            // The view checks writes against the declaration before fetching.
+            ViewCol::Read(_) => {
+                debug_assert!(false, "a read-only column fetched for writing");
+                &mut []
+            }
+        }
+    }
     fn get<'s>(slice: &'s mut &mut [T], row: usize) -> &'s mut T {
         &mut slice[row]
     }
@@ -95,6 +125,8 @@ pub trait QueryData {
     #[doc(hidden)]
     fn fetch<'a>(table: TableAccess<'a>, columns: &[usize]) -> Self::Slices<'a>;
     #[doc(hidden)]
+    fn fetch_view<'a>(columns: Vec<ViewColumn<'a>>) -> Self::Slices<'a>;
+    #[doc(hidden)]
     fn get<'s>(slices: &'s mut Self::Slices<'_>, row: usize) -> Self::Item<'s>;
     #[doc(hidden)]
     fn split_at<'a>(slices: Self::Slices<'a>, mid: usize) -> (Self::Slices<'a>, Self::Slices<'a>);
@@ -112,6 +144,10 @@ macro_rules! single {
             fn fetch<'a>(table: TableAccess<'a>, columns: &[usize]) -> Self::Slices<'a> {
                 let column = &mut *table.0[columns[0]];
                 <$ty as QueryElem>::slice(ColumnAccess(column))
+            }
+            fn fetch_view<'a>(columns: Vec<ViewColumn<'a>>) -> Self::Slices<'a> {
+                let column = columns.into_iter().next().expect("one column");
+                <$ty as QueryElem>::slice_view(column)
             }
             fn get<'s>(slices: &'s mut Self::Slices<'_>, row: usize) -> Self::Item<'s> {
                 <$ty as QueryElem>::get(slices, row)
@@ -142,6 +178,10 @@ macro_rules! tuple {
                 let indices: [usize; $n] = columns.try_into().expect("one column per element");
                 let [$($v),+] = table.0.get_disjoint_mut(indices).expect("query elements are distinct");
                 ($($e::slice(ColumnAccess(&mut **$v)),)+)
+            }
+            fn fetch_view<'a>(columns: Vec<ViewColumn<'a>>) -> Self::Slices<'a> {
+                let mut columns = columns.into_iter();
+                ($($e::slice_view(columns.next().expect("one column per element")),)+)
             }
             fn get<'s>(slices: &'s mut Self::Slices<'_>, row: usize) -> Self::Item<'s> {
                 let ($($v,)+) = slices;

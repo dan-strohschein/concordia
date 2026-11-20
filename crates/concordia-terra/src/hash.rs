@@ -67,8 +67,13 @@ impl World {
         let mut h = blake3::Hasher::new();
         h.update(DOMAIN);
         h.update(&(self.len() as u64).to_le_bytes());
+        let presentation: Vec<crate::component::ComponentId> = self
+            .presentation
+            .iter()
+            .filter_map(|t| self.components.id_of(*t))
+            .collect();
         for id in self.entities.ids() {
-            self.hash_entity(id, &mut h)?;
+            self.hash_entity(id, &presentation, &mut h)?;
         }
         self.hash_resources(&mut h);
         Ok(WorldHash(*h.finalize().as_bytes()))
@@ -77,13 +82,20 @@ impl World {
     fn hash_entity(
         &self,
         id: concordia_core::id::EntityId,
+        presentation: &[crate::component::ComponentId],
         h: &mut blake3::Hasher,
     ) -> Result<(), EcsError> {
         let loc = self.entities.location(id)?;
         let arch = &self.archetypes.list[loc.archetype];
         h.update(id.as_uuid().as_bytes());
-        h.update(&(arch.components.len() as u64).to_le_bytes());
-        for &col in &arch.by_name {
+        let hashed: Vec<usize> = arch
+            .by_name
+            .iter()
+            .copied()
+            .filter(|&col| !presentation.contains(&arch.components[col]))
+            .collect();
+        h.update(&(hashed.len() as u64).to_le_bytes());
+        for col in hashed {
             let name = self.components.info(arch.components[col]).name;
             h.update(&(name.len() as u64).to_le_bytes());
             h.update(name.as_bytes());
@@ -98,6 +110,8 @@ impl World {
                 h.update(&[1]);
                 h.update(&clock.tick.0.to_le_bytes());
                 h.update(&clock.rate.hz().to_le_bytes());
+                h.update(&clock.time_scale.get().to_le_bytes());
+                h.update(&clock.time.to_le_bytes());
             }
             None => {
                 h.update(&[0]);
