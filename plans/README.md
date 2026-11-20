@@ -110,7 +110,7 @@ examples/             # small sample projects used by tests and docs
 | `concordia-script-guest` | guest SDK for `wasm32-wasip2` gameplay components | M2 |
 | `concordia-import-fbx` (+ `ufbx-sys`) | FBX import via ufbx (MIT) | M2 |
 | `concordia-translate` | logic-translation tooling (GDScript, C# and Blueprint front ends) | M5 |
-| `concordia-cluster` (+ `meshopt-sys`) | cluster/DAG/page building for virtualized geometry | M4 |
+| `concordia-cluster` (+ `meshopt-sys`) | meshlet building and per-meshlet bounds for GPU culling (ADR-0100) | M4 |
 | `concordia-pathtrace` | reference path tracer (test oracle; must not depend on `concordia-render`) | M4 |
 | `concordia-ai-llm-local` | opt-in example local-LLM provider; not a default workspace member | M4 |
 | `concordia-evolve` | Evolve plugin system: manifests, resolution, lockfile, trust, orchestration over the native and WASM hosts | M6 |
@@ -181,7 +181,7 @@ To avoid collisions, each milestone draws ADR numbers from its own block. Use th
 | 0040–0059 | M1 | 0040–0045 as named in M1's plan (0040, 0041, 0042, 0043, 0044, 0045 written) · 0046 engine modules (written) · 0047 editor UI stays web, native viewport, thin panels (written) · 0048 editor v1 in M1, engine breadth before the port (written) · 0049 agent-first end of M1, Studio right after M1 (written) |
 | 0060–0079 | M2 | 0060–0066 as named in M2's plan (0063 gameplay determinism contract written; 0064–0065 move to M5 with the port) · 0067 M2 refinement: engine breadth on Terra's Mass core (written) · 0068 Substrate-style material model (phase 2.3) · 0069 Terra storage kinds, command buffers, signals and observers (written) |
 | 0080–0099 | M3 | 0080 shared engine and Studio attribution (written) · 0081 team questions and answers (written) · 0082 shared engine: discovery, attach and lifetime (written) · 0083 Studio panel and Claude Code launcher (written) · (to come: YAML-frontmatter exception for Studio files) |
-| 0100–0119 | M4 | (incl. perf testing on reference hardware) |
+| 0100–0119 | M4 | 0100 meshlet geometry pipeline (proposed) · (to come: perf testing on reference hardware) |
 | 0120–0139 | M5 | |
 | 0140–0159 | M6 | 0140–0142 as named in M6's plan |
 | 0160–0179 | M7 | 0160–0161 as named in M7's plan |

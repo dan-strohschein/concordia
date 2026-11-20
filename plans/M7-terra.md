@@ -29,7 +29,7 @@ Concordia rules still apply: determinism (same inputs, same hash, any thread cou
 | Archetype store, queries, `SimLoop`, `WorldHash`, reflection, command log, scenes | M0 |
 | Render graph, instanced draws, input | M1 |
 | Navmesh, Detour crowds, animation (for representation) | M2 |
-| Runtime AI (behavior trees, utility AI), virtualized geometry for dense crowds | M4 |
+| Runtime AI (behavior trees, utility AI), meshlet GPU culling for dense crowds (ADR-0100) | M4 |
 | Evolve (optional): Terra traits and processors can ship as plugins | M6 |
 
 ## Crates, modules & directories (created / touched)

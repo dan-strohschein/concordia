@@ -12,9 +12,9 @@ Rules that still apply to everything here: subscription-first (no item may *requ
 - **Evolve plugin registry** (after M6). Public index of plugins with signing, yanking, version search and license metadata; `concordia plugin add <id>` resolves through it. Needs ADR-0141 trust rules.
 - **Binary native plugin distribution** (after M6). Prebuilt plugins per platform, signed; needs a stable native ABI story beyond M2's C-ABI vtable.
 ## 1. Large worlds and streaming
-- **World partition and cell streaming** (after M4). Split scenes into spatial cells streamed by distance and budget; `.scene.ron` gains cell references. Needs the asset DDC (M1) and virtualized geometry (M4) to be worth doing at scale.
+- **World partition and cell streaming** (after M4). Split scenes into spatial cells streamed by distance and budget; `.scene.ron` gains cell references. Needs the asset DDC (M1) and M4's meshlet culling plus meshlet LODs (ADR-0100, M4 phase 4.5) to be worth doing at scale.
 - **Large-world coordinates** (after M1). f64 world positions with camera-relative rendering or origin rebasing; decide early because it touches `concordia-core` math types and the scene format.
-- **HLOD and proxy-mesh generation** (after M4). Automatic merged far-field proxies per cell, cached in `.concordia/ddc`; builds on meshoptimizer cluster LODs.
+- **HLOD and proxy-mesh generation** (after M4). Automatic merged far-field proxies per cell, cached in `.concordia/ddc`; builds on meshoptimizer simplification and M4's meshlets (phase 4.5 starts it).
 - **Streaming-aware physics and navigation** (after M2). Jolt bodies and Recast tiles load/unload with cells; navmesh tiles stitched across cell borders.
 - **Data layers** (after M3). Toggleable scene layers (e.g. quest states, seasons) as text, scriptable over the Engine API.
 - **Procedural zone pipeline at scale** (after M2). the reference port's procedural zones/biomes as a first real large-world consumer.
