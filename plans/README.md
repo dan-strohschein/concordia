@@ -11,7 +11,7 @@ The top-level design is in [`../docs/design.md`](../docs/design.md). This folder
 | M-1 Toolchain & scaffold | [M-1-toolchain-and-scaffold.md](M-1-toolchain-and-scaffold.md) | none | Ready to execute | Gate passed |
 | M0 Headless core | [M0-headless-core.md](M0-headless-core.md) | M-1 | Ready to execute | Gate passed |
 | M1 See it | [M1-see-it.md](M1-see-it.md) | M0 | Ready to execute | Gate passed (2026-11-19) |
-| M2 Engine breadth (was Port begins; ADR-0048) | [M2-port-begins.md](M2-port-begins.md) | M1 | Needs refinement after M1 | Planned |
+| M2 Engine breadth (was Port begins; ADR-0048) | [M2-port-begins.md](M2-port-begins.md) | M1 | Refined (ADR-0067, approved 2026-11-19) | Refined; phase 2.0 next |
 | M3 Closed loop & Studio v1 | [M3-closed-loop-and-studio.md](M3-closed-loop-and-studio.md) | M2 (Studio phases may start after M0) | Needs refinement after M2 | In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b, 3.8 done; Studio checkpoint passed 2026-11-19, deterministic and live); Studio phases 3.3–3.6, 3.8 run right after M1 (ADR-0049) |
 | M4 Unreal-class visuals | [M4-unreal-class-visuals.md](M4-unreal-class-visuals.md) | M1 (render), M2 (graphs) | Needs refinement after M3 | Planned |
 | M5 Bring your game | [M5-bring-your-game.md](M5-bring-your-game.md) | M2 (importer framework) | Needs refinement after M4 | Planned |
@@ -96,7 +96,7 @@ examples/             # small sample projects used by tests and docs
 | `concordia-anim` | skeletons, clips, blending, state machines | M2 |
 | `concordia-nav` (+ `recast-sys`) | navmesh build/query, agents/crowds | M2 |
 | `concordia-script-wasm` | Wasmtime component host for `wit/` world `concordia:game/gameplay` | M2 |
-| `concordia-import-godot` | Godot 4 `.tscn`/`.tres`/`project.godot` importer, GDScript→Rust translation support | M2 |
+| `concordia-import-godot` | Godot 4 `.tscn`/`.tres`/`project.godot` importer, GDScript→Rust translation support | M5 (moved from M2, ADR-0067) |
 | `concordia-ui` | in-game UI (HUD, menus) | M2 |
 | `concordia-replay` | input/state recording, deterministic replay (minimal input log in M2), playtest assertions (M3) | M2 |
 | `concordia-studio` | Agent Studio: role configs, team, task board, `studio sync` → Claude Code files; the default roster and engine skills live in its `roster/` (a project gets its own editable `studio/`) | M3 |
@@ -104,19 +104,19 @@ examples/             # small sample projects used by tests and docs
 | `concordia-graph` | visual graphs stored as text, compiler to fast code | M4 |
 | `concordia-ai` | runtime AI: behavior trees, utility AI, optional LLM planner plugins | M4 |
 | `concordia-import-unity`, `concordia-import-unreal` | importers targeting the interchange format | M5 |
-| `concordia-interchange` | interchange model (USD/glTF + scene text) shared by importers | M2 (introduced with the Godot importer, generalized in M5) |
+| `concordia-interchange` | interchange model (USD/glTF + scene text) shared by importers | M5 (with the Godot importer, ADR-0067) |
 | `concordia-testkit` | dev-dependency helpers: FLIP golden compare, `gpu_test!`, bless support | M1 |
 | `concordia-script-native` | tier-1 hot-reload host for Rust game crates | M2 |
 | `concordia-script-guest` | guest SDK for `wasm32-wasip2` gameplay components | M2 |
 | `concordia-import-fbx` (+ `ufbx-sys`) | FBX import via ufbx (MIT) | M2 |
-| `concordia-translate` | logic-translation tooling (GDScript in M2; C#/Blueprint front ends added in M5) | M2 (extracted and generalized in M5) |
+| `concordia-translate` | logic-translation tooling (GDScript, C# and Blueprint front ends) | M5 |
 | `concordia-cluster` (+ `meshopt-sys`) | cluster/DAG/page building for virtualized geometry | M4 |
 | `concordia-pathtrace` | reference path tracer (test oracle; must not depend on `concordia-render`) | M4 |
 | `concordia-ai-llm-local` | opt-in example local-LLM provider; not a default workspace member | M4 |
 | `concordia-evolve` | Evolve plugin system: manifests, resolution, lockfile, trust, orchestration over the native and WASM hosts | M6 |
 | `concordia-evolve-api` | stable extension-point API that native plugins link (WIT package `concordia:evolve` for WASM plugins) | M6 |
-| `concordia-terra-sim` | Terra templates and traits, processing phases, LOD, signals, spawners, representation | M7 |
-| `concordia-terra-crowd` | Terra crowds and traffic over `concordia-nav` | M7 |
+| `concordia-terra-sim` | Terra templates and traits, processing phases, LOD, signals, spawners, representation | M2 (moved from M7, ADR-0067) |
+| `concordia-terra-crowd` | Terra crowds and traffic over `concordia-nav` | M2 (scale and AI-driven behavior in M7) |
 | `concordia-fracture` | offline fracture: patterns, mesh cutting, interior faces, hulls, cluster levels, connection graph | M8 |
 | `concordia-destruction` | runtime destruction on Jolt: strain, breaking, fields, debris, caches | M8 |
 | `concordia-cloth` | garments: asset, CPU reference and GPU (Slang) XPBD solver, collision | M8 |
@@ -139,7 +139,7 @@ New crates may be proposed in a plan's "Open questions" section; they are added 
 - MCP tools map 1:1, with `.` replaced by `_` (e.g. `entity_spawn`). Every MCP tool's input schema is **generated from `concordia-reflect`**, never hand-written.
 - Every mutating call carries an `actor` (grammar `<human|agent|system|tool|script>:<name>[#n]`). It may be omitted on the wire when the session has a default (`session.open`), but the recorded actor is always present. `human:*` actors are not accepted over MCP. The MCP server is named `concordia` in `.mcp.json`, so Claude Code tools appear as `mcp__concordia__<tool>`.
 - **Edit world vs play world:** the command log records mutations of the **edit world** only. Simulation (physics, scripts, AI) runs in a separate **play world** (`world: "edit" | "play"` param on read methods) and never mutates the edit world. Injected input and play-world outcomes are recorded by `concordia-replay`, not the command log.
-- **Additional methods agreed in the plans** (MCP names follow the same rule): M0: `session.open`, `scene.new`, `scene.info`, `entity.get`, `component.patch`, `component.remove`, `txn.abort`, `txn.history`, `sim.stop`. M1: `asset.list`, `physics.raycast`, `events.subscribe`. M2: `port.*`, `shader.translate`, `script.reload`, `nav.build`, `nav.path`. M3: `task.get/claim/comment/approve/reject`, `studio.roster/status/activity/sync`, `studio.ask/answer/escalate/questions` (3.6b), `gen.list/run` (`audit.record` is replaced by `file_edit` entries in the Studio journal, ADR-0080). Studio methods come from the `studio` engine module (`[studio]` in `concordia.toml`), not the core set. M4: `graph.*`, `ai.inspect/trace`, `render.stats`, `render.set_debug_view`, `perf.capture`, `capture.reference`. M5: `import.scan/run/report/licenses`, `translate.*`.
+- **Additional methods agreed in the plans** (MCP names follow the same rule): M0: `session.open`, `scene.new`, `scene.info`, `entity.get`, `component.patch`, `component.remove`, `txn.abort`, `txn.history`, `sim.stop`. M1: `asset.list`, `physics.raycast`, `events.subscribe`. M2: `terra.spawn_batch/despawn_batch/stats/inspect`, `script.reload`, `nav.build`, `nav.path`, `replay.record/run` (v0). M5: `port.*`, `shader.translate` (moved from M2, ADR-0067). M3: `task.get/claim/comment/approve/reject`, `studio.roster/status/activity/sync`, `studio.ask/answer/escalate/questions` (3.6b), `gen.list/run` (`audit.record` is replaced by `file_edit` entries in the Studio journal, ADR-0080). Studio methods come from the `studio` engine module (`[studio]` in `concordia.toml`), not the core set. M4: `graph.*`, `ai.inspect/trace`, `render.stats`, `render.set_debug_view`, `perf.capture`, `capture.reference`. M5: `import.scan/run/report/licenses`, `translate.*`.
 - Errors: JSON-RPC codes −32001…−32017 (M1 added −32013 `GpuUnavailable`; M3 added −32014 `TaskNotFound`, −32015 `TaskTransition`, −32016 `NotPermitted`, −32017 `EngineExited`), with `error.data = { kind, suggestions[], ... }` (defined in M0). MCP resources use `concordia://` URIs.
 
 ### Testing conventions (TDD)
@@ -179,7 +179,7 @@ To avoid collisions, each milestone draws ADR numbers from its own block. Use th
 | 0020–0029 | M-1 | 0020 toolchain pinning · 0021 WASM guest build path · 0022 CI and supply chain |
 | 0030–0039 | M0 | 0030 own archetype ECS (written: safe column storage) · 0031 Engine API error model (written) · 0032 edit world vs play world (written) · 0033 MCP adapter (written: rmcp pin, protocol versions) |
 | 0040–0059 | M1 | 0040–0045 as named in M1's plan (0040, 0041, 0042, 0043, 0044, 0045 written) · 0046 engine modules (written) · 0047 editor UI stays web, native viewport, thin panels (written) · 0048 editor v1 in M1, engine breadth before the port (written) · 0049 agent-first end of M1, Studio right after M1 (written) |
-| 0060–0079 | M2 | |
+| 0060–0079 | M2 | 0060–0066 as named in M2's plan (0064–0065 move to M5 with the port) · 0067 M2 refinement: engine breadth on Terra's Mass core (written) · 0068 Substrate-style material model (phase 2.3) |
 | 0080–0099 | M3 | 0080 shared engine and Studio attribution (written) · 0081 team questions and answers (written) · 0082 shared engine: discovery, attach and lifetime (written) · 0083 Studio panel and Claude Code launcher (written) · (to come: YAML-frontmatter exception for Studio files) |
 | 0100–0119 | M4 | (incl. perf testing on reference hardware) |
 | 0120–0139 | M5 | |

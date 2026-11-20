@@ -1,5 +1,5 @@
 # M7: Terra (large-scale entity simulation)
-Status: Phase 7.0 done (2026-11-18); phases 7.1–7.9 planned after M4 · Depends on: M0 (ECS), M1 (render instancing), M2 (nav and Detour crowds), M4 (runtime AI, virtualized geometry) · Detail level: **Needs refinement after M4** · Estimated effort: ~12 weeks (range 10–16) after 7.0, author plus agents
+Status: Phase 7.0 done (2026-11-18). **ADR-0067: phases 7.1–7.6 and the basic crowd and traffic work of 7.7 moved to M2** (2.0, 2.0b, 2.0c, 2.4b, 2.5); the `terra.*` tools arrive with them. M7 keeps large-scale performance, AI-driven crowd and traffic behavior (after M4) and its gate (7.9), planned after M4 · Depends on: M0 (ECS), M1 (render instancing), M2 (nav and Detour crowds), M4 (runtime AI, virtualized geometry) · Detail level: **Needs refinement after M4** · Estimated effort: ~12 weeks (range 10–16) after 7.0, author plus agents
 
 > Outline plan. Phase 7.0 (the rename) is small and fully specified; phases 7.1–7.9 are refined when M4 lands, because representation and behavior depend on M1/M4 rendering and M4 runtime AI.
 
@@ -50,32 +50,32 @@ crates/concordia-api/          terra.* methods
 - **Done criteria:** `just gate M0` green; all docs say Terra.
 - **Done (2026-11-18):** `git mv` keeps history; the hygiene test `ecs_is_called_terra_everywhere` allows the old name only in ADRs and plan history (M0 plan, M7 plan, `plans/README.md`).
 
-### Phase 7.1: Processors, access declarations & parallel scheduling
+### Phase 7.1: Processors, access declarations & parallel scheduling (moved to M2 phase 2.0)
 - **Tests first:** `conflicting_processors_never_run_concurrently`; `independent_processors_run_in_parallel`; `declared_order_constraints_are_respected`; `schedule_cycle_is_an_error_naming_the_cycle`; `world_hash_identical_for_1_and_8_threads_with_parallel_processors`.
 - **Notes:** processors declare reads/writes (components, resources); the scheduler builds a conflict graph per phase and runs a deterministic topological order; results never depend on thread timing.
 
-### Phase 7.2: Shared components, chunk components, tags & command buffers
+### Phase 7.2: Shared components, chunk components, tags & command buffers (moved to M2 phase 2.0b)
 - **Tests first:** `shared_component_is_stored_once_per_archetype_value`; `chunk_component_is_per_chunk_and_survives_moves`; `tags_filter_queries_without_storage`; `deferred_spawns_apply_at_phase_end_in_deterministic_order`; `model_proptest_with_command_buffers_matches_the_model`.
 
-### Phase 7.3: Templates & traits
+### Phase 7.3: Templates & traits (moved to M2 phase 2.0c)
 - **Tests first:** `template_composes_traits_into_an_archetype`; `trait_conflicts_are_reported_with_both_traits`; `template_roundtrips_byte_identical`; `batch_spawn_of_100k_from_template_is_deterministic`; `template_schemas_come_from_reflection`.
 - **Notes:** `.template.ron` holds traits and defaults; traits are reflected types plus the processors they require.
 
-### Phase 7.4: Simulation & representation LOD
+### Phase 7.4: Simulation & representation LOD (moved to M2 phase 2.4b)
 - **Tests first:** `far_entities_tick_at_their_lod_rate`; `lod_transitions_are_hysteresis_damped`; `simulation_lod_depends_only_on_deterministic_inputs`; `representation_lod_follows_the_camera_without_affecting_world_hash`.
 - **Notes:** simulation LOD is driven by LOD reference points that are part of simulation state (e.g. the player in the play world), never by the render camera, so replays stay deterministic; representation LOD may use the camera.
 
-### Phase 7.5: Signals & observers
+### Phase 7.5: Signals & observers (moved to M2 phase 2.0b)
 - **Tests first:** `signal_raised_this_tick_is_delivered_next_tick_in_entity_order`; `observers_fire_on_add_and_remove_once`; `signals_survive_lod_changes`.
 
-### Phase 7.6: Spawners & representation switching
+### Phase 7.6: Spawners & representation switching (moved to M2 phases 2.0c and 2.4b)
 - **Tests first:** `spawner_places_count_with_seeded_distribution`; `representation_switches_between_full_instanced_and_hidden`; `instanced_representation_draws_100k_in_one_pass` (GPU, golden image).
 
-### Phase 7.7: Crowds & traffic
+### Phase 7.7: Crowds & traffic (basic crowds and lane traffic moved to M2 phase 2.5; AI-driven behavior and 10k+ scale stay here)
 - **Tests first:** `crowd_of_10k_agents_avoids_overlap`; `traffic_follows_lanes_and_yields_at_junctions`; `behavior_from_runtime_ai_drives_terra_agents`; `crowd_is_deterministic_across_runs_and_threads`.
 - **Notes:** builds on M2 Detour crowds and M4 runtime AI; M2's single-threaded crowd constraint is revisited with Terra's parallel scheduler.
 
-### Phase 7.8: Agent tooling & debug views
+### Phase 7.8: Agent tooling & debug views (the basic `terra.*` tools move to M2 phase 2.0c; scale views stay here)
 - **Tests first:** `terra_methods_have_generated_schemas_and_mcp_tools`; `terra_stats_reports_counts_lod_buckets_and_processor_times`; `agent_spawns_a_crowd_from_a_template_over_mcp`.
 - **Notes:** `terra.spawn_batch`, `terra.despawn_batch`, `terra.stats`, `terra.inspect`, `terra.set_debug_view`.
 
