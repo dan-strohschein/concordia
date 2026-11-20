@@ -10,14 +10,45 @@ use std::num::NonZeroUsize;
 use concordia_core::id::EntityId;
 use concordia_core::jobs::JobSystem;
 
-pub use data::{ElemAccess, QueryData, QueryElem};
+pub use data::{ElemAccess, QueryData, QueryElem, ReadSlice};
 pub(crate) use data::{ViewCol, ViewColumn};
 pub use filter::{QueryFilter, With, Without};
 
+use crate::component::ComponentId;
 use crate::error::QueryError;
 use crate::storage::archetype::Archetype;
+use crate::storage::column::Column;
+use crate::storage::shared::SharedStore;
 use crate::world::World;
-use data::TableAccess;
+
+/// Where one query element reads from in one archetype.
+#[derive(Debug, Clone, Copy)]
+enum Source {
+    Column(usize),
+    Shared(ComponentId, u32),
+}
+
+/// The slices for `sources`, from `columns` and the world's shared values.
+fn fetch<'a, D: QueryData>(
+    columns: &'a mut [Box<dyn Column>],
+    shared: &'a SharedStore,
+    sources: &[Source],
+) -> D::Slices<'a> {
+    let mut free: Vec<Option<&'a mut Box<dyn Column>>> = columns.iter_mut().map(Some).collect();
+    let picked = sources
+        .iter()
+        .map(|source| {
+            ViewColumn(match *source {
+                Source::Column(i) => {
+                    let column = free[i].take().expect("query elements are distinct");
+                    ViewCol::Write(&mut **column)
+                }
+                Source::Shared(c, v) => ViewCol::Shared(shared.get_reflect(c, v)),
+            })
+        })
+        .collect();
+    D::fetch_view(picked)
+}
 
 const ONE: NonZeroUsize = NonZeroUsize::MIN;
 
@@ -27,8 +58,8 @@ pub struct QueryState<D: QueryData, F: QueryFilter = ()> {
     with: Vec<TypeId>,
     without: Vec<TypeId>,
     world: u64,
-    /// Per archetype: the columns for `D`'s elements, if it matches.
-    columns: Vec<Option<Vec<usize>>>,
+    /// Per archetype: where `D`'s elements come from, if it matches.
+    columns: Vec<Option<Vec<Source>>>,
     marker: PhantomData<fn() -> (D, F)>,
 }
 
@@ -58,9 +89,10 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
     /// Calls `f` for every matching entity.
     pub fn for_each(&mut self, world: &mut World, mut f: impl FnMut(EntityId, D::Item<'_>)) {
         self.update(world);
+        let shared = &world.shared;
         for (arch, cols) in matched(&mut world.archetypes.list, &self.columns) {
             let table = &mut arch.table;
-            let mut slices = D::fetch(TableAccess(&mut table.columns), cols);
+            let mut slices = fetch::<D>(&mut table.columns, shared, cols);
             for (row, &id) in table.ids.iter().enumerate() {
                 f(id, D::get(&mut slices, row));
             }
@@ -80,9 +112,10 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
     ) {
         self.update(world);
         let mut work = Vec::new();
+        let shared = &world.shared;
         for (arch, cols) in matched(&mut world.archetypes.list, &self.columns) {
             let table = &mut arch.table;
-            let slices = D::fetch(TableAccess(&mut table.columns), cols);
+            let slices = fetch::<D>(&mut table.columns, shared, cols);
             split_chunks::<D>(&table.ids, slices, chunk.get(), &mut work);
         }
         jobs.par_chunks_mut(&mut work, ONE, |_, pieces| {
@@ -103,9 +136,7 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
         }
         let tick = world.changes.bump();
         for (arch, _) in matched(&mut world.archetypes.list, &self.columns) {
-            for &id in &arch.table.ids {
-                world.entities.touch(id, tick);
-            }
+            arch.changed = tick;
         }
     }
 
@@ -120,24 +151,21 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
         }
     }
 
-    fn match_archetype(&self, arch: &Archetype, world: &World) -> Option<Vec<usize>> {
-        let has = |t: &TypeId| {
-            world
-                .components
-                .id_of(*t)
-                .and_then(|c| arch.column_index(c))
-                .is_some()
-        };
+    fn match_archetype(&self, arch: &Archetype, world: &World) -> Option<Vec<Source>> {
+        let has = |t: &TypeId| world.components.id_of(*t).is_some_and(|c| arch.has(c));
         if !self.with.iter().all(has) || self.without.iter().any(has) {
             return None;
         }
         self.elems
             .iter()
             .map(|e| {
-                world
-                    .components
-                    .id_of(e.type_id)
-                    .and_then(|c| arch.column_index(c))
+                let c = world.components.id_of(e.type_id)?;
+                match arch.column_index(c) {
+                    Some(i) => Some(Source::Column(i)),
+                    // Shared values are read-only: a writing query never matches them.
+                    None if e.mutable => None,
+                    None => arch.shared_value(c).map(|v| Source::Shared(c, v)),
+                }
             })
             .collect()
     }
@@ -145,8 +173,8 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
 
 fn matched<'a>(
     list: &'a mut [Archetype],
-    columns: &'a [Option<Vec<usize>>],
-) -> impl Iterator<Item = (&'a mut Archetype, &'a [usize])> {
+    columns: &'a [Option<Vec<Source>>],
+) -> impl Iterator<Item = (&'a mut Archetype, &'a [Source])> {
     list.iter_mut()
         .zip(columns)
         .filter_map(|(arch, cols)| cols.as_deref().map(|c| (arch, c)))

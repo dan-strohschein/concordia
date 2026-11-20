@@ -5,8 +5,8 @@ mod common;
 use std::collections::BTreeMap;
 
 use common::{A, B, C, ids};
-use concordia_core::id::EntityId;
-use concordia_terra::World;
+use concordia_core::id::{DeterministicIdGen, EntityId, IdSource};
+use concordia_terra::{CommandBuffer, Pending, Target, World};
 use proptest::prelude::*;
 
 type Model = BTreeMap<EntityId, (Option<A>, Option<B>, Option<C>)>;
@@ -112,6 +112,144 @@ proptest! {
         let mut model = Model::new();
         for op in ops {
             apply(&mut world, &mut model, &pool, op);
+            assert_matches(&world, &model);
+        }
+    }
+}
+
+/// Where a queued command points: a pool entity, or the buffer's latest pending spawn.
+#[derive(Debug, Clone, Copy)]
+enum Aim {
+    Slot(usize),
+    Latest,
+}
+
+/// A command recorded into a buffer (M2 phase 2.0b), applied when the buffer is.
+#[derive(Debug, Clone)]
+enum Queued {
+    Spawn,
+    Despawn(Aim),
+    InsertA(Aim, u32),
+    InsertB(Aim, f32),
+    RemoveA(Aim),
+}
+
+#[derive(Debug, Clone)]
+enum Step {
+    Now(Op),
+    Queue(Queued),
+    Flush,
+}
+
+fn aim() -> impl Strategy<Value = Aim> {
+    prop_oneof![(0..POOL).prop_map(Aim::Slot), Just(Aim::Latest)]
+}
+
+fn queued() -> impl Strategy<Value = Queued> {
+    prop_oneof![
+        Just(Queued::Spawn),
+        aim().prop_map(Queued::Despawn),
+        (aim(), any::<u32>()).prop_map(|(t, v)| Queued::InsertA(t, v)),
+        (aim(), -1e6f32..1e6).prop_map(|(t, v)| Queued::InsertB(t, v)),
+        aim().prop_map(Queued::RemoveA),
+    ]
+}
+
+fn step() -> impl Strategy<Value = Step> {
+    prop_oneof![
+        3 => op().prop_map(Step::Now),
+        4 => queued().prop_map(Step::Queue),
+        1 => Just(Step::Flush),
+    ]
+}
+
+/// Records `q` into `buffer`; `latest` is the buffer's newest pending spawn.
+fn record(buffer: &mut CommandBuffer, latest: &mut Option<Pending>, pool: &[EntityId], q: &Queued) {
+    let target = |aim: &Aim| -> Option<Target> {
+        match aim {
+            Aim::Slot(i) => Some(pool[*i].into()),
+            Aim::Latest => latest.map(Into::into),
+        }
+    };
+    match q {
+        Queued::Spawn => *latest = Some(buffer.spawn()),
+        Queued::Despawn(t) => target(t).into_iter().for_each(|t| buffer.despawn(t)),
+        Queued::InsertA(t, v) => target(t).into_iter().for_each(|t| buffer.insert(t, A(*v))),
+        Queued::InsertB(t, v) => target(t).into_iter().for_each(|t| buffer.insert(t, B(*v))),
+        Queued::RemoveA(t) => target(t).into_iter().for_each(|t| buffer.remove::<A>(t)),
+    }
+}
+
+/// Applies the queued commands to the model as a buffer would: in order, skipping dead targets.
+fn model_flush(
+    model: &mut Model,
+    ids: &mut DeterministicIdGen,
+    pool: &[EntityId],
+    queue: &[Queued],
+) {
+    let mut latest: Option<EntityId> = None;
+    for q in queue {
+        let resolve = |aim: &Aim| match aim {
+            Aim::Slot(i) => Some(pool[*i]),
+            Aim::Latest => latest,
+        };
+        match q {
+            Queued::Spawn => {
+                let id = ids.next_id().unwrap();
+                model.insert(id, (None, None, None));
+                latest = Some(id);
+            }
+            Queued::Despawn(t) => {
+                if let Some(id) = resolve(t) {
+                    model.remove(&id);
+                }
+            }
+            Queued::InsertA(t, v) => {
+                if let Some(e) = resolve(t).and_then(|id| model.get_mut(&id)) {
+                    e.0 = Some(A(*v));
+                }
+            }
+            Queued::InsertB(t, v) => {
+                if let Some(e) = resolve(t).and_then(|id| model.get_mut(&id)) {
+                    e.1 = Some(B(*v));
+                }
+            }
+            Queued::RemoveA(t) => {
+                if let Some(e) = resolve(t).and_then(|id| model.get_mut(&id)) {
+                    e.0 = None;
+                }
+            }
+        }
+    }
+}
+
+proptest! {
+    #[test]
+    fn model_proptest_with_command_buffers_matches_the_model(
+        steps in prop::collection::vec(step(), 1..200)
+    ) {
+        let pool = ids(POOL);
+        let mut world = World::new();
+        let mut model = Model::new();
+        let mut world_ids = DeterministicIdGen::new(99);
+        let mut model_ids = world_ids.clone();
+        let mut buffer = CommandBuffer::new();
+        let mut latest = None;
+        let mut queue = Vec::new();
+        for step in steps.into_iter().chain([Step::Flush]) {
+            match step {
+                Step::Now(op) => apply(&mut world, &mut model, &pool, op),
+                Step::Queue(q) => {
+                    record(&mut buffer, &mut latest, &pool, &q);
+                    queue.push(q);
+                }
+                Step::Flush => {
+                    std::mem::take(&mut buffer).apply(&mut world, &mut world_ids);
+                    model_flush(&mut model, &mut model_ids, &pool, &queue);
+                    queue.clear();
+                    latest = None;
+                }
+            }
             assert_matches(&world, &model);
         }
     }

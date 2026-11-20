@@ -7,7 +7,7 @@ Safe, deterministic rigid-body physics for Terra worlds over Jolt (via `jolt-sys
 - Components: `RigidBody` (`BodyKind`), `Collider` (`ColliderShape`, `PhysicsLayer`), `CharacterController`, `CharacterMotion`
 - `PhysicsRuntime` (`new`, `snapshot`, `tick` → `TickReport`, `raycast` → `RayHit`, `state_hash`, `save_state`/`restore_state`, `body_count`)
 - `PhysicsSettings` (gravity, `max_bodies`, `set_collides`), `LayerMask`
-- `CollisionEvents` (play-world resource, replaced every tick), `CollisionEvent`, `ContactKind`
+- `ContactBegan` / `ContactEnded { other, sensor }`: Terra signals raised on both entities by the physics step, delivered next tick in entity order (M2 phase 2.0b, ADR-0069)
 - `PhysicsModule` (EngineModule) and `physics.raycast` (`RaycastParams` / `RaycastResult`)
 
 ## Invariants

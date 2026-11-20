@@ -67,6 +67,14 @@ pub enum EcsError {
     /// An id source failed.
     #[error(transparent)]
     Id(#[from] IdError),
+    /// A storage kind was chosen for a type the world already stores another way.
+    #[error(
+        "{component} is already stored as an ordinary component; register its storage kind before first use"
+    )]
+    StorageKindInUse {
+        /// The component's stable name.
+        component: &'static str,
+    },
 }
 
 /// A query's access pattern is invalid.
@@ -93,6 +101,28 @@ pub enum QueryError {
     ReadOnly {
         /// The component's stable name.
         component: &'static str,
+    },
+    /// A query writes a shared component (one value per archetype).
+    #[error(
+        "{component} is a shared component and is read-only in queries; insert a new value to change it"
+    )]
+    SharedReadOnly {
+        /// The component's stable name.
+        component: &'static str,
+    },
+    /// A declared resource is not in the world.
+    #[error("resource {resource} is not in the world; insert it before the simulation runs")]
+    MissingResource {
+        /// The resource's type name.
+        resource: &'static str,
+    },
+    /// A presentation processor asked for a command buffer.
+    #[error(
+        "presentation processor {processor} cannot issue commands; structural changes belong in a simulation phase"
+    )]
+    CommandsInPresentation {
+        /// The processor.
+        processor: String,
     },
 }
 

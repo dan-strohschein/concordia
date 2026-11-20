@@ -22,29 +22,39 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
+mod command;
 mod component;
 mod dynamic;
 mod entity;
 mod error;
 mod hash;
+mod observer;
 mod processor;
 mod query;
 mod resource;
 mod schedule;
+mod signal;
 mod sim;
 mod storage;
 mod timer;
+mod view;
 mod world;
 
+pub use command::{ApplyReport, CommandBuffer, Pending, Target, TerraStats};
 pub use component::{Component, ReflectComponent, register_component};
 pub use dynamic::{DynamicQuery, component_from_json};
 pub use entity::Entity;
 pub use error::{EcsError, QueryError, ScheduleError};
 pub use hash::{ParseHashError, WorldHash};
-pub use processor::{FnProcessor, Phase, Processor, ProcessorDecl, View, ViewQuery, processor};
-pub use query::{ElemAccess, QueryData, QueryElem, QueryFilter, QueryState, With, Without};
+pub use observer::{Observe, observer};
+pub use processor::{FnProcessor, Phase, Processor, ProcessorDecl, processor};
+pub use query::{
+    ElemAccess, QueryData, QueryElem, QueryFilter, QueryState, ReadSlice, With, Without,
+};
 pub use resource::Resource;
 pub use schedule::{FnSystem, Schedule, System, SystemCtx, system};
 pub use sim::{SimClock, SimLoop, TimeScale};
+pub use storage::kind::{CHUNK_ROWS, StorageKind, StorageStats};
 pub use timer::Timer;
+pub use view::{View, ViewQuery};
 pub use world::{Changes, EntityWorldMut, World};

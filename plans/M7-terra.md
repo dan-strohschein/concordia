@@ -66,7 +66,7 @@ crates/concordia-api/          terra.* methods
 - **Notes:** simulation LOD is driven by LOD reference points that are part of simulation state (e.g. the player in the play world), never by the render camera, so replays stay deterministic; representation LOD may use the camera.
 
 ### Phase 7.5: Signals & observers (moved to M2 phase 2.0b)
-- **Tests first:** `signal_raised_this_tick_is_delivered_next_tick_in_entity_order`; `observers_fire_on_add_and_remove_once`; `signals_survive_lod_changes`.
+- **Tests first:** `signal_raised_this_tick_is_delivered_next_tick_in_entity_order`; `observers_fire_on_add_and_remove_once` (both done in M2 2.0b, ADR-0069); `signals_survive_lod_changes` (moved to M2 2.4b, with LOD).
 
 ### Phase 7.6: Spawners & representation switching (moved to M2 phases 2.0c and 2.4b)
 - **Tests first:** `spawner_places_count_with_seeded_distribution`; `representation_switches_between_full_instanced_and_hidden`; `instanced_representation_draws_100k_in_one_pass` (GPU, golden image).

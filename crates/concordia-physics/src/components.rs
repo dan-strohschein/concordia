@@ -117,7 +117,7 @@ pub struct Collider {
     #[serde(default)]
     #[reflect(range(min = 0.0, max = 15.0))]
     pub layer: PhysicsLayer,
-    /// Detects overlaps (collision events) without pushing anything.
+    /// Detects overlaps (contact signals) without pushing anything.
     #[serde(default)]
     pub is_sensor: bool,
     /// Shape offset from the entity's origin, in local space.

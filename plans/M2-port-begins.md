@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0 done (2026-11-19), 2.0b next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0 and 2.0b done (2026-11-19), 2.0c next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -117,6 +117,7 @@ The VFX artist stays disabled: particles are not in M2 (open question, unchanged
   - `simulation_lod_depends_only_on_deterministic_inputs`;
   - `representation_lod_follows_the_camera_without_affecting_world_hash`;
   - `representation_switches_between_full_instanced_and_hidden`;
+  - `signals_survive_lod_changes` (from M7 7.5; moved here from 2.0b because LOD lands here);
   - `instanced_representation_draws_100k_in_one_pass` (GPU, golden).
 - **2.5 (added):**
   - `crowd_of_10k_agents_avoids_overlap` (perf on the reference machine);
@@ -151,6 +152,47 @@ The VFX artist stays disabled: particles are not in M2 (open question, unchanged
 - **Not done here:**
   - The criterion benchmarks and `just perf-smoke` couldn't be judged against `BASELINE.md`: during this phase the machine was under heavy load (`ReportCrash` at 99% CPU, load average 14–17). `perf_smoke_iterate_1m_transform_velocity` measured 39 ms against its 25 ms budget, but main's code measured the same 39 ms then, so it isn't a regression. Re-measure on a quiet machine before 2.0b.
   - Resource access in views, and structural changes from processors (command buffers), come with 2.0b.
+
+### Phase 2.0b As built (2026-11-19, ADR-0069)
+- **Author decisions:**
+  - typed signals in a world-level queue;
+  - logical chunk components that aren't hashed, with real chunked tables recorded as a later performance update;
+  - command buffers applied at phase end;
+  - the perf fix as this phase's first step.
+- **Perf fix first.** Phase 2.0's perf result wasn't machine load. On a quiet machine the perf smoke still failed (36.7 ms against 25 ms), and every write query was 40–200× slower than the M0 baseline.
+  - The cause was M1 1.9e's change tracking: one `BTreeMap` lookup per entity a write query visits.
+  - The fix keeps one change tick per archetype. Two new guard tests (joining and leaving a written archetype) pin the semantics.
+  - The numbers before and after are in `crates/concordia-terra/benches/BASELINE.md`. All write benches are back at baseline.
+- **Storage kinds:**
+  - Tags are any zero-sized type, with no column.
+  - Shared components use `register_shared`, values interned by canonical hash and archetypes keyed by value. They are read-only in queries.
+  - Chunk components are logical: `CHUNK_ROWS` = 1024, and they aren't hashed.
+  - Every kind hashes like a dense component. `storage_kinds_never_change_the_world_hash` pins a hash computed with the pre-2.0b storage, so edit-world hashes and command journals are unchanged.
+  - Processor access to chunk components waits for its first consumer, 2.4b.
+- **Commands:**
+  - `View::commands` and `CommandBuffer`, plus `par_for_each_deferred` with one buffer per piece.
+  - Buffers apply at the end of their phase in plan order. Spawn ids come from `DeterministicIdGen` seeded by (tick, phase).
+  - Commands on dead targets are skipped and counted in `TerraStats`. Presentation processors get no buffer.
+- **Signals:** they are delivered at the start of the next tick, by entity and then raise order. Pending signals are hashed, and only when there are some. `ViewQuery::for_each_of` reaches the signaled entities' components.
+- **Observers:** `observer::<T>(name, Observe::Add | Remove)` runs after each simulation phase on net changes, in up to 8 rounds. It also sees direct changes made by exclusive systems.
+- **Resources in views:** `reads_resource` and `writes_resource` take part in conflicts, and resources are lent per wave without `unsafe`.
+- **Physics:** `CollisionEvents`, `CollisionEvent` and `ContactKind` are replaced by the `ContactBegan` and `ContactEnded` signals on both entities.
+  - `sensor_reports_enter_and_exit_events_once` was rewritten deliberately as `sensor_enter_and_exit_arrive_as_signals`. It is the same check, plus delivery on the next tick to both entities.
+- **Refactor:** `View` and `ViewQuery` moved to `view.rs`, and the two query fetch paths became one, where a `&T` element reads either rows or one shared value.
+- **Tests:**
+  - `tests/storage.rs` (7), `commands.rs` (8), `signals.rs` (8, observers included) and `resources.rs` (4);
+  - `model_proptest_with_command_buffers_matches_the_model`;
+  - two change-tracking guards;
+  - the physics sensor test.
+  - Every planned 2.0b test is there. `signals_survive_lod_changes` moved to 2.4b.
+- **Red run:**
+  - Against stubs, 26 of the new tests failed for the right reason.
+  - Three passed vacuously, because the stubs did nothing. I strengthened them: the determinism test now also checks that observers fired, signals arrived and an entity was despawned; the by-name test checks storage kinds; the chunk-hash test checks the value was stored. All three then failed.
+  - The two change-tracking guards passed at once by design; they protect semantics, while the perf smoke was this step's red test.
+- **Perf after 2.0b:** see `BASELINE.md`.
+  - The tag path first made `add_remove_component_10k` 4.38 ms. A fast path for zero-sized values and cached shared edges brought it to 2.97 ms, 11% above before.
+  - `spawn_10k` stays 34% above M0, from M1 1.9e's per-spawn touch, which is left for later.
+- **API counts unchanged:** 34 core methods, 31 MCP tools. The `terra.*` tools come in 2.0c.
 
 ### Effort (re-estimated)
 | Phase | Estimate |
@@ -635,6 +677,7 @@ which runs `cargo nextest run --test m2_port_begins` (`tests/gates/m2_port_begin
 ## ADRs to write
 - ADR-0067: M2 refinement: engine breadth on Terra's Mass core, Substrate-style materials, Godot mappings to M5, sample-game gate (written).
 - ADR-0068: Substrate-style material model (slabs, operators, closure budget), written in phase 2.3.
+- ADR-0069: Terra storage kinds, command buffers, signals and observers (written in phase 2.0b).
 - ADR-0064 and ADR-0065 (port projects, Godot import identity) move to M5 with the port; their numbers stay reserved.
 
 M2 draws from the 0060–0079 block (`plans/README.md`).

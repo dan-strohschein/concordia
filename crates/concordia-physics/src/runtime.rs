@@ -14,7 +14,7 @@ use crate::components::{
     BodyKind, CharacterController, CharacterMotion, Collider, ColliderShape, RigidBody,
 };
 use crate::error::PhysicsError;
-use crate::events::{CollisionEvent, CollisionEvents, ContactKind};
+use crate::events::{ContactBegan, ContactEnded};
 use crate::jolt::{BodyId, JoltCharacter, JoltWorld};
 use crate::layers::LayerMask;
 use crate::settings::PhysicsSettings;
@@ -103,8 +103,7 @@ impl PhysicsRuntime {
         self.jolt.step(dt)?;
         self.move_characters(world, dt);
         self.write_back(world);
-        let events = self.events();
-        world.insert_resource(events);
+        self.raise_contacts(world);
         Ok(TickReport { rejected })
     }
 
@@ -312,27 +311,27 @@ impl PhysicsRuntime {
         }
     }
 
-    fn events(&mut self) -> CollisionEvents {
-        let mut events: Vec<CollisionEvent> = self
+    /// Raises this step's contact changes as signals on both entities, in `(a, b)` id order.
+    fn raise_contacts(&mut self, world: &mut World) {
+        let mut contacts: Vec<(EntityId, EntityId, bool, bool)> = self
             .jolt
             .drain_events()
             .into_iter()
             .filter_map(|e| {
                 let (x, y) = (*self.users.get(&e.a)?, *self.users.get(&e.b)?);
-                Some(CollisionEvent {
-                    a: x.min(y),
-                    b: x.max(y),
-                    kind: if e.started {
-                        ContactKind::Started
-                    } else {
-                        ContactKind::Ended
-                    },
-                    sensor: e.sensor,
-                })
+                Some((x.min(y), x.max(y), e.started, e.sensor))
             })
             .collect();
-        events.sort();
-        CollisionEvents(events)
+        contacts.sort();
+        for (a, b, started, sensor) in contacts {
+            for (on, other) in [(a, b), (b, a)] {
+                if started {
+                    world.signal(on, ContactBegan { other, sensor });
+                } else {
+                    world.signal(on, ContactEnded { other, sensor });
+                }
+            }
+        }
     }
 }
 

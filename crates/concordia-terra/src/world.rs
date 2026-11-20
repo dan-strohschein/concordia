@@ -13,6 +13,7 @@ use crate::query::{QueryData, QueryFilter, QueryState};
 use crate::resource::{Resource, Resources};
 use crate::storage::archetype::Archetypes;
 use crate::storage::column::{downcast, typed, typed_mut};
+use crate::storage::kind::StorageKind;
 
 static NEXT_WORLD: AtomicU64 = AtomicU64::new(1);
 
@@ -26,6 +27,12 @@ pub struct World {
     pub(crate) changes: ChangeLog,
     /// Presentation-only component types: never hashed (ADR-0063).
     pub(crate) presentation: std::collections::HashSet<TypeId>,
+    /// Signals raised and delivered (ADR-0069).
+    pub(crate) signals: crate::signal::SignalQueue,
+    /// Adds and removals of observed component types (ADR-0069).
+    pub(crate) structural: crate::observer::StructuralLog,
+    /// Shared and tag component values (ADR-0069).
+    pub(crate) shared: crate::storage::shared::SharedStore,
 }
 
 /// The world's change clock and recent despawns.
@@ -70,6 +77,9 @@ impl Clone for World {
             resources: self.resources.clone(),
             changes: self.changes.clone(),
             presentation: self.presentation.clone(),
+            signals: self.signals.clone(),
+            structural: self.structural.clone(),
+            shared: self.shared.clone(),
         }
     }
 }
@@ -125,6 +135,9 @@ impl World {
             resources: Resources::default(),
             changes: ChangeLog::default(),
             presentation: std::collections::HashSet::new(),
+            signals: crate::signal::SignalQueue::default(),
+            structural: crate::observer::StructuralLog::default(),
+            shared: crate::storage::shared::SharedStore::default(),
         }
     }
 
@@ -153,7 +166,9 @@ impl World {
             return None;
         }
         Some(Changes {
-            changed: self.entities.changed_since(tick),
+            changed: self
+                .entities
+                .changed_since(tick, |a| self.archetypes.list[a].changed),
             despawned: self
                 .changes
                 .despawned
@@ -231,9 +246,13 @@ impl World {
     /// Despawns `id`, dropping its components.
     pub fn despawn(&mut self, id: EntityId) -> Result<(), EcsError> {
         let loc = self.entities.location(id)?;
-        let swapped = self.archetypes.list[loc.archetype]
-            .table
-            .swap_remove_drop(loc.row);
+        if !self.structural.is_idle() {
+            for c in self.archetypes.list[loc.archetype].all_components() {
+                let t = self.components.info(c).type_id;
+                self.structural.record(t, id, false);
+            }
+        }
+        let swapped = self.archetypes.remove_row(loc.archetype, loc.row);
         if let Some(moved) = swapped {
             self.entities.set_location(moved, loc);
         }
@@ -257,6 +276,9 @@ impl World {
     ) -> Result<Option<C>, EcsError> {
         let loc = self.entities.location(id)?;
         let cid = self.components.register::<C>()?;
+        if self.components.info(cid).kind != StorageKind::Dense {
+            return self.insert_shared(id, loc, cid, component);
+        }
         self.touch(id);
         if let Some(col) = self.archetypes.list[loc.archetype].column_index(cid) {
             let column = &mut *self.archetypes.list[loc.archetype].table.columns[col];
@@ -269,6 +291,7 @@ impl World {
             .archetypes
             .with_added(loc.archetype, cid, &self.components);
         let new_loc = self.relocate(id, loc, dst, None);
+        self.structural.record(TypeId::of::<C>(), id, true);
         let col = self.archetypes.list[dst]
             .column_index(cid)
             .expect("destination has the component");
@@ -290,11 +313,15 @@ impl World {
 
     /// Borrows a component.
     pub fn get<C: Component>(&self, id: EntityId) -> Option<&C> {
-        let (loc, col) = self.column_of(id, TypeId::of::<C>())?;
-        typed::<C>(&*self.archetypes.list[loc.archetype].table.columns[col]).get(loc.row)
+        match self.column_of(id, TypeId::of::<C>()) {
+            Some((loc, col)) => {
+                typed::<C>(&*self.archetypes.list[loc.archetype].table.columns[col]).get(loc.row)
+            }
+            None => self.get_shared(id),
+        }
     }
 
-    /// Mutably borrows a component.
+    /// Mutably borrows a dense component (`None` for a shared or tag one: insert a new value).
     pub fn get_mut<C: Component>(&mut self, id: EntityId) -> Option<&mut C> {
         let (loc, col) = self.column_of(id, TypeId::of::<C>())?;
         self.touch(id);
@@ -309,13 +336,14 @@ impl World {
         Some(
             arch.by_name
                 .iter()
-                .map(|&i| self.components.info(arch.components[i]).name)
+                .map(|&slot| self.components.info(arch.component_at(slot)).name)
                 .collect(),
         )
     }
 
     /// A typed query over entities with all of `D`'s components.
     pub fn query<D: QueryData>(&self) -> Result<QueryState<D>, QueryError> {
+        self.check_writes::<D>()?;
         QueryState::new()
     }
 
@@ -323,7 +351,22 @@ impl World {
     pub fn query_filtered<D: QueryData, F: QueryFilter>(
         &self,
     ) -> Result<QueryState<D, F>, QueryError> {
+        self.check_writes::<D>()?;
         QueryState::new()
+    }
+
+    /// Shared and tag components can't be written through a query.
+    fn check_writes<D: QueryData>(&self) -> Result<(), QueryError> {
+        for e in D::elems().iter().filter(|e| e.mutable) {
+            let kind = self
+                .components
+                .id_of(e.type_id)
+                .map(|c| self.components.info(c).kind);
+            if matches!(kind, Some(StorageKind::Shared | StorageKind::Tag)) {
+                return Err(QueryError::SharedReadOnly { component: e.name });
+            }
+        }
+        Ok(())
     }
 
     /// Inserts a resource; returns the previous value.
@@ -390,7 +433,7 @@ impl World {
         let loc = self.entities.location(id)?;
         self.touch(id);
         let Some(col) = self.archetypes.list[loc.archetype].column_index(cid) else {
-            return Ok(None);
+            return Ok(self.remove_shared(id, loc, cid));
         };
         let value =
             self.archetypes.list[loc.archetype].table.columns[col].swap_remove_boxed(loc.row);
@@ -398,6 +441,8 @@ impl World {
             .archetypes
             .with_removed(loc.archetype, cid, &self.components);
         self.relocate(id, loc, dst, Some(col));
+        let t = self.components.info(cid).type_id;
+        self.structural.record(t, id, false);
         Ok(Some(value))
     }
 
@@ -419,6 +464,64 @@ impl World {
             self.entities.set_location(moved, loc);
         }
         new_loc
+    }
+
+    /// Sets shared or tag `component` on `id`, moving it to the archetype for that value.
+    fn insert_shared<C: Component>(
+        &mut self,
+        id: EntityId,
+        loc: Location,
+        cid: ComponentId,
+        component: C,
+    ) -> Result<Option<C>, EcsError> {
+        let value = self.shared.intern(cid, component)?;
+        let old = self.archetypes.list[loc.archetype].shared_value(cid);
+        let previous = old.and_then(|v| self.shared.get::<C>(cid, v).cloned());
+        self.touch(id);
+        if old != Some(value) {
+            let dst = self
+                .archetypes
+                .with_shared(loc.archetype, cid, value, &self.components);
+            self.relocate(id, loc, dst, None);
+        }
+        if old.is_none() {
+            self.structural.record(TypeId::of::<C>(), id, true);
+        }
+        Ok(previous)
+    }
+
+    /// Removes shared or tag `cid` from `id`, returning a copy of its value.
+    fn remove_shared(
+        &mut self,
+        id: EntityId,
+        loc: Location,
+        cid: ComponentId,
+    ) -> Option<Box<dyn DynReflect>> {
+        let value = self.archetypes.list[loc.archetype].shared_value(cid)?;
+        let copy = self.shared.get_reflect(cid, value).clone_dyn();
+        let dst = self
+            .archetypes
+            .with_removed(loc.archetype, cid, &self.components);
+        self.relocate(id, loc, dst, None);
+        let t = self.components.info(cid).type_id;
+        self.structural.record(t, id, false);
+        Some(copy)
+    }
+
+    fn get_shared<C: Component>(&self, id: EntityId) -> Option<&C> {
+        let loc = self.entities.location(id).ok()?;
+        let cid = self.components.id_of(TypeId::of::<C>())?;
+        let value = self.archetypes.list[loc.archetype].shared_value(cid)?;
+        self.shared.get::<C>(cid, value)
+    }
+
+    /// `id`'s component `cid` in any storage kind, reflected.
+    pub(crate) fn reflect_of(&self, loc: Location, cid: ComponentId) -> Option<&dyn DynReflect> {
+        let arch = &self.archetypes.list[loc.archetype];
+        match arch.column_index(cid) {
+            Some(col) => Some(arch.table.columns[col].get_reflect(loc.row)),
+            None => Some(self.shared.get_reflect(cid, arch.shared_value(cid)?)),
+        }
     }
 
     pub(crate) fn column_of(&self, id: EntityId, type_id: TypeId) -> Option<(Location, usize)> {

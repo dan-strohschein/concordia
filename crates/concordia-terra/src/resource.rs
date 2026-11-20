@@ -64,6 +64,16 @@ impl Resources {
             .and_then(|r| (**r).as_any_mut().downcast_mut())
     }
 
+    /// Takes the boxed resource of type `t` out (to lend it to processors).
+    pub(crate) fn take(&mut self, t: TypeId) -> Option<Box<dyn Resource>> {
+        self.0.remove(&t)
+    }
+
+    /// Puts a resource taken with [`Resources::take`] back.
+    pub(crate) fn put(&mut self, t: TypeId, value: Box<dyn Resource>) {
+        self.0.insert(t, value);
+    }
+
     pub(crate) fn remove<R: Resource>(&mut self) -> Option<R> {
         let boxed = self.0.remove(&TypeId::of::<R>())?;
         boxed.into_any().downcast::<R>().ok().map(|b| *b)
