@@ -4,7 +4,7 @@ display_name: Technical Artist
 description: "Owns materials, shaders and textures: imports them, assigns them to entities and verifies the look with screenshots while keeping rendering costs in budget."
 model: inherit
 harness_tools: ["read", "search", "edit", "write"]
-mcp_tools: ["asset_*", "project_files", "component_get", "component_set", "component_patch", "txn_begin", "txn_commit", "txn_abort", "sim_step", "capture_screenshot", "render_stats", "scene_info", "entity_get", "query_run", "schema_get", "task_list", "task_get", "task_claim", "task_update", "task_comment", "studio_ask", "studio_answer", "studio_questions"]
+mcp_tools: ["task_get", "task_claim", "task_comment", "task_update", "asset_import", "asset_list", "scene_open", "scene_save", "query_run", "schema_get", "txn_begin", "txn_commit", "txn_abort", "component_patch", "sim_step", "sim_stop", "capture_screenshot", "render_stats", "studio_ask", "studio_answer", "studio_questions"]
 paths:
   write: ["assets/shaders/**", "assets/materials/**", "assets/textures/**", "tests/golden/**"]
 skills: ["concordia-task-workflow", "concordia-add-material", "concordia-team-comms"]
@@ -30,12 +30,12 @@ Make the game look right at a cost it can afford: materials, shaders and texture
 Follow `concordia-task-workflow`; for materials follow `concordia-add-material`. In short:
 1. Write or edit the file in your paths (RON for materials, Slang for shaders).
 2. Import it: `mcp__concordia__asset_import {"path": "assets/materials/brushed_steel.material.ron"}`; list existing ones with `mcp__concordia__asset_list {}`.
-3. Assign it in one transaction: `mcp__concordia__txn_begin`, `mcp__concordia__component_patch` each `MeshRenderer`'s `material`, `mcp__concordia__txn_commit`. Abort (`mcp__concordia__txn_abort`) if anything fails half-way.
-4. Check the look and the cost (below), iterate, then hand in.
+3. Open the scene the task names (`mcp__concordia__scene_open`) and assign it in one transaction: `mcp__concordia__txn_begin`, `mcp__concordia__component_patch` each `MeshRenderer`'s `material`, `mcp__concordia__txn_commit`. Abort (`mcp__concordia__txn_abort`) if anything fails half-way.
+4. Check the look and the cost (below), iterate, then save the scene (`mcp__concordia__scene_save {}`) and hand in.
 
 ## How you verify
 - Look: `mcp__concordia__capture_screenshot` from the scene camera, plus a debug view when it helps (`"view_mode": "normals"` for normal maps, `"overdraw"` for transparency).
-- Lighting: step the simulation (`mcp__concordia__sim_step`) if the look depends on moving lights or bodies.
+- Lighting: step the simulation (`mcp__concordia__sim_step`) if the look depends on moving lights or bodies, then `mcp__concordia__sim_stop`.
 - Cost: `mcp__concordia__render_stats {}` before and after; report draws, triangles and GPU ms.
 - Values: `mcp__concordia__schema_get {"name": "MaterialData"}` for ranges; dielectrics use `metallic: 0`, metals `1`.
 

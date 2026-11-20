@@ -518,7 +518,7 @@ This replaces the test list and implementation notes of the older "Phase 2.6" te
     - `script_reload_journals_edit_world_migration_with_script_actor`, with undo and redo;
     - `every_backend_runs_the_sample_logic_to_identical_hashes` (linked, WASM and native, at 1 and 8 threads);
     - `editing_a_native_module_during_a_headless_session_changes_behavior_after_reload` (the done criterion: the library on disk is replaced by a rebuilt one, then reloaded).
-  - Counts and budget: `binary_serves_script_reload_when_scripts_are_configured` (36 tools, under 16k tokens), and `scripts_module_registers_module_types_and_adds_script_reload` (core plus 1).
+  - Counts and budget: `binary_serves_script_reload_when_scripts_are_configured` (36 tools, under 16k tokens; the budget part was retired by ADR-0073), and `scripts_module_registers_module_types_and_adds_script_reload` (core plus 1).
   - Scope: `gameplay_programmer_writes_and_reloads_scripts_with_the_scripting_skill`.
   - Added:
     - `concordia-command/tests/migrate.rs` (4);
@@ -610,9 +610,30 @@ This replaces the older "Phase 2.8" text below, which was written before Terra a
 - Roster scopes are loaded with globs expanded.
 - The in-process MCP test server needs the project's modules passed in.
 
-**Tool-list budget (an open question for the author):** the core list is still about 14k tokens, under ADR-0070's 16k. But a project with `[input]`, `[physics]`, `[assets]` and `[scripts]` was already about 18.9k before this phase, and is about 20.5k with `[replay]`, because the budget test only covers the core set. The replay tools were trimmed from about 1.9k to 1.6k, and `replay_tools_add_under_1700_tokens_to_a_full_project` guards their share.
+**Tool-list budget (an open question for the author; answered by ADR-0073, see below):** the core list is still about 14k tokens, under ADR-0070's 16k. But a project with `[input]`, `[physics]`, `[assets]` and `[scripts]` was already about 18.9k before this phase, and is about 20.5k with `[replay]`, because the budget test only covers the core set. The replay tools were trimmed from about 1.9k to 1.6k, and `replay_tools_add_under_1700_tokens_to_a_full_project` guards their share.
 
 **Not in this phase:** snapshots, bisection to tick, entity and field, `ab` runs, raw device events, and reloads recorded mid-session (M3 3.1); assertions (3.2).
+
+### Per-role tool scopes (2026-11-20, ADR-0073)
+The author's answer to 2.8's open question: no agent ever gets the whole tool list, so there is no budget on it. Budgets are per role, and only the admin grants tools, in the roster.
+- **Roster:** every default role names its tools; there are no globs. Each tool is one its prompt or preloaded skills use, and each tool they tell it to use is in scope.
+- **Director:** keeps its task tools (create, list, get, update, comment), `studio_*` and `txn_history`. It loses the eight world-inspection tools and `concordia-task-workflow`, and it now reviews the evidence specialists attach to tasks.
+- **Specialists:** the level designer drops `replay_*` (nothing it does records replays) and keeps `scene_info` and `entity_spawn`, which its prompt now uses. The tech artist gains `scene_open`, `scene_save` and `sim_stop`, and the gameplay programmer gains `scene_open` and `sim_stop`. `concordia-team-comms` no longer names `query_run`, and it shows every role `studio_questions`.
+- **Sizes, before → after:**
+
+  | Role | Tools | Tokens |
+  |---|---|---|
+  | director | 25 → 13 | ≈20.8k → 12.5k |
+  | gameplay-programmer | 42 → 16 | ≈22.6k → 12.4k |
+  | level-designer | 51 → 35 | ≈28.3k → 20.4k |
+  | qa-playtester | 28 → 22 | ≈21.2k → 17.6k |
+  | tech-artist | 24 → 21 | ≈16.1k → 14.0k |
+  | writer | 12 → 11 | ≈10.6k → 9.6k |
+
+- **Tests:**
+  - Retired: `tool_list_token_budget`, `replay_tools_add_under_1700_tokens_to_a_full_project`, and the 16k assertion in `binary_serves_script_reload_when_scripts_are_configured`.
+  - Added: `every_enabled_default_role_stays_under_its_tool_budget` (`concordia-mcp`, 22k per role), `default_role_scopes_list_tools_by_name_not_by_glob`, `every_scoped_tool_is_used_by_the_role_prompt_or_its_skills`, `every_tool_a_role_skill_tells_it_to_use_is_in_scope` and `director_coordinates_with_task_team_and_history_tools_only`.
+  - Changed: the QA replay test now requires that the level designer has no replay tools. M3S gate calls that used tools a role no longer has now use ones it has: the level designer's `task_list` became `task_get` and `schema_get`, and the tech artist's `component_set` became `component_patch`. The director's approval attempt is now refused by the hook's scope check, since it has no `task_approve`; the gate-party rule stays covered by `done_requires_gate_actor`. The M3S agents snapshot changes only the `tools:` lines.
 
 ### Effort (re-estimated)
 | Phase | Estimate |
@@ -1102,7 +1123,8 @@ which runs `cargo nextest run --test m2_port_begins` (`tests/gates/m2_port_begin
 - ADR-0067: M2 refinement: engine breadth on Terra's Mass core, Substrate-style materials, Godot mappings to M5, sample-game gate (written).
 - ADR-0068: Substrate-style material model (slabs, operators, closure budget), written in phase 2.3.
 - ADR-0069: Terra storage kinds, command buffers, signals and observers (written in phase 2.0b).
-- ADR-0070: Terra templates, traits and spawners; the MCP tool-list budget rises to 16k (written in phase 2.0c).
+- ADR-0070: Terra templates, traits and spawners; the MCP tool-list budget rises to 16k (written in phase 2.0c; the budget superseded by ADR-0073).
+- ADR-0073: tool budgets are per agent role; access is admin-configured in the roster; no whole-list budget (written 2026-11-20).
 - ADR-0064 and ADR-0065 (port projects, Godot import identity) move to M5 with the port; their numbers stay reserved.
 
 M2 draws from the 0060–0079 block (`plans/README.md`).

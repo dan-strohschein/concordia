@@ -125,7 +125,7 @@ async fn m3s_agents_and_the_editor_share_one_engine() {
     tokio::time::sleep(Duration::from_millis(100)).await;
     let lost = tokio::time::timeout(
         Duration::from_secs(5),
-        agent_try(&root, &mcp, LD, "task_list", json!({})),
+        agent_try(&root, &mcp, LD, "task_get", json!({"id": id})),
     )
     .await
     .expect("no hang")
@@ -135,9 +135,9 @@ async fn m3s_agents_and_the_editor_share_one_engine() {
         "{}",
         lost.text
     );
-    let tasks = agent_call(&root, &mcp, LD, "task_list", json!({})).await;
+    let task = agent_call(&root, &mcp, LD, "task_get", json!({"id": id})).await;
     assert_eq!(
-        tasks["tasks"][0]["id"],
+        task["task"]["id"],
         id.as_str(),
         "the board is text, so it survives the host"
     );

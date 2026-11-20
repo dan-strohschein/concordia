@@ -13,7 +13,7 @@ Questions are records on the Studio board (`Q-0007`), not chat. Asking returns a
 - A task's acceptance criteria are ambiguous and the choice matters.
 - You found a problem in someone else's work that blocks yours.
 
-Don't ask what you can find yourself (`mcp__concordia__query_run`, `mcp__concordia__task_get`, the project files), and don't ask the human directly unless the director told you to; ask `director` instead.
+Don't ask what you can find yourself (your own engine tools, `mcp__concordia__task_get`, the project files), and don't ask the human directly unless the director told you to; ask `director` instead.
 
 ## How to ask
 `mcp__concordia__studio_ask {"to": "tech-artist", "text": "crate material id for T-0004? brushed or painted?", "task": "T-0004"}`
@@ -27,6 +27,7 @@ Don't ask what you can find yourself (`mcp__concordia__query_run`, `mcp__concord
 - At most **500** characters; same style. Give the fact, then where it lives.
 - Answer only what you know. If you don't know, say who might, in one line.
 - The first answer closes a question.
+- `mcp__concordia__studio_questions {"to": "<your role>", "status": "open"}` lists the questions waiting for you.
 
 ## Glossary
 - `T-0001` a task; `Q-0001` a question.

@@ -169,7 +169,7 @@ async fn m3s_file_edits_are_journaled_with_the_role_actor() {
     let root = new_project(dir.path());
     let mcp = mcp(&root).await;
     // An engine call first, so the designer holds a slot (#1) like a real session would.
-    agent_call(&root, &mcp, Some("level-designer"), "task_list", json!({})).await;
+    agent_call(&root, &mcp, Some("level-designer"), "schema_get", json!({})).await;
 
     let file = root.join("scenes/notes.scene.ron");
     let edit_input = json!({"file_path": file.display().to_string()});

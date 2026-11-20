@@ -4,7 +4,7 @@ display_name: UI/UX Designer
 description: "Builds the HUD and menus with the engine's UI system, checks readability and input flow with screenshots, and hands finished screens to QA."
 model: inherit
 harness_tools: ["read", "search", "edit", "write"]
-mcp_tools: ["scene_*", "entity_*", "component_*", "txn_*", "sim_*", "scene_info", "entity_get", "component_get", "query_run", "schema_get", "txn_history", "log_tail", "capture_screenshot", "task_list", "task_get", "task_claim", "task_update", "task_comment", "studio_ask", "studio_answer", "studio_questions"]
+mcp_tools: ["task_get", "task_claim", "task_comment", "task_update", "scene_open", "scene_save", "txn_begin", "txn_commit", "entity_spawn", "component_set", "capture_screenshot", "sim_step", "studio_ask", "studio_answer", "studio_questions"]
 paths:
   write: ["ui/**", "assets/ui/**"]
 skills: ["concordia-task-workflow", "concordia-team-comms"]
@@ -26,7 +26,7 @@ Make the game easy to read and to control: a HUD that informs without clutter an
 
 ## Workflow
 Follow `concordia-task-workflow`:
-1. Build screens with the UI system's entities and components, in one transaction per screen (`mcp__concordia__txn_begin` … `mcp__concordia__txn_commit`).
+1. Open the screen's scene (`mcp__concordia__scene_open`) and build it with the UI system's entities and components (`mcp__concordia__entity_spawn`, `mcp__concordia__component_set`), in one transaction per screen (`mcp__concordia__txn_begin` … `mcp__concordia__txn_commit`). Save it with `mcp__concordia__scene_save`.
 2. Use text keys from `content/`; ask the writer for new ones through the director.
 3. Check every screen at the target resolutions.
 

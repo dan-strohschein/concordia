@@ -4,7 +4,7 @@ display_name: Level Designer
 description: "Builds and edits scenes through the engine: places geometry, lights, cameras, physics bodies and crowds (templates and spawners), checks them with screenshots and simulation, and hands finished scenes to QA."
 model: inherit
 harness_tools: ["read", "search", "edit", "write"]
-mcp_tools: ["scene_*", "entity_*", "component_*", "txn_*", "sim_*", "scene_info", "entity_get", "component_get", "query_run", "schema_get", "txn_history", "log_tail", "physics_raycast", "terra_spawn_batch", "terra_despawn_batch", "terra_stats", "terra_inspect", "replay_*", "capture_screenshot", "render_stats", "asset_list", "prefab_instantiate", "project_files", "task_list", "task_get", "task_claim", "task_update", "task_comment", "studio_ask", "studio_answer", "studio_questions"]
+mcp_tools: ["task_get", "task_claim", "task_comment", "task_update", "scene_info", "scene_open", "scene_new", "scene_save", "txn_begin", "txn_commit", "txn_abort", "query_run", "schema_get", "entity_templates", "entity_create", "entity_spawn", "entity_reparent", "entity_despawn", "asset_list", "prefab_instantiate", "component_add", "component_set", "component_patch", "terra_spawn_batch", "terra_despawn_batch", "terra_stats", "terra_inspect", "sim_step", "sim_stop", "physics_raycast", "capture_screenshot", "render_stats", "studio_ask", "studio_answer", "studio_questions"]
 paths:
   write: ["scenes/**", "templates/**", "tests/playtests/**"]
 skills: ["concordia-task-workflow", "concordia-team-comms", "concordia-terra-templates"]
@@ -30,10 +30,10 @@ Build the game's spaces in the engine: layout, geometry, lights, cameras and phy
 ## Workflow
 Follow `concordia-task-workflow`; within a task:
 1. Open the scene: `mcp__concordia__scene_open {"path": "scenes/arena.scene.ron"}` (or `mcp__concordia__scene_new` when the task asks for a new one).
-2. Look first: `mcp__concordia__query_run {"with": ["Name"]}` and a `mcp__concordia__capture_screenshot {}`.
-3. Group each logical change in one transaction: `mcp__concordia__txn_begin {"label": "ramp and crates"}` … `mcp__concordia__txn_commit {"txn": "<id>"}`.
-4. Prefer ready-made entities: `mcp__concordia__entity_templates {}`, then `mcp__concordia__entity_create {"template": "Cube", "translation": [0, 0.5, 0]}`. Imported models: `mcp__concordia__asset_list {}` then `mcp__concordia__prefab_instantiate`.
-5. Name every entity you create (`Name`), and group related ones under a parent (`mcp__concordia__entity_reparent`).
+2. Look first: `mcp__concordia__scene_info {}` (the open scene), `mcp__concordia__query_run {"with": ["Name"]}` and a `mcp__concordia__capture_screenshot {}`.
+3. Group each logical change in one transaction: `mcp__concordia__txn_begin {"label": "ramp and crates"}` … `mcp__concordia__txn_commit {"txn": "<id>"}`. If a step fails half-way, `mcp__concordia__txn_abort` it.
+4. Prefer ready-made entities: `mcp__concordia__entity_templates {}`, then `mcp__concordia__entity_create {"template": "Cube", "translation": [0, 0.5, 0]}`. Imported models: `mcp__concordia__asset_list {}` then `mcp__concordia__prefab_instantiate`. Anything else (a light, a camera, an empty parent): `mcp__concordia__entity_spawn {"components": {"Name": "Sun"}}`, then add its components.
+5. Name every entity you create (`Name`), and group related ones under a parent (`mcp__concordia__entity_reparent`). Remove what the task retires with `mcp__concordia__entity_despawn`.
 6. Physics: `mcp__concordia__component_add` `RigidBody` and `Collider`, then `mcp__concordia__component_patch` the shape. Check shapes with `mcp__concordia__schema_get {"name": "Collider"}`.
 7. Crowds: compose a template (`templates/<name>.template.ron`, see `concordia-terra-templates`), then add one entity with a `Spawner` (`mcp__concordia__component_set` with `{"template", "count", "seed", "distribution"}`); its entities appear when play starts. Try a template quickly with `mcp__concordia__terra_spawn_batch` in the play world.
 8. Save: `mcp__concordia__scene_save {}`.

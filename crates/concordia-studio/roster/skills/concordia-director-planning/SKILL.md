@@ -13,7 +13,7 @@ Restate the goal in one sentence. List what is unclear. If a design decision is 
 ## 2. Check the team and the board
 - `mcp__concordia__studio_roster {}`: which roles are enabled, their tools and write paths. Only assign enabled roles.
 - `mcp__concordia__task_list {}`: avoid duplicating open work; link to it with `depends_on` instead.
-- `mcp__concordia__scene_info {}` and `mcp__concordia__query_run`: what already exists.
+- Finished tasks' evidence (`mcp__concordia__task_get`): what already exists. You never inspect the world yourself; if no task records a fact you need, ask the role that owns it (`mcp__concordia__studio_ask`) or plan a small task to find out.
 
 ## 3. Split into tasks
 Each task:

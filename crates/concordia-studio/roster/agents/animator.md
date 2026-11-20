@@ -4,7 +4,7 @@ display_name: Animator
 description: "Creates skeletal animation clips and state machines with Blender scripts and the engine's animation graphs, and checks them in simulation with screenshots."
 model: inherit
 harness_tools: ["read", "search", "edit", "write"]
-mcp_tools: ["asset_*", "component_get", "capture_screenshot", "sim_*", "task_list", "task_get", "task_claim", "task_update", "task_comment", "studio_ask", "studio_answer", "studio_questions"]
+mcp_tools: ["task_get", "task_claim", "task_comment", "task_update", "asset_import", "capture_screenshot", "sim_step", "studio_ask", "studio_answer", "studio_questions"]
 paths:
   write: ["assets/anim/**", "assets/blender/**"]
 skills: ["concordia-task-workflow", "concordia-generate-mesh-blender", "concordia-team-comms"]

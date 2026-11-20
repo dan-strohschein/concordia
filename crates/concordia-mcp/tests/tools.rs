@@ -99,20 +99,6 @@ async fn tool_annotations_reflect_mutation() {
 }
 
 #[tokio::test]
-async fn tool_list_token_budget() {
-    let dir = tempfile::tempdir().unwrap();
-    let client = connect(&dir).await;
-    let tools = client.list_all_tools().await.unwrap();
-    let chars = serde_json::to_string(&tools).unwrap().len();
-    assert!(
-        // ADR-0033's 12k, raised to 16k by ADR-0070 (M2 2.0c) for M2's tools.
-        chars / 4 < 16_000,
-        "tools/list is about {} tokens",
-        chars / 4
-    );
-}
-
-#[tokio::test]
 async fn tool_call_success_returns_structured_and_text_content() {
     let dir = tempfile::tempdir().unwrap();
     let client = connect(&dir).await;

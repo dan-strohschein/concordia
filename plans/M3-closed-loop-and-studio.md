@@ -688,6 +688,8 @@ justfile                       (touched) `gate-live` recipe
   | UI/UX (`ui-ux`) | HUD and menus with `concordia-ui`; readability and input flow; screenshot evidence. | scene/entity/component (UI), `capture_screenshot`, `input_inject`, `sim_*`, task | `ui/**`, `assets/ui/**` | QA |
   | QA/Playtester (`qa-playtester`) | Proves or disproves each task's acceptance: records a scenario replay, evaluates assertions, re-simulates on the fix, attaches the evidence, and moves the task to `done` or `rejected` with a reason. **Read-only on game code.** | `replay_*`, `assert_eval`, `sim_*`, `input_inject`, `capture_screenshot`, `query_run`, `log_tail`, `task_*` (approve/reject) | `tests/replays/**`, `tests/playtests/**` | (is the gate) |
 
+  > **Scopes as built (2026-11-20, ADR-0073):** the default roles name each tool explicitly, with no globs, and only the tools their prompts and skills use; `crates/concordia-studio/roster/agents/*.md` holds the current lists. The director no longer has world tools (`log_tail`, `query_run`, `schema_get`, `scene_open`): it reviews the evidence specialists attach to tasks. Budgets are per role; there is no whole-list budget.
+
   Built-in skills (`studio/skills/`): `concordia-task-workflow` (claim → work → evidence → `in_review`), `concordia-fix-bug-with-replay` (reproduce → failing assertion → fix → resimulate → hand to QA), `concordia-write-playtest`, `concordia-record-replay`, `concordia-add-material`, `concordia-generate-mesh-blender`, `concordia-synthesize-sfx`, `concordia-director-planning` (task decomposition and acceptance writing; `user-invocable`, so the human can run `/concordia-director-planning`).
 - **Tests first:**
   - `crates/concordia-studio/tests/roster.rs`
