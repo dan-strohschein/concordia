@@ -16,7 +16,8 @@ pub use movement::Movement;
 pub use spawner::{Distribution, Spawner, expand_spawners};
 pub use template::{CompiledTemplate, Template};
 pub use traits::{
-    EntityTrait, ReflectTrait, TemplateBuilder, register_trait, trait_names, trait_schema,
+    DynamicTrait, EntityTrait, ReflectTrait, TemplateBuilder, register_dynamic_trait,
+    register_trait, trait_names, trait_schema,
 };
 
 use concordia_reflect::{RegistryError, TypeRegistry};

@@ -9,11 +9,6 @@ ignore = [
   # (and of rmcp's schemars). Re-check at every rmcp upgrade and drop this entry as soon
   # as rmcp no longer needs chrono; fallback is rust-mcp-sdk (ADR-0033).
   { id = "RUSTSEC-2026-0543", reason = "chrono unmaintained; required by rmcp 3.11 (ADR-0033)" },
-  # wasmtime-wasi 50.x: WASI filesystem sandbox escape on Windows through drive-prefixed paths.
-  # Unreachable here: a dev-dependency used only by the M-1 scaffold gate, with a closed WASI
-  # context (no filesystem preopens), run on macOS and Linux. The fix ships in wasmtime 51;
-  # drop this entry when 51 is stable, at the latest with M2 phase 2.6's wasmtime upgrade.
-  { id = "RUSTSEC-2026-0587", reason = "wasmtime-wasi 50 Windows preopen escape; dev-only, no preopens (remove at wasmtime 51)" },
 ]
 
 [licenses]

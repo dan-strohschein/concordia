@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c and 2.6a (2026-11-20) done; 2.6b next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6a and 2.6b (2026-11-20) done; 2.6c next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -244,7 +244,7 @@ This replaces the test list and implementation notes of the older "Phase 2.6" te
 - **The native tier speaks the same protocol** over a C-ABI vtable. It is built in 2.6 too.
 - **WASM instances are fresh per processor run**, from a precompiled `InstancePre` with the pooling allocator, so no hidden guest state outlives a run. A benchmark measures the cost.
 - **Four sub-phases**, each its own commit and PR to main.
-- **Wasmtime** is pinned at `=50.0.3`, which patches RUSTSEC-2026-0587, so the `deny.toml` ignore goes (51 is still a release candidate).
+- **Wasmtime** is pinned at `=50.0.3`, which patches RUSTSEC-2026-0587, so the `deny.toml` ignore goes (51 is still a release candidate). *Updated at 2.6b's start: 51.0.0 had become stable, so it is pinned `=51.0.0` instead (author's decision).*
 
 **How the old plan maps onto Terra:**
 - **Systems → processors.** `describe()` declares processors: name, phase, component reads, writes and presentation writes by stable name, received signals, and before/after. They join Terra's conflict graph and deterministic waves (ADR-0063).
@@ -367,6 +367,55 @@ This replaces the test list and implementation notes of the older "Phase 2.6" te
   - `precompiled_component_is_cached_and_reused`;
   - `wasm_reload_preserves_world_state`.
 - **Benchmark** (criterion, recorded in `BASELINE.md`): the same logic run native, as WASM without guards, as WASM with fuel, and as WASM with fuel and NaN canonicalization, at 10k and 100k entities. Fuel granularity is chosen from these numbers.
+
+**2.6b As built (2026-11-20, ADR-0062):**
+- **Author decisions at the start:**
+  - Wasmtime 51.0.0 had become stable, so it is pinned `=51.0.0` (not 50.0.3). The M-1 gate passed unchanged, and the `deny.toml` ignore is gone.
+  - The protocol types got their own small crate, `concordia-script-protocol` (reflect and core only), so guests don't compile Terra or the scene crate. `concordia-script` re-exports them.
+- **Crates:**
+  - `concordia-script-protocol`: descriptors, `TickContext`, `Batch`, `RunOutput`, `Command`, `ModuleDesc::validate`, and packed ids.
+  - `concordia-script`:
+    - `ScriptBackend`, and `ScriptModule` (`run(&self)`, so there is no guest state);
+    - `ScriptHost` (load, processors, faults, logs, reload) and `ScriptProcessor`;
+    - `register_module`, `processor_seed`, `TestBackend`;
+    - the conformance suite behind the `conformance` feature (`conformance_suite!`, `Rig`, `run_all`).
+  - `concordia-script-guest`: `Module`, `RunCtx`, `processor()`, `describe_type`, `export_module!` (wit-bindgen with `pub_export_macro`, `wasm32` only) and `math` (libm).
+  - `concordia-script-wasm`: `WasmBackend`, `WasmModule`, `WasmConfig` and `Fuel`.
+  - The WIT world is `wit/concordia-game` (`concordia:game@0.1.0`).
+  - The conformance module, `tests/fixtures/script/conformance-guest`, is a workspace member. It builds as an rlib, and `just wasm` builds it as `conformance_guest.wasm` and `conformance_guest_v2.wasm`.
+- **Additions elsewhere (each test-first):**
+  - `ReflectComponent::from_wire` (Terra): a script command can carry any component, Rust or script-defined.
+  - `DynamicTrait` and `register_dynamic_trait`, plus `CompiledTemplate::record` (terra-sim). `ReflectTrait` now holds a shared closure instead of a function pointer, so a trait can carry data from a description.
+  - `SimRng` implements `rand_core::TryRng` (core), so it can be WASI's random source.
+  - `concordia-reflect`'s stride check uses `u32::try_from`, because clippy for `wasm32` (now in `just lint`) flagged the old comparison as always false on 32-bit.
+  - Wasmtime is built without default features. Its `cache` feature pulled in MPL-2.0 code that `cargo deny` rejects, and the DDC caches instead. Without the `threads` feature, wasm threads are compiled out rather than switched off.
+- **Tests:**
+  - The 9 conformance tests run per backend (`concordia-script/tests/conformance.rs` and `concordia-script-wasm/tests/conformance.rs`), plus `test_backend_passes_conformance`.
+  - All 8 WASM tests are in `concordia-script-wasm/tests/wasm.rs`.
+  - Added: unit tests for the protocol (4), the SDK (7) and the seed (2); `reflect_component_decodes_wire_values_for_static_and_dynamic_types` (Terra); 4 in terra-sim's `tests/dynamic_traits.rs`; and `sim_rng_is_a_rand_core_rng_with_the_same_stream`.
+- **Red run.** Every new test failed against stubs for the right reason, except these:
+  - Passed at once:
+    - `a_well_formed_description_validates` is a guard, and the stub's `Ok` satisfied it.
+    - The SDK's `log_lines_go_to_the_sink` and `the_rng_is_the_engine_seeded_stream` test two-line bodies that were already real in the skeleton.
+  - `test_backend_passes_conformance` first checked only the backend's refusals and passed vacuously. It was strengthened to run the whole suite (`run_all`), and then failed.
+  - `wit_world_gameplay_validates_with_wasm_tools` and `guest_component_builds_for_wasm32_wasip2` check artifacts that were already in place: the WIT was validated with `wasm-tools` as it was written, and `just wasm` had built the guest. Both were shown to fail on a world with an extra import and on a missing artifact.
+- **Changed deliberately during green:**
+  - A WIT interface of types alone is listed as an `import`, so the WIT test asserts the imports are exactly `host` and `types`, and that `types` declares no functions.
+  - A tag type's `null` default turns into `None` on its JSON round trip, so script traits give unit-shaped (tag) components their unit value without a default.
+  - The fault test's first tick is tick 0 (`SimClock::tick` before the step).
+  - The fuel test's constants were calibrated. 1M `conf.burn` iterations use 12–15M fuel, so four runs pass on a 20M budget only if fuel is per run.
+- **Benchmark (`crates/concordia-script-wasm/benches/BASELINE.md`):** 
+  - **One tick, native and then WASM:**
+    - 10k entities: 9.1 ms native; WASM 11.5 ms without guards, 14.2 ms with fuel, 14.5 ms with fuel and NaN canonicalization.
+    - 100k entities: 91.5 ms native; WASM 107 ms, 141.5 ms and 139.7 ms.
+  - All guards together cost about 1.55–1.6×. Fuel is about +30%, and NaN canonicalization is free.
+  - A fresh instance costs about 21 µs per processor per tick, so fresh instances stay.
+  - Fuel: the integrator needs 12–13k per row, so the default budget is 10M per run plus 50k per row.
+  - The wire path dominates, natively too (about 0.9 µs per entity). A typed fast path for fixed-layout columns is the next optimization.
+- **Not in this phase:**
+  - Reloads that change processors or types; the API and `concordia.toml` wiring (2.6c, 2.6d).
+  - The native backend (2.6c).
+  - A typed fast path for fixed-layout columns.
 
 **2.6c: the native backend (ADR-0061)**
 - **`concordia-script-native`:**

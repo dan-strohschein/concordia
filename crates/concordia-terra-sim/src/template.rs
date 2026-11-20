@@ -8,7 +8,7 @@ use concordia_core::suggest::did_you_mean;
 use concordia_reflect::{DynReflect, ReflectError, TypeRegistry};
 use concordia_scene::builtin::Transform;
 use concordia_scene::{FORMAT_VERSION, TemplateDoc};
-use concordia_terra::{EcsError, ReflectComponent, World};
+use concordia_terra::{CommandBuffer, EcsError, Pending, ReflectComponent, World};
 use serde_json::Value;
 
 use crate::error::TemplateError;
@@ -137,7 +137,7 @@ fn trait_of(registry: &TypeRegistry, name: &str) -> Result<ReflectTrait, Templat
     };
     registration
         .data::<ReflectTrait>()
-        .copied()
+        .cloned()
         .ok_or_else(|| TemplateError::NotATrait {
             name: name.to_owned(),
         })
@@ -224,6 +224,16 @@ impl CompiledTemplate {
             part.component.insert(world, id, part.value.clone_dyn())?;
         }
         Ok(())
+    }
+
+    /// Records spawning one entity from this template into `commands` (applied with the
+    /// buffer, at phase end for processors).
+    pub fn record(&self, commands: &mut CommandBuffer) -> Pending {
+        let entity = commands.spawn();
+        for (_, part) in &self.parts {
+            commands.insert_reflect(entity, part.component, part.value.clone_dyn());
+        }
+        entity
     }
 
     /// Spawns `count` entities with ids from `ids`; `place(i)` gives entity `i` a translation.

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "tests"]
+members = ["crates/*", "tests", "tests/fixtures/script/*"]
 exclude = ["tests/fixtures/wasm/*"]
 
 [workspace.package]
@@ -33,6 +33,9 @@ concordia-import-gltf = { path = "crates/concordia-import-gltf" }
 concordia-input = { path = "crates/concordia-input" }
 concordia-terra = { path = "crates/concordia-terra" }
 concordia-scene = { path = "crates/concordia-scene" }
+concordia-script = { path = "crates/concordia-script" }
+concordia-script-guest = { path = "crates/concordia-script-guest" }
+concordia-script-protocol = { path = "crates/concordia-script-protocol" }
 concordia-terra-sim = { path = "crates/concordia-terra-sim" }
 concordia-shaders = { path = "crates/concordia-shaders" }
 concordia-studio = { path = "crates/concordia-studio" }
@@ -57,6 +60,7 @@ quote = "1"
 syn = { version = "3", features = ["full"] }
 tempfile = "3"
 trybuild = "1"
+libm = "0.2.16"
 glam = { version = "0.34", features = ["serde"] }
 ryu = "1"
 rand_chacha = "0.10"
@@ -75,8 +79,11 @@ regex = "1.13"
 rmcp = { version = "=3.11.0", default-features = false, features = ["server", "client", "transport-io", "transport-child-process"] }
 serde_json = "1.0"
 wasmparser = "0.263"
-wasmtime = "=50.0.2"
-wasmtime-wasi = "=50.0.2"
+wit-bindgen = "0.63"
+wasip2 = "2.0.1"
+# No default `cache` feature: it pulls in MPL-2.0 code, and precompiled components live in the DDC.
+wasmtime = { version = "=51.0.0", default-features = false, features = ["cranelift", "component-model", "runtime", "std", "pooling-allocator", "parallel-compilation"] }
+wasmtime-wasi = "=51.0.0"
 toml = "1.2"
 
 [profile.dev.package."*"]

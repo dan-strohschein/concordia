@@ -10,8 +10,8 @@ use crate::info::{FieldInfo, Primitive, Shape, TypeInfo, TypeRef, VariantShape};
 pub(crate) const REF: usize = 8;
 /// Bytes of an enum tag.
 pub(crate) const TAG: usize = 4;
-/// Largest stride a type may have.
-const MAX_STRIDE: usize = u32::MAX as usize;
+/// Largest stride a type may have (arena references are `u32` offsets).
+const MAX_STRIDE: u32 = u32::MAX;
 
 /// What a value position holds: a type, or an enum variant's payload.
 #[derive(Clone, Copy)]
@@ -103,7 +103,7 @@ fn compute(info: &'static TypeInfo, stack: &mut Vec<usize>) -> Result<Layout, Wi
     let result = shape(&info.shape, stack);
     stack.pop();
     let layout = result?;
-    if layout.stride > MAX_STRIDE {
+    if u32::try_from(layout.stride).is_err() {
         return Err(WireError::Unsupported {
             type_name: info.name.to_owned(),
             reason: format!("its stride {} exceeds {MAX_STRIDE} bytes", layout.stride),

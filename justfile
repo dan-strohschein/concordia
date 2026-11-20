@@ -26,11 +26,18 @@ fmt-check:
 lint: fmt-check
     cargo clippy --workspace --all-targets --all-features -- -D warnings
     cargo clippy --manifest-path {{guest}} --target wasm32-wasip2 -- -D warnings
+    cargo clippy -p concordia-script-guest -p conformance-guest --target wasm32-wasip2 -- -D warnings
 
 # Build and validate WASM guest fixtures
 wasm:
     cargo build --manifest-path {{guest}} --target wasm32-wasip2 --release --target-dir {{wasm_dir}}
     wasm-tools validate {{wasm_dir}}/wasm32-wasip2/release/hello_guest.wasm
+    # The script conformance module, then its v2 build (for reload tests).
+    cargo build -p conformance-guest --features v2 --target wasm32-wasip2 --release --target-dir {{wasm_dir}}
+    cp {{wasm_dir}}/wasm32-wasip2/release/conformance_guest.wasm {{wasm_dir}}/wasm32-wasip2/release/conformance_guest_v2.wasm
+    cargo build -p conformance-guest --target wasm32-wasip2 --release --target-dir {{wasm_dir}}
+    wasm-tools validate {{wasm_dir}}/wasm32-wasip2/release/conformance_guest.wasm
+    wasm-tools validate {{wasm_dir}}/wasm32-wasip2/release/conformance_guest_v2.wasm
 
 # All tests and doc tests
 test: wasm
