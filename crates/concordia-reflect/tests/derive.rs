@@ -60,7 +60,7 @@ fn derive_supports_named_tuple_unit_structs_and_enums() {
 #[test]
 fn derive_records_default_and_range_attrs() {
     let hp = field(&Health::type_info().shape, "hp");
-    assert_eq!(hp.default.map(|f| f()), Some(serde_json::json!(100.0)));
+    assert_eq!(hp.default.map(|f| f.get()), Some(serde_json::json!(100.0)));
     assert_eq!(
         hp.range,
         Some(Range {
@@ -125,11 +125,11 @@ fn type_level_category_and_default_reach_type_info_schema_and_index() {
     let lamp = Lamp::type_info();
     assert_eq!(lamp.category, Some("Lighting"));
     assert_eq!(
-        lamp.default.map(|d| d()),
+        lamp.default.map(|d| d.get()),
         Some(serde_json::json!({"lumens": 0.0}))
     );
     assert_eq!(
-        Label::type_info().default.map(|d| d()),
+        Label::type_info().default.map(|d| d.get()),
         Some(serde_json::json!("Entity"))
     );
     assert_eq!(Renamed::type_info().category, None);

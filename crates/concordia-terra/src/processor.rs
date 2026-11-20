@@ -37,18 +37,28 @@ impl Phase {
     ];
 }
 
-/// One declared component.
+/// One declared component (identified by its stable name) or resource (by its type).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Key {
     pub(crate) type_id: TypeId,
     pub(crate) name: &'static str,
 }
 
+/// The `type_id` of a component declared by name (only its name identifies it).
+struct Named;
+
 impl Key {
     pub(crate) fn of<T: Component>() -> Self {
         Self {
             type_id: TypeId::of::<T>(),
             name: T::type_info().name,
+        }
+    }
+
+    fn named(name: &'static str) -> Self {
+        Self {
+            type_id: TypeId::of::<Named>(),
+            name,
         }
     }
 
@@ -84,12 +94,16 @@ impl Access {
         self.reads.iter().chain(self.written())
     }
 
-    pub(crate) fn writes(&self, t: TypeId) -> bool {
-        self.written().any(|k| k.type_id == t)
+    pub(crate) fn writes(&self, name: &str) -> bool {
+        self.written().any(|k| k.name == name)
     }
 
-    pub(crate) fn touches(&self, t: TypeId) -> bool {
-        self.touched().any(|k| k.type_id == t)
+    pub(crate) fn touches(&self, name: &str) -> bool {
+        self.touched().any(|k| k.name == name)
+    }
+
+    pub(crate) fn receives(&self, name: &str) -> bool {
+        self.receives.iter().any(|k| k.name == name)
     }
 
     /// Every resource it touches, with whether it writes it.
@@ -104,8 +118,8 @@ impl Access {
 
     /// True if running both at once could race: one writes what the other touches.
     pub(crate) fn conflicts(&self, other: &Access) -> bool {
-        self.written().any(|k| other.touches(k.type_id))
-            || other.written().any(|k| self.touches(k.type_id))
+        self.written().any(|k| other.touches(k.name))
+            || other.written().any(|k| self.touches(k.name))
             || self
                 .resource_writes
                 .iter()
@@ -146,6 +160,27 @@ impl ProcessorDecl {
     #[must_use]
     pub fn reads<T: Component>(mut self) -> Self {
         self.access.reads.push(Key::of::<T>());
+        self
+    }
+
+    /// Declares a component read by stable name (any storage kind, static or dynamic).
+    #[must_use]
+    pub fn reads_named(mut self, name: &'static str) -> Self {
+        self.access.reads.push(Key::named(name));
+        self
+    }
+
+    /// Declares a component write by stable name.
+    #[must_use]
+    pub fn writes_named(mut self, name: &'static str) -> Self {
+        self.access.writes.push(Key::named(name));
+        self
+    }
+
+    /// Declares receiving the signal type named `name`.
+    #[must_use]
+    pub fn receives_named(mut self, name: &'static str) -> Self {
+        self.access.receives.push(Key::named(name));
         self
     }
 

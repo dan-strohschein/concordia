@@ -246,9 +246,9 @@ impl Schedule {
                 let decl = p.decl();
                 world
                     .presentation
-                    .extend(decl.access.presentation.iter().map(|k| k.type_id));
+                    .extend(decl.access.presentation.iter().map(|k| k.name));
                 if let Some((key, _)) = &decl.trigger {
-                    world.structural.observe([key.type_id]);
+                    world.structural.observe([key.name]);
                 }
             }
         }
@@ -293,12 +293,12 @@ impl Schedule {
         Ok(())
     }
 
-    fn check_presentation(&self, registered: &HashSet<TypeId>) -> Result<(), ScheduleError> {
-        let presentation: HashSet<TypeId> = self
+    fn check_presentation(&self, registered: &HashSet<&'static str>) -> Result<(), ScheduleError> {
+        let presentation: HashSet<&'static str> = self
             .nodes
             .iter()
             .filter_map(Node::access)
-            .flat_map(|a| a.presentation.iter().map(|k| k.type_id))
+            .flat_map(|a| a.presentation.iter().map(|k| k.name))
             .chain(registered.iter().copied())
             .collect();
         for node in &self.nodes {
@@ -310,7 +310,7 @@ impl Schedule {
                 let sim_write = access
                     .writes
                     .iter()
-                    .find(|k| !presentation.contains(&k.type_id))
+                    .find(|k| !presentation.contains(k.name))
                     .or(access.resource_writes.first());
                 if let Some(k) = sim_write {
                     return Err(ScheduleError::PresentationWritesSimulation {
@@ -322,7 +322,7 @@ impl Schedule {
                 .reads
                 .iter()
                 .chain(&access.writes)
-                .find(|k| presentation.contains(&k.type_id))
+                .find(|k| presentation.contains(k.name))
             {
                 return Err(ScheduleError::SimulationReadsPresentation {
                     processor: processor(),
@@ -481,7 +481,7 @@ impl Schedule {
                 let Some((key, on)) = p.decl().trigger else {
                     continue;
                 };
-                let Some(observed) = net.get(&(TypeKey(key.type_id), on == Observe::Add)) else {
+                let Some(observed) = net.get(&(TypeKey(key.name), on == Observe::Add)) else {
                     continue;
                 };
                 let mut one = [p];
@@ -599,17 +599,17 @@ fn build_views<'w>(
         })
         .collect();
     lend_resources(&mut views, decls, lent);
-    // Per view: declared type → component id (unseen types have no columns).
-    let declared: Vec<Vec<(TypeId, crate::component::ComponentId, bool)>> = decls
+    // Per view: declared name → component id (unseen types have no columns).
+    let declared: Vec<Vec<(&'static str, crate::component::ComponentId, bool)>> = decls
         .iter()
         .map(|d| {
             let a = &d.access;
-            let writes: HashSet<TypeId> = a.written().map(|k| k.type_id).collect();
+            let writes: HashSet<&'static str> = a.written().map(|k| k.name).collect();
             a.touched()
                 .filter_map(|k| {
                     components
-                        .id_of(k.type_id)
-                        .map(|c| (k.type_id, c, writes.contains(&k.type_id)))
+                        .by_name(k.name)
+                        .map(|c| (components.info(c).name, c, writes.contains(k.name)))
                 })
                 .collect()
         })
@@ -618,10 +618,10 @@ fn build_views<'w>(
         let comps = &arch.components;
         let table = &mut arch.table;
         let ids: &'w [_] = &table.ids;
-        let mut per_view: Vec<Vec<(TypeId, ViewCol<'w>)>> =
+        let mut per_view: Vec<Vec<(&'static str, ViewCol<'w>)>> =
             (0..views.len()).map(|_| Vec::new()).collect();
         for (column, &comp) in table.columns.iter_mut().zip(comps.iter()) {
-            let users: Vec<(usize, TypeId, bool)> = declared
+            let users: Vec<(usize, &'static str, bool)> = declared
                 .iter()
                 .enumerate()
                 .filter_map(|(v, d)| {

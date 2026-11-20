@@ -4,10 +4,10 @@ use std::any::TypeId;
 use std::collections::HashMap;
 
 use concordia_core::id::EntityId;
-use concordia_reflect::{DynReflect, Reflect, RegistryError, TypeRegistry};
+use concordia_reflect::{DynReflect, Reflect, RegistryError, TypeInfo, TypeRegistry};
 
 use crate::error::EcsError;
-use crate::storage::column::{Column, TypedColumn, downcast};
+use crate::storage::column::{Column, DynColumn, TypedColumn, downcast, downcast_dynamic};
 use crate::storage::kind::StorageKind;
 use crate::world::World;
 
@@ -23,9 +23,26 @@ pub(crate) struct ComponentId(usize);
 #[derive(Clone)]
 pub(crate) struct ComponentInfo {
     pub(crate) name: &'static str,
-    pub(crate) type_id: TypeId,
     pub(crate) kind: StorageKind,
-    pub(crate) new_column: fn() -> Box<dyn Column>,
+    pub(crate) new_column: NewColumn,
+}
+
+/// How to make an empty column of a component.
+#[derive(Clone, Copy)]
+pub(crate) enum NewColumn {
+    /// A Rust type's column.
+    Typed(fn() -> Box<dyn Column>),
+    /// A runtime-described type's column (its current version).
+    Dynamic(&'static TypeInfo),
+}
+
+impl NewColumn {
+    pub(crate) fn make(&self) -> Box<dyn Column> {
+        match self {
+            NewColumn::Typed(f) => f(),
+            NewColumn::Dynamic(info) => Box::new(DynColumn::new(info)),
+        }
+    }
 }
 
 /// The component types a world has seen.
@@ -62,12 +79,45 @@ impl ComponentIndex {
         let id = ComponentId(self.infos.len());
         self.infos.push(ComponentInfo {
             name,
-            type_id: TypeId::of::<T>(),
             kind,
-            new_column: || Box::new(TypedColumn::<T>::default()),
+            new_column: NewColumn::Typed(|| Box::new(TypedColumn::<T>::default())),
         });
         self.by_type.insert(TypeId::of::<T>(), id);
         self.by_name.insert(name, id);
+        Ok(id)
+    }
+
+    /// The id of the runtime-described type `info`, assigning one on first use (types with no
+    /// data become tags). Another version of the same name must be migrated first.
+    pub(crate) fn register_dynamic(
+        &mut self,
+        info: &'static TypeInfo,
+    ) -> Result<ComponentId, EcsError> {
+        if let Some(&id) = self.by_name.get(info.name) {
+            return match self.infos[id.0].new_column {
+                NewColumn::Dynamic(current) if std::ptr::eq(current, info) => Ok(id),
+                NewColumn::Dynamic(_) => Err(EcsError::Dynamic {
+                    component: info.name.to_owned(),
+                    message: "a different version of this type is stored; migrate it first".into(),
+                }),
+                NewColumn::Typed(_) => Err(EcsError::NameCollision { name: info.name }),
+            };
+        }
+        let layout = concordia_reflect::wire::layout(info).map_err(|e| EcsError::Dynamic {
+            component: info.name.to_owned(),
+            message: e.to_string(),
+        })?;
+        let kind = match layout.stride() {
+            0 => StorageKind::Tag,
+            _ => StorageKind::Dense,
+        };
+        let id = ComponentId(self.infos.len());
+        self.infos.push(ComponentInfo {
+            name: info.name,
+            kind,
+            new_column: NewColumn::Dynamic(info),
+        });
+        self.by_name.insert(info.name, id);
         Ok(id)
     }
 
@@ -86,12 +136,14 @@ impl ComponentIndex {
 
 type InsertDynFn =
     fn(&mut World, EntityId, Box<dyn DynReflect>) -> Result<Option<Box<dyn DynReflect>>, EcsError>;
+type SignalDynFn = fn(&mut World, EntityId, Box<dyn DynReflect>) -> Result<(), EcsError>;
 
-/// Registry type data that lets the API, commands and scenes insert components by name.
+/// Registry type data that lets the API, commands, scenes and scripts use components by name.
 #[derive(Clone, Copy)]
 pub struct ReflectComponent {
     insert: InsertDynFn,
     register_shared: fn(&mut World) -> Result<(), EcsError>,
+    signal: SignalDynFn,
 }
 
 impl ReflectComponent {
@@ -104,7 +156,48 @@ impl ReflectComponent {
                     .map(|old| Box::new(old) as Box<dyn DynReflect>))
             },
             register_shared: |world| world.register_shared::<T>(),
+            signal: |world, id, value| {
+                let value = downcast::<T>(value)?;
+                live(world, id)?;
+                world.signal(id, value);
+                Ok(())
+            },
         }
+    }
+
+    /// Operations for runtime-described types (values are [`DynamicValue`]s).
+    pub fn dynamic() -> Self {
+        Self {
+            insert: |world, id, value| {
+                let value = downcast_dynamic(value)?;
+                Ok(world
+                    .insert_dynamic(id, value)?
+                    .map(|old| Box::new(old) as Box<dyn DynReflect>))
+            },
+            register_shared: |_| {
+                Err(EcsError::InvalidValue {
+                    what: "storage kind of a script type",
+                    expected: "dense or a tag",
+                    value: "shared".into(),
+                })
+            },
+            signal: |world, id, value| {
+                let value = downcast_dynamic(value)?;
+                live(world, id)?;
+                world.signal_dynamic(id, value);
+                Ok(())
+            },
+        }
+    }
+
+    /// Raises `value` (a value of this component's type) as a signal on `entity`.
+    pub fn signal(
+        &self,
+        world: &mut World,
+        entity: EntityId,
+        value: Box<dyn DynReflect>,
+    ) -> Result<(), EcsError> {
+        (self.signal)(world, entity, value)
     }
 
     /// Stores the component as shared in `world`, if the world hasn't used it yet
@@ -136,4 +229,21 @@ pub fn register_component<T: Component>(registry: &mut TypeRegistry) -> Result<(
         .register::<T>()?
         .insert_data(ReflectComponent::of::<T>());
     Ok(())
+}
+
+/// Registers a runtime-described type (see [`TypeRegistry::register_dynamic`]) as a component.
+pub fn register_dynamic_component(
+    registry: &mut TypeRegistry,
+    desc: &concordia_reflect::TypeDesc,
+) -> Result<&'static TypeInfo, RegistryError> {
+    let registration = registry.register_dynamic(desc)?;
+    registration.insert_data(ReflectComponent::dynamic());
+    Ok(registration.info())
+}
+
+fn live(world: &World, id: EntityId) -> Result<(), EcsError> {
+    match world.contains(id) {
+        true => Ok(()),
+        false => Err(EcsError::NoSuchEntity(id)),
+    }
 }

@@ -20,6 +20,7 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
+mod desc;
 mod dynamic;
 mod error;
 mod example;
@@ -31,18 +32,36 @@ mod reflect;
 mod registry;
 mod schema;
 mod validate;
+mod value;
+pub mod wire;
 
 pub use concordia_reflect_derive::Reflect;
+pub use desc::{
+    FieldDesc, PrimitiveDesc, RangeDesc, ShapeDesc, TypeDesc, TypeRefDesc, VariantDesc,
+    VariantShapeDesc,
+};
 pub use dynamic::DynReflect;
 pub use error::ReflectError;
 pub use example::example_json;
 pub use finite::find_non_finite;
 pub use hash::canonical_hash;
-pub use info::{FieldInfo, Primitive, Range, Shape, TypeInfo, TypeRef, VariantInfo, VariantShape};
+pub use info::{
+    DefaultValue, FieldInfo, Primitive, Range, Shape, TypeInfo, TypeRef, VariantInfo, VariantShape,
+};
 pub use reflect::Reflect;
 pub use registry::{RegistryError, TypeRegistration, TypeRegistry};
 pub use schema::{DRAFT, index_entry, schema_for};
 pub use validate::validate_json;
+pub use value::{DynamicValue, MigrationReport, migrate};
+
+/// The type behind newtype wrappers (how it is laid out and migrated).
+pub(crate) fn wire_shape(info: &'static TypeInfo) -> &'static TypeInfo {
+    let mut info = info;
+    while let Shape::Newtype { inner, .. } = &info.shape {
+        info = inner.info();
+    }
+    info
+}
 
 /// Support code for `#[derive(Reflect)]`; not a public API.
 #[doc(hidden)]

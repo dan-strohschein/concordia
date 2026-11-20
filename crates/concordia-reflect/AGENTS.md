@@ -11,6 +11,8 @@ Every engine type describes itself: wire shape, doc comments, defaults and range
 - `validate_json(&Value, &TypeInfo)` (JSON Pointer errors), `example_json(&TypeInfo)` (schema-valid examples), `find_non_finite(&dyn DynReflect)`
 - `Primitive::Pattern` for regex-constrained strings (e.g. actors); `NonZeroU32`/`NonZeroU64` reflect as integers with minimum 1
 - `ReflectError` (JSON Pointer errors), `RegistryError`
+- Dynamic types (M2 2.6a, ADR-0062): `TypeDesc` (serializable mirror of `TypeInfo`: `TypeInfo::to_desc`, `TypeDesc::to_info`), `TypeRegistry::register_dynamic` (register or replace), `TypeRegistration::is_dynamic`, `DynamicValue` (`from_json`, `from_wire`, `bytes`), `migrate` → `MigrationReport`, `DefaultValue`, `TypeRef::to`
+- `wire` (ADR-0062): `layout` → `Layout` (`stride`, `has_arena`), `encode`, `decode`, `validate`, `ColumnWriter` (`write`, `write_value`, `finish`), `WireColumn` (`from_bytes`, `read`, `value`, `serialize_row`), `WireError`
 
 ## Invariants
 - **serde shape == reflected shape.** The derive accepts only these serde attributes: container `transparent`, `deny_unknown_fields`, `default`, `bound`, `crate`, `expecting`; field `default`, `skip`, `skip_serializing_if`, `bound`; none on variants. Everything else (`rename`, `rename_all`, `tag`, `untagged`, `content`, `flatten`, `with`, `alias`, `other`, ...) is a compile error. `schema_matches_serde` proves the agreement.
@@ -20,6 +22,10 @@ Every engine type describes itself: wire shape, doc comments, defaults and range
 - `from_json` validates shape and declared ranges before serde runs; serde deserialization from files (`deserialize`) does not enforce ranges.
 - The canonical hash encoding is frozen by `canonical_hash_stable_snapshot`; changing it changes every world hash.
 - M0 does not support generic user types.
+- **Dynamic types behave like Rust types of the same shape:** same JSON, same canonical hash, same wire bytes, same schema. Their `TypeInfo`s are leaked (they live as long as the process); a reload registers a new version and keeps attached type data. A static type's name can't be taken by a dynamic one. Dynamic descriptions may always name the built-in scalars, `Any`, `EntityId` and the glam types.
+- **Wire encoding is canonical:** one value has one byte sequence. Fixed little-endian layout per type (no padding; `Option` = `u8` tag + payload; enums = `u32` tag + largest payload, unused bytes zero; UUIDs 16 bytes); strings, lists, maps and `Any` (JSON text) are `(u32 offset, u32 len)` references into an arena after the fixed rows, laid out depth-first in declaration order, map keys ascending. `validate` enforces all of it; `decode` and `WireColumn::from_bytes` check bounds, tags, UTF-8, scalars and ranges but not canonical order. Like `validate_json`, wire validation does not run the Rust type's own checks (patterns, id versions).
+- Wire decoding never panics on any input; nesting is capped at 128 and zero-sized list counts at 2^20.
+- Dynamic values serialize every field (they have no `skip_serializing_if`).
 
 ## How to test
 `cargo nextest run -p concordia-reflect` (includes trybuild compile-fail cases) and `cargo test --doc -p concordia-reflect`. Review snapshot changes with `cargo insta review`.
@@ -42,9 +48,10 @@ Every engine type describes itself: wire shape, doc comments, defaults and range
 - serde data model documentation; `erased-serde` documentation.
 - The Rust Reference on procedural macros and `#[doc]` attributes; `syn` 3 documentation.
 - Bevy reflection *documentation* read for the problem space only; no code copied (design is our own).
+- WebAssembly Component Model canonical ABI documentation (flat little-endian layouts, lists as pointer/length pairs) and Cap'n Proto / FlatBuffers encoding documentation, read for prior art on fixed layouts with out-of-line data (2.6a); the wire format is our own.
 
 ## Status
-M0 phase 0.2 complete.
+M0 phase 0.2 complete; M2 phase 2.6a (dynamic types, wire codec) complete.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

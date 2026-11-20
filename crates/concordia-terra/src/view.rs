@@ -20,7 +20,7 @@ use crate::signal::SignalQueue;
 pub(crate) struct ViewArch<'w> {
     pub(crate) index: usize,
     pub(crate) ids: &'w [EntityId],
-    pub(crate) columns: Vec<(TypeId, ViewCol<'w>)>,
+    pub(crate) columns: Vec<(&'static str, ViewCol<'w>)>,
 }
 
 /// A lent resource: shared for readers, exclusive for the one writer.
@@ -52,22 +52,22 @@ impl<'w> View<'w> {
     pub fn query<D: QueryData>(&mut self) -> Result<ViewQuery<'_, 'w, D>, QueryError> {
         let elems = D::elems();
         for (i, elem) in elems.iter().enumerate() {
-            if elems[..i].iter().any(|e| e.type_id == elem.type_id) {
+            if elems[..i].iter().any(|e| e.name == elem.name) {
                 return Err(QueryError::Conflict {
                     component: elem.name,
                 });
             }
-            if !self.access.touches(elem.type_id) {
+            if !self.access.touches(elem.name) {
                 return Err(QueryError::Undeclared {
                     component: elem.name,
                 });
             }
-            if elem.mutable && !self.access.writes(elem.type_id) {
+            if elem.mutable && !self.access.writes(elem.name) {
                 return Err(QueryError::ReadOnly {
                     component: elem.name,
                 });
             }
-            if elem.mutable && self.is_shared(elem.type_id) {
+            if elem.mutable && self.is_shared(elem.name) {
                 return Err(QueryError::SharedReadOnly {
                     component: elem.name,
                 });
@@ -80,11 +80,11 @@ impl<'w> View<'w> {
         })
     }
 
-    fn is_shared(&self, t: TypeId) -> bool {
+    pub(crate) fn is_shared(&self, name: &str) -> bool {
         self.archetypes.iter().any(|a| {
             a.columns
                 .iter()
-                .any(|(ct, c)| *ct == t && matches!(c, ViewCol::Shared(_)))
+                .any(|(n, c)| *n == name && matches!(c, ViewCol::Shared(_)))
         })
     }
 
@@ -101,12 +101,7 @@ impl<'w> View<'w> {
     /// This tick's delivered `S` signals, by entity then raise order (declare with `receives`).
     pub fn signals<S: Component>(&self) -> Result<&[(EntityId, S)], QueryError> {
         let name = S::type_info().name;
-        if !self
-            .access
-            .receives
-            .iter()
-            .any(|k| k.type_id == TypeId::of::<S>())
-        {
+        if !self.access.receives(name) {
             return Err(QueryError::Undeclared { component: name });
         }
         Ok(self.signals.delivered::<S>())
@@ -273,8 +268,8 @@ impl<'v, D: QueryData> ViewQuery<'v, '_, D> {
         let mut matched = Vec::new();
         for arch in archetypes.iter_mut().filter(|a| !a.ids.is_empty()) {
             let mut picked: Vec<Option<ViewColumn<'_>>> = (0..elems.len()).map(|_| None).collect();
-            for (type_id, column) in arch.columns.iter_mut() {
-                if let Some(k) = elems.iter().position(|e| e.type_id == *type_id) {
+            for (name, column) in arch.columns.iter_mut() {
+                if let Some(k) = elems.iter().position(|e| e.name == *name) {
                     picked[k] = Some(ViewColumn(match column {
                         ViewCol::Read(c) => ViewCol::Read(*c),
                         ViewCol::Write(c) => ViewCol::Write(&mut **c),

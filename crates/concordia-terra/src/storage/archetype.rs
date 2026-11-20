@@ -45,7 +45,7 @@ impl Archetype {
     fn new(components: Vec<ComponentId>, shared: SharedKey, index: &ComponentIndex) -> Self {
         let columns = components
             .iter()
-            .map(|&c| (index.info(c).new_column)())
+            .map(|&c| index.info(c).new_column.make())
             .collect();
         let mut by_name: Vec<(&'static str, Slot)> = components
             .iter()

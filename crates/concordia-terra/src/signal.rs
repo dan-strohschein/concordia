@@ -5,7 +5,7 @@ use std::any::Any;
 use std::collections::BTreeMap;
 
 use concordia_core::id::EntityId;
-use concordia_reflect::canonical_hash;
+use concordia_reflect::{DynReflect, DynamicValue, canonical_hash};
 
 use crate::component::Component;
 use crate::entity::EntityTable;
@@ -24,11 +24,13 @@ trait SignalList: Send + Sync {
     fn prepare(&mut self, entities: &EntityTable);
     /// Hashes the list in delivery order.
     fn hash(&self, h: &mut blake3::Hasher) -> Result<(), EcsError>;
+    /// Every (target, payload), in list order.
+    fn entries(&self) -> Vec<(EntityId, &dyn DynReflect)>;
 }
 
 struct Typed<S>(Vec<(EntityId, S)>);
 
-impl<S: Component> SignalList for Typed<S> {
+impl<S: DynReflect + Clone> SignalList for Typed<S> {
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -59,6 +61,12 @@ impl<S: Component> SignalList for Typed<S> {
         }
         Ok(())
     }
+    fn entries(&self) -> Vec<(EntityId, &dyn DynReflect)> {
+        self.0
+            .iter()
+            .map(|(id, s)| (*id, s as &dyn DynReflect))
+            .collect()
+    }
 }
 
 type Lists = BTreeMap<&'static str, Box<dyn SignalList>>;
@@ -82,9 +90,18 @@ impl Clone for SignalQueue {
 
 impl SignalQueue {
     fn raise<S: Component>(&mut self, target: EntityId, signal: S) {
+        self.raise_value(S::type_info().name, target, signal);
+    }
+
+    fn raise_value<S: DynReflect + Clone>(
+        &mut self,
+        name: &'static str,
+        target: EntityId,
+        signal: S,
+    ) {
         let list = self
             .pending
-            .entry(S::type_info().name)
+            .entry(name)
             .or_insert_with(|| Box::new(Typed::<S>(Vec::new())));
         // Two types sharing a stable name can't share a list; the component index forbids it too.
         if let Some(typed) = list.as_any_mut().downcast_mut::<Typed<S>>() {
@@ -98,6 +115,14 @@ impl SignalQueue {
             .get(S::type_info().name)
             .and_then(|l| l.as_any().downcast_ref::<Typed<S>>())
             .map_or(&[], |t| &t.0)
+    }
+
+    /// This tick's signals of the type named `name` (static or runtime-described).
+    pub(crate) fn delivered_named(&self, name: &str) -> Vec<(EntityId, &dyn DynReflect)> {
+        self.delivered
+            .get(name)
+            .map(|l| l.entries())
+            .unwrap_or_default()
     }
 
     /// Pending signal types and counts for `id`, by type name.
@@ -140,6 +165,11 @@ impl World {
     /// is still alive.
     pub fn signal<S: Component>(&mut self, target: EntityId, signal: S) {
         self.signals.raise(target, signal);
+    }
+
+    /// Raises a signal of a runtime-described (script) type; delivered like [`World::signal`].
+    pub fn signal_dynamic(&mut self, target: EntityId, signal: DynamicValue) {
+        self.signals.raise_value(signal.info().name, target, signal);
     }
 
     /// This tick's delivered `S` signals, by entity then raise order.

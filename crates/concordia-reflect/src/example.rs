@@ -51,9 +51,10 @@ fn fields_example(fields: &[FieldInfo], depth: usize) -> Value {
     let object: Map<String, Value> = fields
         .iter()
         .map(|f| {
-            let value = f
-                .default
-                .map_or_else(|| example(&f.ty.info().shape, depth), |default| default());
+            let value = f.default.map_or_else(
+                || example(&f.ty.info().shape, depth),
+                |default| default.get(),
+            );
             (f.name.to_owned(), value)
         })
         .collect();

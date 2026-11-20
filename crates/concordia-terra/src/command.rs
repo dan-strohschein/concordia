@@ -98,6 +98,35 @@ impl CommandBuffer {
         self.edit(target, |world, id| world.remove::<T>(id).map(drop));
     }
 
+    /// Records inserting (or replacing) a reflected value of `component`'s type.
+    pub fn insert_reflect(
+        &mut self,
+        target: impl Into<Target>,
+        component: crate::component::ReflectComponent,
+        value: Box<dyn concordia_reflect::DynReflect>,
+    ) {
+        self.edit(target, move |world, id| {
+            component.insert(world, id, value).map(drop)
+        });
+    }
+
+    /// Records removing the component named `name` (nothing happens if the entity lacks it).
+    pub fn remove_named(&mut self, target: impl Into<Target>, name: &'static str) {
+        self.edit(target, move |world, id| {
+            world.remove_dyn(id, name).map(drop)
+        });
+    }
+
+    /// Records raising a reflected signal value of `component`'s type.
+    pub fn signal_reflect(
+        &mut self,
+        target: impl Into<Target>,
+        component: crate::component::ReflectComponent,
+        signal: Box<dyn concordia_reflect::DynReflect>,
+    ) {
+        self.edit(target, move |world, id| component.signal(world, id, signal));
+    }
+
     /// Records a despawn.
     pub fn despawn(&mut self, target: impl Into<Target>) {
         self.ops.push(Op::Despawn(target.into()));

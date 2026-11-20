@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc f4158c7d300248f16ad929af34a8273df700ed556654fb18f9a8f1c223e97782 # shrinks to value = Zoo { name: Name(""), health: Health { hp: 0.0, max: -0.0 }, mode: Idle, tags: [], stats: {}, target: None, offset: None, pair: Pair(0, ""), marker: Marker, grid: [0, 0, 0], tuple: (0, false), cache: 0 }
+cc 642daae0688490ccb7d35cb2fdec4c8abe154868d48fdfcee11876517bebd2ab # shrinks to value = Zoo { name: Name(""), health: Health { hp: 0.0, max: 0.0 }, mode: Idle, tags: [], stats: {}, target: None, offset: None, pair: Pair(0, ""), marker: Marker, grid: [0, 0, 0], tuple: (0, false), cache: 0 }
+cc ee4d7231a5a0e18a312a4adc670cf084a70da1673ebc2a20a057328f49f5bb51 # shrinks to bytes = [], value = Zoo { name: Name("0A𐀀𐀀aA𐀀"), health: Health { hp: 0.0, max: 0.0 }, mode: Idle, tags: ["𐀀ࠀ\0𐀀¡aA¡𐀀0𐀀 aA¡𐀀ࠀA", ""], stats: {"A𐀀𐀀𐀀a ¡𐀀A𐀀𐀀 ¡𐀀¡𐀀\0A \u{b}a0ࠀࠀaa𐀀𐀀¡0a0": 0.0}, target: Some(EntityId(018bcfe5-6800-7000-a9c1-b74bd3465f9b)), offset: None, pair: Pair(0, "\0𐀀¡ AAA\u{b}𐀀 𐀀aࠀA!¥n🕴n\u{7f}"), marker: Marker, grid: [60, 151, 130], tuple: (736946488, true), cache: 0 }, flip = Index(3499113893766561850), byte = 91

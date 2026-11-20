@@ -55,10 +55,10 @@ fn field_info(field: &Field, all_optional: bool) -> syn::Result<Option<TokenStre
     let optional = all_optional || attrs.serde_optional || attrs::is_option(ty);
     let default = match &attrs.default {
         Some(expr) => quote! {
-            ::std::option::Option::Some(|| {
+            ::std::option::Option::Some(::concordia_reflect::DefaultValue::Fn(|| {
                 let value: #ty = #expr;
                 ::concordia_reflect::__private::default_json(value)
-            })
+            }))
         },
         None => quote! { ::std::option::Option::None },
     };

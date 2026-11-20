@@ -15,6 +15,7 @@
 - Commands (2.0b): `View::commands` → `CommandBuffer` (`spawn` → `Pending`, `insert`, `remove`, `despawn`, `signal`, `append`, `apply` → `ApplyReport`), `ViewQuery::par_for_each_deferred`, `TerraStats` (skipped commands)
 - Signals and observers (2.0b): `World::signal` / `signals`, `ProcessorDecl::receives`, `View::signals`, `ViewQuery::for_each_of`; `observer::<T>(name, Observe::Add | Remove)`, `View::observed`
 - Resources in views (2.0b): `ProcessorDecl::reads_resource` / `writes_resource`, `View::resource` / `resource_mut`
+- Script types and named access (2.6a, ADR-0062): `register_dynamic_component`, `World::insert_dynamic`, `World::signal_dynamic`, `ReflectComponent::dynamic` / `signal`; `ProcessorDecl::reads_named` / `writes_named` / `receives_named`; `View::batch(&NamedQuery)` → `Batch` (ids + `WireColumn`s), `View::write_batch`, `View::signal_batch`, `View::signals_named`; `CommandBuffer::insert_reflect` / `remove_named` / `signal_reflect`
 - Introspection (2.0c): `World::entity_storage` (`EntityStorage`: archetype, chunk, storage kinds, pending signals), `Schedule::waves` / `observers`, `SimLoop::schedule`, `ReflectComponent::register_shared` (type-erased shared registration for templates)
 
 ## Invariants
@@ -32,6 +33,9 @@
 - `dt` is the fixed step times `SimClock::time_scale`; `SimClock::time` sums the scaled steps; both are hashed. Edit worlds have no clock, so their hashes (recorded in command journals) never depend on it.
 - Simulation reads time only from `SimClock`/`SystemCtx` and randomness only from `SimRng`.
 - A query mentions each component at most once (`QueryError::Conflict`).
+- Components are identified by stable name (unique per world) in processor access, presentation sets, observers and views; `TypeId`s are only typed fast paths. A component declared by name conflicts exactly like the typed declaration of the same component.
+- Dynamic (script) components store `DynamicValue`s of one type version per world (another version must be migrated first); types with no data are tags. They hash exactly like the Rust type of the same shape.
+- Named batches visit archetypes then rows in the same order as typed queries. `write_batch` is atomic: every entity must be in the view with the component and every row must decode, or nothing is written.
 - Archetype moves never drop component values; despawn and remove drop or return them exactly once.
 
 ## How to test
@@ -59,13 +63,14 @@
 - Bevy ECS documentation and RFCs (design concepts only; no code copied).
 - Unreal Engine's public MassEntity documentation (processors, processing phases, fragments and execution order), concepts only (clean room, ADR-0067); no Unreal source.
 - Unreal Engine's public Mass documentation on shared fragments, chunk fragments, tags, deferred commands (command buffers flushed at phase ends), observer processors and the Mass signal subsystem (2.0b, ADR-0069); concepts only.
+- Unreal Engine's public Mass documentation on processors querying fragments by type through `FMassEntityQuery` (2.6a named access); concepts only.
 - flecs documentation on observers and deferred operations (Sander Mertens, MIT); Bevy documentation on commands and observers; concepts only, no code copied.
 - Timothy Ford, "Overwatch Gameplay Architecture and Netcode", GDC 2017.
 - Richard Fabian, *Data-Oriented Design*.
 - Glenn Fiedler, "Fix Your Timestep!" and "Floating Point Determinism" (Gaffer on Games).
 
 ## Status
-M0 phase 0.3 complete; renamed to Terra in M7 Phase 7.0 (2026-11-18); M2 phases 2.0 (processors, ADR-0063) and 2.0b (storage kinds, commands, signals, observers, ADR-0069) complete.
+M0 phase 0.3 complete; renamed to Terra in M7 Phase 7.0 (2026-11-18); M2 phases 2.0 (processors, ADR-0063) and 2.0b (storage kinds, commands, signals, observers, ADR-0069) and 2.6a (script types and named access, ADR-0062) complete.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

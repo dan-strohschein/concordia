@@ -28,7 +28,7 @@ impl Clone for Box<dyn SharedValues> {
 #[derive(Clone)]
 struct Typed<T>(Vec<T>);
 
-impl<T: Component> SharedValues for Typed<T> {
+impl<T: DynReflect + Clone> SharedValues for Typed<T> {
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -60,8 +60,27 @@ impl SharedStore {
         component: ComponentId,
         value: T,
     ) -> Result<u32, EcsError> {
-        // A zero-sized type (a tag) has exactly one value: index 0 once stored.
-        if size_of::<T>() == 0 && self.by_component.contains_key(&component) {
+        self.intern_value(component, value, size_of::<T>() == 0)
+    }
+
+    /// The index of a runtime-described value (`tag`: the type has no data).
+    pub(crate) fn intern_dynamic(
+        &mut self,
+        component: ComponentId,
+        value: concordia_reflect::DynamicValue,
+        tag: bool,
+    ) -> Result<u32, EcsError> {
+        self.intern_value(component, value, tag)
+    }
+
+    fn intern_value<T: DynReflect + Clone>(
+        &mut self,
+        component: ComponentId,
+        value: T,
+        tag: bool,
+    ) -> Result<u32, EcsError> {
+        // A tag has exactly one value: index 0 once stored.
+        if tag && self.by_component.contains_key(&component) {
             return Ok(0);
         }
         let mut h = blake3::Hasher::new();
@@ -90,6 +109,19 @@ impl SharedStore {
 
     /// The stored value `index` of `component`, typed.
     pub(crate) fn get<T: Component>(&self, component: ComponentId, index: u32) -> Option<&T> {
+        self.get_value(component, index)
+    }
+
+    /// The stored value `index` of a runtime-described `component`.
+    pub(crate) fn get_dynamic(
+        &self,
+        component: ComponentId,
+        index: u32,
+    ) -> Option<&concordia_reflect::DynamicValue> {
+        self.get_value(component, index)
+    }
+
+    fn get_value<T: 'static>(&self, component: ComponentId, index: u32) -> Option<&T> {
         self.by_component
             .get(&component)?
             .as_any()

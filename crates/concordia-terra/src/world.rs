@@ -4,7 +4,7 @@ use std::any::TypeId;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use concordia_core::id::{EntityId, IdSource};
-use concordia_reflect::DynReflect;
+use concordia_reflect::{DynReflect, DynamicValue};
 
 use crate::component::{Component, ComponentId, ComponentIndex};
 use crate::entity::{Entity, EntityTable, Location};
@@ -12,7 +12,7 @@ use crate::error::{EcsError, QueryError};
 use crate::query::{QueryData, QueryFilter, QueryState};
 use crate::resource::{Resource, Resources};
 use crate::storage::archetype::Archetypes;
-use crate::storage::column::{downcast, typed, typed_mut};
+use crate::storage::column::{Column, downcast, dynamic_mut, typed, typed_mut};
 use crate::storage::kind::StorageKind;
 
 static NEXT_WORLD: AtomicU64 = AtomicU64::new(1);
@@ -26,7 +26,7 @@ pub struct World {
     pub(crate) resources: Resources,
     pub(crate) changes: ChangeLog,
     /// Presentation-only component types: never hashed (ADR-0063).
-    pub(crate) presentation: std::collections::HashSet<TypeId>,
+    pub(crate) presentation: std::collections::HashSet<&'static str>,
     /// Signals raised and delivered (ADR-0069).
     pub(crate) signals: crate::signal::SignalQueue,
     /// Adds and removals of observed component types (ADR-0069).
@@ -144,7 +144,7 @@ impl World {
     /// Declares `T` presentation-only: never part of the world hash, and off limits to simulation
     /// processors (ADR-0063).
     pub fn register_presentation<T: Component>(&mut self) {
-        self.presentation.insert(TypeId::of::<T>());
+        self.presentation.insert(T::type_info().name);
     }
 
     /// Despawns remembered for [`World::changes_since`].
@@ -248,8 +248,8 @@ impl World {
         let loc = self.entities.location(id)?;
         if !self.structural.is_idle() {
             for c in self.archetypes.list[loc.archetype].all_components() {
-                let t = self.components.info(c).type_id;
-                self.structural.record(t, id, false);
+                let name = self.components.info(c).name;
+                self.structural.record(name, id, false);
             }
         }
         let swapped = self.archetypes.remove_row(loc.archetype, loc.row);
@@ -279,25 +279,54 @@ impl World {
         if self.components.info(cid).kind != StorageKind::Dense {
             return self.insert_shared(id, loc, cid, component);
         }
+        Ok(self.insert_dense(id, loc, cid, component, typed_mut::<C>))
+    }
+
+    /// Inserts or replaces a value of a runtime-described (script) type; returns the previous
+    /// value. Types with no data are tags.
+    pub fn insert_dynamic(
+        &mut self,
+        id: EntityId,
+        value: DynamicValue,
+    ) -> Result<Option<DynamicValue>, EcsError> {
+        let loc = self.entities.location(id)?;
+        let cid = self.components.register_dynamic(value.info())?;
+        if self.components.info(cid).kind == StorageKind::Tag {
+            let index = self.shared.intern_dynamic(cid, value, true)?;
+            let old = self.archetypes.list[loc.archetype].shared_value(cid);
+            let previous = old.and_then(|v| self.shared.get_dynamic(cid, v).cloned());
+            self.set_shared(id, loc, cid, index, old);
+            return Ok(previous);
+        }
+        Ok(self.insert_dense(id, loc, cid, value, dynamic_mut))
+    }
+
+    /// Stores a dense value, replacing in place or moving `id` to the archetype that has it.
+    fn insert_dense<V>(
+        &mut self,
+        id: EntityId,
+        loc: Location,
+        cid: ComponentId,
+        value: V,
+        values: fn(&mut dyn Column) -> &mut Vec<V>,
+    ) -> Option<V> {
         self.touch(id);
         if let Some(col) = self.archetypes.list[loc.archetype].column_index(cid) {
             let column = &mut *self.archetypes.list[loc.archetype].table.columns[col];
-            return Ok(Some(std::mem::replace(
-                &mut typed_mut::<C>(column)[loc.row],
-                component,
-            )));
+            return Some(std::mem::replace(&mut values(column)[loc.row], value));
         }
         let dst = self
             .archetypes
             .with_added(loc.archetype, cid, &self.components);
         let new_loc = self.relocate(id, loc, dst, None);
-        self.structural.record(TypeId::of::<C>(), id, true);
+        self.structural
+            .record(self.components.info(cid).name, id, true);
         let col = self.archetypes.list[dst]
             .column_index(cid)
             .expect("destination has the component");
-        typed_mut::<C>(&mut *self.archetypes.list[dst].table.columns[col]).push(component);
+        values(&mut *self.archetypes.list[dst].table.columns[col]).push(value);
         debug_assert_eq!(new_loc.row + 1, self.archetypes.list[dst].table.ids.len());
-        Ok(None)
+        None
     }
 
     /// Removes a component; returns it, or `None` if the entity did not have it.
@@ -441,8 +470,8 @@ impl World {
             .archetypes
             .with_removed(loc.archetype, cid, &self.components);
         self.relocate(id, loc, dst, Some(col));
-        let t = self.components.info(cid).type_id;
-        self.structural.record(t, id, false);
+        let name = self.components.info(cid).name;
+        self.structural.record(name, id, false);
         Ok(Some(value))
     }
 
@@ -477,6 +506,19 @@ impl World {
         let value = self.shared.intern(cid, component)?;
         let old = self.archetypes.list[loc.archetype].shared_value(cid);
         let previous = old.and_then(|v| self.shared.get::<C>(cid, v).cloned());
+        self.set_shared(id, loc, cid, value, old);
+        Ok(previous)
+    }
+
+    /// Points `id`'s shared or tag `cid` at stored value `value` (it had `old`).
+    fn set_shared(
+        &mut self,
+        id: EntityId,
+        loc: Location,
+        cid: ComponentId,
+        value: u32,
+        old: Option<u32>,
+    ) {
         self.touch(id);
         if old != Some(value) {
             let dst = self
@@ -485,9 +527,9 @@ impl World {
             self.relocate(id, loc, dst, None);
         }
         if old.is_none() {
-            self.structural.record(TypeId::of::<C>(), id, true);
+            self.structural
+                .record(self.components.info(cid).name, id, true);
         }
-        Ok(previous)
     }
 
     /// Removes shared or tag `cid` from `id`, returning a copy of its value.
@@ -503,8 +545,8 @@ impl World {
             .archetypes
             .with_removed(loc.archetype, cid, &self.components);
         self.relocate(id, loc, dst, None);
-        let t = self.components.info(cid).type_id;
-        self.structural.record(t, id, false);
+        let name = self.components.info(cid).name;
+        self.structural.record(name, id, false);
         Some(copy)
     }
 

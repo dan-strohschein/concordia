@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19) and 2.0c (2026-11-20) done; 2.6 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c and 2.6a (2026-11-20) done; 2.6b next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -233,6 +233,172 @@ The VFX artist stays disabled: particles are not in M2 (open question, unchanged
   - `TemplateError` boxes its `SceneError` (clippy, large error variant).
 - **Not in this phase:** processor timings in `terra.stats` (M7), `terra.set_debug_view` (M7), and the `spawn_10k` regression noted in 2.0b. The 2.0b perf numbers still hold, because 2.0c adds no hot-path code.
 - **CI:** a new advisory, RUSTSEC-2026-0587 (`wasmtime-wasi` 50, dev-only and unreachable here), fails `just deny` on every branch. A documented ignore is in its own PR (#35).
+
+### Phase 2.6 refinement (2026-11-20; ADR-0061, ADR-0062)
+This replaces the test list and implementation notes of the older "Phase 2.6" text below, which was written before Terra's core.
+
+**Author decisions:**
+- **WASM stays, compiled ahead of time.** Wasmtime precompiles each component to native code, cached in `.concordia/ddc`, so nothing is JIT-compiled or interpreted at runtime. (The C++ and C# alternatives were weighed: C++, Zig and C# NativeAOT fit the native tier's C ABI later.)
+- **The scripting host is swappable.** The contract is a protocol: module, processor, component, signal and trait descriptors, wire-encoded batches, and run outputs. WIT is just the WASM binding of it. `concordia-script` holds a `ScriptBackend` trait, and every engine-side feature is written once against it. A conformance suite runs on every backend, including an in-process test backend.
+- **Scripts define their own components, signals and traits.** Terra and the reflect registry gain dynamic, name-keyed types, with their schema taken from the module's `describe()`.
+- **The native tier speaks the same protocol** over a C-ABI vtable. It is built in 2.6 too.
+- **WASM instances are fresh per processor run**, from a precompiled `InstancePre` with the pooling allocator, so no hidden guest state outlives a run. A benchmark measures the cost.
+- **Four sub-phases**, each its own commit and PR to main.
+- **Wasmtime** is pinned at `=50.0.3`, which patches RUSTSEC-2026-0587, so the `deny.toml` ignore goes (51 is still a release candidate).
+
+**How the old plan maps onto Terra:**
+- **Systems → processors.** `describe()` declares processors: name, phase, component reads, writes and presentation writes by stable name, received signals, and before/after. They join Terra's conflict graph and deterministic waves (ADR-0063).
+- **"Commands applied at the end of the system" → 2.0b's `CommandBuffer`,** applied at phase end in plan order. A run returns its column writes and commands together, so a trap applies nothing.
+- **"Events" → 2.0b's typed signals.** Delivered signals arrive in the batch, by stable name and entity order. Raised signals are commands.
+- **The `guest_commands_apply_through_command_log_with_script_actor` test conflicts with ADR-0032,** because the play world is never journaled. It becomes two tests:
+  - `guest_commands_apply_at_phase_end_in_plan_order`;
+  - `script_reload_journals_edit_world_migration_with_script_actor`: migrating script components in the edit world is one undoable transaction by `script:<module>`.
+
+  Play-world faults and log lines are attributed to `script:<module>`.
+- **Traits and spawners.** Modules declare traits (components with defaults, plus required processors) that `.template.ron` files can use. A `spawn-template` command spawns from a template.
+- **`cargo component` → plain `cargo build --target wasm32-wasip2`** (ADR-0021).
+- **Exclusive systems stay Rust-only:** they need the whole `World`, which can't cross the wire.
+- **Time and RNG ride in the tick context.** Each processor gets an RNG seed derived from the session seed, the tick and its name, so processors never contend for `SimRng`. The SDK does transcendental math with `libm`, so the WASM and native builds give bit-identical results.
+
+**2.6a: dynamic types in reflect and Terra; the wire codec**
+- `concordia-reflect` gains:
+  - `TypeDesc`, a serializable mirror of `TypeInfo`;
+  - `DynamicValue`, which serializes like a static type of the same shape;
+  - dynamic registrations by name, which can be replaced on reload;
+  - `wire`, the columnar codec: little-endian, a fixed stride per type derived from its `Shape`, and strings, lists, maps and data-carrying enums in a side arena;
+  - migration between two versions of a type.
+- `concordia-terra` gains:
+  - dynamic components and signals keyed by stable name;
+  - processor access by name;
+  - a by-name `View` path that encodes the declared columns to wire batches and writes rows back;
+  - by-name commands.
+- Tests, `concordia-reflect`:
+  - `type_desc_roundtrips_type_info`;
+  - `dynamic_value_serializes_like_the_equivalent_static_type` (JSON and the canonical hash);
+  - `dynamic_type_registers_by_name_with_schema_and_validation`;
+  - `dynamic_type_name_collision_is_an_error`;
+  - `reregistering_a_dynamic_type_replaces_its_schema`;
+  - `wire_layout_has_a_fixed_stride_from_the_shape`;
+  - `wire_roundtrips_every_shape` (proptest);
+  - `wire_strings_and_lists_live_in_the_arena`;
+  - `wire_encoding_is_canonical_little_endian` (pinned bytes);
+  - `static_and_dynamic_values_encode_identically_on_the_wire`;
+  - `wire_decode_rejects_malformed_input_without_panicking`;
+  - `migration_fills_added_fields_with_defaults_and_reports_removed_ones`.
+- Tests, `concordia-terra`:
+  - `dynamic_component_stores_queries_and_hashes_by_name`;
+  - `dynamic_component_hashes_like_the_equivalent_static_type`;
+  - `dynamic_and_static_components_share_an_archetype`;
+  - `named_access_conflicts_like_typed_access`;
+  - `named_view_encodes_columns_and_writes_rows_back`;
+  - `named_view_rejects_undeclared_names`;
+  - `named_commands_insert_remove_and_signal`;
+  - `dynamic_signals_deliver_next_tick_in_entity_order`;
+  - `named_processors_hash_identically_at_1_and_8_threads`.
+- Tests, `concordia-scene`: `scene_with_dynamic_components_roundtrips_byte_identical`.
+
+**2.6a As built (2026-11-20, ADR-0062):**
+- **`concordia-reflect`:**
+  - Field and type defaults became `DefaultValue` (a function, or stored JSON). `TypeRef::to` references an already-built info. Both changes let a runtime-described type carry the same metadata as a derived one.
+  - `TypeDesc` (`TypeInfo::to_desc` / `TypeDesc::to_info`) and `register_dynamic`. A re-registration replaces the type by name and keeps its attached data. Built-in scalars, `Any`, `EntityId` and the glam types resolve even when they aren't registered.
+  - `DynamicValue`, stored as canonical wire bytes, and `migrate`.
+  - The `wire` module: a layout cache; an encoder that is a serde `Serializer` guided by the shape; a decoder that is a serde `Deserializer` and also validates; a transcoder that serializes a value as its Rust twin; and a canonical copier.
+- **`concordia-terra`:**
+  - Component identity moved from `TypeId` to stable names in access, presentation, observers and views. All 83 existing Terra tests passed unchanged after this step.
+  - Dynamic columns and tags, and `World::insert_dynamic`. The typed and dynamic inserts share one dense path and one shared path.
+  - Named access: `NamedQuery`, `Batch`, `View::batch` / `write_batch` / `signal_batch` / `signals_named`, and by-name commands. `write_batch` decodes everything, then assigns, so a bad row writes nothing.
+- **Tests:**
+  - `concordia-reflect`: `tests/dynamic.rs` (6) and `tests/wire.rs` (8, including two proptests);
+  - `concordia-terra`: `tests/dynamic.rs` (9);
+  - `concordia-scene`: `tests/dynamic.rs` (1; a dynamic twin of a Rust type saves byte-identical scene text).
+  - Every planned 2.6a test is there. Two were added: `wire_decode_never_panics_on_arbitrary_bytes` and `dynamic_values_are_wire_bytes_with_their_type`.
+- **Red run:**
+  - 23 of 24 failed against stubs for the right reason: `to_desc`, `register_dynamic` and the wire layout were unimplemented, and named access was a no-op.
+  - `wire_decode_never_panics_on_arbitrary_bytes` passed vacuously, because the stubs never decoded anything. I strengthened it to mutate real encodings and require the unmutated bytes to validate, and it then failed.
+- **Changed deliberately during green:**
+  - The never-panics test asserted "valid on the wire ⇒ decodes into the Rust type". That's wrong: `EntityId` checks UUID versions, which wire validation (like `validate_json`) leaves to the type. It now asserts "valid ⇒ readable as a dynamic value".
+  - `ColumnWriter::finish` returns a `Result` (a row left unwritten is an error), so the call sites unwrap.
+  - `View::signal_batch` takes the signal's `TypeInfo`, because an empty batch still needs its type.
+  - The misuse test dropped a filter on an unknown name: a world can't tell a typo from a type it has never stored.
+- **Existing tests, mechanical updates:**
+  - `derive.rs` calls `DefaultValue::get`;
+  - `registry.rs` uses the `deserialize` method, and a refutable `let` for the new error variants;
+  - the zoo proptest strategies moved to `tests/common/arb.rs`, shared by the schema and wire tests.
+- **Fixes found by the tests:**
+  - serde's `IgnoredAny` reads every enum variant as a newtype, so the decoder accepts that for any payload;
+  - descriptions resolve the built-in names.
+- **Perf:** the perf smoke passes. The name keys only touch planning paths.
+- **Not in this phase:**
+  - Shared storage for script types: they are dense or tags.
+  - Migrating stored values when a type's version changes in a world (2.6c/2.6d).
+  - The Wasmtime pin and the `deny.toml` ignore move with the WASM host (2.6b).
+
+**2.6b: the protocol, the backend seam, WIT, the guest SDK and the WASM backend (ADR-0062)**
+- **Crates:**
+  - `concordia-script`: the protocol types, `ScriptBackend`, `ScriptProcessor`, the conformance suite and the test backend;
+  - `concordia-script-guest`: the SDK, which builds for both native and `wasm32-wasip2`;
+  - `concordia-script-wasm`: the WASM backend;
+  - `wit/concordia-game/`.
+- **The WIT world** exports `describe` and `run(processor, tick-context, batch) -> result<run-output, string>`, and imports only `log`. That is one crossing per processor per tick.
+- **Determinism:**
+  - Cranelift with NaN canonicalization, no threads, and deterministic relaxed SIMD;
+  - fuel per run, with no epoch interruption;
+  - a memory cap;
+  - WASI virtualized: clocks are sim time, random comes from the processor's stream, and there is no filesystem, env or stdio (stdout goes to the log).
+- **AOT:** precompiled components are cached in the DDC, keyed by the wasm hash, the Wasmtime version and the config.
+- **Tests:**
+  - `wit_world_gameplay_validates_with_wasm_tools`;
+  - `guest_component_builds_for_wasm32_wasip2`;
+  - the conformance suite, run per backend:
+    - `describe_registers_processors_components_signals_and_traits`;
+    - `batch_delivers_1000_matches_columnar_in_one_call`;
+    - `boundary_crossings_per_tick_are_constant_in_entity_count`;
+    - `guest_commands_apply_at_phase_end_in_plan_order`;
+    - `signals_reach_guests_and_guests_raise_signals`;
+    - `fault_is_contained_reported_and_processor_disabled`;
+    - `script_trait_composes_into_a_template`;
+    - `script_spawns_from_a_template`;
+    - `script_processors_hash_identically_at_1_and_8_threads`;
+  - `test_backend_passes_conformance`;
+  - `fuel_exhaustion_traps_deterministically`;
+  - `nan_canonicalization_makes_float_results_bit_identical`;
+  - `wasi_clocks_and_random_are_virtualized_to_sim`;
+  - `guest_statics_do_not_survive_between_runs`;
+  - `precompiled_component_is_cached_and_reused`;
+  - `wasm_reload_preserves_world_state`.
+- **Benchmark** (criterion, recorded in `BASELINE.md`): the same logic run native, as WASM without guards, as WASM with fuel, and as WASM with fuel and NaN canonicalization, at 10k and 100k entities. Fuel granularity is chosen from these numbers.
+
+**2.6c: the native backend (ADR-0061)**
+- **`concordia-script-native`:**
+  - The `concordia_module_v1` C-ABI vtable: ABI version, `describe`, `run`, `free`.
+  - Copy-on-load with `libloading`. Swaps happen at tick boundaries, and old libraries stay loaded until play stops.
+  - A static-link path.
+  - A `syn`-based source check that rejects mutable statics.
+  - Panics are caught and treated like traps.
+  - All `unsafe` stays in this crate.
+- **Tests:**
+  - the conformance suite on the native backend;
+  - `native_module_registers_types_and_processors_by_stable_name`;
+  - `native_reload_swaps_behavior_without_losing_world_state`;
+  - `component_layout_change_on_reload_migrates_via_reflect`;
+  - `reload_with_incompatible_abi_version_is_refused`;
+  - `module_with_static_mutable_state_is_rejected_by_the_check`;
+  - `guest_panic_is_contained_like_a_trap`;
+  - `static_link_and_dylib_paths_produce_identical_world_hash`.
+
+**2.6d: API, samples and the Studio role**
+- **Engine:**
+  - The `[scripts]` section in `concordia.toml`.
+  - `script.reload` (MCP `script_reload`), which reloads what's on disk and does not build. That makes 39 methods and 36 tools.
+  - Sample logic under `examples/`, built as WASM, as a native dylib and statically.
+- **Studio (D8):** the gameplay-programmer role is enabled, with `script_reload`, `scripts/**` and a scripting skill, and the snapshots are reviewed.
+- **Tests:**
+  - `script_reload_over_api_is_logged_with_its_actor`;
+  - `script_reload_journals_edit_world_migration_with_script_actor`;
+  - `every_backend_runs_the_sample_logic_to_identical_hashes` (1 and 8 threads);
+  - `editing_a_native_module_during_a_headless_session_changes_behavior_after_reload` (the done criterion);
+  - the method and tool counts and the token budget;
+  - the gameplay-programmer scope test.
 
 ### Effort (re-estimated)
 | Phase | Estimate |
@@ -560,6 +726,8 @@ Phase order is a dependency order, but 2.3–2.8 can run in parallel once 2.1 an
 - **Done criteria:** tests green; a debug draw of a fixture level's navmesh renders in a golden image.
 
 ### Phase 2.6: Scripting tiers: native hot reload and the WASM host
+
+> **Superseded in detail by the "Phase 2.6 refinement (2026-11-20)" section above** (sub-phases 2.6a–2.6d, a swappable backend, script-defined types). The text below is the original plan.
 
 - **Objective:** run gameplay as tier-1 Rust native crates with hot reload, and as tier-2 WASM components behind the `concordia:game/gameplay` WIT world, both deterministic and both going through the command log.
 - **Deliverables:** `wit/concordia-game/*.wit`; `concordia-script-wasm` (host, wire encoding, determinism config, sandbox, reload); `concordia-script-guest` (guest SDK); `concordia-script-native` (`GameModule` trait, C-ABI vtable, dylib loader, reflect-based migration, static path); API `script.reload` (MCP `script_reload`); a sample guest and a sample native module under `examples/`.

@@ -28,6 +28,7 @@ mod dynamic;
 mod entity;
 mod error;
 mod hash;
+mod named;
 mod observer;
 mod processor;
 mod query;
@@ -41,11 +42,12 @@ mod view;
 mod world;
 
 pub use command::{ApplyReport, CommandBuffer, Pending, Target, TerraStats};
-pub use component::{Component, ReflectComponent, register_component};
+pub use component::{Component, ReflectComponent, register_component, register_dynamic_component};
 pub use dynamic::{DynamicQuery, component_from_json};
 pub use entity::Entity;
 pub use error::{EcsError, QueryError, ScheduleError};
 pub use hash::{ParseHashError, WorldHash};
+pub use named::{Batch, NamedQuery};
 pub use observer::{Observe, observer};
 pub use processor::{FnProcessor, Phase, Processor, ProcessorDecl, processor};
 pub use query::{
