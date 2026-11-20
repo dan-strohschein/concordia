@@ -5,7 +5,7 @@ use concordia_api::{
 };
 use concordia_command::Actor;
 use concordia_reflect::Reflect;
-use concordia_terra::{Schedule, SystemCtx, World, system};
+use concordia_terra::{Phase, Schedule, SystemCtx, World, system};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -41,7 +41,7 @@ impl EngineModule for InputModule {
         world.insert_resource(sampler.states().clone());
         world.insert_resource(sampler);
         let mut schedule = Schedule::new();
-        schedule.add(system("input.sample", sample_input));
+        schedule.add_in(Phase::PrePhysics, system("input.sample", sample_input));
         Ok(PlaySetup {
             schedule,
             state: None,

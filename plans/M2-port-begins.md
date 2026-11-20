@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: Refined and approved (2026-11-19); phase 2.0 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0 done (2026-11-19), 2.0b next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -123,6 +123,34 @@ The VFX artist stays disabled: particles are not in M2 (open question, unchanged
   - `traffic_follows_lanes_and_yields_at_junctions`;
   - `crowd_is_deterministic_across_runs_and_threads` (with Terra's parallel scheduler; this replaces the old "single-threaded crowd" constraint).
 - **2.10:** set with the sample game's design. Its shape: scripted headless play driven through `input.inject`, `sim.step` and `query.run`; replay across thread counts; goldens; zero error logs; every Studio role that M2 unlocks lists at least one tool it uses in the sample.
+
+### Phase 2.0 As built (2026-11-19, ADR-0063)
+- **Processors** (in `concordia-terra`, not a new crate): `processor(name, phase)` gives a `ProcessorDecl`, with `reads`, `writes`, `writes_presentation`, `after`, `before` and `run`. The `Processor` trait and `View` (`query`, then `for_each`/`par_for_each`) complete it. The phases are `PrePhysics`, `Physics`, `PostPhysics`, `FrameEnd` and `Presentation`; the refinement's separate `Sim` phase became `PostPhysics`, as Mass names it.
+- **Scheduling:**
+  - Order comes from a topological sort of the constraints, ties broken by registration order. Every conflicting pair then follows that order, and each processor runs in the first wave after its predecessors.
+  - A wave runs in parallel on the `JobSystem`, each processor seeing only its declared columns. Undeclared or read-only-as-mutable queries are `QueryError::Undeclared`/`ReadOnly`.
+  - No `unsafe`: views are disjoint borrows of the archetype columns (ADR-0030 stands).
+  - Change ticks are applied at the wave barrier.
+- **Exclusive systems still work:** `Schedule::add` puts one in `PostPhysics`, and `add_in(phase, ..)` names the phase. Input sampling moved to `PrePhysics` and the physics step to `Physics`.
+- **`SimLoop::new(rate, schedule, &mut world)`** returns `Result<_, ScheduleError>` (cycle, unknown target, duplicate name, and the presentation rules). It also adds the built-in `terra.timers` processor and creates the `SimClock`. `SystemCtx` gains `dt_exact`.
+- **Presentation state:** `writes_presentation` or `World::register_presentation` marks a component presentation-only. It is left out of the hash; only `Presentation` processors may write it, and other phases may not use it.
+- **Time:**
+  - `SimClock` gains `time_scale` (`TimeScale`: finite, at least 0) and `time`; `dt` is the step times the scale.
+  - `Timer::once`/`repeating` count down scaled simulated time and fire on the tick they expire, several times in one tick if needed.
+  - Both clock fields are hashed. Edit worlds have no clock, so command-journal hashes are unchanged and the hash domain stays `v1`.
+- **Tests:** `tests/processors.rs` (12) and `tests/timers.rs` (4), all in `concordia-terra`.
+  - They follow the planned 2.0 list, plus unknown and duplicate names, phase order, undeclared access, the presentation rules, exclusive systems and invalid durations.
+  - The planned `presentation_phase_never_changes_world_hash` is the 5th; the 2.0b items stay for 2.0b.
+- **Red run:**
+  - Against stubs, 13 failed for the right reason.
+  - Three passed. Two were vacuous (the stub ran no processors), so I strengthened them to check that the processors changed state, and both then failed. The third, `exclusive_systems_still_run_with_the_whole_world`, is the backward-compatibility guard.
+- **Changed deliberately:**
+  - **The presentation test** now registers `Glow` as presentation in both runs. Presentation-ness belongs to the type, so `World::register_presentation` was added; before, it depended on whether a processor declared it.
+  - **The M1 gate's pinned play-world hash** changed because of the new clock fields. Its golden image still matches. A domain bump was tried and reverted: it would have changed edit-world hashes and made every project's command journal stale.
+  - **The `SimLoop::new` callers** were updated: the API's play start (an invalid schedule is now an API error), the determinism tests and the scene builtin test.
+- **Not done here:**
+  - The criterion benchmarks and `just perf-smoke` couldn't be judged against `BASELINE.md`: during this phase the machine was under heavy load (`ReportCrash` at 99% CPU, load average 14–17). `perf_smoke_iterate_1m_transform_velocity` measured 39 ms against its 25 ms budget, but main's code measured the same 39 ms then, so it isn't a regression. Re-measure on a quiet machine before 2.0b.
+  - Resource access in views, and structural changes from processors (command buffers), come with 2.0b.
 
 ### Effort (re-estimated)
 | Phase | Estimate |
