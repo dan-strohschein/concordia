@@ -10,7 +10,9 @@ use concordia_app::SharedEngine;
 use concordia_core::id::SessionId;
 use concordia_studio::StudioJournal;
 use concordia_tests::mcp_client::McpClient;
-use concordia_tests::studio_gate::{agent_call, agent_try, mcp, new_project};
+use concordia_tests::studio_gate::{
+    agent_call, agent_try, decision, mcp, new_project, pre_tool_use,
+};
 use serde_json::{Value, json};
 
 const LD: Option<&str> = Some("level-designer");
@@ -118,13 +120,19 @@ async fn m3s_task_flows_through_the_gates_with_attribution() {
 
     submit(&root, &mcp, &id).await;
     assert_eq!(status(&root, &mcp, &id).await["status"], "in_review");
-    let own = agent_try(&root, &mcp, None, "task_approve", json!({"id": id}))
-        .await
-        .unwrap_err();
+    // The director has no approval tool (ADR-0073); the gate party rule is unit-tested in Studio.
+    let own = pre_tool_use(
+        &root,
+        None,
+        "agent-main",
+        "mcp__concordia__task_approve",
+        json!({"id": id}),
+    );
+    assert_eq!(decision(&own), "deny", "{own}");
     assert!(
-        own.text.contains("qa-playtester"),
-        "the director is not a gate party: {}",
-        own.text
+        own.to_string()
+            .contains("director may not call task_approve"),
+        "the director cannot approve: {own}"
     );
 
     agent_call(

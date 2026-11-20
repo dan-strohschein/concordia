@@ -1,5 +1,5 @@
 # ADR-0070: Terra templates, traits and spawners
-- Status: Accepted (M2 phase 2.0c, 2026-11-20; author's decisions)
+- Status: Accepted (M2 phase 2.0c, 2026-11-20; author's decisions); superseded in part by ADR-0073 (decision 5, the tool-list budget)
 - Date: 2026-11-20
 - Builds on: ADR-0067 (Terra's Mass core in M2), ADR-0069 (storage kinds, commands, signals); amends ADR-0033 (the MCP tool-list budget)
 
@@ -32,7 +32,7 @@ A scene that saves 100k entities, or a command journal that records them, would 
    - The new crate `concordia-terra-sim` holds traits, templates, the catalog, spawners and the built-in `Movement` trait.
    - `terra.spawn_batch`, `terra.despawn_batch`, `terra.stats` and `terra.inspect` join the core method set, which brings the counts to 38 methods and 35 MCP tools.
    - The level designer gains these tools, write access to `templates/**`, and the `concordia-terra-templates` skill.
-5. **The tool-list budget rises from 12k to 16k tokens** (an amendment to ADR-0033).
+5. **The tool-list budget rises from 12k to 16k tokens** (an amendment to ADR-0033). *Superseded in part by ADR-0073: there is no whole-list budget; tool budgets are per agent role.*
    - The list was about 11.8k before 2.0c and is about 14.0k after it. Most of the size is schema structure, not wording.
    - The extra room covers M2's remaining tools. Claude Code loads MCP tool schemas on demand through tool search, so the full list isn't spent up front.
 

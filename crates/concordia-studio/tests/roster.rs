@@ -407,13 +407,19 @@ fn qa_playtester_records_and_runs_replays_with_the_replay_skill() {
     for needle in ["mcp__concordia__replay_run", "tests/replays/"] {
         assert!(qa.body.contains(needle), "the prompt explains {needle}");
     }
-    for role in ["gameplay-programmer", "level-designer"] {
+    // The level designer's work never records replays, so it no longer gets them (ADR-0073).
+    for (role, has) in [("gameplay-programmer", true), ("level-designer", false)] {
         let found = roster
             .roles()
             .iter()
             .find(|r| r.role.as_str() == role)
             .unwrap_or_else(|| panic!("{role} is enabled"));
-        assert!(replays(&found.mcp_tools), "{role}: {:?}", found.mcp_tools);
+        assert_eq!(
+            replays(&found.mcp_tools),
+            has,
+            "{role}: {:?}",
+            found.mcp_tools
+        );
     }
     let programmer = roster
         .roles()
@@ -428,4 +434,131 @@ fn qa_playtester_records_and_runs_replays_with_the_replay_skill() {
         "{:?}",
         programmer.skills
     );
+}
+
+/// The director's section of a shared skill: only the director acts on it.
+const DIRECTOR_SECTION: &str = "## For the director";
+
+/// What `skill` tells `role` to do: a skill's director section counts only for the director.
+fn skill_text_for<'a>(role: &str, skill: &'a str) -> std::borrow::Cow<'a, str> {
+    let Some(start) = skill.find(DIRECTOR_SECTION).filter(|_| role != "director") else {
+        return skill.into();
+    };
+    let rest = &skill[start + DIRECTOR_SECTION.len()..];
+    let end = rest
+        .find("\n## ")
+        .map_or(skill.len(), |i| start + DIRECTOR_SECTION.len() + i);
+    format!("{}{}", &skill[..start], &skill[end..]).into()
+}
+
+/// The `mcp__concordia__` tools a role's skills tell it to use, that the project offers.
+fn skill_tools(role: &RoleFile) -> Vec<String> {
+    let offered: Vec<String> = common::catalog().names().map(str::to_owned).collect();
+    let skills = default_roster().skills;
+    role.spec
+        .skills
+        .iter()
+        .flat_map(|name| {
+            let text = skills.iter().find(|(n, _)| n == name).map(|(_, t)| *t);
+            let text = text.unwrap_or_else(|| panic!("{}: no skill {name}", role.spec.role));
+            mentioned_tools(&skill_text_for(role.spec.role.as_str(), text))
+        })
+        .filter(|t| offered.contains(t))
+        .collect()
+}
+
+#[test]
+fn default_role_scopes_list_tools_by_name_not_by_glob() {
+    for role in role_files() {
+        let globs: Vec<&String> = role
+            .spec
+            .mcp_tools
+            .iter()
+            .filter(|t| t.contains(['*', '?', '[', '{']))
+            .collect();
+        assert!(
+            globs.is_empty(),
+            "{}: name each tool the admin grants, not {globs:?} (ADR-0073)",
+            role.spec.role
+        );
+    }
+}
+
+#[test]
+fn every_scoped_tool_is_used_by_the_role_prompt_or_its_skills() {
+    for role in role_files() {
+        let mut used = mentioned_tools(&role.body);
+        used.extend(skill_tools(&role));
+        let scope = common::catalog()
+            .expand(&role.spec.mcp_tools)
+            .unwrap_or_else(|e| panic!("{}: {e}", role.spec.role));
+        let unused: Vec<&String> = scope.iter().filter(|t| !used.contains(t)).collect();
+        assert!(
+            unused.is_empty(),
+            "{}: neither its prompt nor its skills use {unused:?}",
+            role.spec.role
+        );
+    }
+}
+
+#[test]
+fn every_tool_a_role_skill_tells_it_to_use_is_in_scope() {
+    for role in role_files() {
+        let scope = common::catalog()
+            .expand(&role.spec.mcp_tools)
+            .unwrap_or_else(|e| panic!("{}: {e}", role.spec.role));
+        for tool in skill_tools(&role) {
+            assert!(
+                scope.contains(&tool),
+                "{}: a preloaded skill uses mcp__concordia__{tool}, which it cannot call",
+                role.spec.role
+            );
+        }
+    }
+}
+
+/// The world-inspection tools the director gave up (ADR-0073): specialists attach evidence.
+const WORLD_TOOLS: [&str; 8] = [
+    "scene_info",
+    "entity_get",
+    "component_get",
+    "query_run",
+    "schema_get",
+    "capture_screenshot",
+    "render_stats",
+    "log_tail",
+];
+
+#[test]
+fn director_coordinates_with_task_team_and_history_tools_only() {
+    let (_dir, roster) = roster();
+    let director = roster
+        .roles()
+        .iter()
+        .find(|r| r.role.as_str() == "director")
+        .expect("the director is enabled");
+    for tool in &director.mcp_tools {
+        let coordination =
+            tool.starts_with("task_") || tool.starts_with("studio_") || tool == "txn_history";
+        assert!(
+            coordination,
+            "the director coordinates; it never calls {tool}"
+        );
+    }
+    for tool in WORLD_TOOLS {
+        assert!(
+            !director.body.contains(&format!("mcp__concordia__{tool}")),
+            "{tool}"
+        );
+    }
+    for needle in [
+        "mcp__concordia__task_create",
+        "mcp__concordia__txn_history",
+        "evidence",
+    ] {
+        assert!(
+            director.body.contains(needle),
+            "the prompt explains {needle}"
+        );
+    }
 }

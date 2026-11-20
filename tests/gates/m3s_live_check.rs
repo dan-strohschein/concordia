@@ -406,7 +406,7 @@ async fn m3s_live_checker_rejects_an_edit_by_the_wrong_actor_and_a_missing_revie
         json!({"path": SCENE, "name": "Playground"}),
     )
     .await;
-    // The tech artist (allowed to edit components) touches the level designer's scene.
+    // The tech artist (allowed to patch components) touches the level designer's scene.
     let wall = agent_call(
         &root,
         &mcp,
@@ -419,8 +419,8 @@ async fn m3s_live_checker_rejects_an_edit_by_the_wrong_actor_and_a_missing_revie
         &root,
         &mcp,
         Some("tech-artist"),
-        "component_set",
-        json!({"entity": wall["id"], "component": "Name", "value": "Stray"}),
+        "component_patch",
+        json!({"entity": wall["id"], "component": "Name", "patch": "Stray"}),
     )
     .await;
     agent_call(&root, &mcp, ld, "scene_save", json!({})).await;
