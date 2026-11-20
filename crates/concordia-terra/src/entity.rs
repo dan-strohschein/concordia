@@ -74,11 +74,17 @@ impl EntityTable {
         }
     }
 
-    /// Entities changed after `tick`, in id order.
-    pub(crate) fn changed_since(&self, tick: u64) -> Vec<EntityId> {
+    /// Entities changed after `tick`, in id order; `bulk` gives an archetype's bulk-write tick.
+    ///
+    /// An entity's change tick is the later of its own and its archetype's: entering an archetype
+    /// always touches the entity, so an older bulk write never counts for a newcomer.
+    pub(crate) fn changed_since(&self, tick: u64, bulk: impl Fn(usize) -> u64) -> Vec<EntityId> {
         self.ids
             .iter()
-            .filter(|(_, e)| self.slots[e.index as usize].changed > tick)
+            .filter(|(_, e)| {
+                let slot = &self.slots[e.index as usize];
+                slot.changed.max(bulk(slot.location.archetype)) > tick
+            })
             .map(|(id, _)| *id)
             .collect()
     }

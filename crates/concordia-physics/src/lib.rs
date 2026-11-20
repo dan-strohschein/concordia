@@ -17,7 +17,7 @@ pub use components::{
     BodyKind, CharacterController, CharacterMotion, Collider, ColliderShape, RigidBody,
 };
 pub use error::PhysicsError;
-pub use events::{CollisionEvent, CollisionEvents, ContactKind};
+pub use events::{ContactBegan, ContactEnded};
 pub use layers::{LayerMask, PhysicsLayer};
 pub use module::{PhysicsModule, PhysicsRaycast, RaycastHit, RaycastParams, RaycastResult};
 pub use runtime::{PhysicsRuntime, RayHit, StateHash, TickReport};

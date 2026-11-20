@@ -4,8 +4,9 @@ use concordia_reflect::Reflect;
 use serde::{Deserialize, Serialize};
 
 use crate::error::EcsError;
-use crate::processor::{Phase, Processor, View, processor};
+use crate::processor::{Phase, Processor, processor};
 use crate::schedule::SystemCtx;
+use crate::view::View;
 
 /// Simulated time this close to zero counts as expired (sums of fixed steps aren't exact).
 const EPSILON: f64 = 1e-9;

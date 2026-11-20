@@ -3,26 +3,31 @@
 use std::any::TypeId;
 
 use crate::component::Component;
+use concordia_reflect::DynReflect;
+
 use crate::storage::column::{Column, typed, typed_mut};
 
-/// Opaque access to one table's columns (implementation detail of [`QueryData`]).
-#[doc(hidden)]
-pub struct TableAccess<'a>(pub(crate) &'a mut [Box<dyn Column>]);
-
-/// Opaque access to one column (implementation detail of [`QueryElem`]).
-#[doc(hidden)]
-pub struct ColumnAccess<'a>(&'a mut dyn Column);
-
-/// A column as a processor's view holds it (implementation detail of [`QueryElem`]).
+/// A column (or shared value) as a query fetches it (implementation detail of [`QueryElem`]).
 #[doc(hidden)]
 pub struct ViewColumn<'a>(pub(crate) ViewCol<'a>);
 
-/// Shared for reads, exclusive for writes.
+/// Shared for reads, exclusive for writes; a shared or tag component is one value for all rows.
 pub(crate) enum ViewCol<'a> {
     /// Read-only.
     Read(&'a dyn Column),
     /// Writable.
     Write(&'a mut dyn Column),
+    /// One value for every row (shared and tag components; read-only).
+    Shared(&'a dyn DynReflect),
+}
+
+/// The rows a `&T` element reads: a column, or one shared value for every row.
+#[doc(hidden)]
+pub enum ReadSlice<'a, T> {
+    /// One value per row.
+    Rows(&'a [T]),
+    /// The same value for every row.
+    One(&'a T),
 }
 
 /// Which component an element touches, and how.
@@ -45,8 +50,6 @@ pub trait QueryElem {
     /// The access this element needs.
     fn access() -> ElemAccess;
     #[doc(hidden)]
-    fn slice<'a>(column: ColumnAccess<'a>) -> Self::Slice<'a>;
-    #[doc(hidden)]
     fn slice_view<'a>(column: ViewColumn<'a>) -> Self::Slice<'a>;
     #[doc(hidden)]
     fn get<'s>(slice: &'s mut Self::Slice<'_>, row: usize) -> Self::Item<'s>;
@@ -56,7 +59,7 @@ pub trait QueryElem {
 
 impl<T: Component> QueryElem for &T {
     type Item<'a> = &'a T;
-    type Slice<'a> = &'a [T];
+    type Slice<'a> = ReadSlice<'a, T>;
 
     fn access() -> ElemAccess {
         ElemAccess {
@@ -65,20 +68,33 @@ impl<T: Component> QueryElem for &T {
             mutable: false,
         }
     }
-    fn slice<'a>(column: ColumnAccess<'a>) -> &'a [T] {
-        typed::<T>(column.0)
-    }
-    fn slice_view<'a>(column: ViewColumn<'a>) -> &'a [T] {
+    fn slice_view<'a>(column: ViewColumn<'a>) -> ReadSlice<'a, T> {
         match column.0 {
-            ViewCol::Read(c) => typed::<T>(c),
-            ViewCol::Write(c) => typed::<T>(c),
+            ViewCol::Read(c) => ReadSlice::Rows(typed::<T>(c)),
+            ViewCol::Write(c) => ReadSlice::Rows(typed::<T>(c)),
+            ViewCol::Shared(v) => match v.as_any().downcast_ref::<T>() {
+                Some(one) => ReadSlice::One(one),
+                None => {
+                    debug_assert!(false, "a shared value of another type");
+                    ReadSlice::Rows(&[])
+                }
+            },
         }
     }
-    fn get<'s>(slice: &'s mut &[T], row: usize) -> &'s T {
-        &slice[row]
+    fn get<'s>(slice: &'s mut ReadSlice<'_, T>, row: usize) -> &'s T {
+        match slice {
+            ReadSlice::Rows(rows) => &rows[row],
+            ReadSlice::One(one) => one,
+        }
     }
     fn split_at<'a>(slice: Self::Slice<'a>, mid: usize) -> (Self::Slice<'a>, Self::Slice<'a>) {
-        slice.split_at(mid)
+        match slice {
+            ReadSlice::Rows(rows) => {
+                let (a, b) = rows.split_at(mid);
+                (ReadSlice::Rows(a), ReadSlice::Rows(b))
+            }
+            ReadSlice::One(one) => (ReadSlice::One(one), ReadSlice::One(one)),
+        }
     }
 }
 
@@ -93,14 +109,11 @@ impl<T: Component> QueryElem for &mut T {
             mutable: true,
         }
     }
-    fn slice<'a>(column: ColumnAccess<'a>) -> &'a mut [T] {
-        typed_mut::<T>(column.0)
-    }
     fn slice_view<'a>(column: ViewColumn<'a>) -> &'a mut [T] {
         match column.0 {
             ViewCol::Write(c) => typed_mut::<T>(c),
-            // The view checks writes against the declaration before fetching.
-            ViewCol::Read(_) => {
+            // Writes are checked against declarations and storage kinds before fetching.
+            ViewCol::Read(_) | ViewCol::Shared(_) => {
                 debug_assert!(false, "a read-only column fetched for writing");
                 &mut []
             }
@@ -123,8 +136,6 @@ pub trait QueryData {
     /// Accesses, one per element, in order.
     fn elems() -> Vec<ElemAccess>;
     #[doc(hidden)]
-    fn fetch<'a>(table: TableAccess<'a>, columns: &[usize]) -> Self::Slices<'a>;
-    #[doc(hidden)]
     fn fetch_view<'a>(columns: Vec<ViewColumn<'a>>) -> Self::Slices<'a>;
     #[doc(hidden)]
     fn get<'s>(slices: &'s mut Self::Slices<'_>, row: usize) -> Self::Item<'s>;
@@ -140,10 +151,6 @@ macro_rules! single {
 
             fn elems() -> Vec<ElemAccess> {
                 vec![<$ty as QueryElem>::access()]
-            }
-            fn fetch<'a>(table: TableAccess<'a>, columns: &[usize]) -> Self::Slices<'a> {
-                let column = &mut *table.0[columns[0]];
-                <$ty as QueryElem>::slice(ColumnAccess(column))
             }
             fn fetch_view<'a>(columns: Vec<ViewColumn<'a>>) -> Self::Slices<'a> {
                 let column = columns.into_iter().next().expect("one column");
@@ -173,11 +180,6 @@ macro_rules! tuple {
 
             fn elems() -> Vec<ElemAccess> {
                 vec![$($e::access()),+]
-            }
-            fn fetch<'a>(table: TableAccess<'a>, columns: &[usize]) -> Self::Slices<'a> {
-                let indices: [usize; $n] = columns.try_into().expect("one column per element");
-                let [$($v),+] = table.0.get_disjoint_mut(indices).expect("query elements are distinct");
-                ($($e::slice(ColumnAccess(&mut **$v)),)+)
             }
             fn fetch_view<'a>(columns: Vec<ViewColumn<'a>>) -> Self::Slices<'a> {
                 let mut columns = columns.into_iter();

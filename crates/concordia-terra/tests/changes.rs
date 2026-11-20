@@ -81,3 +81,31 @@ fn a_tick_older_than_the_despawn_history_asks_for_a_full_reread() {
     assert!(world.changes_since(t0).is_none());
     assert!(world.changes_since(world.change_tick()).is_some());
 }
+
+#[test]
+fn joining_a_written_archetype_later_does_not_inherit_the_earlier_write() {
+    let mut world = moving_world(2);
+    let late = ids(3)[2];
+    world.spawn_with_id(late).unwrap();
+    world.insert(late, Vel::default()).unwrap();
+    let t0 = world.change_tick();
+    let mut write = QueryState::<(&mut Pos, &Vel)>::new().unwrap();
+    write.for_each(&mut world, |_, (p, v)| p.x += v.x);
+    let t1 = world.change_tick();
+    world.insert(late, Pos::default()).unwrap();
+    assert_eq!(world.changes_since(t1).unwrap().changed, vec![late]);
+    assert_eq!(world.changes_since(t0).unwrap().changed.len(), 3);
+}
+
+#[test]
+fn leaving_a_written_archetype_keeps_the_write() {
+    let mut world = moving_world(2);
+    let moved = world.entity_ids_sorted()[0];
+    let t0 = world.change_tick();
+    let mut write = QueryState::<(&mut Pos, &Vel)>::new().unwrap();
+    write.for_each(&mut world, |_, (p, v)| p.x += v.x);
+    let t1 = world.change_tick();
+    world.remove::<Vel>(moved).unwrap();
+    assert_eq!(world.changes_since(t1).unwrap().changed, vec![moved]);
+    assert_eq!(world.changes_since(t0).unwrap().changed.len(), 2);
+}

@@ -74,7 +74,7 @@ Bring Chaos-class physics to Concordia **on top of Jolt**, not instead of it:
 ## Dependencies (what must already exist, from which milestone)
 | Needed | From |
 |---|---|
-| `concordia-physics` over `jolt-sys`, deterministic stepping, contact events (`Events<T>`) | M1 |
+| `concordia-physics` over `jolt-sys`, deterministic stepping, contact events (Terra signals `ContactBegan`/`ContactEnded` since M2 2.0b) | M1, M2 |
 | RHI compute pipelines, Slang compute shaders, GPU instancing, render graph | M1 |
 | `EngineModule` seam, play world vs edit world (ADR-0032, ADR-0046) | M0, M1 |
 | Skeletons, skinning, animation clips and the skinned-mesh render path | M2 (2.4) |

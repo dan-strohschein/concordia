@@ -14,7 +14,6 @@ use concordia_terra::{Phase, Schedule, SystemCtx, World, register_component, sys
 use serde::{Deserialize, Serialize};
 
 use crate::components::{CharacterController, CharacterMotion, Collider, RigidBody};
-use crate::events::CollisionEvents;
 use crate::layers::{LayerMask, PhysicsLayer};
 use crate::runtime::PhysicsRuntime;
 use crate::settings::PhysicsSettings;
@@ -55,13 +54,12 @@ impl EngineModule for PhysicsModule {
         vec![MethodInfo::of::<PhysicsRaycast>()]
     }
 
-    fn start_play(&self, world: &mut World) -> Result<PlaySetup, ApiError> {
+    fn start_play(&self, _world: &mut World) -> Result<PlaySetup, ApiError> {
         let threads = std::thread::available_parallelism().map_or(1, |n| n.get().min(MAX_THREADS));
         let threads = NonZeroUsize::new(threads).unwrap_or(NonZeroUsize::MIN);
         let runtime = PhysicsRuntime::new(self.settings.clone(), threads)
             .map_err(|e| ApiError::new(ApiErrorKind::Internal, e.to_string()))?;
         let shared = SharedRuntime(Arc::new(Mutex::new(runtime)));
-        world.insert_resource(CollisionEvents::default());
         let mut schedule = Schedule::new();
         schedule.add_in(Phase::Physics, step_system(shared.clone()));
         Ok(PlaySetup {

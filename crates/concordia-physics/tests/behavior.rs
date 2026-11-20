@@ -3,12 +3,16 @@
 mod common;
 
 use common::{DT, Sim, body};
+use concordia_core::id::EntityId;
+use concordia_core::jobs::JobSystem;
 use concordia_core::math::Vec3;
+use concordia_core::time::TickRate;
 use concordia_physics::{
-    BodyKind, Collider, ColliderShape, CollisionEvents, ContactKind, PhysicsLayer, PhysicsSettings,
+    BodyKind, Collider, ColliderShape, ContactBegan, ContactEnded, PhysicsLayer, PhysicsSettings,
     RigidBody,
 };
 use concordia_scene::builtin::{Transform, Velocity};
+use concordia_terra::{Phase, Schedule, SimLoop, SystemCtx, View, World, processor, system};
 
 #[test]
 fn sphere_falls_under_gravity_matches_analytic_within_tolerance() {
@@ -130,8 +134,46 @@ fn restitution_one_sphere_bounces_to_near_original_height() {
     );
 }
 
+/// One delivered contact signal: (tick, receiver, began?, other, sensor).
+type ContactLog = std::sync::Arc<std::sync::Mutex<Vec<(u64, EntityId, bool, EntityId, bool)>>>;
+
+/// Steps physics in its phase and logs contact signals as a `PostPhysics` processor receives them.
+fn contact_loop(sim: Sim, log: ContactLog) -> (World, SimLoop) {
+    let Sim {
+        mut world,
+        mut physics,
+        ..
+    } = sim;
+    let mut schedule = Schedule::new();
+    schedule.add_in(
+        Phase::Physics,
+        system(
+            "physics.step",
+            move |world: &mut World, ctx: &SystemCtx<'_>| {
+                physics.tick(world, ctx.dt).unwrap();
+            },
+        ),
+    );
+    schedule.add_processor(
+        processor("contacts", Phase::PostPhysics)
+            .receives::<ContactBegan>()
+            .receives::<ContactEnded>()
+            .run(move |view: &mut View<'_>, ctx: &SystemCtx<'_>| {
+                let mut log = log.lock().unwrap();
+                for (id, c) in view.signals::<ContactBegan>().unwrap() {
+                    log.push((ctx.tick.0, *id, true, c.other, c.sensor));
+                }
+                for (id, c) in view.signals::<ContactEnded>().unwrap() {
+                    log.push((ctx.tick.0, *id, false, c.other, c.sensor));
+                }
+            }),
+    );
+    let sim = SimLoop::new(TickRate::HZ_60, schedule, &mut world).unwrap();
+    (world, sim)
+}
+
 #[test]
-fn sensor_reports_enter_and_exit_events_once() {
+fn sensor_enter_and_exit_arrive_as_signals() {
     let mut sim = Sim::new();
     let mut zone = Collider::new(ColliderShape::Box {
         half_extents: Vec3::splat(1.0),
@@ -139,17 +181,32 @@ fn sensor_reports_enter_and_exit_events_once() {
     zone.is_sensor = true;
     let sensor = sim.spawn(Vec3::new(0.0, 5.0, 0.0), RigidBody::fixed(), zone);
     let ball = sim.ball(Vec3::new(0.0, 10.0, 0.0), 0.25);
-    let mut log = Vec::new();
-    for _ in 0..120 {
-        sim.step(1);
-        let events = sim.world.resource::<CollisionEvents>().unwrap();
-        log.extend(events.0.iter().cloned());
-    }
-    let pair = |e: &&concordia_physics::CollisionEvent| {
-        [e.a, e.b] == [sensor.min(ball), sensor.max(ball)] && e.sensor
-    };
-    let kinds: Vec<_> = log.iter().filter(pair).map(|e| e.kind).collect();
-    assert_eq!(kinds, [ContactKind::Started, ContactKind::Ended], "{log:?}");
+    let log = ContactLog::default();
+    let (mut world, mut sim) = contact_loop(sim, log.clone());
+    let jobs = JobSystem::new(std::num::NonZeroUsize::MIN).unwrap();
+    sim.step(&mut world, &jobs, 120);
+    let log = log.lock().unwrap().clone();
+    let for_sensor: Vec<_> = log.iter().filter(|e| e.1 == sensor).collect();
+    let for_ball: Vec<_> = log.iter().filter(|e| e.1 == ball).collect();
+    // Entered once and exited once, each delivered to both entities, naming the other one.
+    assert_eq!(
+        for_sensor
+            .iter()
+            .map(|e| (e.2, e.3, e.4))
+            .collect::<Vec<_>>(),
+        [(true, ball, true), (false, ball, true)],
+        "{log:?}"
+    );
+    assert_eq!(
+        for_ball.iter().map(|e| (e.2, e.3, e.4)).collect::<Vec<_>>(),
+        [(true, sensor, true), (false, sensor, true)],
+        "{log:?}"
+    );
+    assert!(
+        for_sensor[0].0 > 0,
+        "raised by the physics step, delivered on a later tick"
+    );
+    assert!(for_sensor[0].0 < for_sensor[1].0);
 }
 
 #[test]

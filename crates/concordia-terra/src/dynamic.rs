@@ -17,9 +17,7 @@ impl World {
             component: name.to_owned(),
         };
         let cid = self.components.by_name(name).ok_or_else(missing)?;
-        let arch = &self.archetypes.list[loc.archetype];
-        let col = arch.column_index(cid).ok_or_else(missing)?;
-        Ok(arch.table.columns[col].get_reflect(loc.row))
+        self.reflect_of(loc, cid).ok_or_else(missing)
     }
 
     /// `id`'s component named `name`, as JSON.
@@ -133,8 +131,8 @@ impl DynamicQuery {
             .archetypes
             .list
             .iter()
-            .filter(|a| with.iter().all(|&c| a.column_index(c).is_some()))
-            .filter(|a| without.iter().all(|&c| a.column_index(c).is_none()))
+            .filter(|a| with.iter().all(|&c| a.has(c)))
+            .filter(|a| without.iter().all(|&c| !a.has(c)))
             .flat_map(|a| a.table.ids.iter().copied())
             .collect();
         ids.sort_unstable();

@@ -85,6 +85,9 @@ impl SimLoop {
             acc: Accumulator::new(rate),
         };
         sim.clock(world);
+        if world.resource::<crate::TerraStats>().is_none() {
+            world.insert_resource(crate::TerraStats::default());
+        }
         Ok(sim)
     }
 
@@ -105,11 +108,12 @@ impl SimLoop {
         &mut self.schedule
     }
 
-    /// Runs exactly `ticks` fixed steps; each advances simulated time by the step times the
-    /// clock's time scale.
+    /// Runs exactly `ticks` fixed steps; each first delivers the signals raised before it, then
+    /// advances simulated time by the step times the clock's time scale.
     pub fn step(&mut self, world: &mut World, jobs: &JobSystem, ticks: u32) {
         let base = 1.0 / f64::from(self.rate.hz());
         for _ in 0..ticks {
+            world.signals.deliver(&world.entities);
             let clock = *self.clock(world);
             let dt_exact = base * f64::from(clock.time_scale.get());
             let ctx = SystemCtx {

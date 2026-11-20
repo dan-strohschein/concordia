@@ -147,7 +147,7 @@
   "description": "The shape a rigid body collides with. `Transform.scale` does not scale it.",
   "properties": {
     "is_sensor": {
-      "description": "Detects overlaps (collision events) without pushing anything.",
+      "description": "Detects overlaps (contact signals) without pushing anything.",
       "type": "boolean"
     },
     "layer": {

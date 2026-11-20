@@ -8,6 +8,7 @@ use concordia_reflect::{DynReflect, Reflect, RegistryError, TypeRegistry};
 
 use crate::error::EcsError;
 use crate::storage::column::{Column, TypedColumn, downcast};
+use crate::storage::kind::StorageKind;
 use crate::world::World;
 
 /// A type that can be stored on entities. Every [`Reflect`] type is a component.
@@ -22,6 +23,8 @@ pub(crate) struct ComponentId(usize);
 #[derive(Clone)]
 pub(crate) struct ComponentInfo {
     pub(crate) name: &'static str,
+    pub(crate) type_id: TypeId,
+    pub(crate) kind: StorageKind,
     pub(crate) new_column: fn() -> Box<dyn Column>,
 }
 
@@ -34,8 +37,21 @@ pub(crate) struct ComponentIndex {
 }
 
 impl ComponentIndex {
-    /// The id of `T`, assigning one on first use.
+    /// The id of `T`, assigning one on first use (zero-sized types become tags).
     pub(crate) fn register<T: Component>(&mut self) -> Result<ComponentId, EcsError> {
+        let kind = if size_of::<T>() == 0 {
+            StorageKind::Tag
+        } else {
+            StorageKind::Dense
+        };
+        self.register_as::<T>(kind)
+    }
+
+    /// The id of `T`, stored as `kind` if it is new.
+    pub(crate) fn register_as<T: Component>(
+        &mut self,
+        kind: StorageKind,
+    ) -> Result<ComponentId, EcsError> {
         if let Some(&id) = self.by_type.get(&TypeId::of::<T>()) {
             return Ok(id);
         }
@@ -46,6 +62,8 @@ impl ComponentIndex {
         let id = ComponentId(self.infos.len());
         self.infos.push(ComponentInfo {
             name,
+            type_id: TypeId::of::<T>(),
+            kind,
             new_column: || Box::new(TypedColumn::<T>::default()),
         });
         self.by_type.insert(TypeId::of::<T>(), id);

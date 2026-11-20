@@ -76,6 +76,7 @@ impl World {
             self.hash_entity(id, &presentation, &mut h)?;
         }
         self.hash_resources(&mut h);
+        self.signals.hash(&mut h)?;
         Ok(WorldHash(*h.finalize().as_bytes()))
     }
 
@@ -88,18 +89,22 @@ impl World {
         let loc = self.entities.location(id)?;
         let arch = &self.archetypes.list[loc.archetype];
         h.update(id.as_uuid().as_bytes());
-        let hashed: Vec<usize> = arch
+        // Every storage kind hashes alike: by name, then value (ADR-0069).
+        let hashed: Vec<_> = arch
             .by_name
             .iter()
-            .copied()
-            .filter(|&col| !presentation.contains(&arch.components[col]))
+            .map(|&slot| arch.component_at(slot))
+            .filter(|c| !presentation.contains(c))
             .collect();
         h.update(&(hashed.len() as u64).to_le_bytes());
-        for col in hashed {
-            let name = self.components.info(arch.components[col]).name;
+        for cid in hashed {
+            let name = self.components.info(cid).name;
             h.update(&(name.len() as u64).to_le_bytes());
             h.update(name.as_bytes());
-            canonical_hash(arch.table.columns[col].get_reflect(loc.row), h)?;
+            let value = self
+                .reflect_of(loc, cid)
+                .expect("the archetype has the component");
+            canonical_hash(value, h)?;
         }
         Ok(())
     }

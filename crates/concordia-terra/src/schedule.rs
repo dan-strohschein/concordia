@@ -10,12 +10,17 @@ use std::any::TypeId;
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
 
+use concordia_core::id::{DeterministicIdGen, EntityId};
 use concordia_core::jobs::JobSystem;
 use concordia_core::time::Tick;
 
+use crate::command::{CommandBuffer, TerraStats};
 use crate::error::ScheduleError;
-use crate::processor::{Access, Phase, Processor, View, ViewArch};
+use crate::observer::{Observe, TypeKey};
+use crate::processor::{Access, Phase, Processor, ProcessorDecl};
 use crate::query::ViewCol;
+use crate::resource::Resource;
+use crate::view::{View, ViewArch, ViewRes};
 use crate::world::World;
 
 /// Context passed to every system and processor run.
@@ -107,6 +112,10 @@ impl Node {
         }
     }
 
+    fn is_observer(&self) -> bool {
+        matches!(self, Node::Processor(p) if p.decl().is_observer())
+    }
+
     /// (`after`, `before`) constraints.
     fn order(&self) -> (&[String], &[String]) {
         match self {
@@ -116,16 +125,32 @@ impl Node {
     }
 }
 
+/// One phase, planned: its waves, and its plan order (the order its command buffers apply in).
+struct PhasePlan {
+    phase: Phase,
+    waves: Vec<Vec<usize>>,
+    order: Vec<usize>,
+}
+
+/// A checked schedule.
+struct Plan {
+    phases: Vec<PhasePlan>,
+    /// Observers, in registration order.
+    observers: Vec<usize>,
+}
+
 /// Processors and exclusive systems, by phase.
 #[derive(Default)]
 pub struct Schedule {
     nodes: Vec<Node>,
-    /// Per phase (in `Phase::ALL` order), waves of node indices; built by [`Schedule::plan`].
-    plan: Option<Vec<Vec<Vec<usize>>>>,
+    plan: Option<Plan>,
 }
 
 /// The phase an exclusive system added with [`Schedule::add`] runs in.
 const DEFAULT_PHASE: Phase = Phase::PostPhysics;
+
+/// Most rounds of observers after one phase; later changes wait for the next phase's end.
+const OBSERVER_ROUNDS: usize = 8;
 
 impl Schedule {
     /// An empty schedule.
@@ -148,7 +173,7 @@ impl Schedule {
         self
     }
 
-    /// Appends a processor.
+    /// Appends a processor (or an observer).
     pub fn add_processor(&mut self, processor: impl Processor + 'static) -> &mut Self {
         self.nodes.push(Node::Processor(Box::new(processor)));
         self.plan = None;
@@ -167,25 +192,39 @@ impl Schedule {
         self.nodes.iter().map(Node::name).collect()
     }
 
-    /// Checks the schedule and orders it; registers its presentation components with `world`.
+    /// Checks the schedule and orders it; registers its presentation components and observed
+    /// types with `world`.
     pub fn plan(&mut self, world: &mut World) -> Result<(), ScheduleError> {
         self.check_names()?;
         self.check_presentation(&world.presentation)?;
         let mut phases = Vec::with_capacity(Phase::ALL.len());
         for phase in Phase::ALL {
             let members: Vec<usize> = (0..self.nodes.len())
-                .filter(|&i| self.nodes[i].phase() == phase)
+                .filter(|&i| self.nodes[i].phase() == phase && !self.nodes[i].is_observer())
                 .collect();
-            phases.push(self.waves(&members)?);
+            let order = self.constrained_order(&members)?;
+            let waves = self.waves(&members, &order)?;
+            phases.push(PhasePlan {
+                phase,
+                waves,
+                order,
+            });
         }
+        let observers: Vec<usize> = (0..self.nodes.len())
+            .filter(|&i| self.nodes[i].is_observer())
+            .collect();
         for node in &self.nodes {
-            if let Some(access) = node.access() {
+            if let Node::Processor(p) = node {
+                let decl = p.decl();
                 world
                     .presentation
-                    .extend(access.presentation.iter().map(|k| k.type_id));
+                    .extend(decl.access.presentation.iter().map(|k| k.type_id));
+                if let Some((key, _)) = &decl.trigger {
+                    world.structural.observe([key.type_id]);
+                }
             }
         }
-        self.plan = Some(phases);
+        self.plan = Some(Plan { phases, observers });
         Ok(())
     }
 
@@ -198,10 +237,18 @@ impl Schedule {
         let Some(plan) = self.plan.take() else {
             return;
         };
-        for waves in &plan {
-            for wave in waves {
-                self.run_wave(world, wave, ctx);
+        for (index, phase) in plan.phases.iter().enumerate() {
+            let mut buffers = Vec::new();
+            for wave in &phase.waves {
+                self.run_wave(world, wave, ctx, &mut buffers);
             }
+            if phase.phase == Phase::Presentation {
+                continue;
+            }
+            let mut ids = DeterministicIdGen::new(ctx.tick.0.wrapping_mul(8) + index as u64);
+            buffers.sort_by_key(|(node, _)| phase.order.iter().position(|o| o == node));
+            flush(world, buffers.into_iter().map(|(_, b)| b), &mut ids);
+            self.run_observers(world, &plan.observers, ctx, &mut ids);
         }
         self.plan = Some(plan);
     }
@@ -231,12 +278,13 @@ impl Schedule {
                 continue;
             };
             let processor = || node.name().to_owned();
-            if node.phase() == Phase::Presentation {
-                if let Some(k) = access
+            if node.phase() == Phase::Presentation && !node.is_observer() {
+                let sim_write = access
                     .writes
                     .iter()
                     .find(|k| !presentation.contains(&k.type_id))
-                {
+                    .or(access.resource_writes.first());
+                if let Some(k) = sim_write {
                     return Err(ScheduleError::PresentationWritesSimulation {
                         processor: processor(),
                         component: k.name.to_owned(),
@@ -257,9 +305,9 @@ impl Schedule {
         Ok(())
     }
 
-    /// Orders one phase's `members` into waves of non-conflicting nodes.
-    fn waves(&self, members: &[usize]) -> Result<Vec<Vec<usize>>, ScheduleError> {
-        let order = self.constrained_order(members)?;
+    /// Orders one phase's `members` (already in constrained `order`) into waves of
+    /// non-conflicting nodes.
+    fn waves(&self, members: &[usize], order: &[usize]) -> Result<Vec<Vec<usize>>, ScheduleError> {
         // Edges: explicit constraints, plus every conflicting pair in `order`.
         let n = order.len();
         let mut preds: Vec<Vec<usize>> = vec![Vec::new(); n];
@@ -343,71 +391,187 @@ impl Schedule {
     }
 
     /// Runs one wave: an exclusive system alone, or processors in parallel on disjoint views.
-    fn run_wave(&mut self, world: &mut World, wave: &[usize], ctx: &SystemCtx<'_>) {
+    /// Processors' command buffers go to `buffers`, tagged with their node index.
+    fn run_wave(
+        &mut self,
+        world: &mut World,
+        wave: &[usize],
+        ctx: &SystemCtx<'_>,
+        buffers: &mut Vec<(usize, CommandBuffer)>,
+    ) {
         if let [single] = wave
             && let Node::System { system, .. } = &mut self.nodes[*single]
         {
             system.run(world, ctx);
             return;
         }
-        let mut members: Vec<&mut Box<dyn Processor>> = self
+        let (indices, mut members): (Vec<usize>, Vec<&mut Box<dyn Processor>>) = self
             .nodes
             .iter_mut()
             .enumerate()
             .filter(|(i, _)| wave.contains(i))
-            .filter_map(|(_, node)| match node {
-                Node::Processor(p) => Some(p),
+            .filter_map(|(i, node)| match node {
+                Node::Processor(p) => Some((i, p)),
                 Node::System { .. } => None,
             })
-            .collect();
-        let touched = run_processors(world, &mut members, ctx);
+            .unzip();
+        let outputs = run_processors(world, &mut members, &[], ctx);
+        let mut touched = Vec::with_capacity(outputs.len());
+        for (i, (t, commands)) in indices.into_iter().zip(outputs) {
+            touched.push(t);
+            buffers.push((i, commands));
+        }
         apply_touches(world, touched);
+    }
+
+    /// Runs observers on the net adds and removals since the last pass, applying their
+    /// commands, for at most [`OBSERVER_ROUNDS`] rounds.
+    fn run_observers(
+        &mut self,
+        world: &mut World,
+        observers: &[usize],
+        ctx: &SystemCtx<'_>,
+        ids: &mut DeterministicIdGen,
+    ) {
+        if observers.is_empty() {
+            return;
+        }
+        for _ in 0..OBSERVER_ROUNDS {
+            let net = world.structural.take_net();
+            if net.is_empty() {
+                return;
+            }
+            let mut buffers = Vec::new();
+            for &i in observers {
+                let Node::Processor(p) = &mut self.nodes[i] else {
+                    continue;
+                };
+                let Some((key, on)) = p.decl().trigger else {
+                    continue;
+                };
+                let Some(observed) = net.get(&(TypeKey(key.type_id), on == Observe::Add)) else {
+                    continue;
+                };
+                let mut one = [p];
+                let outputs = run_processors(world, &mut one, observed, ctx);
+                for (touched, commands) in outputs {
+                    apply_touches(world, vec![touched]);
+                    buffers.push(commands);
+                }
+            }
+            flush(world, buffers.into_iter(), ids);
+        }
     }
 }
 
-/// Runs non-conflicting processors in parallel; returns, per processor in order, the archetypes
-/// its mutable queries visited.
+/// Applies `buffers` in order; skipped commands are counted in [`TerraStats`].
+fn flush(
+    world: &mut World,
+    buffers: impl Iterator<Item = CommandBuffer>,
+    ids: &mut DeterministicIdGen,
+) {
+    let mut skipped = 0u64;
+    for buffer in buffers.filter(|b| !b.is_empty()) {
+        skipped += buffer.apply(world, ids).skipped as u64;
+    }
+    if skipped > 0 {
+        if world.resource::<TerraStats>().is_none() {
+            world.insert_resource(TerraStats::default());
+        }
+        if let Some(stats) = world.resource_mut::<TerraStats>() {
+            stats.skipped_commands += skipped;
+        }
+    }
+}
+
+/// What one processor run left behind: the archetypes its mutable queries visited, and its
+/// command buffer.
+type Output = (Vec<Vec<usize>>, CommandBuffer);
+
+/// Runs non-conflicting processors in parallel (`observed` goes to every view, for observers).
 fn run_processors(
     world: &mut World,
     members: &mut [&mut Box<dyn Processor>],
+    observed: &[EntityId],
     ctx: &SystemCtx<'_>,
-) -> Vec<Vec<Vec<usize>>> {
-    let accesses: Vec<Access> = members.iter().map(|p| p.decl().access.clone()).collect();
-    let mut views = build_views(world, &accesses);
-    let mut work: Vec<(&mut Box<dyn Processor>, &mut View<'_>)> = members
-        .iter_mut()
-        .map(|p| &mut **p)
-        .zip(views.iter_mut())
-        .collect();
-    ctx.jobs
-        .par_chunks_mut(&mut work, NonZeroUsize::MIN, |_, items| {
-            for (processor, view) in items.iter_mut() {
-                processor.run(view, ctx);
-            }
-        });
-    drop(work);
-    views.into_iter().map(|v| v.touched).collect()
+) -> Vec<Output> {
+    let decls: Vec<ProcessorDecl> = members.iter().map(|p| p.decl().clone()).collect();
+    let mut lent = take_resources(world, &decls);
+    let outputs = {
+        let mut views = build_views(world, &decls, &mut lent);
+        for view in &mut views {
+            view.observed = observed.to_vec();
+        }
+        let mut work: Vec<(&mut Box<dyn Processor>, &mut View<'_>)> = members
+            .iter_mut()
+            .map(|p| &mut **p)
+            .zip(views.iter_mut())
+            .collect();
+        ctx.jobs
+            .par_chunks_mut(&mut work, NonZeroUsize::MIN, |_, items| {
+                for (processor, view) in items.iter_mut() {
+                    processor.run(view, ctx);
+                }
+            });
+        drop(work);
+        views.into_iter().map(|v| (v.touched, v.commands)).collect()
+    };
+    for (t, value) in lent {
+        world.resources.put(t, value);
+    }
+    outputs
 }
 
-/// One view per access, each holding only its declared columns of every archetype.
-fn build_views<'w>(world: &'w mut World, accesses: &'w [Access]) -> Vec<View<'w>> {
+/// Takes every resource the processors declared out of the world, to lend to their views.
+fn take_resources(world: &mut World, decls: &[ProcessorDecl]) -> Vec<(TypeId, Box<dyn Resource>)> {
+    let mut lent: Vec<(TypeId, Box<dyn Resource>)> = Vec::new();
+    for decl in decls {
+        for (key, _) in decl.access.resources() {
+            if lent.iter().all(|(t, _)| *t != key.type_id)
+                && let Some(value) = world.resources.take(key.type_id)
+            {
+                lent.push((key.type_id, value));
+            }
+        }
+    }
+    lent
+}
+
+/// One view per processor, holding only its declared columns, resources and signals.
+fn build_views<'w>(
+    world: &'w mut World,
+    decls: &'w [ProcessorDecl],
+    lent: &'w mut [(TypeId, Box<dyn Resource>)],
+) -> Vec<View<'w>> {
     let World {
         archetypes,
         components,
+        entities,
+        signals,
+        shared,
         ..
     } = world;
-    let mut views: Vec<View<'w>> = accesses
+    let mut views: Vec<View<'w>> = decls
         .iter()
-        .map(|access| View {
-            access,
+        .map(|decl| View {
+            name: &decl.name,
+            phase: decl.phase,
+            access: &decl.access,
             archetypes: Vec::new(),
+            entities: &*entities,
+            signals: &*signals,
+            resources: Vec::new(),
+            observed: Vec::new(),
             touched: Vec::new(),
+            commands: CommandBuffer::new(),
         })
         .collect();
+    lend_resources(&mut views, decls, lent);
     // Per view: declared type → component id (unseen types have no columns).
-    let declared: Vec<Vec<(TypeId, crate::component::ComponentId, bool)>> = accesses
+    let declared: Vec<Vec<(TypeId, crate::component::ComponentId, bool)>> = decls
         .iter()
-        .map(|a| {
+        .map(|d| {
+            let a = &d.access;
             let writes: HashSet<TypeId> = a.written().map(|k| k.type_id).collect();
             a.touched()
                 .filter_map(|k| {
@@ -448,6 +612,14 @@ fn build_views<'w>(world: &'w mut World, accesses: &'w [Access]) -> Vec<View<'w>
                 None => {}
             }
         }
+        for &(comp, value) in &arch.shared {
+            let one: &'w dyn concordia_reflect::DynReflect = shared.get_reflect(comp, value);
+            for (v, d) in declared.iter().enumerate() {
+                if let Some((t, _, _)) = d.iter().find(|(_, c, _)| *c == comp) {
+                    per_view[v].push((*t, ViewCol::Shared(one)));
+                }
+            }
+        }
         for (view, columns) in views.iter_mut().zip(per_view) {
             if !columns.is_empty() {
                 view.archetypes.push(ViewArch {
@@ -461,14 +633,44 @@ fn build_views<'w>(world: &'w mut World, accesses: &'w [Access]) -> Vec<View<'w>
     views
 }
 
-/// Marks entities of archetypes visited by mutable queries as changed (one change tick each).
+/// Gives each view its declared resources: exclusive to the one writer, shared among readers.
+fn lend_resources<'w>(
+    views: &mut [View<'w>],
+    decls: &[ProcessorDecl],
+    lent: &'w mut [(TypeId, Box<dyn Resource>)],
+) {
+    for (t, value) in lent.iter_mut() {
+        let users: Vec<(usize, bool)> = decls
+            .iter()
+            .enumerate()
+            .filter_map(|(v, d)| {
+                d.access
+                    .resources()
+                    .find(|(k, _)| k.type_id == *t)
+                    .map(|(_, w)| (v, w))
+            })
+            .collect();
+        match users.iter().find(|(_, write)| *write) {
+            Some(&(v, _)) => {
+                debug_assert!(users.len() == 1, "a wave never shares a written resource");
+                views[v].resources.push((*t, ViewRes::Write(&mut **value)));
+            }
+            None => {
+                let shared: &'w dyn Resource = &**value;
+                for &(v, _) in &users {
+                    views[v].resources.push((*t, ViewRes::Read(shared)));
+                }
+            }
+        }
+    }
+}
+
+/// Marks archetypes visited by mutable queries as changed (one change tick per query).
 fn apply_touches(world: &mut World, touched: Vec<Vec<Vec<usize>>>) {
     for visited in touched.into_iter().flatten() {
         let tick = world.changes.bump();
         for arch in visited {
-            for &id in &world.archetypes.list[arch].table.ids {
-                world.entities.touch(id, tick);
-            }
+            world.archetypes.list[arch].changed = tick;
         }
     }
 }
