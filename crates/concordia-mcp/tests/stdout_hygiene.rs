@@ -114,3 +114,26 @@ fn binary_serves_tools_of_the_project_modules() {
         "{tools:?}"
     );
 }
+
+#[test]
+fn binary_serves_script_reload_when_scripts_are_configured() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("concordia.toml"), "[scripts]\n").unwrap();
+    let mut child = spawn(&dir, false);
+    let (frames, _) = session(&mut child);
+    let tools = frames[1]["result"]["tools"].as_array().unwrap();
+    assert_eq!(tools.len(), 36, "35 core tools plus script_reload");
+    let reload = tools
+        .iter()
+        .find(|t| t["name"] == "script_reload")
+        .unwrap_or_else(|| panic!("{tools:?}"));
+    assert!(
+        reload["description"]
+            .as_str()
+            .unwrap()
+            .contains("never builds"),
+        "{reload}"
+    );
+    let tokens = serde_json::to_string(tools).unwrap().len() / 4;
+    assert!(tokens < 16_000, "tools/list is about {tokens} tokens");
+}

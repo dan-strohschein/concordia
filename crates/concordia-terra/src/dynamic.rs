@@ -25,6 +25,12 @@ impl World {
         Ok(self.get_dyn(id, name)?.to_json()?)
     }
 
+    /// True once this world has stored component `name` (it then holds a version of the type,
+    /// even with no values left).
+    pub fn stores(&self, name: &str) -> bool {
+        self.components.by_name(name).is_some()
+    }
+
     /// Inserts or replaces a dynamic component value; returns the previous value.
     pub fn insert_dyn(
         &mut self,

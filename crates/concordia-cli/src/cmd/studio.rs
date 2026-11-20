@@ -23,7 +23,7 @@ pub(crate) struct StudioArgs {
 
 #[derive(Debug, clap::Subcommand)]
 enum StudioCommand {
-    /// Add the default Agent Studio files and a [studio] section to this project, then sync.
+    /// Add the default Agent Studio files and a [studio] section (and [scripts], if missing) to this project, then sync.
     Init {
         /// Skip generating the Claude Code files.
         #[arg(long)]
@@ -264,7 +264,8 @@ fn studio_project(root: &Path) -> Result<Project, Failure> {
     Ok(project)
 }
 
-/// Writes the default Studio files and adds `[studio]` to `concordia.toml`.
+/// Writes the default Studio files and adds `[studio]` to `concordia.toml`, plus `[scripts]`
+/// if missing (the default gameplay programmer reloads scripts).
 fn init(project: &Path) -> Result<(), Failure> {
     let files = concordia_studio::init(project, Path::new("studio"))
         .map_err(|e| Failure::usage(e.to_string()))?;
@@ -272,12 +273,21 @@ fn init(project: &Path) -> Result<(), Failure> {
     let manifest = concordia_app::Project::load(project)
         .map_err(|e| Failure::usage(e.to_string()))?
         .manifest;
+    let mut sections = Vec::new();
+    if manifest.scripts.is_none() {
+        sections.push("[scripts]");
+    }
     if manifest.studio.is_none() {
+        sections.push("[studio]");
+    }
+    if !sections.is_empty() {
         let mut text = std::fs::read_to_string(&manifest_path).unwrap_or_default();
         if !text.is_empty() && !text.ends_with('\n') {
             text.push('\n');
         }
-        text.push_str("\n[studio]\n");
+        for section in sections {
+            text.push_str(&format!("\n{section}\n"));
+        }
         std::fs::write(&manifest_path, text)
             .map_err(|e| Failure::usage(format!("{}: {e}", manifest_path.display())))?;
     }

@@ -29,7 +29,7 @@ fmt-check:
 lint: fmt-check
     cargo clippy --workspace --all-targets --all-features -- -D warnings
     cargo clippy --manifest-path {{guest}} --target wasm32-wasip2 -- -D warnings
-    cargo clippy -p concordia-script-guest -p conformance-guest --target wasm32-wasip2 -- -D warnings
+    cargo clippy -p concordia-script-guest -p conformance-guest -p wanderers --target wasm32-wasip2 -- -D warnings
 
 # Build and validate WASM guest fixtures
 wasm:
@@ -41,6 +41,11 @@ wasm:
     cargo build -p conformance-guest --target wasm32-wasip2 --release --target-dir {{wasm_dir}}
     wasm-tools validate {{wasm_dir}}/wasm32-wasip2/release/conformance_guest.wasm
     wasm-tools validate {{wasm_dir}}/wasm32-wasip2/release/conformance_guest_v2.wasm
+    # The sample module (examples/m2-scripting).
+    cargo build -p wanderers --target wasm32-wasip2 --release --target-dir {{wasm_dir}}
+    wasm-tools validate {{wasm_dir}}/wasm32-wasip2/release/wanderers.wasm
+    mkdir -p examples/m2-scripting/build
+    cp {{wasm_dir}}/wasm32-wasip2/release/wanderers.wasm examples/m2-scripting/build/wanderers.wasm
 
 # Build native module library fixtures (ADR-0061), in their own target dir so their features
 # never unify into the workspace build
@@ -52,6 +57,8 @@ native-fixtures:
     cp {{native_dir}}/debug/{{dll_prefix}}conformance_guest.{{dll_ext}} {{native_dir}}/out/conformance_guest_layout2.{{dll_ext}}
     cargo build -p conformance-guest --features dylib --target-dir {{native_dir}}
     cp {{native_dir}}/debug/{{dll_prefix}}conformance_guest.{{dll_ext}} {{native_dir}}/out/conformance_guest.{{dll_ext}}
+    cargo build -p wanderers --features dylib --target-dir {{native_dir}}
+    cp {{native_dir}}/debug/{{dll_prefix}}wanderers.{{dll_ext}} {{native_dir}}/out/wanderers.{{dll_ext}}
     cargo build -p bad-abi-guest --target-dir {{native_dir}}
     cp {{native_dir}}/debug/{{dll_prefix}}bad_abi_guest.{{dll_ext}} {{native_dir}}/out/bad_abi_guest.{{dll_ext}}
 

@@ -5,7 +5,8 @@ The single path for mutating an edit world. Every change is an `EditOp` (data, n
 
 ## Public entry points
 - `CommandLog` (`begin`, `apply`, `commit`, `abort`, `apply_one`, `undo`, `undo_to`, `redo`, `record_save`, `history`, `resume`, `attach_journal`)
-- `EditOp` (`Spawn`, `Despawn`, `SetComponent`, `RemoveComponent`) and `AppliedOp`
+- `EditOp` (`Spawn`, `Despawn`, `SetComponent`, `RemoveComponent`, `MigrateType`) and `AppliedOp`
+- Applying, undoing, redoing and replaying take `&mut TypeRegistry` (2.6d): a `MigrateType` op registers the script type's new version, converts every stored value through reflect `migrate`, and its inverse (remove the component, return to the previous version, set every previous value) restores the exact previous version and values
 - `Actor` (`<human|agent|system|tool|script>:<name>[#n]`, reflected as a string with `ACTOR_PATTERN`) and `Author` (actor + session)
 - `Journal` (`open`, `load`, `append`), `JournalEntry`, `Event`, `replay_journal`
 - `CommandError`, `History`, `HistoryEntry`
@@ -47,7 +48,7 @@ A truncated last line (crash mid-write) is reported as `JournalWarning::Truncate
 - Write-ahead logging concepts (database literature); JSON Lines (jsonlines.org).
 
 ## Status
-M0 phase 0.4 complete.
+M0 phase 0.4 complete; M2 phase 2.6d added `MigrateType` (ADR-0061).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

@@ -15,7 +15,7 @@ use crate::op::AppliedOp;
 pub fn replay_journal(
     entries: &[JournalEntry],
     world: &mut World,
-    reg: &TypeRegistry,
+    reg: &mut TypeRegistry,
 ) -> Result<Option<WorldHash>, CommandError> {
     let mut txns: HashMap<TxnId, &[AppliedOp]> = HashMap::new();
     let mut last = None;

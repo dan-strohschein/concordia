@@ -230,3 +230,99 @@ fn studio_dir_must_stay_inside_the_project() {
     let err = project.unwrap_err();
     assert!(err.to_string().contains("inside the project"), "{err}");
 }
+
+#[test]
+fn scripts_section_enables_the_scripts_module_last() {
+    let (_dir, project) = project_with(
+        "[studio]\n\n[scripts]\n[[scripts.module]]\nkind = \"wasm\"\npath = \"scripts/brain.wasm\"\n\n[[scripts.module]]\nkind = \"native\"\npath = \"target/debug/libmover\"\nsource = \"scripts/mover/src\"\n",
+    );
+    let project = project.unwrap();
+    let scripts = project.manifest.scripts.as_ref().unwrap();
+    assert_eq!(scripts.module.len(), 2);
+    assert_eq!(
+        scripts.module[1].source.as_deref(),
+        Some("scripts/mover/src")
+    );
+    let names: Vec<&str> = project
+        .modules()
+        .unwrap()
+        .iter()
+        .map(|m| m.name())
+        .collect();
+    assert_eq!(
+        names,
+        ["studio", "scripts"],
+        "after every module whose types scripts may use"
+    );
+    let (_dir, empty) = project_with("[scripts]\n");
+    assert!(empty.unwrap().manifest.scripts.unwrap().module.is_empty());
+}
+
+#[test]
+fn script_paths_must_stay_inside_the_project_and_name_a_kind() {
+    let (_dir, project) =
+        project_with("[[scripts.module]]\nkind = \"wasm\"\npath = \"../brain.wasm\"\n");
+    let err = project.unwrap_err();
+    assert!(err.to_string().contains("inside the project"), "{err}");
+    let (_dir, project) = project_with("[[scripts.module]]\nkind = \"lua\"\npath = \"x.lua\"\n");
+    let err = project.unwrap_err();
+    assert!(err.to_string().contains("lua"), "{err}");
+    let (_dir, project) =
+        project_with("[[scripts.module]]\nkind = \"native\"\npath = \"lib\"\nsource = \"/abs\"\n");
+    assert!(
+        project
+            .unwrap_err()
+            .to_string()
+            .contains("inside the project")
+    );
+}
+
+/// The m2-scripting example needs its module built first (`just wasm` writes `build/`).
+#[test]
+fn m2_scripting_example_spawns_and_runs_its_wanderers() {
+    use concordia_api::{Engine, EngineConfig};
+    use serde_json::{Value, json};
+
+    let root = examples().join("m2-scripting");
+    assert!(
+        root.join("build/wanderers.wasm").is_file(),
+        "examples/m2-scripting/build/wanderers.wasm is missing (run `just wasm`)"
+    );
+    let project = Project::load(&root).unwrap();
+    let mut config = EngineConfig::new(&root);
+    config.modules = project.modules().unwrap();
+    config.threads = std::num::NonZeroUsize::MIN;
+    let mut engine = Engine::new(config).unwrap();
+    let session = engine.open_session();
+    let mut call = |method: &str, params: Value| {
+        engine
+            .call(session, method, params.clone())
+            .unwrap_or_else(|e| panic!("{method} {params}: {e:?}"))
+    };
+    let templates = call("entity.templates", json!({}));
+    let wanderer = templates["templates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "wanderer")
+        .unwrap_or_else(|| panic!("{templates}"))
+        .clone();
+    assert_eq!(
+        wanderer["traits"],
+        json!(["wanderers.Wanderer"]),
+        "{wanderer}"
+    );
+    call("scene.open", json!({"path": "scenes/main.scene.ron"}));
+    call("sim.step", json!({"ticks": 120}));
+    let page = |cursor: Option<String>| json!({"with": ["wanderers.Position"], "world": "play", "limit": 1000, "cursor": cursor});
+    let rows = call("query.run", page(None))["rows"]
+        .as_array()
+        .unwrap()
+        .clone();
+    assert_eq!(rows.len(), 200, "the spawner placed every wanderer");
+    let moved = rows
+        .iter()
+        .filter(|r| r["components"]["wanderers.Position"] != json!({"x": 0.0, "y": 0.0}))
+        .count();
+    assert_eq!(moved, 200, "every wanderer walked");
+}

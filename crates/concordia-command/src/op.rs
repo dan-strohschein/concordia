@@ -38,16 +38,27 @@ pub enum EditOp {
         /// Component stable name.
         component: String,
     },
+    /// Move a script (dynamic) component type to a new version: the registry takes the new
+    /// description and every stored value is converted through reflect `migrate`. Undo restores
+    /// the previous version and the exact previous values.
+    MigrateType {
+        /// Component stable name.
+        component: String,
+        /// The new version's `TypeDesc`, as JSON.
+        to: Value,
+    },
 }
 
 impl EditOp {
-    /// The entity the op touches.
-    pub fn entity(&self) -> EntityId {
+    /// The entity the op touches (`None` for a type migration, which touches every entity with
+    /// the component).
+    pub fn entity(&self) -> Option<EntityId> {
         match self {
             Self::Spawn { id, .. }
             | Self::Despawn { id }
             | Self::SetComponent { id, .. }
-            | Self::RemoveComponent { id, .. } => *id,
+            | Self::RemoveComponent { id, .. } => Some(*id),
+            Self::MigrateType { .. } => None,
         }
     }
 
@@ -58,6 +69,7 @@ impl EditOp {
             Self::Despawn { .. } => "despawn",
             Self::SetComponent { .. } => "set_component",
             Self::RemoveComponent { .. } => "remove_component",
+            Self::MigrateType { .. } => "migrate_type",
         }
     }
 }

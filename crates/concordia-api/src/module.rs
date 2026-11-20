@@ -43,6 +43,16 @@ pub trait EngineModule: Send + Sync + fmt::Debug {
     fn start_play(&self, _world: &mut World) -> Result<PlaySetup, ApiError> {
         Ok(PlaySetup::default())
     }
+
+    /// [`EngineModule::start_play`] with the engine in view (its registry, templates and
+    /// seed); the engine calls this, and by default it calls `start_play`.
+    fn start_play_in(
+        &self,
+        _engine: &crate::Engine,
+        world: &mut World,
+    ) -> Result<PlaySetup, ApiError> {
+        self.start_play(world)
+    }
 }
 
 /// What a module contributes to one play session.

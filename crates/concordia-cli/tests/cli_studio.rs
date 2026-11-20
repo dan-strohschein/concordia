@@ -261,3 +261,29 @@ fn studio_questions_and_answer_cli() {
     let open = json(&run(&["studio", "questions", "--status", "open"], &root));
     assert_eq!(open["questions"], serde_json::json!([]));
 }
+
+#[test]
+fn studio_init_adds_scripts_when_missing_for_the_gameplay_programmer() {
+    let dir = tempfile::tempdir().unwrap();
+    // A project made before [scripts] existed: modules, no Studio, no scripts.
+    let root = new_project(dir.path(), &["--no-studio"]);
+    let manifest_path = root.join("concordia.toml");
+    let manifest = std::fs::read_to_string(&manifest_path).unwrap();
+    std::fs::write(&manifest_path, manifest.replace("[scripts]\n", "")).unwrap();
+    let output = run(&["studio", "init"], &root);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let manifest = std::fs::read_to_string(&manifest_path).unwrap();
+    assert_eq!(manifest.matches("[scripts]").count(), 1, "{manifest}");
+    assert!(root.join(".claude/agents/gameplay-programmer.md").is_file());
+
+    let other = dir.path().join("other");
+    std::fs::create_dir(&other).unwrap();
+    let full = new_project(&other, &["--no-studio"]);
+    assert!(run(&["studio", "init"], &full).status.success());
+    let manifest = std::fs::read_to_string(full.join("concordia.toml")).unwrap();
+    assert_eq!(
+        manifest.matches("[scripts]").count(),
+        1,
+        "not added twice: {manifest}"
+    );
+}

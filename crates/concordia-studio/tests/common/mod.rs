@@ -41,6 +41,7 @@ pub const PROJECT_TOOLS: &[&str] = &[
     "scene_open",
     "scene_save",
     "schema_get",
+    "script_reload",
     "sim_pause",
     "sim_play",
     "sim_step",

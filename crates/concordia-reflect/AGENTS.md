@@ -11,7 +11,7 @@ Every engine type describes itself: wire shape, doc comments, defaults and range
 - `validate_json(&Value, &TypeInfo)` (JSON Pointer errors), `example_json(&TypeInfo)` (schema-valid examples), `find_non_finite(&dyn DynReflect)`
 - `Primitive::Pattern` for regex-constrained strings (e.g. actors); `NonZeroU32`/`NonZeroU64` reflect as integers with minimum 1
 - `ReflectError` (JSON Pointer errors), `RegistryError`
-- Dynamic types (M2 2.6a, ADR-0062): `TypeDesc` (serializable mirror of `TypeInfo`: `TypeInfo::to_desc`, `TypeDesc::to_info`), `TypeRegistry::register_dynamic` (register or replace), `TypeRegistration::is_dynamic`, `DynamicValue` (`from_json`, `from_wire`, `bytes`), `migrate` → `MigrationReport`, `DefaultValue`, `TypeRef::to`
+- Dynamic types (M2 2.6a, ADR-0062): `TypeDesc` (serializable mirror of `TypeInfo`: `TypeInfo::to_desc`, `TypeDesc::to_info`), `TypeRegistry::register_dynamic` (register or replace; registering a description it had before restores that exact version, 2.6d), `TypeRegistration::desc` (the current version's source description), `TypeRegistration::is_dynamic`, `DynamicValue` (`from_json`, `from_wire`, `bytes`), `migrate` → `MigrationReport`, `DefaultValue`, `TypeRef::to`
 - `wire` (ADR-0062): `layout` → `Layout` (`stride`, `has_arena`), `encode`, `decode`, `validate`, `ColumnWriter` (`write`, `write_value`, `finish`), `WireColumn` (`from_bytes`, `read`, `value`, `serialize_row`), `WireError`
 
 ## Invariants
@@ -26,6 +26,7 @@ Every engine type describes itself: wire shape, doc comments, defaults and range
 - **Wire encoding is canonical:** one value has one byte sequence. Fixed little-endian layout per type (no padding; `Option` = `u8` tag + payload; enums = `u32` tag + largest payload, unused bytes zero; UUIDs 16 bytes); strings, lists, maps and `Any` (JSON text) are `(u32 offset, u32 len)` references into an arena after the fixed rows, laid out depth-first in declaration order, map keys ascending. `validate` enforces all of it; `decode` and `WireColumn::from_bytes` check bounds, tags, UTF-8, scalars and ranges but not canonical order. Like `validate_json`, wire validation does not run the Rust type's own checks (patterns, id versions).
 - Wire decoding never panics on any input; nesting is capped at 128 and zero-sized list counts at 2^20.
 - Dynamic values serialize every field (they have no `skip_serializing_if`).
+- **A dynamic type keeps every version it has had** (2.6d): re-registering a known description, while the named types it refers to are the versions it was built with, makes that version current again instead of building a new one. Reloads, rollbacks and undo therefore return the exact version stored values were made with.
 
 ## How to test
 `cargo nextest run -p concordia-reflect` (includes trybuild compile-fail cases) and `cargo test --doc -p concordia-reflect`. Review snapshot changes with `cargo insta review`.

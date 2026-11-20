@@ -27,6 +27,38 @@ pub struct Manifest {
     pub render: Option<RenderSection>,
     /// `[studio]`; Agent Studio (`task.*`, `studio.*`) runs only if this section exists.
     pub studio: Option<StudioSection>,
+    /// `[scripts]`; gameplay modules and `script.reload` run only if this section exists.
+    pub scripts: Option<ScriptsSection>,
+}
+
+/// `[scripts]`: the project's gameplay modules (ADR-0061, ADR-0062).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ScriptsSection {
+    /// `[[scripts.module]]`, in load order.
+    pub module: Vec<ScriptModuleSection>,
+}
+
+/// How a gameplay module runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScriptModuleKind {
+    /// A WebAssembly component (sandboxed).
+    Wasm,
+    /// A native module library (trusted, hot-reloadable).
+    Native,
+}
+
+/// `[[scripts.module]]`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ScriptModuleSection {
+    /// `wasm` or `native`.
+    pub kind: ScriptModuleKind,
+    /// Project-relative module file (a native library may omit its extension).
+    pub path: String,
+    /// A native module's source folder, checked for hidden state before every load.
+    pub source: Option<String>,
 }
 
 /// `[studio]`.

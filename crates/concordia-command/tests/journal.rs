@@ -36,15 +36,15 @@ fn journal_appends_one_json_line_per_event() {
     let a = fx.entity_id();
     fx.one("agent:x", spawn(a, "A", 1.0));
     fx.log
-        .undo(&mut fx.world, &fx.reg, author("agent:x"))
+        .undo(&mut fx.world, &mut fx.reg, author("agent:x"))
         .unwrap();
     fx.log
-        .redo(&mut fx.world, &fx.reg, author("agent:x"))
+        .redo(&mut fx.world, &mut fx.reg, author("agent:x"))
         .unwrap();
     fx.log
         .begin(&fx.world, author("agent:x"), "nope", &mut fx.ids)
         .unwrap();
-    fx.log.abort(&mut fx.world, &fx.reg, "aborted").unwrap();
+    fx.log.abort(&mut fx.world, &mut fx.reg, "aborted").unwrap();
     let hash = fx.hash();
     fx.log
         .record_save(author("agent:x"), "scenes/main.scene.ron", hash)

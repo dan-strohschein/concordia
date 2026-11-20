@@ -337,3 +337,100 @@ fn modules_hear_about_each_simulation_advance() {
     h.engine.poll(start + std::time::Duration::from_millis(500));
     assert_eq!(seen.load(Ordering::SeqCst), after_play, "paused");
 }
+
+/// What a play session's module saw when it started.
+#[derive(Debug, Clone, PartialEq)]
+struct SawEngine {
+    seed: u64,
+    knows_health: bool,
+}
+
+/// A module that reads the engine when play starts.
+#[derive(Debug)]
+struct Seer;
+
+impl EngineModule for Seer {
+    fn name(&self) -> &'static str {
+        "seer"
+    }
+
+    fn register_types(&self, registry: &mut TypeRegistry) -> Result<(), RegistryError> {
+        register_component::<Health>(registry)
+    }
+
+    fn start_play_in(&self, engine: &Engine, world: &mut World) -> Result<PlaySetup, ApiError> {
+        world.insert_resource(SawEngine {
+            seed: engine.sim_seed(),
+            knows_health: engine.registry().get_by_name("Health").is_some(),
+        });
+        Ok(PlaySetup::default())
+    }
+}
+
+#[test]
+fn start_play_in_sees_the_engine_registry_and_seed() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = Harness::with_config(dir, |c| {
+        c.modules = vec![Arc::new(Seer)];
+        c.sim_seed = 99;
+    })
+    .ready();
+    h.ok("sim.step", json!({"ticks": 1}));
+    let play = h.engine.world(WorldSel::play).unwrap();
+    assert_eq!(
+        play.resource::<SawEngine>(),
+        Some(&SawEngine {
+            seed: 99,
+            knows_health: true
+        })
+    );
+    assert!(h.engine.template_catalog().is_ok());
+}
+
+#[test]
+fn commit_edits_as_records_its_actor_and_undo_as_reverts_it() {
+    let mut h = Harness::new().ready();
+    let id = h.spawn("A", 1.0);
+    let hash = |h: &Harness| {
+        h.engine
+            .world(WorldSel::edit)
+            .unwrap()
+            .state_hash()
+            .unwrap()
+    };
+    let before = hash(&h);
+    let actor: concordia_command::Actor = "script:mod".parse().unwrap();
+    let op = concordia_command::EditOp::RemoveComponent {
+        id: id.parse().unwrap(),
+        component: "Name".into(),
+    };
+    let txn = h
+        .engine
+        .commit_edits_as(actor.clone(), "script edit", vec![op])
+        .unwrap()
+        .expect("a transaction");
+    let history = h.ok("txn.history", json!({"limit": 1}));
+    assert_eq!(history["entries"][0]["actor"], "script:mod", "{history}");
+    assert_eq!(history["entries"][0]["label"], "script edit");
+    assert_eq!(
+        h.engine
+            .commit_edits_as(actor.clone(), "nothing", Vec::new())
+            .unwrap(),
+        None
+    );
+
+    h.engine.undo_as(actor.clone(), txn).unwrap();
+    assert_eq!(hash(&h), before);
+    let history = h.ok("txn.history", json!({"limit": 1}));
+    assert_eq!(history["entries"][0]["actor"], "script:mod", "{history}");
+
+    h.ok("txn.begin", json!({"label": "mine"}));
+    let held = h.engine.commit_edits_as(
+        actor,
+        "blocked",
+        vec![concordia_command::EditOp::Despawn {
+            id: id.parse().unwrap(),
+        }],
+    );
+    assert_eq!(held.unwrap_err().kind, ApiErrorKind::TxnConflict);
+}

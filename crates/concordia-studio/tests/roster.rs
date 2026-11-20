@@ -345,3 +345,41 @@ fn level_designer_places_crowds_with_terra_tools_templates_and_the_template_skil
         assert!(role.body.contains(needle), "the prompt explains {needle}");
     }
 }
+
+#[test]
+fn gameplay_programmer_writes_and_reloads_scripts_with_the_scripting_skill() {
+    let (_dir, roster) = roster();
+    let role = roster
+        .roles()
+        .iter()
+        .find(|r| r.role.as_str() == "gameplay-programmer")
+        .expect("the gameplay programmer is enabled");
+    assert!(
+        role.mcp_tools.iter().any(|t| t == "script_reload"),
+        "{:?}",
+        role.mcp_tools
+    );
+    assert!(
+        role.skills.iter().any(|s| s == "concordia-scripting"),
+        "{:?}",
+        role.skills
+    );
+    assert!(
+        role.write.iter().any(|p| p == "scripts/**"),
+        "{:?}",
+        role.write
+    );
+    for needle in [
+        "mcp__concordia__script_reload",
+        "export_module!",
+        "cargo build --target wasm32-wasip2",
+        "never builds",
+    ] {
+        assert!(role.body.contains(needle), "the prompt explains {needle}");
+    }
+    assert!(
+        !role.body.contains("Disabled in the default team"),
+        "{}",
+        role.body
+    );
+}

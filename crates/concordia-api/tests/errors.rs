@@ -196,3 +196,11 @@ fn engine_exited_has_its_own_code_and_a_reconnect_hint() {
     assert_eq!((err.code(), err.data.kind), (-32017, "EngineExited"));
     assert!(err.data.suggestions[0].contains("reconnect"), "{err:?}");
 }
+
+#[test]
+fn script_failed_has_its_own_code_and_a_reload_hint() {
+    let err = ApiError::from_kind(ApiErrorKind::ScriptFailed);
+    assert_eq!((err.code(), err.data.kind), (-32018, "ScriptFailed"));
+    assert!(err.data.suggestions[0].contains("script.reload"), "{err:?}");
+    assert!(ApiErrorKind::ALL.contains(&ApiErrorKind::ScriptFailed));
+}

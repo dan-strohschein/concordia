@@ -10,10 +10,11 @@ use concordia_import_gltf::GltfImporter;
 use concordia_input::{InputMap, InputModule};
 use concordia_physics::{PhysicsModule, PhysicsSettings};
 use concordia_render::RenderModule;
+use concordia_scripting::{ScriptEntry, ScriptKind, ScriptsConfig, ScriptsModule};
 use concordia_studio::StudioModule;
 
 use crate::error::AppError;
-use crate::manifest::Manifest;
+use crate::manifest::{Manifest, ScriptModuleKind, ScriptsSection};
 
 /// A project root and its parsed manifest.
 #[derive(Debug, Clone)]
@@ -38,6 +39,9 @@ impl Project {
         }
         if let Some(studio) = &manifest.studio {
             inside(&studio.dir).map_err(|m| manifest_error(&path, format!("[studio] dir: {m}")))?;
+        }
+        if let Some(scripts) = &manifest.scripts {
+            check_scripts(scripts).map_err(|m| manifest_error(&path, m))?;
         }
         Ok(Self {
             root: root.to_path_buf(),
@@ -84,8 +88,41 @@ impl Project {
         if let Some(studio) = &self.manifest.studio {
             modules.push(Arc::new(StudioModule::new(&self.root, &studio.dir)));
         }
+        if let Some(scripts) = &self.manifest.scripts {
+            // Last, so script components may refer to every other module's types.
+            modules.push(Arc::new(ScriptsModule::new(self.scripts_config(scripts))));
+        }
         Ok(modules)
     }
+
+    /// `[scripts]` resolved against the project root.
+    fn scripts_config(&self, scripts: &ScriptsSection) -> ScriptsConfig {
+        let mut config = ScriptsConfig::for_project(&self.root, self.manifest.sim.seed);
+        config.modules = scripts
+            .module
+            .iter()
+            .map(|m| ScriptEntry {
+                kind: match m.kind {
+                    ScriptModuleKind::Wasm => ScriptKind::Wasm,
+                    ScriptModuleKind::Native => ScriptKind::Native,
+                },
+                path: self.root.join(&m.path),
+                source: m.source.as_ref().map(|s| self.root.join(s)),
+            })
+            .collect();
+        config
+    }
+}
+
+/// Every `[[scripts.module]]` path stays inside the project.
+fn check_scripts(scripts: &ScriptsSection) -> Result<(), String> {
+    for (i, module) in scripts.module.iter().enumerate() {
+        inside(&module.path).map_err(|m| format!("[[scripts.module]] {i} path: {m}"))?;
+        if let Some(source) = &module.source {
+            inside(source).map_err(|m| format!("[[scripts.module]] {i} source: {m}"))?;
+        }
+    }
+    Ok(())
 }
 
 fn parse(text: &str, path: &Path) -> Result<Manifest, AppError> {

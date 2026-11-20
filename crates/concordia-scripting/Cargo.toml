@@ -1,0 +1,35 @@
+[package]
+name = "concordia-scripting"
+description = "The scripts engine module: loads a project's gameplay modules ([scripts]), runs their processors in play, and serves script.reload."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+concordia-api.workspace = true
+concordia-command.workspace = true
+concordia-core.workspace = true
+concordia-reflect.workspace = true
+concordia-script.workspace = true
+concordia-script-guest.workspace = true
+concordia-script-native.workspace = true
+concordia-script-wasm.workspace = true
+concordia-terra.workspace = true
+concordia-terra-sim.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+concordia-tests = { path = "../../tests" }
+conformance-guest = { path = "../../tests/fixtures/script/conformance-guest" }
+serde_json.workspace = true
+tempfile.workspace = true
+tracing-subscriber.workspace = true
+wanderers = { path = "../../examples/m2-scripting/scripts/wanderers" }
+
+[lints]
+workspace = true
