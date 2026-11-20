@@ -1,14 +1,155 @@
-# M2: Port begins
+# M2: Engine breadth (formerly "Port begins")
 
-> **Renamed 'M2: Engine breadth' by ADR-0048.** Phases 2.3–2.8 stay here. Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) move to M5. The refinement pass restructures this plan accordingly.
+> **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: Planned · Depends on: M1 (and through it M0, M-1) · Detail level: **Needs refinement after M1** · Estimated effort: ~22–26 calendar weeks (author + agents, phases partly parallel)
+Status: Refined and approved (2026-11-19); phase 2.0 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
-> This plan has full phase breakdowns and test lists, but it was written before M0/M1 exist. When M1's gate passes, do a refinement pass: re-check every M0/M1 API this plan assumes (marked "assumes M1"), re-measure the slice closure with the real `port.scan`, and re-estimate.
+## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
+**Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
+
+### What exists (checked in code)
+- **Terra** (`concordia-terra`): the archetype store, queries and a fixed-step `SimLoop`.
+  - The `SimClock` has no time scale.
+  - A `Schedule` runs systems in declared order, with parallelism only inside systems.
+  - There are no processors with access declarations, no processing phases (sim vs presentation), no events, timers or observers, no command buffers, no shared or chunk components, no tags and no templates.
+  - The world hash and thread-count determinism tests exist.
+- **Physics:**
+  - `CharacterController`/`CharacterMotion` over Jolt;
+  - contact begin/end events published once per tick;
+  - `physics.raycast`;
+  - sensors are partial: colliders have `is_sensor`.
+- **Input:** pointer rays from the cursor through the camera (`pointer.rs`), plus `input.inject`.
+- **glTF import:** meshes, prefabs, and skins and clips stored "for M2's animation system" (`anim.rs`). Nothing samples or skins them yet.
+- **Render:**
+  - instance and material buffers, clustered forward, CSM and IBL;
+  - one PBR material model with view modes;
+  - the editor viewport is engine-drawn (ADR-0047).
+- **Not present:** `wit/`, `concordia-script-*`, `-anim`, `-nav`, `recast-sys`, `-audio`, `-ui`, `-replay` and `-import-fbx`.
+- **Studio** (M3): the gameplay programmer, animator, VFX artist, sound designer, composer and UI/UX roles are disabled in the default team, each waiting for an M2 feature (refinement G10 there). The skills `concordia-record-replay`, `concordia-fix-bug-with-replay` and `concordia-synthesize-sfx` carry "not available yet" notes.
+- **Downstream needs:**
+  - M3 3.1 generalizes M2's input log;
+  - M3 3.9's fixture needs a WASM gameplay script with hot reload;
+  - M6 needs both scripting hosts;
+  - M8 garments need skinning.
+
+### Author decisions (2026-11-19)
+- **D1. Godot-specific work moves to M5.** That's the gdshader→Slang translator, Godot `.import` and `StandardMaterial3D` mapping, AnimationTree import, the `NavigationAgent3D`/`NavigationRegion3D` mapping, `Control`→UI prefab import and sound-bank cues. M2 builds the engine-native features they will map onto, tested with our own fixtures.
+- **D2. Gate: an original sample game** in `examples/` that uses every M2 subsystem. The deterministic gate drives it headless in public CI; an optional live gate has the Studio team change it on the author's subscription. Its design is settled with the author at the start of its phase, and it is our own game, not modeled on any existing one.
+- **D3. Terra's Mass core moves here from M7** (phases 7.1–7.6): processors with access declarations and phases, parallel deterministic scheduling, shared and chunk components, tags, command buffers, templates and traits, simulation and representation LOD, signals and observers, spawners and representation switching. Crowds and traffic (7.7) join the navigation phase. M7 keeps large-scale performance, AI-driven behavior (after M4) and its gate. As with ADR-0010, this is a clean room: built from Epic's public Mass documentation and talks only.
+- **D4. A scripting system, but no Gameplay Ability System:** abilities, effects and attribute sets in the GAS sense are a non-goal. Gameplay is written as scripted processors (tier 1 native, tier 2 WASM) over Terra.
+- **D5. Materials follow Unreal's Substrate model** (slabs with BSDF features, layering, mixing and coverage operators, a per-pixel closure budget), defined as text (`.material.ron`) first. Node-graph authoring waits for M4's graphs. The model replaces M1's PBR material, with a migration, and runs early so later phases use it. Clean room: built from Epic's public Substrate documentation and the SIGGRAPH 2023 Substrate course material only.
+- **D6. Order: unblock dependents first** (below).
+- **D7. Editor scope:** API and MCP tools plus engine-drawn viewport debug views (skeletons, navmesh, LOD buckets, audio emitters, UI bounds), and inspector widgets for new components. No new editor panels.
+- **D8. Each phase unlocks its Studio role:** enable the role in the default team, widen its tool scope, finish its skill (removing the "not available yet" note), and update the sync and roster snapshots, all with tests.
+
+### Gaps (assumed by the old plan, not built)
+| # | Gap | Resolution | Phase |
+|---|---|---|---|
+| G1 | No processing phases, events, timers or time scale; the old plan assumed M0 had them | Terra core (D3): phases (`PrePhysics`, `Physics`, `PostPhysics`, `Sim`, `Presentation`), timers, `SimClock::time_scale` | 2.0 |
+| G2 | Godot mappings inside 2.3–2.7 depend on the importer that moved to M5 | Move to M5 (D1); M2 keeps the native targets | all |
+| G3 | M2's gate was the private port slice | Sample-game gate (D2), public CI | 2.10 |
+| G4 | M4 4.13, M5 and M7 cite M2 content that moved | Notes in those plans (this refinement) | n/a |
+| G5 | Studio roles and skills wait on M2 | D8, in every phase | all |
+| G6 | `concordia-interchange` v0 was planned for M2 (2.1) | Moves to M5 with the Godot importer; M5 5.1 builds v1 directly | n/a |
+| G7 | Sensors (`Area3D`-style enter/exit) aren't exposed as gameplay events | Physics contact events become Terra signals | 2.0b |
+| G8 | Representation LOD needs instanced rendering of many entities | Uses M1's instance buffer; the GPU golden test moves with 7.6 | 2.4b |
+| G9 | Determinism with a parallel scheduler (old risk) | Conflict-graph scheduling and thread-count hash tests in every Terra phase | 2.0 |
+
+### Phases (new order, D6)
+The numbers 2.1, 2.2 and 2.9 are retired: they moved to M5, and reusing them would muddle the history.
+| Order | Phase | Content | From | Unlocks |
+|---|---|---|---|---|
+| 1 | **2.0 Terra core I: processors and phases** | processors with access declarations; processing phases; deterministic parallel scheduling (conflict graph); `SimClock::time_scale`; timers | M7 7.1, G1 | everything |
+| 2 | **2.0b Terra core II: storage, commands, signals** | shared and chunk components; tags; command buffers applied at phase ends; signals (next-tick delivery, entity order) and add/remove observers; physics contacts as signals | M7 7.2, 7.5, G7 | |
+| 3 | **2.0c Templates, traits and spawners** | `.template.ron` traits and templates; batch spawn; spawners with seeded distributions; `terra.*` API and MCP tools (`spawn_batch`, `despawn_batch`, `stats`, `inspect`) | M7 7.3, 7.6 (spawning), 7.8 (tools) | level-designer scopes |
+| 4 | **2.6 Scripting tiers** | WIT world, WASM host, guest SDK, native hot reload; scripted processors in Terra's phases; `script.reload` | old 2.6 | gameplay-programmer; M3 3.9; M6 |
+| 5 | **2.8 Replay (minimal)** | input log, `.replay.ron` v0, checkpoints, divergence report | old 2.8 | M3 3.1; replay skills |
+| 6 | **2.3 Substrate-style materials and FBX** | the material model (D5) replacing M1 PBR, with migration; goldens per feature; FBX via ufbx | old 2.3 (Godot parts out), D5 | tech-artist scope |
+| 7 | **2.4 Animation** | skeletons, clips, GPU skinning, blend and state-machine graphs (`.animgraph.ron`), events, attachments, tweens | old 2.4 (AnimationTree import out) | animator |
+| 8 | **2.4b Terra LOD and representation** | simulation LOD (deterministic inputs only); representation LOD and switching (full, instanced, hidden) | M7 7.4, 7.6 (representation), G8 | |
+| 9 | **2.5 Navigation, crowds and traffic** | recast-sys, navmesh build and queries, agents, Detour crowds as Terra processors, lane-based traffic (rule-based; AI-driven behavior stays M7/M4) | old 2.5 (Godot mapping out), M7 7.7 | |
+| 10 | **2.7 Audio and in-game UI** | audio stack and cues; retained ECS UI, taffy, cosmic-text (ADR-0060) | old 2.7 (Godot import and sound bank out) | sound-designer, composer (synth in M3 3.7), ui-ux |
+| 11 | **2.10 Sample game and gate** | an original sample game (D2), the deterministic gate, an optional live Studio gate | D2 | |
+
+The VFX artist stays disabled: particles are not in M2 (open question, unchanged).
+
+**New-phase tests (first lists; each phase is refined again at its start):**
+- **2.0:**
+  - `conflicting_processors_never_run_concurrently`;
+  - `independent_processors_run_in_parallel`;
+  - `declared_order_constraints_are_respected`;
+  - `schedule_cycle_is_an_error_naming_the_cycle`;
+  - `world_hash_identical_for_1_and_8_threads_with_parallel_processors`;
+  - `presentation_phase_never_changes_world_hash`;
+  - `time_scale_scales_sim_dt_deterministically` (hit-stop);
+  - `timers_fire_on_the_tick_they_expire_including_large_steps`;
+  - the M0 ECS benchmarks within `BASELINE.md`.
+- **2.0b:**
+  - `shared_component_is_stored_once_per_archetype_value`;
+  - `chunk_component_is_per_chunk_and_survives_moves`;
+  - `tags_filter_queries_without_storage`;
+  - `deferred_spawns_apply_at_phase_end_in_deterministic_order`;
+  - `model_proptest_with_command_buffers_matches_the_model`;
+  - `signal_raised_this_tick_is_delivered_next_tick_in_entity_order`;
+  - `observers_fire_on_add_and_remove_once`;
+  - `sensor_enter_and_exit_arrive_as_signals`.
+- **2.0c:**
+  - `template_composes_traits_into_an_archetype`;
+  - `trait_conflicts_are_reported_with_both_traits`;
+  - `template_roundtrips_byte_identical`;
+  - `batch_spawn_of_100k_from_template_is_deterministic`;
+  - `template_schemas_come_from_reflection`;
+  - `spawner_places_count_with_seeded_distribution`;
+  - `terra_methods_have_generated_schemas_and_mcp_tools`;
+  - `agent_spawns_from_a_template_over_mcp`.
+- **2.3 (materials):**
+  - `slab_bsdf_features_match_reference_values` (diffuse, specular, haze, fuzz, subsurface, thin film; CPU reference);
+  - `vertical_layering_attenuates_the_bottom_slab` (energy conservation);
+  - `horizontal_mix_and_coverage_blend_closures`;
+  - `closure_budget_downgrades_gracefully_and_reports_it`;
+  - `m1_pbr_materials_migrate_to_one_slab_unchanged_in_golden`;
+  - a golden per feature;
+  - `material_files_roundtrip_canonical`;
+  - FBX tests as in the old 2.3.
+- **2.4b:**
+  - `far_entities_tick_at_their_lod_rate`;
+  - `lod_transitions_are_hysteresis_damped`;
+  - `simulation_lod_depends_only_on_deterministic_inputs`;
+  - `representation_lod_follows_the_camera_without_affecting_world_hash`;
+  - `representation_switches_between_full_instanced_and_hidden`;
+  - `instanced_representation_draws_100k_in_one_pass` (GPU, golden).
+- **2.5 (added):**
+  - `crowd_of_10k_agents_avoids_overlap` (perf on the reference machine);
+  - `traffic_follows_lanes_and_yields_at_junctions`;
+  - `crowd_is_deterministic_across_runs_and_threads` (with Terra's parallel scheduler; this replaces the old "single-threaded crowd" constraint).
+- **2.10:** set with the sample game's design. Its shape: scripted headless play driven through `input.inject`, `sim.step` and `query.run`; replay across thread counts; goldens; zero error logs; every Studio role that M2 unlocks lists at least one tool it uses in the sample.
+
+### Effort (re-estimated)
+| Phase | Estimate |
+|---|---|
+| 2.0 / 2.0b / 2.0c Terra core | 3 + 3 + 2 weeks |
+| 2.6 Scripting tiers | 3 weeks |
+| 2.8 Replay (minimal) | 1 week |
+| 2.3 Substrate-style materials + FBX | 4–5 weeks |
+| 2.4 Animation | 3–4 weeks |
+| 2.4b LOD and representation | 2 weeks |
+| 2.5 Navigation, crowds, traffic | 3–4 weeks |
+| 2.7 Audio + UI | 3–4 weeks |
+| 2.10 Sample game + gate | 2–3 weeks |
+| **Total** | **~29–36 phase-weeks**; some phases overlap (2.3 with the Terra work, 2.7 with 2.4–2.5) |
+
+### Follow-ups for other plans (done in this refinement)
+- **M5:** receives 2.1, 2.2, 2.9 and the Godot mappings (D1, G6).
+- **M7:** keeps 7.0 (done), large-scale performance, AI-driven crowd and traffic behavior and its gate.
+- **M4:** its 4.13 note now names M5's slice, not M2's.
+- **`docs/design.md`:** the milestone list (M2's gate; Terra's core in M2).
+- **`plans/README.md`:** the index, crate table, ADR registry and API names.
 
 Game-specific details for the author's port live in the git-ignored `private/plans/M2-port-begins.md` (if present).
 
 ## Goal & context
+> *Historical (the pre-ADR-0048 port goal, now M5's). M2's goal is the refinement above: engine breadth on Terra's Mass-style core, proven by an original sample game.*
+
 
 M2 is where the engine stops being a tech demo and starts carrying a real game. The target is **the reference port**: a Godot 4.x isometric action-RPG with GDScript gameplay, `.tscn`/`.tres` scenes, custom `.gdshader` shaders, glTF/FBX models, `AnimationTree` state machines, navmesh levels (some hand-painted with a level-editor plugin, some procedural), autoload singletons, a C++ GDExtension, and a headless GDScript test suite that acts as the oracle. M2 builds the subsystems a game like it needs (scripting tiers, animation, navigation, audio, in-game UI, replay), the **Godot importer** and the **agent-driven GDScript→Rust translation workflow**, then proves them by porting **one vertical slice of the game's first level** until it is playable, passes the game's own translated test suites, replays deterministically and matches golden screenshots.
 
@@ -140,7 +281,7 @@ The Godot project at `$CONCORDIA_PORT_SRC` is **read-only** for every tool in th
 
 Phase order is a dependency order, but 2.3–2.8 can run in parallel once 2.1 and 2.2 land. 2.9 needs all of them.
 
-### Phase 2.1: Interchange model and Godot text formats
+### Phase 2.1: Interchange model and Godot text formats (moved to M5, ADR-0048/0067)
 
 - **Objective:** parse every Godot text format the reference port uses, map scenes and resources onto an importer-neutral interchange model, and write that model into an engine project as canonical text, with a report of everything that did not map.
 - **Deliverables:** `concordia-interchange` (model, writer, id map); `concordia-import-godot::{text, scene, resource, project, uid, map}`; `mappings/nodes.ron`, `mappings/resources.ron`, `mappings/project.ron`; API methods `port.scan` and `port.import` (MCP `port_scan`, `port_import`); CLI `concordia port scan <godot-dir>` and `concordia import godot <godot-dir> --out <project> [--slice <name>]`; `tests/fixtures/godot/mini-project/`.
@@ -181,7 +322,7 @@ Phase order is a dependency order, but 2.3–2.8 can run in parallel once 2.1 an
   - Large grids (walkability, terrain type, ...) stay base64 inside `.data.ron` in M2 (Open question: PNG layers).
 - **Done criteria:** all tests green; `just corpus` green on the reference port; the scan report for the full project exists and is attached to the private refinement notes.
 
-### Phase 2.2: GDScript structure tools and the translation workflow
+### Phase 2.2: GDScript structure tools and the translation workflow (moved to M5)
 
 - **Objective:** give agents everything they need to translate GDScript into Rust test-first, through MCP/CLI, with no API key: the AST and structure of a script, the dependency graph and slice closure, mapping tables for Godot APIs, a port ledger, and scaffolds that turn the game's test suites into failing Rust tests.
 - **Deliverables:** `concordia-import-godot::{gdscript, port}`; `mappings/api.ron` (Godot API → engine API/Rust idiom), `mappings/idioms.ron` (signals, `await`, `@onready`, `@export`, groups, autoloads, `queue_free`, `_ready`/`_process`/`_physics_process`, `Engine.time_scale`, tweens, timers); the oracle harness crate template (`check`, `equal`, `not_equal`, `is_true`, `is_false`, `not_null`, `greater`, `in_range`, `allow_error`, zero-assertion failure); API methods `port.ast`, `port.map`, `port.scaffold`, `port.status`, `port.update`, `port.oracle` (MCP `port_ast`, `port_map`, `port_scaffold`, `port_status`, `port_update`, `port_oracle`); CLI `concordia port init|ast|map|scaffold|status|update|oracle`; the Claude Code skill `port-gdscript` written by `concordia port init`; `docs/guides/porting-from-godot.md`.
@@ -393,7 +534,7 @@ Phase order is a dependency order, but 2.3–2.8 can run in parallel once 2.1 an
 - **Implementation notes:** inputs are recorded post-binding as action events per tick (so a replay survives a rebinding) plus raw pointer positions for picking; presentation state (audio, UI animation) is excluded from the hash; the hash is M0's world-state hash restricted to `Sim` components.
 - **Done criteria:** tests green; a recorded M1 physics session replays bit-identically.
 
-### Phase 2.9: The opening-zone slice
+### Phase 2.9: The opening-zone slice (moved to M5)
 
 - **Objective:** import the reference port, translate the slice closure with agents through the Phase 2.2 workflow, port the slice's oracle suites, and make the opening zone playable, replayable and visually checked.
 - **Deliverables:** the port project at `$CONCORDIA_PORT_PROJECT` (`concordia port init`, `concordia import godot --slice opening-zone`); `port/slices/opening-zone.ron` (entry points, level, loadout, enemy kinds, exclusions, end marker, seed); `game-*` crates; translated slice shaders with manual items closed; the playthrough script; the recorded replay `tests/replays/opening_zone.replay.ron`; goldens `tests/golden/m2_slice/{slice_start,slice_combat,slice_loot}.png`; Godot probe captures in `port/oracle/` (terrain heights, loot rolls at fixed seeds, luma statistics from the game's own screenshot/measurement harness scenes); `just play-slice` (windowed).
@@ -426,7 +567,7 @@ Phase order is a dependency order, but 2.3–2.8 can run in parallel once 2.1 an
   - The elite/objective encounter is a **stretch** item: attempt it only after the gate passes.
 - **Done criteria:** every test above green; ledger rows for the slice closure are `verified` or `partial` with named excluded regions; a human plays the slice from the player-start marker to the end marker in `just play-slice` and records "playable" (or bugs) in the plan's Status notes.
 
-## Milestone gate
+## Milestone gate (superseded: this was the port-slice gate, now M5's; M2's gate is phase 2.10, D2)
 
 **Command:** `CONCORDIA_PORT_SRC=<godot-project> CONCORDIA_PORT_PROJECT=<port-project> just gate M2`
 
@@ -464,6 +605,9 @@ which runs `cargo nextest run --test m2_port_begins` (`tests/gates/m2_port_begin
 - Is `cosmic-text` the right text stack for the shipped game UI, or is a smaller atlas-only rasterizer enough for M2?
 
 ## ADRs to write
+- ADR-0067: M2 refinement: engine breadth on Terra's Mass core, Substrate-style materials, Godot mappings to M5, sample-game gate (written).
+- ADR-0068: Substrate-style material model (slabs, operators, closure budget), written in phase 2.3.
+- ADR-0064 and ADR-0065 (port projects, Godot import identity) move to M5 with the port; their numbers stay reserved.
 
 M2 draws from the 0060–0079 block (`plans/README.md`).
 

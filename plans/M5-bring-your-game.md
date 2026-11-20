@@ -1,7 +1,7 @@
 # M5: Bring your game
-> **ADR-0048:** this milestone also takes the reference port from M2: phases 2.1 (Godot text formats and the interchange model), 2.2 (GDScript tools and the translation workflow) and 2.9 (the playable slice). It is restructured when M2 is refined.
+> **ADR-0048:** this milestone also takes the reference port from M2: phases 2.1 (Godot text formats and the interchange model), 2.2 (GDScript tools and the translation workflow) and 2.9 (the playable slice). M2's refinement (ADR-0067) also moves here every Godot-specific mapping that was inside M2 2.3–2.7: the gdshader→Slang translator, Godot `.import` and `StandardMaterial3D` mapping, AnimationTree→`.animgraph.ron` import, the `NavigationAgent3D`/`NavigationRegion3D` mapping, `Control`→UI prefab import and sound-bank cues. These map onto M2's engine-native features. `concordia-interchange` v0 and ADRs 0064–0065 move too, so 5.1 builds interchange v1 directly. The moved phase text stays in the M2 plan until this plan is refined after M4.
 
-Status: Planned · Depends on: M2 (importer framework, `concordia-interchange` v0, WASM host), M3 (replay, playtest assertions, Studio), M4 (visual graphs, `concordia-graph`) · Detail level: **Needs refinement after M4** · Estimated effort: ~19 weeks (range 16–24), author plus agents
+Status: Planned · Depends on: M2 (Terra core, WASM host, anim, nav, UI, audio, materials; the importer framework and interchange v0 are now built here, ADR-0067), M3 (replay, playtest assertions, Studio), M4 (visual graphs, `concordia-graph`) · Detail level: **Needs refinement after M4** · Estimated effort: ~19 weeks (range 16–24), author plus agents
 
 > This plan has full phase breakdowns and test lists. It must get a refinement pass when M4 completes, because the shapes of `concordia-interchange` v0 (M2), the replay and assertion APIs (M3) and the `.graph.ron` node set (M4) will change details here. Places that depend on those shapes are marked **(refine)**.
 

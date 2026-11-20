@@ -451,7 +451,7 @@ There are two parallel tracks. **Track R (rendering)** is 4.1–4.8; 4.1 comes f
 ---
 
 ### Phase 4.13: reference port integration: graph-scripted enemy and the visual showcase
-- **Dependency (consistency pass):** the `caster` archetype is **not** in M2's vertical slice (which has only melee enemies). It must be ported through the M3 Studio port ledger before this phase starts. If it hasn't been, run this phase against a slice melee enemy with melee-range assertions, and treat `caster` as a follow-up.
+- **Dependency (consistency pass):** the `caster` archetype is **not** in the reference port's vertical slice (moved from M2 to M5 by ADR-0048/0067; it has only melee enemies). It must be ported through the M3 Studio port ledger before this phase starts. If it hasn't been, run this phase against a slice melee enemy with melee-range assertions, and treat `caster` as a follow-up.
 - **Objective:** Prove both tracks on the real game. A reference port enemy's behavior is re-authored as graphs and passes the port's replay assertions, and a reference port level is rendered with vgeo, VSM, GI and TAA.
 - **Deliverables**
   - `caster` archetype behavior as graphs (in the port project folder (`CONCORDIA_PORT_PROJECT`)):
