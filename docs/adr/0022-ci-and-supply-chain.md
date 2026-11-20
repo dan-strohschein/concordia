@@ -1,5 +1,5 @@
 # ADR-0022: CI platforms and supply-chain policy
-- Status: Accepted
+- Status: Accepted; CI split into fast automatic checks and a manual regression suite by ADR-0071
 - Date: 2026-11-17
 
 ## Decision

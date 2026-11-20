@@ -1,5 +1,8 @@
 name: ci
 
+# Fast automatic checks on every PR and push to main (ADR-0071): formatting, clippy, supply chain
+# and the WASM fixture, on Linux only. The full regression suite (tests on macOS GPU and Linux,
+# doc tests, gates, editor e2e) is the manual `regression` workflow.
 on:
   push:
     branches: [main]
@@ -14,63 +17,36 @@ env:
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
 jobs:
-  gate:
-    name: gate (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-26, ubuntu-24.04]
-    runs-on: ${{ matrix.os }}
-    # GPU tests (RHI conformance, goldens) must run on macOS; Linux skips them until Vulkan (ADR-0042).
-    env:
-      CONCORDIA_REQUIRE_GPU: ${{ startsWith(matrix.os, 'macos') && '1' || '0' }}
+  lint:
+    name: lint (ubuntu-24.04)
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install pinned toolchain
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          # PR caches would evict main's (the repository cache limit is 10 GB).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with:
-          tool: just,cargo-nextest,cargo-deny,wasm-tools
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: target/toolchain/slang
-          key: slang-${{ runner.os }}-${{ hashFiles('tools/slang/slang.toml') }}
-      - name: Slang toolchain
-        run: just slang-fetch
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: target/gltf-sample-assets
-          key: gltf-${{ hashFiles('tests/fixtures/gltf-sample-assets/manifest.ron') }}
-      - name: glTF sample assets
-        run: just gltf-assets
-      - name: Lint
+          tool: just,wasm-tools
+      - name: Lint (rustfmt, clippy)
         run: just lint
       - name: Build WASM fixtures
         run: just wasm
-      - name: Tests
-        run: cargo nextest run --workspace --profile ci --no-tests=fail
-      - name: GPU probe (built by the test step)
-        if: always() && startsWith(matrix.os, 'macos')
-        run: target/debug/concordia gpu-probe
-      - name: Doc tests
-        run: cargo test --doc --workspace
-      - name: Supply chain
-        run: cargo deny check
-      - name: Gates
-        run: |
-          just gate-tests M-1
-          just gate-tests M0
-          just gate-tests M1
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
+
+  supply-chain:
+    name: supply chain
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with:
-          name: junit-${{ matrix.os }}
-          path: target/nextest/ci/junit.xml
-          if-no-files-found: ignore
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: failure()
-        with:
-          name: golden-failures-${{ matrix.os }}
-          path: target/golden-failures/
-          if-no-files-found: ignore
+          tool: just,cargo-deny
+      - name: cargo deny
+        run: just deny
+      - name: cargo deny (editor shell; named MPL-2.0 exceptions)
+        run: cargo deny --manifest-path editor/src-tauri/Cargo.toml --config editor/src-tauri/deny.toml check
