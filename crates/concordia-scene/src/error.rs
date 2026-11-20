@@ -32,6 +32,18 @@ pub enum SceneError {
         /// The closest registered component name.
         did_you_mean: Option<String>,
     },
+    /// A trait (or other typed value) name is not a registered type.
+    #[error("line {line}, col {col}: unknown type {name:?}{}", hint(did_you_mean))]
+    UnknownType {
+        /// The name in the file.
+        name: String,
+        /// Line.
+        line: usize,
+        /// Column.
+        col: usize,
+        /// The closest registered type name.
+        did_you_mean: Option<String>,
+    },
     /// A component value has the wrong shape or is out of range.
     #[error(
         "line {line}, col {col}: invalid {component} at {pointer:?}: expected {expected}, found {found}"

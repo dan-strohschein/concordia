@@ -139,6 +139,26 @@ expression: index
     "name": "sim.stop"
   },
   {
+    "description": "Despawn play-world entities by id, or every entity with the given components.",
+    "mutates": false,
+    "name": "terra.despawn_batch"
+  },
+  {
+    "description": "How Terra stores one entity: archetype, chunk, component storage kinds, pending signals.",
+    "mutates": false,
+    "name": "terra.inspect"
+  },
+  {
+    "description": "Spawn many entities from a template into the play world (never journaled), placed with a seeded distribution.",
+    "mutates": false,
+    "name": "terra.spawn_batch"
+  },
+  {
+    "description": "Terra storage counts, skipped commands, and the play schedule's phases and waves.",
+    "mutates": false,
+    "name": "terra.stats"
+  },
+  {
     "description": "Roll back and close this session's open transaction.",
     "mutates": true,
     "name": "txn.abort"

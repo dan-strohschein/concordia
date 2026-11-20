@@ -18,6 +18,8 @@ trait SignalList: Send + Sync {
     fn as_any_mut(&mut self) -> &mut dyn Any;
     fn clone_box(&self) -> Box<dyn SignalList>;
     fn is_empty(&self) -> bool;
+    /// Pending signals for `id`.
+    fn count_for(&self, id: EntityId) -> usize;
     /// Sorts by target (stable, so raise order holds per target) and drops dead targets.
     fn prepare(&mut self, entities: &EntityTable);
     /// Hashes the list in delivery order.
@@ -38,6 +40,9 @@ impl<S: Component> SignalList for Typed<S> {
     }
     fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+    fn count_for(&self, id: EntityId) -> usize {
+        self.0.iter().filter(|(t, _)| *t == id).count()
     }
     fn prepare(&mut self, entities: &EntityTable) {
         self.0.retain(|(id, _)| entities.contains(*id));
@@ -93,6 +98,15 @@ impl SignalQueue {
             .get(S::type_info().name)
             .and_then(|l| l.as_any().downcast_ref::<Typed<S>>())
             .map_or(&[], |t| &t.0)
+    }
+
+    /// Pending signal types and counts for `id`, by type name.
+    pub(crate) fn pending_for(&self, id: EntityId) -> Vec<(&'static str, usize)> {
+        self.pending
+            .iter()
+            .map(|(name, list)| (*name, list.count_for(id)))
+            .filter(|(_, n)| *n > 0)
+            .collect()
     }
 
     /// Starts a tick: last tick's raises become this tick's deliveries, in entity order.

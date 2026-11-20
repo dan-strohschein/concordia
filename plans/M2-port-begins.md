@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0 and 2.0b done (2026-11-19), 2.0c next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19) and 2.0c (2026-11-20) done; 2.6 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -193,6 +193,46 @@ The VFX artist stays disabled: particles are not in M2 (open question, unchanged
   - The tag path first made `add_remove_component_10k` 4.38 ms. A fast path for zero-sized values and cached shared edges brought it to 2.97 ms, 11% above before.
   - `spawn_10k` stays 34% above M0, from M1 1.9e's per-spawn touch, which is left for later.
 - **API counts unchanged:** 34 core methods, 31 MCP tools. The `terra.*` tools come in 2.0c.
+
+### Phase 2.0c As built (2026-11-20, ADR-0070)
+- **Author decisions:**
+  - Traits are Rust types (reflected parameters, required processors), and `.template.ron` files compose them.
+  - Terra templates replace `concordia-api`'s `EntityTemplate`.
+  - Spawners live in the edit world, and batch spawns act on the play world only.
+  - A new crate, `concordia-terra-sim`; the `terra.*` methods are core.
+  - The MCP tool-list budget rises from 12k to 16k tokens (amends ADR-0033).
+- **Format:**
+  - `concordia-scene` gains `read_template`, `write_template` and `TemplateDoc`: canonical, validated against the registry, and byte-identical on round trip. `concordia fmt` formats templates too.
+  - Templates live in `templates/**/*.template.ron`, named by file stem.
+- **`concordia-terra-sim`:**
+  - `EntityTrait`, `register_trait` and `TemplateBuilder` (`add`, `add_shared`, conflicts naming both traits).
+  - `Template` and `CompiledTemplate` (`spawn`, `spawn_batch`, `missing_processors`) and `TemplateCatalog`.
+  - `Spawner` with the `Grid`, `Box` and `Disc` distributions. They're seed-only and use no trigonometry. Spawned ids come from the spawner's seed and entity id.
+  - The built-in `Movement` trait (adds `Transform` and `Velocity`, requires `integrate_velocity`).
+- **API:**
+  - `entity.templates` lists built-ins and project templates, with their traits, components and any `problem`.
+  - `entity.create` spawns any template, and a template's `Name` is the default entity name.
+  - Spawners expand when play starts. Templates that need a missing processor are refused, naming it.
+  - New methods: `terra.spawn_batch`, `despawn_batch`, `stats` (counts, skipped commands, the phases and waves) and `inspect` (archetype, chunk, storage kinds, pending signals).
+  - Counts: 38 methods and 35 MCP tools. `tools/list` is about 14.0k tokens.
+- **Terra additions:** `World::entity_storage`, `Schedule::waves` / `observers`, `SimLoop::schedule` and `ReflectComponent::register_shared`.
+- **Studio (D8):** the level designer gets the `terra_*` tools, `edit`/`write` for `templates/**`, and the new skill `concordia-terra-templates`. The roster, sync and M3S gate snapshots were updated after review.
+- **Agent guide:** a new "Templates, spawners and crowds" section, and the method table.
+- **Tests:**
+  - `concordia-terra-sim`: `templates.rs` (10, including `concordia_fmt_formats_templates_canonically`, written after the implementation, so it passed at once: a guard for the `concordia fmt` claim) and `spawners.rs` (5);
+  - `concordia-api`: `tests/terra.rs` (6);
+  - `concordia-mcp`: `tests/terra_tools.rs` (2);
+  - Studio: the level-designer scope test;
+  - the count updates in `method_schemas`, `tools`, `stdout_hygiene` and the M0 gate.
+  - Every planned 2.0c test is there.
+- **Red run:**
+  - 23 new tests failed against stubs for the right reason. Three existing tests also failed as expected knock-on effects: the method-index snapshot, the `Spawner` category, and the token budget.
+  - The count and generated-schema tests passed against the stubs, because the stubs really register the methods. The existing hierarchy tests passed as `entity.create` regression guards.
+- **Fixes during green:**
+  - Four of my test mistakes: `component.add` takes no value (now `component.set`); query results are `rows`; an over-complicated id setup; and the trait list now includes the built-in `Movement`.
+  - `TemplateError` boxes its `SceneError` (clippy, large error variant).
+- **Not in this phase:** processor timings in `terra.stats` (M7), `terra.set_debug_view` (M7), and the `spawn_10k` regression noted in 2.0b. The 2.0b perf numbers still hold, because 2.0c adds no hot-path code.
+- **CI:** a new advisory, RUSTSEC-2026-0587 (`wasmtime-wasi` 50, dev-only and unreachable here), fails `just deny` on every branch. A documented ignore is in its own PR (#35).
 
 ### Effort (re-estimated)
 | Phase | Estimate |
@@ -678,6 +718,7 @@ which runs `cargo nextest run --test m2_port_begins` (`tests/gates/m2_port_begin
 - ADR-0067: M2 refinement: engine breadth on Terra's Mass core, Substrate-style materials, Godot mappings to M5, sample-game gate (written).
 - ADR-0068: Substrate-style material model (slabs, operators, closure budget), written in phase 2.3.
 - ADR-0069: Terra storage kinds, command buffers, signals and observers (written in phase 2.0b).
+- ADR-0070: Terra templates, traits and spawners; the MCP tool-list budget rises to 16k (written in phase 2.0c).
 - ADR-0064 and ADR-0065 (port projects, Godot import identity) move to M5 with the port; their numbers stay reserved.
 
 M2 draws from the 0060–0079 block (`plans/README.md`).

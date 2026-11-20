@@ -54,7 +54,7 @@ pub use query::{
 pub use resource::Resource;
 pub use schedule::{FnSystem, Schedule, System, SystemCtx, system};
 pub use sim::{SimClock, SimLoop, TimeScale};
-pub use storage::kind::{CHUNK_ROWS, StorageKind, StorageStats};
+pub use storage::kind::{CHUNK_ROWS, EntityStorage, StorageKind, StorageStats};
 pub use timer::Timer;
 pub use view::{View, ViewQuery};
 pub use world::{Changes, EntityWorldMut, World};

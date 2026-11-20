@@ -7,7 +7,7 @@ use std::path::Path;
 use concordia_studio::{CLAUDE_SKILL_FIELDS, Roster, SkillFile, default_roster, init};
 
 /// The eight built-in skills the plan names (3.6), plus the team-comms skill (3.6b).
-const PLANNED: [&str; 9] = [
+const PLANNED: [&str; 10] = [
     "concordia-add-material",
     "concordia-director-planning",
     "concordia-fix-bug-with-replay",
@@ -16,6 +16,7 @@ const PLANNED: [&str; 9] = [
     "concordia-synthesize-sfx",
     "concordia-task-workflow",
     "concordia-team-comms",
+    "concordia-terra-templates",
     "concordia-write-playtest",
 ];
 

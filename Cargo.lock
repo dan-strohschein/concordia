@@ -583,6 +583,7 @@ dependencies = [
  "concordia-reflect",
  "concordia-scene",
  "concordia-terra",
+ "concordia-terra-sim",
  "futures",
  "insta",
  "jsonschema",
@@ -955,6 +956,19 @@ dependencies = [
  "concordia-reflect",
  "criterion",
  "proptest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "concordia-terra-sim"
+version = "0.0.0"
+dependencies = [
+ "concordia-core",
+ "concordia-reflect",
+ "concordia-scene",
+ "concordia-terra",
  "serde",
  "serde_json",
  "thiserror 2.0.21",

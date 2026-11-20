@@ -36,7 +36,7 @@ const ROLES: [(&str, &str); 12] = [
 ];
 
 /// Engine skills of the default roster: (name, `SKILL.md`), sorted by name.
-const SKILLS: [(&str, &str); 9] = [
+const SKILLS: [(&str, &str); 10] = [
     (
         "concordia-add-material",
         include_str!("../roster/skills/concordia-add-material/SKILL.md"),
@@ -68,6 +68,10 @@ const SKILLS: [(&str, &str); 9] = [
     (
         "concordia-team-comms",
         include_str!("../roster/skills/concordia-team-comms/SKILL.md"),
+    ),
+    (
+        "concordia-terra-templates",
+        include_str!("../roster/skills/concordia-terra-templates/SKILL.md"),
     ),
     (
         "concordia-write-playtest",

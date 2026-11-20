@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Trait: moves at a constant velocity (adds `Transform` and `Velocity`).",
+  "properties": {
+    "velocity": {
+      "description": "Meters per second, world space.\n\n3D vector as [x, y, z].",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array",
+      "x-concordia-widget": "vec3"
+    }
+  },
+  "required": [
+    "velocity"
+  ],
+  "title": "Movement",
+  "type": "object",
+  "x-concordia-type": "Movement"
+}

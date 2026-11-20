@@ -57,7 +57,7 @@ crates/concordia-api/          terra.* methods
 ### Phase 7.2: Shared components, chunk components, tags & command buffers (moved to M2 phase 2.0b)
 - **Tests first:** `shared_component_is_stored_once_per_archetype_value`; `chunk_component_is_per_chunk_and_survives_moves`; `tags_filter_queries_without_storage`; `deferred_spawns_apply_at_phase_end_in_deterministic_order`; `model_proptest_with_command_buffers_matches_the_model`.
 
-### Phase 7.3: Templates & traits (moved to M2 phase 2.0c)
+### Phase 7.3: Templates & traits (moved to M2 phase 2.0c; done, ADR-0070)
 - **Tests first:** `template_composes_traits_into_an_archetype`; `trait_conflicts_are_reported_with_both_traits`; `template_roundtrips_byte_identical`; `batch_spawn_of_100k_from_template_is_deterministic`; `template_schemas_come_from_reflection`.
 - **Notes:** `.template.ron` holds traits and defaults; traits are reflected types plus the processors they require.
 

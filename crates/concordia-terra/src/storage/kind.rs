@@ -36,7 +36,40 @@ pub struct StorageStats {
     pub shared_values: usize,
 }
 
+/// How one entity is stored (for inspection tools).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EntityStorage {
+    /// Archetype index.
+    pub archetype: usize,
+    /// Logical chunk index within the archetype.
+    pub chunk: usize,
+    /// Components in stable-name order, with their storage kind.
+    pub components: Vec<(&'static str, StorageKind)>,
+    /// Pending signals raised on it, by type name and count.
+    pub pending_signals: Vec<(&'static str, usize)>,
+}
+
 impl World {
+    /// How `id` is stored, or `None` if it is not alive.
+    pub fn entity_storage(&self, id: EntityId) -> Option<EntityStorage> {
+        let loc = self.entities.location(id).ok()?;
+        let arch = &self.archetypes.list[loc.archetype];
+        let components = arch
+            .by_name
+            .iter()
+            .map(|&slot| {
+                let info = self.components.info(arch.component_at(slot));
+                (info.name, info.kind)
+            })
+            .collect();
+        Some(EntityStorage {
+            archetype: loc.archetype,
+            chunk: loc.row / CHUNK_ROWS,
+            components,
+            pending_signals: self.signals.pending_for(id),
+        })
+    }
+
     /// Stores `T` as a shared component; must come before `T`'s first use.
     pub fn register_shared<T: Component>(&mut self) -> Result<(), EcsError> {
         let component = T::type_info().name;

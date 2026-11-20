@@ -5,7 +5,7 @@
  */
 export interface MethodEntityTemplatesResult {
   /**
-   * Templates in module order.
+   * Templates sorted by name: module built-ins and the project's templates/** /*.template.ron.
    */
   templates: TemplateSummary[];
 }
@@ -14,7 +14,7 @@ export interface MethodEntityTemplatesResult {
  */
 export interface TemplateSummary {
   /**
-   * The components it starts with.
+   * The components it starts with (from its traits and component values).
    */
   components: string[];
   /**
@@ -22,7 +22,15 @@ export interface TemplateSummary {
    */
   description: string;
   /**
-   * Name to pass to entity.create.
+   * Name to pass to entity.create or terra.spawn_batch.
    */
   name: string;
+  /**
+   * Why it can't be spawned, if it can't (e.g. two traits add one component).
+   */
+  problem?: null | string;
+  /**
+   * The traits it composes, by name.
+   */
+  traits: string[];
 }

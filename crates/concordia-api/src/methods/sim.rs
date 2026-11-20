@@ -165,6 +165,7 @@ pub(crate) fn ensure_play(
         let mut world = engine.scene()?.world.clone();
         world.insert_resource(SimRng::new(engine.config.sim_seed));
         let (schedule, states) = start_modules(engine, &mut world)?;
+        crate::templates::expand_play_spawners(engine, &mut world, &schedule)?;
         let rate = rate.unwrap_or(engine.config.sim_rate);
         let sim = SimLoop::new(rate, schedule, &mut world)
             .map_err(|e| ApiError::new(ApiErrorKind::Internal, e.to_string()))?;

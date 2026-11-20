@@ -91,6 +91,7 @@ type InsertDynFn =
 #[derive(Clone, Copy)]
 pub struct ReflectComponent {
     insert: InsertDynFn,
+    register_shared: fn(&mut World) -> Result<(), EcsError>,
 }
 
 impl ReflectComponent {
@@ -102,7 +103,14 @@ impl ReflectComponent {
                     .insert(id, value)?
                     .map(|old| Box::new(old) as Box<dyn DynReflect>))
             },
+            register_shared: |world| world.register_shared::<T>(),
         }
+    }
+
+    /// Stores the component as shared in `world`, if the world hasn't used it yet
+    /// (see [`World::register_shared`]).
+    pub fn register_shared(&self, world: &mut World) -> Result<(), EcsError> {
+        (self.register_shared)(world)
     }
 
     /// Inserts (or replaces) `value` on `entity`, returning the previous value.

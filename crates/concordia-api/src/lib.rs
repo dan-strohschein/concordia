@@ -32,9 +32,10 @@ mod methods;
 mod module;
 mod patch;
 mod rpc;
-mod template;
+mod templates;
 pub mod transport;
 
+pub use concordia_terra_sim::Template;
 pub use engine::{Engine, EngineConfig};
 pub use error::{ApiError, ApiErrorKind, ErrorData};
 pub use events::{EventSink, Topic};
@@ -47,7 +48,6 @@ pub use method::{
 pub use methods::{EntityRef, WorldSel};
 pub use module::{EngineModule, PlaySetup};
 pub use patch::merge_patch;
-pub use template::EntityTemplate;
 
 /// Engine API protocol version reported by `session.open`.
 pub const PROTOCOL_VERSION: u32 = 1;

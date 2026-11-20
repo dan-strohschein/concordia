@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "How a spawner arranges its entities around its transform.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "A square grid on the XZ plane, `spacing` meters apart, centered.",
+      "properties": {
+        "Grid": {
+          "additionalProperties": false,
+          "properties": {
+            "spacing": {
+              "description": "Meters between neighbors.",
+              "type": "number"
+            }
+          },
+          "required": [
+            "spacing"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "Grid"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Uniformly in a box of these half extents.",
+      "properties": {
+        "Box": {
+          "additionalProperties": false,
+          "properties": {
+            "half_extents": {
+              "description": "Half size on each axis, in meters.\n\n3D vector as [x, y, z].",
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": "array",
+              "x-concordia-widget": "vec3"
+            }
+          },
+          "required": [
+            "half_extents"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "Box"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Uniformly in a disc of this radius on the XZ plane.",
+      "properties": {
+        "Disc": {
+          "additionalProperties": false,
+          "properties": {
+            "radius": {
+              "description": "Radius in meters.",
+              "type": "number"
+            }
+          },
+          "required": [
+            "radius"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "Disc"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "Distribution",
+  "x-concordia-type": "Distribution"
+}

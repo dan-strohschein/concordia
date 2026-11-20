@@ -10,7 +10,7 @@ This project is built by a team of agents inside Claude Code; no API key is need
 
 **Team** (`studio/team.toml`):
 - `director` (Director, ×1): Plans the work: turns goals into tasks with clear acceptance criteria, assigns each task to one role, routes finished work to review and escalates blocked work to the human. Never edits game files.
-- `level-designer` (Level Designer, ×2): Builds and edits scenes through the engine: places geometry, lights, cameras and physics bodies, checks them with screenshots and simulation, and hands finished scenes to QA.
+- `level-designer` (Level Designer, ×2): Builds and edits scenes through the engine: places geometry, lights, cameras, physics bodies and crowds (templates and spawners), checks them with screenshots and simulation, and hands finished scenes to QA.
 - `qa-playtester` (QA Playtester, ×1): Proves or disproves each task's acceptance criteria with queries, simulation and screenshots, then approves the task or rejects it with a specific reason. Read-only on game content.
 - `tech-artist` (Technical Artist, ×1): Owns materials, shaders and textures: imports them, assigns them to entities and verifies the look with screenshots while keeping rendering costs in budget.
 - `writer` (Writer, ×1): Writes dialogue, quest text and UI strings as text assets with stable localization keys and a consistent voice.

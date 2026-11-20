@@ -15,6 +15,7 @@
 - Commands (2.0b): `View::commands` → `CommandBuffer` (`spawn` → `Pending`, `insert`, `remove`, `despawn`, `signal`, `append`, `apply` → `ApplyReport`), `ViewQuery::par_for_each_deferred`, `TerraStats` (skipped commands)
 - Signals and observers (2.0b): `World::signal` / `signals`, `ProcessorDecl::receives`, `View::signals`, `ViewQuery::for_each_of`; `observer::<T>(name, Observe::Add | Remove)`, `View::observed`
 - Resources in views (2.0b): `ProcessorDecl::reads_resource` / `writes_resource`, `View::resource` / `resource_mut`
+- Introspection (2.0c): `World::entity_storage` (`EntityStorage`: archetype, chunk, storage kinds, pending signals), `Schedule::waves` / `observers`, `SimLoop::schedule`, `ReflectComponent::register_shared` (type-erased shared registration for templates)
 
 ## Invariants
 - No `unsafe` in this crate. Columns are `Vec<T>` behind the `Column` trait; keep it that way unless an ADR says otherwise.

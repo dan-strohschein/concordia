@@ -105,7 +105,8 @@ async fn tool_list_token_budget() {
     let tools = client.list_all_tools().await.unwrap();
     let chars = serde_json::to_string(&tools).unwrap().len();
     assert!(
-        chars / 4 < 12_000,
+        // ADR-0033's 12k, raised to 16k by ADR-0070 (M2 2.0c) for M2's tools.
+        chars / 4 < 16_000,
         "tools/list is about {} tokens",
         chars / 4
     );
@@ -238,7 +239,7 @@ async fn handshake_works_with_protocol_2025_11_25_and_2026_07_28() {
         assert_eq!(server.as_deref(), Some("concordia"), "{version:?}");
         assert_eq!(
             client.list_all_tools().await.unwrap().len(),
-            31, // 24 from M0, entity.templates/create/duplicate/reparent (M1 1.13), component.add (M1 1.14), txn.undo_to (M1 1.15), scene.text (M3 3.5b)
+            35, // 24 from M0, entity.templates/create/duplicate/reparent (M1 1.13), component.add (M1 1.14), txn.undo_to (M1 1.15), scene.text (M3 3.5b), terra.spawn_batch/despawn_batch/stats/inspect (M2 2.0c)
             "{version:?}"
         );
     }
