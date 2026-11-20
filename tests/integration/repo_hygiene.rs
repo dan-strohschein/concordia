@@ -442,7 +442,10 @@ fn ci_workflow_runs_the_fast_checks_on_every_pr() {
     );
     let ci = std::fs::read_to_string(repo_root().join(".github/workflows/ci.yml")).unwrap();
     for slow in ["macos-", "nextest run", "gate-tests"] {
-        assert!(!ci.contains(slow), "ci.yml must stay fast (ADR-0071); found {slow:?}");
+        assert!(
+            !ci.contains(slow),
+            "ci.yml must stay fast (ADR-0071); found {slow:?}"
+        );
     }
 }
 

@@ -4,6 +4,7 @@ use std::any::TypeId;
 use std::collections::HashMap;
 
 use concordia_core::id::EntityId;
+use concordia_reflect::wire::{WireColumn, WireError};
 use concordia_reflect::{DynReflect, Reflect, RegistryError, TypeInfo, TypeRegistry};
 
 use crate::error::EcsError;
@@ -137,6 +138,7 @@ impl ComponentIndex {
 type InsertDynFn =
     fn(&mut World, EntityId, Box<dyn DynReflect>) -> Result<Option<Box<dyn DynReflect>>, EcsError>;
 type SignalDynFn = fn(&mut World, EntityId, Box<dyn DynReflect>) -> Result<(), EcsError>;
+type FromWireFn = fn(&WireColumn, usize) -> Result<Box<dyn DynReflect>, WireError>;
 
 /// Registry type data that lets the API, commands, scenes and scripts use components by name.
 #[derive(Clone, Copy)]
@@ -144,6 +146,7 @@ pub struct ReflectComponent {
     insert: InsertDynFn,
     register_shared: fn(&mut World) -> Result<(), EcsError>,
     signal: SignalDynFn,
+    from_wire: FromWireFn,
 }
 
 impl ReflectComponent {
@@ -161,6 +164,16 @@ impl ReflectComponent {
                 live(world, id)?;
                 world.signal(id, value);
                 Ok(())
+            },
+            from_wire: |column, row| {
+                let name = T::type_info().name;
+                if column.info().name != name {
+                    return Err(WireError::Mismatch(format!(
+                        "a {} column holds no {name} values",
+                        column.info().name
+                    )));
+                }
+                Ok(Box::new(column.read::<T>(row)?))
             },
         }
     }
@@ -187,7 +200,18 @@ impl ReflectComponent {
                 world.signal_dynamic(id, value);
                 Ok(())
             },
+            from_wire: |column, row| Ok(Box::new(column.value(row)?)),
         }
+    }
+
+    /// Decodes row `row` of `column` as a value of this component's type (a `DynamicValue`
+    /// for script types).
+    pub fn from_wire(
+        &self,
+        column: &WireColumn,
+        row: usize,
+    ) -> Result<Box<dyn DynReflect>, WireError> {
+        (self.from_wire)(column, row)
     }
 
     /// Raises `value` (a value of this component's type) as a signal on `entity`.

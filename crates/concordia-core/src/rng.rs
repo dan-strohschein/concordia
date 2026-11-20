@@ -57,9 +57,45 @@ impl SimRng {
     }
 }
 
+/// `SimRng` is a `rand_core` RNG too (for APIs such as virtualized WASI randomness).
+impl rand_core::TryRng for SimRng {
+    type Error = std::convert::Infallible;
+
+    fn try_next_u32(&mut self) -> Result<u32, Self::Error> {
+        Ok(self.0.next_u32())
+    }
+
+    fn try_next_u64(&mut self) -> Result<u64, Self::Error> {
+        Ok(self.0.next_u64())
+    }
+
+    fn try_fill_bytes(&mut self, dst: &mut [u8]) -> Result<(), Self::Error> {
+        self.0.fill_bytes(dst);
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sim_rng_is_a_rand_core_rng_with_the_same_stream() {
+        fn draw(rng: &mut impl rand_core::Rng) -> (u64, [u8; 5]) {
+            let mut bytes = [0; 5];
+            let first = rng.next_u64();
+            rng.fill_bytes(&mut bytes);
+            (first, bytes)
+        }
+        let (first, bytes) = draw(&mut SimRng::new(9));
+        let mut plain = SimRng::new(9);
+        assert_eq!(first, plain.next_u64());
+        let mut inner = ChaCha8Rng::seed_from_u64(9);
+        inner.next_u64();
+        let mut expected = [0; 5];
+        inner.fill_bytes(&mut expected);
+        assert_eq!(bytes, expected);
+    }
 
     fn take(rng: &mut SimRng, n: usize) -> Vec<u64> {
         (0..n).map(|_| rng.next_u64()).collect()

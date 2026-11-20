@@ -1,5 +1,5 @@
 # ADR-0021: WASM guest build path
-- Status: Accepted
+- Status: Accepted; amended by ADR-0062 (M2 phase 2.6b): Wasmtime is pinned at `=51.0.0`, and gameplay guests use `std` with virtualized WASI
 - Date: 2026-11-17
 
 ## Decision

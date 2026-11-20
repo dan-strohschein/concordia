@@ -4,8 +4,8 @@
 Terra's templates, traits and spawners (M2 phase 2.0c, ADR-0070), on top of `concordia-terra`'s storage (ADR-0069). A **trait** is a Rust type with reflected parameters that adds components (dense, shared or tag) and names the processors its entities need. A **template** composes traits and plain component values; project templates live in `templates/**/*.template.ron`, module built-ins in code. A **spawner** is an edit-world component that places a template's entities with a seeded distribution when play starts.
 
 ## Public entry points
-- `EntityTrait` (`build`, `requires`), `register_trait::<T>(&mut TypeRegistry)`, `ReflectTrait`, `TemplateBuilder` (`add`, `add_shared`), `trait_names`, `trait_schema`
-- `Template` (`new`, `from_doc`, `to_doc`, `compile`) → `CompiledTemplate` (`component_names`, `requires`, `missing_processors`, `components_json`, `spawn`, `spawn_batch`)
+- `EntityTrait` (`build`, `requires`), `register_trait::<T>(&mut TypeRegistry)`, `ReflectTrait`, `DynamicTrait` + `register_dynamic_trait` (script-defined traits, 2.6b), `TemplateBuilder` (`add`, `add_shared`), `trait_names`, `trait_schema`
+- `Template` (`new`, `from_doc`, `to_doc`, `compile`) → `CompiledTemplate` (`component_names`, `requires`, `missing_processors`, `components_json`, `spawn`, `spawn_batch`, `record` (a deferred spawn into a `CommandBuffer`))
 - `TemplateCatalog::load(project, builtins, registry)` (`get`, `iter`), `TEMPLATE_DIR`
 - `Spawner` (`points`, `MAX_COUNT`), `Distribution` (`Grid`, `Box`, `Disc`), `expand_spawners`
 - `Movement` (the built-in trait), `register` (registers `Spawner` and `Movement`), `TemplateError`
@@ -17,6 +17,7 @@ Terra's templates, traits and spawners (M2 phase 2.0c, ADR-0070), on top of `con
 - `add_shared` is a storage hint: a world that already stores the type densely keeps it dense. Hashes are identical either way (ADR-0069).
 - Spawner points use only `SimRng` and arithmetic (no trigonometry), so they're the same on every platform; ids come from the spawner's seed and its entity id, so every play session spawns the same entities.
 - Template files are named by file stem and must be unique across built-ins and files (`Duplicate`).
+- **Script traits** (`register_dynamic_trait`, ADR-0062) are parameterless (an empty dynamic struct type): they add each named component with its type default (tags need none) and require the named processors. Re-registering replaces one; a name taken by a non-trait type is refused.
 - No `unsafe`.
 
 ## How to test
@@ -36,7 +37,7 @@ Terra's templates, traits and spawners (M2 phase 2.0c, ADR-0070), on top of `con
 - Bevy documentation on bundles and required components; flecs documentation on prefabs; concepts only, no code copied.
 
 ## Status
-M2 phase 2.0c complete (2026-11-20).
+M2 phase 2.0c complete (2026-11-20); 2.6b added script traits and `CompiledTemplate::record`.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

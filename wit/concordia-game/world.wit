@@ -1,0 +1,141 @@
+/// The gameplay scripting protocol (ADR-0062), as its WASM binding.
+///
+/// A module describes its types, traits and processors once, then runs one call per
+/// processor per tick. Component data crosses as wire columns (fixed little-endian rows
+/// plus an arena; `concordia-reflect`'s `wire` module), so a batch of any size is one call.
+package concordia:game@0.1.0;
+
+/// What the host gives a module: logging only. Everything else arrives in a batch.
+interface host {
+    /// Appends a line to the engine log, attributed to `script:<module>`.
+    log: func(message: string);
+}
+
+/// The protocol's types.
+interface types {
+    /// A processing phase, in tick order.
+    enum phase {
+        pre-physics,
+        physics,
+        post-physics,
+        frame-end,
+        presentation,
+    }
+
+    /// An entity id: the 16 UUID bytes, big-endian, as two halves.
+    record entity-id {
+        hi: u64,
+        lo: u64,
+    }
+
+    /// A processor: its phase, access by stable name and order constraints.
+    record processor-desc {
+        name: string,
+        phase: phase,
+        /// Components read; each batch row has all of them.
+        reads: list<string>,
+        /// Components written; each batch row has all of them.
+        writes: list<string>,
+        /// Components a row must also have (not delivered).
+        %with: list<string>,
+        /// Components a row must not have.
+        without: list<string>,
+        /// Signals delivered to this processor.
+        receives: list<string>,
+        /// Processors that run before this one in its phase.
+        after: list<string>,
+        /// Processors that run after this one in its phase.
+        before: list<string>,
+    }
+
+    /// A trait: components (with their type defaults) and the processors its entities need.
+    record trait-desc {
+        name: string,
+        docs: string,
+        components: list<string>,
+        requires: list<string>,
+    }
+
+    /// Everything a module declares. Type descriptions are canonical JSON of
+    /// `concordia_reflect::TypeDesc` (WIT has no recursive types).
+    record module-desc {
+        name: string,
+        version: u32,
+        /// Helper types, registered first, in order.
+        types: list<string>,
+        components: list<string>,
+        signals: list<string>,
+        traits: list<trait-desc>,
+        processors: list<processor-desc>,
+    }
+
+    /// Simulation time and this processor's random seed for the tick.
+    record tick-context {
+        tick: u64,
+        /// Simulated seconds this tick (the fixed step times the time scale).
+        dt: f32,
+        /// Simulated seconds since play started.
+        time: f64,
+        /// Derived from the session seed, the tick and the processor's name.
+        seed: u64,
+    }
+
+    /// One component's values for every row, as a wire column.
+    record column {
+        name: string,
+        data: list<u8>,
+    }
+
+    /// Delivered signals of one type: targets (16 bytes each) and payloads.
+    record signal-column {
+        name: string,
+        targets: list<u8>,
+        data: list<u8>,
+    }
+
+    /// The matches of a processor's query: ids (16 bytes each) and declared columns.
+    record batch {
+        ids: list<u8>,
+        columns: list<column>,
+        signals: list<signal-column>,
+    }
+
+    /// A command's target: an existing entity, or the n-th spawn of this run.
+    variant target {
+        entity(entity-id),
+        pending(u32),
+    }
+
+    /// One component value: a one-row wire column.
+    record value {
+        name: string,
+        data: list<u8>,
+    }
+
+    /// A structural change, applied at the end of the phase in plan order.
+    variant command {
+        spawn(list<value>),
+        spawn-template(string),
+        insert(tuple<target, value>),
+        remove(tuple<target, string>),
+        despawn(target),
+        signal(tuple<target, value>),
+    }
+
+    /// A run's effects: full columns written back to the batch rows, then commands.
+    record run-output {
+        writes: list<column>,
+        commands: list<command>,
+    }
+}
+
+/// A gameplay module.
+world gameplay {
+    import host;
+    use types.{module-desc, tick-context, batch, run-output};
+
+    /// Declares the module's types, traits and processors.
+    export describe: func() -> module-desc;
+    /// Runs one processor once for this tick; an error discards the run and disables it.
+    export run: func(processor: string, ctx: tick-context, batch: batch) -> result<run-output, string>;
+}

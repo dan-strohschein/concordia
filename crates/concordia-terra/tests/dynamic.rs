@@ -548,3 +548,52 @@ fn named_processors_hash_identically_at_1_and_8_threads() {
         "every tick changes the world"
     );
 }
+
+#[test]
+fn reflect_component_decodes_wire_values_for_static_and_dynamic_types() {
+    let (reg, brain, _) = script_registry();
+    let ops = |name: &str| {
+        *reg.get_by_name(name)
+            .unwrap()
+            .data::<ReflectComponent>()
+            .unwrap()
+    };
+    let pos = Pos {
+        x: 1.0,
+        y: 2.0,
+        z: 3.0,
+    };
+    let mut w = ColumnWriter::new(Pos::type_info(), 1).unwrap();
+    w.write(0, &pos).unwrap();
+    let column = w.finish().unwrap();
+    let value = ops(Pos::type_info().name).from_wire(&column, 0).unwrap();
+    assert_eq!(
+        value.as_any().downcast_ref::<Pos>(),
+        Some(&pos),
+        "static types decode to T"
+    );
+    assert!(
+        ops(Pos::type_info().name).from_wire(&column, 1).is_err(),
+        "rows are checked"
+    );
+
+    let rows = [
+        json!({"mood": 0.5, "label": "a"}),
+        json!({"mood": 1.5, "label": "bb"}),
+    ];
+    let mut w = ColumnWriter::new(brain, 2).unwrap();
+    for (row, value) in rows.iter().enumerate() {
+        w.write(row, value).unwrap();
+    }
+    let column = w.finish().unwrap();
+    let value = ops("Brain").from_wire(&column, 1).unwrap();
+    assert!(
+        value.as_any().is::<DynamicValue>(),
+        "script types decode to dynamic values"
+    );
+    assert_eq!(value.to_json().unwrap(), rows[1]);
+    assert!(
+        ops(Pos::type_info().name).from_wire(&column, 0).is_err(),
+        "a column of another type is refused"
+    );
+}
