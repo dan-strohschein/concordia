@@ -59,7 +59,7 @@ export type ColliderShape =
  */
 export interface Collider {
   /**
-   * Detects overlaps (collision events) without pushing anything.
+   * Detects overlaps (contact signals) without pushing anything.
    */
   is_sensor?: boolean;
   layer?: PhysicsLayer;
