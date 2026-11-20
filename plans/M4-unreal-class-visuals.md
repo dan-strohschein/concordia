@@ -1,25 +1,25 @@
 # M4: Unreal-class visuals
-Status: Planned · Depends on: M1 (render), M2 (scripting host, graphs' WIT API), M3 (replay assertions, Studio) · Detail level: **Needs refinement after M3** · Estimated effort: 44–60 agent-assisted engineer-weeks (two parallel tracks; see Effort estimate)
+Status: Planned · Depends on: M1 (render), M2 (scripting host, graphs' WIT API), M3 (replay assertions, Studio) · Detail level: **Needs refinement after M3** · Estimated effort: 32–45 agent-assisted engineer-weeks (two parallel tracks; see Effort estimate)
 
-> This plan has full phase breakdowns and test lists. Its numbers (budgets, FLIP tolerances, page sizes, cluster sizes) are **provisional** and must be recalibrated in the refinement pass after M3, using measurements from the M1–M3 renderer on the reference Mac. Every recalibrated number lands in a text file (`tests/perf/budgets/*.budget.ron`, per-test tolerances), never in code.
+> This plan has full phase breakdowns and test lists. Its numbers (budgets, FLIP tolerances, page sizes, meshlet sizes) are **provisional** and must be recalibrated in the refinement pass after M3, using measurements from the M1–M3 renderer on the reference Mac. Every recalibrated number lands in a text file (`tests/perf/budgets/*.budget.ron`, per-test tolerances), never in code.
 
 ## Goal & context
 M1 gave us a clustered forward+ PBR renderer with cascaded shadow maps (CSM), a render graph, Slang shaders and golden-image tests. M2 and M3 gave us WASM scripting, the reference port vertical slice, record/replay and playtest assertions, and Agent Studio. M4 adds the parts that make the engine's visuals and authoring look like Unreal's, and it builds them only from public research:
 
-1. **Virtualized geometry.** Offline cluster building with a cluster LOD DAG (meshoptimizer), page streaming, GPU-driven instance and cluster culling with two-pass HZB occlusion, a visibility buffer, mesh-shader hardware raster with fallbacks, a software rasterizer for small triangles, and a material resolve pass.
+1. **Meshlet geometry with GPU culling (ADR-0100).** Offline meshlets (meshoptimizer), bindless geometry buffers, and per-meshlet frustum, normal-cone and two-pass HZB occlusion culling in object/mesh shaders (Metal 3 first) or in compute with indirect draws. The hardware rasterizer draws the survivors into M1's clustered Forward+ pass. Per-meshlet LODs and HLODs follow later; there is no software rasterizer, visibility buffer or geometry streaming.
 2. **Virtual shadow maps (VSM).** Page-based, cached across frames, and able to handle many lights. VSM replaces CSM for opaque geometry; CSM stays as the fallback path.
 3. **Dynamic GI**, staged: world-space irradiance probes in the style of DDGI first; a screen-space radiance cache and surface cache later.
 4. **Temporal AA and upscaling.** Our own TAA/TAAU, with MetalFX as an optional backend on Apple.
 5. **`concordia-graph`.** Visual graphs stored as text (`.graph.ron`), a node library generated from `concordia-reflect` and the WIT API, a type checker, a compiler to WASM components, an editor graph panel, and MCP tools so agents author graphs as text.
 6. **`concordia-ai`.** Runtime AI with no LLM: behavior trees, utility AI, perception and a blackboard. It also defines an optional, opt-in interface for LLM planner and dialogue plugins.
 
-All of this is test-driven. Perf budgets are tests. Shading quality is measured against our own reference path tracer, which is a test oracle with its own tests. CPU-side algorithms (DAG building, LOD cuts, page tables, the graph type checker) get ordinary unit and property tests.
+All of this is test-driven. Perf budgets are tests. Shading quality is measured against our own reference path tracer, which is a test oracle with its own tests. CPU-side algorithms (meshlet building, culling references, VSM page tables, the graph type checker) get ordinary unit and property tests.
 
 **Clean room is critical in this milestone.** Nanite, Lumen and VSM are Unreal features. We implement only from the public papers and talks in the References appendix, from public API docs, and from permissively licensed code (meshoptimizer, MIT). No contributor who has studied Unreal's renderer source may write the equivalent system here (`docs/clean-room.md`). Each new crate's or module's `AGENTS.md` carries a References section copied from the appendix entries it used.
 
 ## Scope / Non-goals
 **In scope**
-- Static and rigid-instanced opaque and alpha-masked geometry through the virtualized geometry path.
+- Static and rigid-instanced opaque and alpha-masked geometry through the meshlet path.
 - Directional, spot and point lights in VSM. Up to 64 shadowed local lights per frame, plus any number of unshadowed spell lights through the existing light clusters.
 - Diffuse dynamic GI (DDGI-style probes) with fast response to spell lights. Specular GI comes from a probe-based fallback plus the M1 reflection path; full-quality specular GI is stage B.
 - TAA and TAAU on every backend, and the MetalFX temporal scaler on Apple.
@@ -28,11 +28,12 @@ All of this is test-driven. Perf budgets are tests. Shading quality is measured 
 - A perf harness, a reference path tracer, and quality methodology that later milestones reuse.
 
 **Non-goals (deferred; see `later-backlog.md`)**
-- Skinned or deforming meshes in virtualized geometry. They stay on the forward+ path and write into the same depth and visibility targets.
-- Translucency in the visibility buffer. Translucent surfaces stay on forward+.
+- Skinned or deforming meshes as meshlets. They stay on the M1 forward+ path and share the depth buffer.
+- Translucent meshlets. Translucent surfaces stay on the M1 forward+ path.
+- A software rasterizer, a visibility buffer with material binning, a cluster LOD DAG, and virtualized geometry streaming from disk (ADR-0100). Any of them needs its own ADR.
 - GI stage B (screen-space radiance cache, surface cache) as a *requirement*. It is scaffolded, and its entry criteria are defined in Phase 4.8.
 - Hardware-ray-traced reflections; frame generation (MetalFX frame interpolation); D3D12; consoles.
-- Tessellation or displacement of clusters; Nanite-style foliage and voxel LODs.
+- Tessellation or displacement of meshlets; foliage and voxel LODs.
 - Shipping any LLM model or provider in the default build.
 
 ## Dependencies (what must already exist, from which milestone)
@@ -55,22 +56,22 @@ All of this is test-driven. Perf budgets are tests. Shading quality is measured 
 **Created**
 - `crates/concordia-graph/`: graph model, `.graph.ron` read/write with canonical formatting, node library, type checker, IR, interpreter (the test oracle), WASM compiler.
 - `crates/concordia-ai/`: blackboard, behavior tree runtime, utility AI, perception, `LlmProvider` plugin interface, mock provider.
-- `crates/concordia-cluster/` *(proposed)*: CPU-only cluster building, LOD DAG, page format and encoding. Testable without a GPU.
+- `crates/concordia-cluster/` *(proposed)*: CPU-only meshlet building and per-meshlet bounds and normal cones for GPU culling (ADR-0100). Testable without a GPU.
 - `crates/meshopt-sys/` *(proposed)*: bindgen over vendored `third_party/meshoptimizer` (MIT, v1.0 or later).
 - `crates/concordia-pathtrace/` *(proposed)*: a reference compute path tracer with its own BVH. It may **not** depend on `concordia-render`, so the oracle stays independent of the code under test.
 - `crates/concordia-ai-llm-local/` *(proposed, opt-in, not a default workspace member)*: an example local-model provider plugin.
-- `tests/gates/m4_virtual_geometry.rs`, `m4_lighting_quality.rs`, `m4_fallbacks.rs`, `m4_graph_enemy.rs`.
-- `tests/golden/m4_vgeo/`, `m4_vsm/`, `m4_gi/`, `m4_taa/`, `m4_reference/` (path-traced references), `m4_graph/`.
+- `tests/gates/m4_meshlet_geometry.rs`, `m4_lighting_quality.rs`, `m4_fallbacks.rs`, `m4_graph_enemy.rs`.
+- `tests/golden/m4_meshlet/`, `m4_vsm/`, `m4_gi/`, `m4_taa/`, `m4_reference/` (path-traced references), `m4_graph/`.
 - `tests/perf/`: the harness runner, `reference.ron` (the reference machine), `budgets/*.budget.ron`.
-- `examples/m4-canyon/` (gate scene with ≥100M source triangles, procedural, CC0), `examples/m4-lighting/` (quality scenes).
+- `examples/m4-canyon/` (gate scene with ≥20M instanced source triangles, procedural, CC0), `examples/m4-lighting/` (quality scenes).
 - `editor/ui/src/panels/graph/`: the graph panel.
 - `studio/skills/author-graph/`, `studio/skills/author-behavior/`: Claude Code skills for graph authoring.
 
 **Touched**
-- `concordia-rhi`, `concordia-rhi-metal`, `concordia-rhi-vulkan`: a capability struct (`RhiCaps`), mesh/object (task) stages, 64-bit atomics, ray queries and acceleration structures, timestamp granularity, cap masking for tests.
+- `concordia-rhi`, `concordia-rhi-metal`, `concordia-rhi-vulkan`: a capability struct (`RhiCaps`), mesh/object (task) stages, ray queries and acceleration structures, timestamp granularity, cap masking for tests.
 - `concordia-shaders`: mesh/object stages through Slang, a Slang capability profile per backend.
-- `concordia-render`: new modules `vgeo` (culling, raster, visibility buffer, resolve, streaming), `vsm`, `gi`, `temporal` (TAA/TAAU, the MetalFX backend), `perf` (pass timing and budget checks). CSM and forward+ remain.
-- `concordia-assets`, `concordia-import-gltf`: a "cluster build" derived-data stage, triggered by `<file>.import.ron` (`virtualized: true`).
+- `concordia-render`: new modules `meshlet` (scene buffers, culling, HZB, both draw paths, drawing into Forward+), `vsm`, `gi`, `temporal` (TAA/TAAU, the MetalFX backend), `perf` (pass timing and budget checks). CSM and forward+ remain.
+- `concordia-assets`, `concordia-import-gltf`: a "meshlet build" derived-data stage, triggered by `<file>.import.ron` (`meshlets: true`).
 - `concordia-reflect` (+ derive): `#[reflect(graph_node(...))]` metadata and pure/impure markers.
 - `wit/`: an `concordia:game/ai` interface (blackboard, perception queries) for graphs and WASM scripts.
 - `concordia-script-wasm`: loads graph-compiled components; Wasmtime configured for NaN canonicalization.
@@ -87,20 +88,19 @@ There are two parallel tracks. **Track R (rendering)** is 4.1–4.8; 4.1 comes f
 ### Phase 4.1: Perf harness, capability matrix and reference path tracer (oracles first)
 - **Objective:** Before writing any feature, build the measuring instruments: per-pass GPU timing with budgets as tests, a capability matrix with masking (so one machine can test every fallback), and a path-traced reference renderer that is itself verified.
 - **Deliverables**
-  - `RhiCaps { mesh_shaders, object_shaders, atomic_u64_min_max_buffer, atomic_u64_texture, ray_query, hw_ray_tracing, metalfx_temporal, timestamp_granularity, max_mesh_output_vertices, max_mesh_output_primitives }`, filled in at device creation from Metal GPU families and runtime probes, and Vulkan features/extensions. Also `RhiCaps::masked(&CapsMask)` for tests.
-  - `concordia-render::perf`: `PassTimer`, which wraps each render-graph pass in timestamp samples. On Apple Silicon, Metal counter sampling is supported only at encoder (stage) boundaries, so in perf mode the render graph gives every timed pass its own encoder. It also provides `FrameStats` (per-pass ms, counters such as clusters drawn and pages resident) and `BudgetFile` (RON).
+  - `RhiCaps { mesh_shaders, object_shaders, ray_query, hw_ray_tracing, metalfx_temporal, timestamp_granularity, max_mesh_output_vertices, max_mesh_output_primitives }`, filled in at device creation from Metal GPU families and runtime probes, and Vulkan features/extensions. Also `RhiCaps::masked(&CapsMask)` for tests.
+  - `concordia-render::perf`: `PassTimer`, which wraps each render-graph pass in timestamp samples. On Apple Silicon, Metal counter sampling is supported only at encoder (stage) boundaries, so in perf mode the render graph gives every timed pass its own encoder. It also provides `FrameStats` (per-pass ms, counters such as meshlets drawn and VSM pages resident) and `BudgetFile` (RON).
   - The `tests/perf/` runner: warm up 120 frames, measure 300 frames along a scripted camera path, report median and p95 per pass, write `target/perf/<scene>.perf.ron`, and compare against `tests/perf/budgets/<scene>.budget.ron`.
-  - `tests/perf/reference.ron`, which names the reference machine (GPU family, core count, OS). **Reference machine: the author's Apple M3 Pro (18-core GPU, 18 GB, Metal 4, macOS 26)**, which supports 64-bit atomics, so the primary software-raster path runs on it. so a perf test can tell whether it is running on reference hardware.
+  - `tests/perf/reference.ron`, which names the reference machine (GPU family, core count, OS). **Reference machine: the author's Apple M3 Pro (18-core GPU, 18 GB, Metal 4, macOS 26)**, which supports Metal 3 mesh shaders. The file lets a perf test tell whether it is running on reference hardware.
   - `concordia-pathtrace`: a progressive unidirectional path tracer in Slang compute with next-event estimation and MIS, its own CPU-built SAH BVH (binned), our PBR BRDF (GGX + Lambert, energy-compensated to match the M1 model), emissive triangles, analytic lights and an environment map. It uses fixed seeds (deterministic), a fixed tonemap and exposure, and writes a PNG.
   - `capture.reference` (Engine API) and `just bless-reference <scene>`, which renders and commits `tests/golden/m4_reference/<scene>.png` plus `<scene>.reference.ron` metadata (spp, seed, git hash).
 - **Tests first**
-  - `caps_report_matches_known_family_table`: on Metal, the caps derived from the GPU family match a hand-written table for Apple7, Apple8, Apple9 and Apple10 (mesh shaders: Apple7+; documented 64-bit buffer min/max: Apple9+; hardware RT: Apple9+).
-  - `caps_runtime_probe_agrees_with_table_or_is_more_permissive`: the 64-bit atomics probe kernel runs and its result is consistent with the table. It logs Apple8 behavior and never *removes* a documented capability.
-  - `masked_caps_hide_features_from_render_paths`: with `mesh_shaders` masked, the vgeo pipeline selects the indirect-index fallback (asserted through `FrameStats.raster_path`).
+  - `caps_report_matches_known_family_table`: on Metal, the caps derived from the GPU family match a hand-written table for Apple7, Apple8, Apple9 and Apple10 (mesh shaders: Apple7+; hardware RT: Apple9+).
+  - `masked_caps_hide_features_from_render_paths`: with `mesh_shaders` masked, the meshlet pipeline selects the compute + indirect fallback (asserted through `FrameStats.raster_path`).
   - `pass_timer_reports_every_graph_pass_once`: a three-pass graph yields three monotonic, non-zero timings.
   - `pass_timer_overhead_under_2_percent`: frame time with timers on vs off, on a fixed scene.
   - `budget_file_roundtrips_canonically` (`insta` snapshot).
-  - `budget_violation_names_pass_and_excess`: a synthetic stats input over budget fails with a message such as `vgeo.raster_hw: p95 2.71 ms > budget 2.00 ms (+35%)`.
+  - `budget_violation_names_pass_and_excess`: a synthetic stats input over budget fails with a message such as `meshlet.draw: p95 2.71 ms > budget 2.00 ms (+35%)`.
   - `perf_test_on_non_reference_hardware_reports_but_does_not_claim_pass`: the result status is `NotReference`, never `Pass`.
   - `pathtrace_white_furnace_conserves_energy`: a unit-albedo Lambert sphere inside a uniform white environment renders with mean radiance 1.0 ± 0.5% (Lambert) and ± 3% (rough GGX, after energy compensation).
   - `pathtrace_matches_analytic_irradiance_from_disk_light`: the radiance of a diffuse plane under a disk light matches the closed form within 1%.
@@ -116,116 +116,78 @@ There are two parallel tracks. **Track R (rendering)** is 4.1–4.8; 4.1 comes f
 
 ---
 
-### Phase 4.2: Offline cluster building and the cluster LOD DAG (CPU)
-- **Objective:** Turn any static mesh into clusters arranged in a LOD DAG with monotonic error bounds, then pack the result into streamable pages in the DDC. All of this is CPU work, tested without a GPU.
+### Phase 4.2: Offline meshlet building (CPU)
+- **Objective:** Split any static mesh into meshlets with bounds and normal cones for GPU culling, and cache the result in the DDC. All of this is CPU work, tested without a GPU.
 - **Deliverables**
-  - `meshopt-sys` (vendored meshoptimizer v1.0 or later, MIT) exposing `meshopt_buildMeshlets*`, `meshopt_buildMeshletsSpatial`, `meshopt_partitionClusters`, `meshopt_simplifyWithAttributes` (with `meshopt_SimplifyLockBorder` / `meshopt_SimplifySparse`), `meshopt_computeClusterBounds`, `meshopt_optimizeMeshlet` and the vertex codecs.
-  - `concordia-cluster`: `ClusterBuildSettings { max_vertices: 128, max_triangles: 128, group_size: 8..32 (partition target), simplify_ratio: 0.5, attribute_weights }`; `ClusterDag { clusters, groups, levels }`; `Cluster { bounds: Sphere, lod_bounds: Sphere, self_error, parent_error, group, material_ranges, ... }`.
-  - The algorithm follows the public descriptions (Karis 2021; Kapoulkine's `clusterlod.h` and "Billions of triangles in minutes"): (1) split into clusters; (2) loop: partition clusters into groups by adjacency and locality → merge each group → simplify to about 50% with group borders locked → re-split into clusters → record the group's error and bounds as the parent LOD; continue until one root group remains or simplification stalls.
-  - The page format `ClusterPage` (target 128 KiB): whole groups only. Positions quantized per cluster (configurable bits, default 16), octahedral normals and tangents, UVs quantized to the cluster's UV bounds. Root pages are marked *always resident*. Pages are written to `.concordia/ddc` keyed by content hash plus settings hash.
-  - A `virtualized: true | false | auto` field in `<file>.import.ron`; `auto` selects meshes with more than 8k triangles.
+  - `meshopt-sys` (vendored meshoptimizer v1.0 or later, MIT) exposing `meshopt_buildMeshlets*`, `meshopt_buildMeshletsSpatial`, `meshopt_computeMeshletBounds` / `meshopt_computeClusterBounds`, `meshopt_optimizeMeshlet`, and the vertex and index codecs.
+  - `concordia-cluster`: `MeshletBuildSettings { max_triangles: 64 | 128, max_vertices: 64..=128, cone_weight }`; `MeshletMesh { meshlets, vertices, indices }`; `Meshlet { bounds: Sphere, cone: NormalCone, material, vertex_range, triangle_range }`.
+  - A meshlet never spans two materials, so each draw shades with one material.
+  - Encoded meshlet data written to `.concordia/ddc`, keyed by content hash plus settings hash.
+  - A `meshlets: true | false | auto` field in `<file>.import.ron`; `auto` selects static meshes with more than 8k triangles.
 - **Tests first**
-  - `clusters_respect_vertex_and_triangle_limits` (`proptest` over random meshes).
-  - `every_source_triangle_appears_in_exactly_one_leaf_cluster`.
-  - `dag_errors_are_monotonic_parent_ge_child`: for every group, parent_error ≥ the max of its children's self_error, and parent lod_bounds contain the children's lod_bounds. This guarantees the cut is consistent under any view.
-  - `lod_cut_covers_each_leaf_exactly_once`: for 1,000 random view/threshold pairs, the CPU reference cut selector (render a cluster iff `projected(self_error) ≤ τ < projected(parent_error)`) selects a set in which every leaf triangle region has exactly one selected ancestor-or-self.
-  - `lod_cut_is_watertight`: on a closed test mesh (a subdivided sphere and a procedural rock), the selected clusters at every cut form a closed manifold with no boundary edges, after welding by position.
-  - `simplification_reduces_triangles_per_level_by_at_least_40_percent` (with a stall guard: the DAG terminates).
-  - `dag_root_is_single_group_or_flagged_stall`.
-  - `geometric_error_tracks_hausdorff_distance`: for sampled cuts, the measured one-sided Hausdorff distance to the source is ≤ the reported error × 1.1.
-  - `page_encoding_roundtrip_within_quantization_bounds`: position error ≤ half a quantization step; normals within 0.5°.
-  - `pages_contain_whole_groups_and_respect_size_limit`.
-  - `build_is_deterministic_across_thread_counts`: same input gives byte-identical pages with 1 and N threads.
-  - `ddc_reuses_pages_when_source_unchanged`: the second import is a cache hit.
-  - `cluster_build_throughput_budget`: a 10M-triangle mesh builds in under 30 s on the reference Mac (a perf test with `NotReference` semantics).
+  - `meshlets_respect_vertex_and_triangle_limits` (`proptest` over random meshes).
+  - `every_source_triangle_appears_in_exactly_one_meshlet`.
+  - `meshlets_never_span_two_materials`.
+  - `meshlet_bounds_contain_every_vertex` (`proptest`).
+  - `normal_cone_is_conservative`: for random views, a meshlet the cone test rejects has no front-facing triangle.
+  - `meshlet_encoding_roundtrips_exactly`.
+  - `build_is_deterministic_across_thread_counts`: same input gives byte-identical output with 1 and N threads.
+  - `ddc_reuses_meshlets_when_source_unchanged`: the second import is a cache hit.
+  - `meshlet_build_throughput_budget`: a 10M-triangle mesh builds in under 10 s on the reference Mac (a perf test with `NotReference` semantics; provisional).
 - **Implementation notes**
-  - Material boundaries: a cluster may span up to 4 materials (material ranges), which avoids a sliver explosion. Simplification preserves material borders by locking them.
-  - Attribute-aware simplification uses `meshopt_simplifyWithAttributes`, with weights for normals and UVs.
-  - `clusterlod.h` (MIT) is the primary reference. We reimplement its structure in Rust and cite it in `concordia-cluster/AGENTS.md`.
-  - References: Karis, Stubbe, Wihlidal, "A Deep Dive into Nanite Virtualized Geometry" (SIGGRAPH 2021 Advances); Kapoulkine, meshoptimizer docs, `demo/clusterlod.h`, and "Billions of triangles in minutes" (2025); Cignoni et al., "Batched Multi Triangulation" (IEEE Vis 2005); Garland & Heckbert 1997 (QEM); Hoppe 1996 (progressive meshes).
-- **Done criteria:** `concordia import` builds DAG pages for the glTF test corpus; all tests are green; `concordia cluster stats <asset>` prints levels, clusters, error range and page count.
+  - 64 or 128 triangles per meshlet is chosen per backend from `RhiCaps` (`max_mesh_output_*`); the default is the larger size that fits.
+  - References: Kapoulkine, meshoptimizer README and API docs (meshlets, cluster bounds); Kubisch 2018; Apple WWDC22 mesh shaders; Wihlidal 2016.
+- **Done criteria:** `concordia import` builds meshlets for the glTF test corpus; all tests are green; `concordia cluster stats <asset>` prints meshlet count, triangles per meshlet and bounds statistics.
 
 ---
 
-### Phase 4.3: Visibility buffer, hardware cluster raster and material resolve
-- **Objective:** Render clusters (the leaf level, with no culling yet) into a 64-bit visibility buffer through mesh shaders or a fallback, then shade it with a material resolve that matches the M1 forward+ shading.
+### Phase 4.3: GPU scene buffers and meshlet drawing into Forward+
+- **Objective:** Draw meshlets (no culling yet) straight into M1's clustered Forward+ pass, through mesh shaders or a compute fallback, with the same image as the M1 path.
+- **Decision (ADR-0100):** meshes are split offline into 64- or 128-triangle meshlets with meshoptimizer, and the geometry is uploaded into large bindless GPU buffers. Per-meshlet frustum, backface (cone) and HZB occlusion culling (4.4) runs in object/mesh shaders (Metal 3 first, then `VK_EXT_mesh_shader`, then D3D12 mesh shaders), or in compute with indirect draws where mesh shaders are missing. The hardware rasterizer draws the surviving meshlets into the Forward+ pass (or a G-buffer if M4 adds one). There is no software rasterizer and no visibility-buffer material binning. LOD starts with culling only; discrete per-meshlet LODs and HLODs come later (4.5), and virtualized geometry streaming is out of scope at first.
 - **Deliverables**
-  - GPU scene buffers: an instance table (transform, previous transform, asset id, flags), and cluster headers in a GPU page pool (a fixed-size buffer of `ClusterPage` slots).
-  - Visibility buffer: `u64` per pixel = `depth (32, reversed-Z float bits) | visible_cluster_index (25) | triangle (7)`. It is a **buffer** indexed by pixel, because documented 64-bit atomic min/max is on buffers (Apple9+). Tiled texture atomics are used only if the runtime probe proves them.
-  - Hardware raster paths, selected by `RhiCaps`:
-    1. **Mesh shader path** (Metal 3 object+mesh on Apple7+; `VK_EXT_mesh_shader`): the object stage culls per cluster and amplifies; the mesh stage emits ≤128 triangles; the fragment writes the vis-buffer value.
-    2. **Indirect-index fallback** (no mesh shaders): a compute pass expands surviving clusters' triangles into a compacted index buffer, drawn with one indirect indexed draw that pulls vertices from pages.
-    3. Compute-only raster (Phase 4.5) can take everything as a last resort.
-  - Material resolve: a classification pass bins 8×8 tiles by material id → indirect dispatch per material bin → each material shader decodes the triangle, reconstructs barycentrics and **analytic screen-space derivatives** for texture LOD, interpolates attributes, and runs the M1 PBR + clustered-lights shading, writing HDR color. Masked materials run an alpha test in the raster stage, with a per-material flag that keeps such clusters off the software rasterizer until the masked path lands in 4.5.
+  - GPU scene buffers: an instance table (transform, previous transform, mesh, flags) and bindless meshlet vertex, index and header buffers.
+  - Draw paths, selected by `RhiCaps`:
+    1. **Mesh shader path** (Metal 3 object+mesh on Apple7+; `VK_EXT_mesh_shader`; D3D12 mesh shaders when that backend exists): the object stage takes a batch of meshlets and amplifies the survivors; the mesh stage emits ≤128 triangles; the fragment stage is the M1 Forward+ shader.
+    2. **Compute + indirect fallback** (no mesh shaders): a compute pass writes indirect draw arguments for the surviving meshlets, drawn with indirect indexed draws that pull vertices from the bindless buffers.
   - Motion vectors from current and previous instance transforms (for TAA in 4.6).
-  - Forward+ (skinned, translucent) composites against the vis-buffer depth.
+  - Skinned, translucent and other non-meshlet geometry stays on the M1 path and shares the depth buffer.
 - **Tests first**
-  - `vis_buffer_packing_roundtrips` (unit test plus `proptest`).
-  - `depth_ordering_in_packed_value_matches_float_depth`: reversed-Z float bits compare monotonically as unsigned integers for all positive depths.
-  - `vgeo_leaf_render_matches_forward_plus_golden`: the same glTF scene rendered via forward+ (M1) and via vgeo at leaf LOD differs by mean FLIP ≤ 0.01. This proves resolve, derivatives and the material mapping. (Golden: `m4_vgeo/leaf_vs_forward.png`.)
-  - `analytic_derivatives_match_hardware_derivatives`: texture-LOD selection in resolve picks the same mip as the forward path on a mip-colored checker (≥ 99.5% of pixels).
-  - `indirect_index_fallback_matches_mesh_shader_path`: with `mesh_shaders` masked, the image is FLIP ≤ 0.005 against the mesh-shader output.
-  - `masked_material_clusters_render_alpha_cutouts_correctly` (golden).
-  - `motion_vectors_zero_for_static_scene_and_exact_for_translation` (unit-level GPU readback).
-  - `forward_plus_skinned_mesh_composites_with_vgeo_depth` (golden).
-  - `material_bins_cover_every_pixel_exactly_once`: a debug-buffer readback.
+  - `meshlet_render_matches_forward_plus_golden`: the same glTF scene drawn through meshlets and through M1's path differs by mean FLIP ≤ 0.005 (`m4_meshlet/meshlets_vs_forward.png`).
+  - `compute_fallback_matches_mesh_shader_path`: with `mesh_shaders` masked, the image is FLIP ≤ 0.002 against the mesh-shader output.
+  - `masked_material_meshlets_render_alpha_cutouts_correctly` (golden).
+  - `motion_vectors_zero_for_static_scene_and_exact_for_translation` (GPU readback).
+  - `skinned_mesh_composites_with_meshlet_depth` (golden).
 - **Implementation notes**
-  - Metal mesh shaders: the object stage is `[[object]]` and the mesh stage `[[mesh]]` with `mesh_grid_properties`. Respect the device's `max_mesh_output_*` caps; 128 triangles and 128 vertices fit current limits. Slang's Metal mesh-shader support must be verified early (see Risks). If it is missing, a small hand-written MSL shim is allowed only for the stage entry points, behind `concordia-shaders`.
-  - Resolve derivatives: use the barycentric derivative method (as in the visibility-buffer and deferred-attribute-interpolation papers).
-  - References: Burns & Hunt, "The Visibility Buffer: A Cache-Friendly Approach to Deferred Shading" (JCGT 2013); Schied & Dachsbacher, "Deferred Attribute Interpolation for Memory-Efficient Deferred Shading" (HPG 2015); Engel, "Triangle Visibility Buffer" (GDC 2016/ConfettiFX); Haar & Aaltonen, "GPU-Driven Rendering Pipelines" (SIGGRAPH 2015 Advances); Wihlidal, "Optimizing the Graphics Pipeline with Compute" (GDC 2016); Apple WWDC22 "Transform your geometry with Metal mesh shaders"; Khronos `VK_EXT_mesh_shader` spec; Kubisch, "Introduction to Turing Mesh Shaders" (NVIDIA 2018); Karis et al. 2021.
-- **Done criteria:** a glTF scene renders via vgeo on both raster paths with goldens passing; the editor's viewport has debug views for clusters, triangles, material bins and overdraw (`render.set_debug_view`).
+  - Metal mesh shaders: the object stage is `[[object]]` and the mesh stage `[[mesh]]` with `mesh_grid_properties`. Respect the device's `max_mesh_output_*` caps. Slang's Metal mesh-shader support must be verified early (see Risks). If it is missing, a small hand-written MSL shim is allowed only for the stage entry points, behind `concordia-shaders`.
+  - References: Apple WWDC22 "Transform your geometry with Metal mesh shaders"; Khronos `VK_EXT_mesh_shader` spec; Microsoft DirectX mesh shader spec; Kubisch, "Introduction to Turing Mesh Shaders" (NVIDIA 2018); Haar & Aaltonen, "GPU-Driven Rendering Pipelines" (SIGGRAPH 2015 Advances); Wihlidal, "Optimizing the Graphics Pipeline with Compute" (GDC 2016).
+- **Done criteria:** a glTF scene renders through meshlets on both draw paths with goldens passing; the editor's viewport has debug views for meshlets, triangles and overdraw (`render.set_debug_view`).
 
 ---
 
-### Phase 4.4: GPU culling, DAG LOD cut and two-pass HZB occlusion
-- **Objective:** Draw only what matters: instance culling, then parallel LOD-cut selection over the DAG, then cluster culling, with two-pass hierarchical-Z occlusion that has no false negatives.
+### Phase 4.4: GPU culling: frustum, normal cone and two-pass HZB occlusion
+- **Objective:** Draw only what can be seen: instance culling, then per-meshlet frustum, backface-cone and HZB occlusion culling, with no false negatives.
 - **Deliverables**
-  - Instance culling (frustum, HZB) → cluster-group selection. Each group node of the DAG is tested in parallel: a persistent-threads work queue over a BVH of groups (built offline in 4.2), so a frame does not test every cluster.
-  - LOD cut on the GPU uses the same rule as the CPU reference: render iff `projected(self_error) ≤ τ < projected(parent_error)`, where τ is one pixel by default (`render.vgeo.error_pixels`).
-  - Cluster culling: frustum, backface cone (from `meshopt_computeClusterBounds`) and HZB.
-  - **Two-pass occlusion:** pass 1 draws the clusters visible last frame (tested against last frame's HZB reprojected) → build HZB from the new depth → pass 2 tests everything culled in pass 1 against the new HZB and draws what has become visible → final HZB is kept for the next frame and for VSM (4.7).
+  - Instance culling (frustum, HZB), then meshlet culling (frustum, normal cone, HZB), in the object stage or in the compute fallback.
+  - **HZB source: two-pass re-test (ADR-0100).** Pass 1 draws the meshlets visible last frame, tested against last frame's HZB → build the HZB from the new depth → pass 2 re-tests everything pass 1 culled against the new HZB and draws what has become visible → the final HZB is kept for the next frame and for VSM (4.7).
   - Per-view culling infrastructure (a view array) so VSM pages and multiple cameras reuse the same passes.
 - **Tests first**
-  - `gpu_lod_cut_equals_cpu_reference_cut`: for 50 fixed views, the GPU-selected cluster set equals `concordia-cluster`'s CPU selector (set equality via readback).
   - `two_pass_occlusion_has_no_false_negatives_on_camera_cut`: a camera teleports between frames; the image is FLIP ≤ 0.001 against a render with occlusion culling disabled, on the very first frame after the cut.
   - `two_pass_occlusion_has_no_false_negatives_with_moving_occluder` (scripted 120-frame sequence; every frame compared).
-  - `occlusion_culls_at_least_90_percent_in_occluded_city_scene`: `FrameStats.clusters_drawn / clusters_after_frustum` ≤ 0.10 behind a wall.
+  - `occlusion_culls_at_least_90_percent_in_occluded_city_scene`: `FrameStats.meshlets_drawn / meshlets_after_frustum` ≤ 0.10 behind a wall.
   - `backface_cone_culling_is_conservative`: random views on a sphere; no visible triangle is lost (equal to a no-cone-culling render).
   - `hzb_mips_are_conservative_max_depth`: CPU check of each mip against its parent texels.
-  - `lod_transitions_have_no_cracks`: a slow dolly through LOD changes; an edge-detection test on a constant-albedo unlit debug view finds no background-colored pixels inside the silhouette.
-  - `cluster_count_scales_with_screen_pixels_not_source_triangles`: rendered triangles stay within ±15% when the instance count goes from 1 to 1,000 at fixed screen coverage (the core "virtualized" property).
+  - `gpu_culling_matches_cpu_reference`: for 50 fixed views, the GPU's surviving meshlet set equals a CPU frustum-and-cone reference (set equality via readback, occlusion off).
+  - `compute_fallback_culls_the_same_meshlets_as_mesh_shaders` (masked caps).
 - **Implementation notes**
-  - Persistent threads on Apple GPUs: there is no guaranteed forward progress for spin-waiting, so use a multi-dispatch level-synchronous queue (one dispatch per DAG BVH level, indirect args written by the previous level) as the portable default. A persistent-threads variant is an optimization behind a cap flag, tested for equality with the level-synchronous one.
-  - References: Greene, Kass, Miller, "Hierarchical Z-Buffer Visibility" (SIGGRAPH 1993); Haar & Aaltonen 2015 (two-phase occlusion); Karis et al. 2021 (DAG cut, parallel selection); Wihlidal 2016.
-- **Done criteria:** the gate canyon scene (built procedurally by `concordia-gen` with fixed seeds, initially at about 20M source triangles) renders with stable cluster counts; all tests are green.
+  - References: Greene, Kass, Miller, "Hierarchical Z-Buffer Visibility" (SIGGRAPH 1993); Haar & Aaltonen 2015 (two-phase occlusion); Wihlidal 2016 (cone and cluster culling); Kapoulkine, meshoptimizer docs (cluster bounds and cones).
+- **Done criteria:** the gate canyon scene (built procedurally by `concordia-gen` with fixed seeds) renders with stable meshlet counts on both draw paths; all tests are green.
 
 ---
 
-### Phase 4.5: Software rasterizer for small triangles and geometry streaming
-- **Objective:** Rasterize tiny triangles in compute faster than the hardware does, with a correct fallback where 64-bit atomics are missing. Stream cluster pages on demand within a fixed GPU memory budget.
-- **Deliverables**
-  - Cluster binning: a cluster goes to the software raster when its projected triangle edge is under N pixels (default 32 px cluster extent heuristic, tunable), and to the hardware raster otherwise.
-  - **SW raster (primary, `atomic_u64_min_max_buffer`):** one thread per triangle (and a scanline variant for triangles larger than 4 px). Edge functions with a top-left fill rule matching the hardware's; `atomic_min` of the packed `u64` into the vis buffer (reversed-Z: max of the inverted value).
-  - **SW raster fallback A (no 64-bit atomics; Apple7/Apple8 per documentation):** two passes. (1) A 32-bit `atomic_max` on depth into an R32 buffer. (2) Re-rasterize; where `depth == stored`, write the 32-bit payload (non-atomic store; ties resolve to an arbitrary but valid triangle at equal depth). This costs about 2× raster time and is still pixel-correct.
-  - **Fallback B:** route all clusters to the hardware path (the masked `software_raster`). It is correct but slower, and kept as the safety net.
-  - **Streaming:** `StreamingRequest` feedback written by culling (groups wanted at a finer LOD than resident) → a CPU streaming manager (priority = screen error × recency) → async read from the memory-mapped DDC → upload into page-pool slots → page table update. LRU eviction keeps the **resident-parent invariant**: never evict a page whose descendants are resident, so the cut always falls back to coarser, resident geometry.
-  - Budgets: page pool (default 1 GiB, configurable), upload bandwidth per frame (default 64 MiB).
-- **Tests first**
-  - `sw_raster_matches_hw_raster_coverage_for_small_triangles`: per-pixel cluster/triangle ids are identical (≥ 99.9% of pixels; the remainder are equal-depth ties) on a fixed micro-triangle scene.
-  - `sw_raster_fill_rule_has_no_double_hits_or_gaps_on_shared_edges`: a triangle fan with a counter buffer; every covered pixel is written exactly once.
-  - `fallback_a_two_pass_matches_u64_atomic_path` (with `atomic_u64_min_max_buffer` masked): FLIP ≤ 0.002 in the shaded output.
-  - `fallback_b_all_hardware_matches_u64_atomic_path`.
-  - `sw_raster_faster_than_hw_for_micro_triangles` (perf, `NotReference` semantics): at most 0.6× of hardware time on the micro-triangle scene.
-  - `streaming_never_evicts_parent_of_resident_child` (`proptest` on the CPU streaming manager with random request streams).
-  - `streaming_converges_to_full_detail_within_n_frames`: after a camera cut the image converges to the all-resident golden within 30 frames (FLIP ≤ 0.005 at frame 30).
-  - `streaming_respects_pool_and_bandwidth_budgets`: counters never exceed the configured limits.
-  - `missing_pages_degrade_to_coarser_lod_not_holes`: with pages artificially withheld, the image has no background-colored holes inside silhouettes.
-  - `streaming_is_deterministic_given_request_trace`: replaying a recorded request trace yields identical residency.
-- **Implementation notes**
-  - Apple support: the Metal feature tables document 64-bit atomics (min/max on `ulong` buffers) for Apple9 (M3/A17 Pro and later). Reports of support on Apple8 are inconsistent, so treat Apple8 as **probe at runtime, default to fallback A**. Apple7 (M1) uses fallback A. On Vulkan, use `shaderBufferInt64Atomics`, or `VK_EXT_shader_image_atomic_int64` when present.
-  - Use the same fixed-point vertex snapping (8 sub-pixel bits) as hardware raster, so coverage matches.
-  - References: Karis et al. 2021 (software raster for micro-triangles, 64-bit atomic vis buffer); Laine & Karras, "High-Performance Software Rasterization on GPUs" (HPG 2011); Kenzel et al., "A High-Performance Software Graphics Pipeline Architecture for the GPU" (SIGGRAPH 2018); Apple Metal Feature Set Tables (64-bit atomics).
-- **Done criteria:** the canyon scene is scaled up to ≥100M source triangles and renders on the reference Mac with streaming active; both fallbacks pass with masked caps; residency and bandwidth show in `render.stats`.
+### Phase 4.5: Meshlet LODs and HLODs (follow-up, not in the gate)
+- **Objective:** Once culling is measured, add discrete per-meshlet LODs and HLOD proxies, so triangle cost falls with distance. This phase starts only after 4.4's numbers are in, and it is not part of the M4 gate.
+- **Scope when it starts:** discrete LOD levels per mesh built with `meshopt_simplifyWithAttributes`, each split into meshlets; LOD selection per instance (or per meshlet group) by projected error; HLOD proxies per cell, cached in the DDC (see `later-backlog.md`). Its tests are written when the phase is refined; they include crack-free transitions and a "rendered triangles track screen size" check.
+- **Out of scope:** virtualized geometry streaming from disk and a software rasterizer. Either needs its own ADR.
 
 ---
 
@@ -233,7 +195,7 @@ There are two parallel tracks. **Track R (rendering)** is 4.1–4.8; 4.1 comes f
 - **Objective:** Provide the temporal resolve that VSM filtering, GI and micro-geometry all rely on, and render internally below output resolution.
 - **Deliverables**
   - A `TemporalUpscaler` trait with `OwnTaau` (all backends) and `MetalFxTemporal` (Apple; through `objc2-metal-fx`, MIT/Apache) implementations, chosen by `render.temporal.backend = Own | MetalFx | Off`.
-  - Own TAAU: Halton(2,3) sub-pixel jitter (8 or 16 phases), reprojection with vis-buffer motion vectors, history sampling with Catmull-Rom, YCoCg variance clipping, disocclusion detection from depth/velocity, reactive mask (written by VFX and particles), and luminance-weighted resolve. Upscale ratios are 1.0×, 1.5× and 2.0×.
+  - Own TAAU: Halton(2,3) sub-pixel jitter (8 or 16 phases), reprojection with the motion vectors from 4.3, history sampling with Catmull-Rom, YCoCg variance clipping, disocclusion detection from depth/velocity, reactive mask (written by VFX and particles), and luminance-weighted resolve. Upscale ratios are 1.0×, 1.5× and 2.0×.
   - Mip bias for texture sampling at the internal resolution (`log2(internal/output) − ε`).
   - Exposure and pre-exposure plumbing shared with GI.
 - **Tests first**
@@ -251,14 +213,14 @@ There are two parallel tracks. **Track R (rendering)** is 4.1–4.8; 4.1 comes f
 ---
 
 ### Phase 4.7: Virtual shadow maps
-- **Objective:** Page-based, cached, high-resolution shadows for the sun and many local lights. VSM replaces CSM for vgeo and forward geometry, and CSM stays as the fallback.
+- **Objective:** Page-based, cached, high-resolution shadows for the sun and many local lights. VSM replaces CSM for meshlet and forward geometry, and CSM stays as the fallback.
 - **Deliverables**
   - Virtual address space: 16k × 16k texels per virtual shadow map, 128 × 128 texel pages (a 128 × 128 page table). Physical page pool: a depth atlas (default 8192², 4096 pages; configurable).
   - **Directional light:** a clipmap of N levels (default 16), each 2× the extent of the previous, centered on the camera and snapped to page granularity so cached pages stay valid as the camera moves.
   - **Local lights:** spot lights get 1 virtual SM; point lights get 6 (cube faces). A resolution LOD is chosen from screen-space size; at most 64 shadowed local lights are chosen per frame by importance (screen coverage × intensity × "shadowed" flag). Spell lights default to unshadowed and can opt in.
-  - **Page marking:** from the vis-buffer depth, every visible pixel marks the page it needs in each relevant light (with a mip/LOD bias), compacted into a request list.
+  - **Page marking:** from the scene depth, every visible pixel marks the page it needs in each relevant light (with a mip/LOD bias), compacted into a request list.
   - **Caching:** pages persist across frames; invalidation comes from moved, added or removed instances (their prev/current bounds projected into light space) and from light changes. A static/dynamic split keeps two cached layers and composites only the dynamic one each frame.
-  - **Rendering:** reuses the 4.4 per-view culling and the 4.3/4.5 raster paths with page-rect culling, into physical pages.
+  - **Rendering:** reuses the 4.4 per-view culling and the 4.3 draw paths (depth only) with page-rect culling, into physical pages.
   - **Sampling:** PCF in page space first; shadow-map ray marching (SMRT, a few steps along the light direction through the VSM for contact-hardening soft shadows) as stage 2 within this phase.
   - `render.shadows = Vsm | Csm` per project; CSM is auto-selected when caps lack the needed features or VSM is off.
 - **Tests first**
@@ -289,7 +251,7 @@ There are two parallel tracks. **Track R (rendering)** is 4.1–4.8; 4.1 comes f
   - *Responsiveness:* standard DDGI hysteresis (about 0.97) lags behind spell flashes. We use the adaptive hysteresis from Majercik et al. 2021: lower hysteresis where the luminance change is large, plus a "light event" boost when a spell light spawns in or near a probe's cell.
   - *Limits that motivate stage B:* probes give low-frequency diffuse light only, with no fine contact GI and weak glossy GI. Stage B (screen-space radiance cache with world-space fallback, plus a surface cache) addresses this, after M4, if the gate's quality metrics or reference port art direction call for it.
 - **Deliverables**
-  - Ray tracing source: RHI ray queries over a **proxy BLAS per asset**, built from a coarse DAG level (selected by error threshold, for example 1% of bounds) so tracing cost is independent of the 100M-triangle source. Metal ray tracing (hardware on Apple9+, the Metal intersector in software on Apple7/8); Vulkan `VK_KHR_ray_query`. Fallback: the compute BVH from `concordia-pathtrace`'s traversal library, factored into a shared `bvh` module *below* both crates (the oracle keeps its own instance and test).
+  - Ray tracing source: RHI ray queries over a **proxy BLAS per asset**, built from a simplified copy of the mesh (`meshopt_simplify`, error threshold for example 1% of bounds) so tracing cost is independent of the full-detail source. Metal ray tracing (hardware on Apple9+, the Metal intersector in software on Apple7/8); Vulkan `VK_KHR_ray_query`. Fallback: the compute BVH from `concordia-pathtrace`'s traversal library, factored into a shared `bvh` module *below* both crates (the oracle keeps its own instance and test).
   - Probe update: R rays per probe per frame (default 128, with rotation randomized each frame) → hit shading (albedo × (direct light from clusters + VSM + previous-frame probe irradiance for multi-bounce)) → octahedral irradiance (8×8 + border) and distance moments (16×16) atlases → adaptive-hysteresis blend.
   - Probe relocation and state (active/inactive/sleeping) and a camera-scrolling volume with re-use of scrolled probes.
   - Sampling in the resolve: trilinear probe blend with normal bias, view bias, Chebyshev visibility, and backface weighting.
@@ -452,7 +414,7 @@ There are two parallel tracks. **Track R (rendering)** is 4.1–4.8; 4.1 comes f
 
 ### Phase 4.13: reference port integration: graph-scripted enemy and the visual showcase
 - **Dependency (consistency pass):** the `caster` archetype is **not** in the reference port's vertical slice (moved from M2 to M5 by ADR-0048/0067; it has only melee enemies). It must be ported through the M3 Studio port ledger before this phase starts. If it hasn't been, run this phase against a slice melee enemy with melee-range assertions, and treat `caster` as a follow-up.
-- **Objective:** Prove both tracks on the real game. A reference port enemy's behavior is re-authored as graphs and passes the port's replay assertions, and a reference port level is rendered with vgeo, VSM, GI and TAA.
+- **Objective:** Prove both tracks on the real game. A reference port enemy's behavior is re-authored as graphs and passes the port's replay assertions, and a reference port level is rendered with meshlets, VSM, GI and TAA.
 - **Deliverables**
   - `caster` archetype behavior as graphs (in the port project folder (`CONCORDIA_PORT_PROJECT`)):
     - `enemy_caster.graph.ron` (Behavior): PATROL / CHASE / ATTACK positioning, leash check, preferred range.
@@ -461,7 +423,7 @@ There are two parallel tracks. **Track R (rendering)** is 4.1–4.8; 4.1 comes f
   - A swap so the slice can run the `caster` archetype with either the M2 Rust/WASM brain or the graph brain (`concordia.toml` per-archetype setting).
   - Translated `enemy_brain_tests` / `enemy_ai_tests` (from M2) run against the graph functions.
   - The replay `tests/replays/m4_caster_graph.replay.ron`: the player engages a caster pack at range, closes to melee, then retreats out of leash.
-  - The reference port arena level imported with `virtualized: auto`, VSM, GI and TAA on; showcase goldens and perf.
+  - The reference port arena level imported with `meshlets: auto`, VSM, GI and TAA on; showcase goldens and perf.
 - **Tests first**
   - `graph_choose_skill_passes_translated_enemy_brain_suite` (every translated case from the GDScript `enemy_brain_tests` passes against the compiled graph).
   - `graph_choose_skill_matches_rust_port_decisions` (`proptest`: random skill lists, distances, cooldowns and seeds; identical choice to the M2 port).
@@ -480,14 +442,15 @@ There are two parallel tracks. **Track R (rendering)** is 4.1–4.8; 4.1 comes f
 
 The gate is four test binaries in `tests/gates/`:
 
-1. **`m4_virtual_geometry.rs`**
-   - `canyon_has_at_least_100m_source_triangles`: loads `examples/m4-canyon` (procedural via `concordia-gen`, fixed seeds, CC0) and asserts the sum over instances of source triangles is ≥ 100,000,000, with ≥ 20M unique source triangles in the DDC (so streaming is genuinely exercised).
-   - `canyon_within_frame_budget_on_reference`: both camera paths (reference port isometric camera, and a ground-level fly-through), 2560×1440 output from 1706×960 internal (TAAU 1.5×), with vgeo + VSM + DDGI + TAA all on: **GPU frame time median ≤ 16.6 ms and p95 ≤ 18.0 ms**, and every pass within its budget in `tests/perf/budgets/m4-canyon.budget.ron` (provisional table below).
-   - `canyon_no_streaming_holes`: no frame along the paths has background pixels inside geometry silhouettes (debug-mask check).
+1. **`m4_meshlet_geometry.rs`**
+   - `canyon_has_at_least_20m_source_triangles`: loads `examples/m4-canyon` (procedural via `concordia-gen`, fixed seeds, CC0) and asserts the sum over instances of source triangles is ≥ 20,000,000 (provisional; raised when meshlet LODs land in 4.5).
+   - `canyon_culling_draws_at_most_25_percent_of_meshlets`: along both camera paths, `meshlets_drawn / meshlets_total` ≤ 0.25 (provisional).
+   - `canyon_within_frame_budget_on_reference`: both camera paths (reference port isometric camera, and a ground-level fly-through), 2560×1440 output from 1706×960 internal (TAAU 1.5×), with meshlets + VSM + DDGI + TAA all on: **GPU frame time median ≤ 16.6 ms and p95 ≤ 18.0 ms**, and every pass within its budget in `tests/perf/budgets/m4-canyon.budget.ron` (provisional table below).
+   - `canyon_no_culling_holes`: no frame along the paths differs from a render with culling disabled (FLIP ≤ 0.001), so culling never drops visible geometry.
 2. **`m4_lighting_quality.rs`**
    - For `sun_courtyard`, `spell_arena_direct`, `cornell_spell` and `iso_arena` in `examples/m4-lighting/`: VSM-only direct lighting is within mean FLIP ≤ 0.05 of the path-traced direct-only reference; full VSM + GI is within mean FLIP ≤ 0.10 of the path-traced full reference (`tests/golden/m4_reference/`); and `FLIP(GI) ≤ 0.6 × FLIP(no GI)`.
 3. **`m4_fallbacks.rs`**
-   - With caps masked to (a) no mesh shaders, (b) no 64-bit atomics, and (c) no ray query, the canyon gate view renders within FLIP ≤ 0.01 of the full-caps image, with no validation errors. (Perf is not asserted for fallbacks; their timings are recorded.)
+   - With caps masked to (a) no mesh shaders and (b) no ray query, the canyon gate view renders within FLIP ≤ 0.01 of the full-caps image, with no validation errors. (Perf is not asserted for fallbacks; their timings are recorded.)
 4. **`m4_graph_enemy.rs`**
    - `caster_graph_replay_assertions_pass` and `caster_graph_replay_decision_trace_equals_rust_port_trace` (Phase 4.13), run headless through the Engine API, with the enemy's behavior loaded from `.graph.ron` compiled by `concordia-graph`.
    - `graph_authored_over_mcp_is_used_in_replay`: before the replay, the test authors a one-node change (e.g. the preferred-range margin literal) via `graph.apply` with `agent:gameplay-programmer#1`, asserts the change is in the command log with that actor, then reverts it via `txn.undo` and asserts the file is byte-identical.
@@ -496,27 +459,25 @@ The gate is four test binaries in `tests/gates/`:
 
 | Pass | Budget |
 |---|---|
-| `vgeo.cull` (instance + DAG cut + cluster, both HZB passes) | 1.0 |
-| `vgeo.raster_hw` | 2.0 |
-| `vgeo.raster_sw` | 1.2 |
-| `vgeo.hzb` | 0.3 |
-| `vgeo.resolve` (material bins + PBR + clustered lights) | 3.0 |
+| `meshlet.cull` (instance + meshlet, both HZB passes) | 1.0 |
+| `meshlet.draw` (Forward+ shading of surviving meshlets: PBR + clustered lights) | 5.0 |
+| `meshlet.hzb` | 0.3 |
 | `vsm.mark + vsm.render + vsm.sample` | 2.5 |
 | `gi.probe_update + gi.sample` | 2.0 |
 | `forward_plus` (skinned, translucent, VFX) | 1.2 |
 | `temporal.taau` | 0.8 |
 | `post` (tonemap, bloom, UI composite) | 0.8 |
-| headroom | 1.8 |
+| headroom | 2.0 |
 | **total** | **16.6** |
 
 ## Risks & mitigations
 | Risk | Mitigation |
 |---|---|
 | **Clean-room contamination** (Nanite, Lumen and VSM are well known; contributors or agents may have seen Unreal source) | Every phase cites its public sources in `AGENTS.md`. Agents are never given Unreal source. Reviewers check that the references cover each algorithm. Anyone who has studied the UE5 renderer source does not write these modules. |
-| Reference Mac too slow for 100M triangles + VSM + GI at 16.6 ms | Budgets are recalibrated after M3 (the refinement pass); the internal resolution and TAAU ratio are the knobs, recorded in the budget file. The gate fixes the *triangle count* and *quality*, and the resolution may be renegotiated only by ADR. |
-| No documented 64-bit atomics before Apple9 | Fallback A (two-pass 32-bit) and fallback B (all hardware) are both gate-tested via cap masking. |
-| Slang's Metal mesh/object stage support is immature | Spike in the first week of 4.3. If it falls short, use a minimal MSL entry-point shim inside `concordia-shaders`, with the bodies still in Slang; report or fix upstream (Slang is Apache-2.0 with LLVM exception). |
-| No forward-progress guarantee for persistent threads on Apple GPUs | Level-synchronous multi-dispatch is the default (4.4); persistent threads are an optional optimization. |
+| Reference Mac too slow for the canyon + VSM + GI at 16.6 ms | Budgets are recalibrated after M3 (the refinement pass); the internal resolution and TAAU ratio are the knobs, recorded in the budget file. The gate fixes the *triangle count* and *quality*, and the resolution may be renegotiated only by ADR. |
+| No mesh shaders on a backend or device | The compute + indirect fallback is gate-tested via cap masking (ADR-0100). |
+| Culling alone isn't enough for dense scenes without LODs | The gate's triangle count is set for culling only and is provisional; meshlet LODs and HLODs (4.5) are the planned follow-up. |
+| Slang's Metal mesh/object stage support is immature | Spike in the first week of 4.3. The compute fallback works without mesh shaders meanwhile. If it falls short, use a minimal MSL entry-point shim inside `concordia-shaders`, with the bodies still in Slang; report or fix upstream (Slang is Apache-2.0 with LLVM exception). |
 | DDGI lag or leaks under rapid spell lights | Adaptive hysteresis and light-event boosts are tested (`adaptive_hysteresis_reacts_within_4_frames...`); leak tests; stage B is ready as a follow-up. |
 | Path-traced reference disagrees with the renderer because of BRDF mismatch rather than GI error | Shared, furnace-tested BRDF module; direct-only reference comparisons isolate shadow error from GI error. |
 | FLIP tolerances that are too loose to mean anything | Paired "beats the baseline" tests (`vsm_beats_csm...`, `gi_improves_flip_over_no_gi...`). |
@@ -524,21 +485,21 @@ The gate is four test binaries in `tests/gates/`:
 | Graph compiler/interpreter divergence | Differential property tests (4.10) run in CI on every change. |
 | Graph format churn breaks agent-authored graphs | A `version` field plus `concordia graph migrate`; the node-library snapshot test forces explicit review of op changes. |
 | LLM plugin creeping into the default path | The `default_build_has_no_llm_or_network_dependency` test, and `cargo-deny` rules. |
-| Large DDC sizes for 100M-triangle scenes | Instancing in the gate scene (≥20M unique); meshopt vertex codecs; DDC garbage collection. |
+| Large DDC sizes for dense scenes | Instancing in the gate scene; meshopt vertex and index codecs; DDC garbage collection. |
 
 ## Open questions
-1. **Which Mac is the reference?** The plan assumes an Apple9+ (M3/M4-class) Pro or Max GPU. Confirm the dev machine's exact chip; if it is Apple7/8, either buy a reference runner or rebudget, which means the software raster's primary path is fallback A on the dev machine.
+1. **Which Mac is the reference?** The plan assumes an Apple9+ (M3/M4-class) Pro or Max GPU. Confirmed: the author's M3 Pro (Apple9), which has Metal 3 mesh shaders.
 2. Is 1706×960 → 2560×1440 the right gate resolution, or should the gate target 1080p output for the first pass?
-3. Should VSM fully replace CSM as the default for projects that do not use vgeo? (Proposed: yes on Apple9+, CSM elsewhere until measured.)
+3. Should VSM fully replace CSM as the default for projects that do not use meshlets? (Proposed: yes on Apple9+, CSM elsewhere until measured.)
 4. **GI stage B entry criteria:** start stage B (screen-space radiance cache + surface cache) only if (a) the reference port's art review flags missing contact or glossy GI, or (b) `iso_arena` FLIP cannot get under 0.08 with DDGI tuning. Should stage B be M4.5 or go into `later-backlog.md`?
 5. Can the proxy BLAS for GI and the path tracer share an acceleration-structure build without compromising oracle independence? (Proposed: share the builder library, keep separate instances and separate tests.)
 6. Should Behavior graphs replace a dedicated BT editor entirely, or does `concordia-ai` also want a compact BT text view? (Proposed: one format, `.graph.ron`, with an editor *view mode* for trees.)
 7. Which local-model runtime does `concordia-ai-llm-local` wrap (license, Metal support, model size)? It is out of the gate and only needs an interface-level decision in M4.
-8. New crates `concordia-cluster`, `meshopt-sys`, `concordia-pathtrace` and `concordia-ai-llm-local`: approve them during the consistency pass, or fold `concordia-cluster` into `concordia-assets` and `concordia-pathtrace` into `concordia-render` (weaker oracle isolation)?
+8. New crates `concordia-cluster` (now meshlet building only, ADR-0100), `meshopt-sys`, `concordia-pathtrace` and `concordia-ai-llm-local`: approve them during the consistency pass, or fold `concordia-cluster` into `concordia-assets` (it is small now) and `concordia-pathtrace` into `concordia-render` (weaker oracle isolation)?
 9. Is `objc2-metal-fx` (or equivalent) mature enough, or do we write a thin binding ourselves?
 
 ## ADRs to write
-- **ADR: Virtualized geometry architecture.** Cluster DAG via meshoptimizer, 64-bit visibility buffer, raster path selection and fallbacks, and the 64-bit atomics policy for Apple GPU families.
+- **ADR-0100: Meshlet geometry pipeline** (written, Proposed). Offline meshlets via meshoptimizer, bindless buffers, per-meshlet frustum/cone/two-pass HZB culling in mesh shaders (Metal 3 first) with a compute + indirect fallback, drawn into Forward+; no software raster, visibility buffer or streaming; LODs and HLODs later.
 - **ADR: Shadows: VSM default, CSM fallback.**
 - **ADR: GI staging: DDGI-style probes first, radiance cache later**, with the isometric/spell-light justification and stage B entry criteria.
 - **ADR: Graph compilation target: WASM components plus an IR interpreter as oracle** (alternatives: Rust codegen, register VM).
@@ -552,10 +513,10 @@ Rough, for one lead plus AI agents, in engineer-weeks (focused). Track G runs in
 | Phase | Weeks |
 |---|---|
 | 4.1 Harness, caps, path tracer | 3–4 |
-| 4.2 Cluster build & DAG | 3–4 |
-| 4.3 Visibility buffer, HW raster, resolve | 4–5 |
-| 4.4 Culling, DAG cut, HZB | 3–4 |
-| 4.5 SW raster & streaming | 4–6 |
+| 4.2 Meshlet build | 1–2 |
+| 4.3 Scene buffers, mesh-shader and compute draw paths | 3–4 |
+| 4.4 Culling, two-pass HZB | 2–3 |
+| 4.5 Meshlet LODs & HLODs (follow-up, not in the total) | (3–4) |
 | 4.6 TAA/TAAU, MetalFX | 2–3 |
 | 4.7 Virtual shadow maps | 5–6 |
 | 4.8 DDGI (+ stage B scaffold) | 4–6 |
@@ -564,31 +525,26 @@ Rough, for one lead plus AI agents, in engineer-weeks (focused). Track G runs in
 | 4.11 Graph panel & skills | 2–3 |
 | 4.12 `concordia-ai` | 3–4 |
 | 4.13 reference port integration & gate | 2–3 |
-| **Total** | **44–60** (Track R ≈ 28–38 on the critical path; Track G ≈ 12–17 in parallel) |
+| **Total** | **32–45** (Track R ≈ 20–28 on the critical path; Track G ≈ 12–17 in parallel; 4.5 extra) |
 
 ---
 
 ## References (appendix)
 All of these are public. None are, or contain, Unreal Engine source code.
 
-**Virtualized geometry**
+**Meshlet geometry and GPU culling** (Nanite talks are for comparison only, concepts only)
 - Karis, B., Stubbe, R., Wihlidal, G. "A Deep Dive into Nanite Virtualized Geometry." SIGGRAPH 2021, Advances in Real-Time Rendering in Games.
 - Kapoulkine, A. meshoptimizer (MIT): README and API docs, `demo/clusterlod.h`. https://github.com/zeux/meshoptimizer
 - Kapoulkine, A. "Billions of triangles in minutes." zeux.io, 2025. https://zeux.io/2025/09/30/billions-of-triangles-in-minutes/
-- Cignoni, P., et al. "Batched Multi Triangulation." IEEE Visualization 2005.
 - Garland, M., Heckbert, P. "Surface Simplification Using Quadric Error Metrics." SIGGRAPH 1997.
 - Hoppe, H. "Progressive Meshes." SIGGRAPH 1996.
-- Burns, C. A., Hunt, W. A. "The Visibility Buffer: A Cache-Friendly Approach to Deferred Shading." JCGT 2(2), 2013.
-- Schied, C., Dachsbacher, C. "Deferred Attribute Interpolation for Memory-Efficient Deferred Shading." HPG 2015.
-- Engel, W. "Triangle Visibility Buffer." GDC 2016 / ConfettiFX The-Forge docs.
 - Haar, U., Aaltonen, S. "GPU-Driven Rendering Pipelines." SIGGRAPH 2015, Advances in Real-Time Rendering.
 - Wihlidal, G. "Optimizing the Graphics Pipeline with Compute." GDC 2016.
 - Greene, N., Kass, M., Miller, G. "Hierarchical Z-Buffer Visibility." SIGGRAPH 1993.
-- Laine, S., Karras, T. "High-Performance Software Rasterization on GPUs." HPG 2011.
-- Kenzel, M., et al. "A High-Performance Software Graphics Pipeline Architecture for the GPU." ACM TOG (SIGGRAPH) 2018.
 - Kubisch, C. "Introduction to Turing Mesh Shaders." NVIDIA Developer Blog, 2018.
-- Khronos. `VK_EXT_mesh_shader`, `VK_KHR_ray_query`, `VK_EXT_shader_image_atomic_int64` specifications.
-- Apple. "Transform your geometry with Metal mesh shaders" (WWDC22); *Metal Feature Set Tables* and *Metal capabilities by GPU family* (developer.apple.com/metal/capabilities), including the 64-bit atomics availability.
+- Khronos. `VK_EXT_mesh_shader` and `VK_KHR_ray_query` specifications.
+- Microsoft. DirectX mesh shader specification.
+- Apple. "Transform your geometry with Metal mesh shaders" (WWDC22); *Metal Feature Set Tables* and *Metal capabilities by GPU family* (developer.apple.com/metal/capabilities), including mesh shader availability.
 
 **Shadows**
 - Fernando, R., Fernandez, S., Bala, K., Greenberg, D. "Adaptive Shadow Maps." SIGGRAPH 2001.
@@ -634,7 +590,7 @@ All of these are public. None are, or contain, Unreal Engine source code.
 ## Proposed convention additions
 For the consistency pass in `plans/README.md`:
 
-- **Crates:** `concordia-cluster` (CPU cluster/DAG/page building, M4), `meshopt-sys` (meshoptimizer bindings, M4; vendored in `third_party/meshoptimizer`), `concordia-pathtrace` (reference path tracer, test oracle, M4; must not depend on `concordia-render`), `concordia-ai-llm-local` (opt-in example LLM provider; not a default workspace member).
+- **Crates:** `concordia-cluster` (meshlet building and per-meshlet bounds for GPU culling, M4, ADR-0100), `meshopt-sys` (meshoptimizer bindings, M4; vendored in `third_party/meshoptimizer`), `concordia-pathtrace` (reference path tracer, test oracle, M4; must not depend on `concordia-render`), `concordia-ai-llm-local` (opt-in example LLM provider; not a default workspace member).
 - **Engine API / MCP methods:**
   - `graph.list_nodes`, `graph.check`, `graph.compile`, `graph.apply` (mutating, takes `actor`), `graph.trace`.
   - `ai.inspect`, `ai.trace`.
@@ -654,5 +610,5 @@ For the consistency pass in `plans/README.md`:
   - The "reference vs regression golden" split, and a "beats baseline" companion test for every reference-tolerance test.
   - Cap-masking (`RhiCaps::masked`) as the standard way to test GPU fallbacks on one machine.
 - **WIT:** `concordia:game/ai` (blackboard and perception for scripts and graphs), and `concordia:ai-plugin/llm-provider` (opt-in provider plugins).
-- **Import settings:** `virtualized: true | false | auto` in `<file>.import.ron`.
+- **Import settings:** `meshlets: true | false | auto` in `<file>.import.ron`.
 - **Reflect attribute:** `#[reflect(graph_node(category = "...", pure))]`.
