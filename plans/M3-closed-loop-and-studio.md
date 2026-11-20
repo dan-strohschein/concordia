@@ -953,9 +953,13 @@ justfile                       (touched) `gate-live` recipe
 - **Deviations:**
   - `studio_panel_reflects_task_updates_made_over_mcp_within_one_second` drives the real `concordia mcp`, with the `_studio` stamp the PreToolUse hook would add.
   - The approval test sets up its task over the WebSocket API.
-- **Not done here:**
-  - the manual run (launch the Director from the panel and watch cards move): it uses the author's subscription, so it waits for their go-ahead;
-  - the embedded terminal and live budget usage (backlog).
+- **Manual run (2026-11-19, author, Claude Code 2.1.329):** the editor hosted a fresh `concordia new` project, and the Claude Code tab showed the version and the `claude.ai` login. **Run headless** started the Director (3 min, exit 0).
+  - T-0001 went from todo to in progress (`agent:level-designer#1`), then in review (87 s later), then done (approved by `agent:qa-playtester#1`, 51 s later).
+  - The playground scene's one commit and save are the Level Designer's.
+  - The author saw the card in Done and the finished scene, but wasn't watching the Board tab while it moved.
+  - The launcher log redacted `HOME`, as designed.
+- **Author's note:** the Kanban-style task board stays for now; whether to keep it long term is open, to be revisited in a later Studio phase.
+- **Not done here:** the embedded terminal and live budget usage (backlog).
 
 ### Studio checkpoint (after 3.3–3.6, 3.6b and 3.8; ADR-0049)
 An interim gate that needs no replay or scripting, so it can pass before M2.
@@ -1013,7 +1017,7 @@ An interim gate that needs no replay or scripting, so it can pass before M2.
     - `agent:qa-playtester#1` approved it.
   - All 3 scene-journal entries are `agent:level-designer#1`'s. Every checker outcome held.
   - The artifacts are in `target/gate-live/M3S/20261119T192402-1/`, which is not committed.
-- **Not done here:** the 3.8 manual check (launch the Director from the editor panel and watch cards move), deferred by the author.
+- **The 3.8 manual check** ran the same day (see 3.8 As built).
 
 ### Phase 3.9: Gate fixture, scripted closed loop, live gate
 *Needs all previous phases and M2.*
