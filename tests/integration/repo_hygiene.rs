@@ -427,19 +427,42 @@ fn deny_toml_denies_unknown_sources() {
 }
 
 #[test]
-fn ci_workflow_covers_required_checks_and_platforms() {
+fn ci_workflow_runs_the_fast_checks_on_every_pr() {
     assert_contains_all(
         ".github/workflows/ci.yml",
         &[
-            "macos-",
+            "pull_request",
             "ubuntu-24.04",
             "just lint",
+            "just deny",
+            "editor/src-tauri/deny.toml",
+            "just wasm",
+            "save-if",
+        ],
+    );
+    let ci = std::fs::read_to_string(repo_root().join(".github/workflows/ci.yml")).unwrap();
+    for slow in ["macos-", "nextest run", "gate-tests"] {
+        assert!(!ci.contains(slow), "ci.yml must stay fast (ADR-0071); found {slow:?}");
+    }
+}
+
+#[test]
+fn regression_workflow_covers_the_full_suite_on_demand() {
+    assert_contains_all(
+        ".github/workflows/regression.yml",
+        &[
+            "workflow_dispatch",
+            "macos-",
+            "ubuntu-24.04",
             "nextest run",
             "--doc",
-            "cargo deny",
             "just wasm",
             "just gate-tests M-1",
             "just gate-tests M0",
+            "just gate-tests M1",
+            "just gate-tests M3S",
+            "pnpm e2e",
+            "editor/src-tauri/Cargo.toml",
         ],
     );
 }
