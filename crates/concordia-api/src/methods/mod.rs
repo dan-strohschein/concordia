@@ -213,10 +213,101 @@ pub(crate) fn edit_all(
     Ok(())
 }
 
+/// Applies `ops` as one transaction by `actor` with no session (see
+/// [`Engine::commit_edits_as`]).
+pub(crate) fn commit_as(
+    engine: &mut Engine,
+    actor: concordia_command::Actor,
+    label: &str,
+    ops: Vec<EditOp>,
+) -> Result<Option<TxnId>, ApiError> {
+    if ops.is_empty() {
+        return Ok(None);
+    }
+    let Engine {
+        scene,
+        registry,
+        ids,
+        ..
+    } = engine;
+    let scene = scene
+        .as_mut()
+        .ok_or_else(|| ApiError::from_kind(ApiErrorKind::NoSceneOpen))?;
+    if let Some(open) = scene.log.open_txn() {
+        return Err(ApiError::new(
+            ApiErrorKind::TxnConflict,
+            format!(
+                "{actor} can't edit while {} has transaction {:?} open; commit or abort it first",
+                open.author.actor, open.label
+            ),
+        ));
+    }
+    let author = Author {
+        actor,
+        session: None,
+    };
+    let result = scene
+        .log
+        .begin(&scene.world, author, label, ids)
+        .and_then(|_| apply_each(scene, registry, ops))
+        .and_then(|()| scene.log.commit(&mut scene.world, registry));
+    let txn = result.map_err(|e| {
+        map::command(
+            e,
+            None,
+            &Hints {
+                registry,
+                world: Some(&scene.world),
+            },
+        )
+    })?;
+    scene.dirty = true;
+    Ok(Some(txn))
+}
+
+/// Undoes `txn` (the latest commit) by `actor` with no session.
+pub(crate) fn undo_as(
+    engine: &mut Engine,
+    actor: concordia_command::Actor,
+    txn: TxnId,
+) -> Result<(), ApiError> {
+    let Engine {
+        scene, registry, ..
+    } = engine;
+    let scene = scene
+        .as_mut()
+        .ok_or_else(|| ApiError::from_kind(ApiErrorKind::NoSceneOpen))?;
+    if scene.log.done().last().map(|t| t.id) != Some(txn) {
+        return Err(ApiError::new(
+            ApiErrorKind::TxnNotFound,
+            format!("{txn} is not the latest transaction"),
+        ));
+    }
+    let author = Author {
+        actor,
+        session: None,
+    };
+    scene
+        .log
+        .undo(&mut scene.world, registry, author)
+        .map_err(|e| {
+            map::command(
+                e,
+                None,
+                &Hints {
+                    registry,
+                    world: Some(&scene.world),
+                },
+            )
+        })?;
+    scene.dirty = true;
+    Ok(())
+}
+
 /// Applies ops inside the open transaction (the log rolls it back on the first failure).
 fn apply_each(
     scene: &mut OpenScene,
-    registry: &concordia_reflect::TypeRegistry,
+    registry: &mut concordia_reflect::TypeRegistry,
     ops: Vec<EditOp>,
 ) -> Result<(), concordia_command::CommandError> {
     ops.into_iter()

@@ -5,8 +5,8 @@ The engine side of gameplay scripting (ADR-0062), written once against a backend
 
 ## Public entry points
 - `ScriptBackend` (`name`, `load(&ModuleSource)`), `ScriptModule` (`describe`, `run(&self, ..) -> RunReport`, `stats`), `ModuleSource` (`File`, `Bytes`, `Linked`), `ModuleStats`
-- `ScriptHost` (`load`, `processors(&registry, &templates)`, `set_templates`, `faults`, `logs`, `is_disabled`, `stats`, `reload(module, &mut registry, &mut world)` → `ReloadReport` of `TypeMigration`s), `HostConfig` (`session_seed`), `FaultReport`, `LogLine`, `Templates`
-- `ScriptProcessor` (a Terra `Processor`), `register_module`, `processor_seed`
+- `ScriptHost` (`load`, `processors(&registry, &templates)`, `set_templates`, `enable_all`, `emit_logs`, `faults`, `logs`, `is_disabled`, `stats`, `reload(module, &mut registry, &mut world)` → `ReloadReport` of `TypeMigration`s), `HostConfig` (`session_seed`), `FaultReport`, `LogLine`, `Templates`
+- `ScriptProcessor` (a Terra `Processor`), `register_module`, `changed_types`, `processor_seed`
 - `TestBackend` (`link::<M: Module>()`)
 - `ScriptError`, `ScriptFault` (`Trap`, `OutOfFuel`, `Returned`, `Protocol`)
 - Feature `conformance`: `conformance_suite!(loader)`, `conformance::{Rig, run_all, PROCESSORS, SESSION_SEED, mover_template}`
@@ -16,7 +16,7 @@ The engine side of gameplay scripting (ADR-0062), written once against a backend
 - **One crossing per processor per tick:** `ScriptProcessor::run` builds one batch (reads then writes, every match; received signals by entity then raise order) and makes one `ScriptModule::run` call, whatever the entity count.
 - **Nothing applies from a bad run:** column writes (declared, once each, `rows × stride`, valid wire) and commands (known types, valid values, known templates, earlier pending targets, none in `Presentation`) are decoded and checked in full before any is written or queued. A fault (trap, out of fuel, returned error, protocol violation) applies nothing, disables that processor until a reload, is recorded as a `FaultReport` and logged (`tracing::warn!`) as `script:<module>`; the rest of the schedule keeps running.
 - Commands go to the processor's `CommandBuffer`, so they apply at phase end in plan order like every Terra command; `spawn-template` records a `CompiledTemplate` spawn into it.
-- Log lines (the `log` import, and on WASM stdout/stderr) are kept even for a faulting run and attributed to `script:<module>`.
+- Log lines (the `log` import, and on WASM stdout/stderr) are kept even for a faulting run and attributed to `script:<module>`. Processors only record lines and faults (they run on worker threads); `emit_logs`, called on the engine thread, sends the new ones to `tracing` ordered by tick, then processor declaration order, so the log is the same at any thread count (2.6d).
 - Each run gets `TickContext { tick, dt, time: SimClock::time, seed: processor_seed(session, tick, name) }`; processors never touch `SimRng`. Script processors declare `reads_resource::<SimClock>()`.
 - Modules keep no state between runs (`run(&self)`); WASM enforces it with fresh instances. The test backend can't (statics survive natively; 2.6c's source check covers native modules).
 - `register_module` validates the description, then registers helper types, components and signals as dynamic types (`register_dynamic_component`) and traits as parameterless dynamic traits (`concordia_terra_sim::register_dynamic_trait`).
@@ -42,7 +42,7 @@ The engine side of gameplay scripting (ADR-0062), written once against a backend
 - blake3 specification (seed derivation).
 
 ## Status
-M2 phase 2.6b complete (2026-11-20); 2.6c added reload migration (ADR-0061).
+M2 phase 2.6b complete (2026-11-20); 2.6c added reload migration (ADR-0061); 2.6d added `emit_logs`, `enable_all` and `changed_types`.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

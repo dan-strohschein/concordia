@@ -1,0 +1,22 @@
+# Concordia project manifest.
+[project]
+name = "m2-scripting"
+
+[scene]
+main = "scenes/main.scene.ron"
+
+[sim]
+rate_hz = 60
+seed = 7
+
+[journal]
+sync = true
+
+# Gameplay modules (M2 phase 2.6, ADR-0061/0062). `just wasm` builds the sample module
+# (scripts/wanderers) into build/. To run it natively instead, build it with
+# `cargo build -p wanderers --features dylib`, copy the library to build/, and use
+# kind = "native" with path = "build/libwanderers" (the extension is added).
+[scripts]
+[[scripts.module]]
+kind = "wasm"
+path = "build/wanderers.wasm"

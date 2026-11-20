@@ -60,6 +60,8 @@ pub(crate) struct Shared {
     pub(crate) types: RwLock<Arc<Types>>,
     /// Compiled templates for `spawn-template`.
     pub(crate) templates: RwLock<Arc<Templates>>,
+    /// How many log lines and faults [`ScriptHost::emit_logs`] has sent.
+    pub(crate) emitted: Mutex<(usize, usize)>,
 }
 
 fn read<T: Clone>(lock: &RwLock<T>) -> T {
@@ -100,7 +102,6 @@ impl Shared {
 
     /// Records a fault and disables the processor.
     pub(crate) fn fault(&self, processor: &str, tick: u64, fault: ScriptFault) {
-        tracing::warn!(actor = %self.actor, processor, tick, %fault, "script processor faulted and was disabled");
         lock(&self.disabled).insert(processor.to_owned());
         lock(&self.faults).push(FaultReport {
             actor: self.actor.clone(),
@@ -117,7 +118,6 @@ impl Shared {
         }
         let mut logs = lock(&self.logs);
         for message in lines {
-            tracing::info!(actor = %self.actor, processor, tick, "{message}");
             logs.push(LogLine {
                 actor: self.actor.clone(),
                 processor: processor.to_owned(),
@@ -228,6 +228,7 @@ impl ScriptHost {
             disabled: Mutex::default(),
             types: RwLock::new(Arc::new(component_types(registry))),
             templates: RwLock::default(),
+            emitted: Mutex::default(),
         };
         Ok(Self {
             shared: Arc::new(shared),
@@ -321,6 +322,49 @@ impl ScriptHost {
     /// Log lines so far, in order.
     pub fn logs(&self) -> Vec<LogLine> {
         lock(&self.shared.logs).clone()
+    }
+
+    /// Sends the log lines and faults recorded since the last call to `tracing`, attributed to
+    /// `script:<module>`, ordered by tick, then by processor declaration order (each run's lines,
+    /// then its fault), so the log is the same at any thread count. Call it from the engine
+    /// thread.
+    pub fn emit_logs(&self) {
+        let order: Vec<String> = self.desc().processors.into_iter().map(|p| p.name).collect();
+        let rank = |processor: &str| {
+            order
+                .iter()
+                .position(|p| p == processor)
+                .unwrap_or(usize::MAX)
+        };
+        let mut emitted = lock(&self.shared.emitted);
+        let logs = lock(&self.shared.logs);
+        let faults = lock(&self.shared.faults);
+        let mut events: Vec<(u64, usize, u8, usize)> = Vec::new();
+        for (i, line) in logs.iter().enumerate().skip(emitted.0) {
+            events.push((line.tick, rank(&line.processor), 0, i));
+        }
+        for (i, fault) in faults.iter().enumerate().skip(emitted.1) {
+            events.push((fault.tick, rank(&fault.processor), 1, i));
+        }
+        events.sort_unstable();
+        for (_, _, kind, i) in events {
+            match kind {
+                0 => {
+                    let l = &logs[i];
+                    tracing::info!(target: "concordia::script", actor = %l.actor, processor = %l.processor, tick = l.tick, "{}", l.message);
+                }
+                _ => {
+                    let f = &faults[i];
+                    tracing::warn!(target: "concordia::script", actor = %f.actor, processor = %f.processor, tick = f.tick, fault = %f.fault, "script processor faulted and was disabled");
+                }
+            }
+        }
+        *emitted = (logs.len(), faults.len());
+    }
+
+    /// Enables every processor again (a new play session).
+    pub fn enable_all(&self) {
+        lock(&self.shared.disabled).clear();
     }
 
     /// True once `processor` has faulted (until a reload).

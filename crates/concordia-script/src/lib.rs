@@ -35,6 +35,7 @@ pub use host::{
 };
 pub use processor::ScriptProcessor;
 pub use register::register_module;
+pub use reload::changed_types;
 pub use seed::processor_seed;
 pub use test_backend::TestBackend;
 

@@ -1,0 +1,10 @@
+Template(
+    format: 1,
+    description: "A wanderer: turns at random, tires, rests and wanders on.",
+    traits: {
+        "wanderers.Wanderer": (),
+    },
+    components: {
+        "Name": "Wanderer",
+    },
+)

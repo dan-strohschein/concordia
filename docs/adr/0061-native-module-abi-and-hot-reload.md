@@ -1,5 +1,5 @@
 # ADR-0061: The native script tier: C ABI, hot reload and migration
-- Status: Accepted (M2 phase 2.6c, 2026-11-20; author's decisions)
+- Status: Accepted (M2 phases 2.6c and 2.6d, 2026-11-20; author's decisions)
 - Date: 2026-11-20
 - Builds on: ADR-0003 (scripting tiers), ADR-0062 (the script protocol and backend seam), ADR-0063 (determinism contract)
 
@@ -43,7 +43,22 @@ ADR-0003's first tier is gameplay written in Rust, compiled to native code and r
    It's a library function; 2.6d runs it before `script.reload`. WASM modules don't need it, because their statics reset every run.
 5. **Fixtures.** `just native-fixtures` builds the conformance module as a library (plus a `v2` build, a `layout2` build that changes two layouts, and a library claiming ABI version 999). It uses its own target directory, so those features never unify into the workspace build.
 
+6. **The scripts engine module and `script.reload` (2.6d; author's decisions).**
+   - Scripts are an engine module, `concordia-scripting`, enabled by `[scripts]` in `concordia.toml` like `[physics]` or `[studio]`. So `script.reload` is a module method: the core set stays at 38 methods and 35 MCP tools, and `[scripts]` adds one of each. `concordia new` writes an empty `[scripts]`.
+   - Modules load when the engine starts, so script components work in scenes and the API before play. A module that fails to load is logged and skipped, so the editor still opens. The app adds the module last, so script types may use every other module's types.
+   - **`script.reload` reloads what is on disk; it never builds.** For each module:
+     - the changed types the edit world has stored are migrated by **`EditOp::MigrateType`**, as one transaction by `script:<module>` (`Engine::commit_edits_as`);
+     - then the registry and the play world move to the new build;
+     - if that second step fails, the edit transaction is undone (`Engine::undo_as`).
+   - **`MigrateType` is fully undoable and replayable.** Its inverse removes the component, returns the type to its previous version with nothing stored, and sets every previous value exactly. Because of this, applying, undoing, redoing and replaying commands take `&mut TypeRegistry`.
+   - **The registry keeps every version of a dynamic type.** Re-registering a description it had before, while the types it refers to are unchanged, restores that exact version. Undo, rollback and repeated reloads therefore never leave a world holding a version the registry doesn't.
+   - **Deterministic logs:** script processors only record log lines and faults, because they run on worker threads. An exclusive end-of-tick system sends them to the log on the engine thread, in tick then declaration order.
+   - The new error kind `ScriptFailed` (−32018) covers a module that fails to load, reload or migrate.
+
 ## Alternatives
+- **`script.reload` as a core method** (the plan's 39 methods and 36 tools): every project would depend on Wasmtime and the native loader, and the method would exist even where no scripts are configured.
+- **Journaling an edit-world migration as `SetComponent` ops:** simpler, but undo and journal replay fail once a field is removed, because the old values no longer validate against the new type.
+
 - **The Rust ABI across `dylib`s:** simpler to write, but it ties the engine and every module to one exact compiler and its layout choices. The C ABI with byte envelopes doesn't care which compiler built the module.
 - **JSON for run calls:** one codec for everything, but per-element byte arrays would make the native tier slower than WASM.
 - **A serde binary format (postcard, bincode):** a new dependency. It can't carry `TypeDesc`'s skipped fields, and it still encodes byte arrays one element at a time.
@@ -57,3 +72,6 @@ ADR-0003's first tier is gameplay written in Rust, compiled to native code and r
 - **`ScriptHost::reload` now takes the world** and returns a `ReloadReport`, and `ScriptHost::set_templates` replaces templates after a type change.
 - **A fix to 2.6b:** after any reload, inserting a script component through the registry failed, because every type was re-registered with a new version. Only changed types are re-registered now.
 - **Trust:** native modules run with the engine's privileges. Code that isn't trusted belongs in WASM (ADR-0062).
+- **Since 2.6d:**
+  - A scene saved before a module changed a type layout still holds the old shape. Opening it with the new module registered at engine start fails to validate the removed fields. Reload while the scene is open (the migration is journaled), then save.
+  - Undoing a migration while play runs leaves the play world on the new version until play stops.

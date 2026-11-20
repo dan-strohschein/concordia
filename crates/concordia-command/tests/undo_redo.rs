@@ -13,7 +13,7 @@ fn undo_restores_previous_component_value() {
     fx.one("agent:x", spawn(a, "A", 1.0));
     fx.one("agent:x", set_pos(a, 5.0));
     fx.log
-        .undo(&mut fx.world, &fx.reg, author("agent:x"))
+        .undo(&mut fx.world, &mut fx.reg, author("agent:x"))
         .unwrap();
     assert_eq!(pos_x(&fx.world, a), Some(1.0));
 }
@@ -31,7 +31,7 @@ fn undo_of_set_on_missing_component_removes_it() {
     );
     fx.one("agent:x", set_pos(a, 5.0));
     fx.log
-        .undo(&mut fx.world, &fx.reg, author("agent:x"))
+        .undo(&mut fx.world, &mut fx.reg, author("agent:x"))
         .unwrap();
     assert_eq!(fx.world.component_names(a), Some(vec![]));
 }
@@ -42,11 +42,11 @@ fn undo_of_spawn_despawns_and_redo_respawns_same_id() {
     let a = fx.entity_id();
     fx.one("agent:x", spawn(a, "A", 1.0));
     fx.log
-        .undo(&mut fx.world, &fx.reg, author("agent:x"))
+        .undo(&mut fx.world, &mut fx.reg, author("agent:x"))
         .unwrap();
     assert!(!fx.world.contains(a));
     fx.log
-        .redo(&mut fx.world, &fx.reg, author("agent:x"))
+        .redo(&mut fx.world, &mut fx.reg, author("agent:x"))
         .unwrap();
     assert_eq!(pos_x(&fx.world, a), Some(1.0));
 }
@@ -63,7 +63,7 @@ fn undo_of_despawn_restores_all_components_and_same_id() {
     );
     fx.one("agent:x", EditOp::Despawn { id: a });
     fx.log
-        .undo(&mut fx.world, &fx.reg, author("agent:x"))
+        .undo(&mut fx.world, &mut fx.reg, author("agent:x"))
         .unwrap();
     let after = (
         json_of(&fx.world, a, "Name"),
@@ -80,13 +80,13 @@ fn redo_stack_cleared_by_new_commit() {
     fx.one("agent:x", spawn(a, "A", 1.0));
     fx.one("agent:x", set_pos(a, 2.0));
     fx.log
-        .undo(&mut fx.world, &fx.reg, author("agent:x"))
+        .undo(&mut fx.world, &mut fx.reg, author("agent:x"))
         .unwrap();
     assert!(fx.log.can_redo());
     fx.one("agent:x", set_pos(a, 7.0));
     assert!(!fx.log.can_redo());
     assert!(matches!(
-        fx.log.redo(&mut fx.world, &fx.reg, author("agent:x")),
+        fx.log.redo(&mut fx.world, &mut fx.reg, author("agent:x")),
         Err(CommandError::NothingToRedo)
     ));
 }
@@ -97,10 +97,10 @@ fn undo_redo_are_recorded_with_actor() {
     let a = fx.entity_id();
     let txn = fx.one("agent:maker", spawn(a, "A", 1.0));
     fx.log
-        .undo(&mut fx.world, &fx.reg, author("agent:reviewer"))
+        .undo(&mut fx.world, &mut fx.reg, author("agent:reviewer"))
         .unwrap();
     fx.log
-        .redo(&mut fx.world, &fx.reg, author("human:local"))
+        .redo(&mut fx.world, &mut fx.reg, author("human:local"))
         .unwrap();
     let history = fx.log.history(10);
     let kinds: Vec<_> = history
@@ -122,7 +122,7 @@ fn nothing_to_undo_is_an_error_with_suggestion() {
     let mut fx = Fixture::new();
     let err = fx
         .log
-        .undo(&mut fx.world, &fx.reg, author("agent:x"))
+        .undo(&mut fx.world, &mut fx.reg, author("agent:x"))
         .unwrap_err();
     let CommandError::NothingToUndo { reason } = &err else {
         panic!("{err:?}")
@@ -139,7 +139,7 @@ fn undo_is_rejected_while_a_txn_is_open() {
         .begin(&fx.world, author("agent:y"), "open", &mut fx.ids)
         .unwrap();
     assert!(matches!(
-        fx.log.undo(&mut fx.world, &fx.reg, author("agent:x")),
+        fx.log.undo(&mut fx.world, &mut fx.reg, author("agent:x")),
         Err(CommandError::AlreadyOpen { .. })
     ));
 }
@@ -182,11 +182,11 @@ proptest! {
         }
         let last = fx.hash();
         for _ in 0..commits {
-            fx.log.undo(&mut fx.world, &fx.reg, author("agent:p")).unwrap();
+            fx.log.undo(&mut fx.world, &mut fx.reg, author("agent:p")).unwrap();
         }
         prop_assert_eq!(fx.hash(), initial);
         for _ in 0..commits {
-            fx.log.redo(&mut fx.world, &fx.reg, author("agent:p")).unwrap();
+            fx.log.redo(&mut fx.world, &mut fx.reg, author("agent:p")).unwrap();
         }
         prop_assert_eq!(fx.hash(), last);
         prop_assert_eq!(fx.log.history(1000).iter().filter(|e| e.kind == EntryKind::Commit).count(), commits);

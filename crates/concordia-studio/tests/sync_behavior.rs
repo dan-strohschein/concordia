@@ -245,8 +245,10 @@ fn director_agent_tools_restrict_spawnable_roles() {
     write(dir.path());
     let director = read(dir.path(), ".claude/agents/director.md");
     assert!(
-        tools(&director)
-            .contains(&"Agent(level-designer, qa-playtester, tech-artist, writer)".to_owned()),
+        tools(&director).contains(
+            &"Agent(gameplay-programmer, level-designer, qa-playtester, tech-artist, writer)"
+                .to_owned()
+        ),
         "{director}"
     );
 }

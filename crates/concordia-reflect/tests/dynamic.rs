@@ -263,3 +263,67 @@ fn migration_fills_added_fields_with_defaults_and_reports_removed_ones() {
         Err(ReflectError::MissingField { field, .. }) if field == "rage"
     ));
 }
+
+fn struct_desc(name: &str, fields: &[(&str, &str)]) -> TypeDesc {
+    let fields: Vec<Value> = fields
+        .iter()
+        .map(|(f, ty)| json!({"name": f, "ty": {"Named": ty}, "docs": f}))
+        .collect();
+    serde_json::from_value(json!({
+        "name": name, "docs": name,
+        "shape": {"Struct": {"fields": fields, "deny_unknown": true}},
+    }))
+    .unwrap()
+}
+
+#[test]
+fn reregistering_a_known_description_returns_its_original_version() {
+    let mut reg = TypeRegistry::default();
+    let v1 = struct_desc("s.Hp", &[("value", "u32")]);
+    let v2 = struct_desc("s.Hp", &[("value", "u32"), ("max", "u32")]);
+    let first = reg.register_dynamic(&v1).unwrap().info();
+    assert!(
+        std::ptr::eq(reg.register_dynamic(&v1).unwrap().info(), first),
+        "identical: same version"
+    );
+    let second = reg.register_dynamic(&v2).unwrap().info();
+    assert!(!std::ptr::eq(second, first));
+    let back = reg.register_dynamic(&v1).unwrap().info();
+    assert!(
+        std::ptr::eq(back, first),
+        "a previous description restores its exact version"
+    );
+    assert!(std::ptr::eq(reg.get_by_name("s.Hp").unwrap().info(), first));
+    assert!(std::ptr::eq(
+        reg.register_dynamic(&v2).unwrap().info(),
+        second
+    ));
+    assert_eq!(
+        reg.get_by_name("s.Hp").unwrap().desc(),
+        Some(&v2),
+        "the current version's source"
+    );
+    reg.register_dynamic(&v1).unwrap();
+    assert_eq!(reg.get_by_name("s.Hp").unwrap().desc(), Some(&v1));
+}
+
+#[test]
+fn a_cached_version_is_reused_only_while_its_referenced_types_are_unchanged() {
+    let mut reg = TypeRegistry::default();
+    let helper_v1 = struct_desc("s.Stat", &[("n", "u32")]);
+    let helper_v2 = struct_desc("s.Stat", &[("n", "u32"), ("cap", "u32")]);
+    let holder = struct_desc("s.Holder", &[("stat", "s.Stat")]);
+    reg.register_dynamic(&helper_v1).unwrap();
+    let with_v1 = reg.register_dynamic(&holder).unwrap().info();
+    reg.register_dynamic(&helper_v2).unwrap();
+    let with_v2 = reg.register_dynamic(&holder).unwrap().info();
+    assert!(
+        !std::ptr::eq(with_v1, with_v2),
+        "same text, but it refers to a new helper version"
+    );
+    reg.register_dynamic(&helper_v1).unwrap();
+    assert!(std::ptr::eq(
+        reg.register_dynamic(&holder).unwrap().info(),
+        with_v1
+    ));
+}

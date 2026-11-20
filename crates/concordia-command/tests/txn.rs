@@ -15,9 +15,9 @@ fn committed_txn_records_actor_label_and_ops() {
         .begin(&fx.world, author("agent:builder"), "build", &mut fx.ids)
         .unwrap();
     for op in [spawn(a, "A", 1.0), spawn(b, "B", 2.0), set_pos(a, 3.0)] {
-        fx.log.apply(&mut fx.world, &fx.reg, op).unwrap();
+        fx.log.apply(&mut fx.world, &mut fx.reg, op).unwrap();
     }
-    let txn = fx.log.commit(&mut fx.world, &fx.reg).unwrap();
+    let txn = fx.log.commit(&mut fx.world, &mut fx.reg).unwrap();
 
     let last = fx.log.done().last().unwrap();
     assert_eq!(last.id, txn);
@@ -41,7 +41,7 @@ fn ops_apply_immediately_inside_a_txn() {
         .begin(&fx.world, author("agent:x"), "t", &mut fx.ids)
         .unwrap();
     fx.log
-        .apply(&mut fx.world, &fx.reg, spawn(a, "A", 1.0))
+        .apply(&mut fx.world, &mut fx.reg, spawn(a, "A", 1.0))
         .unwrap();
     assert_eq!(
         pos_x(&fx.world, a),
@@ -59,14 +59,14 @@ fn failed_op_rolls_back_whole_txn() {
         .begin(&fx.world, author("agent:x"), "doomed", &mut fx.ids)
         .unwrap();
     fx.log
-        .apply(&mut fx.world, &fx.reg, spawn(a, "A", 1.0))
+        .apply(&mut fx.world, &mut fx.reg, spawn(a, "A", 1.0))
         .unwrap();
     fx.log
-        .apply(&mut fx.world, &fx.reg, set_pos(a, 2.0))
+        .apply(&mut fx.world, &mut fx.reg, set_pos(a, 2.0))
         .unwrap();
     let err = fx
         .log
-        .apply(&mut fx.world, &fx.reg, set_pos(ghost, 3.0))
+        .apply(&mut fx.world, &mut fx.reg, set_pos(ghost, 3.0))
         .unwrap_err();
     assert!(matches!(
         err,
@@ -97,7 +97,7 @@ fn invalid_value_fails_before_touching_world() {
         .log
         .apply_one(
             &mut fx.world,
-            &fx.reg,
+            &mut fx.reg,
             author("agent:x"),
             "set",
             bad,
@@ -123,7 +123,7 @@ fn invalid_value_fails_before_touching_world() {
         fx.log
             .apply_one(
                 &mut fx.world,
-                &fx.reg,
+                &mut fx.reg,
                 author("agent:x"),
                 "s",
                 bad_spawn,
@@ -143,12 +143,12 @@ fn abort_restores_world() {
         .begin(&fx.world, author("agent:x"), "maybe", &mut fx.ids)
         .unwrap();
     fx.log
-        .apply(&mut fx.world, &fx.reg, spawn(a, "A", 1.0))
+        .apply(&mut fx.world, &mut fx.reg, spawn(a, "A", 1.0))
         .unwrap();
     fx.log
-        .apply(&mut fx.world, &fx.reg, set_pos(a, 9.0))
+        .apply(&mut fx.world, &mut fx.reg, set_pos(a, 9.0))
         .unwrap();
-    fx.log.abort(&mut fx.world, &fx.reg, "aborted").unwrap();
+    fx.log.abort(&mut fx.world, &mut fx.reg, "aborted").unwrap();
     assert_eq!(fx.hash(), before);
     assert!(fx.log.done().is_empty());
     let entry = fx.log.history(1).pop().unwrap();
@@ -190,7 +190,7 @@ fn nested_begin_is_rejected() {
     assert!(matches!(
         fx.log.apply_one(
             &mut fx.world,
-            &fx.reg,
+            &mut fx.reg,
             author("agent:b"),
             "x",
             spawn(id, "X", 0.0),
@@ -205,15 +205,15 @@ fn apply_and_commit_without_open_txn_fail() {
     let mut fx = Fixture::new();
     let a = fx.entity_id();
     assert!(matches!(
-        fx.log.apply(&mut fx.world, &fx.reg, spawn(a, "A", 0.0)),
+        fx.log.apply(&mut fx.world, &mut fx.reg, spawn(a, "A", 0.0)),
         Err(CommandError::NoOpenTxn)
     ));
     assert!(matches!(
-        fx.log.commit(&mut fx.world, &fx.reg),
+        fx.log.commit(&mut fx.world, &mut fx.reg),
         Err(CommandError::NoOpenTxn)
     ));
     assert!(matches!(
-        fx.log.abort(&mut fx.world, &fx.reg, "x"),
+        fx.log.abort(&mut fx.world, &mut fx.reg, "x"),
         Err(CommandError::NoOpenTxn)
     ));
 }
@@ -231,7 +231,7 @@ fn remove_missing_component_is_an_error() {
         .log
         .apply_one(
             &mut fx.world,
-            &fx.reg,
+            &mut fx.reg,
             author("agent:x"),
             "rm",
             op,

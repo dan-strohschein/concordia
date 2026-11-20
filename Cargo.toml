@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "tests", "tests/fixtures/script/*"]
+members = ["crates/*", "tests", "tests/fixtures/script/*", "examples/*/scripts/*"]
 exclude = ["tests/fixtures/wasm/*"]
 
 [workspace.package]
@@ -37,6 +37,9 @@ concordia-script = { path = "crates/concordia-script" }
 concordia-script-abi = { path = "crates/concordia-script-abi" }
 concordia-script-guest = { path = "crates/concordia-script-guest" }
 concordia-script-protocol = { path = "crates/concordia-script-protocol" }
+concordia-script-native = { path = "crates/concordia-script-native" }
+concordia-script-wasm = { path = "crates/concordia-script-wasm" }
+concordia-scripting = { path = "crates/concordia-scripting" }
 concordia-terra-sim = { path = "crates/concordia-terra-sim" }
 concordia-shaders = { path = "crates/concordia-shaders" }
 concordia-studio = { path = "crates/concordia-studio" }

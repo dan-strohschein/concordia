@@ -11,7 +11,8 @@ mod shared;
 pub use error::AppError;
 pub use manifest::{
     AssetsSection, InputSection, JournalSection, Manifest, PhysicsSection, ProjectSection,
-    RenderSection, SceneSection, SimSection, StudioSection,
+    RenderSection, SceneSection, ScriptModuleKind, ScriptModuleSection, ScriptsSection, SimSection,
+    StudioSection,
 };
 pub use project::Project;
 pub use shared::{HostedEngine, SharedEngine};

@@ -95,7 +95,7 @@ impl CommandLog {
     pub fn apply(
         &mut self,
         world: &mut World,
-        reg: &TypeRegistry,
+        reg: &mut TypeRegistry,
         op: EditOp,
     ) -> Result<(), CommandError> {
         let open = self.open.as_mut().ok_or(CommandError::NoOpenTxn)?;
@@ -114,7 +114,11 @@ impl CommandLog {
     }
 
     /// Commits the open transaction. If the journal write fails, the world is rolled back.
-    pub fn commit(&mut self, world: &mut World, reg: &TypeRegistry) -> Result<TxnId, CommandError> {
+    pub fn commit(
+        &mut self,
+        world: &mut World,
+        reg: &mut TypeRegistry,
+    ) -> Result<TxnId, CommandError> {
         let open = self.open.take().ok_or(CommandError::NoOpenTxn)?;
         let txn = Transaction {
             id: open.id,
@@ -142,7 +146,7 @@ impl CommandLog {
     pub fn abort(
         &mut self,
         world: &mut World,
-        reg: &TypeRegistry,
+        reg: &mut TypeRegistry,
         reason: &str,
     ) -> Result<(), CommandError> {
         let open = self.open.take().ok_or(CommandError::NoOpenTxn)?;
@@ -160,7 +164,7 @@ impl CommandLog {
     pub fn apply_one(
         &mut self,
         world: &mut World,
-        reg: &TypeRegistry,
+        reg: &mut TypeRegistry,
         author: Author,
         label: impl Into<String>,
         op: EditOp,
@@ -186,7 +190,7 @@ impl CommandLog {
     pub fn undo(
         &mut self,
         world: &mut World,
-        reg: &TypeRegistry,
+        reg: &mut TypeRegistry,
         author: Author,
     ) -> Result<TxnId, CommandError> {
         self.ensure_closed()?;
@@ -216,7 +220,7 @@ impl CommandLog {
     pub fn undo_to(
         &mut self,
         world: &mut World,
-        reg: &TypeRegistry,
+        reg: &mut TypeRegistry,
         author: &Author,
         target: TxnId,
     ) -> Result<Vec<TxnId>, CommandError> {
@@ -235,7 +239,7 @@ impl CommandLog {
     pub fn redo(
         &mut self,
         world: &mut World,
-        reg: &TypeRegistry,
+        reg: &mut TypeRegistry,
         author: Author,
     ) -> Result<TxnId, CommandError> {
         self.ensure_closed()?;
@@ -470,9 +474,13 @@ fn summarize(entry: &JournalEntry, earlier: &[HistoryEntry]) -> HistoryEntry {
     }
 }
 
-/// The entities `ops` touch, sorted and unique.
+/// The entities `ops` touch, sorted and unique (a type migration names them in its inverse).
 fn touched(ops: &[AppliedOp]) -> Vec<concordia_core::id::EntityId> {
-    let set: std::collections::BTreeSet<_> = ops.iter().map(|o| o.op.entity()).collect();
+    let set: std::collections::BTreeSet<_> = ops
+        .iter()
+        .flat_map(|o| std::iter::once(&o.op).chain(&o.inverse))
+        .filter_map(EditOp::entity)
+        .collect();
     set.into_iter().collect()
 }
 

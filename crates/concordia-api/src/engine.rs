@@ -226,6 +226,41 @@ impl Engine {
         crate::methods::edit_all(self, ctx, label, ops, None)
     }
 
+    /// Applies `ops` as one transaction attributed to `actor` (not a session), e.g. a script
+    /// module's own migration. Refused while any transaction is held; `None` if `ops` is empty.
+    pub fn commit_edits_as(
+        &mut self,
+        actor: concordia_command::Actor,
+        label: &str,
+        ops: Vec<concordia_command::EditOp>,
+    ) -> Result<Option<concordia_core::id::TxnId>, ApiError> {
+        crate::methods::commit_as(self, actor, label, ops)
+    }
+
+    /// Undoes `txn`, which must be the latest commit, attributed to `actor`.
+    pub fn undo_as(
+        &mut self,
+        actor: concordia_command::Actor,
+        txn: concordia_core::id::TxnId,
+    ) -> Result<(), ApiError> {
+        crate::methods::undo_as(self, actor, txn)
+    }
+
+    /// The type registry and the play world (if any), borrowed together.
+    pub fn registry_and_play_mut(&mut self) -> (&mut TypeRegistry, Option<&mut World>) {
+        (&mut self.registry, self.play.as_mut().map(|p| &mut p.world))
+    }
+
+    /// The project's template catalog: module built-ins plus `templates/**/*.template.ron`.
+    pub fn template_catalog(&self) -> Result<concordia_terra_sim::TemplateCatalog, ApiError> {
+        crate::templates::catalog(self)
+    }
+
+    /// The play-world RNG seed (`[sim] seed`).
+    pub fn sim_seed(&self) -> u64 {
+        self.config.sim_seed
+    }
+
     /// The project root.
     pub fn project(&self) -> &Path {
         &self.config.project
@@ -313,7 +348,10 @@ impl Engine {
         };
         if scene.hold.as_ref().is_some_and(&matches) {
             scene.hold = None;
-            if let Err(e) = scene.log.abort(&mut scene.world, &self.registry, reason) {
+            if let Err(e) = scene
+                .log
+                .abort(&mut scene.world, &mut self.registry, reason)
+            {
                 tracing::error!(error = %e, reason, "failed to abort transaction");
             }
         }

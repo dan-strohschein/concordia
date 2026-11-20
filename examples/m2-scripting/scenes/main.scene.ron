@@ -1,0 +1,27 @@
+// Concordia scene, format 1. Canonical form: `concordia fmt` rewrites this file.
+Scene(
+    format: 1,
+    id: "018bcfe5-6800-7001-b74d-8f5061461de8",
+    name: "Wanderers",
+    entities: [
+        Entity(
+            id: "018bcfe5-6800-7002-8a2e-7454713d7708",
+            components: {
+                "Name": "Crowd",
+                "Spawner": (
+                    count: 200,
+                    distribution: Disc(
+                        radius: 10.0,
+                    ),
+                    seed: 7,
+                    template: "wanderer",
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.0, 0.0, 0.0),
+                ),
+            },
+        ),
+    ],
+)

@@ -800,3 +800,16 @@ fn migrate_dynamic_all_is_atomic_across_types() {
         json!(1.0)
     );
 }
+
+#[test]
+fn a_world_knows_which_component_names_it_has_stored() {
+    let (reg, _, _) = script_registry();
+    let (mut world, ids) = script_world(&reg, 2, 1);
+    assert!(world.stores("Brain") && world.stores(Pos::type_info().name));
+    assert!(!world.stores("Calm"), "registered but never stored");
+    world.remove_dyn(ids[0], "Brain").unwrap();
+    assert!(
+        world.stores("Brain"),
+        "a stored type stays known (its columns keep its version)"
+    );
+}

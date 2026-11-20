@@ -195,7 +195,7 @@ fn start_modules(
     let mut schedule = Schedule::new();
     let mut states = Vec::new();
     for module in &engine.modules {
-        let setup = module.start_play(world)?;
+        let setup = module.start_play_in(engine, world)?;
         schedule.append(setup.schedule);
         states.extend(setup.state);
     }

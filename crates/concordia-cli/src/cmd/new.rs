@@ -84,6 +84,9 @@ fn manifest(name: &str, features: &Features) -> String {
     );
     if features.modules {
         text.push_str("\n[physics]\ngravity = [0.0, -9.81, 0.0]\n\n[assets]\n\n[render]\n");
+        text.push_str(
+            "\n# Gameplay modules: add [[scripts.module]] entries (kind = \"wasm\" or \"native\", path).\n[scripts]\n",
+        );
     }
     if features.studio {
         text.push_str(

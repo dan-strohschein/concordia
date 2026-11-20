@@ -618,6 +618,7 @@ dependencies = [
  "concordia-rhi",
  "concordia-rhi-metal",
  "concordia-scene",
+ "concordia-scripting",
  "concordia-studio",
  "concordia-testkit",
  "futures",
@@ -928,6 +929,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1006,6 +1008,30 @@ dependencies = [
  "wasmparser 0.263.0",
  "wasmtime",
  "wasmtime-wasi",
+]
+
+[[package]]
+name = "concordia-scripting"
+version = "0.0.0"
+dependencies = [
+ "concordia-api",
+ "concordia-command",
+ "concordia-core",
+ "concordia-reflect",
+ "concordia-script",
+ "concordia-script-guest",
+ "concordia-script-native",
+ "concordia-script-wasm",
+ "concordia-terra",
+ "concordia-terra-sim",
+ "concordia-tests",
+ "conformance-guest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "tracing-subscriber",
+ "wanderers",
 ]
 
 [[package]]
@@ -4616,6 +4642,15 @@ checksum = "29790946404f91d9c5d06f9874efddea1dc06c5efe94541a7d6863108e3a5e4b"
 dependencies = [
  "same-file",
  "winapi-util",
+]
+
+[[package]]
+name = "wanderers"
+version = "0.0.0"
+dependencies = [
+ "concordia-reflect",
+ "concordia-script-guest",
+ "serde",
 ]
 
 [[package]]

@@ -66,6 +66,16 @@ pub struct TypeRegistration {
     type_id: TypeId,
     builds: Builds,
     data: HashMap<TypeId, Box<dyn Any + Send + Sync>>,
+    /// Every version a dynamic type has had, so a known description gets its version back.
+    versions: Vec<Version>,
+}
+
+/// One built version of a dynamic type: its description, the versions of the named types it
+/// referred to when built, and the built info.
+struct Version {
+    desc: crate::TypeDesc,
+    deps: Vec<(String, usize)>,
+    info: &'static TypeInfo,
 }
 
 impl TypeRegistration {
@@ -80,6 +90,7 @@ impl TypeRegistration {
                 },
             },
             data: HashMap::new(),
+            versions: Vec::new(),
         }
     }
 
@@ -89,12 +100,21 @@ impl TypeRegistration {
             type_id: TypeId::of::<DynamicValue>(),
             builds: Builds::Dynamic,
             data: HashMap::new(),
+            versions: Vec::new(),
         }
     }
 
     /// The type's info.
     pub fn info(&self) -> &'static TypeInfo {
         self.info
+    }
+
+    /// The description the current version was built from (dynamic types only).
+    pub fn desc(&self) -> Option<&crate::TypeDesc> {
+        self.versions
+            .iter()
+            .find(|v| std::ptr::eq(v.info, self.info))
+            .map(|v| &v.desc)
     }
 
     /// True for a type described at runtime (see [`TypeRegistry::register_dynamic`]).
@@ -160,6 +180,22 @@ fn from_json_impl<T: Reflect>(value: Value) -> Result<Box<dyn DynReflect>, Refle
         })
 }
 
+/// Every `{"Named": name}` reference in a serialized description.
+fn named_refs(json: &serde_json::Value, out: &mut Vec<String>) {
+    match json {
+        serde_json::Value::Object(map) => {
+            for (key, value) in map {
+                match (key.as_str(), value) {
+                    ("Named", serde_json::Value::String(name)) => out.push(name.clone()),
+                    _ => named_refs(value, out),
+                }
+            }
+        }
+        serde_json::Value::Array(items) => items.iter().for_each(|v| named_refs(v, out)),
+        _ => {}
+    }
+}
+
 /// All registered types.
 #[derive(Debug, Default)]
 pub struct TypeRegistry {
@@ -214,6 +250,10 @@ impl TypeRegistry {
 
     /// Registers (or replaces) a type described at runtime; its values are
     /// [`DynamicValue`](crate::DynamicValue)s. A static type's name cannot be taken.
+    ///
+    /// Registering a description this name had before (while the types it refers to are the
+    /// same versions) makes that earlier version current again instead of building a new one,
+    /// so reloads, rollbacks and undo return the exact version values were stored with.
     pub fn register_dynamic(
         &mut self,
         desc: &crate::TypeDesc,
@@ -229,22 +269,60 @@ impl TypeRegistry {
                 new: crate::desc::DYNAMIC_PATH,
             });
         }
+        let deps = self.dependency_versions(desc);
+        let known = existing.and_then(|index| {
+            self.entries[index]
+                .versions
+                .iter()
+                .find(|v| v.desc == *desc && v.deps == deps)
+                .map(|v| (index, v.info))
+        });
+        if let Some((index, info)) = known {
+            self.entries[index].info = info;
+            return Ok(&mut self.entries[index]);
+        }
         let info = desc.to_info(self)?;
+        let version = Version {
+            desc: desc.clone(),
+            deps,
+            info,
+        };
         let index = match existing {
             Some(index) => {
-                // A new version (e.g. a script reload): keep attached data such as component ops.
-                let data = std::mem::take(&mut self.entries[index].data);
-                self.entries[index] = TypeRegistration::dynamic(info);
-                self.entries[index].data = data;
+                // A new version (e.g. a script reload): keep attached data and earlier versions.
+                let entry = &mut self.entries[index];
+                entry.info = info;
+                entry.versions.push(version);
                 index
             }
             None => {
-                self.entries.push(TypeRegistration::dynamic(info));
+                let mut entry = TypeRegistration::dynamic(info);
+                entry.versions.push(version);
+                self.entries.push(entry);
                 self.by_name.insert(info.name, self.entries.len() - 1);
                 self.entries.len() - 1
             }
         };
         Ok(&mut self.entries[index])
+    }
+
+    /// The current version (by address) of every named type `desc` refers to; 0 if unknown.
+    fn dependency_versions(&self, desc: &crate::TypeDesc) -> Vec<(String, usize)> {
+        let mut names = Vec::new();
+        if let Ok(json) = serde_json::to_value(desc) {
+            named_refs(&json, &mut names);
+        }
+        names.sort();
+        names.dedup();
+        names
+            .into_iter()
+            .map(|name| {
+                let at = self
+                    .get_by_name(&name)
+                    .map_or(0, |r| std::ptr::from_ref(r.info()) as usize);
+                (name, at)
+            })
+            .collect()
     }
 
     /// Lookup by Rust type.

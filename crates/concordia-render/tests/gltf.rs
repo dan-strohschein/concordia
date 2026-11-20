@@ -68,7 +68,7 @@ fn render_model(model: &str, variant: &str, file: &str) -> Option<Image> {
     let model_report = db.import(&Path::new(model).join(file)).unwrap();
     let sky = db.import(Path::new("sky.hdr")).unwrap();
 
-    let reg = registry();
+    let mut reg = registry();
     let (_, prefab) = db
         .load_artifact(&AssetRef::Asset {
             id: model_report.id,
@@ -91,9 +91,9 @@ fn render_model(model: &str, variant: &str, file: &str) -> Option<Image> {
     )
     .unwrap();
     for op in ops {
-        log.apply(&mut world, &reg, op).unwrap();
+        log.apply(&mut world, &mut reg, op).unwrap();
     }
-    log.commit(&mut world, &reg).unwrap();
+    log.commit(&mut world, &mut reg).unwrap();
 
     let (center, radius) = bounds(&world, &mut db);
     let env = world.spawn(&mut ids).unwrap();

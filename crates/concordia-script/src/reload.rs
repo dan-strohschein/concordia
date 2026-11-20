@@ -1,7 +1,7 @@
 //! Reloading a module's types (ADR-0061): only changed types are re-registered, and every
 //! stored value, tag value and pending signal of them moves to the new version through
 //! reflect's `migrate`, all at once. If any value can't convert, the old versions come back
-//! and the world is left as it was.
+//! (exactly: the registry keeps every version) and the world is left as it was.
 
 use std::collections::BTreeMap;
 
@@ -14,11 +14,11 @@ use crate::{ModuleDesc, ScriptError};
 
 /// The component and signal types to re-register: those that changed or are new (all of them
 /// when a helper type changed, since components refer to helpers).
-fn changed<'a>(
+fn changed<'a, 'b>(
     old: &'a ModuleDesc,
-    new: &'a ModuleDesc,
-) -> Vec<(Option<&'a TypeDesc>, &'a TypeDesc)> {
-    let previous: BTreeMap<&str, &TypeDesc> = old
+    new: &'b ModuleDesc,
+) -> Vec<(Option<&'a TypeDesc>, &'b TypeDesc)> {
+    let previous: BTreeMap<&str, &'a TypeDesc> = old
         .components
         .iter()
         .chain(&old.signals)
@@ -31,6 +31,12 @@ fn changed<'a>(
         .map(|t| (previous.get(t.name.as_str()).copied(), t))
         .filter(|(before, now)| helpers_changed || *before != Some(*now))
         .collect()
+}
+
+/// The new descriptions of `new`'s component and signal types that differ from `old`'s (or are
+/// new); every one of them when a helper type changed.
+pub fn changed_types<'a>(old: &ModuleDesc, new: &'a ModuleDesc) -> Vec<&'a TypeDesc> {
+    changed(old, new).into_iter().map(|(_, now)| now).collect()
 }
 
 /// Registers helper `types` and component/signal `descs`; returns the latter's new infos.
@@ -97,7 +103,7 @@ pub(crate) fn migrate_types(
                 .collect())
         }
         Err(e) => {
-            restore(registry, world, old, &changed)?;
+            restore(registry, old, &changed)?;
             Err(migration_error(&new.name, e))
         }
     }
@@ -111,20 +117,16 @@ fn union(into: &mut Vec<String>, more: Vec<String>) {
     }
 }
 
-/// Puts the old versions back: registers them again and moves the world (still holding the
-/// old shapes) onto those registrations.
+/// Puts the old versions back. Registering a known description restores its exact version
+/// (`TypeRegistry::register_dynamic`), and the failed migration left every world unchanged, so
+/// the registry and the worlds agree again.
 fn restore(
     registry: &mut TypeRegistry,
-    world: &mut World,
     old: &ModuleDesc,
     changed: &[(Option<&TypeDesc>, &TypeDesc)],
 ) -> Result<(), ScriptError> {
-    let helpers = &old.types[..];
     let previous: Vec<&TypeDesc> = changed.iter().filter_map(|(before, _)| *before).collect();
-    let infos = register(registry, &old.name, helpers, &previous)?;
-    world
-        .migrate_dynamic_all(&infos, |value, to| migrate(value, to).map(|(v, _)| v))
-        .map_err(|e| migration_error(&old.name, e))?;
+    register(registry, &old.name, &old.types, &previous)?;
     register_traits(registry, old)
 }
 

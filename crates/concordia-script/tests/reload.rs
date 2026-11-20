@@ -188,3 +188,12 @@ fn reload_refuses_changed_processors() {
         "{err}"
     );
 }
+
+#[test]
+fn changed_types_lists_the_new_versions_of_changed_component_and_signal_types() {
+    let (v1, v2) = (V1::describe(), V2::describe());
+    let changed = concordia_script::changed_types(&v1, &v2);
+    assert_eq!(changed.len(), 1);
+    assert_eq!(changed[0], &v2.components[0]);
+    assert!(concordia_script::changed_types(&v1, &V1::describe()).is_empty());
+}

@@ -54,11 +54,13 @@ pub enum ApiErrorKind {
     NotPermitted,
     /// The shared engine this client was attached to has exited (ADR-0082).
     EngineExited,
+    /// A gameplay script module failed to load, reload or migrate (ADR-0061).
+    ScriptFailed,
 }
 
 impl ApiErrorKind {
     /// Every kind (for exhaustive tests and docs).
-    pub const ALL: [Self; 24] = [
+    pub const ALL: [Self; 25] = [
         Self::ParseError,
         Self::InvalidRequest,
         Self::MethodNotFound,
@@ -83,6 +85,7 @@ impl ApiErrorKind {
         Self::TaskTransition,
         Self::NotPermitted,
         Self::EngineExited,
+        Self::ScriptFailed,
     ];
 
     /// The JSON-RPC error code.
@@ -110,6 +113,7 @@ impl ApiErrorKind {
             Self::TaskTransition => -32015,
             Self::NotPermitted => -32016,
             Self::EngineExited => -32017,
+            Self::ScriptFailed => -32018,
         }
     }
 
@@ -145,6 +149,7 @@ impl ApiErrorKind {
             Self::TaskTransition => "TaskTransition",
             Self::NotPermitted => "NotPermitted",
             Self::EngineExited => "EngineExited",
+            Self::ScriptFailed => "ScriptFailed",
         }
     }
 
@@ -174,6 +179,7 @@ impl ApiErrorKind {
             Self::TaskTransition => "the task's status cannot change that way",
             Self::NotPermitted => "this actor is not allowed to do that",
             Self::EngineExited => "the shared engine has exited",
+            Self::ScriptFailed => "a script module failed",
         }
     }
 
@@ -219,6 +225,9 @@ impl ApiErrorKind {
             Self::NotPermitted => "see studio.roster for each role's tools, paths and gates",
             Self::EngineExited => {
                 "call again to reconnect (concordia mcp attaches to a live engine or hosts one), then reopen the scene with scene.open"
+            }
+            Self::ScriptFailed => {
+                "fix the module (the message names the file, type or static), rebuild it, then call script.reload"
             }
         }
     }

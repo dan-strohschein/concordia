@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6a, 2.6b and 2.6c (2026-11-20) done; 2.6d next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c and 2.6 (2.6a–2.6d, 2026-11-20) done; 2.8 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -488,6 +488,63 @@ This replaces the test list and implementation notes of the older "Phase 2.6" te
   - `editing_a_native_module_during_a_headless_session_changes_behavior_after_reload` (the done criterion);
   - the method and tool counts and the token budget;
   - the gameplay-programmer scope test.
+
+**2.6d As built (2026-11-20, ADR-0061, ADR-0062):**
+- **Author decisions at the start:**
+  - Scripts are an engine module (`concordia-scripting`), enabled by `[scripts]`, like Studio. The core stays at **38 methods and 35 MCP tools**, and `[scripts]` adds `script.reload` (36 tools), rather than the 39 and 36 core the plan expected. This keeps Wasmtime and the native loader out of projects that use no scripts.
+  - The edit-world migration is a new **`EditOp::MigrateType`**, fully undoable and replayable. Applying, undoing, redoing and replaying commands now take `&mut TypeRegistry`.
+- **Engine:**
+  - `concordia-scripting`:
+    - `ScriptsModule` (loads at engine start; a failing module is logged and skipped);
+    - `ScriptsConfig` and `ScriptEntry`, and `link::<M>()` for the static path;
+    - `script.reload` (edit-world migration as `script:<module>`, then the play world, with undo as rollback; logged as `script reloaded`);
+    - an exclusive `scripts.emit_logs` system that logs script lines and faults in a deterministic order.
+  - `concordia-api`: the `start_play_in(engine, world)` hook; `Engine::commit_edits_as`, `undo_as`, `registry_and_play_mut`, `template_catalog` and `sim_seed`; the error kind `ScriptFailed` (−32018).
+  - `concordia-app`: `[scripts]` with `[[scripts.module]]` `kind`/`path`/`source`; the paths must stay inside the project; the module is added last.
+  - `concordia new` writes an empty `[scripts]`.
+  - `concordia-command`: `MigrateType`, and its exact inverse (remove, return to the old version, set every old value).
+  - `concordia-reflect`: the registry keeps every version of a dynamic type, so re-registering a known description, with the same dependency versions, restores that exact version; `TypeRegistration::desc`. The 2.6c rollback no longer converts worlds back.
+  - `concordia-terra`: `World::stores`.
+  - `concordia-script`:
+    - `emit_logs`: processors on worker threads only record, so the log order is the same at any thread count;
+    - `enable_all` (each play session) and `changed_types`.
+  - Sample: `examples/m2-scripting` (`scripts/wanderers` uses the processor RNG, libm trigonometry, column writes, commands, signals and a script trait in a template; a spawner places 200). `just wasm` builds it into the example's `build/`; `just native-fixtures` builds its library.
+- **Studio (D8):**
+  - The gameplay programmer is enabled, with `script_reload`, `cargo build *` in bash, `scripts/**` and the new `concordia-scripting` skill. The director may now spawn it.
+  - Roster, sync and M3S gate snapshots were reviewed and updated. The MCP test projects mirror `concordia new` with `[scripts]`.
+- **Tests:**
+  - The plan's tests in `concordia-scripting/tests/scripting.rs`:
+    - `script_reload_over_api_is_logged_with_its_actor`;
+    - `script_reload_journals_edit_world_migration_with_script_actor`, with undo and redo;
+    - `every_backend_runs_the_sample_logic_to_identical_hashes` (linked, WASM and native, at 1 and 8 threads);
+    - `editing_a_native_module_during_a_headless_session_changes_behavior_after_reload` (the done criterion: the library on disk is replaced by a rebuilt one, then reloaded).
+  - Counts and budget: `binary_serves_script_reload_when_scripts_are_configured` (36 tools, under 16k tokens), and `scripts_module_registers_module_types_and_adds_script_reload` (core plus 1).
+  - Scope: `gameplay_programmer_writes_and_reloads_scripts_with_the_scripting_skill`.
+  - Added:
+    - `concordia-command/tests/migrate.rs` (4);
+    - 2 in reflect (version cache, dependencies);
+    - 2 in Terra (`migrate_dynamic_all` atomicity, `stores`);
+    - 3 in `concordia-script` (`changed_types`, `enable_all`, emit order);
+    - 2 in the API (`start_play_in`, `commit_edits_as`/`undo_as`) and 1 for the error kind;
+    - 2 in the app (`[scripts]`) and 1 for the example;
+    - 4 more scripting-module tests (failed loads, the hidden-state refusal, faults across sessions, module types);
+    - the `cli_new` sections.
+- **Red run.** New tests failed against stubs, except these:
+  - Passed at once:
+    - `a_migration_that_cannot_convert_changes_nothing`, a guard the stub satisfied;
+    - `start_play_in_sees_the_engine_registry_and_seed`, whose hook wiring went in with its stub;
+    - `binary_serves_script_reload_when_scripts_are_configured` and `m2_scripting_example_spawns_and_runs_its_wanderers`, integration checks written after their parts.
+  - `script_failed_has_its_own_code_and_a_reload_hint` was written with its variant, and I didn't see it fail first.
+- **Found during green:**
+  - Script log lines and faults were emitted from worker threads. Thread-local subscribers lost them, and their order depended on timing. They are now recorded, then emitted in a deterministic order.
+  - A migration's undo can't convert values back when a field without a default was removed, so the inverse restores exact values instead.
+  - The examples' build folder had matched the workspace glob, so it moved to `examples/m2-scripting/build/`.
+  - `log.tail` returns 100 records by default; the sample test asks for 10,000.
+  - The editor's e2e suite caught a regression: `concordia studio init` on a project without `[scripts]` failed. The default gameplay programmer's `script_reload` matched no tool. `studio init` now adds `[scripts]` when it's missing, just as it adds `[studio]` (`studio_init_adds_scripts_when_missing_for_the_gameplay_programmer`, red first).
+- **Not in this phase:**
+  - Reloads that change processors (schedule rebuilds).
+  - Migrating scene files saved before a module changed a layout; reload while the scene is open instead (ADR-0061).
+  - A rollback test for the edit step when the play step fails (the second step can't fail independently with today's fixtures).
 
 ### Effort (re-estimated)
 | Phase | Estimate |

@@ -5,7 +5,7 @@ The composition root: loads a project's `concordia.toml` and builds the engine m
 
 ## Public entry points
 - `Project::load(root)`, `Project::modules()`, `Project::input_map()`
-- `Manifest` and its sections (`[project]`, `[scene]`, `[sim]`, `[journal]`, `[window]`, `[input]`, `[physics]`, `[assets]`)
+- `Manifest` and its sections (`[project]`, `[scene]`, `[sim]`, `[journal]`, `[window]`, `[input]`, `[physics]`, `[assets]`, `[scripts]` with `[[scripts.module]]` `kind`/`path`/`source`; the scripts module is added last, 2.6d)
 - `SharedEngine::attach_or_host[_on]`, `SharedEngine::attach_live`, `HostedEngine`: one engine per project (ADR-0082)
 - `AppError`
 
@@ -29,7 +29,7 @@ The composition root: loads a project's `concordia.toml` and builds the engine m
 - TOML 1.0 specification.
 
 ## Status
-M1 phase 1.1; M3 phase 3.5b (shared engine).
+M1 phase 1.1; M3 phase 3.5b (shared engine); M2 phase 2.6d (`[scripts]`).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

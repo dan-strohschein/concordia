@@ -17,14 +17,14 @@ fn recorded_session(path: &std::path::Path) -> (Fixture, concordia_terra::World)
     fx.one("agent:x", spawn(b, "B", 2.0));
     fx.one("agent:x", set_pos(a, 3.0));
     fx.log
-        .undo(&mut fx.world, &fx.reg, author("agent:x"))
+        .undo(&mut fx.world, &mut fx.reg, author("agent:x"))
         .unwrap();
     fx.one("agent:x", EditOp::Despawn { id: b });
     fx.log
-        .undo(&mut fx.world, &fx.reg, author("agent:x"))
+        .undo(&mut fx.world, &mut fx.reg, author("agent:x"))
         .unwrap();
     fx.log
-        .redo(&mut fx.world, &fx.reg, author("agent:x"))
+        .redo(&mut fx.world, &mut fx.reg, author("agent:x"))
         .unwrap();
     (fx, base)
 }
@@ -33,9 +33,9 @@ fn recorded_session(path: &std::path::Path) -> (Fixture, concordia_terra::World)
 fn replaying_journal_from_base_snapshot_reproduces_hash() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("s.cmdlog.jsonl");
-    let (fx, mut base) = recorded_session(&path);
+    let (mut fx, mut base) = recorded_session(&path);
     let entries = Journal::load(&path).unwrap().entries;
-    let final_hash = replay_journal(&entries, &mut base, &fx.reg).unwrap();
+    let final_hash = replay_journal(&entries, &mut base, &mut fx.reg).unwrap();
     assert_eq!(final_hash, Some(fx.hash()));
     assert_eq!(base.state_hash().unwrap(), fx.hash());
 }
@@ -49,7 +49,7 @@ fn replay_detects_divergence() {
     let mut other = Fixture::new();
     let stray = fx.entity_id();
     other.one("agent:y", spawn(stray, "stray", 0.0));
-    let err = replay_journal(&entries, &mut other.world, &fx.reg).unwrap_err();
+    let err = replay_journal(&entries, &mut other.world, &mut fx.reg).unwrap_err();
     assert!(
         matches!(err, CommandError::Diverged { seq: 1, .. }),
         "{err:?}"
@@ -60,15 +60,17 @@ fn replay_detects_divergence() {
 fn history_reloads_when_scene_hash_matches() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("s.cmdlog.jsonl");
-    let (fx, _) = recorded_session(&path);
+    let (mut fx, _) = recorded_session(&path);
     let mut world = fx.world.clone();
     let entries = Journal::load(&path).unwrap().entries;
 
     let (mut log, history) = CommandLog::resume(&entries, world.state_hash().unwrap());
     assert_eq!(history, History::Restored);
     let a = entries_first_spawn(&entries);
-    log.undo(&mut world, &fx.reg, author("agent:z")).unwrap();
-    log.undo(&mut world, &fx.reg, author("agent:z")).unwrap();
+    log.undo(&mut world, &mut fx.reg, author("agent:z"))
+        .unwrap();
+    log.undo(&mut world, &mut fx.reg, author("agent:z"))
+        .unwrap();
     assert!(world.contains(a) && pos_x(&world, a) == Some(1.0));
     assert!(log.can_redo(), "the two undos are redoable");
     let entry = log.history(1).pop().unwrap();
@@ -84,7 +86,7 @@ fn history_reloads_when_scene_hash_matches() {
     );
     assert!(matches!(history, History::Stale { .. }));
     let err = stale
-        .undo(&mut world, &fx.reg, author("agent:z"))
+        .undo(&mut world, &mut fx.reg, author("agent:z"))
         .unwrap_err();
     let CommandError::NothingToUndo { reason } = err else {
         panic!()

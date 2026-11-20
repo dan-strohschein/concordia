@@ -238,18 +238,17 @@ fn edit_params(method: &str, txn: &Transaction, undo: bool) -> Value {
     })
 }
 
-/// The distinct entities `ops` touch, in first-touched order.
+/// The distinct entities `ops` touch, in first-touched order (a type migration names them in
+/// its inverse ops).
 fn entities_of(ops: &[concordia_command::AppliedOp]) -> Vec<String> {
     let mut entities: Vec<String> = Vec::new();
     for applied in ops {
-        let id = match &applied.op {
-            EditOp::Spawn { id, .. }
-            | EditOp::Despawn { id, .. }
-            | EditOp::SetComponent { id, .. }
-            | EditOp::RemoveComponent { id, .. } => id.to_string(),
-        };
-        if !entities.contains(&id) {
-            entities.push(id);
+        let touched = std::iter::once(&applied.op).chain(&applied.inverse);
+        for id in touched.filter_map(EditOp::entity) {
+            let id = id.to_string();
+            if !entities.contains(&id) {
+                entities.push(id);
+            }
         }
     }
     entities

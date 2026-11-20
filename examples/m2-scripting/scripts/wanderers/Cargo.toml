@@ -1,0 +1,24 @@
+[package]
+name = "wanderers"
+description = "Sample gameplay module: wanderers that turn at random, tire, rest and recover."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[features]
+# Export the native module C ABI from the cdylib (ADR-0061).
+dylib = []
+
+[dependencies]
+concordia-reflect.workspace = true
+concordia-script-guest.workspace = true
+serde.workspace = true
+
+[lints]
+workspace = true

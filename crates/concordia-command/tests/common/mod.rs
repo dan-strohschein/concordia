@@ -58,7 +58,14 @@ impl Fixture {
         let author = author(actor);
         let label = op.default_label();
         self.log
-            .apply_one(&mut self.world, &self.reg, author, label, op, &mut self.ids)
+            .apply_one(
+                &mut self.world,
+                &mut self.reg,
+                author,
+                label,
+                op,
+                &mut self.ids,
+            )
             .unwrap()
     }
 }
