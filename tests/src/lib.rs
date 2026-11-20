@@ -2,6 +2,7 @@
 
 pub mod bins;
 pub mod mcp_client;
+pub mod studio_gate;
 
 use std::path::PathBuf;
 use std::process::Command;

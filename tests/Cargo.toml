@@ -47,6 +47,26 @@ name = "m0_headless_mcp"
 path = "gates/m0_headless_mcp.rs"
 
 [[test]]
+name = "m3s_studio_sync"
+path = "gates/m3s_studio_sync.rs"
+
+[[test]]
+name = "m3s_enforcement"
+path = "gates/m3s_enforcement.rs"
+
+[[test]]
+name = "m3s_task_board"
+path = "gates/m3s_task_board.rs"
+
+[[test]]
+name = "m3s_shared_engine"
+path = "gates/m3s_shared_engine.rs"
+
+[[test]]
+name = "m3s_live_check"
+path = "gates/m3s_live_check.rs"
+
+[[test]]
 name = "m3s_team_questions"
 path = "gates/m3s_team_questions.rs"
 

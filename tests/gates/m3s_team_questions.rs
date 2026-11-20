@@ -5,89 +5,13 @@
 //! the director hears of it and the tech artist answers; another question is escalated, a human
 //! answers over the Engine API, and the task unblocks. No live agent, no API key.
 
-use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Stdio};
 
 use concordia_api::EngineLink;
 use concordia_app::SharedEngine;
 use concordia_studio::{JournalEntry, StudioJournal};
-use concordia_tests::bins::concordia_bin;
-use concordia_tests::mcp_client::McpClient;
-use serde_json::{Value, json};
-
-const SESSION: &str = "gate-session";
-
-/// Runs `concordia studio hook <event>` in `root` with `input` on stdin; returns its JSON output.
-fn hook(root: &Path, event: &str, input: &Value) -> Value {
-    let mut child = Command::new(concordia_bin())
-        .args(["studio", "hook", event])
-        .current_dir(root)
-        .env("CLAUDE_PROJECT_DIR", root)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(input.to_string().as_bytes())
-        .unwrap();
-    let out = child.wait_with_output().unwrap();
-    assert_eq!(
-        out.status.code(),
-        Some(0),
-        "{event}: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let text = String::from_utf8_lossy(&out.stdout);
-    match text.trim() {
-        "" => Value::Null,
-        body => serde_json::from_str(body).unwrap(),
-    }
-}
-
-/// Hook input for `role` (none: the main session, i.e. the director).
-fn input(event: &str, role: Option<&str>) -> Value {
-    let mut input = json!({"session_id": SESSION, "transcript_path": "/tmp/t", "cwd": "/", "hook_event_name": event});
-    if let Some(role) = role {
-        input["agent_type"] = json!(role);
-        input["agent_id"] = json!(format!("agent-{role}"));
-    }
-    input
-}
-
-fn context(output: &Value) -> String {
-    output["hookSpecificOutput"]["additionalContext"]
-        .as_str()
-        .unwrap_or_default()
-        .to_owned()
-}
-
-/// An engine tool call as `role` would make it: PreToolUse stamps it, then MCP runs it.
-async fn agent_call(
-    root: &Path,
-    mcp: &McpClient,
-    role: Option<&str>,
-    tool: &str,
-    args: Value,
-) -> Value {
-    let mut pre = input("PreToolUse", role);
-    pre["tool_name"] = json!(format!("mcp__concordia__{tool}"));
-    pre["tool_input"] = args;
-    pre["tool_use_id"] = json!(format!("toolu-{tool}"));
-    let decision = hook(root, "pre-tool-use", &pre);
-    let specific = &decision["hookSpecificOutput"];
-    assert_eq!(
-        specific["permissionDecision"], "allow",
-        "{role:?} {tool}: {decision}"
-    );
-    mcp.call(tool, specific["updatedInput"].clone())
-        .await
-        .unwrap_or_else(|e| panic!("{role:?} {tool}: {}", e.text))
-}
+use concordia_tests::studio_gate::{agent_call, context, hook, input, mcp, new_project};
+use serde_json::json;
 
 fn journal(root: &Path) -> Vec<JournalEntry> {
     StudioJournal::of_project(root).read(None).unwrap()
@@ -103,23 +27,8 @@ fn find<'a>(entries: &'a [JournalEntry], kind: &str, question: &str) -> &'a Jour
 #[tokio::test(flavor = "multi_thread")]
 async fn m3s_team_questions_scripted_loop() {
     let dir = tempfile::tempdir().unwrap();
-    let created = Command::new(concordia_bin())
-        .args(["new", "game"])
-        .current_dir(dir.path())
-        .output()
-        .unwrap();
-    assert!(
-        created.status.success(),
-        "{}",
-        String::from_utf8_lossy(&created.stderr)
-    );
-    let root = dir.path().join("game");
-    let mcp = McpClient::spawn(
-        &concordia_bin(),
-        &["mcp", "--project", root.to_str().unwrap()],
-    )
-    .await
-    .unwrap();
+    let root = new_project(dir.path());
+    let mcp = mcp(&root).await;
 
     // The director plans a task; the level designer claims it and asks the tech artist.
     let task = agent_call(
