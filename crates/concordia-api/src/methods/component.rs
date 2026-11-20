@@ -257,7 +257,7 @@ fn default_of(engine: &Engine, component: &str) -> Result<Value, ApiError> {
         .get_by_name(component)
         .map(|r| r.info())
         .ok_or_else(|| crate::engine::internal(format!("{component} vanished")))?;
-    info.default.map(|default| default()).ok_or_else(|| {
+    info.default.map(|default| default.get()).ok_or_else(|| {
         ApiError::new(
             ApiErrorKind::ValueInvalid,
             format!("{component} has no default value"),

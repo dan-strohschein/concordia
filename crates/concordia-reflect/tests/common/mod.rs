@@ -1,6 +1,8 @@
 //! Shared reflected test types (a "zoo" covering every supported shape).
 #![allow(dead_code, missing_docs)]
 
+pub mod arb;
+
 use std::collections::BTreeMap;
 
 use concordia_core::id::EntityId;

@@ -73,7 +73,7 @@ impl Ctx {
             schema.insert("x-concordia-category".into(), category.into());
         }
         if let Some(default) = info.default {
-            schema.insert("default".into(), default());
+            schema.insert("default".into(), default.get());
         }
         schema
     }
@@ -164,7 +164,7 @@ impl Ctx {
             _ => describe(&mut schema, field.docs),
         }
         if let Some(default) = field.default {
-            schema.insert("default".into(), default());
+            schema.insert("default".into(), default.get());
         }
         if let Some(range) = field.range {
             schema.insert("minimum".into(), json!(range.min));

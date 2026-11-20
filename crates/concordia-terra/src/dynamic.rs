@@ -32,6 +32,11 @@ impl World {
         value: Box<dyn DynReflect>,
         registry: &TypeRegistry,
     ) -> Result<Option<Box<dyn DynReflect>>, EcsError> {
+        if value.as_any().is::<concordia_reflect::DynamicValue>() {
+            let value = crate::storage::column::downcast_dynamic(value)?;
+            let old = self.insert_dynamic(id, value)?;
+            return Ok(old.map(|v| Box::new(v) as Box<dyn DynReflect>));
+        }
         let name = value.info().name;
         let registration = registry
             .get_by_type_id(value.as_any().type_id())

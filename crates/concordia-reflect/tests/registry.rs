@@ -41,7 +41,10 @@ fn duplicate_stable_name_is_an_error() {
         name,
         existing,
         new,
-    } = err;
+    } = err
+    else {
+        panic!("expected a name collision, got {err:?}");
+    };
     assert_eq!(name, "Health");
     assert!(existing.ends_with("Health") && new.ends_with("OtherHealth"));
 }
@@ -143,7 +146,11 @@ fn erased_deserialize_builds_value() {
     let reg = health_registry();
     let mut de = serde_json::Deserializer::from_str(r#"{"hp": 3.0, "max": 4.0}"#);
     let mut erased = <dyn erased_serde::Deserializer>::erase(&mut de);
-    let value = (reg.get_by_name("Health").unwrap().deserialize)(&mut erased).unwrap();
+    let value = reg
+        .get_by_name("Health")
+        .unwrap()
+        .deserialize(&mut erased)
+        .unwrap();
     assert_eq!(
         value.as_any().downcast_ref::<Health>(),
         Some(&Health { hp: 3.0, max: 4.0 })

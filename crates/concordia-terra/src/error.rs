@@ -67,6 +67,14 @@ pub enum EcsError {
     /// An id source failed.
     #[error(transparent)]
     Id(#[from] IdError),
+    /// A runtime-described (script) type cannot be stored as asked.
+    #[error("{component}: {message}")]
+    Dynamic {
+        /// The type's stable name.
+        component: String,
+        /// What is wrong.
+        message: String,
+    },
     /// A storage kind was chosen for a type the world already stores another way.
     #[error(
         "{component} is already stored as an ordinary component; register its storage kind before first use"
@@ -80,6 +88,22 @@ pub enum EcsError {
 /// A query's access pattern is invalid.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum QueryError {
+    /// A wire batch does not match the view (row count, unknown entity, wrong type).
+    #[error("batch for {component} does not match: {message}")]
+    BatchMismatch {
+        /// The component's stable name.
+        component: &'static str,
+        /// What is wrong.
+        message: String,
+    },
+    /// A wire column could not be decoded.
+    #[error("batch for {component} is malformed: {message}")]
+    Wire {
+        /// The component's stable name.
+        component: &'static str,
+        /// The decoding error.
+        message: String,
+    },
     /// A component appears more than once in the query.
     #[error("query accesses {component} more than once; each component may appear at most once")]
     Conflict {

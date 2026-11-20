@@ -1,7 +1,6 @@
 //! Observers (M2 phase 2.0b, ADR-0069): processors that run on entities that gained or lost a
 //! component, after each simulation phase's commands are applied. Mass-style (public docs only).
 
-use std::any::TypeId;
 use std::collections::BTreeMap;
 
 use concordia_core::id::EntityId;
@@ -29,13 +28,13 @@ pub fn observer<T: Component>(name: &str, on: Observe) -> ProcessorDecl {
 /// Adds and removals of observed component types, in the order they happened.
 #[derive(Clone, Default)]
 pub(crate) struct StructuralLog {
-    observed: Vec<TypeId>,
-    events: Vec<(TypeId, EntityId, bool)>,
+    observed: Vec<&'static str>,
+    events: Vec<(&'static str, EntityId, bool)>,
 }
 
 impl StructuralLog {
     /// Starts logging changes of `types` (only these cost anything).
-    pub(crate) fn observe(&mut self, types: impl IntoIterator<Item = TypeId>) {
+    pub(crate) fn observe(&mut self, types: impl IntoIterator<Item = &'static str>) {
         for t in types {
             if !self.observed.contains(&t) {
                 self.observed.push(t);
@@ -43,10 +42,10 @@ impl StructuralLog {
         }
     }
 
-    /// Records that `entity` gained (`added`) or lost `type_id`, if it is observed.
-    pub(crate) fn record(&mut self, type_id: TypeId, entity: EntityId, added: bool) {
-        if !self.observed.is_empty() && self.observed.contains(&type_id) {
-            self.events.push((type_id, entity, added));
+    /// Records that `entity` gained (`added`) or lost component `name`, if it is observed.
+    pub(crate) fn record(&mut self, name: &'static str, entity: EntityId, added: bool) {
+        if !self.observed.is_empty() && self.observed.contains(&name) {
+            self.events.push((name, entity, added));
         }
     }
 
@@ -76,6 +75,7 @@ impl StructuralLog {
     }
 }
 
-/// `TypeId` ordered for map keys (the order never reaches results: entities are per type).
+/// A component's stable name as a map key (the order never reaches results: entities are per
+/// type).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct TypeKey(pub(crate) TypeId);
+pub(crate) struct TypeKey(pub(crate) &'static str);

@@ -11,7 +11,7 @@ The top-level design is in [`../docs/design.md`](../docs/design.md). This folder
 | M-1 Toolchain & scaffold | [M-1-toolchain-and-scaffold.md](M-1-toolchain-and-scaffold.md) | none | Ready to execute | Gate passed |
 | M0 Headless core | [M0-headless-core.md](M0-headless-core.md) | M-1 | Ready to execute | Gate passed |
 | M1 See it | [M1-see-it.md](M1-see-it.md) | M0 | Ready to execute | Gate passed (2026-11-19) |
-| M2 Engine breadth (was Port begins; ADR-0048) | [M2-port-begins.md](M2-port-begins.md) | M1 | Refined (ADR-0067, approved 2026-11-19) | In progress (2.0, 2.0b, 2.0c done) |
+| M2 Engine breadth (was Port begins; ADR-0048) | [M2-port-begins.md](M2-port-begins.md) | M1 | Refined (ADR-0067, approved 2026-11-19) | In progress (2.0, 2.0b, 2.0c, 2.6a done) |
 | M3 Closed loop & Studio v1 | [M3-closed-loop-and-studio.md](M3-closed-loop-and-studio.md) | M2 (Studio phases may start after M0) | Needs refinement after M2 | In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b, 3.8 done; Studio checkpoint passed 2026-11-19, deterministic and live); Studio phases 3.3–3.6, 3.8 run right after M1 (ADR-0049) |
 | M4 Unreal-class visuals | [M4-unreal-class-visuals.md](M4-unreal-class-visuals.md) | M1 (render), M2 (graphs) | Needs refinement after M3 | Planned |
 | M5 Bring your game | [M5-bring-your-game.md](M5-bring-your-game.md) | M2 (importer framework) | Needs refinement after M4 | Planned |
@@ -179,7 +179,7 @@ To avoid collisions, each milestone draws ADR numbers from its own block. Use th
 | 0020–0029 | M-1 | 0020 toolchain pinning · 0021 WASM guest build path · 0022 CI and supply chain |
 | 0030–0039 | M0 | 0030 own archetype ECS (written: safe column storage) · 0031 Engine API error model (written) · 0032 edit world vs play world (written) · 0033 MCP adapter (written: rmcp pin, protocol versions) |
 | 0040–0059 | M1 | 0040–0045 as named in M1's plan (0040, 0041, 0042, 0043, 0044, 0045 written) · 0046 engine modules (written) · 0047 editor UI stays web, native viewport, thin panels (written) · 0048 editor v1 in M1, engine breadth before the port (written) · 0049 agent-first end of M1, Studio right after M1 (written) |
-| 0060–0079 | M2 | 0060–0066 as named in M2's plan (0063 gameplay determinism contract written; 0064–0065 move to M5 with the port) · 0067 M2 refinement: engine breadth on Terra's Mass core (written) · 0068 Substrate-style material model (phase 2.3) · 0069 Terra storage kinds, command buffers, signals and observers (written) · 0070 Terra templates, traits and spawners; tool-list budget 16k (written) |
+| 0060–0079 | M2 | 0060–0066 as named in M2's plan (0062 script protocol: types and wire encoding written in 2.6a, WIT world in 2.6b; 0063 gameplay determinism contract written; 0064–0065 move to M5 with the port) · 0067 M2 refinement: engine breadth on Terra's Mass core (written) · 0068 Substrate-style material model (phase 2.3) · 0069 Terra storage kinds, command buffers, signals and observers (written) · 0070 Terra templates, traits and spawners; tool-list budget 16k (written) |
 | 0080–0099 | M3 | 0080 shared engine and Studio attribution (written) · 0081 team questions and answers (written) · 0082 shared engine: discovery, attach and lifetime (written) · 0083 Studio panel and Claude Code launcher (written) · (to come: YAML-frontmatter exception for Studio files) |
 | 0100–0119 | M4 | 0100 meshlet geometry pipeline (proposed) · (to come: perf testing on reference hardware) |
 | 0120–0139 | M5 | |

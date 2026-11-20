@@ -23,7 +23,32 @@ pub struct TypeInfo {
     /// `#[reflect(category = "..")]`: grouping for discovery, e.g. `Lighting`.
     pub category: Option<&'static str>,
     /// `#[reflect(default)]` or `#[reflect(default = ..)]`: the whole value's default as JSON.
-    pub default: Option<fn() -> serde_json::Value>,
+    pub default: Option<DefaultValue>,
+}
+
+/// A default value as JSON: computed by a function (derived types) or stored (dynamic types).
+#[derive(Clone, Copy)]
+pub enum DefaultValue {
+    /// Computed on demand.
+    Fn(fn() -> serde_json::Value),
+    /// Stored (leaked with its dynamic type).
+    Json(&'static serde_json::Value),
+}
+
+impl DefaultValue {
+    /// The default as JSON.
+    pub fn get(&self) -> serde_json::Value {
+        match self {
+            Self::Fn(f) => f(),
+            Self::Json(v) => (*v).clone(),
+        }
+    }
+}
+
+impl fmt::Debug for DefaultValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "DefaultValue({})", self.get())
+    }
 }
 
 impl TypeInfo {
@@ -61,7 +86,7 @@ impl TypeInfo {
 
     /// The same type with a default value.
     pub fn with_default(mut self, default: fn() -> serde_json::Value) -> Self {
-        self.default = Some(default);
+        self.default = Some(DefaultValue::Fn(default));
         self
     }
 
@@ -215,7 +240,7 @@ pub struct FieldInfo {
     /// Doc comment text.
     pub docs: &'static str,
     /// `#[reflect(default = ..)]` as JSON (falls back to `null` if it cannot serialize).
-    pub default: Option<fn() -> serde_json::Value>,
+    pub default: Option<DefaultValue>,
     /// `#[reflect(range(..))]`.
     pub range: Option<Range>,
     /// `#[reflect(widget = "..")]`: editor widget hint, overriding the type's.
@@ -257,25 +282,40 @@ pub enum VariantShape {
     Struct(Vec<FieldInfo>),
 }
 
-/// A lazy reference to another reflected type (cheap; safe for recursive types).
+/// A reference to another reflected type: lazy for Rust types (cheap; safe for recursive types),
+/// direct for runtime-described ones.
 #[derive(Clone, Copy)]
-pub struct TypeRef {
-    info: fn() -> &'static TypeInfo,
-    register: fn(&mut TypeRegistry) -> Result<(), RegistryError>,
+pub struct TypeRef(Ref);
+
+#[derive(Clone, Copy)]
+enum Ref {
+    Static {
+        info: fn() -> &'static TypeInfo,
+        register: fn(&mut TypeRegistry) -> Result<(), RegistryError>,
+    },
+    Info(&'static TypeInfo),
 }
 
 impl TypeRef {
     /// Reference to `T`.
     pub fn of<T: Reflect>() -> Self {
-        Self {
+        Self(Ref::Static {
             info: T::type_info,
             register: |reg| reg.register::<T>().map(|_| ()),
-        }
+        })
+    }
+
+    /// Reference to an already-built type (a dynamic type, or one resolved from a registry).
+    pub fn to(info: &'static TypeInfo) -> Self {
+        Self(Ref::Info(info))
     }
 
     /// The referenced type's info.
     pub fn info(&self) -> &'static TypeInfo {
-        (self.info)()
+        match self.0 {
+            Ref::Static { info, .. } => info(),
+            Ref::Info(info) => info,
+        }
     }
 
     /// The referenced type's stable name.
@@ -283,8 +323,12 @@ impl TypeRef {
         self.info().name
     }
 
+    /// Registers a Rust type; direct references were resolved from (or into) a registry already.
     pub(crate) fn register(&self, reg: &mut TypeRegistry) -> Result<(), RegistryError> {
-        (self.register)(reg)
+        match self.0 {
+            Ref::Static { register, .. } => register(reg),
+            Ref::Info(_) => Ok(()),
+        }
     }
 }
 

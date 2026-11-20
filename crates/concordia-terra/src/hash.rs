@@ -70,7 +70,7 @@ impl World {
         let presentation: Vec<crate::component::ComponentId> = self
             .presentation
             .iter()
-            .filter_map(|t| self.components.id_of(*t))
+            .filter_map(|name| self.components.by_name(name))
             .collect();
         for id in self.entities.ids() {
             self.hash_entity(id, &presentation, &mut h)?;
