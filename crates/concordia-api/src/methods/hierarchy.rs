@@ -7,7 +7,6 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use concordia_command::{Actor, EditOp};
 use concordia_core::id::{EntityId, IdSource};
 use concordia_core::math::{Mat4, Vec3};
-use concordia_core::suggest::did_you_mean;
 use concordia_reflect::Reflect;
 use concordia_scene::builtin::{Name, Parent, Transform, world_transform};
 use concordia_terra::World;
@@ -18,7 +17,6 @@ use super::{Empty, EntityRef, resolve};
 use crate::engine::{Engine, internal};
 use crate::error::{ApiError, ApiErrorKind};
 use crate::method::{CallCtx, Method, MethodInfo};
-use crate::template::EntityTemplate;
 
 /// List the ready-made entities (templates) that entity.create can spawn, with what each is for and its components.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
@@ -27,19 +25,23 @@ pub struct EntityTemplates;
 /// `entity.templates` result.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 pub struct EntityTemplatesResult {
-    /// Templates in module order.
+    /// Templates sorted by name: module built-ins and the project's templates/**/*.template.ron.
     pub templates: Vec<TemplateSummary>,
 }
 
 /// One template, as listed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 pub struct TemplateSummary {
-    /// Name to pass to entity.create.
+    /// Name to pass to entity.create or terra.spawn_batch.
     pub name: String,
     /// What it is for.
     pub description: String,
-    /// The components it starts with.
+    /// The traits it composes, by name.
+    pub traits: Vec<String>,
+    /// The components it starts with (from its traits and component values).
     pub components: Vec<String>,
+    /// Why it can't be spawned, if it can't (e.g. two traits add one component).
+    pub problem: Option<String>,
 }
 
 impl Method for EntityTemplates {
@@ -49,12 +51,21 @@ impl Method for EntityTemplates {
     type Result = EntityTemplatesResult;
 
     fn call(engine: &mut Engine, _: &CallCtx, _: Empty) -> Result<EntityTemplatesResult, ApiError> {
-        let templates = templates(engine)
-            .into_iter()
-            .map(|t| TemplateSummary {
-                components: t.components.keys().cloned().collect(),
-                name: t.name,
-                description: t.description,
+        let catalog = crate::templates::catalog(engine)?;
+        let templates = catalog
+            .iter()
+            .map(|t| {
+                let compiled = t.compile(engine.registry());
+                TemplateSummary {
+                    name: t.name.clone(),
+                    description: t.description.clone(),
+                    traits: t.traits.keys().cloned().collect(),
+                    components: match &compiled {
+                        Ok(c) => c.component_names().into_iter().map(str::to_owned).collect(),
+                        Err(_) => t.components.keys().cloned().collect(),
+                    },
+                    problem: compiled.err().map(|e| e.to_string()),
+                }
             })
             .collect();
         Ok(EntityTemplatesResult { templates })
@@ -102,15 +113,19 @@ impl Method for EntityCreate {
         ctx: &CallCtx,
         p: EntityCreateParams,
     ) -> Result<CreatedEntity, ApiError> {
-        let template = find_template(engine, &p.template)?;
+        let template = crate::templates::compiled(engine, &p.template)?;
         let world = &engine.scene()?.world;
         let parent = p
             .parent
             .as_ref()
             .map(|r| resolve_parent(world, r))
             .transpose()?;
-        let mut components = template.components;
-        let base = p.name.unwrap_or(template.name);
+        let mut components = template.components_json();
+        let own_name = components
+            .get("Name")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        let base = p.name.or(own_name).unwrap_or(template.name);
         components.insert("Name".into(), json!(unique_name(world, parent, &base)));
         if let Some(parent) = parent {
             components.insert("Parent".into(), json!(parent));
@@ -248,29 +263,6 @@ impl Method for EntityReparent {
         engine.apply_edits(ctx, Self::NAME, ops)?;
         Ok(Empty {})
     }
-}
-
-/// Every module's templates, in module order.
-fn templates(engine: &Engine) -> Vec<EntityTemplate> {
-    engine.modules.iter().flat_map(|m| m.templates()).collect()
-}
-
-fn find_template(engine: &Engine, name: &str) -> Result<EntityTemplate, ApiError> {
-    let all = templates(engine);
-    if let Some(t) = all.iter().find(|t| t.name == name) {
-        return Ok(t.clone());
-    }
-    let names: Vec<&str> = all.iter().map(|t| t.name.as_str()).collect();
-    let suggestions = did_you_mean(name, names.iter().copied())
-        .into_iter()
-        .map(|n| format!("did you mean {n:?}?"))
-        .chain(["list templates with entity.templates".to_owned()]);
-    Err(ApiError::new(
-        ApiErrorKind::InvalidParams,
-        format!("no template named {name:?}"),
-    )
-    .at("/template")
-    .suggest(suggestions))
 }
 
 fn resolve_parent(world: &World, given: &EntityRef) -> Result<EntityId, ApiError> {

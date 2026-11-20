@@ -86,7 +86,7 @@ impl EngineModule for RenderModule {
         crate::register_types(registry)
     }
 
-    fn templates(&self) -> Vec<concordia_api::EntityTemplate> {
+    fn templates(&self) -> Vec<concordia_api::Template> {
         crate::templates::templates()
     }
 

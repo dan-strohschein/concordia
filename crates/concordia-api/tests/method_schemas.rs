@@ -7,8 +7,8 @@ use serde_json::json;
 fn registry_has_the_25_m0_methods_and_the_later_core_methods() {
     assert_eq!(
         methods().iter().count(),
-        34,
-        "25 from M0, events.subscribe/unsubscribe (M1 phase 1.9), entity.templates/create/duplicate/reparent (M1 phase 1.13), component.add (M1 phase 1.14), txn.undo_to (M1 phase 1.15) and scene.text (M3 phase 3.5b, for attached clients)"
+        38,
+        "25 from M0, events.subscribe/unsubscribe (M1 phase 1.9), entity.templates/create/duplicate/reparent (M1 phase 1.13), component.add (M1 phase 1.14), txn.undo_to (M1 phase 1.15), scene.text (M3 phase 3.5b, for attached clients) and terra.spawn_batch/despawn_batch/stats/inspect (M2 phase 2.0c)"
     );
     for name in [
         "session.open",
@@ -23,6 +23,10 @@ fn registry_has_the_25_m0_methods_and_the_later_core_methods() {
         "events.unsubscribe",
         "component.add",
         "txn.undo_to",
+        "terra.spawn_batch",
+        "terra.despawn_batch",
+        "terra.stats",
+        "terra.inspect",
     ] {
         assert!(methods().get(name).is_some(), "{name}");
     }

@@ -314,3 +314,34 @@ fn every_default_role_has_a_color_and_enabled_roles_differ() {
         "enabled roles share a color: {colors:?}"
     );
 }
+
+#[test]
+fn level_designer_places_crowds_with_terra_tools_templates_and_the_template_skill() {
+    let (_dir, roster) = roster();
+    let role = roster
+        .roles()
+        .iter()
+        .find(|r| r.role.as_str() == "level-designer")
+        .expect("the level designer is enabled");
+    for tool in [
+        "terra_spawn_batch",
+        "terra_despawn_batch",
+        "terra_stats",
+        "terra_inspect",
+    ] {
+        assert!(role.mcp_tools.iter().any(|t| t == tool), "{tool}");
+    }
+    assert!(role.skills.iter().any(|s| s == "concordia-terra-templates"));
+    assert!(
+        role.write.iter().any(|p| p == "templates/**"),
+        "{:?}",
+        role.write
+    );
+    for needle in [
+        "Spawner",
+        "mcp__concordia__terra_spawn_batch",
+        ".template.ron",
+    ] {
+        assert!(role.body.contains(needle), "the prompt explains {needle}");
+    }
+}

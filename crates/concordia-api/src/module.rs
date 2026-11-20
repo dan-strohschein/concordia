@@ -27,7 +27,7 @@ pub trait EngineModule: Send + Sync + fmt::Debug {
     }
 
     /// Ready-made entities the module offers to `entity.templates` / `entity.create` (e.g. lights).
-    fn templates(&self) -> Vec<crate::EntityTemplate> {
+    fn templates(&self) -> Vec<crate::Template> {
         Vec::new()
     }
 
@@ -81,15 +81,16 @@ impl EngineModule for CoreModule {
     }
 
     fn register_types(&self, registry: &mut TypeRegistry) -> Result<(), RegistryError> {
-        builtin::register(registry)
+        builtin::register(registry)?;
+        concordia_terra_sim::register(registry)
     }
 
     fn methods(&self) -> Vec<MethodInfo> {
         crate::methods::all()
     }
 
-    fn templates(&self) -> Vec<crate::EntityTemplate> {
-        vec![crate::EntityTemplate::new(
+    fn templates(&self) -> Vec<crate::Template> {
+        vec![crate::Template::new(
             "Empty",
             "An entity with only a name and a transform: a group or pivot for other entities.",
             [

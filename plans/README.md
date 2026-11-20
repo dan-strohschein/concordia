@@ -11,7 +11,7 @@ The top-level design is in [`../docs/design.md`](../docs/design.md). This folder
 | M-1 Toolchain & scaffold | [M-1-toolchain-and-scaffold.md](M-1-toolchain-and-scaffold.md) | none | Ready to execute | Gate passed |
 | M0 Headless core | [M0-headless-core.md](M0-headless-core.md) | M-1 | Ready to execute | Gate passed |
 | M1 See it | [M1-see-it.md](M1-see-it.md) | M0 | Ready to execute | Gate passed (2026-11-19) |
-| M2 Engine breadth (was Port begins; ADR-0048) | [M2-port-begins.md](M2-port-begins.md) | M1 | Refined (ADR-0067, approved 2026-11-19) | In progress (2.0, 2.0b done) |
+| M2 Engine breadth (was Port begins; ADR-0048) | [M2-port-begins.md](M2-port-begins.md) | M1 | Refined (ADR-0067, approved 2026-11-19) | In progress (2.0, 2.0b, 2.0c done) |
 | M3 Closed loop & Studio v1 | [M3-closed-loop-and-studio.md](M3-closed-loop-and-studio.md) | M2 (Studio phases may start after M0) | Needs refinement after M2 | In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b, 3.8 done; Studio checkpoint passed 2026-11-19, deterministic and live); Studio phases 3.3–3.6, 3.8 run right after M1 (ADR-0049) |
 | M4 Unreal-class visuals | [M4-unreal-class-visuals.md](M4-unreal-class-visuals.md) | M1 (render), M2 (graphs) | Needs refinement after M3 | Planned |
 | M5 Bring your game | [M5-bring-your-game.md](M5-bring-your-game.md) | M2 (importer framework) | Needs refinement after M4 | Planned |
@@ -115,7 +115,7 @@ examples/             # small sample projects used by tests and docs
 | `concordia-ai-llm-local` | opt-in example local-LLM provider; not a default workspace member | M4 |
 | `concordia-evolve` | Evolve plugin system: manifests, resolution, lockfile, trust, orchestration over the native and WASM hosts | M6 |
 | `concordia-evolve-api` | stable extension-point API that native plugins link (WIT package `concordia:evolve` for WASM plugins) | M6 |
-| `concordia-terra-sim` | Terra templates and traits, processing phases, LOD, signals, spawners, representation | M2 (moved from M7, ADR-0067) |
+| `concordia-terra-sim` | Terra templates, traits and spawners (2.0c, ADR-0070); LOD and representation (2.4b). Processing phases and signals live in `concordia-terra` (2.0, 2.0b) | M2 (moved from M7, ADR-0067) |
 | `concordia-terra-crowd` | Terra crowds and traffic over `concordia-nav` | M2 (scale and AI-driven behavior in M7) |
 | `concordia-fracture` | offline fracture: patterns, mesh cutting, interior faces, hulls, cluster levels, connection graph | M8 |
 | `concordia-destruction` | runtime destruction on Jolt: strain, breaking, fields, debris, caches | M8 |
@@ -136,7 +136,7 @@ New crates may be proposed in a plan's "Open questions" section; they are added 
 
 ### Engine API & MCP naming
 - The Engine API is JSON-RPC 2.0. Method names are `domain.verb`, e.g. `scene.open`, `scene.save`, `entity.spawn`, `entity.despawn`, `component.get`, `component.set`, `query.run`, `schema.get`, `txn.begin`, `txn.commit`, `txn.undo`, `txn.redo`, `sim.play`, `sim.pause`, `sim.step`, `capture.screenshot`, `input.inject`, `asset.import`, `replay.record`, `replay.run`, `assert.eval`, `task.list/create/update` (M3), `log.tail`.
-- MCP tools map 1:1, with `.` replaced by `_` (e.g. `entity_spawn`). Every MCP tool's input schema is **generated from `concordia-reflect`**, never hand-written.
+- MCP tools map 1:1, with `.` replaced by `_` (e.g. `entity_spawn`). The combined `tools/list` stays under 16k tokens (ADR-0033, raised by ADR-0070). Every MCP tool's input schema is **generated from `concordia-reflect`**, never hand-written.
 - Every mutating call carries an `actor` (grammar `<human|agent|system|tool|script>:<name>[#n]`). It may be omitted on the wire when the session has a default (`session.open`), but the recorded actor is always present. `human:*` actors are not accepted over MCP. The MCP server is named `concordia` in `.mcp.json`, so Claude Code tools appear as `mcp__concordia__<tool>`.
 - **Edit world vs play world:** the command log records mutations of the **edit world** only. Simulation (physics, scripts, AI) runs in a separate **play world** (`world: "edit" | "play"` param on read methods) and never mutates the edit world. Injected input and play-world outcomes are recorded by `concordia-replay`, not the command log.
 - **Additional methods agreed in the plans** (MCP names follow the same rule): M0: `session.open`, `scene.new`, `scene.info`, `entity.get`, `component.patch`, `component.remove`, `txn.abort`, `txn.history`, `sim.stop`. M1: `asset.list`, `physics.raycast`, `events.subscribe`. M2: `terra.spawn_batch/despawn_batch/stats/inspect`, `script.reload`, `nav.build`, `nav.path`, `replay.record/run` (v0). M5: `port.*`, `shader.translate` (moved from M2, ADR-0067). M3: `task.get/claim/comment/approve/reject`, `studio.roster/status/activity/sync`, `studio.ask/answer/escalate/questions` (3.6b), `gen.list/run` (`audit.record` is replaced by `file_edit` entries in the Studio journal, ADR-0080). Studio methods come from the `studio` engine module (`[studio]` in `concordia.toml`), not the core set. M4: `graph.*`, `ai.inspect/trace`, `render.stats`, `render.set_debug_view`, `perf.capture`, `capture.reference`. M5: `import.scan/run/report/licenses`, `translate.*`.
@@ -179,7 +179,7 @@ To avoid collisions, each milestone draws ADR numbers from its own block. Use th
 | 0020–0029 | M-1 | 0020 toolchain pinning · 0021 WASM guest build path · 0022 CI and supply chain |
 | 0030–0039 | M0 | 0030 own archetype ECS (written: safe column storage) · 0031 Engine API error model (written) · 0032 edit world vs play world (written) · 0033 MCP adapter (written: rmcp pin, protocol versions) |
 | 0040–0059 | M1 | 0040–0045 as named in M1's plan (0040, 0041, 0042, 0043, 0044, 0045 written) · 0046 engine modules (written) · 0047 editor UI stays web, native viewport, thin panels (written) · 0048 editor v1 in M1, engine breadth before the port (written) · 0049 agent-first end of M1, Studio right after M1 (written) |
-| 0060–0079 | M2 | 0060–0066 as named in M2's plan (0063 gameplay determinism contract written; 0064–0065 move to M5 with the port) · 0067 M2 refinement: engine breadth on Terra's Mass core (written) · 0068 Substrate-style material model (phase 2.3) · 0069 Terra storage kinds, command buffers, signals and observers (written) |
+| 0060–0079 | M2 | 0060–0066 as named in M2's plan (0063 gameplay determinism contract written; 0064–0065 move to M5 with the port) · 0067 M2 refinement: engine breadth on Terra's Mass core (written) · 0068 Substrate-style material model (phase 2.3) · 0069 Terra storage kinds, command buffers, signals and observers (written) · 0070 Terra templates, traits and spawners; tool-list budget 16k (written) |
 | 0080–0099 | M3 | 0080 shared engine and Studio attribution (written) · 0081 team questions and answers (written) · 0082 shared engine: discovery, attach and lifetime (written) · 0083 Studio panel and Claude Code launcher (written) · (to come: YAML-frontmatter exception for Studio files) |
 | 0100–0119 | M4 | 0100 meshlet geometry pipeline (proposed) · (to come: perf testing on reference hardware) |
 | 0120–0139 | M5 | |

@@ -192,6 +192,34 @@ impl Schedule {
         self.nodes.iter().map(Node::name).collect()
     }
 
+    /// The planned waves of each phase, by name (empty until planned); observers are listed
+    /// separately by [`Schedule::observers`].
+    pub fn waves(&self) -> Vec<(Phase, Vec<Vec<&str>>)> {
+        let Some(plan) = &self.plan else {
+            return Vec::new();
+        };
+        plan.phases
+            .iter()
+            .map(|p| {
+                let waves = p
+                    .waves
+                    .iter()
+                    .map(|w| w.iter().map(|&i| self.nodes[i].name()).collect())
+                    .collect();
+                (p.phase, waves)
+            })
+            .collect()
+    }
+
+    /// Observer names in registration order.
+    pub fn observers(&self) -> Vec<&str> {
+        self.nodes
+            .iter()
+            .filter(|n| n.is_observer())
+            .map(Node::name)
+            .collect()
+    }
+
     /// Checks the schedule and orders it; registers its presentation components and observed
     /// types with `world`.
     pub fn plan(&mut self, world: &mut World) -> Result<(), ScheduleError> {
@@ -203,7 +231,7 @@ impl Schedule {
                 .filter(|&i| self.nodes[i].phase() == phase && !self.nodes[i].is_observer())
                 .collect();
             let order = self.constrained_order(&members)?;
-            let waves = self.waves(&members, &order)?;
+            let waves = self.order_waves(&members, &order)?;
             phases.push(PhasePlan {
                 phase,
                 waves,
@@ -307,7 +335,11 @@ impl Schedule {
 
     /// Orders one phase's `members` (already in constrained `order`) into waves of
     /// non-conflicting nodes.
-    fn waves(&self, members: &[usize], order: &[usize]) -> Result<Vec<Vec<usize>>, ScheduleError> {
+    fn order_waves(
+        &self,
+        members: &[usize],
+        order: &[usize],
+    ) -> Result<Vec<Vec<usize>>, ScheduleError> {
         // Edges: explicit constraints, plus every conflicting pair in `order`.
         let n = order.len();
         let mut preds: Vec<Vec<usize>> = vec![Vec::new(); n];

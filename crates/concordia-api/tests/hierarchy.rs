@@ -6,7 +6,7 @@ mod common;
 use std::sync::Arc;
 
 use common::Harness;
-use concordia_api::{EngineModule, EntityTemplate};
+use concordia_api::{EngineModule, Template};
 use serde_json::{Value, json};
 
 #[derive(Debug)]
@@ -17,8 +17,8 @@ impl EngineModule for Props {
         "props"
     }
 
-    fn templates(&self) -> Vec<EntityTemplate> {
-        vec![EntityTemplate::new(
+    fn templates(&self) -> Vec<Template> {
+        vec![Template::new(
             "Marker",
             "A named point with a transform, for tests.",
             [

@@ -19,6 +19,13 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 5. Run it: `sim.step {"ticks": 120}`, `input.inject` to press actions, `physics.raycast` to probe, then read with `"world": "play"`.
 6. `scene.save {}`.
 
+## Templates, spawners and crowds (M2)
+- A template is a `templates/**/*.template.ron` file (named by its file stem) or a module built-in. It composes **traits** (Rust-defined, configured by parameters, e.g. `"Movement": (velocity: (0.0, 0.0, 2.0))`) and plain **component** values, which override what traits add. Two traits adding the same component is an error naming both. `entity.templates {}` lists every template with its traits, components and any `problem`; `schema.get {"name": "Movement"}` shows a trait's parameters.
+- One entity in the edit world: `entity.create {"template": "goblin"}` (one undo step).
+- Many entities in a level: add a `Spawner` to an entity, `component.set {"entity": <id>, "component": "Spawner", "value": {"template": "goblin", "count": 200, "seed": 1, "distribution": {"Disc": {"radius": 20.0}}}}`. The scene keeps only the spawner; its entities appear, deterministically, when play starts (`Grid {spacing}`, `Box {half_extents}` or `Disc {radius}`, around the spawner's transform).
+- Many entities right now, for a test: `terra.spawn_batch {"template": "goblin", "count": 1000, "seed": 2}` spawns into the play world (never the scene, never journaled); `terra.despawn_batch {"with": ["Hostile"]}` clears them.
+- Check what Terra did: `terra.stats {"world": "play"}` (counts, skipped commands, the schedule's phases and parallel waves) and `terra.inspect {"entity": <id>, "world": "play"}` (archetype, chunk, each component's storage kind: dense, shared or tag, and pending signals).
+
 ## Rules
 - Every mutating call needs an actor: `"actor": "agent:<role>"` or the session default. Grammar: `<human|agent|system|tool|script>:<name>[#n]`, lowercase names.
 - Entity ids are UUID strings. If you pass a name instead, the error tells you the matching id.
@@ -40,7 +47,7 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `asset.list` | | `{}` → `{assets: [{id, path, importer, sub_assets}]}` |
 | `entity.spawn` | yes | `{components, id?}` → `{id}` |
 | `entity.despawn` | yes | `{id, recursive?}` → `{}` (`recursive: true` also removes all descendants, one undo step) |
-| `entity.templates` | | `{}` → `{templates: [{name, description, components}]}` (ready-made entities: Empty, Cube, Sphere, Plane, Camera, Directional/Point/Spot Light, plus any from plugins) |
+| `entity.templates` | | `{}` → `{templates: [{name, description, traits, components, problem?}]}` (ready-made entities: Empty, Cube, Sphere, Plane, Camera, Directional/Point/Spot Light, the project's `templates/**/*.template.ron`, plus any from plugins) |
 | `entity.create` | yes | `{template, parent?, name?, translation?}` → `{id}` (spawns a template; sibling names stay unique, "Cube 2") |
 | `entity.duplicate` | yes | `{ids}` → `{ids}` (copies with all descendants, new ids, references remapped; one undo step) |
 | `entity.reparent` | yes | `{id, parent \| null, keep_world?}` → `{}` (keeps the world pose by default; rejects cycles) |
@@ -60,6 +67,10 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `txn.history` | | `{limit?}` → `{entries: [{seq, kind, txn, target, actor, label, ops, time_ms, entities, undone}]}` |
 | `sim.play` / `sim.pause` / `sim.stop` | | `{rate_hz?}` / `{}` → `{state, tick}` |
 | `sim.step` | | `{ticks}` → `{tick, world_hash}` |
+| `terra.spawn_batch` | | `{template, count, seed?, distribution?, origin?}` → `{count, entities}` (play world only, starting it if needed; `entities` lists the first 1,000; fails naming any processor a trait needs that no module provides) |
+| `terra.despawn_batch` | | `{entities?, with?}` → `{count}` (play world: these ids, and every entity with all the `with` components) |
+| `terra.stats` | | `{world?}` → `{entities, archetypes, columns, shared_values, skipped_commands, phases: [{phase, waves}]}` (`phases` only for the play world; names in one wave run in parallel) |
+| `terra.inspect` | | `{entity, world?}` → `{archetype, chunk, components: [{name, storage}], pending_signals: [{name, count}]}` |
 | `input.inject` | | `{events: [{tick?, event}], actor?}` → `{accepted, next_tick}` (raw input into the play world, e.g. `{"event": {"Key": {"key": "Space", "pressed": true}}}`; the project's `.input.ron` maps it to actions) |
 | `physics.raycast` | | `{origin, direction, max_distance, layers?, world?}` → `{hit: {entity, point, normal, distance} \| null}` |
 | `capture.screenshot` | | `{width?, height?, camera? \| view?, world?, overlays?, view_mode?}` → `{image, width, height, sim_tick, frame}` (projects with `[render]`; `overlays: true` adds the editor overlays; `view_mode`: `lit` (default), `unlit`, `wireframe`, `normals`, `albedo`, `roughness_metallic`, `overdraw`, `shadow_cascades`, `light_clusters`) |

@@ -33,6 +33,7 @@ concordia-import-gltf = { path = "crates/concordia-import-gltf" }
 concordia-input = { path = "crates/concordia-input" }
 concordia-terra = { path = "crates/concordia-terra" }
 concordia-scene = { path = "crates/concordia-scene" }
+concordia-terra-sim = { path = "crates/concordia-terra-sim" }
 concordia-shaders = { path = "crates/concordia-shaders" }
 concordia-studio = { path = "crates/concordia-studio" }
 concordia-reflect = { path = "crates/concordia-reflect" }

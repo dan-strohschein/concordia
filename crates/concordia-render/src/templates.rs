@@ -1,6 +1,6 @@
 //! The render module's ready-made entities: primitives, a camera and lights (M1 phase 1.13).
 
-use concordia_api::EntityTemplate;
+use concordia_api::Template;
 use concordia_assets::MeshRenderer;
 use concordia_core::math::{Quat, Vec3};
 use concordia_scene::builtin::Transform;
@@ -10,8 +10,8 @@ use serde_json::{Value, json};
 use crate::{Camera, DirectionalLight, PointLight, SpotLight};
 
 /// Primitives, a camera and the three light kinds.
-pub(crate) fn templates() -> Vec<EntityTemplate> {
-    let mut out: Vec<EntityTemplate> = [
+pub(crate) fn templates() -> Vec<Template> {
+    let mut out: Vec<Template> = [
         ("Cube", "cube", "A 1 m cube mesh with the default material."),
         (
             "Sphere",
@@ -67,7 +67,7 @@ pub(crate) fn templates() -> Vec<EntityTemplate> {
     out
 }
 
-fn primitive(name: &str, mesh: &str, about: &str) -> EntityTemplate {
+fn primitive(name: &str, mesh: &str, about: &str) -> Template {
     let renderer = json!({
         "mesh": format!("builtin:mesh/{mesh}"),
         "material": "builtin:material/default",
@@ -88,11 +88,11 @@ fn with<const N: usize>(
     about: &str,
     transform: Transform,
     extra: [(&'static str, Value); N],
-) -> EntityTemplate {
+) -> Template {
     let components = [("Name", json!(name)), ("Transform", value(transform))]
         .into_iter()
         .chain(extra);
-    EntityTemplate::new(name, about, components)
+    Template::new(name, about, components)
 }
 
 fn value(v: impl Serialize) -> Value {

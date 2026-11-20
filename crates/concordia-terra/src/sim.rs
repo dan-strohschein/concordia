@@ -103,6 +103,11 @@ impl SimLoop {
         self.clock(world).rate = rate;
     }
 
+    /// The schedule.
+    pub fn schedule(&self) -> &Schedule {
+        &self.schedule
+    }
+
     /// The schedule, for adding systems.
     pub fn schedule_mut(&mut self) -> &mut Schedule {
         &mut self.schedule

@@ -10,6 +10,7 @@ mod scene;
 mod schema;
 mod session;
 pub(crate) mod sim;
+mod terra;
 mod txn;
 
 use std::sync::OnceLock;
@@ -40,6 +41,7 @@ pub(crate) fn all() -> Vec<MethodInfo> {
     methods.extend(sim::methods());
     methods.extend(log::methods());
     methods.extend(events::methods());
+    methods.extend(terra::methods());
     methods
 }
 

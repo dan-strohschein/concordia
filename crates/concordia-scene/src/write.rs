@@ -42,8 +42,14 @@ pub fn write_prefab(doc: &PrefabDoc) -> Result<String, SceneError> {
     Ok(out)
 }
 
-/// Rewrites scene or prefab text in canonical form.
+/// Rewrites scene, prefab or template text in canonical form.
 pub fn format(text: &str, registry: &TypeRegistry) -> Result<String, SceneError> {
+    if text
+        .lines()
+        .any(|l| l.trim_start().starts_with("Template("))
+    {
+        return crate::template::write_template(&crate::template::read_template(text, registry)?);
+    }
     match read_scene(text, registry) {
         Ok(doc) => write_scene(&doc),
         Err(scene_err) => match read_prefab(text, registry) {
@@ -53,7 +59,7 @@ pub fn format(text: &str, registry: &TypeRegistry) -> Result<String, SceneError>
     }
 }
 
-fn header(kind: &str) -> String {
+pub(crate) fn header(kind: &str) -> String {
     format!(
         "// Concordia {kind}, format {FORMAT_VERSION}. Canonical form: `concordia fmt` rewrites this file.\n"
     )
@@ -102,6 +108,32 @@ fn component(entity: EntityId, name: &str, value: &dyn DynReflect) -> Result<Str
         });
     }
     Ok(Writer { indent: 4 }.value(&value.to_json()?, value.info()))
+}
+
+/// Writes `name: { "Key": value, ... },` at one level of indent, values `levels` deep.
+pub(crate) fn named_values(
+    out: &mut String,
+    field: &str,
+    values: &std::collections::BTreeMap<String, Box<dyn DynReflect>>,
+    document: &str,
+) -> Result<(), SceneError> {
+    if values.is_empty() {
+        out.push_str(&format!("{INDENT}{field}: {{}},\n"));
+        return Ok(());
+    }
+    out.push_str(&format!("{INDENT}{field}: {{\n"));
+    for (name, value) in values {
+        if let Some(pointer) = find_non_finite(value.as_ref()) {
+            return Err(SceneError::NonFiniteValue {
+                document: format!("{document} {name}"),
+                pointer,
+            });
+        }
+        let text = Writer { indent: 2 }.value(&value.to_json()?, value.info());
+        out.push_str(&format!("{INDENT}{INDENT}{}: {text},\n", quote(name)));
+    }
+    out.push_str(&format!("{INDENT}}},\n"));
+    Ok(())
 }
 
 /// Renders a document value as canonical RON, naming the root struct after its type.
@@ -287,7 +319,7 @@ fn with_point(text: &str) -> String {
 }
 
 /// A RON string literal with minimal escaping.
-fn quote(s: &str) -> String {
+pub(crate) fn quote(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
     for c in s.chars() {

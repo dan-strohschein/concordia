@@ -52,13 +52,13 @@ pub fn read_prefab(text: &str, registry: &TypeRegistry) -> Result<PrefabDoc, Sce
 }
 
 /// The named fields of a `Name(...)` document node.
-struct Fields<'a> {
+pub(crate) struct Fields<'a> {
     node: &'a Node,
     fields: &'a [Field],
 }
 
 impl<'a> Fields<'a> {
-    fn of(node: &'a Node, kind: &str, allowed: &[&str]) -> Result<Self, SceneError> {
+    pub(crate) fn of(node: &'a Node, kind: &str, allowed: &[&str]) -> Result<Self, SceneError> {
         let fields = match &node.kind {
             Kind::Call {
                 name: Some(name),
@@ -93,7 +93,7 @@ impl<'a> Fields<'a> {
         Ok(Self { node, fields })
     }
 
-    fn get(&self, name: &str) -> Result<&'a Node, SceneError> {
+    pub(crate) fn get(&self, name: &str) -> Result<&'a Node, SceneError> {
         self.fields
             .iter()
             .find(|f| f.name == name)
@@ -101,7 +101,7 @@ impl<'a> Fields<'a> {
             .ok_or_else(|| parse_error(self.node.pos, &format!("missing field `{name}`")))
     }
 
-    fn string(&self, name: &str) -> Result<String, SceneError> {
+    pub(crate) fn string(&self, name: &str) -> Result<String, SceneError> {
         let node = self.get(name)?;
         match &node.kind {
             Kind::Str(s) => Ok(s.clone()),
@@ -122,7 +122,7 @@ impl<'a> Fields<'a> {
             .map_err(|e| parse_error(node.pos, &format!("invalid `{name}`: {e}")))
     }
 
-    fn format(&self) -> Result<u32, SceneError> {
+    pub(crate) fn format(&self) -> Result<u32, SceneError> {
         let node = self.get("format")?;
         let version = match &node.kind {
             Kind::Num(n) => n.parse::<u64>().ok(),
@@ -170,7 +170,7 @@ fn entities(node: &Node, registry: &TypeRegistry) -> Result<Vec<EntityDoc>, Scen
     Ok(out)
 }
 
-fn components(
+pub(crate) fn components(
     node: &Node,
     registry: &TypeRegistry,
 ) -> Result<BTreeMap<String, Box<dyn DynReflect>>, SceneError> {
@@ -219,7 +219,7 @@ fn component<'r>(
         })
 }
 
-fn component_value(
+pub(crate) fn component_value(
     registration: &TypeRegistration,
     name: &str,
     node: &Node,
@@ -316,7 +316,7 @@ pub(crate) fn syntax(e: SyntaxError) -> SceneError {
     parse_error(e.pos, &e.message)
 }
 
-fn parse_error(pos: Pos, message: &str) -> SceneError {
+pub(crate) fn parse_error(pos: Pos, message: &str) -> SceneError {
     SceneError::Parse {
         line: pos.line,
         col: pos.col,
