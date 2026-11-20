@@ -9,6 +9,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+blake3.workspace = true
 concordia-api.workspace = true
 concordia-command.workspace = true
 concordia-core.workspace = true
@@ -24,6 +25,7 @@ serde_json.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+blake3.workspace = true
 concordia-tests = { path = "../../tests" }
 conformance-guest = { path = "../../tests/fixtures/script/conformance-guest" }
 serde_json.workspace = true

@@ -96,7 +96,14 @@ fn new_project_enables_modules_and_studio() {
     let dir = tempfile::tempdir().unwrap();
     assert!(run(&["new", "g"], dir.path()).status.success());
     let manifest = std::fs::read_to_string(dir.path().join("g/concordia.toml")).unwrap();
-    for section in ["[physics]", "[assets]", "[render]", "[scripts]", "[studio]"] {
+    for section in [
+        "[physics]",
+        "[assets]",
+        "[render]",
+        "[scripts]",
+        "[replay]",
+        "[studio]",
+    ] {
         assert!(manifest.contains(section), "{section} missing:\n{manifest}");
     }
 }
@@ -157,7 +164,14 @@ fn new_minimal_has_no_modules() {
     let dir = tempfile::tempdir().unwrap();
     assert!(run(&["new", "g", "--minimal"], dir.path()).status.success());
     let manifest = std::fs::read_to_string(dir.path().join("g/concordia.toml")).unwrap();
-    for section in ["[physics]", "[assets]", "[render]", "[scripts]", "[studio]"] {
+    for section in [
+        "[physics]",
+        "[assets]",
+        "[render]",
+        "[scripts]",
+        "[replay]",
+        "[studio]",
+    ] {
         assert!(
             !manifest.contains(section),
             "{section} present:\n{manifest}"

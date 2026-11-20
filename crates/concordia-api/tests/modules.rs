@@ -434,3 +434,88 @@ fn commit_edits_as_records_its_actor_and_undo_as_reverts_it() {
     );
     assert_eq!(held.unwrap_err().kind, ApiErrorKind::TxnConflict);
 }
+
+/// A module that reports what code it runs (2.8).
+#[derive(Debug)]
+struct Stamped(&'static str, &'static str);
+
+impl EngineModule for Stamped {
+    fn name(&self) -> &'static str {
+        self.0
+    }
+
+    fn fingerprints(&self) -> Vec<concordia_api::Fingerprint> {
+        vec![concordia_api::Fingerprint {
+            module: self.0.to_owned(),
+            name: format!("{}-code", self.0),
+            kind: "test".into(),
+            hash: self.1.to_owned(),
+        }]
+    }
+}
+
+#[test]
+fn module_fingerprints_are_collected_in_module_order() {
+    let h = with_modules(vec![
+        Arc::new(Stamped("zeta", "01")),
+        Arc::new(Probe::default()),
+        Arc::new(Stamped("alpha", "02")),
+    ]);
+    let prints: Vec<(String, String)> = h
+        .engine
+        .fingerprints()
+        .into_iter()
+        .map(|f| (f.module, f.hash))
+        .collect();
+    assert_eq!(
+        prints,
+        [("zeta".into(), "01".into()), ("alpha".into(), "02".into())]
+    );
+}
+
+#[test]
+fn restart_play_discards_the_play_world_and_starts_at_tick_zero() {
+    let mut h = Harness::new().ready();
+    h.spawn("A", 1.0);
+    h.ok("sim.step", json!({"ticks": 5}));
+    let rate = concordia_core::time::TickRate::from_hz(30).unwrap();
+    let world = h.engine.restart_play(Some(rate)).unwrap();
+    let clock = *world.resource::<concordia_terra::SimClock>().unwrap();
+    assert_eq!((clock.tick.0, clock.rate), (0, rate));
+    let state = h.ok("sim.pause", json!({}));
+    assert_eq!(state["state"], "paused");
+}
+
+#[test]
+fn step_play_returns_the_hash_sim_step_reports() {
+    let mut a = Harness::new().ready();
+    a.spawn("A", 1.0);
+    let mut b = Harness::new().ready();
+    b.spawn("A", 1.0);
+    let reported = a.ok("sim.step", json!({"ticks": 7}))["world_hash"].clone();
+    let stepped = b.engine.step_play(7).unwrap();
+    assert_eq!(json!(stepped.to_string()), reported);
+    assert_eq!(
+        b.engine
+            .world(WorldSel::play)
+            .unwrap()
+            .state_hash()
+            .unwrap(),
+        stepped
+    );
+}
+
+#[test]
+fn project_file_accepts_inside_paths_with_the_extension_only() {
+    let h = Harness::new().ready();
+    let ok = h
+        .engine
+        .project_file("tests/replays/a.replay.ron", ".replay.ron")
+        .unwrap();
+    assert!(ok.starts_with(h.engine.project()), "{ok:?}");
+    for bad in ["../a.replay.ron", "/tmp/a.replay.ron", "tests/a.scene.ron"] {
+        let err = h.engine.project_file(bad, ".replay.ron").unwrap_err();
+        assert_eq!(err.kind, ApiErrorKind::InvalidParams, "{bad}");
+        assert!(err.message.contains(".replay.ron"), "{bad}: {err:?}");
+    }
+}

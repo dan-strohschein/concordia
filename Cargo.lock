@@ -615,6 +615,7 @@ dependencies = [
  "concordia-physics",
  "concordia-platform",
  "concordia-render",
+ "concordia-replay",
  "concordia-rhi",
  "concordia-rhi-metal",
  "concordia-scene",
@@ -668,6 +669,7 @@ dependencies = [
  "concordia-platform",
  "concordia-reflect",
  "concordia-render",
+ "concordia-replay",
  "concordia-rhi",
  "concordia-rhi-metal",
  "concordia-scene",
@@ -769,6 +771,7 @@ dependencies = [
  "concordia-core",
  "concordia-reflect",
  "concordia-render",
+ "concordia-replay",
  "concordia-studio",
  "rmcp",
  "serde",
@@ -869,6 +872,28 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tracing",
+]
+
+[[package]]
+name = "concordia-replay"
+version = "0.0.0"
+dependencies = [
+ "concordia-api",
+ "concordia-command",
+ "concordia-core",
+ "concordia-input",
+ "concordia-reflect",
+ "concordia-scene",
+ "concordia-scripting",
+ "concordia-terra",
+ "concordia-tests",
+ "insta",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1014,6 +1039,7 @@ dependencies = [
 name = "concordia-scripting"
 version = "0.0.0"
 dependencies = [
+ "blake3",
  "concordia-api",
  "concordia-command",
  "concordia-core",
@@ -1060,6 +1086,7 @@ dependencies = [
  "concordia-command",
  "concordia-core",
  "concordia-reflect",
+ "concordia-replay",
  "globset",
  "insta",
  "proptest",
@@ -1122,6 +1149,7 @@ dependencies = [
  "concordia-mcp",
  "concordia-reflect",
  "concordia-render",
+ "concordia-replay",
  "concordia-scene",
  "concordia-studio",
  "concordia-testkit",

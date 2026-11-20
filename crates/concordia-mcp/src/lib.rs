@@ -43,6 +43,8 @@ pub struct Options {
     pub modules: Vec<Arc<dyn EngineModule>>,
     /// Agent Studio folder (project-relative) when `[studio]` is on: per-agent sessions and scopes (ADR-0080).
     pub studio: Option<PathBuf>,
+    /// The project's engine settings (`Project::engine_config`) the fields above refine.
+    pub base: Option<EngineConfig>,
 }
 
 impl Options {
@@ -57,11 +59,16 @@ impl Options {
             log_ring: None,
             modules: Vec::new(),
             studio: None,
+            base: None,
         }
     }
 
     fn engine_config(&self) -> EngineConfig {
-        let mut config = EngineConfig::new(&self.project);
+        let mut config = self
+            .base
+            .clone()
+            .unwrap_or_else(|| EngineConfig::new(&self.project));
+        config.project.clone_from(&self.project);
         config.deterministic_ids = self.deterministic_ids;
         config.log_ring = self.log_ring.clone();
         config.modules = self.modules.clone();
@@ -242,7 +249,8 @@ pub async fn run(args: Args) -> Result<(), Box<dyn std::error::Error + Send + Sy
         Err(e) => return Err(e.into()),
     };
     let project = concordia_app::Project::load(&args.project)?;
-    let modules = project.modules()?;
+    let base = project.engine_config()?;
+    let modules = base.modules.clone();
     let studio = project.manifest.studio.map(|s| PathBuf::from(s.dir));
     let options = Options {
         project: args.project,
@@ -253,6 +261,7 @@ pub async fn run(args: Args) -> Result<(), Box<dyn std::error::Error + Send + Sy
         log_ring: ring,
         modules,
         studio,
+        base: Some(base),
     };
     let server = ConcordiaServer::start(options).await?;
     tracing::info!(target: "concordia::mcp", "MCP server ready on stdio");

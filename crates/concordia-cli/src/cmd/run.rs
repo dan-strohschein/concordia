@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime};
 
-use concordia_api::{Engine, EngineConfig, EngineHandle};
+use concordia_api::{Engine, EngineHandle};
 use concordia_app::Project;
 use concordia_core::id::SessionId;
 use concordia_platform::{Flow, NativeView, RunOptions, WindowApp, WindowEvent, run_window};
@@ -38,9 +38,8 @@ pub(crate) struct Args {
 
 pub(crate) fn run(args: &Args) -> Result<(), Failure> {
     let project = Project::load(&args.project).map_err(|e| Failure::usage(e.to_string()))?;
-    let mut config = EngineConfig::new(&args.project);
-    config.modules = project
-        .modules()
+    let config = project
+        .engine_config()
         .map_err(|e| Failure::usage(e.to_string()))?;
     if !(1.0..=1000.0).contains(&args.bench_hz) || args.bench_frames == 0 {
         return Err(Failure::usage(

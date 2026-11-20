@@ -256,6 +256,14 @@ justfile                       (touched) `gate-live` recipe
 ### Phase 3.1: Replay v1: recording, checkpoints, deterministic replay, divergence bisection
 *Needs M2. Generalizes M2's minimal input log.*
 
+> **M2 2.8 built v0 (ADR-0072):**
+> - The `replay` module (`[replay]`), `.replay.ron` v0, and recorded action-state changes played back through `InputSampler::play_back`.
+> - Checkpoints from end-of-tick hooks, with per-part hashes (`World::state_digest`).
+> - Fingerprints in the header, `verify` and `resimulate`, and `concordia replay record|run`.
+> - The Studio follow-ups below are partly done: `replay_*` is in the QA, level-designer and gameplay-programmer scopes, QA preloads `concordia-record-replay`, and the skills' examples are checked against the real params types.
+>
+> Refine 3.1 against that: the v0→v1 migration, snapshots, bisection, `ab`, and raw events.
+
 - **Objective:** Any headless or interactive session can be recorded to a diffable `.replay.ron` and replayed bit-exactly on the same build and platform. When a replay diverges, the engine names the first divergent tick, the entity, component and field, and (where possible) the system that caused it.
 - **Deliverables:**
   - The `.replay.ron` format v1, canonical (see the sketch below), with a migration from the M2 v0 log.

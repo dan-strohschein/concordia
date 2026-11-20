@@ -259,6 +259,41 @@ fn scripts_section_enables_the_scripts_module_last() {
 }
 
 #[test]
+fn engine_config_applies_the_manifests_sim_and_journal_settings() {
+    let (dir, project) =
+        project_with("[sim]\nrate_hz = 30\nseed = 42\n\n[journal]\nsync = false\n\n[replay]\n");
+    let config = project.unwrap().engine_config().unwrap();
+    assert_eq!(config.project, dir.path());
+    assert_eq!((config.sim_seed, config.sim_rate.hz()), (42, 30));
+    assert!(!config.journal.sync);
+    let names: Vec<&str> = config.modules.iter().map(|m| m.name()).collect();
+    assert_eq!(names, ["replay"]);
+    let (_dir, bad) = project_with("[sim]\nrate_hz = 0\n");
+    let err = bad.unwrap().engine_config().unwrap_err();
+    assert!(err.to_string().contains("rate_hz"), "{err}");
+}
+
+#[test]
+fn replay_section_enables_the_replay_module_before_scripts() {
+    let names = |toml: &str| -> Vec<String> {
+        let (_dir, project) = project_with(toml);
+        let modules = project.unwrap().modules().unwrap();
+        modules.iter().map(|m| m.name().to_owned()).collect()
+    };
+    assert_eq!(names("[replay]\n"), ["replay"]);
+    assert_eq!(names("[scripts]\n\n[replay]\n"), ["replay", "scripts"]);
+    assert!(
+        names("[scripts]\n").iter().all(|n| n != "replay"),
+        "off without [replay]"
+    );
+    let (_dir, unknown) = project_with("[replay]\ndir = \"x\"\n");
+    assert!(
+        unknown.unwrap_err().to_string().contains("dir"),
+        "no keys yet"
+    );
+}
+
+#[test]
 fn script_paths_must_stay_inside_the_project_and_name_a_kind() {
     let (_dir, project) =
         project_with("[[scripts.module]]\nkind = \"wasm\"\npath = \"../brain.wasm\"\n");

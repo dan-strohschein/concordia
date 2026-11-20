@@ -13,7 +13,7 @@ pub mod native;
 use std::path::Path;
 
 use concordia_api::transport::connection::HostKind;
-use concordia_api::{ApiErrorKind, EngineConfig, EngineHandle};
+use concordia_api::{ApiErrorKind, EngineHandle};
 use concordia_app::{Project, SharedEngine};
 use serde_json::{Value, json};
 
@@ -63,11 +63,10 @@ impl EngineHost {
             )));
         }
         let loaded = Project::load(project).map_err(|e| HostError::Project(e.to_string()))?;
-        let mut config = EngineConfig::new(project);
-        config.log_ring = log_ring;
-        config.modules = loaded
-            .modules()
+        let mut config = loaded
+            .engine_config()
             .map_err(|e| HostError::Project(e.to_string()))?;
+        config.log_ring = log_ring;
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()

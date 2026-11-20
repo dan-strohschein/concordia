@@ -75,3 +75,8 @@ ADR-0003's first tier is gameplay written in Rust, compiled to native code and r
 - **Since 2.6d:**
   - A scene saved before a module changed a type layout still holds the old shape. Opening it with the new module registered at engine start fails to validate the removed fields. Reload while the scene is open (the migration is journaled), then save.
   - Undoing a migration while play runs leaves the play world on the new version until play stops.
+
+## Update (M2 phase 2.8, ADR-0072)
+- The scripts module reports a fingerprint per loaded module: the BLAKE3 of its file, or of a linked module's description. A reload updates it.
+- A replay refuses another build, and a recording stops with `ReplayMismatch` if a reload changed the code mid-session.
+- Reloading an identical build changes no checkpoint.

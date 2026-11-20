@@ -6,7 +6,7 @@ The MCP server (`concordia-mcp`, also `concordia mcp`): a thin rmcp adapter that
 ## Public entry points
 - `run(Args)`: logging to stderr, then serve MCP on stdio (shared by both binaries)
 - `ConcordiaServer::start(Options)` (attaches to the project's live engine or hosts and publishes one, ADR-0082) and its rmcp `ServerHandler` impl (in-process tests serve it over a duplex pipe)
-- `Options` (incl. `modules`), `Args`, `StartError`
+- `Options` (incl. `modules`, and `base`: the project's `EngineConfig` from `Project::engine_config`, which the other fields refine), `Args`, `StartError`
 
 ## Invariants
 - No hand-written schemas: tool `inputSchema`/`outputSchema` equal `params_schema`/`result_schema` byte for byte.
@@ -42,7 +42,7 @@ The MCP server (`concordia-mcp`, also `concordia mcp`): a thin rmcp adapter that
 - Model Context Protocol specification (2025-11-25 and 2026-07-28); `rmcp` 3.11 documentation and source.
 
 ## Status
-M0 phase 0.7 complete; M3 phases 3.5 (Studio) and 3.5b (shared engine).
+M0 phase 0.7 complete; M3 phases 3.5 (Studio) and 3.5b (shared engine); M2 phase 2.8 (project `[sim]` settings reach the engine).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

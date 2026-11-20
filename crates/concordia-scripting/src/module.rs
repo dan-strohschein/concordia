@@ -4,7 +4,9 @@ use std::any::Any;
 
 use std::sync::Arc;
 
-use concordia_api::{ApiError, ApiErrorKind, Engine, EngineModule, MethodInfo, PlaySetup};
+use concordia_api::{
+    ApiError, ApiErrorKind, Engine, EngineModule, Fingerprint, MethodInfo, PlaySetup,
+};
 use concordia_reflect::{RegistryError, TypeRegistry};
 use concordia_script::{HostConfig, ScriptHost, Templates, TestBackend};
 use concordia_script_guest::Module;
@@ -64,11 +66,13 @@ impl EngineModule for ScriptsModule {
             session_seed: scripts.config.session_seed,
         };
         for source in scripts.sources() {
-            let loaded = scripts.load(&source).and_then(|module| {
-                ScriptHost::load(module, registry, config).map_err(|e| e.to_string())
+            let loaded = scripts.load(&source).and_then(|build| {
+                let host =
+                    ScriptHost::load(build.module, registry, config).map_err(|e| e.to_string())?;
+                Ok((host, build.hash))
             });
             match loaded {
-                Ok(host) => scripts.loaded.push(Loaded { source, host }),
+                Ok((host, hash)) => scripts.loaded.push(Loaded { source, host, hash }),
                 Err(reason) => {
                     tracing::error!(target: "concordia::script", %reason, "script module failed to load");
                     scripts.failed.push((source, reason));
@@ -80,6 +84,21 @@ impl EngineModule for ScriptsModule {
 
     fn methods(&self) -> Vec<MethodInfo> {
         vec![MethodInfo::of::<crate::reload::ScriptReload>()]
+    }
+
+    /// Each loaded module's build, by content hash (ADR-0072).
+    fn fingerprints(&self) -> Vec<Fingerprint> {
+        self.handle
+            .lock()
+            .loaded
+            .iter()
+            .map(|loaded| Fingerprint {
+                module: "scripts".into(),
+                name: loaded.host.desc().name,
+                kind: loaded.source.backend().into(),
+                hash: loaded.hash.clone(),
+            })
+            .collect()
     }
 
     fn engine_state(&self) -> Option<Box<dyn Any + Send>> {

@@ -18,3 +18,6 @@ Saving never captures simulation state; "press play, experiment, stop" leaves th
 ## Alternatives considered
 - Simulate in place and snapshot/restore on stop: easy to leak sim state into saves, and undo history interleaves with simulation.
 - Journal simulation changes: enormous journals, and undo becomes meaningless.
+
+## Update (M2 phase 2.8, ADR-0072)
+Injected input and play outcomes are now recorded by `concordia-replay` (`replay.record`, `replay.run`), never the command journal. Both start a fresh play world from the edit world, which they never change.

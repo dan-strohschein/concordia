@@ -32,6 +32,14 @@ impl Source {
 pub(crate) struct Loaded {
     pub(crate) source: Source,
     pub(crate) host: ScriptHost,
+    /// BLAKE3 of the loaded build (the file, or a linked module's description), as hex.
+    pub(crate) hash: String,
+}
+
+/// A module build loaded from its source, with its content hash.
+pub(crate) struct Build {
+    pub(crate) module: Arc<dyn ScriptModule>,
+    pub(crate) hash: String,
 }
 
 /// Backends and loaded modules.
@@ -74,14 +82,30 @@ pub(crate) struct ScriptsState(pub(crate) Handle);
 
 impl Scripts {
     /// Loads the current build of `source` from disk (checking a native module's source
-    /// first) or from the linked modules.
-    pub(crate) fn load(&mut self, source: &Source) -> Result<Arc<dyn ScriptModule>, String> {
+    /// first) or from the linked modules, and hashes it.
+    pub(crate) fn load(&mut self, source: &Source) -> Result<Build, String> {
         match source {
-            Source::Linked(name) => self
-                .linked
-                .load(&ModuleSource::Linked(name.clone()))
-                .map_err(|e| e.to_string()),
-            Source::File(entry) => self.load_file(entry),
+            Source::Linked(name) => {
+                let module = self
+                    .linked
+                    .load(&ModuleSource::Linked(name.clone()))
+                    .map_err(|e| e.to_string())?;
+                let desc = module.describe().map_err(|e| format!("describe: {e}"))?;
+                let json = serde_json::to_vec(&desc).map_err(|e| e.to_string())?;
+                Ok(Build {
+                    module,
+                    hash: blake3::hash(&json).to_hex().to_string(),
+                })
+            }
+            Source::File(entry) => {
+                let file = entry.file();
+                let bytes = std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+                let module = self.load_file(entry)?;
+                Ok(Build {
+                    module,
+                    hash: blake3::hash(&bytes).to_hex().to_string(),
+                })
+            }
         }
     }
 

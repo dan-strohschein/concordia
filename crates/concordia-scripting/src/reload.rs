@@ -125,11 +125,13 @@ fn retry_failed(
             session_seed: scripts.config.session_seed,
         };
         let (registry, _) = engine.registry_and_play_mut();
-        let host = scripts
-            .load(&source)
-            .and_then(|m| ScriptHost::load(m, registry, config).map_err(|e| e.to_string()));
-        let host = match host {
-            Ok(host) => host,
+        let host = scripts.load(&source).and_then(|build| {
+            let host =
+                ScriptHost::load(build.module, registry, config).map_err(|e| e.to_string())?;
+            Ok((host, build.hash))
+        });
+        let (host, hash) = match host {
+            Ok(loaded) => loaded,
             Err(reason) => {
                 scripts.failed.push((source, reason.clone()));
                 return Err(failed(reason));
@@ -143,7 +145,7 @@ fn retry_failed(
             migrated: Vec::new(),
             edit_txn: None,
         });
-        scripts.loaded.push(Loaded { source, host });
+        scripts.loaded.push(Loaded { source, host, hash });
     }
     Ok(joined)
 }
@@ -158,7 +160,10 @@ fn reload_one(
 ) -> Result<ReloadedModule, ApiError> {
     let source = scripts.loaded[index].source.clone();
     let host = scripts.loaded[index].host.clone();
-    let build = scripts.load(&source).map_err(failed)?;
+    let crate::state::Build {
+        module: build,
+        hash,
+    } = scripts.load(&source).map_err(failed)?;
     let desc = build
         .describe()
         .map_err(|e| failed(format!("describe: {e}")))?;
@@ -182,6 +187,7 @@ fn reload_one(
             return Err(failed(e.to_string()));
         }
     };
+    scripts.loaded[index].hash = hash;
     let migrated: Vec<MigratedType> = report.migrated.into_iter().map(migrated_type).collect();
     tracing::info!(
         target: "concordia::script",

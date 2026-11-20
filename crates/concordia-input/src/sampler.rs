@@ -37,6 +37,14 @@ pub struct InputSampler {
     queue: BTreeMap<u64, Vec<InputEvent>>,
     states: ActionStates,
     next_tick: u64,
+    playback: Option<Playback>,
+}
+
+/// Recorded action-state changes by tick, played back until `until`.
+#[derive(Debug, Clone, PartialEq)]
+struct Playback {
+    changes: BTreeMap<u64, BTreeMap<String, ActionState>>,
+    until: u64,
 }
 
 impl InputSampler {
@@ -56,6 +64,7 @@ impl InputSampler {
             queue: BTreeMap::new(),
             states,
             next_tick: 0,
+            playback: None,
         }
     }
 
@@ -95,8 +104,37 @@ impl InputSampler {
         Ok(())
     }
 
+    /// Plays recorded action states back (e.g. a replay): until tick `until`, each tick's states
+    /// are the previous tick's with that tick's `changes` applied, and device events queued for
+    /// those ticks are dropped. Every action must exist with a value of its kind.
+    pub fn play_back(
+        &mut self,
+        changes: BTreeMap<u64, BTreeMap<String, ActionState>>,
+        until: u64,
+    ) -> Result<(), InputError> {
+        for (action, state) in changes.values().flatten() {
+            self.check_action(action, state.value)?;
+        }
+        self.playback = Some(Playback { changes, until });
+        Ok(())
+    }
+
+    /// The tick's states from the playback, if `tick` is one it covers.
+    fn play(&mut self, tick: u64) -> Option<&ActionStates> {
+        let playback = self.playback.as_mut().filter(|p| tick < p.until)?;
+        self.queue.retain(|t, _| *t > tick);
+        if let Some(changes) = playback.changes.remove(&tick) {
+            self.states.actions.extend(changes);
+        }
+        self.next_tick = self.next_tick.max(tick.saturating_add(1));
+        Some(&self.states)
+    }
+
     /// Applies every event queued up to `tick` and returns the tick's action states.
     pub fn sample(&mut self, tick: u64) -> &ActionStates {
+        if self.play(tick).is_some() {
+            return &self.states;
+        }
         let before: BTreeMap<String, bool> = self.active_now();
         let mut rose = BTreeSet::new();
         let mut fell = BTreeSet::new();

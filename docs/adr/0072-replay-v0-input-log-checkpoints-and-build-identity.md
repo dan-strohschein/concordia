@@ -1,0 +1,36 @@
+# ADR-0072: Replay v0: input log, checkpoints and build identity
+- Status: Accepted (M2 phase 2.8, 2026-11-20)
+- Date: 2026-11-20
+- Builds on: ADR-0032 (edit vs play world: injected input and play outcomes belong to replay, never the command log), ADR-0046 (engine modules), ADR-0063 (determinism contract, presentation state not hashed), ADR-0061 and ADR-0062 (script modules and reload)
+
+## Context
+The engine is deterministic per binary and machine: the same inputs from the same edit world give the same play-world hash at any thread count. Agents and tests need that as evidence they can keep: "this is what happened, and it still happens". M2 needs a minimal form (an input log with checkpoints); M3 phase 3.1 generalizes it (snapshots, bisection to the field, `ab` runs).
+
+## Decision
+1. **A module, not core.** `concordia-replay` is an engine module enabled by `[replay]` in `concordia.toml`, like `[scripts]` and `[studio]`. It adds `replay.record` and `replay.run` (MCP `replay_record`, `replay_run`), so projects without it keep their tool set. `concordia new` writes `[replay]`, and `concordia studio init` adds it, because the default QA, level-designer and gameplay-programmer roles use it.
+2. **What is recorded: action states after binding.** For each tick where some action's state changed, the replay stores those actions' full `ActionState` (pressed, just pressed, just released, value). A press and release within one tick survives, and rebinding keys doesn't break a replay. Raw pointer positions reach the simulation only through actions (e.g. `PointerPosition`), so they need no separate track.
+3. **Playback belongs to the input crate.** `InputSampler::play_back(changes, until)` makes the sampler produce the recorded states for those ticks and drop device events queued for them. Replay never overwrites `ActionStates`, so nothing depends on module order. Unknown actions, or values of the wrong kind, are refused before the run.
+4. **Checkpoints at tick ends.** Terra gains end-of-tick hooks (`Schedule::add_tick_end`, run by `SimLoop` after the clock advances, with `&World` only), so a checkpoint hash is exactly what `sim.step` reports. Recording reads `ActionStates` in the same hook. Checkpoints are taken at tick 0, every `checkpoint_every` ticks (default 60) and at the last tick.
+5. **Hashes name what diverged.** `World::state_digest` computes the world hash and, in the same pass, one hash per part: each hashed component by name, plus `@entities`, `@clock`, `@rng` and `@signals`. The world hash is unchanged. Presentation-only components are already excluded (ADR-0063), so nothing more is needed to restrict the hash to simulation state.
+6. **Build identity.** The header holds the engine version, the scene path and its edit-world hash, the seed, the tick rate, the recording's thread count (for information only) and module fingerprints. `EngineModule::fingerprints` lets a module say what code it runs; the scripts module reports each loaded module by the BLAKE3 hash of its file (WASM or native), or of its description for modules linked into the engine. Replay depends on no module crate for this.
+7. **Mismatch and divergence.**
+   - `replay.run` refuses a replay whose engine, scene, scene hash, seed or fingerprints differ, with the new error kind `ReplayMismatch` (−32019) listing them. `force: true` runs it anyway and returns the list.
+   - A divergence is a result, not an error: verify mode stops at the first checkpoint that differs and reports its tick, the last matching tick and the differing parts. `resimulate` reports fresh hashes instead.
+8. **Hot reload.**
+   - `script.reload` of an identical build during a recording leaves every checkpoint unchanged.
+   - If any fingerprint differs when recording stops (code was reloaded with a change), stop refuses with `ReplayMismatch`: v0 replays assume one build throughout.
+9. **Format.** `.replay.ron` version 0, canonical RON through `concordia-scene`'s document writer; the reader checks the version, every hash and tick order.
+10. **Project settings.** Replays depend on `[sim] seed`, which no engine built from a project applied before this phase. `Project::engine_config` now builds every project engine's settings (modules, `[sim]` rate and seed, `[journal]` sync) for the CLI, MCP server and editor.
+
+## Alternatives
+- **Core methods.** These would be always on, but every project would get two more tools, and the core crate can't see input (input depends on the API crate).
+- **Recording raw device events (pre-binding).** That is simpler to inject back, but a key rebinding would silently change a replay. M3 may add raw events behind a flag.
+- **Overwriting `ActionStates` from a replay system.** This is fragile, because it must run after `input.sample`, and exclusive systems order only by registration.
+- **Hashing in a `Presentation`-phase system.** It wouldn't need a Terra change, but the clock isn't advanced yet there, so checkpoints wouldn't equal `sim.step`'s hash.
+- **Recording code changes mid-session.** Recording a reload event and replaying it is possible, but v0 refuses instead. M3 can add it with snapshots.
+
+## Consequences
+- Per-part hashes cost a second hash of each component value, at checkpoints only.
+- A replay is valid for one engine version, platform and build. Thread count doesn't matter.
+- Divergence is located to a checkpoint window and the parts that differ. Finding the exact tick and field is M3 phase 3.1's bisection.
+- Agents get reproducible evidence. QA records and verifies, and programmers resimulate to prove fixes.

@@ -1,0 +1,82 @@
+---
+source: crates/concordia-replay/tests/format.rs
+expression: text
+---
+Replay(
+    checkpoints: [
+        (
+            parts: {
+                "@clock": "2222222222222222222222222222222222222222222222222222222222222222",
+                "Transform": "1111111111111111111111111111111111111111111111111111111111111111",
+            },
+            tick: 0,
+            world: "1111111111111111111111111111111111111111111111111111111111111111",
+        ),
+        (
+            parts: {
+                "@clock": "2222222222222222222222222222222222222222222222222222222222222222",
+                "Transform": "1111111111111111111111111111111111111111111111111111111111111111",
+            },
+            tick: 60,
+            world: "2222222222222222222222222222222222222222222222222222222222222222",
+        ),
+        (
+            parts: {
+                "@clock": "2222222222222222222222222222222222222222222222222222222222222222",
+                "Transform": "1111111111111111111111111111111111111111111111111111111111111111",
+            },
+            tick: 120,
+            world: "1111111111111111111111111111111111111111111111111111111111111111",
+        ),
+    ],
+    header: (
+        checkpoint_every: 60,
+        engine: "0.0.0",
+        modules: [
+            (
+                hash: "2222222222222222222222222222222222222222222222222222222222222222",
+                kind: "wasm",
+                module: "scripts",
+                name: "wanderers",
+            ),
+        ],
+        rate_hz: 60,
+        recorded_by: "agent:qa",
+        scene: "scenes/test.scene.ron",
+        scene_hash: "1111111111111111111111111111111111111111111111111111111111111111",
+        seed: 5,
+        threads: 8,
+    ),
+    inputs: [
+        (
+            actions: {
+                "camera_pan": (
+                    just_pressed: true,
+                    just_released: false,
+                    pressed: true,
+                    value: Axis2d((0.0, 1.0)),
+                ),
+                "select": (
+                    just_pressed: true,
+                    just_released: false,
+                    pressed: true,
+                    value: Button(true),
+                ),
+            },
+            tick: 10,
+        ),
+        (
+            actions: {
+                "select": (
+                    just_pressed: false,
+                    just_released: false,
+                    pressed: false,
+                    value: Button(false),
+                ),
+            },
+            tick: 11,
+        ),
+    ],
+    ticks: 120,
+    version: 0,
+)

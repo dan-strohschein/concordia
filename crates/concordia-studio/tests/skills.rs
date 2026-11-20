@@ -175,3 +175,71 @@ fn team_comms_skill_teaches_the_caps_glossary_ids_and_when_to_ask() {
         "asking never blocks: return to the director instead"
     );
 }
+
+/// Every `mcp__concordia__<tool> {json}` example in `text` for tools starting with `prefix`.
+fn examples(text: &str, prefix: &str) -> Vec<(String, serde_json::Value)> {
+    let marker = format!("mcp__concordia__{prefix}");
+    text.match_indices(&marker)
+        .filter_map(|(i, _)| {
+            let rest = &text[i + "mcp__concordia__".len()..];
+            let tool: String = rest
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            let after = rest[tool.len()..].trim_start_matches(' ');
+            let json = after.strip_prefix('{').map(|_| balanced(after))?;
+            Some((
+                tool,
+                serde_json::from_str(json).unwrap_or_else(|e| panic!("{json}: {e}")),
+            ))
+        })
+        .collect()
+}
+
+/// The `{...}` object at the start of `text`.
+fn balanced(text: &str) -> &str {
+    let mut depth = 0;
+    for (i, c) in text.char_indices() {
+        depth += match c {
+            '{' => 1,
+            '}' => -1,
+            _ => 0,
+        };
+        if depth == 0 {
+            return &text[..=i];
+        }
+    }
+    text
+}
+
+#[test]
+fn replay_skills_use_the_real_replay_tools_and_arguments() {
+    let skills = default_roster().skills;
+    let mut checked = 0;
+    for name in ["concordia-record-replay", "concordia-fix-bug-with-replay"] {
+        let text = skills
+            .iter()
+            .find(|(n, _)| *n == name)
+            .map(|(_, t)| *t)
+            .unwrap_or_else(|| panic!("{name}"));
+        for (tool, args) in examples(text, "replay_") {
+            let parsed = match tool.as_str() {
+                "replay_record" => {
+                    serde_json::from_value::<concordia_replay::ReplayRecordParams>(args.clone())
+                        .map(|_| ())
+                }
+                "replay_run" => {
+                    serde_json::from_value::<concordia_replay::ReplayRunParams>(args.clone())
+                        .map(|_| ())
+                }
+                other => panic!("{name}: no tool {other}"),
+            };
+            parsed.unwrap_or_else(|e| panic!("{name}: {tool} {args}: {e}"));
+            checked += 1;
+        }
+    }
+    assert!(
+        checked >= 4,
+        "the skills show how to record, stop and run ({checked} examples)"
+    );
+}

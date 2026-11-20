@@ -1,5 +1,6 @@
 //! World-state hashing: independent of archetype layout, insertion history and thread count.
 
+use std::collections::BTreeMap;
 use std::fmt;
 
 use concordia_core::rng::SimRng;
@@ -59,11 +60,58 @@ impl<'de> serde::Deserialize<'de> for WorldHash {
     }
 }
 
+/// A world hash plus one hash per part: each hashed component by name, and `@entities`,
+/// `@clock`, `@rng` and `@signals`; a divergence report names the parts that differ.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StateDigest {
+    /// The world hash ([`World::state_hash`]).
+    pub world: WorldHash,
+    /// Hashes by part name.
+    pub parts: BTreeMap<String, WorldHash>,
+}
+
 const DOMAIN: &[u8] = b"concordia-world-hash-v1";
+
+/// Per-part hashers, filled alongside the world hash.
+#[derive(Default)]
+struct Parts(BTreeMap<String, blake3::Hasher>);
+
+impl Parts {
+    fn part(&mut self, name: &str) -> &mut blake3::Hasher {
+        if !self.0.contains_key(name) {
+            let mut h = blake3::Hasher::new();
+            h.update(DOMAIN);
+            h.update(name.as_bytes());
+            self.0.insert(name.to_owned(), h);
+        }
+        self.0.get_mut(name).expect("inserted above")
+    }
+
+    fn finish(self) -> BTreeMap<String, WorldHash> {
+        self.0
+            .into_iter()
+            .map(|(name, h)| (name, WorldHash(*h.finalize().as_bytes())))
+            .collect()
+    }
+}
 
 impl World {
     /// Hashes entities (by sorted id), their components (by sorted name), the clock and the RNG.
     pub fn state_hash(&self) -> Result<WorldHash, EcsError> {
+        self.hash_into(None)
+    }
+
+    /// The world hash and the hash of each part, in one pass.
+    pub fn state_digest(&self) -> Result<StateDigest, EcsError> {
+        let mut parts = Parts::default();
+        let world = self.hash_into(Some(&mut parts))?;
+        Ok(StateDigest {
+            world,
+            parts: parts.finish(),
+        })
+    }
+
+    fn hash_into(&self, mut parts: Option<&mut Parts>) -> Result<WorldHash, EcsError> {
         let mut h = blake3::Hasher::new();
         h.update(DOMAIN);
         h.update(&(self.len() as u64).to_le_bytes());
@@ -73,10 +121,16 @@ impl World {
             .filter_map(|name| self.components.by_name(name))
             .collect();
         for id in self.entities.ids() {
-            self.hash_entity(id, &presentation, &mut h)?;
+            self.hash_entity(id, &presentation, &mut h, parts.as_deref_mut())?;
         }
-        self.hash_resources(&mut h);
+        self.hash_clock(&mut h);
+        self.hash_rng(&mut h);
         self.signals.hash(&mut h)?;
+        if let Some(parts) = parts {
+            self.hash_clock(parts.part("@clock"));
+            self.hash_rng(parts.part("@rng"));
+            self.signals.hash(parts.part("@signals"))?;
+        }
         Ok(WorldHash(*h.finalize().as_bytes()))
     }
 
@@ -85,10 +139,14 @@ impl World {
         id: concordia_core::id::EntityId,
         presentation: &[crate::component::ComponentId],
         h: &mut blake3::Hasher,
+        mut parts: Option<&mut Parts>,
     ) -> Result<(), EcsError> {
         let loc = self.entities.location(id)?;
         let arch = &self.archetypes.list[loc.archetype];
         h.update(id.as_uuid().as_bytes());
+        if let Some(parts) = parts.as_deref_mut() {
+            parts.part("@entities").update(id.as_uuid().as_bytes());
+        }
         // Every storage kind hashes alike: by name, then value (ADR-0069).
         let hashed: Vec<_> = arch
             .by_name
@@ -105,11 +163,16 @@ impl World {
                 .reflect_of(loc, cid)
                 .expect("the archetype has the component");
             canonical_hash(value, h)?;
+            if let Some(parts) = parts.as_deref_mut() {
+                let part = parts.part(name);
+                part.update(id.as_uuid().as_bytes());
+                canonical_hash(value, part)?;
+            }
         }
         Ok(())
     }
 
-    fn hash_resources(&self, h: &mut blake3::Hasher) {
+    fn hash_clock(&self, h: &mut blake3::Hasher) {
         match self.resource::<SimClock>() {
             Some(clock) => {
                 h.update(&[1]);
@@ -122,6 +185,9 @@ impl World {
                 h.update(&[0]);
             }
         }
+    }
+
+    fn hash_rng(&self, h: &mut blake3::Hasher) {
         match self.resource::<SimRng>() {
             Some(rng) => {
                 h.update(&[1]);

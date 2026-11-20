@@ -10,11 +10,13 @@ Turns device events into per-tick action states deterministically, and serves `i
 - `KeyCode`, `MouseButton`, `Modifier`
 - `pointer_ray(cursor, viewport, inv_view_proj)`
 - `InputModule` (EngineModule) and the `input.inject` method types
+- Replays (2.8, ADR-0072): `ActionStates::changed_since(earlier)` (the actions whose state differs) and `InputSampler::play_back(changes, until)` (recorded states replace sampling for ticks before `until`)
 
 ## Invariants
 - Input acts only on the play world and is never journaled (ADR-0032); each injection is logged as `input injected` with the actor.
 - Every event belongs to a tick: OS events at time t in (N, N+1] tick times apply at tick N+1; injected events at their `tick` or the next one. Events within a tick apply in push order. A press and release inside one tick still sets `just_pressed`.
 - `input.inject` validates every event before queuing any (all or nothing).
+- During playback each tick's states are the previous tick's plus that tick's recorded changes; device events queued for playback ticks are dropped. `play_back` checks every action name and value kind first.
 - Action names match `[a-z][a-z0-9_]*` (≤ 64); bindings must fit the action kind. Action ids are sorted-name indices.
 - Pointer rays assume reverse-Z, Y-up NDC (Metal); they work for orthographic and perspective cameras.
 
@@ -30,10 +32,11 @@ Turns device events into per-tick action states deterministically, and serves `i
 - Don't depend on winit here (the platform crate converts its events).
 
 ## References
+- Input-only replays recorded after binding: GGPO's public documentation; Glenn Fiedler, "Deterministic Lockstep".
 - Fixed-step input sampling practice (Glenn Fiedler, "Fix Your Timestep!", gafferongames.com); reverse-Z unprojection (standard projective geometry).
 
 ## Status
-M1 phase 1.1.
+M1 phase 1.1; M2 phase 2.8 (playback for replays).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

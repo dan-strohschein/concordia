@@ -1,0 +1,33 @@
+[package]
+name = "concordia-replay"
+description = "Replay v0: records a play session's input as per-tick action changes with checkpoint hashes (.replay.ron), and replays it to verify the same world states."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+concordia-api.workspace = true
+concordia-command.workspace = true
+concordia-core.workspace = true
+concordia-input.workspace = true
+concordia-reflect.workspace = true
+concordia-scene.workspace = true
+concordia-terra.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+concordia-scripting.workspace = true
+concordia-tests = { path = "../../tests" }
+insta.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

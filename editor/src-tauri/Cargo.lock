@@ -587,6 +587,7 @@ dependencies = [
  "concordia-physics",
  "concordia-platform",
  "concordia-render",
+ "concordia-replay",
  "concordia-rhi-metal",
  "concordia-scripting",
  "concordia-studio",
@@ -785,6 +786,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "concordia-replay"
+version = "0.0.0"
+dependencies = [
+ "concordia-api",
+ "concordia-command",
+ "concordia-core",
+ "concordia-input",
+ "concordia-reflect",
+ "concordia-scene",
+ "concordia-terra",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
 name = "concordia-rhi"
 version = "0.0.0"
 dependencies = [
@@ -903,6 +921,7 @@ dependencies = [
 name = "concordia-scripting"
 version = "0.0.0"
 dependencies = [
+ "blake3",
  "concordia-api",
  "concordia-command",
  "concordia-core",

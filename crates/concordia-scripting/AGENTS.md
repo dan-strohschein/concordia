@@ -9,6 +9,7 @@ The engine module that connects gameplay scripts (`concordia-script` and its WAS
 - `script.reload`: `ScriptReload`, `ScriptReloadParams` (`module`, `actor`), `ScriptReloadResult` (`ReloadedModule`: name, backend, version, `MigratedType`s, `edit_txn`)
 
 ## Invariants
+- **Fingerprints (2.8, ADR-0072):** `fingerprints()` reports each loaded module as `scripts/<name>` with its backend and the BLAKE3 hash of the build it loaded: the file's bytes (WASM, native) or the JSON of a linked module's description. A reload updates the hash; replays use it to refuse a recording made with other code.
 - **Load at engine start:** every configured module (files, then linked modules) is loaded in `register_types`, so script components work in scenes and the API before play. A module that fails to load (missing file, bad ABI, hidden state in a native module's `source`) is logged at error level and skipped; the engine still starts, and `script.reload` reports it (`ScriptFailed`) or loads it once fixed.
 - The app adds this module last, so script types may refer to every other module's types.
 - **Play:** each session gets every module's processors (after `enable_all`, so faulted processors get a fresh start) and one exclusive `Presentation` system, `scripts.emit_logs`, that sends script log lines and faults to the log on the engine thread in tick, then processor declaration order (the same at any thread count).
@@ -37,7 +38,7 @@ The engine module that connects gameplay scripts (`concordia-script` and its WAS
 - Unreal Engine's public documentation on Live Coding and hot reload (the developer builds, the editor swaps code), concepts only; no Unreal source.
 
 ## Status
-M2 phase 2.6d complete (2026-11-20).
+M2 phase 2.6d complete (2026-11-20); 2.8 added fingerprints.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

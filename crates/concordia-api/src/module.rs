@@ -4,9 +4,10 @@ use std::any::Any;
 use std::fmt;
 use std::sync::Arc;
 
-use concordia_reflect::{RegistryError, TypeRegistry};
+use concordia_reflect::{Reflect, RegistryError, TypeRegistry};
 use concordia_scene::builtin;
 use concordia_terra::{Schedule, World};
+use serde::{Deserialize, Serialize};
 
 use crate::error::ApiError;
 use crate::method::MethodInfo;
@@ -36,6 +37,12 @@ pub trait EngineModule: Send + Sync + fmt::Debug {
         None
     }
 
+    /// The code this module runs (e.g. loaded script builds), so a replay can tell whether it
+    /// was recorded with the same code (ADR-0072).
+    fn fingerprints(&self) -> Vec<Fingerprint> {
+        Vec::new()
+    }
+
     /// Called on the engine thread after a playing simulation advanced at least one tick.
     fn after_sim(&self, _engine: &mut crate::Engine) {}
 
@@ -53,6 +60,20 @@ pub trait EngineModule: Send + Sync + fmt::Debug {
     ) -> Result<PlaySetup, ApiError> {
         self.start_play(world)
     }
+}
+
+/// One piece of code a module runs, identified by a content hash.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct Fingerprint {
+    /// The engine module, e.g. `"scripts"`.
+    pub module: String,
+    /// What it runs, e.g. a script module's name.
+    pub name: String,
+    /// How it runs, e.g. `"wasm"`, `"native"` or `"linked"`.
+    pub kind: String,
+    /// BLAKE3 of the code (or of its description), as hex.
+    pub hash: String,
 }
 
 /// What a module contributes to one play session.

@@ -56,11 +56,13 @@ pub enum ApiErrorKind {
     EngineExited,
     /// A gameplay script module failed to load, reload or migrate (ADR-0061).
     ScriptFailed,
+    /// A replay was recorded with a different build, scene, seed or input map (ADR-0072).
+    ReplayMismatch,
 }
 
 impl ApiErrorKind {
     /// Every kind (for exhaustive tests and docs).
-    pub const ALL: [Self; 25] = [
+    pub const ALL: [Self; 26] = [
         Self::ParseError,
         Self::InvalidRequest,
         Self::MethodNotFound,
@@ -86,6 +88,7 @@ impl ApiErrorKind {
         Self::NotPermitted,
         Self::EngineExited,
         Self::ScriptFailed,
+        Self::ReplayMismatch,
     ];
 
     /// The JSON-RPC error code.
@@ -114,6 +117,7 @@ impl ApiErrorKind {
             Self::NotPermitted => -32016,
             Self::EngineExited => -32017,
             Self::ScriptFailed => -32018,
+            Self::ReplayMismatch => -32019,
         }
     }
 
@@ -150,6 +154,7 @@ impl ApiErrorKind {
             Self::NotPermitted => "NotPermitted",
             Self::EngineExited => "EngineExited",
             Self::ScriptFailed => "ScriptFailed",
+            Self::ReplayMismatch => "ReplayMismatch",
         }
     }
 
@@ -180,6 +185,7 @@ impl ApiErrorKind {
             Self::NotPermitted => "this actor is not allowed to do that",
             Self::EngineExited => "the shared engine has exited",
             Self::ScriptFailed => "a script module failed",
+            Self::ReplayMismatch => "the replay does not match this engine",
         }
     }
 
@@ -228,6 +234,9 @@ impl ApiErrorKind {
             }
             Self::ScriptFailed => {
                 "fix the module (the message names the file, type or static), rebuild it, then call script.reload"
+            }
+            Self::ReplayMismatch => {
+                "open the scene and build the replay was recorded with (see data.mismatches), or pass \"force\": true to run it anyway"
             }
         }
     }

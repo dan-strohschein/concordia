@@ -22,6 +22,7 @@ concordia-app.workspace = true
 concordia-core.workspace = true
 concordia-mcp.workspace = true
 concordia-reflect.workspace = true
+concordia-replay.workspace = true
 concordia-render.workspace = true
 concordia-scene.workspace = true
 concordia-studio.workspace = true
@@ -37,6 +38,10 @@ wasmtime-wasi.workspace = true
 [[test]]
 name = "repo_hygiene"
 path = "integration/repo_hygiene.rs"
+
+[[test]]
+name = "replay_m1_physics"
+path = "integration/replay_m1_physics.rs"
 
 [[test]]
 name = "m_minus1_scaffold"

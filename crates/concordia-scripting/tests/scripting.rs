@@ -448,3 +448,64 @@ fn every_backend_runs_the_sample_logic_to_identical_hashes() {
         }
     }
 }
+
+#[test]
+fn scripts_fingerprint_each_loaded_file_by_its_content() {
+    let library = format!("scripts/conformance.{}", std::env::consts::DLL_EXTENSION);
+    let mut p = Project::conformance(
+        ScriptKind::Native,
+        &library,
+        native_fixture("conformance_guest"),
+        None,
+    );
+    let prints = p.engine.fingerprints();
+    assert_eq!(prints.len(), 1, "{prints:?}");
+    let print = &prints[0];
+    assert_eq!(
+        (
+            print.module.as_str(),
+            print.name.as_str(),
+            print.kind.as_str()
+        ),
+        ("scripts", "conformance", "native")
+    );
+    let bytes = std::fs::read(p.dir.path().join(&library)).unwrap();
+    assert_eq!(print.hash, blake3::hash(&bytes).to_hex().to_string());
+
+    p.ok("script.reload", json!({}));
+    assert_eq!(
+        p.engine.fingerprints(),
+        prints,
+        "an identical reload keeps it"
+    );
+    place(
+        p.dir.path(),
+        &library,
+        &native_fixture("conformance_guest_v2"),
+    );
+    p.ok("script.reload", json!({"module": "conformance"}));
+    assert_ne!(
+        p.engine.fingerprints()[0].hash,
+        print.hash,
+        "a new build changes it"
+    );
+}
+
+#[test]
+fn linked_modules_are_fingerprinted_by_their_description() {
+    use concordia_script_guest::Module;
+    let p = Project::new(
+        1,
+        |_| Vec::new(),
+        |m| m.link::<wanderers::Wanderers>(),
+        None,
+    );
+    let prints = p.engine.fingerprints();
+    assert_eq!(prints.len(), 1, "{prints:?}");
+    let desc = serde_json::to_vec(&wanderers::Wanderers::describe()).unwrap();
+    assert_eq!(
+        (prints[0].name.as_str(), prints[0].kind.as_str()),
+        ("wanderers", "linked")
+    );
+    assert_eq!(prints[0].hash, blake3::hash(&desc).to_hex().to_string());
+}

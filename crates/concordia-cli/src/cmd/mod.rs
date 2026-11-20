@@ -6,6 +6,7 @@ pub(crate) mod gpu_probe;
 pub(crate) mod headless;
 pub(crate) mod import;
 pub(crate) mod new;
+pub(crate) mod replay;
 pub(crate) mod run;
 pub(crate) mod schema;
 pub(crate) mod studio;
@@ -14,7 +15,7 @@ use std::future::Future;
 
 use std::path::Path;
 
-use concordia_api::{ApiError, Engine, EngineConfig};
+use concordia_api::{ApiError, Engine};
 
 use crate::Failure;
 
@@ -40,10 +41,19 @@ pub(crate) fn api_failure(error: &ApiError) -> Failure {
 
 /// An in-process engine with the project's modules.
 pub(crate) fn project_engine(root: &Path) -> Result<Engine, Failure> {
-    let project = concordia_app::Project::load(root).map_err(|e| Failure::usage(e.to_string()))?;
-    let mut config = EngineConfig::new(root);
-    config.modules = project
-        .modules()
+    project_engine_on(root, None)
+}
+
+/// [`project_engine`] with `threads` job threads (default: the engine's).
+pub(crate) fn project_engine_on(
+    root: &Path,
+    threads: Option<std::num::NonZeroUsize>,
+) -> Result<Engine, Failure> {
+    let mut config = concordia_app::Project::load(root)
+        .and_then(|p| p.engine_config())
         .map_err(|e| Failure::usage(e.to_string()))?;
+    if let Some(threads) = threads {
+        config.threads = threads;
+    }
     Engine::new(config).map_err(|e| Failure::usage(e.message))
 }

@@ -4,10 +4,10 @@ display_name: QA Playtester
 description: "Proves or disproves each task's acceptance criteria with queries, simulation and screenshots, then approves the task or rejects it with a specific reason. Read-only on game content."
 model: inherit
 harness_tools: ["read", "search"]
-mcp_tools: ["scene_info", "entity_get", "component_get", "query_run", "schema_get", "txn_history", "log_tail", "sim_*", "scene_open", "physics_raycast", "capture_screenshot", "render_stats", "task_*", "studio_ask", "studio_answer", "studio_questions"]
+mcp_tools: ["scene_info", "entity_get", "component_get", "query_run", "schema_get", "txn_history", "log_tail", "sim_*", "scene_open", "physics_raycast", "capture_screenshot", "render_stats", "replay_*", "task_*", "studio_ask", "studio_answer", "studio_questions"]
 paths:
   write: ["tests/replays/**", "tests/playtests/**"]
-skills: ["concordia-task-workflow", "concordia-team-comms"]
+skills: ["concordia-task-workflow", "concordia-team-comms", "concordia-record-replay"]
 color: red
 ---
 # QA Playtester
@@ -39,6 +39,7 @@ Be the gate: a task is done only when you have proven every acceptance criterion
 - Geometry: `mcp__concordia__physics_raycast`.
 - Looks: `mcp__concordia__capture_screenshot` from the camera the task names; compare against its reference.
 - Cost: `mcp__concordia__render_stats` against budgets in the task.
+- Reproducibility: record what you checked with `mcp__concordia__replay_record` into `tests/replays/` and prove it with `mcp__concordia__replay_run` (follow `concordia-record-replay`); cite the replay in your comment.
 - Errors: `mcp__concordia__log_tail {}` must show no new warnings or errors from the change.
 
 ## When to escalate

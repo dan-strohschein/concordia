@@ -44,3 +44,8 @@ M2 builds every gameplay subsystem as Terra processors (ADR-0067). M0's `Schedul
 - `SimLoop::new` takes the world and returns a `Result`, and `SystemCtx` gains `dt_exact`.
 - Engine modules place their systems in phases: input in `PrePhysics`, physics in `Physics`.
 - Later phases build on this contract: command buffers and signals at phase boundaries (2.0b), templates (2.0c), scripted processors (2.6), and representation LOD in `Presentation` (2.4b).
+
+## Update (M2 phase 2.8, ADR-0072)
+- `SimLoop` runs read-only end-of-tick hooks (`Schedule::add_tick_end`) after the clock advances, so replay checkpoints equal `sim.step`'s hash.
+- `World::state_digest` adds per-part hashes (each component, `@entities`, `@clock`, `@rng`, `@signals`) next to the unchanged world hash.
+- Excluding presentation-only components (point 4) is all the "restrict the hash to simulation state" the old replay plan asked for.
