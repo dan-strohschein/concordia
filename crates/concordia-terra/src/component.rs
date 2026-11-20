@@ -122,6 +122,20 @@ impl ComponentIndex {
         Ok(id)
     }
 
+    /// The type version new columns of a runtime-described component use.
+    pub(crate) fn dynamic_version(&self, id: ComponentId) -> Option<&'static TypeInfo> {
+        match self.infos[id.0].new_column {
+            NewColumn::Dynamic(info) => Some(info),
+            NewColumn::Typed(_) => None,
+        }
+    }
+
+    /// Makes `info` the stored version of runtime-described component `id`.
+    pub(crate) fn set_dynamic_version(&mut self, id: ComponentId, info: &'static TypeInfo) {
+        debug_assert!(self.dynamic_version(id).is_some());
+        self.infos[id.0].new_column = NewColumn::Dynamic(info);
+    }
+
     pub(crate) fn id_of(&self, type_id: TypeId) -> Option<ComponentId> {
         self.by_type.get(&type_id).copied()
     }

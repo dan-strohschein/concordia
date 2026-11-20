@@ -15,7 +15,7 @@
 - Commands (2.0b): `View::commands` → `CommandBuffer` (`spawn` → `Pending`, `insert`, `remove`, `despawn`, `signal`, `append`, `apply` → `ApplyReport`), `ViewQuery::par_for_each_deferred`, `TerraStats` (skipped commands)
 - Signals and observers (2.0b): `World::signal` / `signals`, `ProcessorDecl::receives`, `View::signals`, `ViewQuery::for_each_of`; `observer::<T>(name, Observe::Add | Remove)`, `View::observed`
 - Resources in views (2.0b): `ProcessorDecl::reads_resource` / `writes_resource`, `View::resource` / `resource_mut`
-- Script types and named access (2.6a, ADR-0062): `register_dynamic_component`, `World::insert_dynamic`, `World::signal_dynamic`, `ReflectComponent::dynamic` / `signal`; `ProcessorDecl::reads_named` / `writes_named` / `receives_named`; `View::batch(&NamedQuery)` → `Batch` (ids + `WireColumn`s), `View::write_batch`, `View::signal_batch`, `View::signals_named`; `CommandBuffer::insert_reflect` / `remove_named` / `signal_reflect`; `ReflectComponent::from_wire` (decode one wire row as the component's value: `T` for Rust types, `DynamicValue` for script types; 2.6b)
+- Script types and named access (2.6a, ADR-0062): `register_dynamic_component`, `World::insert_dynamic`, `World::signal_dynamic`, `ReflectComponent::dynamic` / `signal`; `ProcessorDecl::reads_named` / `writes_named` / `receives_named`; `View::batch(&NamedQuery)` → `Batch` (ids + `WireColumn`s), `View::write_batch`, `View::signal_batch`, `View::signals_named`; `CommandBuffer::insert_reflect` / `remove_named` / `signal_reflect`; `ReflectComponent::from_wire` (decode one wire row as the component's value: `T` for Rust types, `DynamicValue` for script types; 2.6b); `World::migrate_dynamic` / `migrate_dynamic_all` (move stored script types to new versions, all or nothing; 2.6c, ADR-0061)
 - Introspection (2.0c): `World::entity_storage` (`EntityStorage`: archetype, chunk, storage kinds, pending signals), `Schedule::waves` / `observers`, `SimLoop::schedule`, `ReflectComponent::register_shared` (type-erased shared registration for templates)
 
 ## Invariants
@@ -36,6 +36,7 @@
 - Components are identified by stable name (unique per world) in processor access, presentation sets, observers and views; `TypeId`s are only typed fast paths. A component declared by name conflicts exactly like the typed declaration of the same component.
 - Dynamic (script) components store `DynamicValue`s of one type version per world (another version must be migrated first); types with no data are tags. They hash exactly like the Rust type of the same shape.
 - Named batches visit archetypes then rows in the same order as typed queries. `write_batch` is atomic: every entity must be in the view with the component and every row must decode, or nothing is written.
+- Migrating a script type converts every stored value, its tag value and its pending and delivered signals, staged across all requested types before anything commits; a failure leaves the world unchanged. A type can't move between dense and tag storage. Migrated archetypes get a new change tick.
 - Archetype moves never drop component values; despawn and remove drop or return them exactly once.
 
 ## How to test
@@ -70,7 +71,7 @@
 - Glenn Fiedler, "Fix Your Timestep!" and "Floating Point Determinism" (Gaffer on Games).
 
 ## Status
-M0 phase 0.3 complete; renamed to Terra in M7 Phase 7.0 (2026-11-18); M2 phases 2.0 (processors, ADR-0063) and 2.0b (storage kinds, commands, signals, observers, ADR-0069) and 2.6a (script types and named access, ADR-0062) complete; 2.6b added `ReflectComponent::from_wire` for script commands.
+M0 phase 0.3 complete; renamed to Terra in M7 Phase 7.0 (2026-11-18); M2 phases 2.0 (processors, ADR-0063) and 2.0b (storage kinds, commands, signals, observers, ADR-0069) and 2.6a (script types and named access, ADR-0062) complete; 2.6b added `ReflectComponent::from_wire` for script commands; 2.6c added type-version migration.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

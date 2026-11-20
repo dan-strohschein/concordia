@@ -34,6 +34,7 @@ concordia-input = { path = "crates/concordia-input" }
 concordia-terra = { path = "crates/concordia-terra" }
 concordia-scene = { path = "crates/concordia-scene" }
 concordia-script = { path = "crates/concordia-script" }
+concordia-script-abi = { path = "crates/concordia-script-abi" }
 concordia-script-guest = { path = "crates/concordia-script-guest" }
 concordia-script-protocol = { path = "crates/concordia-script-protocol" }
 concordia-terra-sim = { path = "crates/concordia-terra-sim" }

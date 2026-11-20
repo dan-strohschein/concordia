@@ -212,7 +212,9 @@ fn wasm_reload_preserves_world_state() {
     let x = |rig: &Rig| rig.get(id, "conf.Position").unwrap()["x"].as_f64().unwrap() as f32;
     let before = (rig.hash(), x(&rig));
     let v2 = module(WasmConfig::default(), "conformance_guest_v2");
-    rig.host.reload(v2, &mut rig.registry).expect("reload");
+    rig.host
+        .reload(v2, &mut rig.registry, &mut rig.world)
+        .expect("reload");
     assert_eq!(
         (rig.hash(), x(&rig)),
         before,

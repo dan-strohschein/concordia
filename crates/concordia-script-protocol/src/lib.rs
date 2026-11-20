@@ -6,6 +6,7 @@ use concordia_core::id::EntityId;
 use concordia_reflect::TypeDesc;
 use serde::{Deserialize, Serialize};
 
+pub mod codec;
 mod ids;
 mod validate;
 
@@ -23,6 +24,9 @@ pub enum ProtocolError {
     /// Packed entity ids are malformed.
     #[error("invalid entity ids: {0}")]
     InvalidIds(String),
+    /// A native run envelope is malformed.
+    #[error("invalid run envelope: {0}")]
+    InvalidEnvelope(String),
 }
 
 /// A processing phase, in tick order (mirrors Terra's `Phase`).

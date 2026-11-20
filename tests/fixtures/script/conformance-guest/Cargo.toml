@@ -14,6 +14,10 @@ crate-type = ["rlib", "cdylib"]
 [features]
 # A second build with changed behavior, for reload tests.
 v2 = []
+# A build with changed component layouts (Position gains z, Velocity loses y), for migration tests.
+layout2 = []
+# Export the native module C ABI (ADR-0061) from the cdylib.
+dylib = []
 
 [dependencies]
 concordia-reflect.workspace = true

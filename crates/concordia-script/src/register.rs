@@ -3,7 +3,6 @@
 
 use concordia_reflect::{TypeDesc, TypeRegistry};
 use concordia_terra::register_dynamic_component;
-use concordia_terra_sim::{DynamicTrait, register_dynamic_trait};
 
 use crate::{ModuleDesc, ScriptError};
 
@@ -24,16 +23,7 @@ pub fn register_module(registry: &mut TypeRegistry, desc: &ModuleDesc) -> Result
     for ty in desc.components.iter().chain(&desc.signals) {
         register_dynamic_component(registry, ty).map_err(|e| fail(&ty.name, e.to_string()))?;
     }
-    for t in &desc.traits {
-        let spec = DynamicTrait {
-            name: t.name.clone(),
-            docs: t.docs.clone(),
-            components: t.components.clone(),
-            requires: t.requires.clone(),
-        };
-        register_dynamic_trait(registry, &spec).map_err(|e| fail(&t.name, e.to_string()))?;
-    }
-    Ok(())
+    crate::reload::register_traits(registry, desc)
 }
 
 /// Every type a description declares, in registration order.

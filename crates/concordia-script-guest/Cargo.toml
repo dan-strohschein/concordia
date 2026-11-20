@@ -11,6 +11,7 @@ publish.workspace = true
 [dependencies]
 concordia-core.workspace = true
 concordia-reflect.workspace = true
+concordia-script-abi.workspace = true
 concordia-script-protocol.workspace = true
 libm.workspace = true
 serde_json.workspace = true

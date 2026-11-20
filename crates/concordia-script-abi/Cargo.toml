@@ -1,0 +1,19 @@
+[package]
+name = "concordia-script-abi"
+description = "The native script module C ABI: the versioned function table and the guest-side export glue."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+concordia-script-protocol.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+concordia-core.workspace = true
+
+[lints]
+workspace = true

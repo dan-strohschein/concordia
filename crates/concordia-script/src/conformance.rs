@@ -444,7 +444,9 @@ pub fn script_spawns_from_a_template(load: Loader) {
     );
 }
 
-fn scenario(load: Loader, threads: usize) -> Vec<WorldHash> {
+/// A mixed scenario (movers, signals, markers, template spawns) on `threads` threads; the
+/// world hash after ticks 1, 10 and 30.
+pub fn scenario(load: Loader, threads: usize) -> Vec<WorldHash> {
     let mut rig = Rig::build(load, threads, &[mover_template()], |_| {});
     let ids = movers(&mut rig, 300);
     for (i, id) in ids.iter().enumerate().step_by(7) {

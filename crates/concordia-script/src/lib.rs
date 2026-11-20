@@ -21,6 +21,7 @@ mod error;
 mod host;
 mod processor;
 mod register;
+mod reload;
 mod seed;
 mod test_backend;
 
@@ -29,7 +30,9 @@ mod test_backend;
 pub mod conformance;
 
 pub use error::{ScriptError, ScriptFault};
-pub use host::{FaultReport, HostConfig, LogLine, ScriptHost, Templates};
+pub use host::{
+    FaultReport, HostConfig, LogLine, ReloadReport, ScriptHost, Templates, TypeMigration,
+};
 pub use processor::ScriptProcessor;
 pub use register::register_module;
 pub use seed::processor_seed;

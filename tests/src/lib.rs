@@ -90,18 +90,47 @@ pub fn gate_prefix(milestone: &str) -> Result<String, String> {
 
 /// Path to a built WASM fixture, or an error naming the command that builds it.
 pub fn wasm_fixture_path(name: &str) -> Result<PathBuf, String> {
+    fixture_path(
+        name,
+        "CONCORDIA_WASM_FIXTURES_DIR",
+        "target/wasm-fixtures/wasm32-wasip2/release",
+        "wasm",
+        "just wasm",
+    )
+}
+
+/// Path to a built native module library fixture (`<name>.dylib`, `.so` or `.dll`), or an
+/// error naming the command that builds it.
+pub fn native_fixture_path(name: &str) -> Result<PathBuf, String> {
+    fixture_path(
+        name,
+        "CONCORDIA_NATIVE_FIXTURES_DIR",
+        "target/native-fixtures/out",
+        std::env::consts::DLL_EXTENSION,
+        "just native-fixtures",
+    )
+}
+
+/// `<dir>/<name>.<extension>`, where `dir` is `env` or `default` under the repo root.
+fn fixture_path(
+    name: &str,
+    env: &str,
+    default: &str,
+    extension: &str,
+    recipe: &str,
+) -> Result<PathBuf, String> {
     if name.is_empty() || name.contains(['/', '.']) {
         return Err(format!("invalid fixture name {name:?}"));
     }
-    let dir = std::env::var_os("CONCORDIA_WASM_FIXTURES_DIR")
+    let dir = std::env::var_os(env)
         .map(PathBuf::from)
-        .unwrap_or_else(|| repo_root().join("target/wasm-fixtures/wasm32-wasip2/release"));
-    let path = dir.join(format!("{name}.wasm"));
+        .unwrap_or_else(|| repo_root().join(default));
+    let path = dir.join(format!("{name}.{extension}"));
     if path.is_file() {
         Ok(path)
     } else {
         Err(format!(
-            "fixture missing: {} (run `just wasm`)",
+            "fixture missing: {} (run `{recipe}`)",
             path.display()
         ))
     }
@@ -109,7 +138,15 @@ pub fn wasm_fixture_path(name: &str) -> Result<PathBuf, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::gate_prefix;
+    use super::{gate_prefix, native_fixture_path};
+
+    #[test]
+    fn missing_native_fixture_error_names_the_fix() {
+        let err = native_fixture_path("does_not_exist").unwrap_err();
+        assert!(err.contains("just native-fixtures"), "{err}");
+        assert!(err.contains(std::env::consts::DLL_EXTENSION), "{err}");
+        assert!(native_fixture_path("../escape").is_err());
+    }
 
     #[test]
     fn gate_prefix_of_m_minus1_is_m_minus1() {

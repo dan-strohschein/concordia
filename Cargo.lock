@@ -202,6 +202,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
+name = "bad-abi-guest"
+version = "0.0.0"
+
+[[package]]
 name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -920,9 +924,19 @@ dependencies = [
  "concordia-terra",
  "concordia-terra-sim",
  "conformance-guest",
+ "serde",
  "serde_json",
  "thiserror 2.0.21",
  "tracing",
+]
+
+[[package]]
+name = "concordia-script-abi"
+version = "0.0.0"
+dependencies = [
+ "concordia-core",
+ "concordia-script-protocol",
+ "serde_json",
 ]
 
 [[package]]
@@ -931,6 +945,7 @@ version = "0.0.0"
 dependencies = [
  "concordia-core",
  "concordia-reflect",
+ "concordia-script-abi",
  "concordia-script-protocol",
  "libm",
  "serde",
@@ -939,11 +954,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "concordia-script-native"
+version = "0.0.0"
+dependencies = [
+ "concordia-core",
+ "concordia-script",
+ "concordia-script-abi",
+ "concordia-script-guest",
+ "concordia-script-protocol",
+ "concordia-terra",
+ "concordia-tests",
+ "conformance-guest",
+ "libloading 0.9.1",
+ "proc-macro2",
+ "quote",
+ "serde_json",
+ "syn 3.0.10",
+ "tempfile",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "concordia-script-protocol"
 version = "0.0.0"
 dependencies = [
  "concordia-core",
  "concordia-reflect",
+ "proptest",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -1494,7 +1531,7 @@ version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab8ecd87370524b461f8557c119c405552c396ed91fc0a8eec68679eab26f94a"
 dependencies = [
- "libloading",
+ "libloading 0.8.9",
 ]
 
 [[package]]
@@ -2425,6 +2462,16 @@ name = "libloading"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55"
+dependencies = [
+ "cfg-if",
+ "windows-link",
+]
+
+[[package]]
+name = "libloading"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1832accd5a4ca2795ace4d05d15c4039be15b62d3b950eff99746a990e3cc10"
 dependencies = [
  "cfg-if",
  "windows-link",
@@ -5697,7 +5744,7 @@ dependencies = [
  "as-raw-xcb-connection",
  "gethostname",
  "libc",
- "libloading",
+ "libloading 0.8.9",
  "once_cell",
  "rustix 1.1.6",
  "x11rb-protocol",

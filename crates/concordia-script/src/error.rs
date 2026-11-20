@@ -49,6 +49,16 @@ pub enum ScriptError {
         /// What changed.
         reason: String,
     },
+    /// Stored values of a changed type couldn't be converted; nothing was changed.
+    #[error("reload of {module}: values of {name} can't be migrated: {reason}")]
+    Migration {
+        /// The module.
+        module: String,
+        /// The type.
+        name: String,
+        /// Why.
+        reason: String,
+    },
     /// The DDC failed.
     #[error("derived-data cache: {0}")]
     Cache(String),

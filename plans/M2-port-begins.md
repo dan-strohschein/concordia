@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6a and 2.6b (2026-11-20) done; 2.6c next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6a, 2.6b and 2.6c (2026-11-20) done; 2.6d next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -434,6 +434,46 @@ This replaces the test list and implementation notes of the older "Phase 2.6" te
   - `module_with_static_mutable_state_is_rejected_by_the_check`;
   - `guest_panic_is_contained_like_a_trap`;
   - `static_link_and_dylib_paths_produce_identical_world_hash`.
+
+**2.6c As built (2026-11-20, ADR-0061):**
+- **Author decision at the start.** A C ABI has two sides, so "all `unsafe` stays in `concordia-script-native`" became: the ABI's one definition and the guest-side FFI glue go in a new crate, `concordia-script-abi`; host-side `unsafe` stays in `concordia-script-native`. The guest SDK has no `unsafe`, and there is no crate cycle (native → script → SDK → abi).
+- **Crates and additions:**
+  - `concordia-script-abi`: `ModuleV1`, the version and table symbols, `Buffer`, `Entry`, `guest::table` and `export_entry!`. Panics are caught at the boundary.
+  - `concordia-script-native`:
+    - `NativeBackend`: the dylib path (copy-on-load, ABI checked first, old libraries kept until the backend drops), and the static path (2.6b's in-process backend);
+    - `NativeModule`;
+    - `check_module_source` (`syn` with span locations).
+  - `concordia-script-protocol::codec`: the binary run envelope (call and reply). Descriptions cross as JSON.
+  - SDK: `export_module!` also emits the native exports when the module crate's own `dylib` feature is on. `native::Adapter<M>` is a `Module` as an ABI `Entry`.
+  - Terra: `World::migrate_dynamic` and `migrate_dynamic_all`. They convert stored values, tag values and pending signals, staged across all types, then committed.
+  - `concordia-script`:
+    - `ScriptHost::reload` takes the world and returns a `ReloadReport`;
+    - changed types are migrated, with rollback;
+    - processors refresh their type table and templates every run;
+    - `set_templates`.
+  - Fixtures:
+    - the conformance module gains `dylib` and `layout2` features;
+    - `bad-abi-guest` claims ABI version 999;
+    - `just native-fixtures` builds into its own target directory, and is run by `just test` and the regression workflow;
+    - `concordia_tests::native_fixture_path`.
+- **Tests:**
+  - All 7 planned native tests, plus the conformance suite on the dylib path (`concordia-script-native/tests/`).
+  - Added:
+    - 4 ABI tests;
+    - 4 codec tests, including a never-panics proptest;
+    - 3 Terra migration tests;
+    - 4 in `concordia-script/tests/reload.rs`: migration and its field report, unchanged types, rollback, and changed processors;
+    - `missing_native_fixture_error_names_the_fix`.
+- **Red run.** Every new test failed against stubs for the right reason, except these:
+  - `reload_refuses_changed_processors` is a guard on 2.6b behavior and passed at once.
+  - `unchanged_types_are_not_migrated` passed vacuously. I strengthened it to insert a value after the reload, and it then failed. That exposed a 2.6b bug: every reload re-registered every type, so later inserts through the registry hit "a different version is stored". Only changed types are re-registered now.
+  - `migrate_dynamic_all_is_atomic_across_types` first failed to compile (the API was missing). Its first green run then showed that pending signals of a type never stored as a component weren't converted; that's fixed.
+  - `missing_native_fixture_error_names_the_fix` was written with the helper refactor, and I didn't see it fail first.
+- **Changed deliberately during green:** the reload test expected bare field names, but reflect's `MigrationReport` lists JSON Pointer paths (`/max`), which also cover nested fields. `TypeMigration` keeps reflect's format.
+- **Seen once, not reproduced:** the first combined run had 4 timeouts while the machine's load average was 52. Reruns were clean.
+- **Not in this phase:**
+  - reloads that change processors (schedule rebuilds) and running the source check before `script.reload` (2.6d);
+  - unloading old libraries (by design; ADR-0061).
 
 **2.6d: API, samples and the Studio role**
 - **Engine:**

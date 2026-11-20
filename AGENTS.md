@@ -28,7 +28,8 @@ These apply to every change, by humans and agents alike.
 | Command | Does |
 |---|---|
 | `just doctor` | Audit the toolchain |
-| `just test` | Build WASM fixtures, run all tests and doc tests |
+| `just test` | Build WASM and native module fixtures, run all tests and doc tests |
+| `just native-fixtures` | Build the native module library fixtures (script tests need them) |
 | `just lint` | rustfmt check + clippy (warnings are errors) |
 | `just deny` | License and supply-chain checks |
 | `just gate M<n>` | Full CI, then the milestone's gate tests |
