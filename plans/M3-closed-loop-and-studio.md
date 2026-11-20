@@ -1,7 +1,7 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; the Studio checkpoint is next; refinement approved 2026-11-19) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Needs refinement after M2** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); refinement approved 2026-11-19) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Needs refinement after M2** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
@@ -953,9 +953,13 @@ justfile                       (touched) `gate-live` recipe
 - **Deviations:**
   - `studio_panel_reflects_task_updates_made_over_mcp_within_one_second` drives the real `concordia mcp`, with the `_studio` stamp the PreToolUse hook would add.
   - The approval test sets up its task over the WebSocket API.
-- **Not done here:**
-  - the manual run (launch the Director from the panel and watch cards move): it uses the author's subscription, so it waits for their go-ahead;
-  - the embedded terminal and live budget usage (backlog).
+- **Manual run (2026-11-19, author, Claude Code 2.1.329):** the editor hosted a fresh `concordia new` project, and the Claude Code tab showed the version and the `claude.ai` login. **Run headless** started the Director (3 min, exit 0).
+  - T-0001 went from todo to in progress (`agent:level-designer#1`), then in review (87 s later), then done (approved by `agent:qa-playtester#1`, 51 s later).
+  - The playground scene's one commit and save are the Level Designer's.
+  - The author saw the card in Done and the finished scene, but wasn't watching the Board tab while it moved.
+  - The launcher log redacted `HOME`, as designed.
+- **Author's note:** the Kanban-style task board stays for now; whether to keep it long term is open, to be revisited in a later Studio phase.
+- **Not done here:** the embedded terminal and live budget usage (backlog).
 
 ### Studio checkpoint (after 3.3–3.6, 3.6b and 3.8; ADR-0049)
 An interim gate that needs no replay or scripting, so it can pass before M2.
@@ -973,6 +977,47 @@ An interim gate that needs no replay or scripting, so it can pass before M2.
    - no API key in the environment.
 
    It checks outcomes only, never transcripts.
+
+**As built (2026-11-19): both parts pass. The live gate passed on 2026-11-19 with Claude Code 2.1.329.**
+- **Author decisions:**
+  - gate snapshots cover structure only (settings hooks, `.mcp.json`, the `CLAUDE.md` block, which agents and skills exist and their `name`/`tools` lines); the crate snapshots keep the prompt text;
+  - the live gate defaults to `--max-budget-usd 3`, `--max-turns 80` and 1 attempt (`M3S_LIVE_BUDGET_USD`, `M3S_LIVE_MAX_TURNS`, `M3S_LIVE_ATTEMPTS`).
+- **Shared helpers:** `tests/src/studio_gate.rs` holds a fresh `concordia new` project, `concordia mcp`, hook inputs through the real hook binary, and agent calls (hook stamp, then MCP). `m3s_team_questions.rs` now uses it instead of its private copies.
+- **Gates** (`just gate-tests M3S`: 13 tests in 6 files, i.e. 11 gate tests plus the checker's 2 self-tests; the live check is ignored): every gate runs scenarios through the real binaries and doesn't repeat crate-level edge cases.
+  - `m3s_studio_sync.rs` (3):
+    - `concordia new` produces the expected files (4 structure snapshots);
+    - `sync --check` is clean, and a second sync touches no file;
+    - disabling a role makes `--check` fail, then sync deletes only that role's owned agent file (an unmarked user agent survives).
+  - `m3s_enforcement.rs` (3):
+    - hook decisions for Edit scope, `..` escapes, human-only paths, the director's missing shell, and an out-of-scope MCP tool (the reason lists the allowed tools); malformed input exits 2;
+    - on the server: a spoofed `actor` is ignored (the command log shows `agent:level-designer#1`), an unstamped write is read-only, a forged out-of-scope stamp is rejected, and a third Level Designer is at capacity;
+    - PostToolUse journals `file_edit` with the role's actor.
+  - `m3s_task_board.rs` (3):
+    - the full flow with attribution (illegal moves refused; the director can't approve);
+    - three rejections block the task for `human:local`, and only the human unblocks it over the Engine API;
+    - a hand-edited task file is journaled as `human:local` with a field diff.
+  - `m3s_shared_engine.rs` (1): with the editor hosting, `concordia mcp` attaches. Agents' scene edits and task changes appear in the editor's `txn.history` and `studio.activity`. After the editor exits, the next call gets `EngineExited` naming its pid, the one after hosts a fresh engine, and the board survives.
+  - `m3s_live_check.rs`: the live checker's six checks (task done and approved by QA; a static ground, a light, a camera and 3+ dynamic bodies; all scene edits by the Level Designer; file edits in scope; no API key in the environment; configuration unchanged). They are plain functions, so they're tested without a subscription:
+    - a scripted twin of the session passes them;
+    - an API key, an edited `team.toml`, a tech artist's edit to the scene and a missing QA review each fail them.
+- **Live gate:** `tools/gates/m3s_live.sh` and `m3s_live_prompt.md`. It runs a release build first on PATH (the generated `.mcp.json` and hooks run bare `concordia`), strips API keys, runs `claude -p --agent director` (never `--bare`) in a fresh `concordia new` project, saves the configuration as synced for the integrity check, and keeps artifacts in `target/gate-live/M3S/`.
+- **Red runs:** most gate tests passed at once, because they integrate behavior built in 3.3–3.8. To show they can fail, I broke five things temporarily in one build:
+  - the hook timeout;
+  - the hook's write check;
+  - the server's tool re-check;
+  - the reviewer check;
+  - attaching to a live engine.
+
+  Every gate file then failed (8 of 11 tests), then I reverted the breaks. The 3 tests that stayed green guard behavior that wasn't broken. One more test (`m3s_sync_is_fresh_and_idempotent`) failed in that run and passed on its rerun under the same breaks. The binary was rebuilt during that first run, which is the likely cause. It has passed in all 7 full gate runs since. The checker's self-tests each failed first on mistakes in the tests themselves (a wrong role scope, and a wrong expected message), which I fixed.
+- **Live pass (2026-11-19, Claude Code 2.1.329, subscription login `claude.ai`, no API key in the environment):** `just gate-live M3S` passed on its only attempt.
+  - The run: 9 turns, about $1.18 estimated (cap $3), 2 min 9 s. The agent ended with `RESULT: T-0001 done`.
+  - The Studio journal shows:
+    - `agent:director#1` created T-0001;
+    - `agent:level-designer#1` claimed it, commented and submitted it;
+    - `agent:qa-playtester#1` approved it.
+  - All 3 scene-journal entries are `agent:level-designer#1`'s. Every checker outcome held.
+  - The artifacts are in `target/gate-live/M3S/20261119T192402-1/`, which is not committed.
+- **The 3.8 manual check** ran the same day (see 3.8 As built).
 
 ### Phase 3.9: Gate fixture, scripted closed loop, live gate
 *Needs all previous phases and M2.*
