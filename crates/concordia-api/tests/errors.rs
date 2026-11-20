@@ -204,3 +204,11 @@ fn script_failed_has_its_own_code_and_a_reload_hint() {
     assert!(err.data.suggestions[0].contains("script.reload"), "{err:?}");
     assert!(ApiErrorKind::ALL.contains(&ApiErrorKind::ScriptFailed));
 }
+
+#[test]
+fn replay_mismatch_has_its_own_code_and_a_force_hint() {
+    let err = ApiError::from_kind(ApiErrorKind::ReplayMismatch);
+    assert_eq!((err.code(), err.data.kind), (-32019, "ReplayMismatch"));
+    assert!(err.data.suggestions[0].contains("force"), "{err:?}");
+    assert!(ApiErrorKind::ALL.contains(&ApiErrorKind::ReplayMismatch));
+}

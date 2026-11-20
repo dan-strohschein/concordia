@@ -137,13 +137,7 @@ impl Method for SimStep {
         ctx: &CallCtx,
         p: SimStepParams,
     ) -> Result<SimStepResult, ApiError> {
-        ensure_play(engine, None)?;
-        let Engine { play, jobs, .. } = engine;
-        let play = play
-            .as_mut()
-            .ok_or_else(|| ApiError::from_kind(ApiErrorKind::NotPlaying))?;
-        play.sim.step(&mut play.world, jobs, p.ticks);
-        let world_hash = play.world.state_hash().map_err(internal)?.to_string();
+        let world_hash = engine.step_play(p.ticks)?.to_string();
         let actor = ctx
             .actor
             .as_ref()

@@ -29,7 +29,14 @@ pub struct Manifest {
     pub studio: Option<StudioSection>,
     /// `[scripts]`; gameplay modules and `script.reload` run only if this section exists.
     pub scripts: Option<ScriptsSection>,
+    /// `[replay]`; `replay.record` and `replay.run` exist only if this section exists.
+    pub replay: Option<ReplaySection>,
 }
+
+/// `[replay]` (no settings yet; ADR-0072).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ReplaySection {}
 
 /// `[scripts]`: the project's gameplay modules (ADR-0061, ADR-0062).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

@@ -61,7 +61,7 @@ Agent Studio's harness-neutral source of truth and its engine module: role files
 - YAML via `serde_norway` 0.9 (MIT OR Apache-2.0), a maintained fork of `serde_yaml`; globs via `globset` (Unlicense OR MIT).
 
 ## Status
-M3 phases 3.3 (config model, task board, Studio journal), 3.4 (sync), 3.5 (hooks, policy, slots), 3.6 (default prompts and engine skills), 3.6b (team questions) and 3.8 (`studio.doctor`, richer `studio.status`, role colors for the editor's Studio panel). The Studio checkpoint gate comes next. M2 phase 2.6d (D8): the gameplay programmer is enabled (`script_reload`, `scripts/**`, the `concordia-scripting` skill).
+M3 phases 3.3 (config model, task board, Studio journal), 3.4 (sync), 3.5 (hooks, policy, slots), 3.6 (default prompts and engine skills), 3.6b (team questions) and 3.8 (`studio.doctor`, richer `studio.status`, role colors for the editor's Studio panel). The Studio checkpoint gate comes next. M2 phase 2.6d (D8): the gameplay programmer is enabled (`script_reload`, `scripts/**`, the `concordia-scripting` skill). M2 phase 2.8 (D8): `replay_*` for QA, the level designer and the gameplay programmer; QA preloads `concordia-record-replay`; both replay skills now describe the real v0 tools (their notes keep only M3's parts).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

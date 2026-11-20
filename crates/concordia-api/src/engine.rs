@@ -261,6 +261,64 @@ impl Engine {
         self.config.sim_seed
     }
 
+    /// Every module's [`Fingerprint`]s, in module order (2.8).
+    pub fn fingerprints(&self) -> Vec<crate::Fingerprint> {
+        self.modules.iter().flat_map(|m| m.fingerprints()).collect()
+    }
+
+    /// Discards any play world and starts a fresh, paused one from the edit world at tick 0
+    /// (at `rate`, or the configured rate).
+    pub fn restart_play(
+        &mut self,
+        rate: Option<concordia_core::time::TickRate>,
+    ) -> Result<&mut World, ApiError> {
+        self.play = None;
+        crate::methods::sim::ensure_play(self, rate).map(|play| &mut play.world)
+    }
+
+    /// Advances the play world (created paused if needed) by `ticks` and returns its hash.
+    pub fn step_play(&mut self, ticks: u32) -> Result<concordia_terra::WorldHash, ApiError> {
+        crate::methods::sim::ensure_play(self, None)?;
+        let Engine { play, jobs, .. } = self;
+        let play = play
+            .as_mut()
+            .ok_or_else(|| ApiError::from_kind(ApiErrorKind::NotPlaying))?;
+        play.sim.step(&mut play.world, jobs, ticks);
+        play.world.state_hash().map_err(internal)
+    }
+
+    /// The open scene's project-relative path.
+    pub fn scene_path(&self) -> Option<&str> {
+        self.scene.as_ref().map(|s| s.path.as_str())
+    }
+
+    /// Job system threads.
+    pub fn threads(&self) -> std::num::NonZeroUsize {
+        self.jobs.threads()
+    }
+
+    /// The configured tick rate (`[sim] rate_hz`).
+    pub fn sim_rate(&self) -> concordia_core::time::TickRate {
+        self.config.sim_rate
+    }
+
+    /// Resolves a project-relative path ending in `extension`, refusing anything that escapes
+    /// the project (`InvalidParams` at `/path`).
+    pub fn project_file(&self, path: &str, extension: &str) -> Result<PathBuf, ApiError> {
+        let relative = Path::new(path);
+        let inside = relative
+            .components()
+            .all(|c| matches!(c, std::path::Component::Normal(_)));
+        if !inside || !path.ends_with(extension) || path.len() == extension.len() {
+            return Err(ApiError::new(
+                ApiErrorKind::InvalidParams,
+                format!("{path:?} must be a project-relative path ending in {extension}, without .. or a leading /"),
+            )
+            .at("/path"));
+        }
+        Ok(self.config.project.join(relative))
+    }
+
     /// The project root.
     pub fn project(&self) -> &Path {
         &self.config.project

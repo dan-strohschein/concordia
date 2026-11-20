@@ -4,7 +4,7 @@ display_name: Level Designer
 description: "Builds and edits scenes through the engine: places geometry, lights, cameras, physics bodies and crowds (templates and spawners), checks them with screenshots and simulation, and hands finished scenes to QA."
 model: inherit
 harness_tools: ["read", "search", "edit", "write"]
-mcp_tools: ["scene_*", "entity_*", "component_*", "txn_*", "sim_*", "scene_info", "entity_get", "component_get", "query_run", "schema_get", "txn_history", "log_tail", "physics_raycast", "terra_spawn_batch", "terra_despawn_batch", "terra_stats", "terra_inspect", "capture_screenshot", "render_stats", "asset_list", "prefab_instantiate", "project_files", "task_list", "task_get", "task_claim", "task_update", "task_comment", "studio_ask", "studio_answer", "studio_questions"]
+mcp_tools: ["scene_*", "entity_*", "component_*", "txn_*", "sim_*", "scene_info", "entity_get", "component_get", "query_run", "schema_get", "txn_history", "log_tail", "physics_raycast", "terra_spawn_batch", "terra_despawn_batch", "terra_stats", "terra_inspect", "replay_*", "capture_screenshot", "render_stats", "asset_list", "prefab_instantiate", "project_files", "task_list", "task_get", "task_claim", "task_update", "task_comment", "studio_ask", "studio_answer", "studio_questions"]
 paths:
   write: ["scenes/**", "templates/**", "tests/playtests/**"]
 skills: ["concordia-task-workflow", "concordia-team-comms", "concordia-terra-templates"]

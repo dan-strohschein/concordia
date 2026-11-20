@@ -287,3 +287,19 @@ fn studio_init_adds_scripts_when_missing_for_the_gameplay_programmer() {
         "not added twice: {manifest}"
     );
 }
+
+#[test]
+fn studio_init_adds_replay_when_missing_for_the_qa_playtester() {
+    let dir = tempfile::tempdir().unwrap();
+    // A project made before [replay] existed.
+    let root = new_project(dir.path(), &["--no-studio"]);
+    let manifest_path = root.join("concordia.toml");
+    let manifest = std::fs::read_to_string(&manifest_path).unwrap();
+    assert!(manifest.contains("[replay]\n"), "{manifest}");
+    std::fs::write(&manifest_path, manifest.replace("[replay]\n", "")).unwrap();
+    let output = run(&["studio", "init"], &root);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let manifest = std::fs::read_to_string(&manifest_path).unwrap();
+    assert_eq!(manifest.matches("[replay]").count(), 1, "{manifest}");
+    assert!(root.join(".claude/agents/qa-playtester.md").is_file());
+}

@@ -9,6 +9,7 @@ The `concordia` command: `new` (project skeleton), `headless` (Engine API over s
 ## Invariants
 - No engine logic here; subcommands call library crates.
 - `concordia new` writes `concordia.toml`, `scenes/main.scene.ron` (canonical), `.gitignore` (`.concordia/`) and `.mcp.json` registering the server as `concordia` (`<abs concordia> mcp --project .`). It refuses a non-empty directory without `--force` and never deletes files.
+- `concordia replay record <path> --ticks N [--scene] [--inputs events.json] [--checkpoint-every]` and `concordia replay run <path> [--mode] [--force] [--threads]` run in process; `run` opens the replay's scene, prints the result JSON and exits 1 on a mismatch or divergence (2.8).
 - Exit codes: 0 success; 1 usage errors, missing items and `fmt --check` failures; 2 files that cannot be parsed.
 - `headless --ws` binds to 127.0.0.1 only and writes `.concordia/headless.json` (mode 0600).
 - `fmt` skips hidden directories (such as `.concordia`) and `target`, and knows only the built-in components in M0.
@@ -28,7 +29,7 @@ The `concordia` command: `new` (project skeleton), `headless` (Engine API over s
 - clap documentation.
 
 ## Status
-M0 phase 0.7 complete.
+M0 phase 0.7 complete; M2 phase 2.8 (`concordia replay`).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

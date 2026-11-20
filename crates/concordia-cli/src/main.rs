@@ -38,6 +38,8 @@ enum Command {
     Studio(cmd::studio::StudioArgs),
     /// The Agent Studio task board: list, show, create, claim, update, comment, approve, reject.
     Task(cmd::studio::TaskArgs),
+    /// Record a scripted scenario to a .replay.ron file, or replay one and check its checkpoints.
+    Replay(cmd::replay::ReplayArgs),
 }
 
 /// A failure with a process exit code.
@@ -73,6 +75,7 @@ fn main() -> ExitCode {
         Command::GpuProbe(args) => cmd::gpu_probe::run(&args),
         Command::Studio(args) => cmd::studio::run_studio(&args),
         Command::Task(args) => cmd::studio::run_task(&args),
+        Command::Replay(args) => cmd::replay::run(&args),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

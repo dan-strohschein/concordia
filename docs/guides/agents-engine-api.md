@@ -26,6 +26,12 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 - Many entities right now, for a test: `terra.spawn_batch {"template": "goblin", "count": 1000, "seed": 2}` spawns into the play world (never the scene, never journaled); `terra.despawn_batch {"with": ["Hostile"]}` clears them.
 - Check what Terra did: `terra.stats {"world": "play"}` (counts, skipped commands, the schedule's phases and parallel waves) and `terra.inspect {"entity": <id>, "world": "play"}` (archetype, chunk, each component's storage kind: dense, shared or tag, and pending signals).
 
+## Replays (M2, projects with `[replay]`)
+- Record: `replay.record {"path": "tests/replays/jump.replay.ron"}` starts a fresh play world from the open scene; drive it with `input.inject` and `sim.step` (or `sim.play`); `replay.record {"action": "stop"}` writes the file. It holds the input changes per tick (after binding, so rebinding keys doesn't break it) and world hashes every `checkpoint_every` ticks (default 60).
+- Check: `replay.run {"path": ...}` replays it headless on a fresh play world and compares every checkpoint. `ok: true` proves the same behavior; otherwise `divergence` names the first checkpoint `tick` that differs, the `last_matching_tick`, and the `parts` that differ (component names, `@entities`, `@clock`, `@rng`, `@signals`). The play world stays at the end for `"world": "play"` reads.
+- `mode: "resimulate"` replays the inputs on the current code and returns new `checkpoints` (prove a fix). A replay recorded with another scene, seed, engine or script build is refused with `ReplayMismatch`; `"force": true` runs it anyway and lists the `mismatches`.
+- Nothing about replays is journaled or changes the scene. CLI: `concordia replay record <path> --ticks N [--inputs events.json]`, `concordia replay run <path> [--threads N] [--force]`.
+
 ## Rules
 - Every mutating call needs an actor: `"actor": "agent:<role>"` or the session default. Grammar: `<human|agent|system|tool|script>:<name>[#n]`, lowercase names.
 - Entity ids are UUID strings. If you pass a name instead, the error tells you the matching id.
@@ -72,6 +78,9 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `terra.stats` | | `{world?}` → `{entities, archetypes, columns, shared_values, skipped_commands, phases: [{phase, waves}]}` (`phases` only for the play world; names in one wave run in parallel) |
 | `terra.inspect` | | `{entity, world?}` → `{archetype, chunk, components: [{name, storage}], pending_signals: [{name, count}]}` |
 | `input.inject` | | `{events: [{tick?, event}], actor?}` → `{accepted, next_tick}` (raw input into the play world, e.g. `{"event": {"Key": {"key": "Space", "pressed": true}}}`; the project's `.input.ron` maps it to actions) |
+| `replay.record` | | `{action?: start\|stop, path?, checkpoint_every?, actor?}` → `{state, path, tick, inputs, checkpoints}` (projects with `[replay]`; start needs `path`) |
+| `replay.run` | | `{path, mode?: verify\|resimulate, force?, actor?}` → `{ok, ticks, matched, divergence, mismatches, checkpoints, world_hash, elapsed_ms}` |
+| `script.reload` | | `{module?, actor?}` → `{modules: [{name, backend, version, migrated, edit_txn}]}` (projects with `[scripts]`; loads what is on disk, never builds) |
 | `physics.raycast` | | `{origin, direction, max_distance, layers?, world?}` → `{hit: {entity, point, normal, distance} \| null}` |
 | `capture.screenshot` | | `{width?, height?, camera? \| view?, world?, overlays?, view_mode?}` → `{image, width, height, sim_tick, frame}` (projects with `[render]`; `overlays: true` adds the editor overlays; `view_mode`: `lit` (default), `unlit`, `wireframe`, `normals`, `albedo`, `roughness_metallic`, `overdraw`, `shadow_cascades`, `light_clusters`) |
 | `render.stats` | | `{}` → `{frame: {frame, width, height, view_mode, cpu_ms, gpu_ms, draws, culled, draw_calls, triangles, punctual_lights, shadows_cached, memory_bytes} \| null}` (the last frame drawn, by a capture or the editor; `gpu_ms` may be null for a moment) |
@@ -138,6 +147,8 @@ Errors are JSON-RPC errors whose `data` says what to do next (ADR-0031): `kind`,
 | −32015 | `TaskTransition` | follow todo → in_progress (`task_claim`) → in_review → done (`task_approve`) |
 | −32016 | `NotPermitted` | a Studio gate or your role's scope refuses this; see `studio_roster` |
 | −32017 | `EngineExited` | the shared engine's host (editor or another server) exited; call again to reconnect, then `scene_open` your scene (unsaved edits are gone) |
+| −32018 | `ScriptFailed` | fix the module the message names, rebuild it, then `script.reload` |
+| −32019 | `ReplayMismatch` | open the scene and build the replay was recorded with (see `mismatches`), or pass `"force": true` |
 | −32602 | `InvalidParams` | match `expected` at `pointer` |
 
 ## Journal

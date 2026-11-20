@@ -73,6 +73,44 @@ where
     }
 }
 
+/// Read-only logic run after every tick, once the clock has advanced (e.g. replay checkpoints).
+pub trait TickEnd: Send {
+    /// Name (for listings).
+    fn name(&self) -> &str;
+    /// Runs once after each tick.
+    fn run(&mut self, world: &World);
+}
+
+/// An end-of-tick hook made from a closure; see [`tick_end`].
+pub struct FnTickEnd<F> {
+    name: String,
+    f: F,
+}
+
+/// Wraps a closure as a named end-of-tick hook.
+pub fn tick_end<F>(name: impl Into<String>, f: F) -> FnTickEnd<F>
+where
+    F: FnMut(&World) + Send,
+{
+    FnTickEnd {
+        name: name.into(),
+        f,
+    }
+}
+
+impl<F> TickEnd for FnTickEnd<F>
+where
+    F: FnMut(&World) + Send,
+{
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn run(&mut self, world: &World) {
+        (self.f)(world);
+    }
+}
+
 /// A scheduled unit: an exclusive system or a processor.
 enum Node {
     System {
@@ -144,6 +182,7 @@ struct Plan {
 pub struct Schedule {
     nodes: Vec<Node>,
     plan: Option<Plan>,
+    tick_ends: Vec<Box<dyn TickEnd>>,
 }
 
 /// The phase an exclusive system added with [`Schedule::add`] runs in.
@@ -183,8 +222,27 @@ impl Schedule {
     /// Appends everything in `other`, keeping its order.
     pub fn append(&mut self, other: Schedule) -> &mut Self {
         self.nodes.extend(other.nodes);
+        self.tick_ends.extend(other.tick_ends);
         self.plan = None;
         self
+    }
+
+    /// Appends an end-of-tick hook (it runs after every tick, in registration order).
+    pub fn add_tick_end(&mut self, hook: impl TickEnd + 'static) -> &mut Self {
+        self.tick_ends.push(Box::new(hook));
+        self
+    }
+
+    /// End-of-tick hook names in registration order.
+    pub fn tick_end_names(&self) -> Vec<&str> {
+        self.tick_ends.iter().map(|h| h.name()).collect()
+    }
+
+    /// Runs the end-of-tick hooks.
+    pub(crate) fn run_tick_end(&mut self, world: &World) {
+        for hook in &mut self.tick_ends {
+            hook.run(world);
+        }
     }
 
     /// Names in registration order.

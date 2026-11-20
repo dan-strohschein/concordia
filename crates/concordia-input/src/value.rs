@@ -74,6 +74,15 @@ impl ActionStates {
         self.actions.get(action)
     }
 
+    /// The actions whose state differs from `earlier` (new actions included), with their state now.
+    pub fn changed_since(&self, earlier: &ActionStates) -> BTreeMap<String, ActionState> {
+        self.actions
+            .iter()
+            .filter(|(name, state)| earlier.actions.get(*name) != Some(state))
+            .map(|(name, state)| (name.clone(), *state))
+            .collect()
+    }
+
     /// The tick's values as an [`InputFrame`] (action ids are sorted-name indices).
     pub fn frame(&self) -> InputFrame {
         InputFrame(

@@ -46,7 +46,7 @@ pub use method::{
     Audience, CallCtx, Method, MethodInfo, MethodRegistry, methods, params_schema, result_schema,
 };
 pub use methods::{EntityRef, WorldSel};
-pub use module::{EngineModule, PlaySetup};
+pub use module::{EngineModule, Fingerprint, PlaySetup};
 pub use patch::merge_patch;
 
 /// Engine API protocol version reported by `session.open`.

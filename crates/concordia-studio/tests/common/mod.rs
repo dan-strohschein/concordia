@@ -36,6 +36,8 @@ pub const PROJECT_TOOLS: &[&str] = &[
     "project_files",
     "query_run",
     "render_stats",
+    "replay_record",
+    "replay_run",
     "scene_info",
     "scene_new",
     "scene_open",

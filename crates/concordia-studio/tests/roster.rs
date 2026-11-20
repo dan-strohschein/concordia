@@ -383,3 +383,49 @@ fn gameplay_programmer_writes_and_reloads_scripts_with_the_scripting_skill() {
         role.body
     );
 }
+
+#[test]
+fn qa_playtester_records_and_runs_replays_with_the_replay_skill() {
+    let (_dir, roster) = roster();
+    let qa = roster
+        .roles()
+        .iter()
+        .find(|r| r.role.as_str() == "qa-playtester")
+        .expect("QA is enabled");
+    // Scopes are loaded with their globs expanded against the project's tools.
+    let replays = |tools: &[String]| {
+        ["replay_record", "replay_run"]
+            .iter()
+            .all(|t| tools.iter().any(|x| x == t))
+    };
+    assert!(replays(&qa.mcp_tools), "{:?}", qa.mcp_tools);
+    assert!(
+        qa.skills.iter().any(|s| s == "concordia-record-replay"),
+        "{:?}",
+        qa.skills
+    );
+    for needle in ["mcp__concordia__replay_run", "tests/replays/"] {
+        assert!(qa.body.contains(needle), "the prompt explains {needle}");
+    }
+    for role in ["gameplay-programmer", "level-designer"] {
+        let found = roster
+            .roles()
+            .iter()
+            .find(|r| r.role.as_str() == role)
+            .unwrap_or_else(|| panic!("{role} is enabled"));
+        assert!(replays(&found.mcp_tools), "{role}: {:?}", found.mcp_tools);
+    }
+    let programmer = roster
+        .roles()
+        .iter()
+        .find(|r| r.role.as_str() == "gameplay-programmer")
+        .unwrap();
+    assert!(
+        programmer
+            .skills
+            .iter()
+            .any(|s| s == "concordia-fix-bug-with-replay"),
+        "{:?}",
+        programmer.skills
+    );
+}

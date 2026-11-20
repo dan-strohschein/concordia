@@ -47,7 +47,7 @@ pub use component::{Component, ReflectComponent, register_component, register_dy
 pub use dynamic::{DynamicQuery, component_from_json};
 pub use entity::Entity;
 pub use error::{EcsError, QueryError, ScheduleError};
-pub use hash::{ParseHashError, WorldHash};
+pub use hash::{ParseHashError, StateDigest, WorldHash};
 pub use named::{Batch, NamedQuery};
 pub use observer::{Observe, observer};
 pub use processor::{FnProcessor, Phase, Processor, ProcessorDecl, processor};
@@ -55,7 +55,7 @@ pub use query::{
     ElemAccess, QueryData, QueryElem, QueryFilter, QueryState, ReadSlice, With, Without,
 };
 pub use resource::Resource;
-pub use schedule::{FnSystem, Schedule, System, SystemCtx, system};
+pub use schedule::{FnSystem, FnTickEnd, Schedule, System, SystemCtx, TickEnd, system, tick_end};
 pub use sim::{SimClock, SimLoop, TimeScale};
 pub use storage::kind::{CHUNK_ROWS, EntityStorage, StorageKind, StorageStats};
 pub use timer::Timer;

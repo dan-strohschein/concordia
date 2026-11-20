@@ -16,6 +16,7 @@
 - Signals and observers (2.0b): `World::signal` / `signals`, `ProcessorDecl::receives`, `View::signals`, `ViewQuery::for_each_of`; `observer::<T>(name, Observe::Add | Remove)`, `View::observed`
 - Resources in views (2.0b): `ProcessorDecl::reads_resource` / `writes_resource`, `View::resource` / `resource_mut`
 - Script types and named access (2.6a, ADR-0062): `register_dynamic_component`, `World::insert_dynamic`, `World::signal_dynamic`, `ReflectComponent::dynamic` / `signal`; `ProcessorDecl::reads_named` / `writes_named` / `receives_named`; `View::batch(&NamedQuery)` → `Batch` (ids + `WireColumn`s), `View::write_batch`, `View::signal_batch`, `View::signals_named`; `CommandBuffer::insert_reflect` / `remove_named` / `signal_reflect`; `ReflectComponent::from_wire` (decode one wire row as the component's value: `T` for Rust types, `DynamicValue` for script types; 2.6b); `World::migrate_dynamic` / `migrate_dynamic_all` (move stored script types to new versions, all or nothing; 2.6c, ADR-0061); `World::stores(name)` (2.6d)
+- Replay support (2.8, ADR-0072): `World::state_digest` → `StateDigest` (the world hash plus one hash per component name and `@entities`, `@clock`, `@rng`, `@signals`, in one pass); `Schedule::add_tick_end` / `tick_end_names`, `tick_end(name, |world: &World| ..)`, the `TickEnd` trait: read-only hooks `SimLoop::step` runs after each tick, once the clock has advanced
 - Introspection (2.0c): `World::entity_storage` (`EntityStorage`: archetype, chunk, storage kinds, pending signals), `Schedule::waves` / `observers`, `SimLoop::schedule`, `ReflectComponent::register_shared` (type-erased shared registration for templates)
 
 ## Invariants
@@ -30,6 +31,7 @@
 - Phases run in order. Within a phase the order is explicit constraints, then registration order; processors that conflict (one writes what the other touches) never share a wave, so parallel runs equal sequential ones. Exclusive systems run alone. Parallel queries chunk by a caller-chosen constant, never by thread count.
 - A processor's `View` holds only its declared columns (disjoint borrows, no `unsafe`); undeclared or read-only-as-mutable queries are `QueryError`s.
 - Presentation-only components are never hashed; `Presentation` processors write only them, and other phases never touch them (checked when a `SimLoop` is built).
+- `state_digest().world == state_hash()` always; parts are hashed alongside, never instead. End-of-tick hooks see `&World` only and run after the clock advances, in registration order (`append` keeps them).
 - `dt` is the fixed step times `SimClock::time_scale`; `SimClock::time` sums the scaled steps; both are hashed. Edit worlds have no clock, so their hashes (recorded in command journals) never depend on it.
 - Simulation reads time only from `SimClock`/`SystemCtx` and randomness only from `SimRng`.
 - A query mentions each component at most once (`QueryError::Conflict`).
@@ -71,7 +73,7 @@
 - Glenn Fiedler, "Fix Your Timestep!" and "Floating Point Determinism" (Gaffer on Games).
 
 ## Status
-M0 phase 0.3 complete; renamed to Terra in M7 Phase 7.0 (2026-11-18); M2 phases 2.0 (processors, ADR-0063) and 2.0b (storage kinds, commands, signals, observers, ADR-0069) and 2.6a (script types and named access, ADR-0062) complete; 2.6b added `ReflectComponent::from_wire` for script commands; 2.6c added type-version migration.
+M0 phase 0.3 complete; renamed to Terra in M7 Phase 7.0 (2026-11-18); M2 phases 2.0 (processors, ADR-0063) and 2.0b (storage kinds, commands, signals, observers, ADR-0069) and 2.6a (script types and named access, ADR-0062) complete; 2.6b added `ReflectComponent::from_wire` for script commands; 2.6c added type-version migration; 2.8 added state digests and end-of-tick hooks (ADR-0072).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

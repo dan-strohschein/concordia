@@ -265,7 +265,7 @@ fn studio_project(root: &Path) -> Result<Project, Failure> {
 }
 
 /// Writes the default Studio files and adds `[studio]` to `concordia.toml`, plus `[scripts]`
-/// if missing (the default gameplay programmer reloads scripts).
+/// and `[replay]` if missing (the default gameplay programmer reloads scripts; QA replays).
 fn init(project: &Path) -> Result<(), Failure> {
     let files = concordia_studio::init(project, Path::new("studio"))
         .map_err(|e| Failure::usage(e.to_string()))?;
@@ -276,6 +276,9 @@ fn init(project: &Path) -> Result<(), Failure> {
     let mut sections = Vec::new();
     if manifest.scripts.is_none() {
         sections.push("[scripts]");
+    }
+    if manifest.replay.is_none() {
+        sections.push("[replay]");
     }
     if manifest.studio.is_none() {
         sections.push("[studio]");

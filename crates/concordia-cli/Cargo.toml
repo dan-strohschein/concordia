@@ -16,6 +16,7 @@ path = "src/main.rs"
 clap.workspace = true
 concordia-api.workspace = true
 concordia-app.workspace = true
+concordia-replay.workspace = true
 concordia-assets.workspace = true
 concordia-import-gltf.workspace = true
 concordia-core.workspace = true

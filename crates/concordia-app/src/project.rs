@@ -10,6 +10,7 @@ use concordia_import_gltf::GltfImporter;
 use concordia_input::{InputMap, InputModule};
 use concordia_physics::{PhysicsModule, PhysicsSettings};
 use concordia_render::RenderModule;
+use concordia_replay::ReplayModule;
 use concordia_scripting::{ScriptEntry, ScriptKind, ScriptsConfig, ScriptsModule};
 use concordia_studio::StudioModule;
 
@@ -47,6 +48,22 @@ impl Project {
             root: root.to_path_buf(),
             manifest,
         })
+    }
+
+    /// Engine settings for this project: its modules, `[sim]` rate and seed, `[journal]` sync.
+    pub fn engine_config(&self) -> Result<concordia_api::EngineConfig, AppError> {
+        let sim = &self.manifest.sim;
+        let mut config = concordia_api::EngineConfig::new(&self.root);
+        config.sim_rate = concordia_core::time::TickRate::from_hz(sim.rate_hz).map_err(|e| {
+            manifest_error(
+                &self.root.join("concordia.toml"),
+                format!("[sim] rate_hz: {e}"),
+            )
+        })?;
+        config.sim_seed = sim.seed;
+        config.journal.sync = self.manifest.journal.sync;
+        config.modules = self.modules()?;
+        Ok(config)
     }
 
     /// The input map the manifest names (empty if none).
@@ -87,6 +104,9 @@ impl Project {
         }
         if let Some(studio) = &self.manifest.studio {
             modules.push(Arc::new(StudioModule::new(&self.root, &studio.dir)));
+        }
+        if self.manifest.replay.is_some() {
+            modules.push(Arc::new(ReplayModule::new()));
         }
         if let Some(scripts) = &self.manifest.scripts {
             // Last, so script components may refer to every other module's types.

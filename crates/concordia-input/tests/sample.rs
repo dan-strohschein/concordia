@@ -185,3 +185,87 @@ fn frame_lists_every_action_sorted_by_id() {
     assert_eq!(ids, [0, 1, 2, 3, 4]);
     assert_eq!(frame.0[3].1, ActionValue::Button(true));
 }
+
+/// Samples `live` for ticks `0..ticks`, returning every tick's states and the changes per tick.
+fn record(
+    live: &mut InputSampler,
+    ticks: u64,
+) -> (
+    Vec<concordia_input::ActionStates>,
+    std::collections::BTreeMap<
+        u64,
+        std::collections::BTreeMap<String, concordia_input::ActionState>,
+    >,
+) {
+    let mut prev = live.states().clone();
+    let mut states = Vec::new();
+    let mut changes = std::collections::BTreeMap::new();
+    for tick in 0..ticks {
+        let now = live.sample(tick).clone();
+        let delta = now.changed_since(&prev);
+        if !delta.is_empty() {
+            changes.insert(tick, delta);
+        }
+        states.push(now.clone());
+        prev = now;
+    }
+    (states, changes)
+}
+
+#[test]
+fn playback_reproduces_recorded_states_until_its_end() {
+    let mut live = sampler();
+    live.push(1, click(true)).unwrap();
+    live.push(1, click(false)).unwrap();
+    live.push(3, key(KeyCode::W, true)).unwrap();
+    live.push(4, InputEvent::PointerMove { x: 10.0, y: 20.0 })
+        .unwrap();
+    live.push(5, key(KeyCode::W, false)).unwrap();
+    let (states, changes) = record(&mut live, 8);
+    assert!(
+        states[1].get("select").unwrap().just_pressed,
+        "press and release in one tick"
+    );
+    assert!(
+        !changes.contains_key(&0) && !changes.contains_key(&7),
+        "{changes:?}"
+    );
+    assert!(changes[&3].contains_key("camera_pan") && !changes[&3].contains_key("select"));
+
+    let mut replayed = sampler();
+    replayed.play_back(changes, 8).unwrap();
+    replayed.push(2, key(KeyCode::Space, true)).unwrap();
+    for (tick, expected) in states.iter().enumerate() {
+        assert_eq!(replayed.sample(tick as u64), expected, "tick {tick}");
+    }
+    replayed.push(8, key(KeyCode::Space, true)).unwrap();
+    let after = replayed.sample(8).get("spawn_box").copied().unwrap();
+    assert!(
+        after.just_pressed,
+        "devices drive the sampler again after the playback"
+    );
+}
+
+#[test]
+fn playback_rejects_unknown_actions_and_wrong_kinds() {
+    let state = |value| concordia_input::ActionState {
+        pressed: true,
+        just_pressed: true,
+        just_released: false,
+        value,
+    };
+    let one = |name: &str, value| {
+        std::collections::BTreeMap::from([(
+            0,
+            std::collections::BTreeMap::from([(name.to_owned(), state(value))]),
+        )])
+    };
+    let err = sampler()
+        .play_back(one("jump", ActionValue::Button(true)), 1)
+        .unwrap_err();
+    assert!(matches!(err, InputError::UnknownAction { .. }), "{err:?}");
+    let err = sampler()
+        .play_back(one("select", ActionValue::Axis1d(1.0)), 1)
+        .unwrap_err();
+    assert!(matches!(err, InputError::ValueKind { .. }), "{err:?}");
+}

@@ -1,6 +1,6 @@
 //! `scene.new`, `scene.open`, `scene.save`, `scene.info`.
 
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use concordia_command::{Actor, Author, CommandLog, History, Journal};
 use concordia_core::id::{IdSource, SceneId};
@@ -355,19 +355,9 @@ fn ensure_replaceable(
 
 /// Resolves a project-relative `.scene.ron` path, rejecting anything that escapes the project.
 fn project_path(engine: &Engine, path: &str) -> Result<PathBuf, ApiError> {
-    let relative = Path::new(path);
-    let inside = relative
-        .components()
-        .all(|c| matches!(c, Component::Normal(_)));
-    if !inside || !path.ends_with(".scene.ron") {
-        return Err(ApiError::new(
-            ApiErrorKind::InvalidParams,
-            format!("{path:?} must be a project-relative path ending in .scene.ron, without .. or a leading /"),
-        )
-        .suggest(["e.g. \"scenes/main.scene.ron\"".to_owned()])
-        .at("/path"));
-    }
-    Ok(engine.project().join(relative))
+    engine
+        .project_file(path, ".scene.ron")
+        .map_err(|e| e.suggest(["e.g. \"scenes/main.scene.ron\"".to_owned()]))
 }
 
 fn open_journal(

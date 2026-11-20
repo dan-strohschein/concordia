@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c and 2.6 (2.6a–2.6d, 2026-11-20) done; 2.8 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d) and 2.8 (2026-11-20) done; 2.3 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -546,6 +546,74 @@ This replaces the test list and implementation notes of the older "Phase 2.6" te
   - Migrating scene files saved before a module changed a layout; reload while the scene is open instead (ADR-0061).
   - A rollback test for the edit step when the play step fails (the second step can't fail independently with today's fixtures).
 
+### Phase 2.8 As built (2026-11-20, ADR-0072)
+This replaces the older "Phase 2.8" text below, which was written before Terra and scripting.
+
+**Reconciled with the code as built:**
+- **"Hash restricted to Sim components":** presentation-only components were already excluded (ADR-0063), and resources such as `ActionStates` are never hashed, so nothing more was needed. A divergence report has to name what differs, so Terra gained `World::state_digest`: the unchanged world hash plus one hash per part (each component by name, and `@entities`, `@clock`, `@rng`, `@signals`) in the same pass.
+- **"Game module hashes (native + wasm)":** `EngineModule::fingerprints` lets any module say what code it runs. The scripts module reports each loaded module by the BLAKE3 of its file, or of its description when linked. The header also holds the engine version, the scene and its edit-world hash, the seed, the rate and (for information) the thread count.
+- **`hot_reload_of_identical_module_mid_replay_keeps_hash`** became `hot_reload_of_identical_module_mid_recording_keeps_hash`: `script.reload` of the same build during a recording leaves every checkpoint unchanged, and the replay (with no reload) matches. A reload that changes the code makes `stop` refuse with `ReplayMismatch`.
+- **Placement:** an engine module, `concordia-replay`, enabled by `[replay]` (the `[scripts]`/`[studio]` precedent), so projects without it keep their tool set. `concordia new` writes it, and `studio init` adds it. That makes 35 core MCP tools plus 2.
+- **Inputs:** recorded after binding, as each tick's changed `ActionState`s (just-pressed and just-released flags included). Raw pointer positions reach the simulation only through actions, so they need no track. Playback is `InputSampler::play_back` in `concordia-input`, never a system that overwrites `ActionStates`, so it doesn't depend on module order.
+- **Checkpoints:** Terra's new end-of-tick hooks (`Schedule::add_tick_end`, run after the clock advances) make each checkpoint equal `sim.step`'s hash.
+
+**Engine:**
+- `concordia-replay`:
+  - `ReplayModule`; `replay.record` (`start` with a path and `checkpoint_every`, default 60, or `stop`) and `replay.run` (`verify` or `resimulate`, `force`).
+  - `.replay.ron` v0 (`Replay`, `ReplayHeader`, `InputChange`, `Checkpoint`), canonical through `concordia-scene`'s document writer. The reader checks the version, hashes and tick order.
+  - A divergence is a result (`ok: false`, with the checkpoint tick, the last matching tick and the differing parts). A header mismatch is the new error `ReplayMismatch` (−32019). The replayed play world stays for queries.
+- `concordia-terra`: `StateDigest`, `World::state_digest`, `TickEnd`, `tick_end`, `Schedule::add_tick_end` / `tick_end_names`.
+- `concordia-input`: `ActionStates::changed_since`, `InputSampler::play_back`.
+- `concordia-api`: `Fingerprint` and `EngineModule::fingerprints`; `Engine::fingerprints`, `restart_play`, `step_play` (now behind `sim.step` too), `scene_path`, `threads`, `sim_rate` and `project_file` (now behind the scene path check too).
+- `concordia-scripting`: per-module fingerprints, updated on reload.
+- `concordia-app`:
+  - `[replay]`.
+  - **`Project::engine_config`**. Found during this phase: `[sim] rate_hz`/`seed` and `[journal] sync` never reached any engine built from a project. Only the scripts module read the seed, so a project with `seed = 7` played with seed 0. The CLI (`run`, `headless`, in-process commands), the MCP server (`Options::base`) and the editor now all start from it. The five copies of "load project, set modules" became one.
+- CLI: `concordia replay record <path> --ticks N [--inputs events.json] [--scene] [--checkpoint-every]` and `concordia replay run <path> [--mode] [--force] [--threads]`. `run` prints the result and exits 1 on a mismatch or divergence.
+- Agent guide: a "Replays" section, the two methods, and the error codes. `script.reload` and −32018 `ScriptFailed`, both missed in 2.6d, were added too.
+
+**Studio (D8):**
+- `replay_*` for the QA playtester, level designer and gameplay programmer (M3 3.1's follow-up).
+- QA preloads `concordia-record-replay`, and its prompt asks for a replay as evidence.
+- Both replay skills now use the real tools and arguments. Their notes keep only what is still to come: `ab` and bisection (M3 3.1), `assert_eval` (3.2), and `input_inject` without an `[input] map`.
+- Sync and M3S gate snapshots were reviewed and updated; they change only the three scopes, QA's skill and the prompt lines.
+
+**Tests:**
+- `concordia-replay`: `format.rs` (2), `record_run.rs` (10) and `scripts.rs` (3).
+- `concordia-terra/tests/digest.rs` (5), `concordia-input` playback (2), `concordia-api` (4 engine helpers, 1 error kind), `concordia-scripting` fingerprints (2).
+- `concordia-app` (2), `cli_replay`, the `cli_new` section list, `studio_init_adds_replay_when_missing_for_the_qa_playtester`.
+- `concordia-mcp`: `replay_tools.rs` (2), plus 2 in `stdout_hygiene`.
+- Studio: the QA scope test and `replay_skills_use_the_real_replay_tools_and_arguments`, which parses every example call in the skills as the real params type.
+- `tests/integration/replay_m1_physics.rs` (3; the done criterion).
+- **The plan's tests, as built:**
+  - `replay_file_is_canonical_ron_v0` (insta, reviewed);
+  - `replay_reproduces_world_hash_at_every_checkpoint`, as `recorded_m1_physics_session_replays_bit_identically` (M1's physics stack, a hash every 60 ticks, final hash equal to `sim.step`'s) and `replayed_input_moves_entities_exactly_as_recorded`;
+  - `replay_detects_divergence_and_reports_first_tick_and_component` (a perturbation on tick 130 reports checkpoint 140, last match 130, part `Transform`);
+  - `replay_header_mismatch_is_refused_unless_overridden` (code, scene hash, seed; `force` lists them and diverges at tick 0 on `Name`);
+  - `replay_is_identical_across_thread_counts` (1 and 8);
+  - `replay_runs_headless_faster_than_realtime`;
+  - `hot_reload_of_identical_module_mid_recording_keeps_hash`;
+  - `replay_record_and_run_over_mcp`.
+- **Added:** input changes only on changed ticks, resimulate, unknown actions, logging with actors, stop without a recording, path checks, the header's script builds, the refusal after a code change, and `engine_config`.
+
+**Red run:** every new test failed first for the right reason (stubs: an empty digest, hooks dropped, `not implemented yet`, an error code of −32603, no fingerprints, no playback, no `[replay]`, no `replay` subcommand). These passed at once:
+- The three `replay_m1_physics` tests and `binary_serves_replay_tools_when_replay_is_configured` are integration checks written after the parts they join. They aren't vacuous: the physics test asserts the bodies fell, and the crate's divergence test shows the comparison fails when it should.
+- `replay_methods_have_generated_schemas_and_mcp_tools`, for the same reason.
+
+**Found in review:** if a play world failed to start after `replay.record start`, the queued recording joined the next, unrelated play world. `a_recording_whose_play_world_failed_to_start_does_not_join_a_later_one` reproduced it with the fix reverted, and the fix clears the queued recording.
+
+**Changed deliberately during green (my test mistakes):**
+- The rig's `Transform` and `Velocity` need every field.
+- At ticks 30 and 50 only `camera_pan`'s value changes, so ticks 31 and 51 rightly record nothing.
+- Log fields are text (`"true"`).
+- The no-journal check compares against the history before recording, because the rig's own spawns are journaled.
+- Roster scopes are loaded with globs expanded.
+- The in-process MCP test server needs the project's modules passed in.
+
+**Tool-list budget (an open question for the author):** the core list is still about 14k tokens, under ADR-0070's 16k. But a project with `[input]`, `[physics]`, `[assets]` and `[scripts]` was already about 18.9k before this phase, and is about 20.5k with `[replay]`, because the budget test only covers the core set. The replay tools were trimmed from about 1.9k to 1.6k, and `replay_tools_add_under_1700_tokens_to_a_full_project` guards their share.
+
+**Not in this phase:** snapshots, bisection to tick, entity and field, `ab` runs, raw device events, and reloads recorded mid-session (M3 3.1); assertions (3.2).
+
 ### Effort (re-estimated)
 | Phase | Estimate |
 |---|---|
@@ -942,6 +1010,8 @@ Phase order is a dependency order, but 2.3–2.8 can run in parallel once 2.1 an
 - **Done criteria:** tests green; a fixture HUD driven by a component value updates its orb and label in a golden sequence; a cue plays audibly in a manual check (`just play-slice` later).
 
 ### Phase 2.8: concordia-replay (minimal)
+> Done (2026-11-20). See "Phase 2.8 As built" in the refinement above, which supersedes this text.
+
 
 - **Objective:** record an input log during a run and replay it to the same world state, relying on M0's fixed-step determinism. M3 generalizes this into full record/replay and playtest assertions.
 - **Deliverables:** `concordia-replay` (`InputLog`, `ReplayHeader` {engine build, game module hashes (native + wasm), scene hash, seed, tick rate, thread count}, recorder, runner, divergence report); `.replay.ron` schema `version: 0` (input-only); API `replay.record`, `replay.run` (MCP `replay_record`, `replay_run`); CLI `concordia replay record|run`.

@@ -87,6 +87,9 @@ fn manifest(name: &str, features: &Features) -> String {
         text.push_str(
             "\n# Gameplay modules: add [[scripts.module]] entries (kind = \"wasm\" or \"native\", path).\n[scripts]\n",
         );
+        text.push_str(
+            "\n# Replays: replay.record / replay.run, files under tests/replays/.\n[replay]\n",
+        );
     }
     if features.studio {
         text.push_str(

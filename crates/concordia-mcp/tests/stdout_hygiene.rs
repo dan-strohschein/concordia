@@ -137,3 +137,43 @@ fn binary_serves_script_reload_when_scripts_are_configured() {
     let tokens = serde_json::to_string(tools).unwrap().len() / 4;
     assert!(tokens < 16_000, "tools/list is about {tokens} tokens");
 }
+
+#[test]
+fn binary_serves_replay_tools_when_replay_is_configured() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("concordia.toml"), "[replay]\n").unwrap();
+    let mut child = spawn(&dir, false);
+    let (frames, _) = session(&mut child);
+    let tools = frames[1]["result"]["tools"].as_array().unwrap();
+    assert_eq!(
+        tools.len(),
+        37,
+        "35 core tools plus replay_record and replay_run"
+    );
+    for name in ["replay_record", "replay_run"] {
+        assert!(tools.iter().any(|t| t["name"] == name), "{name}: {tools:?}");
+    }
+}
+
+#[test]
+fn replay_tools_add_under_1700_tokens_to_a_full_project() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("concordia.toml"),
+        "[input]\nmap = \"default.input.ron\"\n\n[physics]\n\n[assets]\n\n[scripts]\n\n[replay]\n",
+    )
+    .unwrap();
+    let map = include_str!("../../../examples/m1-physics-stack/input/default.input.ron");
+    std::fs::write(dir.path().join("default.input.ron"), map).unwrap();
+    let mut child = spawn(&dir, false);
+    let (frames, _) = session(&mut child);
+    let tools = frames[1]["result"]["tools"].as_array().unwrap();
+    let replay: usize = tools
+        .iter()
+        .filter(|t| t["name"].as_str().unwrap().starts_with("replay_"))
+        .map(|t| serde_json::to_string(t).unwrap().len() / 4)
+        .sum();
+    // The whole list of a project with modules is past ADR-0070's 16k (about 18.9k before
+    // replay); only the core list is held to it (tool_list_token_budget). Replay's share:
+    assert!(replay < 1_700, "replay tools are about {replay} tokens");
+}

@@ -4,9 +4,9 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use concordia_api::Engine;
 use concordia_api::transport::connection::{ConnectionInfo, HostKind};
 use concordia_api::transport::stdio;
-use concordia_api::{Engine, EngineConfig};
 use concordia_app::SharedEngine;
 use concordia_core::log::{LogConfig, init};
 
@@ -35,11 +35,8 @@ pub(crate) struct Args {
 
 pub(crate) async fn run(args: Args) -> Result<(), Failure> {
     let log = init(&LogConfig::from_env()).map_err(|e| Failure::usage(e.to_string()))?;
-    let project =
-        concordia_app::Project::load(&args.project).map_err(|e| Failure::usage(e.to_string()))?;
-    let mut config = EngineConfig::new(&args.project);
-    config.modules = project
-        .modules()
+    let mut config = concordia_app::Project::load(&args.project)
+        .and_then(|p| p.engine_config())
         .map_err(|e| Failure::usage(e.to_string()))?;
     config.deterministic_ids = args.deterministic_ids;
     config.log_ring = Some(Arc::clone(log.ring()));

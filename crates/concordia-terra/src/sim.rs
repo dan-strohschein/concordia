@@ -114,7 +114,8 @@ impl SimLoop {
     }
 
     /// Runs exactly `ticks` fixed steps; each first delivers the signals raised before it, then
-    /// advances simulated time by the step times the clock's time scale.
+    /// advances simulated time by the step times the clock's time scale, then runs the
+    /// schedule's end-of-tick hooks.
     pub fn step(&mut self, world: &mut World, jobs: &JobSystem, ticks: u32) {
         let base = 1.0 / f64::from(self.rate.hz());
         for _ in 0..ticks {
@@ -131,6 +132,7 @@ impl SimLoop {
             let clock = self.clock(world);
             clock.tick = Tick(clock.tick.0.saturating_add(1));
             clock.time += dt_exact;
+            self.schedule.run_tick_end(world);
         }
     }
 
