@@ -11,6 +11,7 @@ use concordia_core::id::EntityId;
 use concordia_core::jobs::JobSystem;
 
 pub use data::{ElemAccess, QueryData, QueryElem};
+pub(crate) use data::{ViewCol, ViewColumn};
 pub use filter::{QueryFilter, With, Without};
 
 use crate::error::QueryError;
@@ -152,9 +153,9 @@ fn matched<'a>(
         .filter(|(arch, _)| !arch.table.ids.is_empty())
 }
 
-type Piece<'a, D> = (&'a [EntityId], <D as QueryData>::Slices<'a>);
+pub(crate) type Piece<'a, D> = (&'a [EntityId], <D as QueryData>::Slices<'a>);
 
-fn split_chunks<'a, D: QueryData>(
+pub(crate) fn split_chunks<'a, D: QueryData>(
     mut ids: &'a [EntityId],
     mut slices: D::Slices<'a>,
     chunk: usize,

@@ -24,6 +24,8 @@ pub struct World {
     pub(crate) components: ComponentIndex,
     pub(crate) resources: Resources,
     pub(crate) changes: ChangeLog,
+    /// Presentation-only component types: never hashed (ADR-0063).
+    pub(crate) presentation: std::collections::HashSet<TypeId>,
 }
 
 /// The world's change clock and recent despawns.
@@ -67,6 +69,7 @@ impl Clone for World {
             components: self.components.clone(),
             resources: self.resources.clone(),
             changes: self.changes.clone(),
+            presentation: self.presentation.clone(),
         }
     }
 }
@@ -121,7 +124,14 @@ impl World {
             components: ComponentIndex::default(),
             resources: Resources::default(),
             changes: ChangeLog::default(),
+            presentation: std::collections::HashSet::new(),
         }
+    }
+
+    /// Declares `T` presentation-only: never part of the world hash, and off limits to simulation
+    /// processors (ADR-0063).
+    pub fn register_presentation<T: Component>(&mut self) {
+        self.presentation.insert(TypeId::of::<T>());
     }
 
     /// Despawns remembered for [`World::changes_since`].

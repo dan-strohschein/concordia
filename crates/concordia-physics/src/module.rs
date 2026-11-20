@@ -10,7 +10,7 @@ use concordia_api::{
 use concordia_core::id::EntityId;
 use concordia_core::math::{Ray, Vec3};
 use concordia_reflect::{Reflect, RegistryError, TypeRegistry};
-use concordia_terra::{Schedule, SystemCtx, World, register_component, system};
+use concordia_terra::{Phase, Schedule, SystemCtx, World, register_component, system};
 use serde::{Deserialize, Serialize};
 
 use crate::components::{CharacterController, CharacterMotion, Collider, RigidBody};
@@ -63,7 +63,7 @@ impl EngineModule for PhysicsModule {
         let shared = SharedRuntime(Arc::new(Mutex::new(runtime)));
         world.insert_resource(CollisionEvents::default());
         let mut schedule = Schedule::new();
-        schedule.add(step_system(shared.clone()));
+        schedule.add_in(Phase::Physics, step_system(shared.clone()));
         Ok(PlaySetup {
             schedule,
             state: Some(Box::new(shared)),

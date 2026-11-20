@@ -51,6 +51,16 @@ pub enum EcsError {
     /// The entity table is full (2^32 slots).
     #[error("too many entities")]
     TooManyEntities,
+    /// A value is out of range.
+    #[error("{what} must be {expected}, got {value}")]
+    InvalidValue {
+        /// What was given.
+        what: &'static str,
+        /// What is allowed.
+        expected: &'static str,
+        /// The value.
+        value: String,
+    },
     /// A value could not be built, serialized or hashed.
     #[error(transparent)]
     Reflect(#[from] ReflectError),
@@ -67,5 +77,70 @@ pub enum QueryError {
     Conflict {
         /// The repeated component's stable name.
         component: &'static str,
+    },
+    /// A processor's query uses a component it did not declare.
+    #[error(
+        "the processor did not declare {component}; add reads::<{component}>() or writes::<{component}>()"
+    )]
+    Undeclared {
+        /// The component's stable name.
+        component: &'static str,
+    },
+    /// A processor's query writes a component it declared read-only.
+    #[error(
+        "the processor declared {component} read-only; declare writes::<{component}>() to change it"
+    )]
+    ReadOnly {
+        /// The component's stable name.
+        component: &'static str,
+    },
+}
+
+/// A schedule that cannot run (found when a [`crate::SimLoop`] is built).
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ScheduleError {
+    /// Order constraints form a cycle.
+    #[error(
+        "processors {processors:?} order each other in a cycle; remove one before/after constraint"
+    )]
+    Cycle {
+        /// The processors in the cycle.
+        processors: Vec<String>,
+    },
+    /// A before/after constraint names no processor of the same phase.
+    #[error(
+        "processor {processor} is ordered against {target}, which is not a processor in its phase"
+    )]
+    UnknownProcessor {
+        /// The constrained processor.
+        processor: String,
+        /// The missing name.
+        target: String,
+    },
+    /// Two processors share a name.
+    #[error("two processors are named {name}; names must be unique")]
+    DuplicateName {
+        /// The repeated name.
+        name: String,
+    },
+    /// A presentation processor writes simulation state.
+    #[error(
+        "presentation processor {processor} writes {component}, which is simulation state; declare it with writes_presentation or move the processor to a simulation phase"
+    )]
+    PresentationWritesSimulation {
+        /// The processor.
+        processor: String,
+        /// The component.
+        component: String,
+    },
+    /// A simulation processor reads or writes presentation-only state.
+    #[error(
+        "simulation processor {processor} uses {component}, which is presentation-only and not hashed; simulation must not depend on it"
+    )]
+    SimulationReadsPresentation {
+        /// The processor.
+        processor: String,
+        /// The component.
+        component: String,
     },
 }
