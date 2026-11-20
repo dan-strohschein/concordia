@@ -1,7 +1,7 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint: deterministic gate passes, live gate pending; refinement approved 2026-11-19) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Needs refinement after M2** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); refinement approved 2026-11-19) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Needs refinement after M2** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
@@ -974,7 +974,7 @@ An interim gate that needs no replay or scripting, so it can pass before M2.
 
    It checks outcomes only, never transcripts.
 
-**As built (2026-11-19): part 1 (deterministic) passes; part 2 (live) is written but not yet run.**
+**As built (2026-11-19): both parts pass. The live gate passed on 2026-11-19 with Claude Code 2.1.329.**
 - **Author decisions:**
   - gate snapshots cover structure only (settings hooks, `.mcp.json`, the `CLAUDE.md` block, which agents and skills exist and their `name`/`tools` lines); the crate snapshots keep the prompt text;
   - the live gate defaults to `--max-budget-usd 3`, `--max-turns 80` and 1 attempt (`M3S_LIVE_BUDGET_USD`, `M3S_LIVE_MAX_TURNS`, `M3S_LIVE_ATTEMPTS`).
@@ -1005,7 +1005,15 @@ An interim gate that needs no replay or scripting, so it can pass before M2.
   - attaching to a live engine.
 
   Every gate file then failed (8 of 11 tests), then I reverted the breaks. The 3 tests that stayed green guard behavior that wasn't broken. One more test (`m3s_sync_is_fresh_and_idempotent`) failed in that run and passed on its rerun under the same breaks. The binary was rebuilt during that first run, which is the likely cause. It has passed in all 7 full gate runs since. The checker's self-tests each failed first on mistakes in the tests themselves (a wrong role scope, and a wrong expected message), which I fixed.
-- **Not done here:** the live run (`just gate-live M3S`), which waits for the author's go-ahead. The 3.8 manual check (launch the Director from the panel) can share that session.
+- **Live pass (2026-11-19, Claude Code 2.1.329, subscription login `claude.ai`, no API key in the environment):** `just gate-live M3S` passed on its only attempt.
+  - The run: 9 turns, about $1.18 estimated (cap $3), 2 min 9 s. The agent ended with `RESULT: T-0001 done`.
+  - The Studio journal shows:
+    - `agent:director#1` created T-0001;
+    - `agent:level-designer#1` claimed it, commented and submitted it;
+    - `agent:qa-playtester#1` approved it.
+  - All 3 scene-journal entries are `agent:level-designer#1`'s. Every checker outcome held.
+  - The artifacts are in `target/gate-live/M3S/20261119T192402-1/`, which is not committed.
+- **Not done here:** the 3.8 manual check (launch the Director from the editor panel and watch cards move), deferred by the author.
 
 ### Phase 3.9: Gate fixture, scripted closed loop, live gate
 *Needs all previous phases and M2.*
