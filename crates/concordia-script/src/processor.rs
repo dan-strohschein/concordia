@@ -24,6 +24,10 @@ pub struct ScriptProcessor {
     pub(crate) shared: Arc<Shared>,
     pub(crate) query: NamedQuery,
     pub(crate) writes: Vec<&'static str>,
+    /// Received signal types by name (their versions come from `types`).
+    pub(crate) receive_names: Vec<&'static str>,
+    /// This run's snapshots of the host's types and templates (refreshed every run, so a
+    /// reload's new type versions apply from the next tick).
     pub(crate) receives: Vec<&'static TypeInfo>,
     pub(crate) types: Arc<Types>,
     pub(crate) templates: Arc<Templates>,
@@ -55,7 +59,9 @@ impl Processor for ScriptProcessor {
             return;
         }
         let tick = ctx.tick.0;
-        let outcome = self.run_once(view, ctx, &name);
+        let outcome = self
+            .refresh()
+            .and_then(|()| self.run_once(view, ctx, &name));
         if let Err(fault) = outcome {
             self.shared.fault(&name, tick, fault);
         }
@@ -63,6 +69,22 @@ impl Processor for ScriptProcessor {
 }
 
 impl ScriptProcessor {
+    /// Takes the host's current types and templates.
+    fn refresh(&mut self) -> Result<(), ScriptFault> {
+        self.types = self.shared.types();
+        self.templates = self.shared.templates();
+        self.receives = self
+            .receive_names
+            .iter()
+            .map(|n| {
+                self.types.get(n).map(|(info, _)| *info).ok_or_else(|| {
+                    ScriptFault::Protocol(format!("signal type {n} is no longer registered"))
+                })
+            })
+            .collect::<Result<_, _>>()?;
+        Ok(())
+    }
+
     /// Collects the batch, calls the module, then stages and applies its output.
     fn run_once(
         &self,

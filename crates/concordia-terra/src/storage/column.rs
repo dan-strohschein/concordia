@@ -121,6 +121,21 @@ pub(crate) struct DynColumn {
 }
 
 impl DynColumn {
+    /// Its values converted by `convert`, without changing anything.
+    pub(crate) fn converted<E>(
+        &self,
+        convert: &mut impl FnMut(&DynamicValue) -> Result<DynamicValue, E>,
+    ) -> Result<Vec<DynamicValue>, E> {
+        self.rows.iter().map(&mut *convert).collect()
+    }
+
+    /// Becomes a column of version `info` holding `rows`.
+    pub(crate) fn replace(&mut self, info: &'static TypeInfo, rows: Vec<DynamicValue>) {
+        debug_assert_eq!(rows.len(), self.rows.len());
+        self.info = info;
+        self.rows = rows;
+    }
+
     pub(crate) fn new(info: &'static TypeInfo) -> Self {
         Self {
             info,
@@ -198,6 +213,19 @@ impl Column for DynColumn {
             self.rows[row] = value;
         }
     }
+}
+
+/// The dynamic column behind `column`, if it holds a runtime-described type.
+pub(crate) fn as_dynamic(column: &dyn Column) -> Option<&DynColumn> {
+    column.as_any().downcast_ref::<DynColumn>()
+}
+
+/// The dynamic column behind a column known to hold a runtime-described type.
+pub(crate) fn dynamic_column_mut(column: &mut dyn Column) -> &mut DynColumn {
+    column
+        .as_any_mut()
+        .downcast_mut::<DynColumn>()
+        .expect("column type matches its component id")
 }
 
 /// The values behind a column known to hold a runtime-described type.

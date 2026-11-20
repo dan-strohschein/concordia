@@ -8,12 +8,14 @@ The script protocol's data types (ADR-0062), shared by the engine side and the g
 - `TickContext`, `Batch` (`column`, `signal`), `Column`, `SignalColumn`
 - `RunOutput`, `Command` (`Spawn`, `SpawnTemplate`, `Insert`, `Remove`, `Despawn`, `Signal`), `Target` (`Entity`, `Pending`), `Value`
 - `ids_to_bytes` / `ids_from_bytes` (16 big-endian UUID bytes per id), `ProtocolError`, `PROTOCOL_VERSION`
+- `codec` (2.6c, ADR-0061): the native run envelope: `encode_call`/`decode_call` (`Call`), `encode_reply`/`decode_reply` (`Reply`: log lines plus output or `GuestError`)
 
 ## Invariants
 - Component data is always wire-encoded (`concordia_reflect::wire`): a `Column` is `rows × stride` bytes then the arena; a `Value` is a one-row column.
 - A batch's columns are the processor's reads then writes, one row per id; signal columns are per received type, by entity then raise order.
 - `Target::Pending(n)` names the n-th spawn (`Spawn` or `SpawnTemplate`) of the same run output.
 - `validate` checks names (non-empty, unique per kind), that a processor names a component at most once across reads, writes, with and without, and that traits add at least one component, each once. Type shapes are checked when registered.
+- The `codec` envelope is little-endian with `u32` lengths and copies column bytes whole; decoding checks every length and tag, rejects trailing bytes and never panics (proptested).
 - Packed ids must be valid entity ids (UUID v7 or v5); anything else is an error, never a panic.
 
 ## How to test
@@ -31,7 +33,7 @@ The script protocol's data types (ADR-0062), shared by the engine side and the g
 - Unreal Engine's public Mass documentation on processors, queries and deferred commands, concepts only (clean room, ADR-0067).
 
 ## Status
-M2 phase 2.6b complete (2026-11-20).
+M2 phase 2.6b complete (2026-11-20); 2.6c added `codec`.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

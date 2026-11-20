@@ -5,7 +5,7 @@ The engine side of gameplay scripting (ADR-0062), written once against a backend
 
 ## Public entry points
 - `ScriptBackend` (`name`, `load(&ModuleSource)`), `ScriptModule` (`describe`, `run(&self, ..) -> RunReport`, `stats`), `ModuleSource` (`File`, `Bytes`, `Linked`), `ModuleStats`
-- `ScriptHost` (`load`, `processors(&registry, &templates)`, `faults`, `logs`, `is_disabled`, `stats`, `reload`), `HostConfig` (`session_seed`), `FaultReport`, `LogLine`, `Templates`
+- `ScriptHost` (`load`, `processors(&registry, &templates)`, `set_templates`, `faults`, `logs`, `is_disabled`, `stats`, `reload(module, &mut registry, &mut world)` → `ReloadReport` of `TypeMigration`s), `HostConfig` (`session_seed`), `FaultReport`, `LogLine`, `Templates`
 - `ScriptProcessor` (a Terra `Processor`), `register_module`, `processor_seed`
 - `TestBackend` (`link::<M: Module>()`)
 - `ScriptError`, `ScriptFault` (`Trap`, `OutOfFuel`, `Returned`, `Protocol`)
@@ -20,10 +20,10 @@ The engine side of gameplay scripting (ADR-0062), written once against a backend
 - Each run gets `TickContext { tick, dt, time: SimClock::time, seed: processor_seed(session, tick, name) }`; processors never touch `SimRng`. Script processors declare `reads_resource::<SimClock>()`.
 - Modules keep no state between runs (`run(&self)`); WASM enforces it with fresh instances. The test backend can't (statics survive natively; 2.6c's source check covers native modules).
 - `register_module` validates the description, then registers helper types, components and signals as dynamic types (`register_dynamic_component`) and traits as parameterless dynamic traits (`concordia_terra_sim::register_dynamic_trait`).
-- A reload may change behavior only: the module's name, processors (names, phases, access, order) and types must be unchanged, or it is refused (`ReloadChangesProcessors`); changing them needs a schedule rebuild and value migration (2.6c, 2.6d). A reload re-enables disabled processors.
+- A reload may change behavior and types, not the module's name or processors (names, phases, access, order), and may not remove types (`ReloadChangesProcessors`; schedule rebuilds are 2.6d). Only changed component and signal types are re-registered (all of them when a helper type changed); the world's values, tag values and pending signals move to the new versions through reflect `migrate`, all at once (`World::migrate_dynamic_all`). If any value can't convert, the old versions are registered again and the world is untouched (`ScriptError::Migration`). Traits are re-registered; processors take the new versions from the next run; templates holding changed types must be recompiled and passed to `set_templates`. A reload re-enables disabled processors (ADR-0061).
 
 ## How to test
-`cargo nextest run -p concordia-script --features conformance` (seed unit tests, the conformance suite on the test backend, `test_backend_passes_conformance`). Every backend crate runs the same suite: `concordia_script::conformance_suite!(load)` in its tests, with a loader for the conformance module (`tests/fixtures/script/conformance-guest`).
+`cargo nextest run -p concordia-script --features conformance` (seed unit tests, the conformance suite on the test backend, `test_backend_passes_conformance`, and `tests/reload.rs`: migration, rollback and refusals with in-test modules). Every backend crate runs the same suite: `concordia_script::conformance_suite!(load)` in its tests, with a loader for the conformance module (`tests/fixtures/script/conformance-guest`).
 
 ## Common tasks
 - **Add a conformance behavior:** add a processor to the conformance module (`tests/fixtures/script/conformance-guest`), a `pub fn <behavior>(load: Loader)` in `src/conformance.rs`, and its name to `conformance_suite!` and `run_all`; rebuild fixtures with `just wasm`. Every backend picks it up.
@@ -42,7 +42,7 @@ The engine side of gameplay scripting (ADR-0062), written once against a backend
 - blake3 specification (seed derivation).
 
 ## Status
-M2 phase 2.6b complete (2026-11-20).
+M2 phase 2.6b complete (2026-11-20); 2.6c added reload migration (ADR-0061).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

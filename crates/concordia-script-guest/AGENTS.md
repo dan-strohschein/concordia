@@ -4,7 +4,7 @@
 The SDK gameplay modules are written with (ADR-0062). One crate for every backend: it builds natively (the in-process `TestBackend` and 2.6c's native tier link it) and for `wasm32-wasip2` with plain `cargo build` plus `wit-bindgen` (ADR-0021), where `export_module!` emits the component's exports.
 
 ## Public entry points
-- `Module` (`describe() -> ModuleDesc`, `run(processor, &mut RunCtx) -> Result<(), String>`), `export_module!(Type)`
+- `Module` (`describe() -> ModuleDesc`, `run(processor, &mut RunCtx) -> Result<(), String>`), `export_module!(Type)` (WASM exports on `wasm32`; the native C ABI when the module crate's `dylib` feature is on, ADR-0061)
 - `RunCtx`: `tick`, `dt`, `time`, `rng` (the engine-seeded `SimRng`), `ids`, `read::<T>()`, `write(&[T])`, `signals::<T>()`, `spawn`, `spawn_template`, `insert`, `remove::<T>`, `despawn`, `signal`, `log`
 - `describe_type::<T>()`, `processor(name, phase)` → `ProcessorBuilder` (`reads`, `writes`, `with`, `without`, `receives`, `reads_named`, `writes_named`, `after`, `before`, `build`)
 - `value(&T)`, `run_module::<M>` (what backends call), `math` (libm), re-exports `EntityId`, `SimRng`, `Phase`, `Target`, `TraitDesc`, `ModuleDesc`, `protocol`
@@ -16,6 +16,10 @@ The SDK gameplay modules are written with (ADR-0062). One crate for every backen
 - Modules keep no state between runs: on WASM every run is a fresh instance, so statics reset. Natively they would survive; don't rely on them.
 - Use `math` (libm) for transcendental functions so native and WASM builds agree bit for bit; the WASM host canonicalizes NaNs.
 - Log through `ctx.log`; on WASM, stdout and stderr also become log lines. Time and randomness come only from `RunCtx` (on WASM, WASI clocks read simulated time and WASI random is the processor's stream 1).
+
+## Native libraries (ADR-0061)
+- `export_module!` emits the `concordia_module_v1` exports (through `concordia-script-abi`) only when the calling crate enables its own `dylib` feature, so plain `rlib` builds export no C symbols and many modules can be linked statically into one binary.
+- The native backend copies and loads the library; `check_module_source` (in `concordia-script-native`) rejects statics that keep state.
 
 ## How to test
 `cargo nextest run -p concordia-script-guest` (run-context unit tests). The conformance module (`tests/fixtures/script/conformance-guest`) is written with this SDK and checked on every backend; `just wasm` builds it for `wasm32-wasip2`, and `just lint` runs clippy for that target.
@@ -35,7 +39,7 @@ The SDK gameplay modules are written with (ADR-0062). One crate for every backen
 - Bytecode Alliance `wasip2` crate documentation (clocks and random APIs used by the conformance module).
 
 ## Status
-M2 phase 2.6b complete (2026-11-20).
+M2 phase 2.6b complete (2026-11-20); 2.6c added the native export (ADR-0061).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

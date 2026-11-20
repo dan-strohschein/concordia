@@ -1,0 +1,33 @@
+[package]
+name = "concordia-script-native"
+description = "The native script backend: dylib modules over the concordia_module_v1 C ABI with copy-on-load hot reload, a static-link path, and a source check for mutable statics."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+concordia-script.workspace = true
+concordia-script-abi.workspace = true
+concordia-script-guest.workspace = true
+concordia-script-protocol.workspace = true
+libloading = "0.9.1"
+proc-macro2 = { workspace = true, features = ["span-locations"] }
+quote.workspace = true
+serde_json.workspace = true
+syn = { workspace = true, features = ["full", "visit"] }
+thiserror.workspace = true
+
+[dev-dependencies]
+concordia-core.workspace = true
+concordia-script = { workspace = true, features = ["conformance"] }
+concordia-terra.workspace = true
+concordia-tests = { path = "../../tests" }
+conformance-guest = { path = "../../tests/fixtures/script/conformance-guest" }
+serde_json.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

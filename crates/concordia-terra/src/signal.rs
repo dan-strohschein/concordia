@@ -71,6 +71,9 @@ impl<S: DynReflect + Clone> SignalList for Typed<S> {
 
 type Lists = BTreeMap<&'static str, Box<dyn SignalList>>;
 
+/// Converted pending and delivered payloads of one dynamic signal type (`None`: no such list).
+pub(crate) type ConvertedSignals = [Option<Vec<(EntityId, DynamicValue)>>; 2];
+
 /// Pending (raised, not yet delivered) and delivered (this tick's) signals, by stable type name.
 #[derive(Default)]
 pub(crate) struct SignalQueue {
@@ -106,6 +109,55 @@ impl SignalQueue {
         // Two types sharing a stable name can't share a list; the component index forbids it too.
         if let Some(typed) = list.as_any_mut().downcast_mut::<Typed<S>>() {
             typed.0.push((target, signal));
+        }
+    }
+
+    /// The pending and delivered signals named `name` with payloads converted by `convert`
+    /// (`None` where there is no such list of dynamic values); changes nothing.
+    pub(crate) fn converted<E>(
+        &self,
+        name: &str,
+        convert: &mut impl FnMut(&DynamicValue) -> Result<DynamicValue, E>,
+    ) -> Result<ConvertedSignals, E> {
+        let convert_list = |lists: &Lists,
+                            convert: &mut dyn FnMut(&DynamicValue) -> Result<DynamicValue, E>|
+         -> Result<Option<Vec<(EntityId, DynamicValue)>>, E> {
+            let Some(typed) = lists
+                .get(name)
+                .and_then(|l| l.as_any().downcast_ref::<Typed<DynamicValue>>())
+            else {
+                return Ok(None);
+            };
+            let mut out = Vec::with_capacity(typed.0.len());
+            for (id, payload) in &typed.0 {
+                out.push((*id, convert(payload)?));
+            }
+            Ok(Some(out))
+        };
+        Ok([
+            convert_list(&self.pending, convert)?,
+            convert_list(&self.delivered, convert)?,
+        ])
+    }
+
+    /// Puts back lists made by [`SignalQueue::converted`].
+    pub(crate) fn replace_converted(
+        &mut self,
+        name: &str,
+        lists: [Option<Vec<(EntityId, DynamicValue)>>; 2],
+    ) {
+        let [pending, delivered] = lists;
+        for (target, list) in [
+            (&mut self.pending, pending),
+            (&mut self.delivered, delivered),
+        ] {
+            if let Some(list) = list
+                && let Some(typed) = target
+                    .get_mut(name)
+                    .and_then(|l| l.as_any_mut().downcast_mut::<Typed<DynamicValue>>())
+            {
+                typed.0 = list;
+            }
         }
     }
 

@@ -56,6 +56,22 @@ pub(crate) struct Shared {
     pub(crate) faults: Mutex<Vec<FaultReport>>,
     pub(crate) logs: Mutex<Vec<LogLine>>,
     pub(crate) disabled: Mutex<BTreeSet<String>>,
+    /// Registered components and signals, as processors resolve them (refreshed on reload).
+    pub(crate) types: RwLock<Arc<Types>>,
+    /// Compiled templates for `spawn-template`.
+    pub(crate) templates: RwLock<Arc<Templates>>,
+}
+
+fn read<T: Clone>(lock: &RwLock<T>) -> T {
+    lock.read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+}
+
+fn write<T>(lock: &RwLock<T>, value: T) {
+    *lock
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = value;
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -65,11 +81,17 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 impl Shared {
     /// The current build of the module.
     pub(crate) fn module(&self) -> Arc<dyn ScriptModule> {
-        let guard = self
-            .module
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        Arc::clone(&guard)
+        read(&self.module)
+    }
+
+    /// The current component and signal types.
+    pub(crate) fn types(&self) -> Arc<Types> {
+        read(&self.types)
+    }
+
+    /// The current templates.
+    pub(crate) fn templates(&self) -> Arc<Templates> {
+        read(&self.templates)
     }
 
     pub(crate) fn is_disabled(&self, processor: &str) -> bool {
@@ -153,6 +175,26 @@ fn names(infos: &[&'static TypeInfo]) -> Vec<&'static str> {
     infos.iter().map(|i| i.name).collect()
 }
 
+/// What a reload changed: the component and signal types it migrated.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ReloadReport {
+    /// One entry per changed type, in declaration order.
+    pub migrated: Vec<TypeMigration>,
+}
+
+/// One type moved to its new version.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeMigration {
+    /// The type.
+    pub name: String,
+    /// Stored values converted.
+    pub values: usize,
+    /// Fields the new version added, as JSON Pointer paths (stored values took their defaults).
+    pub added: Vec<String>,
+    /// Fields the new version dropped, as JSON Pointer paths (their values are gone).
+    pub removed: Vec<String>,
+}
+
 /// One loaded module. Cloning shares it.
 #[derive(Clone)]
 pub struct ScriptHost {
@@ -184,6 +226,8 @@ impl ScriptHost {
             faults: Mutex::default(),
             logs: Mutex::default(),
             disabled: Mutex::default(),
+            types: RwLock::new(Arc::new(component_types(registry))),
+            templates: RwLock::default(),
         };
         Ok(Self {
             shared: Arc::new(shared),
@@ -212,11 +256,19 @@ impl ScriptHost {
     ) -> Result<Vec<ScriptProcessor>, ScriptError> {
         let types = Arc::new(component_types(registry));
         let templates = Arc::new(templates.clone());
+        write(&self.shared.types, Arc::clone(&types));
+        write(&self.shared.templates, Arc::clone(&templates));
         self.desc()
             .processors
             .iter()
             .map(|p| self.processor(p, &types, &templates))
             .collect()
+    }
+
+    /// Replaces the templates `spawn-template` uses (recompile them after a reload changes a
+    /// type they contain).
+    pub fn set_templates(&self, templates: Templates) {
+        write(&self.shared.templates, Arc::new(templates));
     }
 
     fn processor(
@@ -254,6 +306,7 @@ impl ScriptHost {
             shared: Arc::clone(&self.shared),
             query,
             writes,
+            receive_names: names(&receives),
             receives,
             types: Arc::clone(types),
             templates: Arc::clone(templates),
@@ -280,35 +333,33 @@ impl ScriptHost {
         self.shared.module().stats()
     }
 
-    /// Swaps in a new build of the module between ticks, keeping the world. Its types are
-    /// re-registered; its processors must keep their names, phases and access. Disabled
-    /// processors are enabled again.
+    /// Swaps in a new build of the module between ticks, keeping the world. Changed component
+    /// and signal types are re-registered and the world's values migrated through reflect (all
+    /// or nothing; see [`ReloadReport`]); traits are re-registered. The module's name and
+    /// processors (names, phases, access, order) must not change, nor may types be removed.
+    /// Disabled processors are enabled again.
     pub fn reload(
         &self,
         module: Arc<dyn ScriptModule>,
         registry: &mut TypeRegistry,
-    ) -> Result<(), ScriptError> {
+        world: &mut concordia_terra::World,
+    ) -> Result<ReloadReport, ScriptError> {
         let desc = module.describe().map_err(ScriptError::Describe)?;
+        desc.validate()?;
         let old = self.desc();
         check_reload(&old, &desc)?;
-        crate::register_module(registry, &desc)?;
-        *self
-            .shared
-            .module
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = module;
-        *self
-            .shared
-            .desc
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = desc;
+        let migrated = crate::reload::migrate_types(registry, world, &old, &desc);
+        write(&self.shared.types, Arc::new(component_types(registry)));
+        let migrated = migrated?;
+        write(&self.shared.module, module);
+        write(&self.shared.desc, desc);
         lock(&self.shared.disabled).clear();
-        Ok(())
+        Ok(ReloadReport { migrated })
     }
 }
 
-/// A reload may change behavior, not the module's name, processors or types (changing those
-/// needs a schedule rebuild and value migration: 2.6c and 2.6d).
+/// A reload may change behavior and types, not the module's name or processors (that needs a
+/// schedule rebuild: 2.6d), and may not remove types.
 fn check_reload(old: &ModuleDesc, new: &ModuleDesc) -> Result<(), ScriptError> {
     let refuse = |reason: String| ScriptError::ReloadChangesProcessors {
         module: old.name.clone(),
@@ -320,10 +371,11 @@ fn check_reload(old: &ModuleDesc, new: &ModuleDesc) -> Result<(), ScriptError> {
     if old.processors != new.processors {
         return Err(refuse("its processors or their access changed".into()));
     }
-    let old_types: Vec<_> = crate::register::declared_types(old).collect();
-    let new_types: Vec<_> = crate::register::declared_types(new).collect();
-    if old_types != new_types {
-        return Err(refuse("its types changed".into()));
+    let kept: Vec<&str> = crate::register::declared_types(new)
+        .map(|t| t.name.as_str())
+        .collect();
+    match crate::register::declared_types(old).find(|t| !kept.contains(&t.name.as_str())) {
+        Some(gone) => Err(refuse(format!("it no longer declares {}", gone.name))),
+        None => Ok(()),
     }
-    Ok(())
 }

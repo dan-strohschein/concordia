@@ -28,6 +28,7 @@ mod dynamic;
 mod entity;
 mod error;
 mod hash;
+mod migrate;
 mod named;
 mod observer;
 mod processor;

@@ -2,7 +2,9 @@
 //! suite in `concordia-script` checks. Every backend runs this same module: natively in
 //! process, as a native library, and as a WASM component (`just wasm`).
 //!
-//! The `v2` feature doubles `conf.integrate`'s speed, for reload tests.
+//! The `v2` feature doubles `conf.integrate`'s speed, for reload tests. The `layout2` feature
+//! changes two component layouts (`Position` gains `z`, `Velocity` loses `y`), for migration
+//! tests. The `dylib` feature exports the native module C ABI from the cdylib.
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -20,6 +22,10 @@ pub struct Position {
     pub x: f32,
     /// Y.
     pub y: f32,
+    /// Z (the `layout2` build only).
+    #[cfg(feature = "layout2")]
+    #[reflect(default = 0.0)]
+    pub z: f32,
 }
 
 /// A 2D velocity (units per simulated second).
@@ -28,7 +34,8 @@ pub struct Position {
 pub struct Velocity {
     /// X.
     pub x: f32,
-    /// Y.
+    /// Y (not in the `layout2` build).
+    #[cfg(not(feature = "layout2"))]
     pub y: f32,
 }
 
@@ -206,7 +213,10 @@ fn integrate(ctx: &mut RunCtx<'_>) -> Result<(), String> {
     let mut positions: Vec<Position> = ctx.read()?;
     for (p, v) in positions.iter_mut().zip(&velocities) {
         p.x += v.x * dt;
-        p.y += v.y * dt;
+        #[cfg(not(feature = "layout2"))]
+        {
+            p.y += v.y * dt;
+        }
     }
     ctx.write(&positions)
 }

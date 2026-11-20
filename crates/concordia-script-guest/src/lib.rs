@@ -16,6 +16,11 @@ pub use concordia_script_protocol::{ModuleDesc, Phase, Target, TraitDesc};
 
 mod ctx;
 mod describe;
+#[doc(hidden)]
+pub mod native;
+
+#[doc(hidden)]
+pub use concordia_script_abi as abi;
 
 pub use ctx::{RunCtx, run_module, value};
 pub use describe::{ProcessorBuilder, describe_type, processor};
@@ -39,8 +44,10 @@ pub trait Module {
 #[doc(hidden)]
 pub mod wasm;
 
-/// Exports `$module` (a [`Module`]) as the WASM component's `concordia:game/gameplay` world.
-/// Does nothing on native targets.
+/// Exports `$module` (a [`Module`]): on `wasm32`, as the component's `concordia:game/gameplay`
+/// world; natively, when the module crate's own `dylib` feature is on, as a native module
+/// library (the `concordia_module_v1` C ABI, ADR-0061). A plain `rlib` build exports no C
+/// symbols, so several modules can be linked statically into one binary.
 #[macro_export]
 macro_rules! export_module {
     ($module:ty) => {
@@ -65,6 +72,12 @@ macro_rules! export_module {
             $crate::wasm::bindings::export!(
                 __ConcordiaGuest with_types_in $crate::wasm::bindings
             );
+        };
+
+        #[allow(unexpected_cfgs)]
+        const _: () = {
+            #[cfg(all(not(target_arch = "wasm32"), feature = "dylib"))]
+            $crate::abi::export_entry!($crate::native::Adapter<$module>);
         };
     };
 }

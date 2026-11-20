@@ -81,7 +81,7 @@ Terra knew only Rust types, keyed by `TypeId`. Its processors reached components
 - **Versions:** a world stores one version of each dynamic type. A new version must be migrated in before values of it are inserted (2.6c, 2.6d).
 - **API changes:** `FieldInfo::default` and `TypeInfo::default` became `DefaultValue` (`get()`), so dynamic types can carry stored defaults. `TypeRegistration::deserialize` became a method. `TypeRef` gained direct references (`TypeRef::to`).
 - **Unchanged:** edit-world hashes and command journals are unaffected.
-- **Reloads (2.6b)** swap a module's build between ticks and keep the world. A changed name, processor set or type is refused until 2.6c and 2.6d add schedule rebuilds and migration.
+- **Reloads (2.6b)** swap a module's build between ticks and keep the world. Since 2.6c (ADR-0061), changed types are migrated through reflect. A changed name or processor set is still refused until 2.6d adds schedule rebuilds.
 - **Cost (2.6b, `crates/concordia-script-wasm/benches/BASELINE.md`):**
   - With every guard, WASM takes about 1.55–1.6× native time for the same logic.
   - Fuel costs about 30% over unguarded WASM; NaN canonicalization costs nothing measurable.

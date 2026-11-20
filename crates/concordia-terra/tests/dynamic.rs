@@ -597,3 +597,206 @@ fn reflect_component_decodes_wire_values_for_static_and_dynamic_types() {
         "a column of another type is refused"
     );
 }
+
+/// `Brain` version 2: adds `energy` (default 1.0).
+fn brain_v2(reg: &mut TypeRegistry) -> &'static TypeInfo {
+    register_dynamic_component(
+        reg,
+        &desc(
+            "Brain",
+            json!({"Struct": {"fields": [
+                field("mood", "f32"),
+                field("label", "String"),
+                {"name": "energy", "ty": {"Named": "f32"}, "docs": "energy", "default": 1.0},
+            ], "deny_unknown": true}}),
+        ),
+    )
+    .unwrap()
+}
+
+fn to_version(to: &'static TypeInfo) -> impl FnMut(&DynamicValue) -> Result<DynamicValue, String> {
+    move |v| {
+        concordia_reflect::migrate(v, to)
+            .map(|(new, _)| new)
+            .map_err(|e| e.to_string())
+    }
+}
+
+#[test]
+fn migrate_dynamic_replaces_a_stored_type_version() {
+    let (mut reg, _, ping) = script_registry();
+    let (mut world, ids) = script_world(&reg, 4, 3);
+    world
+        .insert_dyn(
+            ids[1],
+            Box::new(
+                DynamicValue::from_json(reg.get_by_name("Calm").unwrap().info(), json!(null))
+                    .unwrap(),
+            ),
+            &reg,
+        )
+        .unwrap();
+    world.signal_dynamic(
+        ids[2],
+        DynamicValue::from_json(ping, json!({"n": 7})).unwrap(),
+    );
+    let v2 = brain_v2(&mut reg);
+    let value = |e: f32| json!({"mood": 0.0, "label": "idle", "energy": e});
+    let stale = DynamicValue::from_json(v2, value(2.0)).unwrap();
+    assert!(
+        world.insert_dynamic(ids[0], stale.clone()).is_err(),
+        "migrate first"
+    );
+
+    let migrated = world.migrate_dynamic(v2, to_version(v2)).unwrap();
+    assert_eq!(migrated, 3, "every stored value, across archetypes");
+    for &id in &ids[..3] {
+        assert_eq!(
+            world.get_json(id, "Brain").unwrap(),
+            value(1.0),
+            "added fields take defaults"
+        );
+    }
+    world.insert_dynamic(ids[0], stale).unwrap();
+    assert_eq!(
+        world.get_json(ids[0], "Brain").unwrap(),
+        value(2.0),
+        "now the stored version"
+    );
+    assert_eq!(
+        world.migrate_dynamic(v2, to_version(v2)).unwrap(),
+        0,
+        "already current"
+    );
+
+    let mut twin = World::new();
+    for (i, &id) in ids.iter().enumerate() {
+        twin.spawn_with_id(id).unwrap();
+        twin.insert(
+            id,
+            Pos {
+                x: i as f32,
+                y: 0.0,
+                z: 0.0,
+            },
+        )
+        .unwrap();
+        if i < 3 {
+            let e = if i == 0 { 2.0 } else { 1.0 };
+            twin.insert_dynamic(id, DynamicValue::from_json(v2, value(e)).unwrap())
+                .unwrap();
+        }
+    }
+    twin.insert_dyn(
+        ids[1],
+        Box::new(
+            DynamicValue::from_json(reg.get_by_name("Calm").unwrap().info(), json!(null)).unwrap(),
+        ),
+        &reg,
+    )
+    .unwrap();
+    twin.signal_dynamic(
+        ids[2],
+        DynamicValue::from_json(ping, json!({"n": 7})).unwrap(),
+    );
+    assert_eq!(
+        world.state_hash().unwrap(),
+        twin.state_hash().unwrap(),
+        "as if stored as v2"
+    );
+}
+
+#[test]
+fn migrate_dynamic_is_atomic_and_refuses_storage_kind_changes() {
+    let (mut reg, _, _) = script_registry();
+    let (mut world, ids) = script_world(&reg, 3, 3);
+    let before = world.state_hash().unwrap();
+    let v2 = brain_v2(&mut reg);
+    let mut calls = 0;
+    let failing = world.migrate_dynamic(v2, |v| {
+        calls += 1;
+        match calls {
+            2 => Err("the second value fails".to_owned()),
+            _ => to_version(v2)(v),
+        }
+    });
+    assert!(
+        failing
+            .unwrap_err()
+            .to_string()
+            .contains("second value fails")
+    );
+    assert_eq!(world.state_hash().unwrap(), before, "nothing changed");
+    assert!(
+        world
+            .get_json(ids[0], "Brain")
+            .unwrap()
+            .get("energy")
+            .is_none()
+    );
+
+    world
+        .insert_dyn(
+            ids[0],
+            Box::new(
+                DynamicValue::from_json(reg.get_by_name("Calm").unwrap().info(), json!(null))
+                    .unwrap(),
+            ),
+            &reg,
+        )
+        .unwrap();
+    let calm_v2 = register_dynamic_component(
+        &mut reg,
+        &desc(
+            "Calm",
+            json!({"Struct": {"fields": [field("level", "u8")], "deny_unknown": true}}),
+        ),
+    )
+    .unwrap();
+    let err = world
+        .migrate_dynamic(calm_v2, to_version(calm_v2))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("tag") && err.contains("dense"), "{err}");
+}
+
+#[test]
+fn migrate_dynamic_all_is_atomic_across_types() {
+    let (mut reg, _, ping) = script_registry();
+    let (mut world, ids) = script_world(&reg, 2, 2);
+    world.signal_dynamic(
+        ids[0],
+        DynamicValue::from_json(ping, json!({"n": 1})).unwrap(),
+    );
+    let before = world.state_hash().unwrap();
+    let brain = brain_v2(&mut reg);
+    let ping_v2 = register_dynamic_component(
+        &mut reg,
+        &desc("Ping", json!({"Struct": {"fields": [field("n", "u32"), {"name": "k", "ty": {"Named": "u8"}, "docs": "k", "default": 3}], "deny_unknown": true}})),
+    )
+    .unwrap();
+    let err = world.migrate_dynamic_all(&[brain, ping_v2], |v, to| {
+        if to.name == "Ping" {
+            return Err("the second type fails".to_owned());
+        }
+        to_version(to)(v)
+    });
+    assert!(err.unwrap_err().to_string().contains("second type fails"));
+    assert_eq!(
+        world.state_hash().unwrap(),
+        before,
+        "the first type was not committed alone"
+    );
+    let counts = world
+        .migrate_dynamic_all(&[brain, ping_v2], |v, to| to_version(to)(v))
+        .unwrap();
+    assert_eq!(
+        counts,
+        [2, 0],
+        "stored values per type (signals aren't counted)"
+    );
+    assert_eq!(
+        world.get_json(ids[1], "Brain").unwrap()["energy"],
+        json!(1.0)
+    );
+}

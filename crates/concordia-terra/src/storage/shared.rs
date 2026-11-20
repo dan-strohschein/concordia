@@ -130,6 +130,34 @@ impl SharedStore {
             .get(index as usize)
     }
 
+    /// The stored values of a runtime-described `component`, in index order.
+    pub(crate) fn dynamic_values(
+        &self,
+        component: ComponentId,
+    ) -> Option<&[concordia_reflect::DynamicValue]> {
+        self.by_component
+            .get(&component)?
+            .as_any()
+            .downcast_ref::<Typed<concordia_reflect::DynamicValue>>()
+            .map(|t| t.0.as_slice())
+    }
+
+    /// Replaces the stored values of a runtime-described `component` (same count and order;
+    /// for a new version of the type, which hashes the same way).
+    pub(crate) fn set_dynamic_values(
+        &mut self,
+        component: ComponentId,
+        values: Vec<concordia_reflect::DynamicValue>,
+    ) {
+        if let Some(typed) = self.by_component.get_mut(&component).and_then(|v| {
+            v.as_any_mut()
+                .downcast_mut::<Typed<concordia_reflect::DynamicValue>>()
+        }) {
+            debug_assert_eq!(typed.0.len(), values.len());
+            typed.0 = values;
+        }
+    }
+
     /// The stored value `index` of `component`, reflected.
     pub(crate) fn get_reflect(&self, component: ComponentId, index: u32) -> &dyn DynReflect {
         self.by_component[&component].get_reflect(index as usize)
