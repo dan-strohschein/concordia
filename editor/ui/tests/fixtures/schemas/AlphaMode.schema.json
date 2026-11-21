@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "How alpha is used.",
+  "oneOf": [
+    {
+      "const": "Opaque",
+      "description": "Fully opaque."
+    },
+    {
+      "additionalProperties": false,
+      "description": "Alpha-tested at a cutoff.",
+      "properties": {
+        "Mask": {
+          "additionalProperties": false,
+          "properties": {
+            "cutoff": {
+              "description": "Cutoff (glTF default 0.5).",
+              "type": "number"
+            }
+          },
+          "required": [
+            "cutoff"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "Mask"
+      ],
+      "type": "object"
+    },
+    {
+      "const": "Blend",
+      "description": "Alpha-blended (sorted back to front)."
+    }
+  ],
+  "title": "AlphaMode",
+  "x-concordia-type": "AlphaMode"
+}

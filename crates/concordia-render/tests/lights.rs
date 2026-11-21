@@ -6,8 +6,7 @@ mod common;
 use std::f32::consts::FRAC_PI_2;
 use std::sync::Arc;
 
-use common::{Scene, golden, pixel, renderer};
-use concordia_assets::MaterialData;
+use common::{M1, Scene, golden, pixel, renderer};
 use concordia_core::math::{EulerRot, Quat, Vec3};
 use concordia_render::cluster::{ClusterCuller, ClusterGrid, ClusterSettings, LightBounds};
 use concordia_render::{Camera, Msaa, PointLight, Projection, SpotLight, Tonemap};
@@ -88,9 +87,9 @@ fn cluster_overflow_is_reported_not_silent() {
     let mut s = Scene::new();
     let grey = s.material(
         "grey",
-        MaterialData {
+        M1 {
             metallic: 0.0,
-            ..MaterialData::default()
+            ..M1::default()
         },
     );
     s.mesh("plane", grey, Vec3::ZERO, Quat::IDENTITY, Vec3::splat(10.0));
@@ -132,11 +131,11 @@ fn point_light_follows_the_inverse_square_law() {
         let mut s = Scene::new();
         let white = s.material(
             "white",
-            MaterialData {
+            M1 {
                 base_color: [1.0; 4],
                 metallic: 0.0,
                 roughness: 1.0,
-                ..MaterialData::default()
+                ..M1::default()
             },
         );
         s.mesh(
@@ -189,11 +188,11 @@ fn many_lights_golden() {
     let mut s = Scene::new();
     let floor = s.material(
         "floor",
-        MaterialData {
+        M1 {
             base_color: [0.8, 0.8, 0.8, 1.0],
             metallic: 0.0,
             roughness: 0.6,
-            ..MaterialData::default()
+            ..M1::default()
         },
     );
     s.mesh(
@@ -249,11 +248,11 @@ fn spot_light_cone_falloff_golden() {
     let mut s = Scene::new();
     let floor = s.material(
         "floor",
-        MaterialData {
+        M1 {
             base_color: [0.9, 0.9, 0.9, 1.0],
             metallic: 0.0,
             roughness: 0.8,
-            ..MaterialData::default()
+            ..M1::default()
         },
     );
     s.mesh(

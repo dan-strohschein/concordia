@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { eulerToQuat, hexToLinear, linearToHex, quatToEuler } from "./math";
-import type { Field, Widget } from "./widgets";
+import { defaultValue, variantValue, type Field, type Variant, type Widget } from "./widgets";
 
 interface EditorProps {
   label: string;
@@ -139,16 +139,130 @@ export function ValueEditor({ label, value, widget, onCommit }: EditorProps) {
       return <Rows fields={widget.fields} value={value} onCommit={onCommit} />;
     case "option":
       return value === null || value === undefined ? (
-        <JsonEditor label={label} value={null} onCommit={onCommit} />
+        <div style={{ display: "flex", gap: 4 }}>
+          <JsonEditor label={label} value={null} onCommit={onCommit} />
+          <button onClick={() => onCommit(defaultValue(widget.inner))}>{`Add ${label}`}</button>
+        </div>
       ) : (
         <div>
           <ValueEditor label={label} value={value} widget={widget.inner} onCommit={onCommit} />
           <button onClick={() => onCommit(null)}>Clear</button>
         </div>
       );
+    case "variant":
+      return <VariantEditor label={label} value={value} variants={widget.variants} onCommit={onCommit} />;
+    case "map":
+      return <MapEditor label={label} value={value} widget={widget.value} onCommit={onCommit} />;
     default:
       return <JsonEditor label={label} value={value} onCommit={onCommit} />;
   }
+}
+
+/** The variant a value holds: a bare name, or the one key of `{ name: value }`. */
+function variantName(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) return Object.keys(value)[0];
+  return undefined;
+}
+
+/** A struct-variant enum: pick the variant, then edit its fields. */
+function VariantEditor(props: {
+  label: string;
+  value: unknown;
+  variants: Variant[];
+  onCommit: (value: unknown) => void;
+}) {
+  const name = variantName(props.value);
+  const current = props.variants.find((v) => v.name === name);
+  const inner = current?.inner;
+  const payload =
+    current !== undefined && typeof props.value === "object" && props.value !== null
+      ? (props.value as Record<string, unknown>)[current.name]
+      : undefined;
+  return (
+    <div>
+      <select
+        aria-label={props.label}
+        title={current?.doc}
+        value={name ?? ""}
+        onChange={(e) => {
+          const picked = props.variants.find((v) => v.name === e.target.value);
+          if (picked !== undefined) props.onCommit(variantValue(picked));
+        }}
+      >
+        {props.variants.map((v) => (
+          <option key={v.name} title={v.doc}>
+            {v.name}
+          </option>
+        ))}
+      </select>
+      {current !== undefined && inner !== undefined && (
+        <ValueEditor
+          label={current.name}
+          value={payload}
+          widget={inner}
+          onCommit={(v) => props.onCommit({ [current.name]: v })}
+        />
+      )}
+    </div>
+  );
+}
+
+/** "Nodes" → "node" (the name of one entry). */
+const singular = (label: string) => label.toLowerCase().replace(/s$/, "");
+
+/** A map of named entries: rename, remove and add entries, and edit each value. */
+function MapEditor(props: { label: string; value: unknown; widget: Widget; onCommit: (value: unknown) => void }) {
+  const record =
+    typeof props.value === "object" && props.value !== null && !Array.isArray(props.value)
+      ? (props.value as Record<string, unknown>)
+      : {};
+  const keys = Object.keys(record).sort();
+  const without = (key: string) => Object.fromEntries(Object.entries(record).filter(([k]) => k !== key));
+  const rename = (from: string, to: unknown) => {
+    if (typeof to !== "string" || to === "" || to in record) return;
+    props.onCommit({ ...without(from), [to]: record[from] });
+  };
+  return (
+    <div style={{ gridColumn: "1 / -1" }}>
+      {keys.map((key) => (
+        <div
+          key={key}
+          role="group"
+          aria-label={key}
+          style={{ borderLeft: "2px solid #555", margin: "4px 0", paddingLeft: 6 }}
+        >
+          <div style={{ display: "flex", gap: 4 }}>
+            <DraftInput
+              label={`Rename ${key}`}
+              shown={key}
+              parse={(t) => t.trim()}
+              onCommit={(to) => rename(key, to)}
+            />
+            <button aria-label={`Remove ${key}`} title="Remove" onClick={() => props.onCommit(without(key))}>
+              ×
+            </button>
+          </div>
+          <ValueEditor
+            label={`${key} kind`}
+            value={record[key]}
+            widget={props.widget}
+            onCommit={(v) => props.onCommit({ ...record, [key]: v })}
+          />
+        </div>
+      ))}
+      <DraftInput
+        label={`New ${singular(props.label)} name`}
+        shown=""
+        parse={(t) => t.trim()}
+        onCommit={(name) => {
+          if (typeof name === "string" && name !== "" && !(name in record)) {
+            props.onCommit({ ...record, [name]: defaultValue(props.widget) });
+          }
+        }}
+      />
+    </div>
+  );
 }
 
 function ColorEditor(props: { label: string; value: number[]; alpha: boolean; onCommit: (v: number[]) => void }) {

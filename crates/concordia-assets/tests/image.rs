@@ -103,3 +103,19 @@ fn hot_reload_bumps_handle_generation_on_source_change() {
     assert_eq!(p.db.generation(id), before + 1);
     assert!(p.db.on_files_changed(&[p.path("unrelated.txt")]).is_empty());
 }
+
+#[test]
+fn importing_changed_content_bumps_the_generation_once() {
+    let mut p = Project::new();
+    p.png("t.png", 8, 0);
+    let id = p.db.import(Path::new("t.png")).unwrap().id;
+    let first = p.db.generation(id);
+    p.db.import(Path::new("t.png")).unwrap();
+    assert_eq!(p.db.generation(id), first, "unchanged content keeps it");
+    p.png("t.png", 8, 90);
+    p.db.import(Path::new("t.png")).unwrap();
+    assert_eq!(p.db.generation(id), first + 1, "a direct import bumps it");
+    p.png("t.png", 8, 180);
+    p.db.on_files_changed(&[p.path("t.png")]);
+    assert_eq!(p.db.generation(id), first + 2, "hot reload bumps it once");
+}

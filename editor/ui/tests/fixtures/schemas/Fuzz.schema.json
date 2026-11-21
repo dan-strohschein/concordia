@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Fuzz: a Charlie sheen lobe over the slab.",
+  "properties": {
+    "color": {
+      "description": "Sheen color (its maximum is the fuzz amount).",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array",
+      "x-concordia-widget": "color"
+    },
+    "roughness": {
+      "description": "Perceptual sheen roughness.",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    }
+  },
+  "required": [
+    "color",
+    "roughness"
+  ],
+  "title": "Fuzz",
+  "type": "object",
+  "x-concordia-type": "Fuzz"
+}

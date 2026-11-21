@@ -126,16 +126,7 @@ pub fn resolve(
             out.meshes.insert(item.mesh.clone(), data);
         }
         if wanted(&out, &item.material) {
-            let material = source
-                .material(&item.material)
-                .map_err(fail(&item.material))?;
-            for t in crate::material_rows::material_textures(&material) {
-                if wanted(&out, t) {
-                    out.textures
-                        .insert(t.clone(), source.texture(t).map_err(fail(t))?);
-                }
-            }
-            out.materials.insert(item.material.clone(), material);
+            add_material(&mut out, source, &item.material, held)?;
         }
     }
     if let Some(env) = &world.environment
@@ -147,6 +138,41 @@ pub fn resolve(
         );
     }
     Ok(out)
+}
+
+/// Loads `materials` again (they changed) with any of their textures not yet held.
+pub(crate) fn reload_materials(
+    materials: &[AssetRef],
+    source: &mut dyn AssetSource,
+    held: &dyn Fn(&AssetRef) -> bool,
+) -> Result<MemoryAssets, crate::RenderError> {
+    let mut out = MemoryAssets::default();
+    for reference in materials {
+        add_material(&mut out, source, reference, held)?;
+    }
+    Ok(out)
+}
+
+/// Adds a material and its textures that are neither held nor already in `out`.
+fn add_material(
+    out: &mut MemoryAssets,
+    source: &mut dyn AssetSource,
+    reference: &AssetRef,
+    held: &dyn Fn(&AssetRef) -> bool,
+) -> Result<(), crate::RenderError> {
+    let fail = |r: &AssetRef| {
+        let reference = r.to_string();
+        move |message: String| crate::RenderError::Asset { reference, message }
+    };
+    let material = source.material(reference).map_err(fail(reference))?;
+    for t in crate::material_rows::material_textures(&material) {
+        if !held(t) && !out.contains(t) {
+            out.textures
+                .insert(t.clone(), source.texture(t).map_err(fail(t))?);
+        }
+    }
+    out.materials.insert(reference.clone(), material);
+    Ok(())
 }
 
 fn missing(reference: &AssetRef) -> String {

@@ -1,10 +1,10 @@
-//! Images → textures (`texture/<image>`) and materials (`material/<name>`, one slab each).
+//! Images → textures (`texture/<image>`) and materials (`material/<name>`, one `Slab` each).
 
 use std::collections::BTreeMap;
 
 use concordia_assets::{
     AlphaMode, Artifact, AssetError, AssetKind, AssetRef, ColorSpace, ImageSettings, ImportOutput,
-    Material, MaterialData, SubIds, decode_image, encode,
+    Material, Slab, SubIds, decode_image, encode,
 };
 
 use crate::names::Names;
@@ -104,40 +104,53 @@ pub(crate) fn materials(
     };
     for m in doc.materials() {
         let Some(index) = m.index() else { continue };
-        let pbr = m.pbr_metallic_roughness();
-        let data = MaterialData {
-            base_color: pbr.base_color_factor(),
-            base_color_texture: texture(pbr.base_color_texture().map(|i| i.texture())),
-            metallic: pbr.metallic_factor(),
-            roughness: pbr.roughness_factor(),
-            metallic_roughness_texture: texture(
-                pbr.metallic_roughness_texture().map(|i| i.texture()),
-            ),
-            normal_texture: texture(m.normal_texture().map(|n| n.texture())),
-            normal_scale: m.normal_texture().map_or(1.0, |n| n.scale()),
-            occlusion_texture: texture(m.occlusion_texture().map(|o| o.texture())),
-            occlusion_strength: m.occlusion_texture().map_or(1.0, |o| o.strength()),
-            emissive: m.emissive_factor(),
-            emissive_strength: m.emissive_strength().unwrap_or(1.0),
-            emissive_texture: texture(m.emissive_texture().map(|i| i.texture())),
-            alpha_mode: match m.alpha_mode() {
-                gltf::material::AlphaMode::Opaque => AlphaMode::Opaque,
-                gltf::material::AlphaMode::Mask => AlphaMode::Mask {
-                    cutoff: m.alpha_cutoff().unwrap_or(0.5),
-                },
-                gltf::material::AlphaMode::Blend => AlphaMode::Blend,
-            },
+        let material = Material {
+            alpha_mode: alpha_mode(&m),
             double_sided: m.double_sided(),
             unlit: m.unlit(),
+            ..Material::from_slab(slab(&m, &texture))
         };
         let sub = format!("material/{}", names.materials[index]);
         out.artifacts.insert(
             sub,
             Artifact {
                 kind: AssetKind::Material,
-                bytes: encode(&Material::from_pbr(&data))?,
+                bytes: encode(&material)?,
             },
         );
     }
     Ok(())
+}
+
+/// glTF's metallic-roughness factors and textures as one slab (specular 0.5: F0 0.04).
+fn slab(
+    m: &gltf::Material<'_>,
+    texture: &dyn Fn(Option<gltf::Texture<'_>>) -> Option<AssetRef>,
+) -> Slab {
+    let pbr = m.pbr_metallic_roughness();
+    Slab {
+        base_color: pbr.base_color_factor(),
+        base_color_texture: texture(pbr.base_color_texture().map(|i| i.texture())),
+        metallic: pbr.metallic_factor(),
+        roughness: pbr.roughness_factor(),
+        metallic_roughness_texture: texture(pbr.metallic_roughness_texture().map(|i| i.texture())),
+        normal_texture: texture(m.normal_texture().map(|n| n.texture())),
+        normal_scale: m.normal_texture().map_or(1.0, |n| n.scale()),
+        occlusion_texture: texture(m.occlusion_texture().map(|o| o.texture())),
+        occlusion_strength: m.occlusion_texture().map_or(1.0, |o| o.strength()),
+        emissive: m.emissive_factor(),
+        emissive_strength: m.emissive_strength().unwrap_or(1.0),
+        emissive_texture: texture(m.emissive_texture().map(|i| i.texture())),
+        ..Slab::default()
+    }
+}
+
+fn alpha_mode(m: &gltf::Material<'_>) -> AlphaMode {
+    match m.alpha_mode() {
+        gltf::material::AlphaMode::Opaque => AlphaMode::Opaque,
+        gltf::material::AlphaMode::Mask => AlphaMode::Mask {
+            cutoff: m.alpha_cutoff().unwrap_or(0.5),
+        },
+        gltf::material::AlphaMode::Blend => AlphaMode::Blend,
+    }
 }

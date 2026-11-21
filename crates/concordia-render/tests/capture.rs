@@ -425,3 +425,40 @@ fn closure_budget_downgrades_gracefully_and_reports_it() {
     let frame = full.ok("render.stats", json!({}))["frame"].clone();
     assert_eq!(frame["closure_budget"], 8, "{frame}");
 }
+
+/// The dominant channel (0 red, 1 green, 2 blue) at the capture's center.
+fn center_channel(image: &Value) -> usize {
+    let rgba = decode_png(image);
+    let center = &rgba[(48 * 96 + 48) * 4..][..3];
+    (0..3).max_by_key(|i| center[*i]).unwrap()
+}
+
+#[test]
+fn a_saved_material_redraws_with_its_new_content() {
+    let Some(mut h) = Harness::gpu() else {
+        return;
+    };
+    let path = "tint.material.ron";
+    let tint = h.material(
+        path,
+        "(base_color: (0.8, 0.05, 0.05, 1.0), metallic: 0.0, roughness: 0.6)\n",
+    );
+    h.sphere_scene(&tint);
+    assert_eq!(center_channel(&h.capture()), 0, "red at first");
+
+    let mut material = h.ok("material.get", json!({"path": path}))["material"].clone();
+    material["nodes"]["surface"]["Slab"]["base_color"] = json!([0.05, 0.05, 0.8, 1.0]);
+    h.ok(
+        "material.set",
+        json!({"path": path, "material": material, "actor": "agent:test"}),
+    );
+    assert_eq!(center_channel(&h.capture()), 2, "material.set redraws");
+
+    std::fs::write(
+        h.dir.path().join(path),
+        "(base_color: (0.05, 0.8, 0.05, 1.0), metallic: 0.0, roughness: 0.6)\n",
+    )
+    .unwrap();
+    h.ok("asset.import", json!({"path": path}));
+    assert_eq!(center_channel(&h.capture()), 1, "a re-import redraws too");
+}

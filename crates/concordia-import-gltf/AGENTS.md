@@ -30,7 +30,7 @@ The glTF 2.0 importer (`.gltf` and `.glb`): meshes, metallic-roughness materials
 - Khronos glTF 2.0 specification and extension specifications; Morten Mikkelsen, MikkTSpace (`bevy_mikktspace`, Zlib/MIT/Apache); `gltf` crate (MIT/Apache).
 
 ## Status
-M1 phase 1.4.
+M1 phase 1.4; materials as one `Slab` built directly from glTF's factors and textures since M2 2.3c (the artifacts are byte-identical to 2.3b's, so the importer stays at version 2).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

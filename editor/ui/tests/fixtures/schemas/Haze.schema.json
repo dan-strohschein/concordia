@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Haze: a second specular lobe sharing the slab's F0.",
+  "properties": {
+    "roughness": {
+      "description": "Perceptual roughness of the second lobe.",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "weight": {
+      "description": "Weight of the second lobe.",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    }
+  },
+  "required": [
+    "roughness",
+    "weight"
+  ],
+  "title": "Haze",
+  "type": "object",
+  "x-concordia-type": "Haze"
+}

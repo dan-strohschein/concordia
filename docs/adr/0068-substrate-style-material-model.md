@@ -1,5 +1,5 @@
 # ADR-0068: Substrate-style material model
-- Status: Accepted (M2 phase 2.3a, 2026-11-20); the renderer in 2.3b (2026-11-20); migration and editor (2.3c) and FBX (2.3d) follow
+- Status: Accepted (M2 phase 2.3a, 2026-11-20); the renderer in 2.3b (2026-11-20); migration, editor and Studio in 2.3c (2026-11-20); FBX (2.3d) follows
 - Date: 2026-11-20
 - Builds on: ADR-0009 (canonical RON), ADR-0040 (renderer), ADR-0044 (assets), ADR-0067 decision D5 (materials follow Substrate, text first)
 
@@ -16,7 +16,7 @@ M1 has one metallic-roughness material (glTF 2.0 core). D5 replaces it with a mo
 3. **Energy conservation, exactly.**
    - Diffuse is scaled by 1 − E_spec(N·V), the directional albedo of the slab's own specular lobes from a table of the direct lobe (GGX with height-correlated Smith, the same terms the BSDF uses).
    - Sheen is divided by max(1, E_sheen) and scales the rest by 1 − max(color)·E_sheen. The sheen table goes in the albedo-table texture in 2.3b.
-   - M1's coupling (diffuse × (1 − F(V·H))) gains energy at grazing views: up to 1.107 for a white, full-specular dielectric. The author chose exact conservation over pixel parity, so migrated M1 materials change slightly (about 1–2% of their diffuse head-on, more at silhouettes). Goldens that move beyond tolerance are reviewed and re-blessed in 2.3c.
+   - M1's coupling (diffuse × (1 − F(V·H))) gains energy at grazing views: up to 1.107 for a white, full-specular dielectric. The author chose exact conservation over pixel parity, so migrated M1 materials change slightly (about 1–2% of their diffuse head-on, more at silhouettes). Goldens that moved beyond tolerance were reviewed and re-blessed in 2.3b; 2.3c moved none.
 4. **Operators** (what each passes up):
    - **Vertical:** color = top + T_top(v)·T_top(l)·bottom; emission = top + T_top(v)·bottom; alpha = 1 − (1 − a_top)(1 − a_bottom). A slab's transmittance toward a direction at cosine μ is (1 − E_spec(μ)) × transmittance^(1/μ) × (1 − sheen).
    - **Horizontal:** a linear mix of everything.
@@ -29,7 +29,8 @@ M1 has one metallic-roughness material (glTF 2.0 core). D5 replaces it with a mo
    - a layer tints the bottom by the top's normal-incidence transmittance squared, blends toward the top by the top's opaque share, and keeps the top's highlight as haze (weight from the F0 ratio);
    - textures and features that cannot be kept are reported as `node.field`.
    `fit_budget` returns the fitted material and a `ClosureReport` (budget, before, after, merges); the renderer fits each material at upload, keeps the program until the material or budget changes, logs a downgrade once and lists it in `render.stats` (`closure_budget`, `downgraded_materials`) for every frame that draws it.
-7. **Migration.** `read_material` accepts M1's flat text and returns one slab named `surface` with the same values (`Material::from_pbr`). Since 2.3b the material importer, `AssetDb::load_material`, the built-in default material and the renderer use `Material`; the glTF importer stores each material as one slab too (a material artifact has one format), which moved forward from 2.3c. `MaterialData` remains only as the migration source and the glTF intermediate until 2.3c retires it.
+7. **Migration.** `read_material` accepts M1's flat text and returns one slab named `surface` with the same values; `read_material_with_format` also says which format it read. Since 2.3b the material importer, `AssetDb::load_material`, the built-in default material and the renderer use `Material`, and the glTF importer stores each material as one slab (a material artifact has one format). In 2.3c `MaterialData` was retired: M1's shape is read only by a private type with M1's defaults, nothing writes it, and the glTF importer builds `Slab` directly. Every M1 golden is drawn from M1 text through `read_material`, unchanged from the 2.3b baseline.
+   - **Editing (2.3c):** `material.get` / `material.set` read and write the canonical text (file writes attributed in `log.tail`, not undoable, like `asset.import`), refuse invalid materials naming the `node.field`, and import what they write. Each import that finds new content bumps the asset's generation, and the renderer re-sends a material whose generation moved, so the next frame draws it. Saving a migrated M1 file rewrites it as layered text.
 8. **Crates.** The model and format live in `concordia-assets` (which owns `AssetRef` and `.material.ron`). Evaluation, the budget, the albedo tables and sampling live in the new `concordia-material`, which doesn't depend on the renderer, so M4's path tracer can use it as its BSDF. The split-sum IBL table moved there from `concordia-render` (which re-exports it).
 9. **On the GPU (2.3b).** `forward.slang` interprets the same program and mirrors the CPU reference term for term:
    - per light, the whole program is evaluated for that light's direction (so layering uses each light's own transmittance);

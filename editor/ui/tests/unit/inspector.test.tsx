@@ -61,9 +61,10 @@ test("an agent's edit event refreshes the open inspector", async () => {
 test("the session opens as human:local and subscribes to live changes", async () => {
   const { engine } = await setup();
   expect(engine.called("session.open")[0]).toMatchObject({ actor: "human:local" });
-  // `studio` since M3 3.6b: the Team Questions panel follows question events.
+  // `studio` since M3 3.6b: the Team Questions panel follows question events; `asset` since M2
+  // 2.3c: saved materials redraw the viewport and refresh the Inspector and FileSystem dock.
   expect(engine.called("events.subscribe")[0]).toEqual({
-    topics: ["edit", "scene", "sim", "pending", "log", "studio"],
+    topics: ["edit", "scene", "sim", "pending", "log", "studio", "asset"],
   });
 });
 

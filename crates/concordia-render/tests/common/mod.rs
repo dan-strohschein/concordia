@@ -4,7 +4,9 @@
 
 use std::sync::Arc;
 
-use concordia_assets::{AssetRef, Material, MaterialData, MeshRenderer};
+use concordia_assets::{
+    AlphaMode, AssetRef, Material, MaterialFormat, MeshRenderer, read_material_with_format,
+};
 use concordia_core::id::{DeterministicIdGen, EntityId};
 use concordia_core::math::{Quat, Vec3};
 use concordia_render::{
@@ -150,11 +152,81 @@ impl Scene {
     }
 }
 
-pub fn unlit(color: [f32; 4]) -> MaterialData {
-    MaterialData {
+pub fn unlit(color: [f32; 4]) -> M1 {
+    M1 {
         base_color: color,
         unlit: true,
-        ..MaterialData::default()
+        ..M1::default()
+    }
+}
+
+/// An M1 material file (the retired flat format, with M1's defaults). It becomes a `Material`
+/// only by being written as M1 text and read back through `read_material`, so every golden built
+/// from it checks the migration (2.3c).
+#[derive(
+    Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, concordia_reflect::Reflect,
+)]
+pub struct M1 {
+    /// Linear base color and alpha.
+    pub base_color: [f32; 4],
+    /// Base color texture.
+    pub base_color_texture: Option<AssetRef>,
+    /// Metalness.
+    pub metallic: f32,
+    /// Perceptual roughness.
+    pub roughness: f32,
+    /// Metallic (B) and roughness (G) texture.
+    pub metallic_roughness_texture: Option<AssetRef>,
+    /// Normal map.
+    pub normal_texture: Option<AssetRef>,
+    /// Normal map strength.
+    pub normal_scale: f32,
+    /// Occlusion texture.
+    pub occlusion_texture: Option<AssetRef>,
+    /// Occlusion strength.
+    pub occlusion_strength: f32,
+    /// Linear emissive color.
+    pub emissive: [f32; 3],
+    /// Emissive multiplier.
+    pub emissive_strength: f32,
+    /// Emissive texture.
+    pub emissive_texture: Option<AssetRef>,
+    /// Alpha handling.
+    pub alpha_mode: AlphaMode,
+    /// Render both faces.
+    pub double_sided: bool,
+    /// Ignore lighting.
+    pub unlit: bool,
+}
+
+impl Default for M1 {
+    fn default() -> Self {
+        Self {
+            base_color: [1.0; 4],
+            base_color_texture: None,
+            metallic: 1.0,
+            roughness: 1.0,
+            metallic_roughness_texture: None,
+            normal_texture: None,
+            normal_scale: 1.0,
+            occlusion_texture: None,
+            occlusion_strength: 1.0,
+            emissive: [0.0; 3],
+            emissive_strength: 1.0,
+            emissive_texture: None,
+            alpha_mode: AlphaMode::Opaque,
+            double_sided: false,
+            unlit: false,
+        }
+    }
+}
+
+impl From<M1> for Material {
+    fn from(m1: M1) -> Self {
+        let text = concordia_scene::write_document(&m1).expect("M1 text");
+        let (material, format) = read_material_with_format(&text).expect("M1 text reads");
+        assert_eq!(format, MaterialFormat::M1, "migrated from M1 text: {text}");
+        material
     }
 }
 

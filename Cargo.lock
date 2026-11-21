@@ -1095,6 +1095,7 @@ version = "0.0.0"
 dependencies = [
  "blake3",
  "concordia-api",
+ "concordia-assets",
  "concordia-command",
  "concordia-core",
  "concordia-reflect",

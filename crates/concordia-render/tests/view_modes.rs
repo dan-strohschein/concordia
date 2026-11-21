@@ -3,8 +3,7 @@
 
 mod common;
 
-use common::{Scene, golden, pixel, renderer};
-use concordia_assets::MaterialData;
+use common::{M1, Scene, golden, pixel, renderer};
 use concordia_core::math::{Quat, Vec3};
 use concordia_render::shadow::CascadeSettings;
 use concordia_render::{Camera, DirectionalLight, Image, PointLight, Renderer, View, ViewMode};
@@ -17,29 +16,29 @@ fn scene() -> Scene {
     let mut s = Scene::new();
     let grey = s.material(
         "grey",
-        MaterialData {
+        M1 {
             base_color: [0.5, 0.5, 0.5, 1.0],
             roughness: 0.8,
             metallic: 0.0,
-            ..MaterialData::default()
+            ..M1::default()
         },
     );
     let red = s.material(
         "red",
-        MaterialData {
+        M1 {
             base_color: [0.8, 0.1, 0.1, 1.0],
             roughness: 0.5,
             metallic: 0.0,
-            ..MaterialData::default()
+            ..M1::default()
         },
     );
     let metal = s.material(
         "metal",
-        MaterialData {
+        M1 {
             base_color: [0.9, 0.9, 0.9, 1.0],
             roughness: 0.2,
             metallic: 1.0,
-            ..MaterialData::default()
+            ..M1::default()
         },
     );
     s.mesh("plane", grey, Vec3::ZERO, Quat::IDENTITY, Vec3::splat(20.0));

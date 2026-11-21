@@ -1,6 +1,7 @@
 // The FileSystem dock (Godot's): the project's files as a `res://` tree from `project.files`.
-// Double-clicking a scene opens it; files that can be imported show an Import button; models can
-// be dragged into the viewport. The listing refreshes when a scene is saved or opened.
+// Double-clicking a scene opens it; clicking a material shows it in the Inspector; files that can be
+// imported show an Import button; models can be dragged into the viewport. The listing refreshes
+// when a scene is saved or opened and when an asset is written or imported.
 import { useCallback, useEffect, useState } from "react";
 
 import type { EditorSession } from "../engine/session";
@@ -19,7 +20,16 @@ const ICONS: Record<ProjectFile["kind"], string> = {
   other: "📄",
 };
 
-export function FileSystem({ session, onOpenScene }: { session: EditorSession; onOpenScene: (path: string) => void }) {
+interface FileSystemProps {
+  session: EditorSession;
+  onOpenScene: (path: string) => void;
+  /** Called when a material is clicked (shown in the Inspector). */
+  onSelectMaterial?: (path: string) => void;
+  /** The material the Inspector shows, highlighted. */
+  selected?: string | undefined;
+}
+
+export function FileSystem({ session, onOpenScene, onSelectMaterial, selected }: FileSystemProps) {
   const [root, setRoot] = useState<FolderNode>();
   const [error, setError] = useState<string>();
   const refresh = useCallback(() => {
@@ -34,7 +44,7 @@ export function FileSystem({ session, onOpenScene }: { session: EditorSession; o
   useEffect(() => {
     refresh();
     return session.onEvent((e) => {
-      if (e.topic === "scene") refresh();
+      if (e.topic === "scene" || e.topic === "asset") refresh();
     });
   }, [session, refresh]);
   const onImport = (file: ProjectFile) =>
@@ -43,7 +53,14 @@ export function FileSystem({ session, onOpenScene }: { session: EditorSession; o
   if (root === undefined) return <p style={{ padding: 8, opacity: 0.5 }}>Loading…</p>;
   return (
     <ul role="tree" aria-label="Project files" style={{ listStyle: "none", margin: 0, padding: "2px 4px" }}>
-      <Folder node={root} depth={0} onOpenScene={onOpenScene} onImport={onImport} />
+      <Folder
+        node={root}
+        depth={0}
+        onOpenScene={onOpenScene}
+        onImport={onImport}
+        onSelectMaterial={onSelectMaterial ?? (() => undefined)}
+        selected={selected}
+      />
     </ul>
   );
 }
@@ -52,6 +69,8 @@ interface RowProps {
   depth: number;
   onOpenScene: (path: string) => void;
   onImport: (file: ProjectFile) => void;
+  onSelectMaterial: (path: string) => void;
+  selected: string | undefined;
 }
 
 function Folder({ node, depth, ...rest }: RowProps & { node: FolderNode }) {
@@ -75,19 +94,28 @@ function Folder({ node, depth, ...rest }: RowProps & { node: FolderNode }) {
   );
 }
 
-function File({ file, depth, onOpenScene, onImport }: RowProps & { file: ProjectFile }) {
+function File({ file, depth, onOpenScene, onImport, onSelectMaterial, selected }: RowProps & { file: ProjectFile }) {
   const name = baseName(file.path);
   const draggable = file.kind === "model";
+  const isSelected = file.path === selected;
   return (
-    <li role="treeitem" title={file.path}>
+    <li role="treeitem" title={file.path} aria-label={name} aria-selected={isSelected}>
       <div
         draggable={draggable}
         onDragStart={(e) => {
           e.dataTransfer.setData(FILE_DRAG_TYPE, JSON.stringify(file));
           e.dataTransfer.effectAllowed = "copy";
         }}
+        onClick={() => file.kind === "material" && onSelectMaterial(file.path)}
         onDoubleClick={() => file.kind === "scene" && onOpenScene(file.path)}
-        style={{ paddingLeft: depth * 12 + 12, display: "flex", gap: 6, alignItems: "center", cursor: "default" }}
+        style={{
+          paddingLeft: depth * 12 + 12,
+          display: "flex",
+          gap: 6,
+          alignItems: "center",
+          cursor: "default",
+          background: isSelected ? "#2f4a6a" : undefined,
+        }}
       >
         <span aria-hidden>{ICONS[file.kind]}</span>
         <span style={{ flex: 1 }}>{name}</span>

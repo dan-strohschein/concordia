@@ -2,8 +2,8 @@
 
 use std::f32::consts::PI;
 
-use crate::data::{MaterialData, MeshData, TextureData, TextureFormat};
-use crate::material::Material;
+use crate::data::{MeshData, TextureData, TextureFormat};
+use crate::material::{Material, Slab};
 use crate::reference::AssetRef;
 
 /// A built-in asset's data.
@@ -31,10 +31,9 @@ impl Builtin {
             "mesh" => Self::mesh(name).map(BuiltinAsset::Mesh),
             "texture" => Self::texture(name).map(BuiltinAsset::Texture),
             "material" if name == "default" => {
-                Some(BuiltinAsset::Material(Material::from_pbr(&MaterialData {
-                    metallic: 0.0,
-                    roughness: 0.5,
-                    ..MaterialData::default()
+                Some(BuiltinAsset::Material(Material::from_slab(Slab {
+                    base_color: [1.0; 4],
+                    ..Slab::default()
                 })))
             }
             _ => None,

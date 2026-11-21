@@ -17,7 +17,16 @@ export type Widget =
   | { kind: "array"; item: Widget }
   | { kind: "struct"; fields: Field[] }
   | { kind: "option"; inner: Widget }
+  | { kind: "variant"; variants: Variant[] }
+  | { kind: "map"; value: Widget }
   | { kind: "json" };
+
+/** One variant of an enum: a bare name (`inner` undefined) or `{ name: value }`. */
+export interface Variant {
+  name: string;
+  doc: string;
+  inner?: Widget;
+}
 
 /** One property row: wire name, display label, docs and widget. */
 export interface Field {
@@ -80,11 +89,35 @@ function string(s: Json): Widget {
   return { kind: "string" };
 }
 
-/** `oneOf` of string constants → enum; anything else (struct variants) → raw JSON. */
-function oneOf(variants: unknown[]): Widget {
-  const options = variants.map((v) => (isObject(v) && typeof v["const"] === "string" ? v["const"] : undefined));
-  return options.every((o) => o !== undefined) && options.length > 0
-    ? { kind: "enum", options: options as string[] }
+/** A `oneOf` entry as a variant: a string constant, or an object with exactly one required key. */
+function variantOf(v: unknown, defs: Json): Variant | undefined {
+  if (!isObject(v)) return undefined;
+  const doc = typeof v["description"] === "string" ? v["description"] : "";
+  if (typeof v["const"] === "string") return { name: v["const"], doc };
+  const properties = isObject(v["properties"]) ? Object.entries(v["properties"]) : [];
+  const required = Array.isArray(v["required"]) ? v["required"] : [];
+  const [only] = properties;
+  if (properties.length !== 1 || only === undefined || required.length !== 1 || required[0] !== only[0]) {
+    return undefined;
+  }
+  return { name: only[0], doc, inner: widgetFor(only[1], defs) };
+}
+
+/** `oneOf` of string constants → enum; with struct variants → variant; anything else → raw JSON. */
+function oneOf(variants: unknown[], defs: Json): Widget {
+  const parsed = variants.map((v) => variantOf(v, defs));
+  if (parsed.length === 0 || parsed.some((v) => v === undefined)) return JSON_EDITOR;
+  const all = parsed as Variant[];
+  return all.every((v) => v.inner === undefined)
+    ? { kind: "enum", options: all.map((v) => v.name) }
+    : { kind: "variant", variants: all };
+}
+
+/** `{type: object, additionalProperties: T}` without properties → a map of T by name. */
+function map(s: Json, defs: Json): Widget {
+  const value = s["additionalProperties"];
+  return isObject(value) && s["properties"] === undefined
+    ? { kind: "map", value: widgetFor(value, defs) }
     : JSON_EDITOR;
 }
 
@@ -103,7 +136,7 @@ export function widgetFor(schema: unknown, defs: Json): Widget {
   if (s === undefined) return JSON_EDITOR;
   const hint = hinted(s);
   if (hint) return hint;
-  if (Array.isArray(s["oneOf"])) return oneOf(s["oneOf"]);
+  if (Array.isArray(s["oneOf"])) return oneOf(s["oneOf"], defs);
   if (Array.isArray(s["anyOf"])) return anyOf(s["anyOf"], defs);
   switch (s["type"]) {
     case "boolean":
@@ -115,7 +148,7 @@ export function widgetFor(schema: unknown, defs: Json): Widget {
     case "string":
       return string(s);
     case "object":
-      return isObject(s["properties"]) ? { kind: "struct", fields: fieldsIn(s, defs) } : JSON_EDITOR;
+      return isObject(s["properties"]) ? { kind: "struct", fields: fieldsIn(s, defs) } : map(s, defs);
     case "array":
       return isObject(s["items"]) && s["prefixItems"] === undefined && s["maxItems"] === undefined
         ? { kind: "array", item: widgetFor(s["items"], defs) }
@@ -143,4 +176,41 @@ export function fieldsOf(root: unknown): Field[] {
   const defs = isObject(root["$defs"]) ? root["$defs"] : {};
   const widget = widgetFor(root, defs);
   return widget.kind === "struct" ? widget.fields : [];
+}
+
+/** A starting value for a new entry or variant: required struct fields only (the engine fills the rest), numbers at their minimum. */
+export function defaultValue(widget: Widget): unknown {
+  switch (widget.kind) {
+    case "number":
+      return Math.max(widget.min ?? 0, Math.min(0, widget.max ?? 0));
+    case "bool":
+      return false;
+    case "string":
+    case "asset":
+    case "entity":
+      return "";
+    case "enum":
+      return widget.options[0] ?? "";
+    case "vec3":
+      return [0, 0, 0];
+    case "quat":
+      return [0, 0, 0, 1];
+    case "color":
+      return widget.alpha ? [1, 1, 1, 1] : [1, 1, 1];
+    case "array":
+      return [];
+    case "struct":
+      return Object.fromEntries(widget.fields.filter((f) => !f.optional).map((f) => [f.name, defaultValue(f.widget)]));
+    case "variant":
+      return widget.variants[0] === undefined ? null : variantValue(widget.variants[0]);
+    case "map":
+      return {};
+    default:
+      return null;
+  }
+}
+
+/** A variant's default value: its name, or `{ name: default }`. */
+export function variantValue(variant: Variant): unknown {
+  return variant.inner === undefined ? variant.name : { [variant.name]: defaultValue(variant.inner) };
 }

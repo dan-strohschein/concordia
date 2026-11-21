@@ -243,3 +243,39 @@ fn replay_skills_use_the_real_replay_tools_and_arguments() {
         "the skills show how to record, stop and run ({checked} examples)"
     );
 }
+
+#[test]
+fn material_skill_uses_the_real_material_tools_and_arguments() {
+    let text = default_roster()
+        .skills
+        .iter()
+        .find(|(n, _)| *n == "concordia-add-material")
+        .map(|(_, t)| *t)
+        .unwrap();
+    let mut checked = 0;
+    for (tool, args) in examples(text, "material_") {
+        let parsed = match tool.as_str() {
+            "material_get" => {
+                serde_json::from_value::<concordia_assets::MaterialGetParams>(args.clone())
+                    .map(|_| ())
+            }
+            "material_set" => {
+                serde_json::from_value::<concordia_assets::MaterialSetParams>(args.clone())
+                    .map(|_| ())
+            }
+            other => panic!("no tool {other}"),
+        };
+        parsed.unwrap_or_else(|e| panic!("{tool} {args}: {e}"));
+        if let Some(material) = args.get("material") {
+            serde_json::from_value::<concordia_assets::Material>(material.clone())
+                .unwrap()
+                .validate()
+                .unwrap_or_else(|e| panic!("{tool}: the example is a valid material: {e}"));
+        }
+        checked += 1;
+    }
+    assert!(
+        checked >= 2,
+        "the skill shows how to read and write a material ({checked} examples)"
+    );
+}

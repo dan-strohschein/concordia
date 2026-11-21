@@ -14,7 +14,7 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 ## Building a scene (M1)
 1. Look around: `project.files {}` lists the project's files with their kind and import status.
 2. Bring in a model: `asset.import {"path": "models/crate.glb"}`, then `prefab.instantiate {"asset": "asset:<id>", "translation": [0, 0, 0]}` (one undo step).
-3. Add ready-made entities: `entity.templates {}` lists them; `entity.create {"template": "Cube", "translation": [0, 0.5, 0]}`, `{"template": "Directional Light"}`, `{"template": "Camera"}`. Group with `"parent"`, copy with `entity.duplicate`, regroup with `entity.reparent`. For physics, `component.add` `RigidBody` and `Collider` (a 1 m box by default), then `component.patch` the shape; for a sky, `entity.spawn` an entity with `Environment` (no `Transform` needed) and an imported `.hdr` as its `map`; sky light is scaled by the camera's exposure, so under daylight exposure (EV 15) its `intensity` is in the thousands. Materials are `.material.ron` files (`MaterialData` in RON): `asset.import` one and set it as a `MeshRenderer`'s `material`. (`entity.spawn` still takes raw components.)
+3. Add ready-made entities: `entity.templates {}` lists them; `entity.create {"template": "Cube", "translation": [0, 0.5, 0]}`, `{"template": "Directional Light"}`, `{"template": "Camera"}`. Group with `"parent"`, copy with `entity.duplicate`, regroup with `entity.reparent`. For physics, `component.add` `RigidBody` and `Collider` (a 1 m box by default), then `component.patch` the shape; for a sky, `entity.spawn` an entity with `Environment` (no `Transform` needed) and an imported `.hdr` as its `map`; sky light is scaled by the camera's exposure, so under daylight exposure (EV 15) its `intensity` is in the thousands. Materials are `.material.ron` files (see Materials below): write one with `material.set` and set the returned id as a `MeshRenderer`'s `material`. (`entity.spawn` still takes raw components.)
 4. Look at it: `capture.screenshot {}` returns an image (768 × 432 by default; pass `width`/`height` for detail, `camera` or `view` to choose the viewpoint, `"world": "play"` to see the simulation, `view_mode` for a debug view such as `"wireframe"`, `"normals"`, `"overdraw"` or `"light_clusters"`). `render.stats {}` then reports that frame's cost (draws, triangles, CPU and GPU ms, GPU memory) and the materials simplified to fit the closure budget: use it to find what makes a scene slow or why something is missing. `viewport.pick` tells you which entity is at a pixel of that image; `viewport.drop` where something placed there would land.
 5. Run it: `sim.step {"ticks": 120}`, `input.inject` to press actions, `physics.raycast` to probe, then read with `"world": "play"`.
 6. `scene.save {}`.
@@ -31,6 +31,13 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 - Check: `replay.run {"path": ...}` replays it headless on a fresh play world and compares every checkpoint. `ok: true` proves the same behavior; otherwise `divergence` names the first checkpoint `tick` that differs, the `last_matching_tick`, and the `parts` that differ (component names, `@entities`, `@clock`, `@rng`, `@signals`). The play world stays at the end for `"world": "play"` reads.
 - `mode: "resimulate"` replays the inputs on the current code and returns new `checkpoints` (prove a fix). A replay recorded with another scene, seed, engine or script build is refused with `ReplayMismatch`; `"force": true` runs it anyway and lists the `mismatches`.
 - Nothing about replays is journaled or changes the scene. CLI: `concordia replay record <path> --ticks N [--inputs events.json]`, `concordia replay run <path> [--threads N] [--force]`.
+
+## Materials (M2, projects with `[assets]`)
+- A material is named **nodes** plus a **root** (ADR-0068). A node is a `Slab` (one BSDF closure: base color, metallic, specular, roughness, textures, emission, `transmittance`, and the optional `haze`, `fuzz`, `subsurface` and `thin_film`) or an operator over other nodes by name: `Vertical {top, bottom}` (layering, e.g. a clear coat), `Horizontal {a, b, mix, mix_texture}` (side by side) or `Coverage {node, coverage}`. Every node must be used by the root. `schema.get {"name": "Material"}` lists every field and range.
+- Read: `material.get {"path": "assets/materials/steel.material.ron"}` → `{material, migrated, id}`. M1's flat files read as one slab named `surface` with `migrated: true`; saving rewrites them as layered text.
+- Write: `material.set {"path": ..., "material": {...}}` (the whole material; the file is created if missing). It validates, writes canonical text, imports it and returns `{id, written}` (`written: false` if nothing changed); the renderer draws the new content on the next frame. An invalid material is refused with `InvalidParams`, naming the `node.field` (`data.field`, `data.node` and a pointer into the params).
+- Like `asset.import`, it changes a file, not the scene: it is attributed in `log.tail` ("material saved", with the actor) and is not undoable. In the Studio, the path must be inside the role's write paths.
+- Cost: each slab use is one closure; a material over the platform's `closure_budget` is simplified and listed in `render.stats` `downgraded_materials`. `capture.screenshot {"view_mode": "closures"}` shows the count per pixel.
 
 ## Rules
 - Every mutating call needs an actor: `"actor": "agent:<role>"` or the session default. Grammar: `<human|agent|system|tool|script>:<name>[#n]`, lowercase names.
@@ -51,6 +58,8 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `project.files` | | `{dir?}` → `{files: [{path, kind, size, asset, importer}]}` (projects with `[assets]`; skips hidden, git-ignored and sidecar files) |
 | `asset.import` | | `{path}` → `{id, cached, sub_assets}` (import or re-import a project file; idempotent; refer to it as `"asset:<id>"`) |
 | `asset.list` | | `{}` → `{assets: [{id, path, importer, sub_assets}]}` |
+| `material.get` | | `{path}` → `{material, migrated, id}` (a `.material.ron` as a layered material; M1 files read as one slab, `migrated: true`) |
+| `material.set` | | `{path, material}` → `{id, written}` (validates, writes canonical text, imports; refused with the `node.field`; attributed in `log.tail`, not undoable) |
 | `entity.spawn` | yes | `{components, id?}` → `{id}` |
 | `entity.despawn` | yes | `{id, recursive?}` → `{}` (`recursive: true` also removes all descendants, one undo step) |
 | `entity.templates` | | `{}` → `{templates: [{name, description, traits, components, problem?}]}` (ready-made entities: Empty, Cube, Sphere, Plane, Camera, Directional/Point/Spot Light, the project's `templates/**/*.template.ron`, plus any from plugins) |
@@ -92,7 +101,7 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `viewport.gizmo` | yes | `{action: begin\|move\|end\|cancel, entity?, axis?, x?, y?, width?, height?}` → `{translation, axis}` (Move-gizmo drags; a begin without an axis grabs the shown gizmo's handle under the pointer, or misses); **editor only, not an MCP tool** |
 | `viewport.stats` | | `{clear?}` → `{frames: [{seq, input_time_ms, cpu_ms, submitted_ms, presented_ms}]}` (recent native-viewport frames; times in Unix ms); **editor only, not an MCP tool** |
 | `log.tail` | | `{since?, level?, limit?}` → `{records, next}` |
-| `events.subscribe` / `events.unsubscribe` | | `{topics: ["edit" \| "scene" \| "sim" \| "pending" \| "log" \| "studio"]}` → `{topics}` (WebSocket only; not an MCP tool) |
+| `events.subscribe` / `events.unsubscribe` | | `{topics: ["edit" \| "scene" \| "sim" \| "pending" \| "log" \| "studio" \| "asset"]}` → `{topics}` (WebSocket only; not an MCP tool) |
 | `task.create` | yes | `{title, role, description?, priority?, acceptance?: [{assert}], depends_on?, links?}` → `{task}` (projects with `[studio]`; the role must be enabled, see `studio.roster`) |
 | `task.get` | | `{id}` → `{task, history}` (history comes from the Studio journal, oldest first) |
 | `task.list` | | `{status?, role?, assignee?}` → `{tasks}` |
@@ -117,6 +126,7 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 - `sim`: `method`, `tick` and `state`;
 - `pending`: one per call that changes the world inside an open transaction (`pending: true`, with `method`, `txn`, `label`, `actor` and that call's `entities`), and one when a transaction is aborted (`aborted: true` and its `entities`). Use it to show work in progress, such as a gizmo drag, before the commit;
 - `log`: `latest` (the newest log record's seq) after a call wrote log records; fetch them with `log.tail`;
+- `asset`: one per file `material.set` writes or `asset.import` imports, with its `path`, `id` and `actor` (the editor redraws and refreshes the Inspector);
 - `studio` (projects with `[studio]`): one per new Studio journal entry (task changes, reviews, file edits, and `question_asked`, `question_answered` and `question_escalated`), with its `seq`, `ts_ms`, `actor`, `kind` and the kind's fields.
 
 Edits made by other clients arrive too, which is how the editor sees agents work. Over stdio or MCP, poll `log.tail` instead. If a client falls more than 1,024 events behind, newer events are dropped, so re-read state with `query.run`.

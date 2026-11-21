@@ -3,7 +3,7 @@
 /**
  * What a session can subscribe to.
  */
-export type Topic = "edit" | "scene" | "sim" | "pending" | "log" | "studio";
+export type Topic = "edit" | "scene" | "sim" | "pending" | "log" | "studio" | "asset";
 
 /**
  * `events.subscribe` result.

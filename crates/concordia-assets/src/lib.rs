@@ -12,6 +12,8 @@ mod importer;
 mod key;
 mod material;
 mod material_importer;
+mod material_m1;
+mod material_method;
 mod module;
 mod prefab_method;
 mod reference;
@@ -19,8 +21,8 @@ mod sidecar;
 
 pub use builtin::{Builtin, BuiltinAsset};
 pub use data::{
-    AlphaMode, CameraData, Channel, ChannelPath, ClipData, Interpolation, LightData, MaterialData,
-    MeshData, MeshRenderer, SkinData, TextureData, TextureFormat,
+    AlphaMode, CameraData, Channel, ChannelPath, ClipData, Interpolation, LightData, MeshData,
+    MeshRenderer, SkinData, TextureData, TextureFormat,
 };
 pub use db::{AssetDb, AssetInfo, ImportReport};
 pub use error::AssetError;
@@ -31,18 +33,23 @@ pub use importer::{
 };
 pub use key::{PLATFORM, import_key};
 pub use material::{
-    Fuzz, Haze, Material, MaterialError, MaterialNode, SURFACE, Slab, Subsurface, ThinFilm,
-    read_material, write_material,
+    Fuzz, Haze, Material, MaterialError, MaterialFormat, MaterialNode, SURFACE, Slab, Subsurface,
+    ThinFilm, read_material, read_material_with_format, write_material,
 };
 pub use material_importer::MaterialImporter;
+pub use material_method::{
+    MaterialGet, MaterialGetParams, MaterialGetResult, MaterialSet, MaterialSetParams,
+    MaterialSetResult,
+};
 pub use module::{AssetImport, AssetList, AssetsModule};
 pub use prefab_method::PrefabInstantiate;
 pub use reference::AssetRef;
 pub use sidecar::Sidecar;
 
-/// Registers the asset components (`MeshRenderer`).
+/// Registers the asset components (`MeshRenderer`) and the `Material` type (for `schema.get`).
 pub fn register_types(
     registry: &mut concordia_reflect::TypeRegistry,
 ) -> Result<(), concordia_reflect::RegistryError> {
-    concordia_terra::register_component::<MeshRenderer>(registry)
+    concordia_terra::register_component::<MeshRenderer>(registry)?;
+    registry.register::<Material>().map(|_| ())
 }
