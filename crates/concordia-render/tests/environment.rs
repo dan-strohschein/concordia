@@ -3,8 +3,8 @@
 
 mod common;
 
-use common::{Scene, golden, pixel, renderer};
-use concordia_assets::{AssetRef, ImageSettings, MaterialData};
+use common::{M1, Scene, golden, pixel, renderer};
+use concordia_assets::{AssetRef, ImageSettings};
 use concordia_core::math::{Quat, Vec3};
 use concordia_render::shadow::CascadeSettings;
 use concordia_render::{
@@ -54,11 +54,11 @@ fn pbr_spheres_with_ibl_golden() {
     {
         let m = s.material(
             &format!("m{i}"),
-            MaterialData {
+            M1 {
                 base_color: [0.95, 0.64, 0.54, 1.0],
                 metallic,
                 roughness,
-                ..MaterialData::default()
+                ..M1::default()
             },
         );
         let at = Vec3::new(
@@ -89,11 +89,11 @@ fn ibl_lights_the_side_the_sun_does_not_reach() {
     environment(&mut s, false);
     let m = s.material(
         "white",
-        MaterialData {
+        M1 {
             base_color: [0.8; 4],
             metallic: 0.0,
             roughness: 0.8,
-            ..MaterialData::default()
+            ..M1::default()
         },
     );
     s.mesh("sphere", m, Vec3::ZERO, Quat::IDENTITY, Vec3::splat(2.0));
@@ -179,7 +179,7 @@ fn environment_with_a_missing_map_names_it() {
 fn the_viewport_does_not_wait_for_an_environment_to_prefilter() {
     let Some(mut r) = renderer() else { return };
     let mut s = Scene::new();
-    let grey = s.material("grey", MaterialData::default());
+    let grey = s.material("grey", M1::default());
     s.mesh("cube", grey, Vec3::ZERO, Quat::IDENTITY, Vec3::ONE);
     environment(&mut s, true);
     s.camera(Vec3::new(0.0, 0.0, 4.0), Vec3::ZERO, Camera::default());

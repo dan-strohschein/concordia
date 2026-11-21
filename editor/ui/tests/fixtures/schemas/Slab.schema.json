@@ -1,0 +1,287 @@
+{
+  "$defs": {
+    "Fuzz": {
+      "additionalProperties": false,
+      "description": "Fuzz: a Charlie sheen lobe over the slab.",
+      "properties": {
+        "color": {
+          "description": "Sheen color (its maximum is the fuzz amount).",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-concordia-widget": "color"
+        },
+        "roughness": {
+          "description": "Perceptual sheen roughness.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "color",
+        "roughness"
+      ],
+      "title": "Fuzz",
+      "type": "object",
+      "x-concordia-type": "Fuzz"
+    },
+    "Haze": {
+      "additionalProperties": false,
+      "description": "Haze: a second specular lobe sharing the slab's F0.",
+      "properties": {
+        "roughness": {
+          "description": "Perceptual roughness of the second lobe.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "weight": {
+          "description": "Weight of the second lobe.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "roughness",
+        "weight"
+      ],
+      "title": "Haze",
+      "type": "object",
+      "x-concordia-type": "Haze"
+    },
+    "Subsurface": {
+      "additionalProperties": false,
+      "description": "Subsurface scattering: wrapped diffuse per channel from the mean free path.",
+      "properties": {
+        "mean_free_path": {
+          "description": "Mean free path per channel, in metres (0..0.1).",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array"
+        }
+      },
+      "required": [
+        "mean_free_path"
+      ],
+      "title": "Subsurface",
+      "type": "object",
+      "x-concordia-type": "Subsurface"
+    },
+    "ThinFilm": {
+      "additionalProperties": false,
+      "description": "A thin dielectric film on the interface (soap bubbles, oil, anodized metal).",
+      "properties": {
+        "ior": {
+          "description": "Film index of refraction.",
+          "maximum": 3.0,
+          "minimum": 1.0,
+          "type": "number"
+        },
+        "thickness_nm": {
+          "description": "Film thickness in nanometres.",
+          "maximum": 2000.0,
+          "minimum": 0.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "thickness_nm",
+        "ior"
+      ],
+      "title": "ThinFilm",
+      "type": "object",
+      "x-concordia-type": "ThinFilm"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A slab: an interface (specular) over a medium (diffuse), with optional features.",
+  "properties": {
+    "base_color": {
+      "description": "Linear base color; alpha is the slab's opacity.",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 4,
+      "minItems": 4,
+      "type": "array",
+      "x-concordia-widget": "color"
+    },
+    "base_color_texture": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Asset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+          "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+          "type": "string"
+        }
+      ],
+      "description": "Base color texture (sRGB)."
+    },
+    "emissive": {
+      "description": "Linear emissive color.",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array",
+      "x-concordia-widget": "color"
+    },
+    "emissive_strength": {
+      "description": "Emissive multiplier.",
+      "maximum": 1000000.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "emissive_texture": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Asset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+          "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+          "type": "string"
+        }
+      ],
+      "description": "Emissive texture (sRGB)."
+    },
+    "fuzz": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/Fuzz"
+        }
+      ],
+      "description": "A sheen lobe for cloth and dust."
+    },
+    "haze": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/Haze"
+        }
+      ],
+      "description": "A second, blended specular lobe."
+    },
+    "metallic": {
+      "description": "Metalness 0..1.",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "metallic_roughness_texture": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Asset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+          "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+          "type": "string"
+        }
+      ],
+      "description": "Metallic (B) and roughness (G) texture (linear)."
+    },
+    "normal_scale": {
+      "description": "Normal map strength.",
+      "maximum": 10.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "normal_texture": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Asset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+          "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+          "type": "string"
+        }
+      ],
+      "description": "Tangent-space normal map (linear)."
+    },
+    "occlusion_strength": {
+      "description": "Occlusion strength.",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "occlusion_texture": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Asset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+          "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+          "type": "string"
+        }
+      ],
+      "description": "Ambient occlusion texture (R, linear)."
+    },
+    "roughness": {
+      "description": "Perceptual roughness 0..1.",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "specular": {
+      "description": "Dielectric specular 0..1 (F0 = 0.08 × specular; 0.5 is F0 0.04).",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "subsurface": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/Subsurface"
+        }
+      ],
+      "description": "Light scattering under the surface (a forward approximation)."
+    },
+    "thin_film": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/ThinFilm"
+        }
+      ],
+      "description": "An interference film on the interface."
+    },
+    "transmittance": {
+      "description": "Light passing through the slab's medium at normal incidence (matters above another node).",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array",
+      "x-concordia-widget": "color"
+    }
+  },
+  "title": "Slab",
+  "type": "object",
+  "x-concordia-type": "Slab"
+}

@@ -215,7 +215,11 @@ impl AssetDb {
             cached,
             sub_assets: sidecar.sub_assets.clone(),
         };
-        self.keys.insert(sidecar.id, report.key);
+        if let Some(previous) = self.keys.insert(sidecar.id, report.key)
+            && previous != report.key
+        {
+            *self.generations.entry(sidecar.id).or_default() += 1;
+        }
         self.memory.forget(sidecar.id);
         self.records
             .insert(sidecar.id, Record { path: rel, sidecar });
@@ -429,12 +433,20 @@ impl AssetDb {
         self.load_as(reference, kind)
     }
 
+    /// The id of the asset whose source is `rel` (project-relative), if it has been imported.
+    pub fn id_at(&self, rel: &Path) -> Option<AssetId> {
+        self.records
+            .iter()
+            .find(|(_, r)| r.path == rel)
+            .map(|(id, _)| *id)
+    }
+
     /// Where an asset's source lives (project-relative).
     pub fn path_of(&self, id: AssetId) -> Option<&Path> {
         self.records.get(&id).map(|r| r.path.as_path())
     }
 
-    /// Bumped each time hot reload re-imports the asset.
+    /// Bumped each time an import finds the asset's content (source or settings) changed.
     pub fn generation(&self, id: AssetId) -> u64 {
         self.generations.get(&id).copied().unwrap_or(0)
     }
@@ -455,10 +467,7 @@ impl AssetDb {
         let mut reloaded = Vec::new();
         for (id, path) in touched {
             match self.import(&path) {
-                Ok(_) => {
-                    *self.generations.entry(id).or_default() += 1;
-                    reloaded.push(id);
-                }
+                Ok(_) => reloaded.push(id),
                 Err(e) => {
                     tracing::warn!(target: "concordia::assets", path = %path.display(), error = %e, "re-import failed")
                 }
@@ -482,7 +491,7 @@ impl AssetDb {
 }
 
 /// A project-relative path without `..`, roots or prefixes.
-fn relative(path: &Path) -> Result<PathBuf, AssetError> {
+pub(crate) fn relative(path: &Path) -> Result<PathBuf, AssetError> {
     let ok = !path.as_os_str().is_empty()
         && path
             .components()

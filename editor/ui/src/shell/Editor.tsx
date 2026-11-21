@@ -25,6 +25,12 @@ const title: React.CSSProperties = { padding: "3px 8px", background: "#2d2d2d", 
 
 export function Editor({ session }: { session: EditorSession }) {
   const [selected, setSelected] = useState<string>();
+  // A material picked in the FileSystem dock; selecting an entity shows the entity again.
+  const [material, setMaterial] = useState<string>();
+  const selectEntity = useCallback((id: string | undefined) => {
+    setMaterial(undefined);
+    setSelected(id);
+  }, []);
   const [world, setWorld] = useState<"edit" | "play">("edit");
   const scene = useSceneMenu(session);
   const [shown, setShown] = useState<DockSet>(ALL_DOCKS);
@@ -135,13 +141,18 @@ export function Editor({ session }: { session: EditorSession }) {
             aria-label="Scene dock"
           >
             <div style={title}>Scene</div>
-            <Outliner session={session} selected={selected} onSelect={setSelected} />
+            <Outliner session={session} selected={selected} onSelect={selectEntity} />
           </section>
         )}
         {shown.FileSystem && (
           <section style={{ ...dock, borderTop: "1px solid #111" }} aria-label="FileSystem dock">
             <div style={title}>FileSystem</div>
-            <FileSystem session={session} onOpenScene={scene.openScene} />
+            <FileSystem
+              session={session}
+              onOpenScene={scene.openScene}
+              onSelectMaterial={setMaterial}
+              selected={material}
+            />
           </section>
         )}
       </div>
@@ -150,7 +161,7 @@ export function Editor({ session }: { session: EditorSession }) {
           session={session}
           world={world}
           selected={selected}
-          onSelect={setSelected}
+          onSelect={selectEntity}
           grid={grid}
           onToggleGrid={() => setGrid((g) => !g)}
         />
@@ -159,13 +170,13 @@ export function Editor({ session }: { session: EditorSession }) {
         {shown.Inspector && (
           <section style={dock} aria-label="Inspector dock">
             <div style={title}>Inspector</div>
-            <Inspector session={session} entity={selected} />
+            <Inspector session={session} entity={selected} material={material} />
           </section>
         )}
         {shown["Agent Activity"] && (
           <section style={{ ...dock, borderTop: "1px solid #111" }} aria-label="Agent Activity dock">
             <div style={title}>Agent Activity</div>
-            <Activity session={session} onSelect={setSelected} studio={studio} />
+            <Activity session={session} onSelect={selectEntity} studio={studio} />
           </section>
         )}
         <TeamDesk session={session} team={team} shown={shown["Team Questions"]} onReveal={revealQuestions} />

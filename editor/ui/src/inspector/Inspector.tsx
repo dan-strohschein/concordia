@@ -7,6 +7,7 @@ import type { EditorSession } from "../engine/session";
 import { AddComponent } from "./AddComponent";
 import { removeComponent } from "./components";
 import { ValueEditor } from "./fields";
+import { MaterialInspector } from "./MaterialInspector";
 import { label, widgetFor, type Widget } from "./widgets";
 
 interface Section {
@@ -27,7 +28,20 @@ async function load(session: EditorSession, entity: string): Promise<Section[]> 
   );
 }
 
-export function Inspector({ session, entity }: { session: EditorSession; entity: string | undefined }) {
+/** Shows the selected material file if there is one, otherwise the selected entity's components. */
+export function Inspector(props: {
+  session: EditorSession;
+  entity: string | undefined;
+  material?: string | undefined;
+}) {
+  return props.material === undefined ? (
+    <EntityInspector session={props.session} entity={props.entity} />
+  ) : (
+    <MaterialInspector key={props.material} session={props.session} path={props.material} />
+  );
+}
+
+function EntityInspector({ session, entity }: { session: EditorSession; entity: string | undefined }) {
   const [sections, setSections] = useState<Section[]>([]);
   const [error, setError] = useState<string>();
   // Coalesced: a drag's stream of change events costs two fetches, not one per event.

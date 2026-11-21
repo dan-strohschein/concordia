@@ -29,7 +29,8 @@ The Concordia editor (ADR-0004, ADR-0043): React panels in a Tauri v2 shell arou
 - **One gesture is one committed edit:** Enter, blur, toggle or pick. Typing alone never calls the engine, and Escape reverts.
 - **Live updates come from `events.subscribe`** (`edit`, `scene`, `sim`, and `studio` in Studio projects). Panels refresh what an event names; they never poll for edits (only `log.tail`).
 - **Types in `src/api/generated/` come from the engine** (`just editor-schemas`). Never edit them; CI fails when they are stale.
-- **The inspector is schema-driven** (`src/inspector/widgets.ts`); unknown shapes fall back to a JSON editor and never crash.
+- **The inspector is schema-driven** (`src/inspector/widgets.ts`); unknown shapes fall back to a JSON editor and never crash. Struct-variant enums (`oneOf` of one-key objects, e.g. `MaterialNode`, `AlphaMode`, `Projection`) get a variant picker plus the variant's fields; maps (`additionalProperties` without `properties`, e.g. `Material.nodes`) get rename, remove and add; an empty option gets an Add button with `defaultValue` (required fields only, so the engine fills its own defaults).
+- **Materials (M2 2.3c):** clicking a `.material.ron` in the FileSystem dock shows it in the Inspector (`MaterialInspector`), read with `material.get` and saved with `material.set` as `human:local`. An edit the engine refuses stays as a draft with the engine's reason and a Revert button until the material is valid again (draft until valid; the author's choice), so multi-step changes such as renaming a node and its references work. An `asset` event for the shown path reloads it, and any `asset` event refreshes the FileSystem dock; the viewport redraws on every event.
 
 ## Rules (ADR-0047)
 - **The viewport belongs to the engine:** input, camera, picking, gizmo drags and everything drawn in it (selection, gizmo, grid: `viewport.overlays`). Never draw over the viewport from the page.

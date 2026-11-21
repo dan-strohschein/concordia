@@ -2,8 +2,7 @@
 
 mod common;
 
-use common::{Scene, golden, pixel, renderer};
-use concordia_assets::MaterialData;
+use common::{M1, Scene, golden, pixel, renderer};
 use concordia_core::math::{EulerRot, Quat, Vec3};
 use concordia_render::shadow::CascadeSettings;
 use concordia_render::{Camera, DirectionalLight, Image, Msaa, Projection, Renderer, Tonemap};
@@ -28,11 +27,11 @@ fn scene(
     let mut s = Scene::new();
     let grey = s.material(
         "grey",
-        MaterialData {
+        M1 {
             base_color: [0.7, 0.7, 0.7, 1.0],
             metallic: 0.0,
             roughness: 0.9,
-            ..MaterialData::default()
+            ..M1::default()
         },
     );
     s.mesh(

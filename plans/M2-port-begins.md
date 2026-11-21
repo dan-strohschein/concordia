@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a and 2.3b (2026-11-20) done; 2.3c next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20) done; 2.3d next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -658,7 +658,7 @@ Refined against the code as built. M1 has one flat `MaterialData` (in `concordia
   - `[render] closure_budget` (lowering only), and `render.stats` reporting downgrades;
   - view modes for closure count and per feature.
   - Tests: `shader_matches_cpu_reference_per_feature` (a sphere rendered unlit-by-IBL against `eval_slab`), a golden per feature, `closure_budget_downgrades_gracefully_and_reports_it` end to end, `project_cannot_raise_the_closure_budget`, and the view-mode goldens.
-- **2.3c Migration, editor, Studio:**
+- **2.3c Migration, editor, Studio** (done, below):
   - Tests: `m1_pbr_materials_migrate_to_one_slab_unchanged_in_golden` (every M1 golden re-run through one slab within its tolerance; any that moves is reviewed), `material_get_and_set_roundtrip_canonical_text`, `material_set_is_attributed_and_not_journaled`, inspector widget tests for struct-variant enums and named-node maps, a Playwright test editing a slab, and the tech-artist scope and skill tests with sync snapshots;
   - `MaterialData` is retired, and glTF materials import as one slab.
 - **2.3d FBX:** `ufbx-sys` and `concordia-import-fbx` (meshes, skins, clips into the glTF importer's asset types), licensing through `just deny`, and fixtures from a script. Tests: the five FBX tests of the older 2.3 section.
@@ -790,6 +790,87 @@ None passed at once.
 - `material.get` / `set`, the inspector, Studio and retiring `MaterialData` (2.3c); FBX (2.3d);
 - screen-space subsurface and code generation per material (M4);
 - a benchmark for layered materials under many lights (`many_lights` measures one-slab materials).
+
+### Phase 2.3c As built (2026-11-20, ADR-0068)
+**Reconciled with the code as built:**
+- **Hot reload did not reach the renderer.** The render module sent each asset to the render thread once and never again, so a saved material kept its old look in every capture and in the viewport; 2.3b's program cache refits only when new content arrives. Now `AssetDb::import` bumps an asset's generation whenever it finds new content (comparing import keys, so going back to an earlier version counts too), and the render module re-sends every material whose generation moved since it was sent (with any textures it now needs). Meshes and textures are still sent once (a follow-up).
+- **`schema_get {"name": "MaterialData"}`, which the tech artist's prompt and skill used, never worked:** neither material type was registered. `Material` is now registered (not as a component), so `schema.get {"name": "Material"}` works, and the editor uses it.
+- **The editor had no way to hear about file writes.** A new event topic, `asset` (`path`, `id`, `actor`), is published by `material.set` and `asset.import`. The editor subscribes to it: the viewport redraws, an Inspector showing that material reloads (including when an agent edits it through a shared engine), and the FileSystem dock refreshes.
+- **Ranges are checked twice.** Reflected ranges (`roughness`, `mix`, ...) are refused while the params are decoded, and element ranges (`base_color[0]`) and structure errors by `Material::validate`. Both are `InvalidParams` (−32602), naming the node and field: a pointer such as `/material/nodes/coat/Slab/roughness`, plus `data.field` and `data.node` from validation. No new error code.
+- **`material.set` creates files too** (my default, unasked): it validates, writes canonical text only when it changed (`written`), imports and returns the id. In the Studio, the server checks its path against the role's write paths like `scene_save` and `asset_import`, so a role can't write outside them or under a human-only gate.
+- **The migration test** draws M1 *text*. The render tests' M1 materials are written by a test-only `M1` writer as M1 text and read back through `read_material`, so every M1 golden goes through the real migration path. The example project's three materials stay in M1 text on purpose, so the M1 gate golden checks it too.
+- **Inspector structure edits (author's decision): draft until valid.** Every valid edit saves at once; an edit the engine refuses stays on screen as a draft with the engine's reason and a Revert button until the material is valid again. That makes multi-step changes possible (rename a node, then its references).
+
+**Engine:**
+- `concordia-assets`:
+  - `MaterialGet` / `MaterialSet` (`material_method.rs`; `MaterialGetParams`, `MaterialSetParams` and results), in the assets module;
+  - `MaterialFormat`, `read_material_with_format`, `Material::from_slab`, `MaterialError::{field, node}`, `AssetDb::id_at`, generation on content change;
+  - `MaterialData`, `Material::from_pbr` and `From<MaterialData>` removed; M1's shape is the private `material_m1::M1Material` (M1's fields and defaults), read only.
+- `concordia-import-gltf`: builds `Slab` directly (`slab`, `alpha_mode`); the artifacts are byte-identical, so it stays at version 2.
+- `concordia-render`: `RenderState::material_generations`; `ship` re-sends stale materials (`assets::reload_materials`, sharing `add_material` with `resolve`).
+- `concordia-api`: `Topic::asset`.
+- `concordia-mcp`: `material.set` joins the server's path checks.
+- Bench: `many_lights` also measures layered floors (2 and 3 closures).
+
+**Editor:**
+- `widgets.ts`: `variant` (struct-variant enums: `MaterialNode`, `AlphaMode`, and `Camera.projection`, which fell back to raw JSON before) and `map` (named entries: `Material.nodes`) widgets; `defaultValue` (required fields only, numbers at their minimum).
+- `fields.tsx`: `VariantEditor` (pick the variant, edit its fields), `MapEditor` (rename, remove, add) and an Add button for empty options (haze, fuzz, ...).
+- `MaterialInspector` (draft until valid), shown by `Inspector` when a material is selected. Clicking a `.material.ron` in the FileSystem dock selects it, and selecting an entity shows the entity again.
+
+**Studio (D8):**
+- The tech artist's scope gains `material_get` and `material_set`: 23 tools, about 19.8k tokens. On main it was 14.7k: 2.3b's view modes and stats fields had already grown it from ADR-0073's 14.0k, and the level designer from 20.4k to 21.1k and QA from 17.6k to 18.3k, unrecorded. Every enabled role stays under 22k.
+- Its prompt reads and writes materials with the tools, checks `downgraded_materials`, and uses `schema_get {"name": "Material"}`.
+- `concordia-add-material` now teaches the layered model: nodes, operators, slab fields and features, assignment, and the closure budget and views.
+- The agent snapshot and the M3S gate snapshot change only the tech artist's `tools:` line and the edited prompt lines (reviewed).
+
+**Tests:**
+- `concordia-assets/tests/material_api.rs` (9); `importing_changed_content_bumps_the_generation_once`; `m1_defaults_are_kept_for_omitted_fields` and `m1_text_keeps_every_m1_field` (replacing `from_pbr_keeps_every_m1_field`).
+- `concordia-render`: `a_saved_material_redraws_with_its_new_content` (`material.set`, then a file edit and `asset.import`).
+- `concordia-mcp`: `agent_edits_a_slab_over_mcp` and `server_rejects_material_writes_outside_the_role_paths`.
+- Studio: `tech_artist_edits_materials_with_the_material_tools_and_skill` and `material_skill_uses_the_real_material_tools_and_arguments` (every example call parses as the real params, and every example material validates).
+- Editor: three widget tests, `material-inspector.test.tsx` (8), and the Playwright test `edit_a_slab_from_the_inspector_and_follow_an_agents_edit`.
+- **The plan's tests, as built:**
+  - `m1_pbr_materials_migrate_to_one_slab_unchanged_in_golden`: the sphere grid from M1 text is byte-identical to the same slabs written by hand, and within tolerance of the approved golden. Every other M1 golden also runs from M1 text;
+  - `material_get_and_set_roundtrip_canonical_text`;
+  - `material_set_is_attributed_and_not_journaled` (the history is unchanged, nothing to undo, the scene stays clean, and "material saved" carries the actor, path and id);
+  - the inspector widget tests for struct-variant enums and named-node maps;
+  - the Playwright test editing a slab;
+  - the tech artist's scope and skill tests, and the sync and M3S snapshots.
+
+**Red run:** every new test failed first for the right reason:
+- the stub methods said `not implemented yet`;
+- the generation never moved;
+- the capture stayed red after `material.set`, and went blue only once re-sending was in;
+- the material path was written outside the role's paths;
+- there were no material tools in scope, no skill examples and no variant or map widgets;
+- there was no material inspector.
+
+These passed at once:
+- `material_methods_have_generated_schemas`: it checks the declarations the stubs already had (a guard);
+- `m1_pbr_materials_migrate_to_one_slab_unchanged_in_golden`: the migration was built in 2.3a (a guard, mutation-checked below);
+- `agent_edits_a_slab_over_mcp` and the Playwright test: integration checks written after the parts they join. The Playwright test fails when the Inspector's material is unwired.
+
+**Mutation checks:**
+- The migration dropping roughness is caught by the migration golden test and the import test.
+- M1's default metal set to 0 is caught only by `m1_defaults_are_kept_for_omitted_fields`: the test writer writes every field, so the goldens don't see defaults (the example project's files do, through the M1 gate).
+- Never re-sending, and never bumping the generation, are each caught by `a_saved_material_redraws_with_its_new_content`.
+- `migrated` always false, and `asset.import` not publishing, are each caught.
+- In the editor, dropping the draft on a refusal is caught by both draft tests, and no variant widget by eight tests.
+
+**Changed deliberately during green (my test mistakes):**
+- Schema properties are sorted, so `Vertical` lists `bottom` before `top`.
+- `mix_texture` is optional, so it isn't in the default.
+- f32 values widen over JSON (0.2000000029), so they are compared within 1e-6.
+- The old expectation that `Camera.projection` is raw JSON became the variant widget (the snapshot diff, reviewed, changes only `projection`).
+- The session's subscription test gained `asset`.
+
+**Goldens:** none new, none changed. Every M1 golden, now drawn from M1 text, and the gate golden `gates/m1_physics_stack` pass against the 2.3b baseline unchanged, so nothing was blessed.
+
+**Left open by 2.3b, folded in:**
+- **Layered materials under many lights** (`many_lights`, M3 Pro, the same day, three alternating runs). One slab: 2.94–3.03 ms median, against main's 2.96–2.98 ms, so it is unchanged (no shader change). A clear coat (2 closures): **23.4–23.5 ms**. A coat over a fuzzy mix (3 closures): **52.5–54.5 ms**. That is about 8× and 18× one slab, because every light runs the whole program through the thread-private closure array with light-side transmittance. A full screen of a layered material under 1,024 lights is far over budget: **follow-up** (per-feature pipelines or a cheaper layered path per light; M4's GPU work at the latest).
+- **The Metal miscompile is reduced** to `tools/repros/metal-discard-after-private-array`: about 30 lines of hand-written MSL and a Swift host, no Slang. A fragment whose alpha (0.78) is read back from a thread-private struct array is discarded below a cutoff of 0.5; the same alpha read from the buffer is drawn, and writing the compared values out shows them right. Slang's MSL for the engine's shader is equivalent and correct, so it is Apple's compiler (macOS 26.2, 25C56, M3 Pro). Trying the reductions also showed that the trigger is reading the alpha back from the array: 2.3b's mask test placed after the stores, but reading `program_alpha` from the rows, passes. The guarded mask-first order is unchanged. **To do:** file it with Apple (Feedback Assistant), which is the author's call.
+
+**Not in this phase:** hot reload of meshes and textures in the renderer; a node-graph view (M4); FBX (2.3d).
 
 ### Effort (re-estimated)
 | Phase | Estimate |

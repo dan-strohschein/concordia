@@ -2,8 +2,8 @@
 //! format migrated to one slab, and validation errors that name the node or field.
 
 use concordia_assets::{
-    AlphaMode, Fuzz, Material, MaterialData, MaterialError, MaterialNode, SURFACE, Slab,
-    read_material, write_material,
+    AlphaMode, AssetRef, Fuzz, Material, MaterialError, MaterialFormat, MaterialNode, SURFACE,
+    Slab, read_material, read_material_with_format, write_material,
 };
 use concordia_reflect::{Reflect, schema_for};
 
@@ -71,59 +71,72 @@ fn m1_material_file_reads_as_one_slab() {
     assert_eq!((s.metallic, s.roughness, s.specular), (0.25, 0.7, 0.5));
     assert_eq!((s.emissive, s.emissive_strength), ([1.0, 0.5, 0.0], 3.0));
     assert_eq!(s.transmittance, [0.0; 3], "an M1 surface is opaque");
-    assert_eq!(material, Material::from_pbr(&read_m1(m1)));
-}
-
-fn read_m1(text: &str) -> MaterialData {
-    concordia_scene::read_document(text).unwrap()
+    assert_eq!(
+        read_material_with_format(m1).unwrap().1,
+        MaterialFormat::M1,
+        "the format is reported"
+    );
 }
 
 #[test]
-fn from_pbr_keeps_every_m1_field() {
-    let tex = |n: u8| {
+fn m1_defaults_are_kept_for_omitted_fields() {
+    let s = slab(&read_material("(metallic: 0.0)").unwrap(), SURFACE);
+    assert_eq!(s.base_color, [1.0; 4], "M1's white, not the slab's grey");
+    assert_eq!(s.roughness, 1.0, "M1's full roughness");
+    let s = slab(&read_material("(roughness: 0.3)").unwrap(), SURFACE);
+    assert_eq!(s.metallic, 1.0, "M1's default metal");
+    assert_eq!(
+        read_material_with_format("(nodes: {}, root: \"x\")").map(|(_, f)| f),
+        Err(MaterialError::MissingRoot {
+            root: "x".into(),
+            known: String::new()
+        }),
+        "layered text is never read as M1"
+    );
+}
+
+#[test]
+fn m1_text_keeps_every_m1_field() {
+    let tex = |n: u8| format!("Some(\"asset:0193a1f4-0000-7000-8000-0000000000{n:02}\")");
+    let r = |n: u8| -> Option<AssetRef> {
         Some(
             format!("asset:0193a1f4-0000-7000-8000-0000000000{n:02}")
                 .parse()
                 .unwrap(),
         )
     };
-    let pbr = MaterialData {
-        base_color: [0.1, 0.2, 0.3, 0.4],
-        base_color_texture: tex(1),
-        metallic: 0.6,
-        roughness: 0.2,
-        metallic_roughness_texture: tex(2),
-        normal_texture: tex(3),
-        normal_scale: 0.5,
-        occlusion_texture: tex(4),
-        occlusion_strength: 0.7,
-        emissive: [0.9, 0.8, 0.7],
-        emissive_strength: 2.0,
-        emissive_texture: tex(5),
-        alpha_mode: AlphaMode::Blend,
-        double_sided: true,
-        unlit: true,
-    };
-    let material = Material::from_pbr(&pbr);
+    let m1 = format!(
+        "(base_color: (0.1, 0.2, 0.3, 0.4), base_color_texture: {}, metallic: 0.6, roughness: 0.2, \
+         metallic_roughness_texture: {}, normal_texture: {}, normal_scale: 0.5, occlusion_texture: {}, \
+         occlusion_strength: 0.7, emissive: (0.9, 0.8, 0.7), emissive_strength: 2.0, emissive_texture: {}, \
+         alpha_mode: Blend, double_sided: true, unlit: true)",
+        tex(1),
+        tex(2),
+        tex(3),
+        tex(4),
+        tex(5)
+    );
+    let (material, format) = read_material_with_format(&m1).unwrap();
+    assert_eq!(format, MaterialFormat::M1);
     assert_eq!(
         (material.alpha_mode, material.double_sided, material.unlit),
         (AlphaMode::Blend, true, true)
     );
     let s = slab(&material, SURFACE);
     let expected = Slab {
-        base_color: pbr.base_color,
-        base_color_texture: pbr.base_color_texture.clone(),
+        base_color: [0.1, 0.2, 0.3, 0.4],
+        base_color_texture: r(1),
         metallic: 0.6,
         specular: 0.5,
         roughness: 0.2,
-        metallic_roughness_texture: pbr.metallic_roughness_texture.clone(),
-        normal_texture: pbr.normal_texture.clone(),
+        metallic_roughness_texture: r(2),
+        normal_texture: r(3),
         normal_scale: 0.5,
-        occlusion_texture: pbr.occlusion_texture.clone(),
+        occlusion_texture: r(4),
         occlusion_strength: 0.7,
-        emissive: pbr.emissive,
+        emissive: [0.9, 0.8, 0.7],
         emissive_strength: 2.0,
-        emissive_texture: pbr.emissive_texture.clone(),
+        emissive_texture: r(5),
         transmittance: [0.0; 3],
         haze: None,
         fuzz: None,

@@ -15,7 +15,7 @@ use concordia_shaders::{SlangToolchain, SlangcCompiler};
 use concordia_terra::SimClock;
 use serde::{Deserialize, Serialize};
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use concordia_assets::AssetRef;
 
@@ -70,6 +70,8 @@ pub(crate) struct RenderState {
     surface: bool,
     /// Meshes and textures already sent to the render thread (it keeps them).
     shipped: BTreeSet<AssetRef>,
+    /// The asset generation of each imported material when it was sent (re-sent when it moves).
+    material_generations: BTreeMap<AssetRef, u64>,
     /// What the render thread last saw of the edit and play worlds.
     scenes: [SceneCache; 2],
     /// Recent native-viewport frames (for `viewport.stats`), keyed by frame number.
@@ -149,6 +151,7 @@ impl EngineModule for RenderModule {
             thread: None,
             surface: false,
             shipped: BTreeSet::new(),
+            material_generations: BTreeMap::new(),
             scenes: Default::default(),
             frames: FrameLog::default(),
             next_frame: Arc::default(),
@@ -359,15 +362,31 @@ fn forget_scene(engine: &mut Engine, slot: usize) {
     }
 }
 
-/// The asset data `world` needs that the render thread has not been sent yet.
+/// The asset data `world` needs that the render thread has not been sent yet, plus imported
+/// materials whose content changed since they were sent (hot reload, `material.set`).
 fn ship(engine: &mut Engine, world: &RenderWorld) -> Result<MemoryAssets, ApiError> {
-    let shipped = engine
+    let (shipped, mut generations) = engine
         .state_mut::<RenderState>()
-        .map(|s| std::mem::take(&mut s.shipped))
+        .map(|s| {
+            (
+                std::mem::take(&mut s.shipped),
+                std::mem::take(&mut s.material_generations),
+            )
+        })
         .unwrap_or_default();
     let held = |r: &AssetRef| shipped.contains(r);
     let resolved = match engine.state_mut::<AssetDb>() {
-        Some(db) => crate::resolve(world, db, &held),
+        Some(db) => {
+            let stale = stale_materials(&generations, db);
+            crate::resolve(world, db, &held).and_then(|mut assets| {
+                let changed = crate::assets::reload_materials(&stale, db, &|r| {
+                    held(r) || assets.contains(r)
+                })?;
+                assets.merge(changed);
+                note_generations(&assets, db, &mut generations);
+                Ok(assets)
+            })
+        }
         None => crate::resolve(world, &mut MemoryAssets::default(), &held),
     };
     let mut shipped = shipped;
@@ -376,8 +395,34 @@ fn ship(engine: &mut Engine, world: &RenderWorld) -> Result<MemoryAssets, ApiErr
     }
     if let Some(state) = engine.state_mut::<RenderState>() {
         state.shipped = shipped;
+        state.material_generations = generations;
     }
     resolved.map_err(api_error)
+}
+
+/// Sent materials whose asset was re-imported with new content.
+fn stale_materials(generations: &BTreeMap<AssetRef, u64>, db: &AssetDb) -> Vec<AssetRef> {
+    generations
+        .iter()
+        .filter(|(r, sent)| asset_id(r).is_some_and(|id| db.generation(id) != **sent))
+        .map(|(r, _)| r.clone())
+        .collect()
+}
+
+/// Records the generation of every imported material in `assets`.
+fn note_generations(assets: &MemoryAssets, db: &AssetDb, into: &mut BTreeMap<AssetRef, u64>) {
+    for (reference, _) in assets.materials() {
+        if let Some(id) = asset_id(reference) {
+            into.insert(reference.clone(), db.generation(id));
+        }
+    }
+}
+
+fn asset_id(reference: &AssetRef) -> Option<concordia_core::id::AssetId> {
+    match reference {
+        AssetRef::Asset { id, .. } => Some(*id),
+        AssetRef::Builtin { .. } => None,
+    }
 }
 
 /// Deterministic PNG bytes (RGBA8, default compression).

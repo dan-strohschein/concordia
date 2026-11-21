@@ -7,7 +7,7 @@ use std::path::Path;
 
 use common::Project;
 use concordia_assets::{
-    AssetError, AssetRef, Builtin, BuiltinAsset, Material, MaterialData, MaterialNode, SURFACE,
+    AssetError, AssetRef, Builtin, BuiltinAsset, Material, MaterialNode, SURFACE, Slab,
     read_material,
 };
 
@@ -26,11 +26,11 @@ fn material_ron_imports_as_a_material_with_a_stable_id() {
     let material = p.db.load_material(&reference).unwrap();
     assert_eq!(
         material,
-        Material::from_pbr(&MaterialData {
+        Material::from_slab(Slab {
             base_color: [0.8, 0.1, 0.1, 1.0],
             metallic: 0.0,
             roughness: 0.7,
-            ..MaterialData::default()
+            ..Slab::default()
         }),
         "M1 text imports as one slab"
     );
@@ -110,10 +110,11 @@ fn the_builtin_default_material_is_m1s_white_dielectric_as_one_slab() {
         panic!("a built-in material");
     };
     assert_eq!(material.root, SURFACE);
-    let m1 = MaterialData {
+    let white = Slab {
+        base_color: [1.0; 4],
         metallic: 0.0,
         roughness: 0.5,
-        ..MaterialData::default()
+        ..Slab::default()
     };
-    assert_eq!(material, Material::from_pbr(&m1));
+    assert_eq!(material, Material::from_slab(white));
 }

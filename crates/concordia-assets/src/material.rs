@@ -6,7 +6,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use concordia_reflect::Reflect;
 use serde::{Deserialize, Serialize};
 
-use crate::data::{AlphaMode, MaterialData};
+use crate::data::AlphaMode;
+use crate::material_m1::M1Material;
 use crate::reference::AssetRef;
 
 /// A layered material: named nodes, the root node, and how the surface is drawn.
@@ -211,6 +212,28 @@ pub enum MaterialError {
     Parse(String),
 }
 
+impl MaterialError {
+    /// The value at fault, as `node.field[index]` (range errors).
+    pub fn field(&self) -> Option<&str> {
+        match self {
+            Self::OutOfRange { field, .. } => Some(field),
+            _ => None,
+        }
+    }
+
+    /// The node at fault (reference, reachability, name and range errors).
+    pub fn node(&self) -> Option<&str> {
+        match self {
+            Self::MissingNode { from, .. } => Some(from),
+            Self::Unreachable { node, .. } => Some(node),
+            Self::BadName(name) => Some(name),
+            Self::Cycle { path } => path.first().map(String::as_str),
+            Self::OutOfRange { field, .. } => field.split('.').next(),
+            Self::MissingRoot { .. } | Self::Parse(_) => None,
+        }
+    }
+}
+
 impl Default for Material {
     fn default() -> Self {
         Self {
@@ -220,12 +243,6 @@ impl Default for Material {
             double_sided: false,
             unlit: false,
         }
-    }
-}
-
-impl From<MaterialData> for Material {
-    fn from(pbr: MaterialData) -> Self {
-        Self::from_pbr(&pbr)
     }
 }
 
@@ -293,29 +310,11 @@ impl Material {
             .try_for_each(|(name, node)| node.check_ranges(name))
     }
 
-    /// The one-slab material equal to an M1 metallic-roughness material.
-    pub fn from_pbr(pbr: &MaterialData) -> Self {
-        let slab = Slab {
-            base_color: pbr.base_color,
-            base_color_texture: pbr.base_color_texture.clone(),
-            metallic: pbr.metallic,
-            roughness: pbr.roughness,
-            metallic_roughness_texture: pbr.metallic_roughness_texture.clone(),
-            normal_texture: pbr.normal_texture.clone(),
-            normal_scale: pbr.normal_scale,
-            occlusion_texture: pbr.occlusion_texture.clone(),
-            occlusion_strength: pbr.occlusion_strength,
-            emissive: pbr.emissive,
-            emissive_strength: pbr.emissive_strength,
-            emissive_texture: pbr.emissive_texture.clone(),
-            ..Slab::default()
-        };
+    /// One slab named `surface`, opaque and single-sided.
+    pub fn from_slab(slab: Slab) -> Self {
         Self {
             nodes: BTreeMap::from([(SURFACE.to_owned(), MaterialNode::Slab(slab))]),
-            root: SURFACE.to_owned(),
-            alpha_mode: pbr.alpha_mode,
-            double_sided: pbr.double_sided,
-            unlit: pbr.unlit,
+            ..Self::default()
         }
     }
 
@@ -487,17 +486,31 @@ fn all_in_range(field: &str, values: &[f32], min: f32, max: f32) -> Result<(), M
         .try_for_each(|(i, v)| in_range(&format!("{field}[{i}]"), *v, min, max))
 }
 
+/// Which format a `.material.ron` file was written in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MaterialFormat {
+    /// The layered format (ADR-0068).
+    Layered,
+    /// M1's flat metallic-roughness format, migrated to one slab named `surface`.
+    M1,
+}
+
 /// Reads `.material.ron` text: the layered format, or an M1 flat material migrated to one slab.
 pub fn read_material(text: &str) -> Result<Material, MaterialError> {
-    let material = match concordia_scene::read_document::<Material>(text) {
-        Ok(material) => material,
-        Err(layered) => match concordia_scene::read_document::<MaterialData>(text) {
-            Ok(pbr) => Material::from_pbr(&pbr),
+    read_material_with_format(text).map(|(material, _)| material)
+}
+
+/// [`read_material`], also saying which format the text was in.
+pub fn read_material_with_format(text: &str) -> Result<(Material, MaterialFormat), MaterialError> {
+    let read = match concordia_scene::read_document::<Material>(text) {
+        Ok(material) => (material, MaterialFormat::Layered),
+        Err(layered) => match concordia_scene::read_document::<M1Material>(text) {
+            Ok(m1) => (m1.migrate(), MaterialFormat::M1),
             Err(_) => return Err(MaterialError::Parse(layered.to_string())),
         },
     };
-    material.validate()?;
-    Ok(material)
+    read.0.validate()?;
+    Ok(read)
 }
 
 /// Writes a material as canonical `.material.ron` text.

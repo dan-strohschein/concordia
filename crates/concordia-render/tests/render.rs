@@ -5,11 +5,11 @@ mod common;
 
 use std::f32::consts::FRAC_PI_4;
 
-use common::{Scene, golden, pixel, renderer, unlit};
-use concordia_assets::MaterialData;
+use common::{M1, Scene, golden, pixel, renderer, unlit};
+use concordia_assets::{Material, Slab};
 use concordia_core::math::{Quat, Vec3};
 use concordia_render::{
-    Camera, Msaa, Projection, RenderError, RenderRequest, RenderWorld, Tonemap,
+    Camera, Image, Msaa, Projection, RenderError, RenderRequest, RenderWorld, Tonemap,
 };
 
 fn clamp_camera(projection: Projection, msaa: Msaa) -> Camera {
@@ -48,19 +48,17 @@ fn unlit_cube_golden() {
     golden("unlit_cube", &image, 0.01);
 }
 
-#[test]
-fn pbr_sphere_grid_directional_golden() {
-    let Some(mut r) = renderer() else { return };
+/// 7×7 spheres from metal 0..1 (rows) and roughness 0..1 (columns) under the sun.
+fn sphere_grid(
+    r: &mut concordia_render::Renderer,
+    material: &dyn Fn(f32, f32) -> Material,
+) -> Image {
     let mut s = Scene::new();
     for row in 0..7 {
         for col in 0..7 {
-            let material = MaterialData {
-                base_color: [0.9, 0.5, 0.2, 1.0],
-                metallic: row as f32 / 6.0,
-                roughness: (col as f32 / 6.0).max(0.05),
-                ..MaterialData::default()
-            };
-            let m = s.material(&format!("m{row}{col}"), material);
+            let metallic = row as f32 / 6.0;
+            let roughness = (col as f32 / 6.0).max(0.05);
+            let m = s.material(&format!("m{row}{col}"), material(metallic, roughness));
             let at = Vec3::new(col as f32 - 3.0, row as f32 - 3.0, 0.0) * 1.1;
             s.mesh("sphere", m, at, Quat::IDENTITY, Vec3::splat(0.5));
         }
@@ -75,11 +73,47 @@ fn pbr_sphere_grid_directional_golden() {
         ..Camera::default()
     };
     s.camera(Vec3::new(0.0, 0.0, 10.0), Vec3::ZERO, camera);
+    s.render(r, 512, 512)
+}
+
+/// The grid's M1 materials, as M1 text.
+fn m1_grid(metallic: f32, roughness: f32) -> Material {
+    M1 {
+        base_color: [0.9, 0.5, 0.2, 1.0],
+        metallic,
+        roughness,
+        ..M1::default()
+    }
+    .into()
+}
+
+#[test]
+fn pbr_sphere_grid_directional_golden() {
+    let Some(mut r) = renderer() else { return };
     golden(
         "pbr_sphere_grid_directional",
-        &s.render(&mut r, 512, 512),
+        &sphere_grid(&mut r, &m1_grid),
         0.01,
     );
+}
+
+#[test]
+fn m1_pbr_materials_migrate_to_one_slab_unchanged_in_golden() {
+    let Some(mut r) = renderer() else { return };
+    let migrated = sphere_grid(&mut r, &m1_grid);
+    let authored = sphere_grid(&mut r, &|metallic, roughness| {
+        Material::from_slab(Slab {
+            base_color: [0.9, 0.5, 0.2, 1.0],
+            metallic,
+            roughness,
+            ..Slab::default()
+        })
+    });
+    assert!(
+        migrated.rgba == authored.rgba,
+        "M1 text draws exactly as the slab written by hand"
+    );
+    golden("pbr_sphere_grid_directional", &migrated, 0.01);
 }
 
 #[test]
@@ -88,20 +122,20 @@ fn orthographic_isometric_camera_golden() {
     let mut s = Scene::new();
     let grey = s.material(
         "grey",
-        MaterialData {
+        M1 {
             base_color: [0.6, 0.6, 0.6, 1.0],
             metallic: 0.0,
             roughness: 0.7,
-            ..MaterialData::default()
+            ..M1::default()
         },
     );
     let teal = s.material(
         "teal",
-        MaterialData {
+        M1 {
             base_color: [0.1, 0.6, 0.6, 1.0],
             metallic: 0.0,
             roughness: 0.5,
-            ..MaterialData::default()
+            ..M1::default()
         },
     );
     for x in -3i32..=3 {
@@ -161,11 +195,11 @@ fn ortho_and_perspective_agree_at_center_for_matching_framing() {
         let mut s = Scene::new();
         let m = s.material(
             "plane",
-            MaterialData {
+            M1 {
                 base_color: [0.5, 0.5, 0.5, 1.0],
                 metallic: 0.0,
                 roughness: 1.0,
-                ..MaterialData::default()
+                ..M1::default()
             },
         );
         s.mesh(
@@ -281,10 +315,10 @@ fn textured_plane(r: &mut concordia_render::Renderer, texels: Vec<u8>) -> concor
     let t = s.assets.insert_texture("t", texture);
     let m = s.material(
         "textured",
-        MaterialData {
+        M1 {
             base_color_texture: Some(t),
             unlit: true,
-            ..MaterialData::default()
+            ..M1::default()
         },
     );
     s.mesh(
@@ -348,11 +382,11 @@ fn capture_twice_without_change_is_byte_identical() {
     let mut s = Scene::new();
     let m = s.material(
         "m",
-        MaterialData {
+        M1 {
             base_color: [0.7, 0.7, 0.7, 1.0],
             metallic: 0.3,
             roughness: 0.4,
-            ..MaterialData::default()
+            ..M1::default()
         },
     );
     s.mesh("sphere", m, Vec3::ZERO, Quat::IDENTITY, Vec3::ONE);
@@ -476,12 +510,12 @@ fn gpu_tonemappers_match_the_cpu_reference() {
     }
 }
 
-fn translucent(color: [f32; 3], alpha: f32) -> MaterialData {
-    MaterialData {
+fn translucent(color: [f32; 3], alpha: f32) -> M1 {
+    M1 {
         base_color: [color[0], color[1], color[2], alpha],
         alpha_mode: concordia_assets::AlphaMode::Blend,
         unlit: true,
-        ..MaterialData::default()
+        ..M1::default()
     }
 }
 
@@ -532,11 +566,11 @@ fn alpha_mask_discards_below_cutoff() {
     let mut s = Scene::new();
     let masked = s.material(
         "masked",
-        MaterialData {
+        M1 {
             base_color: [1.0, 1.0, 1.0, 0.3],
             alpha_mode: concordia_assets::AlphaMode::Mask { cutoff: 0.5 },
             unlit: true,
-            ..MaterialData::default()
+            ..M1::default()
         },
     );
     s.mesh(

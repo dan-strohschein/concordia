@@ -27,7 +27,87 @@ exports[`schema_to_widget_maps_vec3_number_enum_color_assetref 1`] = `
       "min": -2147483648,
     },
     "projection": {
-      "kind": "json",
+      "kind": "variant",
+      "variants": [
+        {
+          "doc": "Perspective with a vertical field of view in radians.",
+          "inner": {
+            "fields": [
+              {
+                "doc": "Far plane distance (> near).",
+                "label": "Far",
+                "name": "far",
+                "optional": false,
+                "widget": {
+                  "integer": false,
+                  "kind": "number",
+                },
+              },
+              {
+                "doc": "Vertical field of view (radians).",
+                "label": "Fov Y",
+                "name": "fov_y",
+                "optional": false,
+                "widget": {
+                  "integer": false,
+                  "kind": "number",
+                },
+              },
+              {
+                "doc": "Near plane distance (> 0).",
+                "label": "Near",
+                "name": "near",
+                "optional": false,
+                "widget": {
+                  "integer": false,
+                  "kind": "number",
+                },
+              },
+            ],
+            "kind": "struct",
+          },
+          "name": "Perspective",
+        },
+        {
+          "doc": "Orthographic; \`height\` world units fill the image vertically.",
+          "inner": {
+            "fields": [
+              {
+                "doc": "Far plane distance (> near).",
+                "label": "Far",
+                "name": "far",
+                "optional": false,
+                "widget": {
+                  "integer": false,
+                  "kind": "number",
+                },
+              },
+              {
+                "doc": "Visible height in world units.",
+                "label": "Height",
+                "name": "height",
+                "optional": false,
+                "widget": {
+                  "integer": false,
+                  "kind": "number",
+                },
+              },
+              {
+                "doc": "Near plane distance (≥ 0).",
+                "label": "Near",
+                "name": "near",
+                "optional": false,
+                "widget": {
+                  "integer": false,
+                  "kind": "number",
+                },
+              },
+            ],
+            "kind": "struct",
+          },
+          "name": "Orthographic",
+        },
+      ],
     },
     "tonemap": {
       "kind": "enum",

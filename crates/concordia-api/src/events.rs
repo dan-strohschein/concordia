@@ -30,6 +30,8 @@ pub enum Topic {
     log,
     /// Agent Studio activity: task changes, file-edit audits, actor slots (see `studio.activity`).
     studio,
+    /// Asset files written or imported (`path`, `id`, `actor`), e.g. by `material.set` or `asset.import`.
+    asset,
 }
 
 /// Sinks and subscriptions by session.

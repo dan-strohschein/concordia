@@ -31,6 +31,8 @@ pub const PROJECT_TOOLS: &[&str] = &[
     "entity_spawn",
     "entity_templates",
     "log_tail",
+    "material_get",
+    "material_set",
     "physics_raycast",
     "prefab_instantiate",
     "project_files",

@@ -1,14 +1,16 @@
 # concordia-assets: agent guide
 
 ## Purpose
-The asset pipeline: source files with `<file>.import.ron` sidecars holding stable ids, importers producing derived data in the content-addressed DDC, built-in assets, hot reload, and `asset.import` / `asset.list` (ADR-0044).
+The asset pipeline: source files with `<file>.import.ron` sidecars holding stable ids, importers producing derived data in the content-addressed DDC, built-in assets, hot reload, `asset.import` / `asset.list` (ADR-0044), and `material.get` / `material.set` (ADR-0068, M2 2.3c).
 
 ## Public entry points
-- `AssetDb` (`new`, `register`, `scan`, `import` → `ImportReport`, `load_texture` / `load_mesh` / `load_material` (a layered `Material`), `load_artifact`, `list`, `path_of`, `generation`, `on_files_changed`)
+- `AssetDb` (`new`, `register`, `scan`, `import` → `ImportReport`, `load_texture` / `load_mesh` / `load_material` (a layered `Material`), `load_artifact`, `list`, `path_of`, `id_at`, `generation` (bumped whenever an import finds new content, so the renderer re-sends a changed material), `on_files_changed`)
 - `Importer` (trait), `ImportInput`, `ImportOutput`, `Artifact`, `AssetKind`, `SubIds`; `ImageImporter` (`png`, `jpg`, `hdr`) and `ImageSettings`; `MaterialImporter` (`.material.ron` → `Material` through `read_material`: layered text, or M1's flat text as one slab; version 2)
 - `AssetRef` (`"asset:<uuid>[#sub]"`, `"builtin:<kind>/<name>"`), `Builtin` / `BuiltinAsset`
-- Data: `TextureData`, `MeshData`, `MaterialData` (M1's flat material: only the migration source and the glTF importer's intermediate until 2.3c retires it), `AlphaMode`
-- Layered materials (ADR-0068): `Material` (named `nodes`, `root`, `alpha_mode`, `double_sided`, `unlit`), `MaterialNode` (`Slab`, `Vertical`, `Horizontal`, `Coverage`), `Slab`, `Haze`, `Fuzz`, `Subsurface`, `ThinFilm`, `MaterialError`, `SURFACE`; `read_material` (layered text, or M1 text migrated to one slab), `write_material`, `Material::from_pbr` (also `From<MaterialData>`), `validate`, `reachable`. Material artifacts (`AssetKind::Material`) hold a `Material`; `builtin:material/default` is M1's white dielectric as one slab. Evaluation is in `concordia-material`.
+- Data: `TextureData`, `MeshData`, `AlphaMode`
+- Layered materials (ADR-0068): `Material` (named `nodes`, `root`, `alpha_mode`, `double_sided`, `unlit`; registered for `schema.get {"name": "Material"}`), `MaterialNode` (`Slab`, `Vertical`, `Horizontal`, `Coverage`), `Slab`, `Haze`, `Fuzz`, `Subsurface`, `ThinFilm`, `MaterialError` (`field`, `node`), `SURFACE`; `read_material` (layered text, or M1 text migrated to one slab), `read_material_with_format` (also says `MaterialFormat::Layered` or `M1`), `write_material`, `Material::from_slab`, `validate`, `reachable`. Material artifacts (`AssetKind::Material`) hold a `Material`; `builtin:material/default` is M1's white dielectric as one slab. Evaluation is in `concordia-material`.
+- M1's flat format is read only by the private `material_m1::M1Material` (M1's fields and defaults: white, metal 1, roughness 1), which migrates to one slab. Nothing writes it; `MaterialData` was retired in 2.3c.
+- `MaterialGet` / `MaterialSet` (`material_method.rs`): `material.get {path}` → `{material, migrated, id}`; `material.set {path, material, actor?}` validates, writes canonical text (only if it changed), imports, logs "material saved" with the actor and publishes an `asset` event → `{id, written}`. Refusals are `InvalidParams` with `field`, `node` and a pointer such as `/material/nodes/coat/Slab/base_color/0`. `asset.import` publishes the `asset` event too.
 - `Sidecar`, `import_key`, `PLATFORM`; `AssetsModule` (EngineModule)
 
 ## Invariants
@@ -17,7 +19,7 @@ The asset pipeline: source files with `<file>.import.ron` sidecars holding stabl
 - Imports are deterministic (identical bytes in, identical blobs out). Derived data is postcard; the DDC is never committed.
 - Paths are project-relative, with no `..`.
 - A layered material is valid only if every name is `[A-Za-z0-9_-]+`, the root and every reference exist, there is no cycle, every node is reachable from the root, and every value is in range (arrays per element); errors name the node and field. A node may be used twice.
-- `asset.import` touches files, not the scene, so it is attributed in `log.tail` and not undoable (decision D9).
+- `asset.import` and `material.set` touch files, not the scene, so they are attributed in `log.tail` and not undoable (decision D9). `material.set` takes only `.material.ron` paths inside the project and never writes a material that fails `validate`.
 
 ## How to test
 `cargo nextest run -p concordia-assets`
@@ -33,9 +35,10 @@ The asset pipeline: source files with `<file>.import.ron` sidecars holding stabl
 ## References
 - `image` crate (MIT/Apache) for PNG, JPEG and Radiance HDR; postcard (MIT/Apache).
 - Layered materials: Epic Games' public Substrate documentation and the SIGGRAPH 2023 Substrate course (Hillaire & de Rousiers); no Unreal source consulted (see `concordia-material`).
+- M1's flat format is glTF 2.0's metallic-roughness model (Khronos glTF 2.0 specification, §3.9).
 
 ## Status
-M1 phase 1.4; layered material model M2 phase 2.3a; imported and loaded as `Material` since 2.3b.
+M1 phase 1.4; layered material model M2 phase 2.3a; imported and loaded as `Material` since 2.3b; `material.get` / `material.set` and `MaterialData` retired in 2.3c.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

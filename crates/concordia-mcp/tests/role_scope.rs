@@ -175,6 +175,42 @@ async fn server_rejects_scene_writes_outside_the_role_paths() {
 }
 
 #[tokio::test]
+async fn server_rejects_material_writes_outside_the_role_paths() {
+    let dir = tempfile::tempdir().unwrap();
+    let client = studio(&dir, |t| t).await;
+    let material = json!({"nodes": {"surface": {"Slab": {"roughness": 0.4}}}, "root": "surface"});
+    for path in [
+        "scenes/x.material.ron",
+        "studio/agents/x.material.ron",
+        "assets/x.material.ron",
+    ] {
+        let outside = call(
+            &client,
+            "material_set",
+            with(
+                json!({"path": path, "material": material}),
+                "tech-artist",
+                "s/2",
+            ),
+        )
+        .await;
+        assert_eq!(outside.is_error, Some(true), "{path}: {}", text(&outside));
+        assert!(!dir.path().join(path).exists(), "{path} was not written");
+    }
+    let inside = call(
+        &client,
+        "material_set",
+        with(
+            json!({"path": "assets/materials/x.material.ron", "material": material}),
+            "tech-artist",
+            "s/2",
+        ),
+    )
+    .await;
+    assert_ne!(inside.is_error, Some(true), "{}", text(&inside));
+}
+
+#[tokio::test]
 async fn human_actors_are_still_rejected() {
     let dir = tempfile::tempdir().unwrap();
     let client = studio(&dir, |t| t).await;

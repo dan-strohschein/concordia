@@ -64,6 +64,8 @@ impl EngineModule for AssetsModule {
             MethodInfo::of::<AssetList>(),
             MethodInfo::of::<crate::prefab_method::PrefabInstantiate>(),
             MethodInfo::of::<crate::files::ProjectFiles>(),
+            MethodInfo::of::<crate::material_method::MaterialGet>(),
+            MethodInfo::of::<crate::material_method::MaterialSet>(),
         ]
     }
 
@@ -90,6 +92,14 @@ pub(crate) fn db(engine: &mut Engine) -> Result<&mut AssetDb, ApiError> {
             "the asset database failed to load; see log.tail",
         )
     })
+}
+
+/// Tells `asset` subscribers that a file was written or imported.
+pub(crate) fn publish_asset(engine: &mut Engine, path: &str, id: AssetId, actor: &str) {
+    engine.publish_event(
+        concordia_api::Topic::asset,
+        serde_json::json!({"path": path, "id": id, "actor": actor}),
+    );
 }
 
 pub(crate) fn api_error(e: AssetError) -> ApiError {
@@ -146,6 +156,7 @@ impl Method for AssetImport {
             .as_ref()
             .map_or_else(|| "none".into(), Actor::to_string);
         tracing::info!(target: "concordia::assets", actor, path = %p.path, id = %report.id, cached = report.cached, "asset imported");
+        publish_asset(engine, &p.path, report.id, &actor);
         Ok(AssetImportResult {
             id: report.id,
             cached: report.cached,

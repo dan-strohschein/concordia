@@ -436,6 +436,52 @@ fn qa_playtester_records_and_runs_replays_with_the_replay_skill() {
     );
 }
 
+#[test]
+fn tech_artist_edits_materials_with_the_material_tools_and_skill() {
+    let (_dir, roster) = roster();
+    let artist = roster
+        .roles()
+        .iter()
+        .find(|r| r.role.as_str() == "tech-artist")
+        .expect("the tech artist is enabled");
+    for tool in ["material_get", "material_set"] {
+        assert!(
+            artist.mcp_tools.iter().any(|t| t == tool),
+            "{tool}: {:?}",
+            artist.mcp_tools
+        );
+    }
+    for needle in [
+        "mcp__concordia__material_get",
+        "mcp__concordia__material_set",
+        "\"name\": \"Material\"",
+    ] {
+        assert!(artist.body.contains(needle), "the prompt explains {needle}");
+    }
+    let skill = default_roster()
+        .skills
+        .iter()
+        .find(|(n, _)| *n == "concordia-add-material")
+        .map(|(_, t)| *t)
+        .unwrap();
+    for needle in [
+        "mcp__concordia__material_set",
+        "Vertical(",
+        "Horizontal(",
+        "Coverage(",
+        "haze",
+        "fuzz",
+        "subsurface",
+        "thin_film",
+        "closure_budget",
+    ] {
+        assert!(skill.contains(needle), "the skill explains {needle}");
+    }
+    for text in [artist.body.as_str(), skill] {
+        assert!(!text.contains("MaterialData"), "M1's type is retired");
+    }
+}
+
 /// The director's section of a shared skill: only the director acts on it.
 const DIRECTOR_SECTION: &str = "## For the director";
 
