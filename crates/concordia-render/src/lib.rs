@@ -28,6 +28,7 @@ mod scene_cache;
 pub mod shadow;
 mod shadow_pass;
 mod shape;
+mod skinning;
 mod stats;
 mod templates;
 mod thread;
@@ -44,7 +45,8 @@ pub use components::{
 pub use concordia_material::{ClosureBudget, ClosureReport};
 pub use error::RenderError;
 pub use extract::{
-    CameraView, DrawItem, EntityItems, LightView, PunctualKind, PunctualLight, RenderWorld,
+    CameraView, DrawItem, EntityItems, LightView, PoseView, PunctualKind, PunctualLight,
+    RenderWorld, SkinView,
 };
 pub use frame::DrawPush;
 pub use lighting::candela;

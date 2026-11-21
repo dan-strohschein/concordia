@@ -3,6 +3,7 @@
 // stack) evaluated per light and for image-based lighting. Every formula mirrors
 // `concordia-material` (`bsdf.rs`, `film.rs`, `program.rs`); the tests compare them pixel by pixel.
 import bindless;
+import skin;
 
 static const float PI = 3.14159265;
 static const float TAU = 6.28318531;
@@ -28,7 +29,7 @@ static const float TABLE_SIZE = 32.0;
 // Columns of 4×4 matrices are float4s: the layout is identical on every backend.
 // eye, sun direction and exposed radiance; cluster_depth = (near, far, ortho?, ln(far/near));
 // screen = (width, height, light count, 0); dims = (x, y, z, max per cluster);
-// buffers = (lights, cluster counts, cluster indices, 0).
+// buffers = (lights, cluster counts, cluster indices, joint palettes).
 struct Frame {
     float4 view_proj[4]; float4 view[4];
     float4 eye; float4 light_dir; float4 light_radiance; float4 cluster_depth; float4 screen;
@@ -49,7 +50,8 @@ struct Frame {
 };
 // Per light: position+range, direction, exposed radiance, spot (scale, offset).
 struct Light { float4 position_range; float4 direction; float4 radiance; float4 spot; };
-struct Instance { float4 model[4]; float4 normal[4]; };
+// skin = (first palette matrix, joint count, 0, 0); a count of 0 is unskinned.
+struct Instance { float4 model[4]; float4 normal[4]; uint4 skin; };
 // Materials are `uint4` rows (floats as bits; `material_rows.rs`): a header (closures, ops, flags,
 // mask cutoff), one row per op (kind, slab index or mix texture, parameter), then CLOSURE_ROWS
 // rows per closure: base color; emission, metallic; transmittance, specular; roughness, normal
@@ -57,10 +59,10 @@ struct Instance { float4 model[4]; float4 normal[4]; };
 // color and roughness; mean free path, emissive texture; base, metallic-roughness, normal and
 // occlusion textures.
 
-struct ShadowPush { uint frame; uint instances; uint instance; uint indices; uint positions; uint cascade; };
+struct ShadowPush { uint frame; uint instances; uint instance; uint indices; uint positions; uint cascade; uint joints; uint weights; };
 
 // `material` is the material's first row in the `materials` buffer.
-struct DrawPush { uint frame; uint instances; uint instance; uint materials; uint material; uint indices; uint positions; uint normals; uint tangents; uint uvs; };
+struct DrawPush { uint frame; uint instances; uint instance; uint materials; uint material; uint indices; uint positions; uint normals; uint tangents; uint uvs; uint joints; uint weights; };
 
 struct VsOut {
     float4 position : SV_Position;
@@ -83,12 +85,20 @@ VsOut vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform DrawPush push
     Instance* inst = ((Instance*)g_buffers.ptr[push.instances]) + push.instance + iid;
     Frame* frame = (Frame*)g_buffers.ptr[push.frame];
     uint v = ((uint*)g_buffers.ptr[push.indices])[vid];
-    float4 world = xform(inst.model, float4(read3(push.positions, v), 1.0));
+    float3 p = read3(push.positions, v);
+    float3 n = read3(push.normals, v);
+    float4 t = ((float4*)g_buffers.ptr[push.tangents])[v];
+    if (inst.skin.y != 0) {
+        SkinnedVertex s = skin_vertex(frame.buffers.w, inst.skin.x, push.joints, push.weights, v, p, n, t.xyz);
+        p = s.position;
+        n = s.normal;
+        t.xyz = s.tangent;
+    }
+    float4 world = xform(inst.model, float4(p, 1.0));
     VsOut o;
     o.position = xform(frame.view_proj, world);
     o.world = world.xyz;
-    o.normal = xform(inst.normal, float4(read3(push.normals, v), 0.0)).xyz;
-    float4 t = ((float4*)g_buffers.ptr[push.tangents])[v];
+    o.normal = xform(inst.normal, float4(n, 0.0)).xyz;
     o.tangent = float4(xform(inst.model, float4(t.xyz, 0.0)).xyz, t.w);
     o.uv = ((float2*)g_buffers.ptr[push.uvs])[v];
     uint corner = vid % 3; // vertices are pulled per triangle corner
@@ -105,7 +115,11 @@ float4 shadow_vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform Shado
     Instance* inst = ((Instance*)g_buffers.ptr[push.instances]) + push.instance + iid;
     Frame* frame = (Frame*)g_buffers.ptr[push.frame];
     uint v = ((uint*)g_buffers.ptr[push.indices])[vid];
-    return cascade_xform(frame, push.cascade, xform(inst.model, float4(read3(push.positions, v), 1.0)));
+    float3 p = read3(push.positions, v);
+    if (inst.skin.y != 0) {
+        p = skin_vertex(frame.buffers.w, inst.skin.x, push.joints, push.weights, v, p, float3(0.0, 0.0, 1.0), float3(1.0, 0.0, 0.0)).position;
+    }
+    return cascade_xform(frame, push.cascade, xform(inst.model, float4(p, 1.0)));
 }
 
 // Fraction of sunlight reaching `world` (1 outside the cascades). Reverse-Z: a texel closer to the

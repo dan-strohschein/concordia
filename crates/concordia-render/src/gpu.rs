@@ -250,6 +250,9 @@ pub(crate) fn format_of(format: TextureFormat) -> Format {
     }
 }
 
+/// No buffer: a stream the mesh lacks (shaders never read it).
+pub(crate) const NO_BUFFER: u32 = u32::MAX;
+
 /// A mesh's streams on the GPU (bindless indices are what shaders use).
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct GpuMesh {
@@ -258,10 +261,16 @@ pub(crate) struct GpuMesh {
     pub(crate) normals: u32,
     pub(crate) tangents: u32,
     pub(crate) uvs: u32,
+    /// Joint indices (`uint4` per vertex), or [`NO_BUFFER`].
+    pub(crate) joints: u32,
+    /// Joint weights (`float4` per vertex), or [`NO_BUFFER`].
+    pub(crate) weights: u32,
+    /// Joints a palette must hold to skin it (the largest index plus one); 0 when unskinned.
+    pub(crate) joint_count: u32,
     pub(crate) count: u32,
     /// Object-space bounds (min, max).
     pub(crate) aabb: (Vec3, Vec3),
-    buffers: [Buffer; 5],
+    buffers: [Option<Buffer>; 7],
 }
 
 impl GpuMesh {
@@ -290,33 +299,77 @@ impl GpuMesh {
         let normals = up.buffer(device, &bytes(mesh.normals.as_flattened()), label)?;
         let tangents = up.buffer(device, &bytes(mesh.tangents.as_flattened()), label)?;
         let uvs = up.buffer(device, &bytes(mesh.uv0.as_flattened()), label)?;
+        let skin = match skinnable(mesh) {
+            true => Some((
+                up.buffer(device, &joint_words(mesh), label)?,
+                up.buffer(device, &bytes(mesh.weights.as_flattened()), label)?,
+            )),
+            false => None,
+        };
         let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
+        let joint_count = match skin {
+            Some(_) => mesh
+                .joints
+                .iter()
+                .flatten()
+                .max()
+                .map_or(0, |j| u32::from(*j) + 1),
+            None => 0,
+        };
         Ok(Self {
             indices: index(indices)?,
             positions: index(positions)?,
             normals: index(normals)?,
             tangents: index(tangents)?,
             uvs: index(uvs)?,
+            joints: skin.map_or(Ok(NO_BUFFER), |(j, _)| index(j))?,
+            weights: skin.map_or(Ok(NO_BUFFER), |(_, w)| index(w))?,
+            joint_count,
             count: mesh.indices.len() as u32,
             aabb: (Vec3::from_array(mesh.aabb.0), Vec3::from_array(mesh.aabb.1)),
-            buffers: [indices, positions, normals, tangents, uvs],
+            buffers: [
+                Some(indices),
+                Some(positions),
+                Some(normals),
+                Some(tangents),
+                Some(uvs),
+                skin.map(|(j, _)| j),
+                skin.map(|(_, w)| w),
+            ],
         })
     }
 
     pub(crate) fn destroy(&self, device: &dyn Device) {
-        self.buffers.iter().for_each(|b| device.destroy_buffer(*b));
+        self.buffers().for_each(|b| device.destroy_buffer(b));
     }
 
     /// The mesh's buffers.
-    pub(crate) fn buffers(&self) -> &[Buffer] {
-        &self.buffers
+    pub(crate) fn buffers(&self) -> impl Iterator<Item = Buffer> + '_ {
+        self.buffers.iter().flatten().copied()
     }
+}
+
+/// A mesh with one joint and one weight row per vertex.
+fn skinnable(mesh: &MeshData) -> bool {
+    let n = mesh.positions.len();
+    n > 0 && mesh.joints.len() == n && mesh.weights.len() == n
+}
+
+/// Joint indices widened to one `uint4` row per vertex.
+fn joint_words(mesh: &MeshData) -> Vec<u8> {
+    mesh.joints
+        .iter()
+        .flatten()
+        .flat_map(|j| u32::from(*j).to_le_bytes())
+        .collect()
 }
 
 /// Meshes and textures uploaded once and reused across frames.
 #[derive(Default)]
 pub(crate) struct GpuAssets {
     pub(crate) meshes: BTreeMap<AssetRef, GpuMesh>,
+    /// Per skinned mesh, the bind-space box of each joint's vertices (`concordia_anim::joint_bounds`).
+    pub(crate) joint_bounds: BTreeMap<AssetRef, concordia_anim::JointBounds>,
     pub(crate) textures: BTreeMap<AssetRef, (Texture, u32)>,
 }
 
@@ -327,6 +380,7 @@ impl GpuAssets {
             .values()
             .for_each(|(t, _)| device.destroy_texture(*t));
         self.meshes.clear();
+        self.joint_bounds.clear();
         self.textures.clear();
     }
 }

@@ -13,6 +13,7 @@ workspace = true
 
 [dependencies]
 base64.workspace = true
+concordia-anim.workspace = true
 concordia-api.workspace = true
 concordia-assets.workspace = true
 concordia-command.workspace = true
@@ -32,6 +33,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 base64.workspace = true
+concordia-import-fbx.workspace = true
 concordia-import-gltf.workspace = true
 concordia-rhi-metal.workspace = true
 tempfile.workspace = true
@@ -42,6 +44,10 @@ tracing-subscriber.workspace = true
 
 [[bench]]
 name = "many_lights"
+harness = false
+
+[[bench]]
+name = "skinned_crowd"
 harness = false
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]

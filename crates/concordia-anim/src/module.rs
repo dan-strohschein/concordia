@@ -42,8 +42,11 @@ impl EngineModule for AnimModule {
             tracing::warn!(target: "concordia::anim", problem, "animation asset skipped; its players hold their pose");
         }
         insert_rest_poses(&library, world);
+        let library = Arc::new(library);
+        // The renderer finds skeletons here; resources other than the clock and RNG aren't hashed.
+        world.insert_resource(library.clone());
         let mut setup = PlaySetup::default();
-        add_processors(&mut setup.schedule, Arc::new(library));
+        add_processors(&mut setup.schedule, library);
         Ok(setup)
     }
 }

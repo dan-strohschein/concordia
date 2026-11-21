@@ -10,7 +10,7 @@ use concordia_terra::World;
 use crate::clip::BoundClip;
 use crate::error::AnimError;
 use crate::player::AnimPlayer;
-use crate::skeleton::Skeleton;
+use crate::skeleton::{Skeleton, bind_mesh};
 
 /// Skeletons by skin, and clips bound to them by (clip, skin).
 #[derive(Debug, Default)]
@@ -45,6 +45,11 @@ impl AnimLibrary {
     /// The skeleton of `skin`.
     pub fn skeleton(&self, skin: &AssetRef) -> Option<&Skeleton> {
         self.skeletons.get(skin).map(Arc::as_ref)
+    }
+
+    /// The skeleton of `skin`, shared.
+    pub fn shared_skeleton(&self, skin: &AssetRef) -> Option<Arc<Skeleton>> {
+        self.skeletons.get(skin).cloned()
     }
 
     /// `clip` bound to the skeleton of `skin`.
@@ -135,7 +140,7 @@ fn load_skeleton(
     let data: SkinData = db.load(skin, AssetKind::Skin)?;
     let model = AssetRef::Asset { id: *id, sub: None };
     let prefab = db.load_prefab_doc(&model, registry)?;
-    Skeleton::from_skin(&data, &prefab)
+    Skeleton::from_skin(&data, &prefab)?.with_mesh(bind_mesh(&prefab, skin)?)
 }
 
 /// Every `clip/*` sub-asset of the file `clip` belongs to.

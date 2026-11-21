@@ -36,6 +36,9 @@ pub enum AnimError {
         /// The pose's bone count.
         got: usize,
     },
+    /// A mesh can't be skinned with the given palette.
+    #[error("skinning: {0}")]
+    Mesh(String),
     /// Loading an asset failed.
     #[error(transparent)]
     Asset(#[from] AssetError),

@@ -73,6 +73,10 @@ pub struct ShadowPush {
     pub positions: u32,
     /// Cascade.
     pub cascade: u32,
+    /// Joint index stream (read only by skinned instances).
+    pub joints: u32,
+    /// Joint weight stream (read only by skinned instances).
+    pub weights: u32,
 }
 
 concordia_shaders::shader_struct!(ShadowPush {
@@ -81,7 +85,9 @@ concordia_shaders::shader_struct!(ShadowPush {
     instance,
     indices,
     positions,
-    cascade
+    cascade,
+    joints,
+    weights
 });
 
 impl ShadowPush {
@@ -93,6 +99,8 @@ impl ShadowPush {
             self.indices,
             self.positions,
             self.cascade,
+            self.joints,
+            self.weights,
         ]
         .iter()
         .flat_map(|w| w.to_le_bytes())

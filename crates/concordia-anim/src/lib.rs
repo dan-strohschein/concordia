@@ -10,6 +10,7 @@ mod player;
 mod pose;
 mod processors;
 mod skeleton;
+mod skin;
 
 pub use clip::{BoundClip, validate_clip};
 pub use error::AnimError;
@@ -18,7 +19,8 @@ pub use module::AnimModule;
 pub use player::{AnimPlayer, advance};
 pub use pose::Pose;
 pub use processors::{CHUNK, POSE, SAMPLE, add_processors, insert_rest_poses};
-pub use skeleton::{Joint, Skeleton, model_matrix};
+pub use skeleton::{Joint, Skeleton, bind_mesh, model_matrix};
+pub use skin::{JointBounds, SkinnedVertices, joint_bounds, skin_vertices, skinned_bounds};
 
 /// Registers the animation components (`Pose`, `AnimPlayer`).
 pub fn register_types(

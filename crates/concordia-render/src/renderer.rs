@@ -30,6 +30,7 @@ use crate::shadow::{Cascade, CascadeSettings, fit_cascades};
 use crate::shadow_pass::{
     ShadowDraw, ShadowJob, ShadowMaps, ShadowPush, add_shadow_passes, world_bounds,
 };
+use crate::skinning::{Placement, SkinFrame};
 use crate::{CameraView, Msaa, RenderError, RenderWorld, Tonemap};
 
 /// The largest capture side.
@@ -93,6 +94,8 @@ pub struct Renderer {
     /// GPU copies of forgotten assets; the next frame takes them and frees them when it retires,
     /// after every earlier frame that may still read them.
     retired: FrameResources,
+    /// Skinned meshes already reported as drawn at their bind pose.
+    unskinnable: std::collections::BTreeSet<AssetRef>,
 }
 
 /// A presented frame the GPU may still be working on.
@@ -304,6 +307,7 @@ impl Renderer {
             shadow_key: None,
             programs,
             retired: FrameResources::default(),
+            unskinnable: std::collections::BTreeSet::new(),
         })
     }
 
@@ -568,8 +572,9 @@ impl Renderer {
     /// Drops the GPU copy of a mesh, texture or environment map, so the next frame uploads it again.
     pub fn forget(&mut self, reference: &AssetRef) {
         if let Some(mesh) = self.assets.meshes.remove(reference) {
-            self.retired.buffers.extend_from_slice(mesh.buffers());
+            self.retired.buffers.extend(mesh.buffers());
         }
+        self.assets.joint_bounds.remove(reference);
         if let Some((texture, _)) = self.assets.textures.remove(reference) {
             self.retired.textures.push(texture);
         }
@@ -615,6 +620,8 @@ impl Renderer {
         let mut resolved = crate::assets::resolve(world, assets, &|r| self.holds(r))?;
         let materials = self.load_assets(&resolved, &mut up)?;
         self.programs.fit(&materials)?;
+        let skinning = SkinFrame::new(world, &self.assets.meshes, &self.assets.joint_bounds);
+        self.report_unskinnable(&skinning.refused);
         let device = self.device.clone();
         let device = device.as_ref();
         let tables = self.environments.tables(device, &mut up)?;
@@ -641,7 +648,8 @@ impl Renderer {
             frame.keep(*b);
         });
         let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
-        let shadows = self.prepare_shadows(world, view, aspect, dir)?;
+        let shadows = self.prepare_shadows(world, &skinning.placements, view, aspect, dir)?;
+        let palette_buf = frame.keep(up.buffer(device, &skinning.palette, "joint palettes")?);
         // Captures wait for a new environment's prefiltering; viewport frames draw without it.
         let wait = matches!(output, Output::Readback);
         let gpu = match &world.environment {
@@ -685,6 +693,7 @@ impl Renderer {
                 index(light_buf)?,
                 cluster.counts_index,
                 cluster.indices_index,
+                index(palette_buf)?,
             ],
             shadow: shadow_params,
             ibl: environment.as_ref().map(|(sh, levels, skybox)| IblParams {
@@ -703,6 +712,7 @@ impl Renderer {
             order,
         } = self.instance_data(
             world,
+            &skinning.placements,
             &materials,
             &view_m,
             &crate::cull::Frustum::new(view_proj),
@@ -731,9 +741,16 @@ impl Renderer {
         {
             let instance = instance as u32;
             let mesh = self.assets.meshes[&world.draws[item].mesh];
+            let placed = &skinning.placements[item];
             if world.draws[item].cast_shadows {
                 std::hash::Hash::hash(&mesh.indices, &mut casting);
-                hash_matrix(&world.draws[item].world, &mut casting);
+                hash_matrix(&placed.world, &mut casting);
+                if let Some(pose) = placed.pose {
+                    world.skins[pose]
+                        .palette
+                        .iter()
+                        .for_each(|m| hash_matrix(m, &mut casting));
+                }
                 match casters.last_mut() {
                     Some(c)
                         if c.push.indices == mesh.indices
@@ -749,6 +766,8 @@ impl Renderer {
                             indices: mesh.indices,
                             positions: mesh.positions,
                             cascade: 0,
+                            joints: mesh.joints,
+                            weights: mesh.weights,
                         },
                         vertices: mesh.count,
                         instances: 1,
@@ -769,6 +788,8 @@ impl Renderer {
                 normals: mesh.normals,
                 tangents: mesh.tangents,
                 uvs: mesh.uvs,
+                joints: mesh.joints,
+                weights: mesh.weights,
             };
             let pipeline = match view_mode {
                 crate::ViewMode::wireframe => self.pipelines.debug(device, samples, false)?,
@@ -886,6 +907,7 @@ impl Renderer {
     fn prepare_shadows(
         &mut self,
         world: &RenderWorld,
+        placements: &[Placement],
         view: &CameraView,
         aspect: f32,
         sun_dir: Vec3,
@@ -896,8 +918,9 @@ impl Renderer {
         let casters = world
             .draws
             .iter()
-            .filter(|d| d.cast_shadows)
-            .map(|d| (self.assets.meshes[&d.mesh].aabb, d.world));
+            .zip(placements)
+            .filter(|(d, _)| d.cast_shadows)
+            .map(|(_, p)| (p.bounds, p.world));
         let bounds = world_bounds(casters);
         let cascades = fit_cascades(
             &settings,
@@ -923,6 +946,10 @@ impl Renderer {
         let device = self.device.as_ref();
         for (reference, data) in resolved.meshes() {
             let mesh = GpuMesh::upload(device, up, data, &reference.to_string())?;
+            if mesh.joint_count > 0 {
+                let bounds = concordia_anim::joint_bounds(data);
+                self.assets.joint_bounds.insert(reference.clone(), bounds);
+            }
             self.assets.meshes.insert(reference.clone(), mesh);
         }
         for (reference, data) in resolved.textures() {
@@ -941,6 +968,15 @@ impl Renderer {
             .collect())
     }
 
+    /// Logs, once per mesh, skinned meshes drawn at their bind pose.
+    fn report_unskinnable(&mut self, refused: &[AssetRef]) {
+        for mesh in refused {
+            if self.unskinnable.insert(mesh.clone()) {
+                tracing::warn!(target: "concordia::render", %mesh, "skinned mesh drawn at its bind pose: it lacks joint streams, or uses joints its palette lacks");
+            }
+        }
+    }
+
     /// Whether the GPU already holds the mesh, texture or environment `reference`.
     fn holds(&self, reference: &AssetRef) -> bool {
         self.assets.meshes.contains_key(reference)
@@ -953,6 +989,7 @@ impl Renderer {
     fn instance_data(
         &self,
         world: &RenderWorld,
+        placements: &[Placement],
         materials: &BTreeMap<AssetRef, Material>,
         view: &Mat4,
         frustum: &crate::cull::Frustum,
@@ -969,15 +1006,15 @@ impl Renderer {
                 double_sided: materials[&d.material].double_sided,
                 blend: materials[&d.material].alpha_mode == AlphaMode::Blend,
                 visible: {
-                    let (lo, hi) = self.assets.meshes[&d.mesh].aabb;
-                    frustum.sees(&d.world, lo, hi)
+                    let (lo, hi) = placements[item].bounds;
+                    frustum.sees(&placements[item].world, lo, hi)
                 },
             })
             .collect();
         let depth = |d: &DrawOrder| {
-            let draw = &world.draws[d.item];
-            let (lo, hi) = self.assets.meshes[&draw.mesh].aabb;
-            view.transform_point3(draw.world.transform_point3((lo + hi) / 2.0))
+            let placed = &placements[d.item];
+            let (lo, hi) = placed.bounds;
+            view.transform_point3(placed.world.transform_point3((lo + hi) / 2.0))
                 .z
         };
         order.sort_by(|a, b| match (a.blend, b.blend) {
@@ -997,9 +1034,10 @@ impl Renderer {
             (x, y) => x.cmp(&y),
         });
         let mut instances = Vec::new();
-        order
-            .iter()
-            .for_each(|d| instance_block(&mut instances, &world.draws[d.item].world));
+        order.iter().for_each(|d| {
+            let placed = &placements[d.item];
+            instance_block(&mut instances, &placed.world, placed.skin);
+        });
         Ok(FrameBlocks {
             instances,
             materials: material_bytes,
