@@ -5,7 +5,7 @@ Evaluates Substrate-style materials (ADR-0068): compiles a `concordia_assets::Ma
 
 ## Public entry points
 - `eval_slab(&Slab, n, v, l)` (BSDF × N·L) and `slab_transmittance(&Slab, cos)`; `thin_film_reflectance(f0, cos, &ThinFilm)`; `SSS_SCALE`, `WAVELENGTHS_NM`.
-- `MaterialProgram::compile(&Material)` → `closures()`, `slabs()`, `ops()` (`Op`), `blends()`, `eval(n, v, l)` → `Shaded { color, emissive, alpha }`.
+- `MaterialProgram::compile(&Material)` → `closures()`, `slabs()`, `ops()` (`Op`; `Horizontal` carries its `mix_texture` for the GPU), `blends()`, `eval(n, v, l)` → `Shaded { color, emissive, alpha }`, and `unlit()` (each slab's albedo and emission combined at normal incidence: unlit materials and the albedo view).
 - `ClosureBudget::new(1..=8)`, `fit_budget(&Material, budget)` → `(Material, ClosureReport { budget, before, after, merges: [ClosureMerge { node, kind, slabs, dropped }] })`.
 - `dfg`: `integrate_brdf` / `brdf_lut(_cached)` (split-sum IBL table, moved from `concordia-render`), `direct_albedo` / `integrate_direct` (the direct lobe's albedo), `sheen_albedo` / `integrate_sheen` / `sheen_lut(_cached)`, `specular_albedo`. `sampling`: `hammersley`, `importance_ggx`.
 
@@ -14,7 +14,8 @@ Evaluates Substrate-style materials (ADR-0068): compiles a `concordia_assets::Ma
 - **Programs:** postfix over a stack; one closure per slab *use* (a node used twice counts twice). Slab alpha is coverage only for `Blend` materials; otherwise it only feeds the mask test. Results are premultiplied when blending.
 - **Budget:** merges are parameter blends, deterministic: the first mergeable horizontal mix in post-order, else the first vertical layer. A layer merge tints the bottom by the top's transmittance squared, blends toward the top by its opaque share, and keeps the top's highlight as haze. Dropped textures and features are reported as `node.field`; merged-away nodes are removed.
 - Functions take any vector lengths and return zero (never panic or NaN) for zero or non-finite directions; table lookups clamp their inputs.
-- The CPU reference uses factor values only; textures multiply them on the GPU exactly as in M1.
+- The CPU reference uses factor values only; textures multiply them on the GPU exactly as in M1 (a mix texture's R multiplies `mix`).
+- `concordia-render`'s `forward.slang` mirrors `eval_slab`, `slab_transmittance`, `thin_film_reflectance`, `unlit` and the program interpreter line for line; change both together. Its `shader_matches_cpu_reference_per_feature` compares them to within 1.2 sRGB steps.
 
 ## How to test
 `cargo nextest run -p concordia-material`. Reference values in `tests/bsdf.rs` and `tests/dfg.rs` come from an independent Python implementation of ADR-0068's formulas (converged midpoint grids), not from this crate.
@@ -38,7 +39,7 @@ Evaluates Substrate-style materials (ADR-0068): compiles a `concordia_assets::Ma
 - Born & Wolf, "Principles of Optics" (Airy thin-film summation); Belcour & Barla, "A Practical Extension to Microfacet Theory for the Modeling of Varying Iridescence" (SIGGRAPH 2017).
 
 ## Status
-M2 phase 2.3a: model evaluation, budget and CPU reference. The renderer adopts it in 2.3b.
+M2 phase 2.3a: model evaluation, budget and CPU reference. Phase 2.3b: `unlit`, mix textures in programs; the renderer evaluates the same programs on the GPU.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

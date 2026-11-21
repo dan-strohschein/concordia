@@ -2,9 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use concordia_assets::{
-    AssetDb, AssetRef, Builtin, BuiltinAsset, MaterialData, MeshData, TextureData,
-};
+use concordia_assets::{AssetDb, AssetRef, Builtin, BuiltinAsset, Material, MeshData, TextureData};
 use concordia_core::id::AssetId;
 
 /// Loads mesh, material and texture data by reference (errors are human-readable).
@@ -12,7 +10,7 @@ pub trait AssetSource {
     /// A mesh.
     fn mesh(&mut self, reference: &AssetRef) -> Result<MeshData, String>;
     /// A material.
-    fn material(&mut self, reference: &AssetRef) -> Result<MaterialData, String>;
+    fn material(&mut self, reference: &AssetRef) -> Result<Material, String>;
     /// A texture.
     fn texture(&mut self, reference: &AssetRef) -> Result<TextureData, String>;
 }
@@ -22,7 +20,7 @@ impl AssetSource for AssetDb {
         self.load_mesh(reference).map_err(|e| e.to_string())
     }
 
-    fn material(&mut self, reference: &AssetRef) -> Result<MaterialData, String> {
+    fn material(&mut self, reference: &AssetRef) -> Result<Material, String> {
         self.load_material(reference).map_err(|e| e.to_string())
     }
 
@@ -35,7 +33,7 @@ impl AssetSource for AssetDb {
 #[derive(Debug, Clone, Default)]
 pub struct MemoryAssets {
     meshes: BTreeMap<AssetRef, MeshData>,
-    materials: BTreeMap<AssetRef, MaterialData>,
+    materials: BTreeMap<AssetRef, Material>,
     textures: BTreeMap<AssetRef, TextureData>,
 }
 
@@ -61,7 +59,7 @@ impl MemoryAssets {
     }
 
     /// Stores a material and returns its reference.
-    pub fn insert_material(&mut self, name: &str, material: MaterialData) -> AssetRef {
+    pub fn insert_material(&mut self, name: &str, material: Material) -> AssetRef {
         let r = memory_ref("material", name);
         self.materials.insert(r.clone(), material);
         r
@@ -100,7 +98,7 @@ impl MemoryAssets {
         self.meshes.iter()
     }
 
-    pub(crate) fn materials(&self) -> impl Iterator<Item = (&AssetRef, &MaterialData)> {
+    pub(crate) fn materials(&self) -> impl Iterator<Item = (&AssetRef, &Material)> {
         self.materials.iter()
     }
 
@@ -131,7 +129,7 @@ pub fn resolve(
             let material = source
                 .material(&item.material)
                 .map_err(fail(&item.material))?;
-            for t in crate::frame::material_textures(&material) {
+            for t in crate::material_rows::material_textures(&material) {
                 if wanted(&out, t) {
                     out.textures
                         .insert(t.clone(), source.texture(t).map_err(fail(t))?);
@@ -167,7 +165,7 @@ impl AssetSource for MemoryAssets {
         }
     }
 
-    fn material(&mut self, reference: &AssetRef) -> Result<MaterialData, String> {
+    fn material(&mut self, reference: &AssetRef) -> Result<Material, String> {
         match Builtin::of(reference) {
             Some(BuiltinAsset::Material(m)) => Ok(m),
             _ => self

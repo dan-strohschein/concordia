@@ -4,9 +4,10 @@ use std::collections::BTreeMap;
 use std::num::{NonZeroU32, NonZeroU64};
 use std::sync::Arc;
 
-use concordia_assets::{AlphaMode, AssetRef, MaterialData};
+use concordia_assets::{AlphaMode, AssetRef, Material};
 use concordia_core::id::EntityId;
 use concordia_core::math::{Mat4, Vec3};
+use concordia_material::{ClosureBudget, ClosureReport};
 use concordia_rhi::{
     Access, AccessFlags, Buffer, BufferDesc, BufferUsage, ClearValue, ColorAttachment, Command,
     CommandList, DepthAttachment, Device, HeapDesc, Layout, LoadOp, MemoryLocation, Pipeline,
@@ -19,11 +20,12 @@ use crate::assets::{AssetSource, MemoryAssets};
 use crate::camera::{eye, view_matrix};
 use crate::cluster::{ClusterBuffers, ClusterCuller, ClusterGrid, ClusterSettings};
 use crate::environment::EnvironmentCache;
-use crate::frame::{DrawPush, FrameParams, IblParams, frame_block, instance_block, material_block};
+use crate::frame::{DrawPush, FrameParams, IblParams, frame_block, instance_block};
 use crate::gpu::{GpuAssets, GpuMesh, SharedPool, Uploads};
 use crate::graph::{GraphTexture, PassContext, RenderGraph, Use};
 use crate::lighting::punctual_lights;
 use crate::pipelines::{DEPTH, HDR, OUTPUT, Pipelines};
+use crate::programs::Programs;
 use crate::shadow::{Cascade, CascadeSettings, fit_cascades};
 use crate::shadow_pass::{
     ShadowDraw, ShadowJob, ShadowMaps, ShadowPush, add_shadow_passes, world_bounds,
@@ -86,6 +88,8 @@ pub struct Renderer {
     recycle: Recycler,
     /// What the shadow maps currently hold (see `shadow_key`).
     shadow_key: Option<u64>,
+    /// Materials fitted to the closure budget, as programs.
+    programs: Programs,
 }
 
 /// A presented frame the GPU may still be working on.
@@ -276,6 +280,7 @@ impl Renderer {
     ) -> Result<Self, RenderError> {
         let pipelines = Pipelines::new(device.as_ref(), compiler.as_ref())?;
         let culler = ClusterCuller::new(device.clone(), compiler.as_ref())?;
+        let programs = Programs::new(crate::platform_closure_budget(device.caps()));
         Ok(Self {
             device,
             pipelines,
@@ -294,6 +299,7 @@ impl Renderer {
             frames_in_flight: 2,
             recycle: Recycler::default(),
             shadow_key: None,
+            programs,
         })
     }
 
@@ -544,6 +550,22 @@ impl Renderer {
         self.stats
     }
 
+    /// The closure budget materials are fitted to.
+    pub fn closure_budget(&self) -> ClosureBudget {
+        self.programs.budget()
+    }
+
+    /// Sets the project's closure budget (None: the platform's); it can only lower the platform's.
+    /// Returns the budget now in effect.
+    pub fn set_closure_budget(&mut self, project: Option<ClosureBudget>) -> ClosureBudget {
+        self.programs.set_project_budget(project)
+    }
+
+    /// The last frame's materials that were simplified to fit the closure budget.
+    pub fn closure_reports(&self) -> &[(AssetRef, ClosureReport)] {
+        self.programs.reports()
+    }
+
     fn render_frame(
         &mut self,
         world: &RenderWorld,
@@ -569,8 +591,10 @@ impl Renderer {
         let mut up = Uploads::pooled(self.recycle.pool.clone());
         let mut resolved = crate::assets::resolve(world, assets, &|r| self.holds(r))?;
         let materials = self.load_assets(&resolved, &mut up)?;
+        self.programs.fit(&materials)?;
         let device = self.device.clone();
         let device = device.as_ref();
+        let tables = self.environments.tables(device, &mut up)?;
         let exposure = view.camera.exposure();
         let (dir, radiance) = match world.lights.first() {
             Some(l) => (
@@ -646,7 +670,7 @@ impl Renderer {
                 skybox: *skybox,
                 levels: *levels,
             }),
-            lut: self.environments.lut_index(),
+            lut: tables,
             view_mode: view_mode.shader_index(),
         });
         let frame_buf = frame.keep(up.buffer(device, &block, "frame")?);
@@ -659,7 +683,7 @@ impl Renderer {
             &materials,
             &view_m,
             &crate::cull::Frustum::new(view_proj),
-        );
+        )?;
         let inst_buf = frame.keep(up.buffer(device, &instances, "instances")?);
         let mat_buf = frame.keep(up.buffer(device, &material_bytes, "materials")?);
         let (uploads, staging) = up.into_commands();
@@ -863,13 +887,12 @@ impl Renderer {
         Ok(Some((cascades, settings, maps)))
     }
 
-    /// Uploads missing meshes and textures; returns this frame's materials (deduplicated, in order).
     /// Uploads the meshes and textures of `resolved` (what the GPU lacks) and returns its materials.
     fn load_assets(
         &mut self,
         resolved: &MemoryAssets,
         up: &mut Uploads,
-    ) -> Result<BTreeMap<AssetRef, MaterialData>, RenderError> {
+    ) -> Result<BTreeMap<AssetRef, Material>, RenderError> {
         let device = self.device.as_ref();
         for (reference, data) in resolved.meshes() {
             let mesh = GpuMesh::upload(device, up, data, &reference.to_string())?;
@@ -903,25 +926,12 @@ impl Renderer {
     fn instance_data(
         &self,
         world: &RenderWorld,
-        materials: &BTreeMap<AssetRef, MaterialData>,
+        materials: &BTreeMap<AssetRef, Material>,
         view: &Mat4,
         frustum: &crate::cull::Frustum,
-    ) -> FrameBlocks {
-        let textures: BTreeMap<AssetRef, u32> = self
-            .assets
-            .textures
-            .iter()
-            .map(|(r, (_, i))| (r.clone(), *i))
-            .collect();
-        let indices: BTreeMap<&AssetRef, u32> = materials
-            .keys()
-            .enumerate()
-            .map(|(i, r)| (r, i as u32))
-            .collect();
-        let mut material_bytes = Vec::new();
-        materials
-            .values()
-            .for_each(|m| material_block(&mut material_bytes, m, &textures));
+    ) -> Result<FrameBlocks, RenderError> {
+        let texture = |r: &AssetRef| self.assets.textures.get(r).map(|(_, i)| *i);
+        let (material_bytes, indices) = self.programs.buffer(materials.keys(), &texture)?;
         let mut order: Vec<DrawOrder> = world
             .draws
             .iter()
@@ -963,11 +973,11 @@ impl Renderer {
         order
             .iter()
             .for_each(|d| instance_block(&mut instances, &world.draws[d.item].world));
-        FrameBlocks {
+        Ok(FrameBlocks {
             instances,
             materials: material_bytes,
             order,
-        }
+        })
     }
 
     /// Builds the frame graph, places transients, records, then reads back or presents.

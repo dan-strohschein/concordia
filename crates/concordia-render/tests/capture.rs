@@ -1,12 +1,14 @@
-//! `capture.screenshot` through the Engine API (M1 phase 1.5). GPU cases skip without a GPU
-//! unless CONCORDIA_REQUIRE_GPU=1.
+//! `capture.screenshot` and `render.stats` through the Engine API (M1 phase 1.5; the closure
+//! budget, M2 2.3b). GPU cases skip without a GPU unless CONCORDIA_REQUIRE_GPU=1.
 
 use std::sync::Arc;
 
 use base64::Engine as _;
 use concordia_api::{Engine, EngineConfig, EngineModule, MethodInfo, params_schema};
-use concordia_assets::AssetsModule;
+use concordia_assets::{AssetsModule, read_material, write_material};
 use concordia_core::id::SessionId;
+use concordia_core::log::LogRing;
+use concordia_material::{ClosureBudget, fit_budget};
 use concordia_render::{CaptureScreenshot, DeviceFactory, RenderModule};
 use concordia_rhi::RhiError;
 use concordia_testkit::gpu_required;
@@ -20,12 +22,16 @@ struct Harness {
 
 impl Harness {
     fn with(factory: DeviceFactory) -> Self {
+        Self::configured(RenderModule::new(factory), None)
+    }
+
+    /// An engine whose render module is `render`, logging into `ring` when given.
+    fn configured(render: RenderModule, ring: Option<Arc<LogRing>>) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let mut config = EngineConfig::new(dir.path());
-        let modules: Vec<Arc<dyn EngineModule>> = vec![
-            Arc::new(AssetsModule::new(dir.path())),
-            Arc::new(RenderModule::new(factory)),
-        ];
+        config.log_ring = ring;
+        let modules: Vec<Arc<dyn EngineModule>> =
+            vec![Arc::new(AssetsModule::new(dir.path())), Arc::new(render)];
         config.modules = modules;
         let mut engine = Engine::new(config).unwrap();
         let session = engine.open_session();
@@ -40,14 +46,7 @@ impl Harness {
 
     /// A harness on the real GPU, or None (skip) without one unless required.
     fn gpu() -> Option<Self> {
-        if let Err(RhiError::NoDevice { reason }) = concordia_rhi_metal::new_headless() {
-            assert!(
-                !gpu_required(),
-                "CONCORDIA_REQUIRE_GPU=1 but no device: {reason}"
-            );
-            return None;
-        }
-        Some(Self::with(Arc::new(concordia_rhi_metal::new_headless)))
+        has_gpu().then(|| Self::with(Arc::new(concordia_rhi_metal::new_headless)))
     }
 
     fn call(&mut self, method: &str, params: Value) -> Result<Value, concordia_api::ApiError> {
@@ -75,6 +74,18 @@ impl Harness {
         }}));
         camera["id"].clone()
     }
+}
+
+/// Whether a GPU is present (failing when one is required but missing).
+fn has_gpu() -> bool {
+    if let Err(RhiError::NoDevice { reason }) = concordia_rhi_metal::new_headless() {
+        assert!(
+            !gpu_required(),
+            "CONCORDIA_REQUIRE_GPU=1 but no device: {reason}"
+        );
+        return false;
+    }
+    true
 }
 
 fn png_size(result: &Value) -> (u32, u32) {
@@ -284,4 +295,133 @@ fn an_environment_without_a_transform_lights_captures() {
         reopened["image"], lit["image"],
         "a loaded scene shows its environment"
     );
+}
+
+/// Coat over paint: two closures.
+const CAR_PAINT: &str = r#"(
+    nodes: {
+        "base": Slab((base_color: (0.6, 0.1, 0.05, 1.0), roughness: 0.5)),
+        "coat": Slab((base_color: (0.0, 0.0, 0.0, 1.0), roughness: 0.15, transmittance: (1.0, 1.0, 1.0))),
+        "paint": Vertical(top: "coat", bottom: "base"),
+    },
+    root: "paint",
+)
+"#;
+
+impl Harness {
+    /// Writes and imports a material file; returns its `asset:` reference.
+    fn material(&mut self, path: &str, text: &str) -> String {
+        std::fs::write(self.dir.path().join(path), text).unwrap();
+        let id = self.ok("asset.import", json!({"path": path}))["id"].clone();
+        format!("asset:{}", id.as_str().unwrap())
+    }
+
+    /// A sphere wearing `material` in front of a camera, lit by the sun; returns the sphere's id.
+    fn sphere_scene(&mut self, material: &str) -> Value {
+        let sphere = self.ok("entity.spawn", json!({"actor": "agent:test", "components": {
+            "Transform": {"translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.5, 1.5, 1.5]},
+            "MeshRenderer": {"mesh": "builtin:mesh/sphere", "material": material},
+        }}))["id"]
+            .clone();
+        self.ok("entity.spawn", json!({"actor": "agent:test", "components": {
+            "Transform": {"translation": [0.0, 0.0, 0.0], "rotation": [-0.38, 0.2, 0.0, 0.9], "scale": [1.0, 1.0, 1.0]},
+            "DirectionalLight": {},
+        }}));
+        self.ok("entity.spawn", json!({"actor": "agent:test", "components": {
+            "Transform": {"translation": [0.0, 0.0, 3.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]},
+            "Camera": {},
+        }}));
+        sphere
+    }
+
+    fn capture(&mut self) -> Value {
+        self.ok("capture.screenshot", json!({"width": 96, "height": 96}))["image"].clone()
+    }
+}
+
+fn decode_png(image: &Value) -> Vec<u8> {
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(image["data_base64"].as_str().unwrap())
+        .unwrap();
+    let mut reader = png::Decoder::new(std::io::Cursor::new(bytes))
+        .read_info()
+        .unwrap();
+    let mut rgba = vec![0; reader.output_buffer_size().unwrap()];
+    reader.next_frame(&mut rgba).unwrap();
+    rgba
+}
+
+#[test]
+fn closure_budget_downgrades_gracefully_and_reports_it() {
+    if !has_gpu() {
+        return;
+    }
+    // The render thread logs, so the ring must see every thread (nextest runs one test per process).
+    let ring = Arc::new(LogRing::new(std::num::NonZeroUsize::new(256).unwrap()));
+    tracing::subscriber::set_global_default(tracing_subscriber::layer::SubscriberExt::with(
+        tracing_subscriber::registry(),
+        ring.layer(),
+    ))
+    .unwrap();
+    let budget = ClosureBudget::new(1).unwrap();
+    let factory: DeviceFactory = Arc::new(concordia_rhi_metal::new_headless);
+    let mut h = Harness::configured(
+        RenderModule::new(factory.clone()).with_closure_budget(Some(budget)),
+        Some(ring),
+    );
+    let paint = h.material("paint.material.ron", CAR_PAINT);
+    let (fitted, _) = fit_budget(&read_material(CAR_PAINT).unwrap(), budget).unwrap();
+    let fitted = h.material("fitted.material.ron", &write_material(&fitted).unwrap());
+    let sphere = h.sphere_scene(&paint);
+    let downgraded = h.capture();
+
+    let frame = h.ok("render.stats", json!({}))["frame"].clone();
+    assert_eq!(frame["closure_budget"], 1, "{frame}");
+    assert_eq!(
+        frame["downgraded_materials"],
+        json!([{
+            "material": paint,
+            "before": 2,
+            "after": 1,
+            "merges": [{"node": "paint", "kind": "vertical", "slabs": ["coat", "base"], "dropped": []}],
+        }])
+    );
+    let records = h.ok("log.tail", json!({"level": "info"}))["records"].clone();
+    let logged = records
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|r| r["message"] == "material simplified to fit the closure budget")
+        .unwrap_or_else(|| panic!("a log record: {records}"));
+    assert_eq!(logged["fields"]["material"], paint);
+    assert_eq!(logged["fields"]["closures"], "2 -> 1");
+
+    // Gracefully: the sphere is still lit, exactly as the fitted material draws it.
+    let rgba = decode_png(&downgraded);
+    let center = &rgba[(48 * 96 + 48) * 4..][..3];
+    assert!(center.iter().any(|c| *c > 40), "lit: {center:?}");
+    h.ok(
+        "component.patch",
+        json!({"actor": "agent:test", "entity": sphere,
+        "component": "MeshRenderer", "patch": {"material": fitted}}),
+    );
+    assert_eq!(
+        h.capture(),
+        downgraded,
+        "the downgrade is the fitted material"
+    );
+    let frame = h.ok("render.stats", json!({}))["frame"].clone();
+    assert_eq!(frame["downgraded_materials"], json!([]), "{frame}");
+
+    // At the platform's budget the coat is drawn as authored.
+    let mut full = Harness::with(factory);
+    let paint = full.material("paint.material.ron", CAR_PAINT);
+    full.sphere_scene(&paint);
+    assert_ne!(
+        full.capture(),
+        downgraded,
+        "the downgrade changed the image"
+    );
+    let frame = full.ok("render.stats", json!({}))["frame"].clone();
+    assert_eq!(frame["closure_budget"], 8, "{frame}");
 }

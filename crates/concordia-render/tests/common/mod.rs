@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use concordia_assets::{AssetRef, MaterialData, MeshRenderer};
+use concordia_assets::{AssetRef, Material, MaterialData, MeshRenderer};
 use concordia_core::id::{DeterministicIdGen, EntityId};
 use concordia_core::math::{Quat, Vec3};
 use concordia_render::{
@@ -66,8 +66,8 @@ impl Scene {
     }
 
     /// A material stored under `memory:<name>` style ids (`asset:` refs with a fixed uuid per name).
-    pub fn material(&mut self, name: &str, material: MaterialData) -> AssetRef {
-        self.assets.insert_material(name, material)
+    pub fn material(&mut self, name: &str, material: impl Into<Material>) -> AssetRef {
+        self.assets.insert_material(name, material.into())
     }
 
     pub fn mesh(

@@ -84,10 +84,13 @@ impl Default for StudioSection {
     }
 }
 
-/// `[render]` (no settings yet; the device is created on the first capture).
+/// `[render]` (the device is created on the first capture).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct RenderSection {}
+pub struct RenderSection {
+    /// Closures a pixel may evaluate, 1..=8; only lowers the platform's budget (ADR-0068).
+    pub closure_budget: Option<u8>,
+}
 
 /// `[assets]` (no settings yet).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

@@ -1,11 +1,9 @@
-//! `.material.ron` → `MaterialData`: materials as canonical text (validated against the reflected
-//! schema by the engine's own RON reader, ADR-0009).
+//! `.material.ron` → `Material`: layered materials as canonical text (ADR-0068), read and validated
+//! by `read_material`; M1's flat text migrates to one slab.
 
-use concordia_scene::read_document;
-
-use crate::data::MaterialData;
 use crate::error::AssetError;
 use crate::importer::{Artifact, AssetKind, ImportInput, ImportOutput, Importer, encode};
+use crate::material::read_material;
 
 /// The material importer.
 #[derive(Debug, Clone, Copy, Default)]
@@ -17,7 +15,7 @@ impl Importer for MaterialImporter {
     }
 
     fn version(&self) -> u32 {
-        1
+        2
     }
 
     fn extensions(&self) -> &'static [&'static str] {
@@ -34,7 +32,7 @@ impl Importer for MaterialImporter {
             reason,
         };
         let text = std::str::from_utf8(input.bytes).map_err(|e| fail(e.to_string()))?;
-        let material: MaterialData = read_document(text).map_err(|e| fail(e.to_string()))?;
+        let material = read_material(text).map_err(|e| fail(e.to_string()))?;
         let mut output = ImportOutput::default();
         output.artifacts.insert(
             String::new(),

@@ -351,7 +351,14 @@ impl Worker {
                 if image.is_ok() {
                     let cpu_ms = start.elapsed().as_secs_f64() * 1000.0;
                     let frame_stats = self.renderer.stats();
-                    stats::record(&self.last_frame, number, &request, frame_stats, cpu_ms);
+                    stats::record(
+                        &self.last_frame,
+                        number,
+                        &request,
+                        frame_stats,
+                        cpu_ms,
+                        &self.renderer,
+                    );
                 }
                 let _ = reply.send(image.map(|image| (image, self.renderer.frames())));
                 latest
@@ -444,7 +451,14 @@ impl Worker {
             Ok(true) => {
                 let cpu_ms = start.elapsed().as_secs_f64() * 1000.0;
                 let frame_stats = self.renderer.stats();
-                stats::record(&self.last_frame, number, &request, frame_stats, cpu_ms);
+                stats::record(
+                    &self.last_frame,
+                    number,
+                    &request,
+                    frame_stats,
+                    cpu_ms,
+                    &self.renderer,
+                );
                 let submitted = unix_ms(SystemTime::now());
                 update_frame(&log, id, |f| {
                     f.cpu_ms = cpu_ms;

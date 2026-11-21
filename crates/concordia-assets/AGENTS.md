@@ -4,11 +4,11 @@
 The asset pipeline: source files with `<file>.import.ron` sidecars holding stable ids, importers producing derived data in the content-addressed DDC, built-in assets, hot reload, and `asset.import` / `asset.list` (ADR-0044).
 
 ## Public entry points
-- `AssetDb` (`new`, `register`, `scan`, `import` → `ImportReport`, `load_texture` / `load_mesh` / `load_material`, `load_artifact`, `list`, `path_of`, `generation`, `on_files_changed`)
-- `Importer` (trait), `ImportInput`, `ImportOutput`, `Artifact`, `AssetKind`, `SubIds`; `ImageImporter` (`png`, `jpg`, `hdr`) and `ImageSettings`; `MaterialImporter` (`.material.ron`, read with the engine's RON reader into `MaterialData`)
+- `AssetDb` (`new`, `register`, `scan`, `import` → `ImportReport`, `load_texture` / `load_mesh` / `load_material` (a layered `Material`), `load_artifact`, `list`, `path_of`, `generation`, `on_files_changed`)
+- `Importer` (trait), `ImportInput`, `ImportOutput`, `Artifact`, `AssetKind`, `SubIds`; `ImageImporter` (`png`, `jpg`, `hdr`) and `ImageSettings`; `MaterialImporter` (`.material.ron` → `Material` through `read_material`: layered text, or M1's flat text as one slab; version 2)
 - `AssetRef` (`"asset:<uuid>[#sub]"`, `"builtin:<kind>/<name>"`), `Builtin` / `BuiltinAsset`
-- Data: `TextureData`, `MeshData`, `MaterialData` (M1's flat material; the renderer still reads it until 2.3b), `AlphaMode`
-- Layered materials (ADR-0068): `Material` (named `nodes`, `root`, `alpha_mode`, `double_sided`, `unlit`), `MaterialNode` (`Slab`, `Vertical`, `Horizontal`, `Coverage`), `Slab`, `Haze`, `Fuzz`, `Subsurface`, `ThinFilm`, `MaterialError`, `SURFACE`; `read_material` (layered text, or M1 text migrated to one slab), `write_material`, `Material::from_pbr`, `validate`, `reachable`. Evaluation is in `concordia-material`.
+- Data: `TextureData`, `MeshData`, `MaterialData` (M1's flat material: only the migration source and the glTF importer's intermediate until 2.3c retires it), `AlphaMode`
+- Layered materials (ADR-0068): `Material` (named `nodes`, `root`, `alpha_mode`, `double_sided`, `unlit`), `MaterialNode` (`Slab`, `Vertical`, `Horizontal`, `Coverage`), `Slab`, `Haze`, `Fuzz`, `Subsurface`, `ThinFilm`, `MaterialError`, `SURFACE`; `read_material` (layered text, or M1 text migrated to one slab), `write_material`, `Material::from_pbr` (also `From<MaterialData>`), `validate`, `reachable`. Material artifacts (`AssetKind::Material`) hold a `Material`; `builtin:material/default` is M1's white dielectric as one slab. Evaluation is in `concordia-material`.
 - `Sidecar`, `import_key`, `PLATFORM`; `AssetsModule` (EngineModule)
 
 ## Invariants
@@ -35,7 +35,7 @@ The asset pipeline: source files with `<file>.import.ron` sidecars holding stabl
 - Layered materials: Epic Games' public Substrate documentation and the SIGGRAPH 2023 Substrate course (Hillaire & de Rousiers); no Unreal source consulted (see `concordia-material`).
 
 ## Status
-M1 phase 1.4; layered material model M2 phase 2.3a.
+M1 phase 1.4; layered material model M2 phase 2.3a; imported and loaded as `Material` since 2.3b.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

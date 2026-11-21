@@ -313,16 +313,31 @@ pub(crate) fn to_texture(map: &Equirect) -> TextureData {
     }
 }
 
-/// RGBA16F texture data of the BRDF table (A, B, 0, 1).
-pub(crate) fn lut_texture() -> TextureData {
-    let bytes = brdf_lut_cached()
-        .iter()
-        .flat_map(|[a, b]| [*a, *b, 0.0, 1.0])
+/// The albedo tables as one RGBA16F texture, two tables wide: at each (N·V, roughness) texel the
+/// left half holds the split sum (A, B) and the direct lobe's (A, B), the right half the sheen
+/// albedo (E, 0, 0, 1). The shader reads each half at texel centers, as the CPU tables do.
+pub fn albedo_table() -> TextureData {
+    let size = BRDF_LUT_SIZE;
+    let (split, direct) = (
+        brdf_lut_cached(),
+        concordia_material::dfg::direct_lut_cached(),
+    );
+    let sheen = concordia_material::dfg::sheen_lut_cached();
+    let texel = |x: usize, y: usize| match x < size {
+        true => {
+            let i = y * size + x;
+            [split[i][0], split[i][1], direct[i][0], direct[i][1]]
+        }
+        false => [sheen[y * size + x - size], 0.0, 0.0, 1.0],
+    };
+    let bytes = (0..size)
+        .flat_map(|y| (0..2 * size).map(move |x| (x, y)))
+        .flat_map(|(x, y)| texel(x, y))
         .flat_map(|c| half::f16::from_f32(c).to_le_bytes())
         .collect();
     TextureData {
-        width: BRDF_LUT_SIZE as u32,
-        height: BRDF_LUT_SIZE as u32,
+        width: 2 * size as u32,
+        height: size as u32,
         format: TextureFormat::Rgba16Float,
         mips: vec![bytes],
     }

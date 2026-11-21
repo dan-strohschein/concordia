@@ -1,17 +1,30 @@
-// Forward PBR: vertex pulling from bindless buffers, metallic-roughness (glTF 2.0 Appendix B,
-// Filament): GGX D, height-correlated Smith V, Schlick F, Lambert diffuse; one directional light.
+// Forward shading of Substrate-style materials (ADR-0068): vertex pulling from bindless buffers,
+// then each material's closure program (slabs combined by layering, mixing and coverage on a
+// stack) evaluated per light and for image-based lighting. Every formula mirrors
+// `concordia-material` (`bsdf.rs`, `film.rs`, `program.rs`); the tests compare them pixel by pixel.
 import bindless;
 
 static const float PI = 3.14159265;
+static const float TAU = 6.28318531;
 static const uint NO_TEXTURE = 0xffffffff;
 static const uint FLAG_UNLIT = 1;
 static const uint FLAG_MASK = 2;
 static const uint FLAG_BLEND = 4;
-
-// Blended materials output premultiplied alpha; everything else is opaque.
-float4 finish(Material m, float3 color, float alpha) {
-    return (m.tex1.y & FLAG_BLEND) != 0 ? float4(color * alpha, alpha) : float4(color, 1.0);
-}
+static const uint FLAG_LAYERED = 8;
+static const uint OP_SLAB = 0;
+static const uint OP_VERTICAL = 1;
+static const uint OP_HORIZONTAL = 2;
+static const uint OP_COVERAGE = 3;
+static const uint FEATURE_HAZE = 1;
+static const uint FEATURE_FUZZ = 2;
+static const uint FEATURE_SUBSURFACE = 4;
+static const uint FEATURE_THIN_FILM = 8;
+static const uint MAX_CLOSURES = 8;
+static const uint CLOSURE_ROWS = 8;
+// Mean free path (metres) at which the subsurface wrap reaches one half (`SSS_SCALE`).
+static const float SSS_SCALE = 0.01;
+// Side of each albedo table (`BRDF_LUT_SIZE`).
+static const float TABLE_SIZE = 32.0;
 
 // Columns of 4×4 matrices are float4s: the layout is identical on every backend.
 // eye, sun direction and exposed radiance; cluster_depth = (near, far, ortho?, ln(far/near));
@@ -38,10 +51,16 @@ struct Frame {
 // Per light: position+range, direction, exposed radiance, spot (scale, offset).
 struct Light { float4 position_range; float4 direction; float4 radiance; float4 spot; };
 struct Instance { float4 model[4]; float4 normal[4]; };
-struct Material { float4 base_color; float4 emissive_cutoff; float4 factors; uint4 tex0; uint4 tex1; };
+// Materials are `uint4` rows (floats as bits; `material_rows.rs`): a header (closures, ops, flags,
+// mask cutoff), one row per op (kind, slab index or mix texture, parameter), then CLOSURE_ROWS
+// rows per closure: base color; emission, metallic; transmittance, specular; roughness, normal
+// scale, occlusion strength, features; haze roughness and weight, film thickness and IOR; fuzz
+// color and roughness; mean free path, emissive texture; base, metallic-roughness, normal and
+// occlusion textures.
 
 struct ShadowPush { uint frame; uint instances; uint instance; uint indices; uint positions; uint cascade; };
 
+// `material` is the material's first row in the `materials` buffer.
 struct DrawPush { uint frame; uint instances; uint instance; uint materials; uint material; uint indices; uint positions; uint normals; uint tangents; uint uvs; };
 
 struct VsOut {
@@ -151,22 +170,6 @@ float3 sh_irradiance(Frame* frame, float3 n) {
     return max(e, 0.0);
 }
 
-// Split-sum image-based lighting (Karis 2013): SH diffuse plus prefiltered specular × BRDF table.
-float3 ambient(Frame* frame, float3 n, float3 v, float3 base, float metallic, float roughness) {
-    if (frame.ibl.w < 0.5) { return float3(0.0); }
-    float nov = saturate(dot(n, v));
-    float3 f0 = lerp(float3(0.04), base, metallic);
-    float2 ab = g_textures.tex[frame.env_b.z].SampleLevel(g_textures.samplers[SAMPLER_LINEAR_CLAMP], float2(nov, roughness), 0).rg;
-    float3 r = reflect(-v, n);
-    float lod = roughness * (frame.ibl.y - 1.0);
-    uint lo = uint(floor(lod));
-    uint hi = min(lo + 1, uint(frame.ibl.y) - 1);
-    float3 prefiltered = lerp(env_sample(frame, lo, r), env_sample(frame, hi, r), lod - floor(lod));
-    float3 specular = prefiltered * (f0 * ab.x + ab.y);
-    float3 diffuse = (1.0 - metallic) * base / PI * sh_irradiance(frame, n);
-    return (diffuse + specular) * frame.ibl.x;
-}
-
 struct SkyPush { uint frame; };
 struct SkyOut { float4 position : SV_Position; float2 ndc : NDC; };
 
@@ -194,6 +197,59 @@ float4 sample_or(uint tex, float2 uv, float4 fallback) {
     return g_textures.tex[NonUniformResourceIndex(tex)].Sample(g_textures.samplers[SAMPLER_LINEAR_REPEAT], uv);
 }
 
+float max3(float3 c) { return max(c.x, max(c.y, c.z)); }
+
+// ---- Albedo tables: (N·V, roughness) at texel centers, clamped, like `dfg::bilinear`. Half 0 holds
+// the split sum (A, B) and the direct lobe's (A, B); half 1 the sheen albedo.
+float4 albedo_tables(Frame* frame, uint half, float nov, float roughness) {
+    float x = clamp(saturate(nov) * TABLE_SIZE - 0.5, 0.0, TABLE_SIZE - 1.0);
+    float y = clamp(saturate(roughness) * TABLE_SIZE - 0.5, 0.0, TABLE_SIZE - 1.0);
+    float2 uv = float2((x + 0.5 + float(half) * TABLE_SIZE) / (2.0 * TABLE_SIZE), (y + 0.5) / TABLE_SIZE);
+    return g_textures.tex[frame.env_b.z].SampleLevel(g_textures.samplers[SAMPLER_LINEAR_CLAMP], uv, 0);
+}
+
+float2 split_sum(Frame* frame, float nov, float roughness) { return albedo_tables(frame, 0, nov, roughness).xy; }
+float2 direct_albedo(Frame* frame, float nov, float roughness) { return albedo_tables(frame, 0, nov, roughness).zw; }
+float sheen_albedo(Frame* frame, float nov, float roughness) { return albedo_tables(frame, 1, nov, roughness).x; }
+
+// ---- One slab, its textures applied (the CPU reference takes factors only).
+struct Closure {
+    float3 base; float alpha;
+    float3 emissive; float metallic;
+    float3 transmittance; float specular;
+    float roughness; float occlusion; uint features;
+    float haze_roughness; float haze_weight; float film_thickness; float film_ior;
+    float3 fuzz; float fuzz_roughness;
+    float3 mfp;
+    float3 n;
+    // View-only terms, computed once per pixel: |N·V| + 1e-5, the diffuse share 1 − E_spec(N·V),
+    // the sheen albedo at N·V and the transmittance toward the view.
+    float nov; float3 diffuse_weight; float sheen_e; float3 tv;
+    // Light-independent factors: F0, the GGX alphas, and diffuse albedo × its share / π.
+    float3 f0; float a; float haze_a; float3 diffuse;
+};
+
+bool has(Closure c, uint feature) { return (c.features & feature) != 0; }
+
+// The fragment's closures (thread-private), loaded once and read by every program run, so the
+// light loops don't copy them.
+static Closure g_closures[MAX_CLOSURES];
+
+float3 shading_normal(VsOut i, uint tex, float scale) {
+    float3 n = normalize(i.normal);
+    if (tex == NO_TEXTURE) { return n; }
+    float3 t = normalize(i.tangent.xyz - n * dot(n, i.tangent.xyz));
+    float3 b = cross(n, t) * i.tangent.w;
+    float3 tn = sample_or(tex, i.uv, float4(0.5, 0.5, 1.0, 1.0)).xyz * 2.0 - 1.0;
+    tn.xy *= scale;
+    return normalize(t * tn.x + b * tn.y + n * tn.z);
+}
+
+// ---- The slab BSDF (`bsdf.rs`).
+float alpha_of(float roughness) { float r = clamp(roughness, 0.045, 1.0); return r * r; }
+
+float3 f0_of(Closure c) { return lerp(float3(0.08 * c.specular), c.base, c.metallic); }
+
 float d_ggx(float noh, float a) {
     float a2 = a * a;
     float f = noh * noh * (a2 - 1.0) + 1.0;
@@ -207,32 +263,308 @@ float v_smith(float nov, float nol, float a) {
     return 0.5 / max(gv + gl, 1e-5);
 }
 
-float3 f_schlick(float3 f0, float voh) { return f0 + (1.0 - f0) * pow(1.0 - voh, 5.0); }
-
-float3 shading_normal(VsOut i, Material m) {
-    float3 n = normalize(i.normal);
-    if (m.tex0.z == NO_TEXTURE) { return n; }
-    float3 t = normalize(i.tangent.xyz - n * dot(n, i.tangent.xyz));
-    float3 b = cross(n, t) * i.tangent.w;
-    float3 tn = sample_or(m.tex0.z, i.uv, float4(0.5, 0.5, 1.0, 1.0)).xyz * 2.0 - 1.0;
-    tn.xy *= m.factors.z;
-    return normalize(t * tn.x + b * tn.y + n * tn.z);
+// Unpolarized Airy reflectance: air → film (n1, d nm) → base (n2), at lambda nm (`film.rs`).
+float airy(float cos0, float n1, float n2, float d, float lambda) {
+    float sin0 = sqrt(max(1.0 - cos0 * cos0, 0.0));
+    float cos1 = sqrt(max(1.0 - (sin0 / n1) * (sin0 / n1), 0.0));
+    float cos2 = sqrt(max(1.0 - (sin0 / n2) * (sin0 / n2), 0.0));
+    float r01s = (cos0 - n1 * cos1) / (cos0 + n1 * cos1);
+    float r01p = (n1 * cos0 - cos1) / (n1 * cos0 + cos1);
+    float r12s = (n1 * cos1 - n2 * cos2) / (n1 * cos1 + n2 * cos2);
+    float r12p = (n2 * cos1 - n1 * cos2) / (n2 * cos1 + n1 * cos2);
+    float phase = cos(4.0 * PI * n1 * d * cos1 / lambda);
+    float rs = (r01s * r01s + r12s * r12s + 2.0 * r01s * r12s * phase) / (1.0 + r01s * r01s * r12s * r12s + 2.0 * r01s * r12s * phase);
+    float rp = (r01p * r01p + r12p * r12p + 2.0 * r01p * r12p * phase) / (1.0 + r01p * r01p * r12p * r12p + 2.0 * r01p * r12p * phase);
+    return saturate(0.5 * (rs + rp));
 }
 
-// (diffuse + specular) * N·L for one light direction.
-float3 brdf(float3 n, float3 v, float3 l, float3 base, float metallic, float a) {
+// Thin-film reflectance at 630, 532 and 465 nm over a base whose IOR comes from F0.
+float3 thin_film(float3 f0, float cos_theta, float thickness, float ior) {
+    float c = saturate(cos_theta);
+    float n1 = max(ior, 1.0);
+    float d = max(thickness, 0.0);
+    float3 s = min(sqrt(saturate(f0)), 0.99);
+    float3 n2 = (1.0 + s) / (1.0 - s);
+    return float3(airy(c, n1, n2.x, d, 630.0), airy(c, n1, n2.y, d, 532.0), airy(c, n1, n2.z, d, 465.0));
+}
+
+float3 fresnel(Closure c, float voh) {
+    float3 f0 = c.f0;
+    if (has(c, FEATURE_THIN_FILM)) { return thin_film(f0, voh, c.film_thickness, c.film_ior); }
+    return f0 + (1.0 - f0) * pow(1.0 - voh, 5.0);
+}
+
+// Directional albedo of the slab's specular lobes at cosine mu (the direct-lobe table).
+float3 specular_energy(Frame* frame, Closure c, float mu) {
+    float3 f0 = c.f0;
+    if (has(c, FEATURE_THIN_FILM)) { f0 = thin_film(f0, mu, c.film_thickness, c.film_ior); }
+    float2 ab = direct_albedo(frame, mu, c.roughness);
+    float3 e = f0 * ab.x + ab.y;
+    if (has(c, FEATURE_HAZE)) {
+        float2 hz = direct_albedo(frame, mu, c.haze_roughness);
+        e = lerp(e, f0 * hz.x + hz.y, c.haze_weight);
+    }
+    return e;
+}
+
+// Energy-conserving wrapped diffuse per channel: max(cos + w, 0) / (1 + w)², w = mfp / (mfp + scale).
+float3 wrap(float cos_l, float3 mfp) {
+    float3 m = max(mfp, 0.0);
+    float3 w = m / (m + SSS_SCALE);
+    return max(cos_l + w, 0.0) / ((1.0 + w) * (1.0 + w));
+}
+
+// Estevez–Kulla Λ for the sheen visibility.
+float sheen_lambda(float cos_theta, float a) {
+    float t = (1.0 - a) * (1.0 - a);
+    float p0 = lerp(21.5473, 25.3245, t);
+    float p1 = lerp(3.82987, 3.32435, t);
+    float p2 = lerp(0.19823, 0.16801, t);
+    float p3 = lerp(-1.97760, -1.27393, t);
+    float p4 = lerp(-4.32054, -4.85967, t);
+    float l_half = p0 / (1.0 + p1 * pow(0.5, p2)) + p3 * 0.5 + p4;
+    float x = cos_theta < 0.5 ? cos_theta : 1.0 - cos_theta;
+    float l = p0 / (1.0 + p1 * pow(x, p2)) + p3 * x + p4;
+    return cos_theta < 0.5 ? exp(l) : exp(2.0 * l_half - l);
+}
+
+// The Charlie sheen lobe × N·L.
+float sheen_lobe(float nov, float nol, float noh, float roughness) {
+    if (nol <= 0.0 || nov <= 0.0) { return 0.0; }
+    nov = min(nov, 1.0);
+    nol = min(nol, 1.0);
+    float a = alpha_of(roughness);
+    float d = (2.0 + 1.0 / a) * pow(max(1.0 - noh * noh, 0.0), 0.5 / a) / TAU;
+    return d / (4.0 * nov * (1.0 + sheen_lambda(nov, a) + sheen_lambda(nol, a)));
+}
+
+// `eval_slab` for a slab without optional features: one GGX lobe (Schlick) and diffuse.
+float3 eval_plain(Closure c, float3 v, float3 l) {
     float3 h = normalize(v + l);
-    float nov = abs(dot(n, v)) + 1e-5;
-    float nol = saturate(dot(n, l));
+    float nol = max(dot(c.n, l), 0.0);
+    float noh = saturate(dot(c.n, h));
+    float voh = saturate(dot(v, h));
+    float3 f = c.f0 + (1.0 - c.f0) * pow(1.0 - voh, 5.0);
+    return f * (d_ggx(noh, c.a) * v_smith(c.nov, nol, c.a)) * nol + c.diffuse * nol;
+}
+
+// BSDF × N·L of one closure for view v and light l (`eval_slab`).
+float3 eval_slab(Frame* frame, Closure c, float3 v, float3 l) {
+    if (c.features == 0 && dot(v + l, v + l) > 0.0) { return eval_plain(c, v, l); }
+    float3 n = c.n;
+    float3 vl = v + l;
+    float3 h = dot(vl, vl) > 0.0 ? normalize(vl) : float3(0.0);
+    float nov = c.nov;
+    float nol_raw = dot(n, l);
+    float nol = max(nol_raw, 0.0);
     float noh = saturate(dot(n, h));
     float voh = saturate(dot(v, h));
-    float3 f0 = lerp(float3(0.04), base, metallic);
-    float3 f = f_schlick(f0, voh);
-    float3 specular = f * d_ggx(noh, a) * v_smith(nov, nol, a);
-    float3 diffuse = (1.0 - f) * (1.0 - metallic) * base / PI;
-    return (diffuse + specular) * nol;
+    // Below the horizon the lobe is multiplied by N·L = 0 (no branch; every factor is finite).
+    float lobe = d_ggx(noh, c.a) * v_smith(nov, nol, c.a);
+    if (has(c, FEATURE_HAZE)) {
+        lobe = (1.0 - c.haze_weight) * lobe + c.haze_weight * d_ggx(noh, c.haze_a) * v_smith(nov, nol, c.haze_a);
+    }
+    float3 specular = fresnel(c, voh) * lobe * nol;
+    float3 term = float3(nol);
+    if (has(c, FEATURE_SUBSURFACE)) { term = wrap(nol_raw, c.mfp); }
+    float3 diffuse = c.diffuse * term;
+    float3 result = specular + diffuse;
+    if (has(c, FEATURE_FUZZ)) {
+        float e = c.sheen_e;
+        float3 sheen = c.fuzz * sheen_lobe(nov, nol, noh, c.fuzz_roughness) / max(e, 1.0);
+        result = sheen + (1.0 - max3(c.fuzz) * min(e, 1.0)) * result;
+    }
+    return result;
 }
 
+// Light passing through a closure toward a direction at cosine `cos_theta` (`slab_transmittance`).
+float3 transmittance(Frame* frame, Closure c, float cos_theta) {
+    float mu = clamp(abs(cos_theta), 1e-4, 1.0);
+    float3 medium = pow(saturate(c.transmittance), 1.0 / mu);
+    float sheen = 1.0;
+    if (has(c, FEATURE_FUZZ)) { sheen = 1.0 - max3(c.fuzz) * min(sheen_albedo(frame, mu, c.fuzz_roughness), 1.0); }
+    return saturate((1.0 - specular_energy(frame, c, mu)) * medium * sheen);
+}
+
+// Diffuse albedo seen head-on: the medium's share of a dielectric, or a metal's base color.
+float3 albedo_of(Closure c) { return c.base * lerp(1.0 - c.transmittance, float3(1.0), c.metallic); }
+
+Closure load_closure(Frame* frame, uint4* r, VsOut i, bool front, float3 v, bool layered) {
+    Closure c;
+    float4 base = asfloat(r[0]) * sample_or(r[7].x, i.uv, float4(1.0));
+    c.base = base.rgb;
+    c.alpha = base.a;
+    c.emissive = asfloat(r[1].xyz) * sample_or(r[6].w, i.uv, float4(1.0)).rgb;
+    float4 mr = sample_or(r[7].y, i.uv, float4(1.0));
+    c.metallic = saturate(asfloat(r[1].w) * mr.b);
+    c.transmittance = asfloat(r[2].xyz);
+    c.specular = asfloat(r[2].w);
+    c.roughness = saturate(asfloat(r[3].x) * mr.g);
+    c.occlusion = lerp(1.0, sample_or(r[7].w, i.uv, float4(1.0)).r, asfloat(r[3].z));
+    c.features = r[3].w;
+    float4 haze_film = asfloat(r[4]);
+    c.haze_roughness = haze_film.x;
+    c.haze_weight = haze_film.y;
+    c.film_thickness = haze_film.z;
+    c.film_ior = haze_film.w;
+    float4 fuzz = asfloat(r[5]);
+    c.fuzz = fuzz.rgb;
+    c.fuzz_roughness = fuzz.w;
+    c.mfp = asfloat(r[6].xyz);
+    c.n = shading_normal(i, r[7].z, asfloat(r[3].y)) * (front ? 1.0 : -1.0);
+    c.nov = abs(dot(c.n, v)) + 1e-5;
+    c.f0 = f0_of(c);
+    c.a = alpha_of(c.roughness);
+    c.haze_a = alpha_of(c.haze_roughness);
+    c.diffuse_weight = 1.0 - specular_energy(frame, c, min(c.nov, 1.0));
+    c.diffuse = c.diffuse_weight * (1.0 - c.metallic) * c.base * (1.0 - c.transmittance) / PI;
+    c.sheen_e = has(c, FEATURE_FUZZ) ? sheen_albedo(frame, c.nov, c.fuzz_roughness) : 0.0;
+    c.tv = layered ? transmittance(frame, c, dot(c.n, v)) : float3(1.0);
+    return c;
+}
+
+// ---- Image-based lighting of one closure: split-sum specular per lobe (thin film replacing F0
+// at N·V), SH diffuse under the same energy split as direct light, and sheen over both.
+float3 prefiltered(Frame* frame, float3 r, float roughness) {
+    float lod = roughness * (frame.ibl.y - 1.0);
+    uint lo = uint(floor(lod));
+    uint hi = min(lo + 1, uint(frame.ibl.y) - 1);
+    return lerp(env_sample(frame, lo, r), env_sample(frame, hi, r), lod - floor(lod));
+}
+
+float3 ambient(Frame* frame, Closure c, float3 v) {
+    if (frame.ibl.w < 0.5) { return float3(0.0); }
+    float3 n = c.n;
+    float nov = saturate(dot(n, v));
+    float3 f0 = c.f0;
+    if (has(c, FEATURE_THIN_FILM)) { f0 = thin_film(f0, nov, c.film_thickness, c.film_ior); }
+    float3 r = reflect(-v, n);
+    float2 ab = split_sum(frame, nov, c.roughness);
+    float3 specular = prefiltered(frame, r, c.roughness) * (f0 * ab.x + ab.y);
+    if (has(c, FEATURE_HAZE)) {
+        float2 hz = split_sum(frame, nov, c.haze_roughness);
+        specular = lerp(specular, prefiltered(frame, r, c.haze_roughness) * (f0 * hz.x + hz.y), c.haze_weight);
+    }
+    float3 diffuse = c.diffuse * sh_irradiance(frame, n);
+    float3 result = specular + diffuse;
+    if (has(c, FEATURE_FUZZ)) {
+        float e = c.sheen_e;
+        float3 sheen = c.fuzz * min(e, 1.0) * prefiltered(frame, r, c.fuzz_roughness);
+        result = sheen + (1.0 - max3(c.fuzz) * min(e, 1.0)) * result;
+    }
+    return result * frame.ibl.x;
+}
+
+// ---- The closure program (`program.rs`): postfix ops over a stack of entries.
+struct Entry { float3 color; float3 emissive; float alpha; float3 tv; float3 tl; };
+
+Entry nothing() {
+    Entry e;
+    e.color = float3(0.0);
+    e.emissive = float3(0.0);
+    e.alpha = 0.0;
+    e.tv = float3(1.0);
+    e.tl = float3(1.0);
+    return e;
+}
+
+Entry layer(Entry top, Entry bottom) {
+    Entry e;
+    e.color = top.color + top.tv * top.tl * bottom.color;
+    e.emissive = top.emissive + top.tv * bottom.emissive;
+    e.alpha = 1.0 - (1.0 - top.alpha) * (1.0 - bottom.alpha);
+    e.tv = top.tv * bottom.tv;
+    e.tl = top.tl * bottom.tl;
+    return e;
+}
+
+Entry mix_entries(Entry a, Entry b, float t) {
+    Entry e;
+    e.color = lerp(a.color, b.color, t);
+    e.emissive = lerp(a.emissive, b.emissive, t);
+    e.alpha = a.alpha + (b.alpha - a.alpha) * t;
+    e.tv = lerp(a.tv, b.tv, t);
+    e.tl = lerp(a.tl, b.tl, t);
+    return e;
+}
+
+Entry cover(Entry x, float coverage) { return mix_entries(nothing(), x, coverage); }
+
+// What each slab contributes: lit by one light, by the environment, its albedo, or a debug value.
+static const uint EVAL_LIGHT = 0;
+static const uint EVAL_AMBIENT = 1;
+static const uint EVAL_ALBEDO = 2;
+static const uint EVAL_VALUE = 3;
+
+// A closure's value in a material view mode (10 haze .. 13 thin film; black without the feature).
+float3 feature_value(Closure c, uint mode) {
+    if (mode == 10) { return has(c, FEATURE_HAZE) ? float3(c.haze_weight) : float3(0.0); }
+    if (mode == 11) { return has(c, FEATURE_FUZZ) ? c.fuzz : float3(0.0); }
+    if (mode == 12) { return has(c, FEATURE_SUBSURFACE) ? max(c.mfp, 0.0) / (max(c.mfp, 0.0) + SSS_SCALE) : float3(0.0); }
+    return has(c, FEATURE_THIN_FILM) ? float3(saturate(c.film_thickness / 1000.0)) : float3(0.0);
+}
+
+// Light-side transmittance only matters under a vertical layer (`layered`), so it is skipped otherwise.
+Entry slab_entry(Frame* frame, Closure c, uint eval, float3 v, float3 l, uint mode, bool layered) {
+    Entry e;
+    e.emissive = c.emissive;
+    e.alpha = c.alpha;
+    e.tv = c.tv;
+    e.tl = c.tv;
+    if (eval == EVAL_LIGHT) {
+        e.color = eval_slab(frame, c, v, l) * c.occlusion;
+        if (layered) { e.tl = transmittance(frame, c, dot(c.n, l)); }
+    } else if (eval == EVAL_AMBIENT) {
+        // The mirror direction has the view's cosine, so light leaves the layer as it arrived.
+        e.color = ambient(frame, c, v) * c.occlusion;
+    } else {
+        e.color = eval == EVAL_ALBEDO ? albedo_of(c) : feature_value(c, mode);
+        if (layered) {
+            e.tv = transmittance(frame, c, 1.0);
+            e.tl = e.tv;
+        }
+    }
+    return e;
+}
+
+Entry covered(Entry e, bool blend) {
+    if (!blend) { return e; }
+    float a = e.alpha;
+    Entry x = cover(e, a);
+    x.alpha = a;
+    return x;
+}
+
+// Runs a material's ops; slab alpha is coverage when `blend` (premultiplied results).
+Entry run(Frame* frame, uint4* rows, uint eval, float3 v, float3 l, float2 uv, uint mode, bool blend) {
+    uint ops = rows[0].y;
+    bool layered = (rows[0].z & FLAG_LAYERED) != 0;
+    if (ops == 1) { return covered(slab_entry(frame, g_closures[0], eval, v, l, mode, false), blend); }
+    Entry stack[MAX_CLOSURES];
+    uint top = 0;
+    for (uint i = 0; i < ops; i++) {
+        uint4 op = rows[1 + i];
+        if (op.x == OP_SLAB) {
+            Entry e = slab_entry(frame, g_closures[min(op.y, MAX_CLOSURES - 1)], eval, v, l, mode, layered);
+            stack[min(top, MAX_CLOSURES - 1)] = covered(e, blend);
+            top++;
+        } else if (op.x == OP_COVERAGE) {
+            if (top > 0) { stack[top - 1] = cover(stack[top - 1], asfloat(op.z)); }
+        } else if (top >= 2) {
+            Entry b = stack[top - 1];
+            Entry a = stack[top - 2];
+            top--;
+            if (op.x == OP_VERTICAL) {
+                stack[top - 1] = layer(a, b);
+            } else {
+                stack[top - 1] = mix_entries(a, b, asfloat(op.z) * sample_or(op.y, uv, float4(1.0)).r);
+            }
+        }
+    }
+    return top > 0 ? stack[0] : nothing();
+}
+
+// ---- Lights.
 // The cluster of a fragment: screen tile (rows from the top), then the depth slice.
 uint cluster_of(Frame* frame, float4 frag, float3 world) {
     float view_z = -xform(frame.view, float4(world, 1.0)).z;
@@ -252,12 +584,19 @@ float distance_attenuation(float d2, float range) {
     return w * w / max(d2, 1e-4);
 }
 
-// Lights in the fragment's cluster as a heat color: blue (none), green (8), red (16 or more).
+// A count as a heat color: blue at `low`, green at `mid`, red at `high` or more.
+float3 heat(float count, float low, float mid, float high) {
+    float3 blue = float3(0.0, 0.1, 0.6);
+    float3 green = float3(0.0, 0.8, 0.1);
+    float3 red = float3(0.9, 0.05, 0.0);
+    return count <= mid ? lerp(blue, green, saturate((count - low) / (mid - low)))
+                        : lerp(green, red, saturate((count - mid) / (high - mid)));
+}
+
+// Lights in the fragment's cluster: blue (none), green (8), red (16 or more).
 float3 cluster_heat(Frame* frame, float4 frag, float3 world) {
     uint* counts = (uint*)g_buffers.ptr[frame.buffers.y];
-    float t = saturate(float(counts[cluster_of(frame, frag, world)]) / 16.0);
-    return t < 0.5 ? lerp(float3(0.0, 0.1, 0.6), float3(0.0, 0.8, 0.1), t * 2.0)
-                   : lerp(float3(0.0, 0.8, 0.1), float3(0.9, 0.05, 0.0), t * 2.0 - 1.0);
+    return heat(float(counts[cluster_of(frame, frag, world)]), 0.0, 8.0, 16.0);
 }
 
 // Edge coverage of a fragment from its barycentrics (about a pixel wide, antialiased).
@@ -267,7 +606,7 @@ float wire_edge(float3 bary) {
     return 1.0 - min(a.x, min(a.y, a.z));
 }
 
-float3 punctual(Frame* frame, float4 frag, float3 world, float3 n, float3 v, float3 base, float metallic, float a) {
+float3 punctual(Frame* frame, float4 frag, float3 world, uint4* rows, float3 v, float2 uv, bool blend) {
     uint c = cluster_of(frame, frag, world);
     uint* counts = (uint*)g_buffers.ptr[frame.buffers.y];
     uint* indices = (uint*)g_buffers.ptr[frame.buffers.z];
@@ -281,52 +620,131 @@ float3 punctual(Frame* frame, float4 frag, float3 world, float3 n, float3 v, flo
         float3 l = to_light * rsqrt(max(d2, 1e-8));
         float spot = saturate(dot(-l, light.direction.xyz) * light.spot.x + light.spot.y);
         float atten = distance_attenuation(d2, light.position_range.w) * spot * spot;
-        sum += brdf(n, v, l, base, metallic, a) * light.radiance.rgb * atten;
+        sum += run(frame, rows, EVAL_LIGHT, v, l, uv, 0, blend).color * light.radiance.rgb * atten;
     }
     return sum;
+}
+
+// The program's alpha alone (each slab's base alpha × texture, combined like `Entry::alpha`).
+float program_alpha(uint4* rows, float2 uv) {
+    float stack[MAX_CLOSURES];
+    uint top = 0;
+    uint ops = rows[0].y;
+    for (uint i = 0; i < ops; i++) {
+        uint4 op = rows[1 + i];
+        if (op.x == OP_SLAB) {
+            uint4* r = rows + 1 + ops + min(op.y, MAX_CLOSURES - 1) * CLOSURE_ROWS;
+            stack[min(top, MAX_CLOSURES - 1)] = asfloat(r[0].w) * sample_or(r[7].x, uv, float4(1.0)).a;
+            top++;
+        } else if (op.x == OP_COVERAGE) {
+            if (top > 0) { stack[top - 1] *= asfloat(op.z); }
+        } else if (top >= 2) {
+            float b = stack[top - 1];
+            float a = stack[top - 2];
+            top--;
+            stack[top - 1] = op.x == OP_VERTICAL ? 1.0 - (1.0 - a) * (1.0 - b)
+                                                  : a + (b - a) * asfloat(op.z) * sample_or(op.y, uv, float4(1.0)).r;
+        }
+    }
+    return top > 0 ? stack[0] : 0.0;
+}
+
+// One closure lit by one light, as a one-op program returns it (premultiplied when blending).
+float3 lit_single(Frame* frame, Closure c, float3 v, float3 l, bool blend) {
+    float3 color = eval_slab(frame, c, v, l) * c.occlusion;
+    return blend ? color * c.alpha : color;
+}
+
+// The clustered punctual lights on a one-slab material: the closure stays in registers.
+float3 punctual_single(Frame* frame, float4 frag, float3 world, Closure c, float3 v, bool blend) {
+    uint cluster = cluster_of(frame, frag, world);
+    uint* counts = (uint*)g_buffers.ptr[frame.buffers.y];
+    uint* indices = (uint*)g_buffers.ptr[frame.buffers.z];
+    Light* lights = (Light*)g_buffers.ptr[frame.buffers.x];
+    uint cap = frame.dims.w;
+    float3 sum = float3(0.0);
+    for (uint i = 0; i < counts[cluster]; i++) {
+        Light light = lights[indices[cluster * cap + i]];
+        float3 to_light = light.position_range.xyz - world;
+        float d2 = dot(to_light, to_light);
+        float3 l = to_light * rsqrt(max(d2, 1e-8));
+        float spot = saturate(dot(-l, light.direction.xyz) * light.spot.x + light.spot.y);
+        float atten = distance_attenuation(d2, light.position_range.w) * spot * spot;
+        sum += lit_single(frame, c, v, l, blend) * light.radiance.rgb * atten;
+    }
+    return sum;
+}
+
+// Blended materials output premultiplied color (the program premultiplies); the rest are opaque.
+float4 finish(bool blend, float3 color, float alpha) {
+    return blend ? float4(color, alpha) : float4(color, 1.0);
 }
 
 [shader("fragment")]
 float4 fs(VsOut i, bool front : SV_IsFrontFace, uniform DrawPush push) : SV_Target {
     Frame* frame = (Frame*)g_buffers.ptr[push.frame];
-    Material m = ((Material*)g_buffers.ptr[push.materials])[push.material];
-    float4 base = m.base_color * sample_or(m.tex0.x, i.uv, float4(1.0));
-    if ((m.tex1.y & FLAG_MASK) != 0 && base.a < m.emissive_cutoff.w) { discard; }
-    float3 emissive = m.emissive_cutoff.xyz * sample_or(m.tex1.x, i.uv, float4(1.0)).rgb;
+    uint4* rows = ((uint4*)g_buffers.ptr[push.materials]) + push.material;
+    uint count = min(rows[0].x, MAX_CLOSURES);
+    uint flags = rows[0].z;
+    bool blend = (flags & FLAG_BLEND) != 0;
+    float3 v = normalize(frame.eye.xyz - i.world);
+    // The mask test comes first, from alphas alone: discarding after the closures are written to
+    // `g_closures` miscompiles on Metal (every masked fragment is dropped).
+    if ((flags & FLAG_MASK) != 0 && program_alpha(rows, i.uv) < asfloat(rows[0].w)) { discard; }
     uint mode = frame.debug.x;
+    // A one-slab material shaded lit (the common case) keeps its closure in registers; everything
+    // else goes through `g_closures` and the program interpreter.
+    bool single = rows[0].y == 1 && (flags & FLAG_UNLIT) == 0 && (mode == 0 || mode == 7 || mode == 8);
+    bool layered = (flags & FLAG_LAYERED) != 0;
+    Closure c0;
+    if (single) {
+        c0 = load_closure(frame, rows + 2, i, front, v, false);
+    } else {
+        for (uint c = 0; c < count; c++) {
+            g_closures[c] = load_closure(frame, rows + 1 + rows[0].y + c * CLOSURE_ROWS, i, front, v, layered);
+        }
+        c0 = g_closures[0];
+    }
     if (mode == 2) {
         float edge = wire_edge(i.bary);
         if (edge < 0.02) { discard; }
         return float4(float3(0.85, 0.9, 1.0) * edge, 1.0);
     }
     if (mode == 6) { return float4(0.12, 0.06, 0.02, 1.0); } // added up per covering surface
-    if (mode == 4) { return float4(base.rgb, 1.0); }
-    if (mode == 1 || (m.tex1.y & FLAG_UNLIT) != 0) { return finish(m, base.rgb + emissive, base.a); }
+    if (mode == 4) { return float4(run(frame, rows, EVAL_ALBEDO, v, v, i.uv, 0, false).color, 1.0); }
+    if (mode == 1 || (flags & FLAG_UNLIT) != 0) {
+        Entry surface = run(frame, rows, EVAL_ALBEDO, v, v, i.uv, 0, blend);
+        return finish(blend, surface.color + surface.emissive, surface.alpha);
+    }
+    if (mode == 3) { return float4(c0.n * 0.5 + 0.5, 1.0); }
+    if (mode == 5) { return float4(0.0, c0.roughness, c0.metallic, 1.0); }
+    if (mode == 9) { return float4(heat(float(count), 1.0, 4.0, 8.0), 1.0); }
+    if (mode >= 10) { return float4(saturate(run(frame, rows, EVAL_VALUE, v, v, i.uv, mode, false).color), 1.0); }
 
-    float3 n = shading_normal(i, m) * (front ? 1.0 : -1.0);
-    if (mode == 3) { return float4(n * 0.5 + 0.5, 1.0); }
-    float3 v = normalize(frame.eye.xyz - i.world);
-    float4 mr = sample_or(m.tex0.y, i.uv, float4(1.0));
-    float metallic = saturate(m.factors.x * mr.b);
-    float roughness = saturate(m.factors.y * mr.g);
-    if (mode == 5) { return float4(0.0, roughness, metallic, 1.0); }
-    float a = max(roughness, 0.045);
-    a = a * a;
-    float occlusion = lerp(1.0, sample_or(m.tex0.w, i.uv, float4(1.0)).r, m.factors.w);
     float3 geometric = normalize(i.normal) * (front ? 1.0 : -1.0);
-    float3 sun = brdf(n, v, -normalize(frame.light_dir.xyz), base.rgb, metallic, a) * frame.light_radiance.rgb * sun_shadow(frame, i.world, geometric, -normalize(frame.light_dir.xyz));
-    float3 lit = (sun + punctual(frame, i.position, i.world, n, v, base.rgb, metallic, a) + ambient(frame, n, v, base.rgb, metallic, roughness)) * occlusion;
+    float3 to_sun = -normalize(frame.light_dir.xyz);
+    float3 lit = float3(0.0);
+    if (any(frame.light_radiance.rgb > 0.0)) {
+        float3 sun = single ? lit_single(frame, c0, v, to_sun, blend) : run(frame, rows, EVAL_LIGHT, v, to_sun, i.uv, 0, blend).color;
+        lit = sun * frame.light_radiance.rgb * sun_shadow(frame, i.world, geometric, to_sun);
+    }
+    lit += single ? punctual_single(frame, i.position, i.world, c0, v, blend) : punctual(frame, i.position, i.world, rows, v, i.uv, blend);
+    Entry ambient_light = single ? covered(slab_entry(frame, c0, EVAL_AMBIENT, v, v, 0, false), blend)
+                                 : run(frame, rows, EVAL_AMBIENT, v, v, i.uv, 0, blend);
+    lit += ambient_light.color;
+    float3 emissive = ambient_light.emissive;
+    float alpha = ambient_light.alpha;
     if (mode == 7) {
         const float3 tints[5] = { float3(1.0, 0.3, 0.3), float3(0.3, 1.0, 0.3), float3(0.3, 0.4, 1.0), float3(1.0, 1.0, 0.3), float3(1.0) };
-        uint c = cascade_of(frame, i.world);
-        uint tint = c >= uint(frame.shadow.w) ? 4 : min(c, 3u); // white: no cascade
-        return finish(m, (lit + emissive) * tints[tint], base.a);
+        uint cascade = cascade_of(frame, i.world);
+        uint tint = cascade >= uint(frame.shadow.w) ? 4 : min(cascade, 3u); // white: no cascade
+        return finish(blend, (lit + emissive) * tints[tint], alpha);
     }
     if (mode == 8) {
         float shade = dot(lit, float3(0.2126, 0.7152, 0.0722));
         return float4(lerp(float3(shade), cluster_heat(frame, i.position, i.world), 0.7), 1.0);
     }
-    return finish(m, lit + emissive, base.a);
+    return finish(blend, lit + emissive, alpha);
 }
 
 // The editor's ground grid (ADR-0047): a quad on y = 0 under the eye, depth-tested against the

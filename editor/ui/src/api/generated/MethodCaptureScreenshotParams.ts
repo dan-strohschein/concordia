@@ -48,7 +48,12 @@ export type ViewMode =
   | "roughness_metallic"
   | "overdraw"
   | "shadow_cascades"
-  | "light_clusters";
+  | "light_clusters"
+  | "closures"
+  | "haze"
+  | "fuzz"
+  | "subsurface"
+  | "thin_film";
 /**
  * Which world to read.
  */

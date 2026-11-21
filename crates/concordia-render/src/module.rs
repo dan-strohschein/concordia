@@ -32,6 +32,8 @@ pub type DeviceFactory = Arc<dyn Fn() -> Result<Box<dyn Device>, RhiError> + Sen
 /// Registers render components and `capture.screenshot`.
 pub struct RenderModule {
     factory: DeviceFactory,
+    /// The project's closure budget (None: the platform's).
+    closure_budget: Option<crate::ClosureBudget>,
 }
 
 impl std::fmt::Debug for RenderModule {
@@ -43,13 +45,26 @@ impl std::fmt::Debug for RenderModule {
 impl RenderModule {
     /// A module that renders on devices from `factory`.
     pub fn new(factory: DeviceFactory) -> Self {
-        Self { factory }
+        Self {
+            factory,
+            closure_budget: None,
+        }
+    }
+
+    /// Lowers the platform's closure budget to the project's (`[render] closure_budget`); a
+    /// budget above the platform's is ignored with a warning.
+    pub fn with_closure_budget(self, closure_budget: Option<crate::ClosureBudget>) -> Self {
+        Self {
+            closure_budget,
+            ..self
+        }
     }
 }
 
 /// Engine-lifetime state: the device factory and, once something renders, the render thread.
 pub(crate) struct RenderState {
     factory: DeviceFactory,
+    closure_budget: Option<crate::ClosureBudget>,
     thread: Option<RenderThread>,
     /// Whether a host attached the editor's native viewport.
     surface: bool,
@@ -130,6 +145,7 @@ impl EngineModule for RenderModule {
     fn engine_state(&self) -> Option<Box<dyn std::any::Any + Send>> {
         Some(Box::new(RenderState {
             factory: self.factory.clone(),
+            closure_budget: self.closure_budget,
             thread: None,
             surface: false,
             shipped: BTreeSet::new(),
@@ -265,10 +281,11 @@ fn render_thread(engine: &mut Engine) -> Result<&RenderThread, ApiError> {
         .state_mut::<RenderState>()
         .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render module has no state"))?;
     if state.thread.is_none() {
-        let factory = state.factory.clone();
+        let (factory, budget) = (state.factory.clone(), state.closure_budget);
         let last = state.last.clone();
         state.thread = Some(
-            RenderThread::spawn(move || make_renderer(&factory, ddc), last).map_err(api_error)?,
+            RenderThread::spawn(move || make_renderer(&factory, ddc, budget), last)
+                .map_err(api_error)?,
         );
     }
     state
@@ -278,10 +295,11 @@ fn render_thread(engine: &mut Engine) -> Result<&RenderThread, ApiError> {
 }
 
 /// A renderer whose compiled shaders are cached in the project's DDC (`ddc`), so later starts
-/// skip the shader compiler.
+/// skip the shader compiler, with the project's closure budget.
 fn make_renderer(
     factory: &DeviceFactory,
     ddc: std::path::PathBuf,
+    closure_budget: Option<crate::ClosureBudget>,
 ) -> Result<Renderer, RenderError> {
     let device = factory().map_err(RenderError::Gpu)?;
     let toolchain = SlangToolchain::locate().map_err(|e| RenderError::Shader(e.to_string()))?;
@@ -289,7 +307,9 @@ fn make_renderer(
         SlangcCompiler::new(toolchain),
         concordia_core::ddc::Ddc::new(ddc),
     );
-    Renderer::new(Arc::from(device), Box::new(compiler))
+    let mut renderer = Renderer::new(Arc::from(device), Box::new(compiler))?;
+    renderer.set_closure_budget(closure_budget);
+    Ok(renderer)
 }
 
 /// The changes to world `sel` since the render thread last saw it, with the asset data they need.

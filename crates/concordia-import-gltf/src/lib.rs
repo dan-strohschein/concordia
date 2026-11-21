@@ -35,7 +35,7 @@ impl Importer for GltfImporter {
     }
 
     fn version(&self) -> u32 {
-        1
+        2
     }
 
     fn extensions(&self) -> &'static [&'static str] {
