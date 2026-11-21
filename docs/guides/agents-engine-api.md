@@ -43,6 +43,7 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 - Imported glTF and FBX models with skins give their mesh entities `Skinned {skin: "asset:<id>#skin/<n>"}`; their clips are sub-assets `asset:<id>#clip/<name>` (`asset.list` shows them).
 - Play one: `prefab.instantiate` the model, then `component.set` `AnimPlayer` `{"clip": "asset:<id>#clip/<name>"}` (optional `time`, `speed` (default 1, negative plays backward), `looping` (default true)) on the entity with `Skinned`. The clip may come from another file if its bone names match (an animation-only download).
 - Playing (`sim.step`/`sim.play`), the play world's entity gets a `Pose` (`bones`: each joint's local transform, in skin order) and `AnimPlayer.time` advances at the fixed step (scaled by the time scale). Read both with `component.get` and `"world": "play"`; poses are part of the world hash, so replays check them.
+- Rendering: `capture.screenshot {"world": "play"}` (and the viewport while playing) draws each character in its current pose, skinned on the GPU, with skinned shadows; the viewport blends poses between ticks. The edit world has no poses, so it draws the bind pose. An extra mesh part of a model follows its parent's pose.
 - The clips a play session can use are loaded when play starts: every clip in the same file as a player's clip. Anything that fails to load is logged (`log.tail`, target `concordia::anim`) and that character holds its pose. Nothing about animation is journaled or changes the scene.
 
 ## Rules

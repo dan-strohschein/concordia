@@ -5,7 +5,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use concordia_assets::SkinData;
+use concordia_assets::{AssetRef, SkinData, Skinned};
 use concordia_core::id::EntityId;
 use concordia_core::math::Mat4;
 use concordia_scene::PrefabDoc;
@@ -34,6 +34,7 @@ pub struct Joint {
 pub struct Skeleton {
     joints: Vec<Joint>,
     order: Vec<usize>,
+    mesh: Mat4,
 }
 
 impl Skeleton {
@@ -41,7 +42,34 @@ impl Skeleton {
     pub fn new(joints: Vec<Joint>) -> Result<Self, AnimError> {
         check_names(&joints)?;
         let order = parents_first(&joints)?;
-        Ok(Self { joints, order })
+        Ok(Self {
+            joints,
+            order,
+            mesh: Mat4::IDENTITY,
+        })
+    }
+
+    /// The same skeleton bound to a mesh whose model matrix (relative to the prefab root) is `mesh`.
+    pub fn with_mesh(mut self, mesh: Mat4) -> Result<Self, AnimError> {
+        let det = mesh.determinant();
+        if !mesh.is_finite() || !det.is_finite() || det.abs() < 1e-12 {
+            return Err(AnimError::Skeleton(format!(
+                "the bind mesh matrix must be finite and invertible: {mesh}"
+            )));
+        }
+        self.mesh = mesh;
+        Ok(self)
+    }
+
+    /// The bind mesh's model matrix (identity unless set by [`Skeleton::with_mesh`]).
+    pub fn mesh(&self) -> Mat4 {
+        self.mesh
+    }
+
+    /// Skinning matrices for `pose` in the bind mesh's space (the identity at rest).
+    pub fn palette(&self, pose: &Pose) -> Result<Vec<Mat4>, AnimError> {
+        let model = self.model_space(pose)?;
+        Ok(self.joint_palette(&model, self.mesh))
     }
 
     /// The skeleton of `skin`, whose joints are entities of `prefab` (the same import).
@@ -286,4 +314,27 @@ pub fn model_matrix(prefab: &PrefabDoc, id: EntityId) -> Result<Mat4, AnimError>
         .rev()
         .fold(Mat4::IDENTITY, |m, a| m * nodes.matrix(*a));
     Ok(above * nodes.matrix(id))
+}
+
+/// The model matrix of `prefab`'s topmost entity whose `Skinned` names `skin` (ties: lowest id).
+pub fn bind_mesh(prefab: &PrefabDoc, skin: &AssetRef) -> Result<Mat4, AnimError> {
+    let nodes = Nodes::of(prefab)?;
+    let mut best: Option<(usize, EntityId)> = None;
+    for e in &prefab.entities {
+        let uses = e
+            .components
+            .get("Skinned")
+            .and_then(|c| c.as_any().downcast_ref::<Skinned>())
+            .is_some_and(|s| s.skin == *skin);
+        if uses {
+            let key = (nodes.ancestors(e.id)?.len(), e.id);
+            if best.is_none_or(|b| key < b) {
+                best = Some(key);
+            }
+        }
+    }
+    let (_, id) = best.ok_or_else(|| {
+        AnimError::Skeleton(format!("no entity of the prefab is skinned by {skin}"))
+    })?;
+    model_matrix(prefab, id)
 }

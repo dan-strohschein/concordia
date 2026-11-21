@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d and 2.4.1 (2026-11-21) done; 2.4.2 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4.1 and 2.4.2 (2026-11-21) done; 2.4.3 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -1000,7 +1000,7 @@ These passed at once:
 - the Godot `.fbx.import` mapping (M5).
 
 ### Phase 2.4 refinement (2026-11-21)
-**Status: author decisions A1 and A2 taken (2026-11-21); 2.4.1 in progress.**
+**Status: author decisions A1 and A2 taken (2026-11-21); 2.4.1 and 2.4.2 done; 2.4.3 next.**
 
 Refined against the code as built after 2.3d. The old 2.4 text (under *Phases*) is superseded where this section differs.
 
@@ -1151,6 +1151,108 @@ One survived: not resetting to the rest pose before sampling. Every fixture clip
 **Checklist:** `just lint`, Tauri clippy, `CONCORDIA_REQUIRE_GPU=1 just test` (1,291 tests and the doc tests), `just gate-tests M1` and `M3S`, `just deny` (and the editor's), `just editor-schemas` (`Skinned` added, committed) and `just editor-test` (118 unit, 22 end-to-end) all pass. The editor's `Cargo.lock` gains `concordia-anim`.
 
 **Not in 2.4.1:** skinning and rendering poses (2.4.2); graphs (2.4.3); events, attachments, tweens and `anim.*` tools (2.4.4); morph targets and root motion (later).
+
+### Phase 2.4.2 refinement (2026-11-21, against 2.4.1 as built)
+**Status: no author questions; my calls below (say if you disagree). Done (see 2.4.2 As built).**
+
+**Settled without a question:**
+- **Which pose deforms a draw:** the entity's own `Pose`, or else the nearest ancestor's whose `Skinned` names the same skin (an import's extra mesh parts are child entities with `Skinned` but no player). It is found when the entity is extracted. A skinned entity with no pose (the edit world, or no `[anim]`) draws its bind mesh through the unskinned path, as today.
+- **The joint palette is built on the CPU, on the render side,** once per posed entity per frame, after interpolation: `K_j = inverse(M) · jointModel_j · inverseBind_j`, glTF §3.7.3's `inverse(meshGlobal) · jointGlobal · inverseBind` with both globals taken relative to the prefab root. `M`, the bind mesh's model matrix, is fixed per skin (`Skeleton::mesh`, the model matrix of the prefab's topmost entity using the skin), so the rest pose's palette is the identity. Every draw the pose deforms is placed at the posed entity's world matrix, and a part's own offset from it is ignored. glTF says the same: the skinned mesh node's transform is ignored, and the joints place the mesh. So the parts and every instanced copy share one palette. The renderer reaches the skeletons through a play-world resource, `Arc<AnimLibrary>`, which the `[anim]` module inserts at play start. Resources other than the clock and the RNG are not hashed. 65 joints cost about 130 matrix products, so a GPU palette pass waits until crowds need it.
+- **Skinning runs in the vertex shaders** of the existing vertex-pulling path: `vs` (forward, wireframe and overdraw) and `shadow_vs`, through one `skin.slang` module that both import. `Instance` gains a `uint4 skin` row (first palette matrix, joint count; a count of 0 means unskinned), the palette buffer's index takes the free fourth slot of `Frame.buffers`, and `DrawPush` / `ShadowPush` gain the joint and weight streams. Skinned copies of one mesh still draw as one instanced call. A compute pre-skin pass would pay off only with more passes over the same vertices (M4's visibility buffer and motion vectors), so it is left for then. Normals use the blended matrix's cofactor (exact under non-uniform scale), and tangents the matrix itself; both are normalized. The shaders keep `float4` / `uint4` rows, and there is no `discard` in a vertex shader.
+- **Pose interpolation:** an entity's extracted items carry its pose. `RenderScene` blends bones between the last two ticks (lerp, slerp, lerp), as it already does for transforms, and the palette is built from the blend. Rendering only reads: the world and its hash never change.
+- **Skinned bounds:** at upload, each skinned mesh keeps one bind-space box per joint, holding the vertices it influences. Each frame a draw's bounds are the union of `K_j(box_j)`. A skinned vertex is a weighted average of `K_j · v` over its joints, so it always lies inside, and the bounds never pop. They are used for culling, cascade fitting and blend sorting. The shadow cache's key includes the palette, so a new pose redraws the shadows.
+- **Validation:** a skinned mesh must have joint and weight streams of its vertex count. Every joint index must be below the palette's length, since the shader must never read past it. Otherwise the draw falls back to the bind mesh, with a warning logged once.
+- **Vertex readback stays in the test:** `tests/shaders/skin_readback.slang` is a compute kernel that imports the same `skin.slang` the vertex shaders use. The test runs it on the device and reads the results back, with no production API. An image test covers the wiring: a skinned draw and the CPU-skinned mesh drawn unskinned give the same image.
+- **The 43 ms pose hash stays a follow-up.** It is not on the render path, since replays hash every 60 ticks. The skinned-crowd measurement is in the render bench notes.
+- No ADR is needed: `docs/design.md` doesn't change, and ADR-0074 already says the renderer interpolates poses. This phase adds a consequence to it.
+
+### Phase 2.4.2 As built (2026-11-21, ADR-0074)
+**Reconciled with the code as built:** the refinement above held. Details it left open:
+- **The bind mesh is per skin.** `bind_mesh` takes the model matrix of the prefab's topmost entity whose `Skinned` names the skin (ties go to the lowest id). `Skeleton::with_mesh` refuses a singular or non-finite matrix.
+- **Palettes are built in `RenderWorld::assemble`,** so full extraction (captures) and the scene cache's interpolated worlds share one path. A pose of the wrong size gives no palette, and its draws fall back to the bind mesh (`drop_missing_poses`).
+- **The palette-length check covers joints with weight 0.** The shader reads all four joints, so an out-of-range index with weight 0 would still read past the palette. A mutation found this (below).
+- **The golden is at the widest stride, not mid-clip.** The fixture's Walk swings by `sin(t·τ)`, so at 0.5 s every rotation is back at zero and the pose is nearly the bind pose. The test captures at 0.25 s (15 ticks).
+- **The golden lives with `concordia-app`** (`gpu_skinning_golden`, `tests/golden/anim/gpu_skinning_walk.png`). Only there do import, `prefab.instantiate`, `[anim]` and `capture.screenshot` run end to end, so it also proves the module shares its library with the renderer.
+
+**Engine:**
+- `concordia-anim`:
+  - `Skeleton::{with_mesh, mesh, palette}` and `bind_mesh`;
+  - `Pose::lerp`;
+  - `skin_vertices` / `SkinnedVertices`, `joint_bounds` / `JointBounds` and `skinned_bounds` (`skin.rs`);
+  - `AnimLibrary::shared_skeleton`;
+  - `AnimError::Mesh`;
+  - the library's skeletons carry their bind mesh;
+  - `AnimModule` inserts `Arc<AnimLibrary>` into the play world.
+- `concordia-render` (now depends on `concordia-anim`):
+  - `DrawItem::skin`, `EntityItems::pose` (`PoseView`) and `RenderWorld::skins` (`SkinView`);
+  - pose blending in `RenderScene`;
+  - `skinning.rs` (`SkinFrame`, `Placement`): the palette buffer, each draw's world, bounds and skin row, and fallbacks logged once;
+  - `GpuMesh` gains joint and weight streams and a joint count, and `GpuAssets::joint_bounds` holds the per-joint boxes;
+  - `Instance` gains a `skin` row, `Frame.buffers.w` holds the palette buffer, and `DrawPush` / `ShadowPush` gain `joints` and `weights`;
+  - `shaders/skin.slang`, imported by `forward.slang`'s `vs` and `shadow_vs`;
+  - the shadow cache key includes palettes;
+  - bench `skinned_crowd`.
+- No new methods, components, error codes or MCP tools. Role scopes and editor schemas are unchanged.
+
+**Tests:**
+- `concordia-anim/tests/skinning.rs` (7):
+  - `cpu_skinning_matches_reference_vertices`: a hand-computed two-bone fixture plus a bone scaled 2× along X. A tip-only vertex goes to (0, 2, 0). A 0.25 / 0.75 blend gives (−0.5, 2, 0). Under the scaled bone the normal follows the inverse transpose, (0.5, 1, 0) normalized, where the matrix itself would give (2, 1, 0). Tangents stay perpendicular, and the bitangent sign is kept.
+  - `palette_is_in_the_bind_meshs_space`;
+  - `cpu_skinning_keeps_normals_unit` (non-uniform scales and mixed weights; the FBX rig mid-Walk);
+  - `rest_pose_skinning_is_the_bind_mesh` (`SimpleSkin` and `skinned.fbx`, within 1e-4 of the mesh's size, and the library shares the same skeleton);
+  - `skinning_refuses_what_it_cannot_skin`;
+  - `skinned_bounds_contain_every_skinned_vertex` (at rest the bounds are the mesh's);
+  - `poses_interpolate_bone_by_bone`.
+- `concordia-render/tests/skinning.rs` (8):
+  - `skinned_draws_find_their_pose_on_themselves_or_an_ancestor`: itself, a parent, a grandparent, another skin, no pose, the edit world, and a pose of the wrong size;
+  - `rendered_pose_interpolates_between_ticks` (alphas 0, 0.25, 0.5 and 1; the world moves too);
+  - `presentation_pose_never_changes_world_hash` (the resource, extraction, interpolation and rendering);
+  - `gpu_skinning_matches_cpu_skinning`: vertex readback within 1e-4 for three poses, one with non-uniform scale;
+  - `skinned_draws_match_cpu_skinned_meshes` (lit, normals and wireframe views): two arms in one instanced call with different palettes, plus a sleeve part with a 3 m offset that is ignored. At most 12 pixels may differ by more than 2 steps from CPU-skinned meshes drawn unskinned.
+  - `skinned_meshes_cast_skinned_shadows`: only the floor is in view. The skinned shadow matches the CPU-skinned mesh's, the rest pose's matches the bind mesh's, and a new pose redraws the cached maps.
+  - `skinned_bounds_keep_posed_parts_in_view`: only the bent tip is in view, and the draw isn't culled.
+  - `skinned_mesh_with_joints_past_the_palette_draws_its_bind_mesh`, with a weighted and a weight-0 out-of-range joint.
+- `layout.rs`: `shadow_push_matches_forward_slang` (new); `draw_push_matches_forward_slang` now checks the two new fields.
+- `concordia-app/tests/anim.rs`: `gpu_skinning_golden`. The play world's capture at 0.25 s differs from the edit world's bind pose in more than 500 pixels, and it matches the golden.
+- Every existing render golden is unchanged: none was re-blessed, and the full render suite passes.
+
+**Red run:**
+- `concordia-anim`: all 7 failed. The stubs said `palette: not implemented yet` and `skinning: not implemented yet`, `joint_bounds` returned nothing, `lerp` returned its target, and `with_mesh` ignored its matrix.
+- `concordia-render`: 7 of 8 failed. Nothing was posed or skinned, the bind box culled the tip, and the CPU reference had no palette.
+- `concordia-app`: the golden test found 0 changed pixels, because the bind mesh was drawn.
+- **Passed at once:** `skinned_mesh_with_joints_past_the_palette_draws_its_bind_mesh`, because the stubs drew every mesh unskinned. It guards a fallback and is mutation-checked below. `shadow_push_matches_forward_slang` was written before the push changed and was not seen to fail; deleting `joints` from the Slang struct fails it.
+
+**Changed deliberately during green (my test mistakes):**
+- The image tests reused a mesh name across their GPU and CPU variants on one renderer. The renderer keeps meshes by reference, so the "CPU reference" drew stale meshes. Each variant now gets its own name.
+- Unlit white is 202 under the default tonemap, not 255, so the culling test now checks for a bright pixel against the black clear color.
+- The arms camera moved closer: the poses covered too few pixels for the test's own "the poses show" check.
+- The golden moved from 0.5 s to 0.25 s (above).
+
+**Mutation checks:** 26 mutations, each run against its tests. All were re-run after I fixed a stale-build bug in my mutation script: it restored files with their old mtimes, so cargo could keep a mutated build. Caught:
+- **CPU:** palette order, the inverse bind dropped, weights ignored, normals moved by the matrix instead of its cofactor, normals or tangents not normalized, the library skipping the bind mesh, bounds not moved by the palette, the pose blend ignoring alpha, and nlerp in place of slerp.
+- **Shaders:** joints swapped, weights ignored, normals by the matrix, the palette offset ignored, and the shadow pass not skinned.
+- **Renderer:** interpolation ignoring alpha, the pose's world not blended, the shadow key without palettes, culling with the bind box, parts placed at their own transform, no ancestor search, failed poses keeping their draws skinned, the palette index missing from the frame block, and `joints` missing from Slang's `ShadowPush`.
+- **Module:** `[anim]` not sharing its library (`gpu_skinning_golden`).
+- **One survived:** removing the palette-length check, because the bounds code also refuses a weighted joint with no matrix. The test now has the weight-0 case, which only that check guards, and it catches the mutation.
+
+**Goldens:** one new, `anim/gpu_skinning_walk` (FBX character at 0.25 s of Walk, 320×240), approved by the author before blessing (2026-11-21). No existing golden changed. **Snapshots:** none. **Editor schemas:** unchanged (no reflected type changed).
+
+**Perf** (`concordia-render` AGENTS.md):
+- `many_lights` shows no regression: three runs each against main the same day are within noise.
+- `skinned_crowd`: 1,000 characters × 65 bones in one instanced call take 6.5–6.6 ms per frame, against 2.8–2.9 ms unskinned.
+- The 43 ms pose hash stays a follow-up (not on the render path).
+
+**Checklist:** all of these pass:
+- `just lint` and Tauri clippy;
+- `CONCORDIA_REQUIRE_GPU=1 just test` (1,308 tests and the doc tests);
+- `just gate-tests M1` and `M3S`;
+- `just deny` and the editor's;
+- `just editor-schemas` (no change);
+- `just editor-test` (118 unit, 22 end-to-end).
+
+Both `Cargo.lock`s gain `concordia-anim` under `concordia-render`.
+
+**Not in 2.4.2:** dual-quaternion skinning, morph targets, a GPU palette or compute pre-skin pass (M4, with the visibility buffer), and posed selection boxes in the editor overlay, which still use the bind box.
 
 ### Effort (re-estimated)
 | Phase | Estimate |

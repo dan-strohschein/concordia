@@ -819,6 +819,7 @@ name = "concordia-render"
 version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
+ "concordia-anim",
  "concordia-api",
  "concordia-assets",
  "concordia-command",

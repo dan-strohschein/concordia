@@ -49,3 +49,9 @@ The author decided the first and the last (M2 plan, decisions A1 and A2, 2026-11
 - Every skinned model re-imports once. glTF and FBX models without skins or clips get new artifacts with the same content (the importer version is part of the cache key).
 - A player whose clip isn't in its file's loaded set holds its pose. In 2.4.3, the graph asset names every clip it can play, so the library can load graphs the same way.
 - Nothing renders a pose yet; 2.4.2 adds CPU and GPU skinning.
+- **2.4.2 (2026-11-21):** the renderer draws poses as this ADR planned, with no new decision of its own:
+  - The `[anim]` module puts its library in the play world as a resource (`Arc<AnimLibrary>`, not hashed), so the renderer can find skeletons.
+  - A skinned draw takes its own pose or its nearest posed ancestor's with the same skin, and is placed at that entity's world matrix (glTF §3.7.3 ignores the skinned mesh node's transform).
+  - The palette is `inverse(bindMesh) · jointModel · inverseBind`, built on the CPU from the pose interpolated between ticks.
+  - Vertices are skinned in the forward and shadow vertex shaders.
+  - Rendering never writes the world. See the M2 plan's 2.4.2 As built.

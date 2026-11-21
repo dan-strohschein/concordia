@@ -33,6 +33,10 @@ pub struct DrawPush {
     pub tangents: u32,
     /// UV stream.
     pub uvs: u32,
+    /// Joint index stream (`uint4` per vertex; read only by skinned instances).
+    pub joints: u32,
+    /// Joint weight stream (`float4` per vertex; read only by skinned instances).
+    pub weights: u32,
 }
 
 concordia_shaders::shader_struct!(DrawPush {
@@ -45,7 +49,9 @@ concordia_shaders::shader_struct!(DrawPush {
     positions,
     normals,
     tangents,
-    uvs
+    uvs,
+    joints,
+    weights
 });
 
 impl DrawPush {
@@ -62,6 +68,8 @@ impl DrawPush {
             self.normals,
             self.tangents,
             self.uvs,
+            self.joints,
+            self.weights,
         ]
         .iter()
         .flat_map(|w| w.to_le_bytes())
@@ -98,8 +106,8 @@ pub(crate) struct FrameParams<'a> {
     pub(crate) grid: &'a ClusterGrid,
     pub(crate) size: (u32, u32),
     pub(crate) light_count: u32,
-    /// Bindless indices: lights, cluster counts, cluster indices.
-    pub(crate) buffers: [u32; 3],
+    /// Bindless indices: lights, cluster counts, cluster indices, joint palettes.
+    pub(crate) buffers: [u32; 4],
     /// Fitted cascades, their settings and shadow-map indices (None: no shadows).
     pub(crate) shadow: Option<(&'a [Cascade], &'a CascadeSettings, [u32; 4])>,
     /// Image-based lighting (None: no environment).
@@ -145,7 +153,7 @@ pub(crate) fn frame_block(p: &FrameParams<'_>) -> Vec<u8> {
         p.buffers[0],
         p.buffers[1],
         p.buffers[2],
-        0,
+        p.buffers[3],
     ];
     out.extend(words.iter().flat_map(|w| w.to_le_bytes()));
     shadow_rows(&mut out, p.shadow);
@@ -210,9 +218,11 @@ fn shadow_rows(out: &mut Vec<u8>, shadow: Option<(&[Cascade], &CascadeSettings, 
     out.extend(maps.iter().flat_map(|w| w.to_le_bytes()));
 }
 
-/// `Instance`: model matrix and normal matrix (inverse transpose).
-pub(crate) fn instance_block(out: &mut Vec<u8>, model: &Mat4) {
+/// `Instance`: model matrix, normal matrix (inverse transpose) and the skin row (first palette
+/// matrix, joint count; a count of 0 is unskinned).
+pub(crate) fn instance_block(out: &mut Vec<u8>, model: &Mat4, skin: [u32; 4]) {
     let normal = Mat4::from_mat3(Mat3::from_mat4(*model).inverse().transpose());
     push_rows(out, &columns(model));
     push_rows(out, &columns(&normal));
+    push_rows_u32(out, &[skin]);
 }
