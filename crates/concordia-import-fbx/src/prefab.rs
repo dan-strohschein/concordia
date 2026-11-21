@@ -80,6 +80,7 @@ fn parts(node: &Node, meshes: &[Mesh], names: &Names) -> Vec<MeshPart> {
                 .flatten()
                 .and_then(|i| names.materials.get(i))
                 .map(|name| format!("material/{name}")),
+            skin: mesh.skin.map(|s| format!("skin/{s}")),
         })
         .collect()
 }

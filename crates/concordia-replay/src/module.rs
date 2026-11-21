@@ -55,7 +55,7 @@ impl EngineModule for ReplayModule {
     }
 
     /// A pending recording joins the new play world: an end-of-tick hook fills it.
-    fn start_play_in(&self, _: &Engine, _: &mut World) -> Result<PlaySetup, ApiError> {
+    fn start_play_in(&self, _: &mut Engine, _: &mut World) -> Result<PlaySetup, ApiError> {
         let Some(recording) = self.pending.take() else {
             return Ok(PlaySetup::default());
         };

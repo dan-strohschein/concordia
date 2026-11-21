@@ -38,11 +38,18 @@ fn node(node: &gltf::Node<'_>, names: &Names) -> ModelNode {
             scale: Vec3::from_array(s),
         },
         children: node.children().map(|c| c.index()).collect(),
-        parts: node.mesh().map_or_else(Vec::new, |m| parts(&m, names)),
+        parts: node.mesh().map_or_else(Vec::new, |m| {
+            parts(
+                &m,
+                names,
+                node.skin().map(|s| format!("skin/{}", s.index())),
+            )
+        }),
     }
 }
 
-fn parts(mesh: &gltf::Mesh<'_>, names: &Names) -> Vec<MeshPart> {
+/// One part per primitive; every part of a skinned node's mesh is deformed by its skin.
+fn parts(mesh: &gltf::Mesh<'_>, names: &Names, skin: Option<String>) -> Vec<MeshPart> {
     mesh.primitives()
         .enumerate()
         .map(|(p, primitive)| MeshPart {
@@ -51,6 +58,7 @@ fn parts(mesh: &gltf::Mesh<'_>, names: &Names) -> Vec<MeshPart> {
                 .material()
                 .index()
                 .map(|i| format!("material/{}", names.materials[i])),
+            skin: skin.clone(),
         })
         .collect()
 }

@@ -39,6 +39,12 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 - Like `asset.import`, it changes a file, not the scene: it is attributed in `log.tail` ("material saved", with the actor) and is not undoable. In the Studio, the path must be inside the role's write paths.
 - Cost: each slab use is one closure; a material over the platform's `closure_budget` is simplified and listed in `render.stats` `downgraded_materials`. `capture.screenshot {"view_mode": "closures"}` shows the count per pixel.
 
+## Animation (M2, projects with `[anim]` and `[assets]`)
+- Imported glTF and FBX models with skins give their mesh entities `Skinned {skin: "asset:<id>#skin/<n>"}`; their clips are sub-assets `asset:<id>#clip/<name>` (`asset.list` shows them).
+- Play one: `prefab.instantiate` the model, then `component.set` `AnimPlayer` `{"clip": "asset:<id>#clip/<name>"}` (optional `time`, `speed` (default 1, negative plays backward), `looping` (default true)) on the entity with `Skinned`. The clip may come from another file if its bone names match (an animation-only download).
+- Playing (`sim.step`/`sim.play`), the play world's entity gets a `Pose` (`bones`: each joint's local transform, in skin order) and `AnimPlayer.time` advances at the fixed step (scaled by the time scale). Read both with `component.get` and `"world": "play"`; poses are part of the world hash, so replays check them.
+- The clips a play session can use are loaded when play starts: every clip in the same file as a player's clip. Anything that fails to load is logged (`log.tail`, target `concordia::anim`) and that character holds its pose. Nothing about animation is journaled or changes the scene.
+
 ## Rules
 - Every mutating call needs an actor: `"actor": "agent:<role>"` or the session default. Grammar: `<human|agent|system|tool|script>:<name>[#n]`, lowercase names.
 - Entity ids are UUID strings. If you pass a name instead, the error tells you the matching id.

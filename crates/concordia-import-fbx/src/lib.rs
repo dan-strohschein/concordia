@@ -26,7 +26,8 @@ impl Importer for FbxImporter {
     }
 
     fn version(&self) -> u32 {
-        1
+        // 2 (2.4.1): `Skinned` on skinned renderers, bone names and the frame rate on clips.
+        2
     }
 
     fn extensions(&self) -> &'static [&'static str] {

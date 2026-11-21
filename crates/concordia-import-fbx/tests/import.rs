@@ -420,6 +420,73 @@ fn external_textures_are_read_next_to_the_file_and_missing_ones_are_skipped() {
 }
 
 #[test]
+fn fbx_skinned_mesh_gets_a_skinned_component() {
+    let mut p = Project::new();
+    let report = p.fixture("skinned.fbx").unwrap();
+    let model = p.model(&report);
+    let skin = format!("asset:{}#skin/0", report.id);
+    let drawn: Vec<(Option<&str>, Option<&str>)> = model
+        .entities
+        .values()
+        .filter(|e| e.mesh.is_some())
+        .map(|e| (e.name.as_deref(), e.skin.as_deref()))
+        .collect();
+    assert!(!drawn.is_empty());
+    for (name, s) in drawn {
+        assert_eq!(s, Some(skin.as_str()), "{name:?} draws the skinned body");
+    }
+    let bones = model.entities.values().filter(|e| e.mesh.is_none());
+    assert!(
+        bones.into_iter().all(|e| e.skin.is_none()),
+        "only renderers are skinned"
+    );
+    let quad = p.fixture("static_quad.fbx").unwrap();
+    let statics = p.model(&quad);
+    assert!(statics.entities.values().all(|e| e.skin.is_none()));
+}
+
+#[test]
+fn fbx_clip_channels_carry_bone_names_and_the_file_frame_rate() {
+    let mut p = Project::new();
+    let report = p.fixture("anim_stacks.fbx").unwrap();
+    let model = p.model(&report);
+    let clip: ClipData = p.load(&report, "clip/Armature|Walk", AssetKind::Clip);
+    assert_eq!(clip.frame_rate, Some(24.0));
+    assert!(!clip.channels.is_empty());
+    for c in &clip.channels {
+        assert_eq!(c.target_name, model.name(c.target), "the bone's own name");
+    }
+}
+
+#[test]
+fn fbx_stack_with_a_late_start_is_trimmed_to_zero() {
+    let mut p = Project::new();
+    let report = p.fixture("late_start.fbx").unwrap();
+    let clip: ClipData = p.load(&report, "clip/Late", AssetKind::Clip);
+    assert!((clip.duration - 1.0).abs() < 1e-5, "{}", clip.duration);
+    assert_eq!(clip.frame_rate, Some(24.0));
+    let t = clip
+        .channels
+        .iter()
+        .find(|c| c.path == ChannelPath::Translation)
+        .expect("the mover's translation is keyed");
+    assert_eq!(t.target_name, "Mover");
+    assert!(
+        t.times[0].abs() < 1e-6,
+        "keys start at 0, not 1 s: {:?}",
+        &t.times[..2]
+    );
+    assert!((t.times.last().unwrap() - 1.0).abs() < 1e-5, "ends at 1 s");
+    // ufbx resamples curved keys at the rate but keeps linear ones as authored.
+    let x_at = |k: usize| t.values[k * 3];
+    let last = t.times.len() - 1;
+    assert!(
+        x_at(0).abs() < 1e-5 && (x_at(last) - 2.0).abs() < 1e-4,
+        "0 → 2 m"
+    );
+}
+
+#[test]
 fn fixtures_hold_no_user_paths() {
     let dir = fixture("");
     for entry in std::fs::read_dir(&dir).unwrap().flatten() {

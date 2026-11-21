@@ -20,6 +20,7 @@ concordia-platform.workspace = true
 concordia-render.workspace = true
 concordia-rhi-metal.workspace = true
 concordia-scripting.workspace = true
+concordia-anim.workspace = true
 concordia-replay.workspace = true
 concordia-studio.workspace = true
 serde.workspace = true

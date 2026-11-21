@@ -555,6 +555,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "concordia-anim"
+version = "0.0.0"
+dependencies = [
+ "concordia-api",
+ "concordia-assets",
+ "concordia-core",
+ "concordia-reflect",
+ "concordia-scene",
+ "concordia-terra",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
 name = "concordia-api"
 version = "0.0.0"
 dependencies = [
@@ -579,6 +595,7 @@ dependencies = [
 name = "concordia-app"
 version = "0.0.0"
 dependencies = [
+ "concordia-anim",
  "concordia-api",
  "concordia-assets",
  "concordia-core",

@@ -110,6 +110,7 @@ fn prefab_ids_follow_names_and_extra_parts_become_children() {
     let part = |p: usize| MeshPart {
         mesh: format!("mesh/Body/{p}"),
         material: (p == 1).then(|| "material/Skin".to_owned()),
+        skin: None,
     };
     let tree = ModelTree {
         nodes: vec![
@@ -157,6 +158,59 @@ fn prefab_ids_follow_names_and_extra_parts_become_children() {
         "{text}"
     );
     assert!(text.contains("builtin:material/default"), "{text}");
+}
+
+#[test]
+fn skinned_parts_get_a_skinned_component_naming_their_skin() {
+    let part = |p: usize, skin: Option<&str>| MeshPart {
+        mesh: format!("mesh/M/{p}"),
+        material: None,
+        skin: skin.map(str::to_owned),
+    };
+    let tree = ModelTree {
+        nodes: vec![
+            node(
+                "Body",
+                vec![],
+                vec![part(0, Some("skin/0")), part(1, Some("skin/0"))],
+            ),
+            node("Prop", vec![], vec![part(0, None)]),
+        ],
+        roots: vec![0, 1],
+    };
+    let asset = test_asset();
+    let mut out = ImportOutput::default();
+    write_prefab(
+        &tree,
+        "char",
+        &SubIds::new(asset, Default::default()),
+        &mut out,
+    )
+    .unwrap();
+    let mut registry = concordia_reflect::TypeRegistry::new();
+    concordia_scene::builtin::register(&mut registry).unwrap();
+    concordia_assets::register_types(&mut registry).unwrap();
+    let text = String::from_utf8(out.artifacts[""].bytes.clone()).unwrap();
+    let doc = concordia_scene::read_prefab(&text, &registry).unwrap();
+    let skin_of = |name: &str| {
+        let entity = doc
+            .entities
+            .iter()
+            .find(|e| e.components["Name"].to_json().unwrap() == name)
+            .unwrap_or_else(|| panic!("no {name} in {text}"));
+        entity
+            .components
+            .get("Skinned")
+            .map(|c| c.to_json().unwrap()["skin"].clone())
+    };
+    let skin = serde_json::json!(format!("asset:{asset}#skin/0"));
+    assert_eq!(skin_of("Body"), Some(skin.clone()));
+    assert_eq!(
+        skin_of("Body primitive 1"),
+        Some(skin),
+        "every part of a skinned mesh"
+    );
+    assert_eq!(skin_of("Prop"), None);
 }
 
 #[test]

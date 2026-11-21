@@ -5,14 +5,12 @@ use std::collections::BTreeMap;
 
 use concordia_assets::{
     Artifact, AssetDb, AssetError, AssetKind, AssetRef, ImportOutput, ImportReport, MeshRenderer,
-    SubIds,
+    Skinned, SubIds,
 };
 use concordia_core::id::{AssetId, EntityId, PrefabId, TypedId};
 use concordia_reflect::{DynReflect, Reflect, TypeRegistry};
 use concordia_scene::builtin::{Name, Parent, Transform};
-use concordia_scene::{
-    EntityDoc, FORMAT_VERSION, PrefabDoc, read_prefab, write_prefab as write_text,
-};
+use concordia_scene::{EntityDoc, FORMAT_VERSION, PrefabDoc, write_prefab as write_text};
 
 /// A mesh sub-asset drawn with a material sub-asset (`None`: the built-in default).
 #[derive(Debug, Clone, PartialEq)]
@@ -21,6 +19,8 @@ pub struct MeshPart {
     pub mesh: String,
     /// Sub-path of the material (`material/<name>`).
     pub material: Option<String>,
+    /// Sub-path of the skin deforming it (`skin/<index>`), if any.
+    pub skin: Option<String>,
 }
 
 /// One node: its unique name, local transform, children and the mesh parts it draws.
@@ -51,7 +51,10 @@ fn derived<T: TypedId>(asset: AssetId, key: &str) -> Result<T, AssetError> {
     T::try_from_uuid(uuid).map_err(|e| AssetError::Decode(e.to_string()))
 }
 
-fn component<T: Reflect>(value: T) -> (String, Box<dyn DynReflect>) {
+/// A component by stable name, as a prefab entity holds it.
+type Named = (String, Box<dyn DynReflect>);
+
+fn component<T: Reflect>(value: T) -> Named {
     (T::type_info().name.to_owned(), Box::new(value))
 }
 
@@ -126,18 +129,18 @@ fn node_entities(
     ]);
     let mut out = Vec::new();
     for (p, part) in node.parts.iter().enumerate() {
-        let renderer = renderer(part, asset)?;
+        let drawn = drawing(part, asset)?;
         if p == 0 {
-            main.extend([component(renderer)]);
+            main.extend(drawn);
             continue;
         }
         let child: EntityId = derived(asset, &format!("entity/node/{}/primitive/{p}", node.name))?;
-        let components = BTreeMap::from([
+        let mut components = BTreeMap::from([
             component(Name(format!("{} primitive {p}", node.name))),
             component(Transform::default()),
             component(Parent(id)),
-            component(renderer),
         ]);
+        components.extend(drawn);
         out.push(EntityDoc {
             id: child,
             components,
@@ -147,6 +150,16 @@ fn node_entities(
         id,
         components: main,
     });
+    Ok(out)
+}
+
+/// The part's `MeshRenderer`, and its `Skinned` when a skin deforms it.
+fn drawing(part: &MeshPart, asset: AssetId) -> Result<Vec<Named>, AssetError> {
+    let mut out = vec![component(renderer(part, asset)?)];
+    if let Some(skin) = &part.skin {
+        let skin = format!("asset:{asset}#{skin}").parse::<AssetRef>()?;
+        out.push(component(Skinned { skin }));
+    }
     Ok(out)
 }
 
@@ -204,21 +217,14 @@ pub fn load_prefab(db: &mut AssetDb, report: &ImportReport) -> Result<PrefabSumm
 
 /// Loads the full prefab document an import produced.
 pub fn load_prefab_doc(db: &mut AssetDb, report: &ImportReport) -> Result<PrefabDoc, AssetError> {
-    let (kind, bytes) = db.load_artifact(&AssetRef::Asset {
-        id: report.id,
-        sub: None,
-    })?;
-    if kind != AssetKind::Prefab {
-        return Err(AssetError::Decode(format!(
-            "asset {} is a {kind:?}, not a prefab",
-            report.id
-        )));
-    }
-    let text = String::from_utf8(bytes).map_err(|e| AssetError::Decode(e.to_string()))?;
     let mut registry = TypeRegistry::new();
     concordia_scene::builtin::register(&mut registry)
         .map_err(|e| AssetError::Decode(e.to_string()))?;
     concordia_assets::register_types(&mut registry)
         .map_err(|e| AssetError::Decode(e.to_string()))?;
-    read_prefab(&text, &registry).map_err(|e| AssetError::Decode(e.to_string()))
+    let reference = AssetRef::Asset {
+        id: report.id,
+        sub: None,
+    };
+    db.load_prefab_doc(&reference, &registry)
 }

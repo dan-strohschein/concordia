@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Deforms this entity's `MeshRenderer` mesh with a skin (`asset:<id>#skin/<index>`); its bones are found by name.",
+  "properties": {
+    "skin": {
+      "description": "The skin sub-asset.\n\nAsset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+      "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "skin"
+  ],
+  "title": "Skinned",
+  "type": "object",
+  "x-concordia-category": "Animation",
+  "x-concordia-type": "Skinned"
+}

@@ -1,0 +1,35 @@
+[package]
+name = "concordia-anim"
+description = "Concordia animation: skeletons, poses, clip sampling and players, run in Terra's fixed step."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+concordia-api.workspace = true
+concordia-assets.workspace = true
+concordia-core.workspace = true
+concordia-reflect.workspace = true
+concordia-scene.workspace = true
+concordia-terra.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+concordia-import-fbx.workspace = true
+concordia-import-gltf.workspace = true
+concordia-import-model.workspace = true
+criterion.workspace = true
+tempfile.workspace = true
+
+[[bench]]
+name = "sample"
+harness = false

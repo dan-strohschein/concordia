@@ -1,6 +1,6 @@
 # FBX import fixtures
 
-Small synthetic files for `concordia-import-fbx` and `ufbx-sys` tests: our own content, made by a script, never downloaded. The rig uses Mixamo-like bone names (`mixamorig:Hips`, ...) but is not Mixamo content.
+Small synthetic files for `concordia-import-fbx`, `ufbx-sys` and `concordia-anim` tests: our own content, made by a script (one by hand), never downloaded. The rig uses Mixamo-like bone names (`mixamorig:Hips`, ...) but is not Mixamo content.
 
 | File | What it holds |
 |---|---|
@@ -10,6 +10,7 @@ Small synthetic files for `concordia-import-fbx` and `ufbx-sys` tests: our own c
 | `skinned.fbx` | A box body skinned to a seven-bone rig; vertex 0 has seven influences, some weights are unnormalized |
 | `anim_stacks.fbx` | The rig with two actions at 24 fps: Idle (12 frames) and Walk (24 frames) |
 | `mixamo_run.fbx` | The rig alone with one action named `mixamo.com`, like Mixamo's "without skin" downloads |
+| `late_start.fbx` | **Hand-written** text FBX (not from the script): one node whose only stack runs from 1 s to 2 s, moving it 0 → 2 m with linear keys at 24 fps; tests the start trim (Blender always rebases stacks to 0) |
 
 The rig files use Blender's default export (objects scaled by 100 in a centimeter file), as many real files do.
 

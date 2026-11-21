@@ -36,7 +36,8 @@ pub(crate) fn clips(
         let data = ClipData {
             name: names.clips[index].clone(),
             duration: bake.duration() as f32,
-            channels: channels(&bake, entities),
+            frame_rate: Some(rate as f32),
+            channels: channels(&bake, names, entities),
         };
         insert_artifact(out, sub, AssetKind::Clip, &data).map_err(|e| e.to_string())?;
     }
@@ -44,7 +45,7 @@ pub(crate) fn clips(
 }
 
 /// Every keyed channel of every baked node that is a prefab entity.
-fn channels(bake: &Bake<'_>, entities: &[Option<EntityId>]) -> Vec<Channel> {
+fn channels(bake: &Bake<'_>, names: &Names, entities: &[Option<EntityId>]) -> Vec<Channel> {
     let mut out = Vec::new();
     for node in bake.nodes() {
         let Some(target) = entities.get(node.node).copied().flatten() else {
@@ -53,16 +54,24 @@ fn channels(bake: &Bake<'_>, entities: &[Option<EntityId>]) -> Vec<Channel> {
         for (channel, (path, width)) in PATHS.into_iter().enumerate() {
             let keys = bake.keys(&node, channel);
             if !keys.is_empty() {
-                out.push(channel_of(target, path, width, &keys));
+                let bone = &names.nodes[node.node];
+                out.push(channel_of(target, bone, path, width, &keys));
             }
         }
     }
     out
 }
 
-fn channel_of(target: EntityId, path: ChannelPath, width: usize, keys: &[Key]) -> Channel {
+fn channel_of(
+    target: EntityId,
+    bone: &str,
+    path: ChannelPath,
+    width: usize,
+    keys: &[Key],
+) -> Channel {
     Channel {
         target,
+        target_name: bone.to_owned(),
         path,
         interpolation: Interpolation::Linear,
         times: keys.iter().map(|k| k.time).collect(),

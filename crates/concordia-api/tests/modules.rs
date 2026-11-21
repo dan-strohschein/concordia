@@ -358,7 +358,7 @@ impl EngineModule for Seer {
         register_component::<Health>(registry)
     }
 
-    fn start_play_in(&self, engine: &Engine, world: &mut World) -> Result<PlaySetup, ApiError> {
+    fn start_play_in(&self, engine: &mut Engine, world: &mut World) -> Result<PlaySetup, ApiError> {
         world.insert_resource(SawEngine {
             seed: engine.sim_seed(),
             knows_health: engine.registry().get_by_name("Health").is_some(),

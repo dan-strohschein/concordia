@@ -10,6 +10,7 @@ Format-neutral model import shared by the glTF and FBX importers: stable sub-ass
 - `unique_names`, `TextureUsage` (`settings()` for `decode_image`), `reduce_influences`, `MAX_INFLUENCES`, `insert_artifact`
 
 ## Invariants
+- A `MeshPart` with a `skin` (`skin/<index>`) gives its renderer entity `Skinned` beside `MeshRenderer` (2.4.1).
 - Prefab entity ids are UUIDv5(asset id, `entity/node/<name>`); extra mesh parts are child entities `entity/node/<name>/primitive/<p>`. The prefab is canonical `.prefab.ron` text at sub-path `""`. A node reached twice, or a child index out of range, is an error.
 - Names: the source name, or the index when missing; duplicates get `#<index>`; `/` becomes `_`.
 - Influences: the four largest finite, positive weights, normalized; ties keep the lower joint; none → joint 0 fully.
@@ -28,7 +29,7 @@ Format-neutral model import shared by the glTF and FBX importers: stable sub-ass
 - Morten Mikkelsen, MikkTSpace (`bevy_mikktspace`, Zlib/MIT/Apache); Khronos glTF 2.0 specification (UV convention, skins).
 
 ## Status
-M2 phase 2.3d (moved out of `concordia-import-gltf`).
+M2 phase 2.3d (moved out of `concordia-import-gltf`); `MeshPart::skin` and `Skinned` in 2.4.1; `load_prefab_doc` reads through `AssetDb::load_prefab_doc`.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

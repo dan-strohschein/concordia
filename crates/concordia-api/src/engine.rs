@@ -201,6 +201,12 @@ impl Engine {
         self.states.iter_mut().find_map(|s| s.downcast_mut::<T>())
     }
 
+    /// The type registry and a module's engine-lifetime state of type `T`, borrowed together.
+    pub fn registry_and_state_mut<T: Any>(&mut self) -> (&TypeRegistry, Option<&mut T>) {
+        let state = self.states.iter_mut().find_map(|s| s.downcast_mut::<T>());
+        (&self.registry, state)
+    }
+
     /// The state of type `T` a module created for the current play session, if any.
     pub fn play_state<T: Any>(&self) -> Option<&T> {
         self.play

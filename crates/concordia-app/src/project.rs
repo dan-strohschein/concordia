@@ -3,6 +3,7 @@
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
+use concordia_anim::AnimModule;
 use concordia_api::EngineModule;
 use concordia_assets::{AssetsModule, Importer};
 use concordia_core::math::Vec3;
@@ -114,6 +115,9 @@ impl Project {
                 .into_iter()
                 .fold(AssetsModule::new(&self.root), AssetsModule::with_importer);
             modules.push(Arc::new(assets));
+        }
+        if self.manifest.anim.is_some() {
+            modules.push(Arc::new(AnimModule::new()));
         }
         if self.manifest.render.is_some() {
             modules.push(Arc::new(

@@ -31,7 +31,14 @@ pub struct Manifest {
     pub scripts: Option<ScriptsSection>,
     /// `[replay]`; `replay.record` and `replay.run` exist only if this section exists.
     pub replay: Option<ReplaySection>,
+    /// `[anim]`; animation components and play processors exist only if this section exists (needs `[assets]`).
+    pub anim: Option<AnimSection>,
 }
+
+/// `[anim]` (no settings yet; ADR-0074).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AnimSection {}
 
 /// `[replay]` (no settings yet; ADR-0072).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

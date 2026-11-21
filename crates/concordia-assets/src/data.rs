@@ -161,6 +161,15 @@ impl Default for MeshRenderer {
     }
 }
 
+/// Deforms this entity's `MeshRenderer` mesh with a skin (`asset:<id>#skin/<index>`); its bones are found by name.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Animation")]
+#[serde(deny_unknown_fields)]
+pub struct Skinned {
+    /// The skin sub-asset.
+    pub skin: AssetRef,
+}
+
 /// A skin: joints (prefab entity ids) and inverse bind matrices (column-major).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SkinData {
@@ -201,6 +210,8 @@ pub enum Interpolation {
 pub struct Channel {
     /// Target entity id in the prefab.
     pub target: concordia_core::id::EntityId,
+    /// The target node's name (bone names bind clips to other skeletons).
+    pub target_name: String,
     /// Property.
     pub path: ChannelPath,
     /// Interpolation.
@@ -218,6 +229,8 @@ pub struct ClipData {
     pub name: String,
     /// Length in seconds.
     pub duration: f32,
+    /// Keys per second as authored (FBX); `None` when the format has none (glTF).
+    pub frame_rate: Option<f32>,
     /// Channels.
     pub channels: Vec<Channel>,
 }
