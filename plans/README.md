@@ -22,6 +22,7 @@ The top-level design is in [`../docs/design.md`](../docs/design.md). This folder
 | M10 Advanced shadows (tiled shadow atlas; ADR-0014) | [M10-advanced-shadows.md](M10-advanced-shadows.md) | M1 (render graph, CSM, clustered lights, `render.stats`); M2 (skinned meshes, port content for measurement); M4 4.1 and 4.3 reused if they land first | Outline; needs refinement after M2 | Planned |
 | M11 Advanced particles (Sparx; ADR-0015) | [M11-sparx-particles.md](M11-sparx-particles.md) | M1 (RHI compute, render graph, `ShaderLibrary`, asset hot reload, `render.stats`); M2 (signals, materials 2.3b, scripts, replay); M3 Studio roster; M10 10.7 or M4 4.3 indirect draws reused if they land first | Outline; needs refinement after M2 | Planned |
 | M12 Rigging v1.0 (procedural rigs, in-engine keyframing; ADR-0016) | [M12-rigging.md](M12-rigging.md) | M2 (animation 2.4, phases and presentation 2.0, FBX 2.3d, scripts 2.6, replay 2.8); M1 (gizmos, overlays, inspector, goldens); M3 Studio roster; M4 4.10 document transactions reused if they land first | Outline; needs refinement after M2 2.4 | Planned |
+| M13 Advanced Godot features (the AnimationTree features 2.4.3 left out; ADR-0017) | [M13-advanced-godot-features.md](M13-advanced-godot-features.md) | M2 (animation graphs 2.4.3, `anim.*` tools 2.4.4, the animator 2.4.5, `SimRng` and replay 2.8); before M5's AnimationTree import (recommended) | Outline; needs refinement after M2 2.4 | Planned |
 | Later | [later-backlog.md](later-backlog.md) | none | Backlog | n/a |
 
 Status values: `Planned` → `Refined` → `In progress (phase N)` → `Gate passed`.
@@ -190,7 +191,7 @@ To avoid collisions, each milestone draws ADR numbers from its own block. Use th
 |---|---|---|
 | 0001–0008 | Design | 0001 Rust · 0002 subscription-first · 0003 scripting tiers · 0004 editor · 0005 interchange · 0006 licensing · 0007 TDD/plans · 0008 name (Concordia) |
 | 0009 | M0 | 0009 scene text format (written: canonical RON, own reader/writer) |
-| 0010–0019 | Design additions | 0010 Terra entity system · 0011 Evolve plugin system · 0012 advanced physics milestone M8 (written) · 0013 advanced lighting milestone M9, Photon (written) · 0014 advanced shadows milestone M10, tiled shadow atlas (written, Proposed) · 0015 advanced particles milestone M11, Sparx (written, Proposed) · 0016 rigging milestone M12, procedural rigs and in-engine keyframing (written, Proposed) |
+| 0010–0019 | Design additions | 0010 Terra entity system · 0011 Evolve plugin system · 0012 advanced physics milestone M8 (written) · 0013 advanced lighting milestone M9, Photon (written) · 0014 advanced shadows milestone M10, tiled shadow atlas (written, Proposed) · 0015 advanced particles milestone M11, Sparx (written, Proposed) · 0016 rigging milestone M12, procedural rigs and in-engine keyframing (written, Proposed) · 0017 advanced Godot features milestone M13 (written, Proposed) |
 | 0020–0029 | M-1 | 0020 toolchain pinning · 0021 WASM guest build path · 0022 CI and supply chain |
 | 0030–0039 | M0 | 0030 own archetype ECS (written: safe column storage) · 0031 Engine API error model (written) · 0032 edit world vs play world (written) · 0033 MCP adapter (written: rmcp pin, protocol versions) |
 | 0040–0059 | M1 | 0040–0045 as named in M1's plan (0040, 0041, 0042, 0043, 0044, 0045 written) · 0046 engine modules (written) · 0047 editor UI stays web, native viewport, thin panels (written) · 0048 editor v1 in M1, engine breadth before the port (written) · 0049 agent-first end of M1, Studio right after M1 (written) |
@@ -205,6 +206,7 @@ To avoid collisions, each milestone draws ADR numbers from its own block. Use th
 | 0220–0239 | M10 | 0220–0222 as named in M10's plan |
 | 0240–0259 | M11 | 0240–0243 as named in M11's plan |
 | 0260–0279 | M12 | 0260–0264 as named in M12's plan |
+| 0280–0299 | M13 | 0280–0281 as named in M13's plan |
 
 ## Consistency pass log (2026-11-17)
 - Merged each plan's proposed conventions into the sections above.
