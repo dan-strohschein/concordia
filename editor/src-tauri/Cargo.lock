@@ -711,6 +711,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "concordia-material"
+version = "0.0.0"
+dependencies = [
+ "concordia-assets",
+ "concordia-core",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "concordia-physics"
 version = "0.0.0"
 dependencies = [
@@ -772,6 +781,7 @@ dependencies = [
  "concordia-assets",
  "concordia-command",
  "concordia-core",
+ "concordia-material",
  "concordia-reflect",
  "concordia-rhi",
  "concordia-scene",

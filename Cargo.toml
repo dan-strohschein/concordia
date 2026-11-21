@@ -44,6 +44,7 @@ concordia-terra-sim = { path = "crates/concordia-terra-sim" }
 concordia-shaders = { path = "crates/concordia-shaders" }
 concordia-studio = { path = "crates/concordia-studio" }
 concordia-reflect = { path = "crates/concordia-reflect" }
+concordia-material = { path = "crates/concordia-material" }
 concordia-replay = { path = "crates/concordia-replay" }
 concordia-reflect-derive = { path = "crates/concordia-reflect-derive" }
 concordia-render = { path = "crates/concordia-render" }

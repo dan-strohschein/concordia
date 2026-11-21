@@ -7,7 +7,8 @@ The asset pipeline: source files with `<file>.import.ron` sidecars holding stabl
 - `AssetDb` (`new`, `register`, `scan`, `import` → `ImportReport`, `load_texture` / `load_mesh` / `load_material`, `load_artifact`, `list`, `path_of`, `generation`, `on_files_changed`)
 - `Importer` (trait), `ImportInput`, `ImportOutput`, `Artifact`, `AssetKind`, `SubIds`; `ImageImporter` (`png`, `jpg`, `hdr`) and `ImageSettings`; `MaterialImporter` (`.material.ron`, read with the engine's RON reader into `MaterialData`)
 - `AssetRef` (`"asset:<uuid>[#sub]"`, `"builtin:<kind>/<name>"`), `Builtin` / `BuiltinAsset`
-- Data: `TextureData`, `MeshData`, `MaterialData` (`.material.ron`), `AlphaMode`
+- Data: `TextureData`, `MeshData`, `MaterialData` (M1's flat material; the renderer still reads it until 2.3b), `AlphaMode`
+- Layered materials (ADR-0068): `Material` (named `nodes`, `root`, `alpha_mode`, `double_sided`, `unlit`), `MaterialNode` (`Slab`, `Vertical`, `Horizontal`, `Coverage`), `Slab`, `Haze`, `Fuzz`, `Subsurface`, `ThinFilm`, `MaterialError`, `SURFACE`; `read_material` (layered text, or M1 text migrated to one slab), `write_material`, `Material::from_pbr`, `validate`, `reachable`. Evaluation is in `concordia-material`.
 - `Sidecar`, `import_key`, `PLATFORM`; `AssetsModule` (EngineModule)
 
 ## Invariants
@@ -15,6 +16,7 @@ The asset pipeline: source files with `<file>.import.ron` sidecars holding stabl
 - The DDC key covers importer name and version, platform, canonical settings and source bytes, and nothing else. Artifacts sit under `artifact_key(key, sub)` and an index under the key itself. A missing entry means re-import, never an error.
 - Imports are deterministic (identical bytes in, identical blobs out). Derived data is postcard; the DDC is never committed.
 - Paths are project-relative, with no `..`.
+- A layered material is valid only if every name is `[A-Za-z0-9_-]+`, the root and every reference exist, there is no cycle, every node is reachable from the root, and every value is in range (arrays per element); errors name the node and field. A node may be used twice.
 - `asset.import` touches files, not the scene, so it is attributed in `log.tail` and not undoable (decision D9).
 
 ## How to test
@@ -30,9 +32,10 @@ The asset pipeline: source files with `<file>.import.ron` sidecars holding stabl
 
 ## References
 - `image` crate (MIT/Apache) for PNG, JPEG and Radiance HDR; postcard (MIT/Apache).
+- Layered materials: Epic Games' public Substrate documentation and the SIGGRAPH 2023 Substrate course (Hillaire & de Rousiers); no Unreal source consulted (see `concordia-material`).
 
 ## Status
-M1 phase 1.4.
+M1 phase 1.4; layered material model M2 phase 2.3a.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

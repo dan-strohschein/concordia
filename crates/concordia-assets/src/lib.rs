@@ -10,6 +10,7 @@ mod files;
 mod image_importer;
 mod importer;
 mod key;
+mod material;
 mod material_importer;
 mod module;
 mod prefab_method;
@@ -29,6 +30,10 @@ pub use importer::{
     Artifact, AssetKind, ImportInput, ImportOutput, Importer, SubIds, decode, encode,
 };
 pub use key::{PLATFORM, import_key};
+pub use material::{
+    Fuzz, Haze, Material, MaterialError, MaterialNode, SURFACE, Slab, Subsurface, ThinFilm,
+    read_material, write_material,
+};
 pub use material_importer::MaterialImporter;
 pub use module::{AssetImport, AssetList, AssetsModule};
 pub use prefab_method::PrefabInstantiate;
