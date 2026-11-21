@@ -229,7 +229,7 @@ The aim is about 80% of virtual shadow maps' benefits at 20% of their architectu
 ### Phase 10.7: The MDI path (optional, behind caps)
 - **Objective:** the same shadows from GPU-written draw lists, for GPU-driven renderers, with occlusion culling of dynamic casters.
 - **Deliverables:**
-  - RHI: `Command::DrawIndexedIndirect { buffer, offset, count }` (multi-draw; a loop of single draws where the backend lacks a count), shared with M4 4.3's compute + indirect fallback;
+  - RHI: `Command::DrawIndexedIndirect { buffer, offset, count }` (multi-draw; a loop of single draws where the backend lacks a count), shared with M4 4.3's compute + indirect fallback and M11 11.7's particle renderers (ADR-0015; whichever lands first adds it);
   - per-instance data in one buffer (the 4.3 layout if it exists) and a compute pass that culls instances per tile (range, frustum) and writes indirect arguments;
   - **occlusion of dynamic casters against the static layer:** a max-depth pyramid built from each tile's cached static depth; a dynamic caster entirely behind static depth from the light's view adds no shadow and is culled;
   - path choice: `ShadowDrawPath::{Cpu, Indirect}` from `RhiCaps`, overridable in `[render.shadow_atlas]`; cap masking in tests.

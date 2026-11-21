@@ -71,7 +71,7 @@ The numbers 2.1, 2.2 and 2.9 are retired: they moved to M5, and reusing them wou
 | 10 | **2.7 Audio and in-game UI** | audio stack and cues; retained ECS UI, taffy, cosmic-text (ADR-0060) | old 2.7 (Godot import and sound bank out) | sound-designer, composer (synth in M3 3.7), ui-ux |
 | 11 | **2.10 Sample game and gate** | an original sample game (D2), the deterministic gate, an optional live Studio gate | D2 | |
 
-The VFX artist stays disabled: particles are not in M2 (open question, unchanged).
+The VFX artist stays disabled: particles are not in M2 (open question, unchanged). M11 (Sparx, ADR-0015) enables it.
 
 **New-phase tests (first lists; each phase is refined again at its start):**
 - **2.0:**
@@ -2012,7 +2012,7 @@ which runs `cargo nextest run --test m2_port_begins` (`tests/gates/m2_port_begin
 
 - Grid layers (walkability, terrain type, ground surface, ...) as base64 in `.data.ron`, or as PNG layers beside it (diffable images, editable in tools)?
 - Wire encoding across the WIT boundary: reflect-described fixed layout (planned) vs. a schema'd format such as postcard; how strings/lists are arena-encoded.
-- Particles: a minimal CPU emitter in M2 for loot effects and fire patches, or wait for an M4 VFX graph? (Planned: wait; report as non-blocking.)
+- Particles: a minimal CPU emitter in M2 for loot effects and fire patches, or wait for an M4 VFX graph? (Planned: wait; report as non-blocking.) *Note (2026-11-20, ADR-0015):* M4 plans no VFX graph kind; particles are now M11 (Sparx). Its open question 11 recommends answering "wait for M11", with no CPU emitter in M2.
 - Should the port project be its own private git repository (planned) or a private branch of the game repo?
 - Do probe scripts run with Godot's `--script` from outside the project reliably for everything we need (terrain sampling is pure; luma harnesses need a window)? Fallback: capture probe values once by hand and commit them to the port project.
 - Should the reference port's grid-to-polygon navmesh builder be ported verbatim as an alternative nav source, if Recast reachability ever disagrees with the grid oracle?
