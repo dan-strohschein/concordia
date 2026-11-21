@@ -3,6 +3,7 @@
 use std::f32::consts::PI;
 
 use crate::data::{MaterialData, MeshData, TextureData, TextureFormat};
+use crate::material::Material;
 use crate::reference::AssetRef;
 
 /// A built-in asset's data.
@@ -13,7 +14,7 @@ pub enum BuiltinAsset {
     /// A texture.
     Texture(TextureData),
     /// A material.
-    Material(MaterialData),
+    Material(Material),
 }
 
 /// Lookup of built-in assets.
@@ -29,11 +30,13 @@ impl Builtin {
         match kind.as_str() {
             "mesh" => Self::mesh(name).map(BuiltinAsset::Mesh),
             "texture" => Self::texture(name).map(BuiltinAsset::Texture),
-            "material" if name == "default" => Some(BuiltinAsset::Material(MaterialData {
-                metallic: 0.0,
-                roughness: 0.5,
-                ..MaterialData::default()
-            })),
+            "material" if name == "default" => {
+                Some(BuiltinAsset::Material(Material::from_pbr(&MaterialData {
+                    metallic: 0.0,
+                    roughness: 0.5,
+                    ..MaterialData::default()
+                })))
+            }
             _ => None,
         }
     }

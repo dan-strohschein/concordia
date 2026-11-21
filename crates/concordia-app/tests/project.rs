@@ -361,3 +361,62 @@ fn m2_scripting_example_spawns_and_runs_its_wanderers() {
         .count();
     assert_eq!(moved, 200, "every wanderer walked");
 }
+
+/// `[render] closure_budget` may lower the platform's closure budget (8 on Metal) but never raise
+/// it: values outside 1..=8 are refused when the project loads (ADR-0068).
+#[test]
+fn project_cannot_raise_the_closure_budget() {
+    for bad in ["9", "0", "255"] {
+        let (_dir, project) = project_with(&format!("[render]\nclosure_budget = {bad}\n"));
+        let err = project.unwrap_err();
+        assert!(matches!(err, AppError::Manifest { .. }), "{err}");
+        let text = err.to_string();
+        assert!(text.contains("[render] closure_budget"), "{text}");
+        assert!(text.contains("1..=8"), "{text}");
+        assert!(text.contains("only lower"), "{text}");
+    }
+    let (_dir, project) = project_with("[render]\nclosure_budget = 3\n");
+    let project = project.unwrap();
+    assert_eq!(
+        project.closure_budget().map(|b| b.get()),
+        Some(3),
+        "a lower budget is kept"
+    );
+    let (_dir, project) = project_with("[render]\n");
+    assert_eq!(
+        project.unwrap().closure_budget(),
+        None,
+        "none: the platform's"
+    );
+}
+
+#[test]
+fn the_projects_closure_budget_reaches_the_renderer() {
+    use concordia_api::Engine;
+    use serde_json::json;
+
+    if let Err(concordia_rhi::RhiError::NoDevice { reason }) = concordia_rhi_metal::new_headless() {
+        assert!(
+            !concordia_testkit::gpu_required(),
+            "CONCORDIA_REQUIRE_GPU=1 but no device: {reason}"
+        );
+        return;
+    }
+    let (dir, project) = project_with("[render]\nclosure_budget = 2\n");
+    let mut engine = Engine::new(project.unwrap().engine_config().unwrap()).unwrap();
+    let s = engine.open_session();
+    let scene = json!({"path": "scenes/a.scene.ron", "name": "A", "actor": "agent:test"});
+    engine.call(s, "scene.new", scene).unwrap();
+    engine
+        .call(s, "entity.spawn", json!({"actor": "agent:test", "components": {
+            "Transform": {"translation": [0.0, 0.0, 3.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]},
+            "Camera": {},
+        }}))
+        .unwrap();
+    engine
+        .call(s, "capture.screenshot", json!({"width": 16, "height": 16}))
+        .unwrap();
+    let frame = engine.call(s, "render.stats", json!({})).unwrap()["frame"].clone();
+    assert_eq!(frame["closure_budget"], 2, "{frame}");
+    drop(dir);
+}

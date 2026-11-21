@@ -9,13 +9,13 @@ use concordia_core::math::Vec3;
 use concordia_import_gltf::GltfImporter;
 use concordia_input::{InputMap, InputModule};
 use concordia_physics::{PhysicsModule, PhysicsSettings};
-use concordia_render::RenderModule;
+use concordia_render::{ClosureBudget, RenderModule};
 use concordia_replay::ReplayModule;
 use concordia_scripting::{ScriptEntry, ScriptKind, ScriptsConfig, ScriptsModule};
 use concordia_studio::StudioModule;
 
 use crate::error::AppError;
-use crate::manifest::{Manifest, ScriptModuleKind, ScriptsSection};
+use crate::manifest::{Manifest, RenderSection, ScriptModuleKind, ScriptsSection};
 
 /// A project root and its parsed manifest.
 #[derive(Debug, Clone)]
@@ -43,6 +43,9 @@ impl Project {
         }
         if let Some(scripts) = &manifest.scripts {
             check_scripts(scripts).map_err(|m| manifest_error(&path, m))?;
+        }
+        if let Some(render) = &manifest.render {
+            closure_budget(render).map_err(|m| manifest_error(&path, m))?;
         }
         Ok(Self {
             root: root.to_path_buf(),
@@ -80,6 +83,14 @@ impl Project {
         InputMap::parse(&text).map_err(|e| file_error(e.to_string()))
     }
 
+    /// The project's closure budget (`[render] closure_budget`; None: the platform's).
+    pub fn closure_budget(&self) -> Option<ClosureBudget> {
+        self.manifest
+            .render
+            .as_ref()
+            .and_then(|r| closure_budget(r).ok().flatten())
+    }
+
     /// Engine modules after the core module, in order (only those the manifest configures).
     pub fn modules(&self) -> Result<Vec<Arc<dyn EngineModule>>, AppError> {
         let mut modules: Vec<Arc<dyn EngineModule>> = Vec::new();
@@ -98,9 +109,10 @@ impl Project {
             ));
         }
         if self.manifest.render.is_some() {
-            modules.push(Arc::new(RenderModule::new(Arc::new(
-                concordia_rhi_metal::new_headless,
-            ))));
+            modules.push(Arc::new(
+                RenderModule::new(Arc::new(concordia_rhi_metal::new_headless))
+                    .with_closure_budget(self.closure_budget()),
+            ));
         }
         if let Some(studio) = &self.manifest.studio {
             modules.push(Arc::new(StudioModule::new(&self.root, &studio.dir)));
@@ -132,6 +144,20 @@ impl Project {
             .collect();
         config
     }
+}
+
+/// `[render] closure_budget`, checked: 1..=8, and it can only lower the platform's budget.
+fn closure_budget(render: &RenderSection) -> Result<Option<ClosureBudget>, String> {
+    render
+        .closure_budget
+        .map(|n| {
+            ClosureBudget::new(n).map_err(|_| {
+                format!(
+                    "[render] closure_budget: {n} is outside 1..=8; a project can only lower the platform's budget (8 on Metal)"
+                )
+            })
+        })
+        .transpose()
 }
 
 /// Every `[[scripts.module]]` path stays inside the project.

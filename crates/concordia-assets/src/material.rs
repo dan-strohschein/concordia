@@ -223,6 +223,12 @@ impl Default for Material {
     }
 }
 
+impl From<MaterialData> for Material {
+    fn from(pbr: MaterialData) -> Self {
+        Self::from_pbr(&pbr)
+    }
+}
+
 impl Default for Slab {
     fn default() -> Self {
         Self {

@@ -9,7 +9,7 @@ use crate::RenderError;
 use crate::assets::AssetSource;
 use crate::gpu::Uploads;
 use crate::ibl::{
-    Equirect, PREFILTER_SAMPLES, SPECULAR_LEVELS, lut_texture, prefilter, sh9_irradiance,
+    Equirect, PREFILTER_SAMPLES, SPECULAR_LEVELS, albedo_table, prefilter, sh9_irradiance,
     to_texture,
 };
 
@@ -21,7 +21,7 @@ pub(crate) struct GpuEnvironment {
     pub(crate) sh: [[f32; 3]; 9],
 }
 
-/// The BRDF table plus environments by map reference (built on first use, reused across frames).
+/// The albedo tables plus environments by map reference (built on first use, reused across frames).
 #[derive(Default)]
 pub(crate) struct EnvironmentCache {
     lut: Option<(Texture, u32)>,
@@ -45,9 +45,20 @@ fn prefiltered(texture: &concordia_assets::TextureData) -> Prefiltered {
 }
 
 impl EnvironmentCache {
-    /// Bindless index of the BRDF table (0 until an environment has been used).
-    pub(crate) fn lut_index(&self) -> u32 {
-        self.lut.map_or(0, |(_, i)| i)
+    /// Bindless index of the albedo tables (split sum, direct lobe, sheen), uploaded on first use:
+    /// every lit material reads them, with or without an environment.
+    pub(crate) fn tables(
+        &mut self,
+        device: &dyn Device,
+        up: &mut Uploads,
+    ) -> Result<u32, RenderError> {
+        if let Some((_, index)) = self.lut {
+            return Ok(index);
+        }
+        let lut = up.texture(device, &albedo_table(), "albedo tables")?;
+        let index = device.texture_index(lut)?.0;
+        self.lut = Some((lut, index));
+        Ok(index)
     }
 
     /// The environment for `map`. On first use it is prefiltered on a background thread: with
@@ -60,10 +71,6 @@ impl EnvironmentCache {
         map: &AssetRef,
         wait: bool,
     ) -> Result<Option<&GpuEnvironment>, RenderError> {
-        if self.lut.is_none() {
-            let lut = up.texture(device, &lut_texture(), "brdf lut")?;
-            self.lut = Some((lut, device.texture_index(lut)?.0));
-        }
         if !self.envs.contains_key(map) {
             let fail = |message: String| RenderError::Asset {
                 reference: map.to_string(),

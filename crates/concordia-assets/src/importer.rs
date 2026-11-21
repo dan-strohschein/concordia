@@ -15,7 +15,7 @@ pub enum AssetKind {
     Texture,
     /// `MeshData`.
     Mesh,
-    /// `MaterialData`.
+    /// `Material` (layered, ADR-0068).
     Material,
     /// Prefab RON text (`concordia-scene`).
     Prefab,

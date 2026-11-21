@@ -1,10 +1,10 @@
 //! Image-based lighting on the CPU: equirect mapping, SH9 irradiance, GGX prefiltering and the
-//! split-sum BRDF table (M1 phase 1.6).
+//! split-sum BRDF table (M1 phase 1.6), and the albedo-table texture (M2 2.3b).
 
 use concordia_core::math::Vec3;
 use concordia_render::ibl::{
-    BRDF_LUT_SAMPLES, BRDF_LUT_SIZE, Equirect, brdf_lut, dir_to_uv, eval_sh9, integrate_brdf,
-    prefilter, sh9_irradiance, uv_to_dir,
+    BRDF_LUT_SAMPLES, BRDF_LUT_SIZE, Equirect, albedo_table, brdf_lut, dir_to_uv, eval_sh9,
+    integrate_brdf, prefilter, sh9_irradiance, uv_to_dir,
 };
 
 fn uniform(value: [f32; 3]) -> Equirect {
@@ -123,4 +123,44 @@ fn hdr_fixture_decodes_to_an_equirect() {
         sky.iter().sum::<f32>() > ground.iter().sum::<f32>(),
         "a pure sky is brighter above: {sky:?} vs {ground:?}"
     );
+}
+
+/// The albedo texture the shader reads: the split-sum (A, B) and the direct lobe's (A, B) side
+/// by side with the sheen albedo, every table at the same (N·V, roughness) texel (ADR-0068).
+#[test]
+fn albedo_table_holds_the_split_sum_the_direct_lobe_and_sheen() {
+    use concordia_material::dfg::{brdf_lut_cached, direct_lut_cached, sheen_lut_cached};
+    let size = BRDF_LUT_SIZE;
+    let table = albedo_table();
+    assert_eq!((table.width, table.height), (2 * size as u32, size as u32));
+    assert_eq!(table.format, concordia_assets::TextureFormat::Rgba16Float);
+    let bytes = &table.mips[0];
+    assert_eq!(bytes.len(), 2 * size * size * 8);
+    let texel = |x: usize, y: usize| -> [f32; 4] {
+        let at = (y * 2 * size + x) * 8;
+        std::array::from_fn(|c| {
+            half::f16::from_le_bytes([bytes[at + 2 * c], bytes[at + 2 * c + 1]]).to_f32()
+        })
+    };
+    let close = |got: f32, want: f32| (got - want).abs() <= 1e-3 * want.abs().max(1.0);
+    for (nov_i, rough_i) in [(0, 0), (31, 0), (7, 13), (16, 2), (31, 31)] {
+        let i = rough_i * size + nov_i;
+        let (split, direct, sheen) = (
+            brdf_lut_cached()[i],
+            direct_lut_cached()[i],
+            sheen_lut_cached()[i],
+        );
+        let left = texel(nov_i, rough_i);
+        let want = [split[0], split[1], direct[0], direct[1]];
+        assert!(
+            left.iter().zip(want).all(|(g, w)| close(*g, w)),
+            "({nov_i}, {rough_i}): {left:?} vs {want:?}"
+        );
+        let right = texel(size + nov_i, rough_i);
+        assert!(
+            close(right[0], sheen),
+            "sheen ({nov_i}, {rough_i}): {right:?} vs {sheen}"
+        );
+        assert_eq!(&right[1..], &[0.0, 0.0, 1.0]);
+    }
 }

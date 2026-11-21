@@ -14,6 +14,7 @@ The composition root: loads a project's `concordia.toml` and builds the engine m
 - Paths in the manifest are project-relative and may not escape the project.
 - One engine per project: attach-or-host runs under `.concordia/engine.lock`; a stale `headless.json` (dead pid, refused token) is replaced; a live engine of another version is never attached; a host removes its file on drop only if the file still names it.
 - A module is included only if the manifest configures it (input needs `[input] map`; physics, assets and render need their sections), so M0 projects keep the M0 tool set.
+- `[render] closure_budget` (1..=8) is checked when the project loads and can only lower the platform's closure budget (ADR-0068); `Project::closure_budget` passes it to `RenderModule::with_closure_budget`.
 
 ## How to test
 `cargo nextest run -p concordia-app`

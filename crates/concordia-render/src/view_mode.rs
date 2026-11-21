@@ -26,6 +26,16 @@ pub enum ViewMode {
     shadow_cascades,
     /// Lights per cluster as a heat map (blue: none, green: 8, red: 16 or more).
     light_clusters,
+    /// Closures per pixel as a heat map (blue: one, green: four, red: eight).
+    closures,
+    /// Haze weight (white: all haze).
+    haze,
+    /// Fuzz (sheen) color.
+    fuzz,
+    /// Subsurface wrap per channel (brighter: light reaches further past the terminator).
+    subsurface,
+    /// Thin-film thickness (white: 1000 nm or more).
+    thin_film,
 }
 
 impl ViewMode {

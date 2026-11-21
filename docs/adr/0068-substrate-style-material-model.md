@@ -1,5 +1,5 @@
 # ADR-0068: Substrate-style material model
-- Status: Accepted (M2 phase 2.3a, 2026-11-20); the renderer (2.3b), migration and editor (2.3c) and FBX (2.3d) follow
+- Status: Accepted (M2 phase 2.3a, 2026-11-20); the renderer in 2.3b (2026-11-20); migration and editor (2.3c) and FBX (2.3d) follow
 - Date: 2026-11-20
 - Builds on: ADR-0009 (canonical RON), ADR-0040 (renderer), ADR-0044 (assets), ADR-0067 decision D5 (materials follow Substrate, text first)
 
@@ -23,14 +23,21 @@ M1 has one metallic-roughness material (glTF 2.0 core). D5 replaces it with a mo
    - **Coverage:** like mixing with nothing (no light, full transmittance).
    - Slab alpha is coverage only in `Blend` materials (premultiplied results); otherwise it feeds only the mask test, as in M1.
 5. **Closures and programs.** `concordia-material` compiles a material into a postfix program: one `Slab` op per closure (per slab use) and one op per operator, evaluated on a small stack. The GPU (2.3b) interprets the same program, so CPU and GPU share one definition.
-6. **Closure budget: platform default, lowerable** (author's choice). Each platform has a maximum (1..=8; the default for the M3 Pro is set in 2.3b), and a project may lower it in `concordia.toml` but never raise it. A material over budget is downgraded by parameter blending (Substrate's documented fallback), deterministically:
+6. **Closure budget: platform default, lowerable** (author's choice). Each platform has a maximum (1..=8), and a project may lower it in `concordia.toml` `[render] closure_budget` but never raise it. Metal (the M3 Pro) defaults to **8** (author's choice in 2.3b: nothing is simplified on the reference hardware; projects lower it for weaker targets). A value outside 1..=8 is refused when the project loads; one above a lower platform's default is ignored with a warning. A material over budget is downgraded by parameter blending (Substrate's documented fallback), deterministically:
    - first the first mergeable horizontal mix in post-order, then the first vertical layer;
    - a mix becomes the parameter blend of its two slabs at its mix;
    - a layer tints the bottom by the top's normal-incidence transmittance squared, blends toward the top by the top's opaque share, and keeps the top's highlight as haze (weight from the F0 ratio);
    - textures and features that cannot be kept are reported as `node.field`.
-   `fit_budget` returns the fitted material and a `ClosureReport` (budget, before, after, merges); the renderer logs it and reports it in `render.stats` (2.3b).
-7. **Migration.** `read_material` accepts M1's flat text and returns one slab named `surface` with the same values (`Material::from_pbr`). The material importer and renderer switch to `Material` in 2.3b, and `MaterialData` is retired in 2.3c.
+   `fit_budget` returns the fitted material and a `ClosureReport` (budget, before, after, merges); the renderer fits each material at upload, keeps the program until the material or budget changes, logs a downgrade once and lists it in `render.stats` (`closure_budget`, `downgraded_materials`) for every frame that draws it.
+7. **Migration.** `read_material` accepts M1's flat text and returns one slab named `surface` with the same values (`Material::from_pbr`). Since 2.3b the material importer, `AssetDb::load_material`, the built-in default material and the renderer use `Material`; the glTF importer stores each material as one slab too (a material artifact has one format), which moved forward from 2.3c. `MaterialData` remains only as the migration source and the glTF intermediate until 2.3c retires it.
 8. **Crates.** The model and format live in `concordia-assets` (which owns `AssetRef` and `.material.ron`). Evaluation, the budget, the albedo tables and sampling live in the new `concordia-material`, which doesn't depend on the renderer, so M4's path tracer can use it as its BSDF. The split-sum IBL table moved there from `concordia-render` (which re-exports it).
+9. **On the GPU (2.3b).** `forward.slang` interprets the same program and mirrors the CPU reference term for term:
+   - per light, the whole program is evaluated for that light's direction (so layering uses each light's own transmittance);
+   - image-based lighting runs the program once more, each closure lit by the environment (split-sum specular per lobe, haze blended, thin film replacing F0 at N·V; SH diffuse × (1 − E_spec(N·V)), the same energy split as direct light; sheen as fuzz × E_sheen × the prefiltered environment at the sheen roughness), with the light-side transmittance taken toward the mirror direction, whose cosine is the view's;
+   - unlit materials and the albedo view show `MaterialProgram::unlit`: each slab's albedo (dielectric medium share, or a metal's base color) and emission, combined by the operators at normal incidence;
+   - the split-sum, direct-lobe and sheen tables share one texture (two 32×32 halves) read at texel centers, exactly like the CPU tables; it is uploaded with or without an environment;
+   - a mix texture's R multiplies `mix`; textures multiply factors as in M1.
+   - the mask test compares the program's alpha (slab alphas combined by the operators) before anything is shaded; view-only terms are computed once per closure, and light-side transmittance only for programs with a vertical layer.
 
 ## Alternatives
 - **A recursive operator tree in the file.** It is natural to write, but `concordia-reflect` has no `Box`, and agents editing deep nesting make more mistakes than with named nodes.
@@ -43,3 +50,4 @@ M1 has one metallic-roughness material (glTF 2.0 core). D5 replaces it with a mo
 - Every BSDF change is tested against independent reference values and white-furnace bounds (including a deterministic grid of bright extremes, because random cases rarely reach them), and checked by mutation.
 - The renderer must mirror `eval_slab` and the program interpreter. 2.3b adds a test comparing shader output to the CPU reference per feature, besides the goldens.
 - Subsurface is an approximation until M4's screen-space work. Thin film samples three wavelengths, so very thick films alias.
+- **Goldens moved by the energy rule (measured in 2.3b, FLIP mean, tolerance in brackets):** `shadow_box_plane_iso` 0.032 [0.01], `view_mode_lit` 0.015 [0.01], `view_mode_shadow_cascades` 0.014 [0.01], `many_lights_iso` 0.012 [0.01] and `pbr_sphere_grid_directional` 0.010 [0.01] crossed their tolerance; `gltf_metal_rough_spheres(_no_textures)` 0.016–0.018 [0.02], the other glTF goldens 0.004–0.008 [0.02], `orthographic_isometric` 0.003, `light_clusters` 0.003, `spot_light_cone` 0.003 and `pbr_spheres_ibl` 0.002 moved within it. Data views (unlit, albedo, normals, roughness/metallic, overdraw, wireframe) are byte-identical. With M1's coupling put back temporarily, every golden returns to M1 (max one 8-bit step; IBL spheres FLIP 0.0002 from the wider table texture), so the movement is the energy rule alone.

@@ -2,6 +2,7 @@
 //! PBR, cameras, headless capture and `capture.screenshot` (ADR-0040).
 
 mod assets;
+mod budget;
 mod camera;
 pub mod cluster;
 mod components;
@@ -16,10 +17,12 @@ mod gpu;
 pub mod graph;
 pub mod ibl;
 mod lighting;
+mod material_rows;
 mod module;
 mod orbit;
 mod overlay;
 mod pipelines;
+mod programs;
 mod renderer;
 mod scene_cache;
 pub mod shadow;
@@ -32,10 +35,12 @@ mod view;
 mod view_mode;
 
 pub use assets::{AssetSource, MemoryAssets, resolve};
+pub use budget::{effective_closure_budget, platform_closure_budget};
 pub use camera::view_matrix;
 pub use components::{
     Camera, DirectionalLight, Environment, Msaa, PointLight, Projection, SpotLight, Tonemap,
 };
+pub use concordia_material::{ClosureBudget, ClosureReport};
 pub use error::RenderError;
 pub use extract::{
     CameraView, DrawItem, EntityItems, LightView, PunctualKind, PunctualLight, RenderWorld,
@@ -56,7 +61,10 @@ pub use pipelines::shader_dir;
 pub use renderer::{FrameCallbacks, Image, MAX_SIZE, RenderRequest, RenderStats, Renderer};
 pub use scene_cache::{RenderScene, SceneCache, SceneDelta, SceneItems};
 pub use shadow_pass::ShadowPush;
-pub use stats::{FrameStats, RenderStatsGet, RenderStatsParams, RenderStatsResult};
+pub use stats::{
+    ClosureMergeStats, FrameStats, MaterialDowngrade, MergedOperator, RenderStatsGet,
+    RenderStatsParams, RenderStatsResult,
+};
 pub use view::{Landing, Pick, View, axis_delta, landing, pick, rotate_angle, scale_factor};
 pub use view_mode::ViewMode;
 

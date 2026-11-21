@@ -1,7 +1,7 @@
 # concordia-import-gltf: agent guide
 
 ## Purpose
-The glTF 2.0 importer (`.gltf` and `.glb`): meshes, metallic-roughness materials and textures, the node hierarchy as a prefab, skins and clips (for M2), lights and cameras (ADR-0044).
+The glTF 2.0 importer (`.gltf` and `.glb`): meshes, metallic-roughness materials (each imported as a one-slab `Material`, ADR-0068) and textures, the node hierarchy as a prefab, skins and clips (for M2), lights and cameras (ADR-0044).
 
 ## Public entry points
 - `GltfImporter` (an `concordia_assets::Importer`), `SUPPORTED_EXTENSIONS`

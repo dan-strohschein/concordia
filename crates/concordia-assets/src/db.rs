@@ -11,11 +11,12 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::builtin::{Builtin, BuiltinAsset};
-use crate::data::{MaterialData, MeshData, TextureData};
+use crate::data::{MeshData, TextureData};
 use crate::error::{AssetError, io};
 use crate::image_importer::ImageImporter;
 use crate::importer::{AssetKind, ImportInput, Importer, SubIds, encode};
 use crate::key::{PLATFORM, artifact_key, import_key};
+use crate::material::Material;
 use crate::material_importer::MaterialImporter;
 use crate::reference::AssetRef;
 use crate::sidecar::Sidecar;
@@ -411,7 +412,7 @@ impl AssetDb {
     }
 
     /// A material (imported or built-in).
-    pub fn load_material(&mut self, reference: &AssetRef) -> Result<MaterialData, AssetError> {
+    pub fn load_material(&mut self, reference: &AssetRef) -> Result<Material, AssetError> {
         match Builtin::of(reference) {
             Some(BuiltinAsset::Material(m)) => Ok(m),
             Some(_) => Err(AssetError::Decode(format!("{reference} is not a material"))),

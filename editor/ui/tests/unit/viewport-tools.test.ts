@@ -20,8 +20,11 @@ test("only the transform tools show a gizmo", () => {
 test("view modes list every engine mode once, lit first", () => {
   const ids = VIEW_MODES.map((m) => m.id);
   expect(ids[0]).toBe("lit");
-  expect(new Set(ids).size).toBe(9);
-  expect(ids).toContain("light_clusters");
+  expect(ids).toHaveLength(14);
+  expect(new Set(ids).size).toBe(14);
+  for (const id of ["light_clusters", "closures", "haze", "fuzz", "subsurface", "thin_film"]) {
+    expect(ids).toContain(id);
+  }
 });
 
 test("the stats line shows draws, triangles and times, and waits for the GPU time", () => {

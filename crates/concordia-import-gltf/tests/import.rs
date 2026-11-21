@@ -99,6 +99,7 @@ fn material_factors_and_texture_slots_map_to_material_asset() {
     let mat =
         p.db.load_material(&Project::sub(&report, "material/mat_1"))
             .unwrap();
+    let mat = surface(&mat);
     assert_eq!(mat.metallic, 0.0);
     assert!(
         (mat.roughness - 1.0 / 6.0).abs() < 1e-6,
@@ -116,7 +117,10 @@ fn material_factors_and_texture_slots_map_to_material_asset() {
     let mat =
         q.db.load_material(&Project::sub(&report, &material))
             .unwrap();
-    let base = mat.base_color_texture.expect("base color texture");
+    let base = surface(&mat)
+        .base_color_texture
+        .clone()
+        .expect("base color texture");
     assert!(q.db.load_texture(&base).is_ok());
 }
 
@@ -248,5 +252,14 @@ fn import_is_deterministic() {
         let (ka, ba) = a.db.load_artifact(&Project::sub(&ra, sub)).unwrap();
         let (kb, bb) = b.db.load_artifact(&Project::sub(&rb, sub)).unwrap();
         assert_eq!((ka, ba), (kb, bb), "{sub}");
+    }
+}
+
+/// The one slab a glTF material imports as (ADR-0068).
+fn surface(m: &concordia_assets::Material) -> &concordia_assets::Slab {
+    assert_eq!(m.nodes.len(), 1, "one slab");
+    match m.node(concordia_assets::SURFACE) {
+        Some(concordia_assets::MaterialNode::Slab(slab)) => slab,
+        other => panic!("expected the surface slab, got {other:?}"),
     }
 }

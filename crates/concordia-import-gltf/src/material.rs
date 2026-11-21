@@ -1,10 +1,10 @@
-//! Images → textures (`texture/<image>`) and materials (`material/<name>`).
+//! Images → textures (`texture/<image>`) and materials (`material/<name>`, one slab each).
 
 use std::collections::BTreeMap;
 
 use concordia_assets::{
     AlphaMode, Artifact, AssetError, AssetKind, AssetRef, ColorSpace, ImageSettings, ImportOutput,
-    MaterialData, SubIds, decode_image, encode,
+    Material, MaterialData, SubIds, decode_image, encode,
 };
 
 use crate::names::Names;
@@ -135,7 +135,7 @@ pub(crate) fn materials(
             sub,
             Artifact {
                 kind: AssetKind::Material,
-                bytes: encode(&data)?,
+                bytes: encode(&Material::from_pbr(&data))?,
             },
         );
     }

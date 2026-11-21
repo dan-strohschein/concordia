@@ -1,7 +1,7 @@
 //! Materials compiled into postfix closure programs: each `Slab` op is one closure, and the
 //! operators combine results on a small stack. The GPU interprets the same program.
 
-use concordia_assets::{AlphaMode, Material, MaterialError, MaterialNode, Slab};
+use concordia_assets::{AlphaMode, AssetRef, Material, MaterialError, MaterialNode, Slab};
 use concordia_core::math::Vec3;
 
 use crate::bsdf::{eval_slab, slab_transmittance};
@@ -17,6 +17,8 @@ pub enum Op {
     Horizontal {
         /// Fraction that is b.
         mix: f32,
+        /// Per-pixel mix (R), multiplied by `mix` on the GPU.
+        mix_texture: Option<AssetRef>,
     },
     /// Pop x; push x covering `coverage` of the surface.
     Coverage {
@@ -73,10 +75,18 @@ impl MaterialProgram {
                 self.emit(material, bottom);
                 self.ops.push(Op::Vertical);
             }
-            MaterialNode::Horizontal { a, b, mix, .. } => {
+            MaterialNode::Horizontal {
+                a,
+                b,
+                mix,
+                mix_texture,
+            } => {
                 self.emit(material, a);
                 self.emit(material, b);
-                self.ops.push(Op::Horizontal { mix: *mix });
+                self.ops.push(Op::Horizontal {
+                    mix: *mix,
+                    mix_texture: mix_texture.clone(),
+                });
             }
             MaterialNode::Coverage { node, coverage } => {
                 self.emit(material, node);
@@ -111,15 +121,41 @@ impl MaterialProgram {
     pub fn eval(&self, n: Vec3, v: Vec3, l: Vec3) -> Shaded {
         let n = n.normalize_or_zero();
         let (cos_v, cos_l) = (n.dot(v.normalize_or_zero()), n.dot(l.normalize_or_zero()));
+        self.run(|slab| Entry {
+            color: eval_slab(slab, n, v, l),
+            emissive: emission(slab),
+            alpha: slab.base_color[3],
+            through_v: slab_transmittance(slab, cos_v),
+            through_l: slab_transmittance(slab, cos_l),
+        })
+    }
+
+    /// The surface without lighting: each slab's albedo and emission, combined by the operators
+    /// as seen at normal incidence (unlit materials and the albedo view).
+    pub fn unlit(&self) -> Shaded {
+        self.run(|slab| {
+            let through = slab_transmittance(slab, 1.0);
+            Entry {
+                color: albedo(slab),
+                emissive: emission(slab),
+                alpha: slab.base_color[3],
+                through_v: through,
+                through_l: through,
+            }
+        })
+    }
+
+    /// Runs the ops with `entry` giving each slab's value (made coverage when blending).
+    fn run(&self, entry: impl Fn(&Slab) -> Entry) -> Shaded {
         let mut stack: Vec<Entry> = Vec::with_capacity(self.slabs.len());
         for op in &self.ops {
-            let entry = match *op {
-                Op::Slab(i) => self.slab_entry(&self.slabs[i].1, n, v, l, cos_v, cos_l),
+            let next = match *op {
+                Op::Slab(i) => self.covered(entry(&self.slabs[i].1)),
                 Op::Vertical => pop2(&mut stack, Entry::layer),
-                Op::Horizontal { mix } => pop2(&mut stack, |a, b| a.mix(b, mix)),
+                Op::Horizontal { mix, .. } => pop2(&mut stack, |a, b| a.mix(b, mix)),
                 Op::Coverage { coverage } => stack.pop().unwrap_or_default().cover(coverage),
             };
-            stack.push(entry);
+            stack.push(next);
         }
         let top = stack.pop().unwrap_or_default();
         debug_assert!(stack.is_empty(), "a program leaves one result");
@@ -130,22 +166,26 @@ impl MaterialProgram {
         }
     }
 
-    fn slab_entry(&self, slab: &Slab, n: Vec3, v: Vec3, l: Vec3, cos_v: f32, cos_l: f32) -> Entry {
-        let alpha = slab.base_color[3];
-        let emissive = Vec3::from_array(slab.emissive) * slab.emissive_strength;
-        let solid = Entry {
-            color: eval_slab(slab, n, v, l),
-            emissive,
-            alpha,
-            through_v: slab_transmittance(slab, cos_v),
-            through_l: slab_transmittance(slab, cos_l),
-        };
+    /// A slab's entry, its alpha made coverage when the material blends.
+    fn covered(&self, solid: Entry) -> Entry {
         if self.blend {
-            solid.cover(alpha).with_alpha(alpha)
+            solid.cover(solid.alpha).with_alpha(solid.alpha)
         } else {
             solid
         }
     }
+}
+
+/// Diffuse albedo seen head-on: the medium's share of a dielectric, or the base color of a metal.
+fn albedo(slab: &Slab) -> Vec3 {
+    let [r, g, b, _] = slab.base_color;
+    let base = Vec3::new(r, g, b);
+    let medium = Vec3::ONE - Vec3::from_array(slab.transmittance);
+    base * medium.lerp(Vec3::ONE, slab.metallic)
+}
+
+fn emission(slab: &Slab) -> Vec3 {
+    Vec3::from_array(slab.emissive) * slab.emissive_strength
 }
 
 /// One stack value: reflected and emitted light, coverage, and transmittance toward v and l.

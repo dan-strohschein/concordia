@@ -33,7 +33,8 @@ fn main() {
             metallic: 0.0,
             roughness: 0.6,
             ..MaterialData::default()
-        },
+        }
+        .into(),
     );
     let plane = world.spawn(&mut ids).unwrap();
     world

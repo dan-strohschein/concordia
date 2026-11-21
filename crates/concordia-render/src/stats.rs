@@ -8,6 +8,9 @@ use concordia_reflect::Reflect;
 use serde::{Deserialize, Serialize};
 
 use crate::module::RenderState;
+use concordia_assets::AssetRef;
+use concordia_material::{ClosureReport, MergeKind};
+
 use crate::{RenderRequest, RenderStats, ViewMode};
 
 /// What the renderer did for one frame.
@@ -39,6 +42,46 @@ pub struct FrameStats {
     pub shadows_cached: bool,
     /// GPU memory the device has allocated, in bytes (null if the device cannot tell).
     pub memory_bytes: Option<u64>,
+    /// Closures a pixel may evaluate (the platform's budget, or the project's lower one).
+    pub closure_budget: u8,
+    /// This frame's materials that were simplified to fit the closure budget.
+    pub downgraded_materials: Vec<MaterialDowngrade>,
+}
+
+/// A material simplified to fit the closure budget.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct MaterialDowngrade {
+    /// The material asset.
+    pub material: String,
+    /// Closures before.
+    pub before: u64,
+    /// Closures after.
+    pub after: u64,
+    /// Merges in the order they were made.
+    pub merges: Vec<ClosureMergeStats>,
+}
+
+/// One merge: the operator node made into a slab, the two slabs it combined and what was lost.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct ClosureMergeStats {
+    /// The operator node.
+    pub node: String,
+    /// The operator collapsed: horizontal (a mix) or vertical (a layer).
+    pub kind: MergedOperator,
+    /// The merged slabs: `[a, b]` or `[top, bottom]`.
+    pub slabs: Vec<String>,
+    /// Inputs that could not be kept, as `node.field`.
+    pub dropped: Vec<String>,
+}
+
+/// The operator a merge collapsed.
+#[allow(non_camel_case_types)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Reflect)]
+pub enum MergedOperator {
+    /// A horizontal mix.
+    horizontal,
+    /// A vertical layer.
+    vertical,
 }
 
 /// The last frame's stats, and a GPU time that arrived before its frame was recorded.
@@ -58,6 +101,7 @@ pub(crate) fn record(
     request: &RenderRequest,
     stats: RenderStats,
     cpu_ms: f64,
+    renderer: &crate::Renderer,
 ) {
     let Ok(mut last) = last.lock() else { return };
     let gpu_ms = match last.early_gpu.take() {
@@ -78,7 +122,34 @@ pub(crate) fn record(
         punctual_lights: stats.punctual_lights as u64,
         shadows_cached: stats.shadows_cached,
         memory_bytes: stats.memory_bytes,
+        closure_budget: renderer.closure_budget().get(),
+        downgraded_materials: renderer
+            .closure_reports()
+            .iter()
+            .map(|(material, report)| downgrade(material, report))
+            .collect(),
     });
+}
+
+fn downgrade(material: &AssetRef, report: &ClosureReport) -> MaterialDowngrade {
+    MaterialDowngrade {
+        material: material.to_string(),
+        before: report.before as u64,
+        after: report.after as u64,
+        merges: report
+            .merges
+            .iter()
+            .map(|m| ClosureMergeStats {
+                node: m.node.clone(),
+                kind: match m.kind {
+                    MergeKind::Horizontal => MergedOperator::horizontal,
+                    MergeKind::Vertical => MergedOperator::vertical,
+                },
+                slabs: m.slabs.to_vec(),
+                dropped: m.dropped.clone(),
+            })
+            .collect(),
+    }
 }
 
 /// Fills in frame `number`'s GPU time when the device reports it.

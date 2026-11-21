@@ -1,5 +1,7 @@
 // Viewport tools (Godot's Q/W/E/R), the engine's view modes, and the render stats readout.
 
+import type { ViewMode } from "../api/generated/MethodCaptureScreenshotParams";
+
 /** The viewport's pointer tool. */
 export type Tool = "select" | "move" | "rotate" | "scale";
 /** An engine gizmo mode (`viewport.overlays` / `viewport.gizmo`). */
@@ -29,8 +31,17 @@ export const VIEW_MODES = [
   { id: "overdraw", label: "Overdraw" },
   { id: "shadow_cascades", label: "Shadow Cascades" },
   { id: "light_clusters", label: "Lights per Cluster" },
+  { id: "closures", label: "Material Closures" },
+  { id: "haze", label: "Haze" },
+  { id: "fuzz", label: "Fuzz" },
+  { id: "subsurface", label: "Subsurface" },
+  { id: "thin_film", label: "Thin Film" },
 ] as const;
 export type ViewModeId = (typeof VIEW_MODES)[number]["id"];
+
+/** True only while the menu lists exactly the engine's view modes (checked by `tsc`). */
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+export const VIEW_MODES_MATCH_THE_ENGINE: Same<ViewModeId, ViewMode> = true;
 
 /** The parts of `render.stats`' frame the readout shows. */
 export interface FrameStats {

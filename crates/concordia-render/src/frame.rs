@@ -1,9 +1,6 @@
-//! Per-frame GPU data: the frame block, instances and materials (all `float4`/`uint4` rows, so
-//! Rust and every shader backend agree on the layout).
+//! Per-frame GPU data: the frame block and instances (all `float4`/`uint4` rows, so Rust and every
+//! shader backend agree on the layout); materials are in `material_rows`.
 
-use std::collections::BTreeMap;
-
-use concordia_assets::{AlphaMode, AssetRef, MaterialData};
 use concordia_core::math::{Mat3, Mat4, Vec3, Vec4};
 
 use crate::cluster::ClusterGrid;
@@ -11,9 +8,6 @@ use crate::shadow::{Cascade, CascadeSettings};
 
 /// No texture bound (shaders use the factor alone).
 pub(crate) const NO_TEXTURE: u32 = u32::MAX;
-const FLAG_UNLIT: u32 = 1;
-const FLAG_MASK: u32 = 2;
-const FLAG_BLEND: u32 = 4;
 
 /// Push constants for one forward draw (mirrors `DrawPush` in `forward.slang`).
 #[repr(C)]
@@ -27,7 +21,7 @@ pub struct DrawPush {
     pub instance: u32,
     /// Material buffer.
     pub materials: u32,
-    /// Material index.
+    /// The material's first row in it.
     pub material: u32,
     /// Index stream.
     pub indices: u32,
@@ -84,6 +78,11 @@ pub(crate) fn push_rows(out: &mut Vec<u8>, rows: &[Vec4]) {
     );
 }
 
+/// Appends `uint4` rows as little-endian words.
+pub(crate) fn push_rows_u32(out: &mut Vec<u8>, rows: &[[u32; 4]]) {
+    out.extend(rows.iter().flatten().flat_map(|w| w.to_le_bytes()));
+}
+
 fn columns(m: &Mat4) -> [Vec4; 4] {
     [m.x_axis, m.y_axis, m.z_axis, m.w_axis]
 }
@@ -105,7 +104,7 @@ pub(crate) struct FrameParams<'a> {
     pub(crate) shadow: Option<(&'a [Cascade], &'a CascadeSettings, [u32; 4])>,
     /// Image-based lighting (None: no environment).
     pub(crate) ibl: Option<IblParams<'a>>,
-    /// Bindless index of the BRDF table.
+    /// Bindless index of the albedo tables.
     pub(crate) lut: u32,
     /// The view mode's shader number (`ViewMode::shader_index`).
     pub(crate) view_mode: u32,
@@ -216,67 +215,4 @@ pub(crate) fn instance_block(out: &mut Vec<u8>, model: &Mat4) {
     let normal = Mat4::from_mat3(Mat3::from_mat4(*model).inverse().transpose());
     push_rows(out, &columns(model));
     push_rows(out, &columns(&normal));
-}
-
-/// `Material` rows for `material`, given its textures' bindless indices.
-pub(crate) fn material_block(
-    out: &mut Vec<u8>,
-    material: &MaterialData,
-    textures: &BTreeMap<AssetRef, u32>,
-) {
-    let tex = |r: &Option<AssetRef>| {
-        r.as_ref()
-            .and_then(|r| textures.get(r))
-            .copied()
-            .unwrap_or(NO_TEXTURE)
-    };
-    let (mut flags, mut cutoff) = (0, 0.0);
-    if material.unlit {
-        flags |= FLAG_UNLIT;
-    }
-    if let AlphaMode::Mask { cutoff: c } = material.alpha_mode {
-        flags |= FLAG_MASK;
-        cutoff = c;
-    }
-    if material.alpha_mode == AlphaMode::Blend {
-        flags |= FLAG_BLEND;
-    }
-    let e = material.emissive.map(|c| c * material.emissive_strength);
-    push_rows(
-        out,
-        &[
-            Vec4::from_array(material.base_color),
-            Vec4::new(e[0], e[1], e[2], cutoff),
-            Vec4::new(
-                material.metallic,
-                material.roughness,
-                material.normal_scale,
-                material.occlusion_strength,
-            ),
-        ],
-    );
-    let words = [
-        tex(&material.base_color_texture),
-        tex(&material.metallic_roughness_texture),
-        tex(&material.normal_texture),
-        tex(&material.occlusion_texture),
-        tex(&material.emissive_texture),
-        flags,
-        0,
-        0,
-    ];
-    out.extend(words.iter().flat_map(|w| w.to_le_bytes()));
-}
-
-/// Textures a material references.
-pub(crate) fn material_textures(material: &MaterialData) -> impl Iterator<Item = &AssetRef> {
-    [
-        &material.base_color_texture,
-        &material.metallic_roughness_texture,
-        &material.normal_texture,
-        &material.occlusion_texture,
-        &material.emissive_texture,
-    ]
-    .into_iter()
-    .flatten()
 }

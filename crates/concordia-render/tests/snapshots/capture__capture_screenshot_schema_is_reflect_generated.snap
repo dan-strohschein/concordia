@@ -153,6 +153,26 @@ expression: "params_schema(&MethodInfo::of::<CaptureScreenshot>())"
         {
           "const": "light_clusters",
           "description": "Lights per cluster as a heat map (blue: none, green: 8, red: 16 or more)."
+        },
+        {
+          "const": "closures",
+          "description": "Closures per pixel as a heat map (blue: one, green: four, red: eight)."
+        },
+        {
+          "const": "haze",
+          "description": "Haze weight (white: all haze)."
+        },
+        {
+          "const": "fuzz",
+          "description": "Fuzz (sheen) color."
+        },
+        {
+          "const": "subsurface",
+          "description": "Subsurface wrap per channel (brighter: light reaches further past the terminator)."
+        },
+        {
+          "const": "thin_film",
+          "description": "Thin-film thickness (white: 1000 nm or more)."
         }
       ],
       "title": "ViewMode",
