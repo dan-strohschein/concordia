@@ -1,0 +1,20 @@
+[package]
+name = "concordia-material"
+description = "Substrate-style material evaluation: closures, the closure budget and the CPU reference BSDF"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+concordia-assets.workspace = true
+concordia-core.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d) and 2.8 (2026-11-20) done; 2.3 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8 and 2.3a (2026-11-20) done; 2.3b next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -635,6 +635,61 @@ The author's answer to 2.8's open question: no agent ever gets the whole tool li
   - Added: `every_enabled_default_role_stays_under_its_tool_budget` (`concordia-mcp`, 22k per role), `default_role_scopes_list_tools_by_name_not_by_glob`, `every_scoped_tool_is_used_by_the_role_prompt_or_its_skills`, `every_tool_a_role_skill_tells_it_to_use_is_in_scope` and `director_coordinates_with_task_team_and_history_tools_only`.
   - Changed: the QA replay test now requires that the level designer has no replay tools. M3S gate calls that used tools a role no longer has now use ones it has: the level designer's `task_list` became `task_get` and `schema_get`, and the tech artist's `component_set` became `component_patch`. The director's approval attempt is now refused by the hook's scope check, since it has no `task_approve`; the gate-party rule stays covered by `done_requires_gate_actor`. The M3S agents snapshot changes only the `tools:` lines.
 
+### Phase 2.3 refinement (2026-11-20, ADR-0068)
+Refined against the code as built. M1 has one flat `MaterialData` (in `concordia-assets`) packed into five shader rows and one `brdf()` in `forward.slang`. `concordia-reflect` has no `Box`, so the operator tree is stored as a flat map of named nodes. The editor has no material view (the inspector shows components only), and the tech artist is already enabled, so D8 here means updating its skill, prompt and scope. There are 27 render goldens, all on M1 PBR.
+
+**Author decisions (2026-11-20):**
+- **All six features** in 2.3: diffuse, specular, haze, fuzz, subsurface (a forward-only approximation; screen-space diffusion in M4) and thin film.
+- **Closure budget:** a platform default that a project may lower in `concordia.toml` but never raise.
+- **FBX last** (2.3d), as planned.
+- **Editor:** selecting a `.material.ron` in the File System dock shows it in the existing Inspector dock (no new panel), edited through new Engine API methods `material.get` / `material.set` (file writes, logged with the actor, not undoable, like `asset.import`).
+- **Exact energy conservation** over M1 pixel parity. The white-furnace grid found that M1's diffuse coupling gains up to 11% at grazing views. Migrated materials change slightly; goldens that move beyond tolerance are reviewed and re-blessed in 2.3c.
+
+**Sub-phases (each its own branch and PR to main):**
+- **2.3a Material model** (done, below).
+- **2.3b Renderer:**
+  - closure rows and the postfix program in the material buffer, and a closure loop in `forward.slang` with IBL per closure;
+  - the sheen and direct-lobe albedo tables in the albedo texture;
+  - the importer and `AssetSource` switch to `Material`, and the budget is fitted at upload;
+  - `[render] closure_budget` (lowering only), and `render.stats` reporting downgrades;
+  - view modes for closure count and per feature.
+  - Tests: `shader_matches_cpu_reference_per_feature` (a sphere rendered unlit-by-IBL against `eval_slab`), a golden per feature, `closure_budget_downgrades_gracefully_and_reports_it` end to end, `project_cannot_raise_the_closure_budget`, and the view-mode goldens.
+- **2.3c Migration, editor, Studio:**
+  - Tests: `m1_pbr_materials_migrate_to_one_slab_unchanged_in_golden` (every M1 golden re-run through one slab within its tolerance; any that moves is reviewed), `material_get_and_set_roundtrip_canonical_text`, `material_set_is_attributed_and_not_journaled`, inspector widget tests for struct-variant enums and named-node maps, a Playwright test editing a slab, and the tech-artist scope and skill tests with sync snapshots;
+  - `MaterialData` is retired, and glTF materials import as one slab.
+- **2.3d FBX:** `ufbx-sys` and `concordia-import-fbx` (meshes, skins, clips into the glTF importer's asset types), licensing through `just deny`, and fixtures from a script. Tests: the five FBX tests of the older 2.3 section.
+
+### Phase 2.3a As built (2026-11-20, ADR-0068)
+- **`concordia-assets`:**
+  - `Material`, `MaterialNode` (`Slab`, `Vertical`, `Horizontal` with `mix_texture`, `Coverage`), `Slab` (M1's fields plus `specular`, `transmittance`, `haze`, `fuzz`, `subsurface`, `thin_film`), `MaterialError`;
+  - `read_material` (layered text, or M1 text migrated to one slab `surface`), `write_material`, `Material::from_pbr`, `validate`, `reachable`.
+  - The importer still produces `MaterialData` until 2.3b.
+- **`concordia-material` (new):**
+  - `eval_slab`, `slab_transmittance`, `thin_film_reflectance`;
+  - `MaterialProgram` (postfix ops on a stack) with `Shaded`;
+  - `ClosureBudget` (1..=8), `fit_budget` → `ClosureReport`;
+  - `dfg`: the split-sum table (moved from `concordia-render`, which re-exports it), the direct-lobe albedo table and the sheen albedo table; `sampling`.
+- **Tests:**
+  - `concordia-assets/tests/material_model.rs` (8, two insta snapshots reviewed: canonical car paint and the schema).
+  - `concordia-material`: `bsdf.rs` (8), `layering.rs` (8), `energy.rs` (5), `dfg.rs` (4), `budget.rs` (6).
+  - **The plan's tests, as built:**
+    - `slab_bsdf_features_match_reference_values`, split into one test per feature, against an independent Python implementation;
+    - `vertical_layering_attenuates_the_bottom_slab`;
+    - `horizontal_mix_and_coverage_blend_closures`;
+    - `closure_budget_downgrades_gracefully_and_reports_it` (on the CPU here; end to end in 2.3b);
+    - `material_files_roundtrip_canonical`.
+  - **Added:** `white_furnace_energy_never_exceeds_one` and `layered_stacks_never_exceed_one` (proptests), `bright_extremes_stay_within_one`, `a_bright_clear_coat_over_a_white_base_stays_within_one`, `m1_material_file_reads_as_one_slab`, `from_pbr_keeps_every_m1_field`, `node_cycles_and_missing_names_are_errors_naming_them`, `out_of_range_and_non_finite_values_are_rejected_with_their_path`, `downgrading_a_clear_coat_keeps_the_coat_as_haze`, `merging_slabs_with_different_textures_reports_the_dropped_one`, `direct_albedo_matches_the_lobe_eval_slab_uses`, and alpha, emission, closure-count and table tests.
+- **Red run:** every test failed first for the right reason (stubs returning zero, empty programs, no validation, no migration). These passed at once:
+  - Guards: `default_material_is_one_default_slab` (data definitions), `an_invalid_material_does_not_compile` and `an_invalid_material_is_refused` (validation already built).
+  - Strengthened because they passed vacuously against zero stubs: the normalization test, `opaque_top_hides_the_bottom`, `horizontal_mix_and_coverage_blend_closures`, the lookup clamp test, and both furnace proptests (each now requires non-zero energy).
+- **Found by the tests:**
+  - **Mutation check:** removing diffuse's Fresnel attenuation was not caught by the furnace proptest, because random slabs rarely reach the bright corner. The deterministic extremes grid catches it, and also the same mutation of the final rule.
+  - The extremes grid found a **NaN** in the sheen at head-on views (N·V + 1e-5 > 1 into Λ's `powf`), now clamped.
+  - It also found that **M1's own BRDF gains energy at grazing views** (1.107). The author chose exact conservation (above).
+  - **Table mismatch:** the split-sum IBL table's separable Smith term under-states the direct lobe's albedo at grazing angles (0.116 vs 0.156), which left 4% excess. Energy splits now use a direct-lobe table, and the IBL table is unchanged (no GPU change in 2.3a).
+  - **A coarse grid in my own test** (uniform in cos θ) under-resolved a sharp lobe at grazing angles. The test now uses converged Python values.
+- **Changed deliberately during green:** `fit_budget` returns `Result` (it refuses invalid materials rather than panicking), and the reference values were regenerated by the oracle after the energy decision.
+
 ### Effort (re-estimated)
 | Phase | Estimate |
 |---|---|
@@ -1121,7 +1176,7 @@ which runs `cargo nextest run --test m2_port_begins` (`tests/gates/m2_port_begin
 
 ## ADRs to write
 - ADR-0067: M2 refinement: engine breadth on Terra's Mass core, Substrate-style materials, Godot mappings to M5, sample-game gate (written).
-- ADR-0068: Substrate-style material model (slabs, operators, closure budget), written in phase 2.3.
+- ADR-0068: Substrate-style material model (slabs, operators, closure budget), written in phase 2.3a.
 - ADR-0069: Terra storage kinds, command buffers, signals and observers (written in phase 2.0b).
 - ADR-0070: Terra templates, traits and spawners; the MCP tool-list budget rises to 16k (written in phase 2.0c; the budget superseded by ADR-0073).
 - ADR-0073: tool budgets are per agent role; access is admin-configured in the roster; no whole-list budget (written 2026-11-20).

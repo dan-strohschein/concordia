@@ -1,5 +1,6 @@
 //! Image-based lighting, computed on the CPU (deterministic and testable): equirectangular
-//! environments, SH9 irradiance, GGX-prefiltered specular levels and the split-sum BRDF table.
+//! environments, SH9 irradiance and GGX-prefiltered specular levels; the split-sum BRDF table
+//! comes from `concordia-material` (re-exported here).
 //!
 //! References: Brian Karis, "Real Shading in Unreal Engine 4" (SIGGRAPH 2013 course notes; split
 //! sum); Ramamoorthi & Hanrahan, "An Efficient Representation for Irradiance Environment Maps"
@@ -9,6 +10,10 @@ use std::f32::consts::{PI, TAU};
 
 use concordia_assets::{TextureData, TextureFormat};
 use concordia_core::math::Vec3;
+pub use concordia_material::dfg::{
+    BRDF_LUT_SAMPLES, BRDF_LUT_SIZE, brdf_lut, brdf_lut_cached, integrate_brdf,
+};
+use concordia_material::sampling::{hammersley, importance_ggx};
 
 /// A latitude-longitude map of linear RGB radiance (row 0 is straight up).
 #[derive(Debug, Clone, PartialEq)]
@@ -226,27 +231,6 @@ pub fn eval_sh9(sh: &[[f32; 3]; 9], n: Vec3) -> [f32; 3] {
     })
 }
 
-/// The i-th of `n` Hammersley points.
-fn hammersley(i: u32, n: u32) -> (f32, f32) {
-    (
-        i as f32 / n as f32,
-        i.reverse_bits() as f32 * 2.328_306_4e-10,
-    )
-}
-
-/// A GGX-distributed half vector around `n` (alpha = roughness²).
-fn importance_ggx((u, v): (f32, f32), n: Vec3, alpha: f32) -> Vec3 {
-    let phi = TAU * u;
-    let cos_t = ((1.0 - v) / (1.0 + (alpha * alpha - 1.0) * v))
-        .max(0.0)
-        .sqrt();
-    let sin_t = (1.0 - cos_t * cos_t).max(0.0).sqrt();
-    let up = if n.z.abs() < 0.999 { Vec3::Z } else { Vec3::X };
-    let tx = up.cross(n).normalize();
-    let ty = n.cross(tx);
-    (tx * (sin_t * phi.cos()) + ty * (sin_t * phi.sin()) + n * cos_t).normalize()
-}
-
 /// Prefiltered specular levels for roughness 0, 1/(levels-1), …, 1; level 0 is the source and
 /// level i ≥ 1 is the source shrunk by 2^(i+1) (at least 32×16; rough levels are blurry anyway).
 pub fn prefilter(map: &Equirect, levels: usize, samples: u32) -> Vec<Equirect> {
@@ -311,49 +295,6 @@ fn prefilter_texel(
         weight += nol;
     }
     sum.map(|s| s / weight.max(1e-8))
-}
-
-/// Split-sum scale and bias (A, B) for (N·V, roughness): specular ≈ prefiltered · (F0·A + B).
-pub fn integrate_brdf(nov: f32, roughness: f32, samples: u32) -> [f32; 2] {
-    let nov = nov.clamp(1e-4, 1.0);
-    let v = Vec3::new((1.0 - nov * nov).sqrt(), 0.0, nov);
-    let alpha = roughness * roughness;
-    let k = alpha / 2.0;
-    let g1 = |x: f32| x / (x * (1.0 - k) + k);
-    let (mut a, mut b) = (0.0f32, 0.0f32);
-    for i in 0..samples {
-        let h = importance_ggx(hammersley(i, samples), Vec3::Z, alpha);
-        let l = 2.0 * v.dot(h) * h - v;
-        let (nol, noh, voh) = (l.z.max(0.0), h.z.max(0.0), v.dot(h).max(0.0));
-        if nol > 0.0 {
-            let g_vis = g1(nov) * g1(nol) * voh / (noh * nov).max(1e-8);
-            let fc = (1.0 - voh).powi(5);
-            a += (1.0 - fc) * g_vis;
-            b += fc * g_vis;
-        }
-    }
-    [a / samples as f32, b / samples as f32]
-}
-
-/// Side of the BRDF table the renderer uses.
-pub const BRDF_LUT_SIZE: usize = 32;
-/// Samples per entry (worst error vs a 65 536-sample reference ≈ 4e-4).
-pub const BRDF_LUT_SAMPLES: u32 = 4096;
-
-/// A `size`×`size` table of [`integrate_brdf`], rows by roughness, columns by N·V (texel centers).
-pub fn brdf_lut(size: usize, samples: u32) -> Vec<[f32; 2]> {
-    (0..size * size)
-        .map(|i| {
-            let (nov, rough) = ((i % size) as f32 + 0.5, (i / size) as f32 + 0.5);
-            integrate_brdf(nov / size as f32, rough / size as f32, samples)
-        })
-        .collect()
-}
-
-/// The renderer's BRDF table, computed once per process.
-pub fn brdf_lut_cached() -> &'static [[f32; 2]] {
-    static LUT: std::sync::OnceLock<Vec<[f32; 2]>> = std::sync::OnceLock::new();
-    LUT.get_or_init(|| brdf_lut(BRDF_LUT_SIZE, BRDF_LUT_SAMPLES))
 }
 
 /// RGBA16F texture data of an equirect (alpha 1).

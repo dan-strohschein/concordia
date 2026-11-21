@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 627434e40e3af5966ff9a530dfbe6bb7cab803a75009240ac1398a4c23ff8ce4 # shrinks to s = Slab { base_color: [0.0, 0.0, 0.0, 1.0], base_color_texture: None, metallic: 0.0, specular: 0.0, roughness: 0.25, metallic_roughness_texture: None, normal_texture: None, normal_scale: 1.0, occlusion_texture: None, occlusion_strength: 1.0, emissive: [0.0, 0.0, 0.0], emissive_strength: 1.0, emissive_texture: None, transmittance: [0.0, 0.0, 0.0], haze: None, fuzz: None, subsurface: None, thin_film: None }, view_cos = 0.1
+cc e32055c2be6dde2a55657df5d32b145b35ba06899a8f60ffa9b17a584285cc9d # shrinks to top = Slab { base_color: [0.0, 0.0, 0.0, 1.0], base_color_texture: None, metallic: 0.0, specular: 0.0, roughness: 0.25, metallic_roughness_texture: None, normal_texture: None, normal_scale: 1.0, occlusion_texture: None, occlusion_strength: 1.0, emissive: [0.0, 0.0, 0.0], emissive_strength: 1.0, emissive_texture: None, transmittance: [0.0, 0.0, 0.0], haze: None, fuzz: None, subsurface: None, thin_film: None }, bottom = Slab { base_color: [0.0, 0.0, 0.0, 1.0], base_color_texture: None, metallic: 0.0, specular: 0.0, roughness: 0.25, metallic_roughness_texture: None, normal_texture: None, normal_scale: 1.0, occlusion_texture: None, occlusion_strength: 1.0, emissive: [0.0, 0.0, 0.0], emissive_strength: 1.0, emissive_texture: None, transmittance: [0.0, 0.0, 0.0], haze: None, fuzz: None, subsurface: None, thin_film: None }, coverage = 0.0, view_cos = 0.1
