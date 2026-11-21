@@ -105,6 +105,24 @@ impl MemoryAssets {
     pub(crate) fn textures(&self) -> impl Iterator<Item = (&AssetRef, &TextureData)> {
         self.textures.iter()
     }
+
+    /// Every stored asset with its kind.
+    pub(crate) fn kinds(&self) -> impl Iterator<Item = (&AssetRef, AssetKind)> {
+        let kind = |k| move |r| (r, k);
+        self.meshes
+            .keys()
+            .map(kind(AssetKind::Mesh))
+            .chain(self.materials.keys().map(kind(AssetKind::Material)))
+            .chain(self.textures.keys().map(kind(AssetKind::Texture)))
+    }
+}
+
+/// What an asset reference names, for reloading it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AssetKind {
+    Mesh,
+    Material,
+    Texture,
 }
 
 /// The CPU asset data a frame of `world` needs that `held` does not report as already loaded:
@@ -140,15 +158,29 @@ pub fn resolve(
     Ok(out)
 }
 
-/// Loads `materials` again (they changed) with any of their textures not yet held.
-pub(crate) fn reload_materials(
-    materials: &[AssetRef],
+/// Loads `stale` assets again (they changed); materials bring textures not yet held.
+pub(crate) fn reload(
+    stale: &[(AssetRef, AssetKind)],
     source: &mut dyn AssetSource,
     held: &dyn Fn(&AssetRef) -> bool,
 ) -> Result<MemoryAssets, crate::RenderError> {
+    let fail = |r: &AssetRef| {
+        let reference = r.to_string();
+        move |message: String| crate::RenderError::Asset { reference, message }
+    };
     let mut out = MemoryAssets::default();
-    for reference in materials {
-        add_material(&mut out, source, reference, held)?;
+    for (reference, kind) in stale {
+        match kind {
+            AssetKind::Mesh => {
+                let mesh = source.mesh(reference).map_err(fail(reference))?;
+                out.meshes.insert(reference.clone(), mesh);
+            }
+            AssetKind::Texture => {
+                let texture = source.texture(reference).map_err(fail(reference))?;
+                out.textures.insert(reference.clone(), texture);
+            }
+            AssetKind::Material => add_material(&mut out, source, reference, held)?,
+        }
     }
     Ok(out)
 }

@@ -1,5 +1,5 @@
 //! `capture.screenshot` and `render.stats` through the Engine API (M1 phase 1.5; the closure
-//! budget, M2 2.3b). GPU cases skip without a GPU unless CONCORDIA_REQUIRE_GPU=1.
+//! budget, M2 2.3b; hot reload of materials, meshes and textures, 2.3c). GPU cases skip without a GPU unless CONCORDIA_REQUIRE_GPU=1.
 
 use std::sync::Arc;
 
@@ -30,8 +30,13 @@ impl Harness {
         let dir = tempfile::tempdir().unwrap();
         let mut config = EngineConfig::new(dir.path());
         config.log_ring = ring;
-        let modules: Vec<Arc<dyn EngineModule>> =
-            vec![Arc::new(AssetsModule::new(dir.path())), Arc::new(render)];
+        let modules: Vec<Arc<dyn EngineModule>> = vec![
+            Arc::new(
+                AssetsModule::new(dir.path())
+                    .with_importer(Arc::new(concordia_import_gltf::GltfImporter)),
+            ),
+            Arc::new(render),
+        ];
         config.modules = modules;
         let mut engine = Engine::new(config).unwrap();
         let session = engine.open_session();
@@ -318,9 +323,14 @@ impl Harness {
 
     /// A sphere wearing `material` in front of a camera, lit by the sun; returns the sphere's id.
     fn sphere_scene(&mut self, material: &str) -> Value {
+        self.mesh_scene("builtin:mesh/sphere", material)
+    }
+
+    /// `mesh` wearing `material` in front of a camera, lit by the sun; returns the entity's id.
+    fn mesh_scene(&mut self, mesh: &str, material: &str) -> Value {
         let sphere = self.ok("entity.spawn", json!({"actor": "agent:test", "components": {
             "Transform": {"translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.5, 1.5, 1.5]},
-            "MeshRenderer": {"mesh": "builtin:mesh/sphere", "material": material},
+            "MeshRenderer": {"mesh": mesh, "material": material},
         }}))["id"]
             .clone();
         self.ok("entity.spawn", json!({"actor": "agent:test", "components": {
@@ -461,4 +471,100 @@ fn a_saved_material_redraws_with_its_new_content() {
     .unwrap();
     h.ok("asset.import", json!({"path": path}));
     assert_eq!(center_channel(&h.capture()), 1, "a re-import redraws too");
+}
+
+/// A 1×1 RGBA PNG.
+fn png_pixel(rgba: [u8; 4]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut encoder = png::Encoder::new(&mut out, 1, 1);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header().unwrap();
+    writer.write_image_data(&rgba).unwrap();
+    writer.finish().unwrap();
+    out
+}
+
+#[test]
+fn a_reimported_texture_redraws_with_its_new_pixels() {
+    let Some(mut h) = Harness::gpu() else {
+        return;
+    };
+    let path = "paint.png";
+    std::fs::write(h.dir.path().join(path), png_pixel([220, 20, 20, 255])).unwrap();
+    let texture = h.ok("asset.import", json!({"path": path}))["id"].clone();
+    let material = h.material(
+        "textured.material.ron",
+        &format!(
+            "(nodes: {{\"surface\": Slab((base_color_texture: Some(\"asset:{}\"), roughness: 0.6))}}, root: \"surface\")\n",
+            texture.as_str().unwrap()
+        ),
+    );
+    h.sphere_scene(&material);
+    assert_eq!(center_channel(&h.capture()), 0, "red at first");
+
+    std::fs::write(h.dir.path().join(path), png_pixel([20, 20, 220, 255])).unwrap();
+    h.ok("asset.import", json!({"path": path}));
+    assert_eq!(center_channel(&h.capture()), 2, "the new pixels show");
+}
+
+/// A glTF of one quad facing +Z, `[x0, x1] × [-1, 1]`, with normals.
+fn quad_gltf(x0: f32, x1: f32) -> String {
+    let mut bytes = Vec::new();
+    for [x, y] in [[x0, -1.0], [x1, -1.0], [x1, 1.0], [x0, 1.0]] {
+        [x, y, 0.0f32]
+            .iter()
+            .for_each(|v| bytes.extend(v.to_le_bytes()));
+    }
+    for _ in 0..4 {
+        [0.0f32, 0.0, 1.0]
+            .iter()
+            .for_each(|v| bytes.extend(v.to_le_bytes()));
+    }
+    [0u16, 1, 2, 0, 2, 3]
+        .iter()
+        .for_each(|i| bytes.extend(i.to_le_bytes()));
+    let data = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    json!({
+        "asset": {"version": "2.0"},
+        "buffers": [{"byteLength": bytes.len(), "uri": format!("data:application/octet-stream;base64,{data}")}],
+        "bufferViews": [
+            {"buffer": 0, "byteOffset": 0, "byteLength": 48},
+            {"buffer": 0, "byteOffset": 48, "byteLength": 48},
+            {"buffer": 0, "byteOffset": 96, "byteLength": 12},
+        ],
+        "accessors": [
+            {"bufferView": 0, "componentType": 5126, "count": 4, "type": "VEC3", "min": [x0, -1.0, 0.0], "max": [x1, 1.0, 0.0]},
+            {"bufferView": 1, "componentType": 5126, "count": 4, "type": "VEC3"},
+            {"bufferView": 2, "componentType": 5123, "count": 6, "type": "SCALAR"},
+        ],
+        "meshes": [{"name": "Quad", "primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1}, "indices": 2}]}],
+        "nodes": [{"name": "Quad", "mesh": 0}],
+        "scenes": [{"nodes": [0]}],
+        "scene": 0,
+    })
+    .to_string()
+}
+
+#[test]
+fn a_reimported_mesh_redraws_with_its_new_geometry() {
+    let Some(mut h) = Harness::gpu() else {
+        return;
+    };
+    let draw = |h: &mut Harness, gltf: &str| {
+        std::fs::write(h.dir.path().join("quad.gltf"), gltf).unwrap();
+        let id = h.ok("asset.import", json!({"path": "quad.gltf"}))["id"].clone();
+        format!("asset:{}#mesh/Quad/0", id.as_str().unwrap())
+    };
+    let mesh = draw(&mut h, &quad_gltf(-1.0, 1.0));
+    h.mesh_scene(&mesh, "builtin:material/default");
+    let wide = h.capture();
+
+    assert_eq!(draw(&mut h, &quad_gltf(-1.0, -0.5)), mesh, "same asset");
+    let narrow = h.capture();
+    assert_ne!(narrow, wide, "the new geometry shows");
+    let mut fresh = Harness::gpu().unwrap();
+    let mesh = draw(&mut fresh, &quad_gltf(-1.0, -0.5));
+    fresh.mesh_scene(&mesh, "builtin:material/default");
+    assert_eq!(narrow, fresh.capture(), "drawn as a fresh engine draws it");
 }

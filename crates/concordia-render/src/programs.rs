@@ -9,6 +9,7 @@ use concordia_material::{ClosureBudget, ClosureReport, MaterialProgram, fit_budg
 use crate::RenderError;
 use crate::frame::push_rows_u32;
 use crate::material_rows::{Row, material_rows};
+use crate::shape::ProgramShape;
 
 /// A material as authored, the program the GPU runs for it, and what fitting it did.
 struct Fitted {
@@ -16,6 +17,8 @@ struct Fitted {
     program: MaterialProgram,
     material: Material,
     report: ClosureReport,
+    /// The pipeline shape it draws with (`None`: the base shader).
+    shape: Option<ProgramShape>,
 }
 
 /// The budget in effect and every material fitted to it.
@@ -76,6 +79,11 @@ impl Programs {
             }
         }
         Ok(())
+    }
+
+    /// The shape a fitted material draws with (`None` for one-slab programs or unknown materials).
+    pub(crate) fn shape(&self, reference: &AssetRef) -> Option<&ProgramShape> {
+        self.fitted.get(reference)?.shape.as_ref()
     }
 
     /// This frame's downgraded materials.
@@ -153,6 +161,7 @@ fn fit(
     }
     Ok(Fitted {
         source: material.clone(),
+        shape: ProgramShape::of(&program),
         program,
         material: fitted,
         report,

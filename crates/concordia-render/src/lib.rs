@@ -27,6 +27,7 @@ mod renderer;
 mod scene_cache;
 pub mod shadow;
 mod shadow_pass;
+mod shape;
 mod stats;
 mod templates;
 mod thread;
