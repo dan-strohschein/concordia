@@ -51,11 +51,11 @@ pub trait EngineModule: Send + Sync + fmt::Debug {
         Ok(PlaySetup::default())
     }
 
-    /// [`EngineModule::start_play`] with the engine in view (its registry, templates and
-    /// seed); the engine calls this, and by default it calls `start_play`.
+    /// [`EngineModule::start_play`] with the engine in view (its registry, templates, seed and
+    /// module states, e.g. to load assets); the engine calls this, and by default it calls `start_play`.
     fn start_play_in(
         &self,
-        _engine: &crate::Engine,
+        _engine: &mut crate::Engine,
         world: &mut World,
     ) -> Result<PlaySetup, ApiError> {
         self.start_play(world)

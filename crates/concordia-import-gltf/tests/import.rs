@@ -214,6 +214,65 @@ fn skins_and_animations_are_preserved_for_m2() {
     assert_eq!(skin.joints.len(), 2);
 }
 
+/// Each prefab entity's name, keyed by id, and the `Skinned::skin` of the ones that have it.
+fn names_and_skins(
+    p: &mut Project,
+    report: &concordia_assets::ImportReport,
+) -> (
+    std::collections::BTreeMap<concordia_core::id::EntityId, String>,
+    std::collections::BTreeMap<String, String>,
+) {
+    let doc = concordia_import_model::load_prefab_doc(&mut p.db, report).unwrap();
+    let mut names = std::collections::BTreeMap::new();
+    let mut skins = std::collections::BTreeMap::new();
+    for e in &doc.entities {
+        let name = e.components["Name"].to_json().unwrap();
+        let name = name.as_str().unwrap().to_owned();
+        if let Some(s) = e.components.get("Skinned") {
+            let skin = s.to_json().unwrap()["skin"].as_str().unwrap().to_owned();
+            skins.insert(name.clone(), skin);
+        }
+        names.insert(e.id, name);
+    }
+    (names, skins)
+}
+
+#[test]
+fn gltf_skinned_node_gets_a_skinned_component() {
+    let mut p = Project::new();
+    let report = p.sample("SimpleSkin", "glTF", "SimpleSkin.gltf");
+    let (_, skins) = names_and_skins(&mut p, &report);
+    let skin = format!("asset:{}#skin/0", report.id);
+    assert_eq!(
+        skins.into_values().collect::<Vec<_>>(),
+        [skin],
+        "the one skinned node"
+    );
+    let fox = p.sample("Fox", "glTF-Binary", "Fox.glb");
+    let (_, skins) = names_and_skins(&mut p, &fox);
+    assert_eq!(skins.len(), 1, "{skins:?}");
+    let mut q = Project::new();
+    let boxed = q.sample("Box", "glTF-Binary", "Box.glb");
+    assert!(
+        names_and_skins(&mut q, &boxed).1.is_empty(),
+        "unskinned stays unskinned"
+    );
+}
+
+#[test]
+fn gltf_clip_channels_carry_bone_names_and_no_frame_rate() {
+    let mut p = Project::new();
+    let report = p.sample("Fox", "glTF-Binary", "Fox.glb");
+    let (names, _) = names_and_skins(&mut p, &report);
+    let walk: ClipData =
+        p.db.load(&Project::sub(&report, "clip/Walk"), AssetKind::Clip)
+            .unwrap();
+    assert_eq!(walk.frame_rate, None, "glTF has no frame rate");
+    for c in &walk.channels {
+        assert_eq!(c.target_name, names[&c.target], "the node's own name");
+    }
+}
+
 #[test]
 fn khr_lights_punctual_are_stored_as_lights() {
     let mut p = Project::new();

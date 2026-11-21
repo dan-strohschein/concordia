@@ -86,6 +86,7 @@ impl Project {
                     mesh: json("MeshRenderer").map(|m| m["mesh"].as_str().unwrap().to_owned()),
                     material: json("MeshRenderer")
                         .map(|m| m["material"].as_str().unwrap().to_owned()),
+                    skin: json("Skinned").map(|s| s["skin"].as_str().unwrap().to_owned()),
                 },
             );
         }
@@ -107,6 +108,8 @@ pub struct Entity {
     pub local: Mat4,
     pub mesh: Option<String>,
     pub material: Option<String>,
+    /// `Skinned::skin`, if the entity is skinned.
+    pub skin: Option<String>,
 }
 
 pub struct Model {

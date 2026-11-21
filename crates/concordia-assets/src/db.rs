@@ -424,6 +424,16 @@ impl AssetDb {
         }
     }
 
+    /// The prefab document an imported model's main artifact holds, read with `registry`'s types.
+    pub fn load_prefab_doc(
+        &mut self,
+        reference: &AssetRef,
+        registry: &concordia_reflect::TypeRegistry,
+    ) -> Result<concordia_scene::PrefabDoc, AssetError> {
+        let (kind, bytes) = self.load_artifact(reference)?;
+        prefab_doc(reference, kind, bytes, registry)
+    }
+
     /// Any postcard-encoded artifact of the expected kind (skins, clips, lights, cameras).
     pub fn load<T: DeserializeOwned>(
         &mut self,
@@ -503,4 +513,21 @@ pub(crate) fn relative(path: &Path) -> Result<PathBuf, AssetError> {
             .collect()),
         false => Err(AssetError::Path(path.display().to_string())),
     }
+}
+
+/// Reads a loaded artifact as a prefab document (an error if it is another kind).
+pub fn prefab_doc(
+    reference: &AssetRef,
+    kind: AssetKind,
+    bytes: Vec<u8>,
+    registry: &concordia_reflect::TypeRegistry,
+) -> Result<concordia_scene::PrefabDoc, AssetError> {
+    if kind != AssetKind::Prefab {
+        return Err(AssetError::Decode(format!(
+            "{reference} is a {kind:?}, not a prefab (import a .gltf, .glb or .fbx model)"
+        )));
+    }
+    let text = String::from_utf8(bytes).map_err(|e| AssetError::Decode(e.to_string()))?;
+    concordia_scene::read_prefab(&text, registry)
+        .map_err(|e| AssetError::Decode(format!("{reference}: {e}")))
 }

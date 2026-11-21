@@ -10,9 +10,9 @@ mod shared;
 
 pub use error::AppError;
 pub use manifest::{
-    AssetsSection, InputSection, JournalSection, Manifest, PhysicsSection, ProjectSection,
-    RenderSection, SceneSection, ScriptModuleKind, ScriptModuleSection, ScriptsSection, SimSection,
-    StudioSection,
+    AnimSection, AssetsSection, InputSection, JournalSection, Manifest, PhysicsSection,
+    ProjectSection, RenderSection, SceneSection, ScriptModuleKind, ScriptModuleSection,
+    ScriptsSection, SimSection, StudioSection,
 };
 pub use project::{Project, model_importers};
 pub use shared::{HostedEngine, SharedEngine};

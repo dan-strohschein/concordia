@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups and 2.3d (2026-11-21) done; 2.4 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d and 2.4.1 (2026-11-21) done; 2.4.2 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -999,6 +999,159 @@ These passed at once:
 - more than one skin per mesh (the first is used);
 - the Godot `.fbx.import` mapping (M5).
 
+### Phase 2.4 refinement (2026-11-21)
+**Status: author decisions A1 and A2 taken (2026-11-21); 2.4.1 in progress.**
+
+Refined against the code as built after 2.3d. The old 2.4 text (under *Phases*) is superseded where this section differs.
+
+**What exists (checked in code):**
+- **Asset types** (`concordia-assets/src/data.rs`): `SkinData` (`joint_names`, `joints` as the prefab's entity ids, column-major `inverse_bind`), `ClipData` (`name`, `duration`, `channels`), `Channel` (`target` entity id, `path` T/R/S/weights, `interpolation` linear/step/cubic spline, `times`, flattened `values`), and `MeshData::joints`/`weights` (four influences, normalized by `reduce_influences`).
+- **glTF** (`concordia-import-gltf/src/anim.rs`, version 2) writes `skin/<index>` and `clip/<name>` with the file's interpolation and times as authored; `duration` is the latest key time. **FBX** (version 1) writes the same types, baked to linear keys from 0 at the file's rate.
+- **Prefabs:** bone nodes are entities with `Name`, `Transform` and `Parent`, ids UUIDv5(asset, `entity/node/<name>`). `prefab.instantiate` gives every entity a fresh id and remaps `Parent` only.
+- **Terra:** phases `PrePhysics`, `Physics`, `PostPhysics`, `FrameEnd`, `Presentation` (ADR-0063). There is no `Sim` phase: the old plan's "Sim set" means the four simulation phases.
+- **Render:** the scene cache already interpolates transforms between ticks (`scene_cache.rs`, `thread.rs`); vertices are pulled per triangle corner from storage buffers, so a vertex-shader skinning path has no fixed-function layout to fight.
+- **Fixtures:** Khronos `SimpleSkin` and `Fox` (fetched by `just gltf-assets`); our Blender-made `skinned.fbx`, `anim_stacks.fbx`, `mixamo_run.fbx`.
+- **Studio:** the animator is disabled (`team.toml`: "animation arrives in M2"); it has no skill of its own, and its Blender workflow needs the 3.7 bridge.
+
+**Gaps:**
+| # | Gap | Resolution | Sub-phase |
+|---|---|---|---|
+| A-G1 | Nothing says which skin a mesh uses: the prefab's renderer entity has only `MeshRenderer` | A `Skinned { skin }` component on the renderer entity, written by both importers | 2.4.1 |
+| A-G2 | Clip channels name bones only by their own file's entity ids, which `prefab.instantiate` replaces | Bind by bone name (A1) | 2.4.1 |
+| A-G3 | No skeleton type: `SkinData` has no parents or rest pose | `Skeleton` built from `SkinData` plus the prefab's `Parent`/`Transform` | 2.4.1 |
+| A-G4 | No sampling, no skinning, no `concordia-anim` | 2.4.1, 2.4.2 | |
+| A-G5 | FBX's start-time trim is untested (Blender always rebases stacks to 0) | A hand-written ASCII FBX fixture with a stack starting at 1 s (ufbx reads ASCII FBX) | 2.4.1 |
+| A-G6 | `ClipData` validity is never checked (lengths, ordering, finiteness) | `validate_clip` at load, descriptive errors | 2.4.1 |
+| A-G7 | Godot `AnimationTree` import and its corpus test were in 2.4 | Moved to M5 (D1): `animation_tree_imports_to_animgraph_ron` and `corpus_slice_rigs_import_without_unmapped_anim_nodes` are dropped here; M2 builds the native graph they will map onto | n/a |
+| A-G8 | The done criteria named the port's characters | An original fixture character from our Blender script (D2 style) | 2.4.5 |
+
+**Settled without a question (my calls; say if you disagree):**
+- **Sub-phase names: 2.4.1–2.4.5.** Letters would collide with 2.4b (Terra LOD, its own phase), and "2.4.n" reads as part of 2.4. Branches are `m2/2.4.<n>-<slug>`, each off main with one commit and its own PR (not stacked).
+- **Where animation runs:** a `FrameEnd` processor at the fixed dt (scaled by `SimClock::time_scale`). By then gameplay in `PostPhysics` has set this tick's parameters, so they take effect the same tick; events are Terra signals, delivered next tick (2.0b's rule). The pose is simulation state and hashed; the renderer interpolates the previous and current pose as it does transforms.
+- **glTF clip times stay as authored** (a first key after 0 holds, as three.js and Godot play them); FBX keeps its trim to 0, now tested.
+- **Morph targets and root motion are not in 2.4:** `Weights` channels are skipped by the sampler and reported, glTF morph targets aren't imported, and the old plan already ruled root motion out.
+- **ADR-0074 (animation runtime):** pose storage, the phase, binding by name and the import changes, written in 2.4.1. `docs/design.md` doesn't change (it already says "own animation system").
+
+**Sub-phases:**
+
+**2.4.1 Skeletons, clips and sampling (CPU)** (~1 week). New crate `concordia-anim`; importer changes; no GPU.
+- *Deliverables:* `Skeleton` (bone names, parent indices with parents first, rest local TRS, inverse binds); `Pose` (local transforms; where it lives is A2) and model-space evaluation; `sample(clip, t)` per the glTF 2.0 spec (linear, slerp, step, cubic Hermite with tangents scaled by key spacing); clip binding by bone name with unmatched channels reported; `AnimPlayer` component (clip, time, speed, loop) and the `anim.sample` processor in `FrameEnd`; `AnimModule`. Importers: `Skinned` component, plus A1's clip fields; glTF v3, FBX v2.
+- *Tests first:*
+  - `skeleton_orders_parents_before_children` (and a cycle or missing joint is an error naming it);
+  - `skeleton_bind_pose_matches_inverse_bind_matrices` (`SimpleSkin` and `skinned.fbx`: rest model-space × inverse bind = identity, 1e-4);
+  - `clip_sampling_interpolates_trs_linear_slerp_and_step`;
+  - `cubic_spline_tracks_sample_per_gltf_spec` (hand-computed Hermite values, unequal key spacing);
+  - `sampling_outside_the_keys_holds_the_end_values`;
+  - `looping_wraps_time_and_clamped_clips_hold_the_last_pose`;
+  - `clip_binds_to_another_skeleton_by_bone_name` (`mixamo_run.fbx` onto the character; unmatched channels listed, not errors);
+  - `malformed_clip_is_a_descriptive_error` (length mismatch, unsorted or non-finite times, non-unit rotations normalized);
+  - `player_advances_at_fixed_dt_and_time_scale` (scale 0 freezes);
+  - `pose_is_part_of_the_world_hash`;
+  - `anim_in_fixed_step_is_deterministic_across_thread_counts` (100 characters, 1 and 8 threads, hashes at ticks 1, 60, 300);
+  - importers: `gltf_skinned_node_gets_a_skinned_component`, `fbx_skinned_mesh_gets_a_skinned_component`, A1's field tests, `fbx_stack_with_a_late_start_is_trimmed_to_zero`;
+  - bench: sampling 1,000 characters × 65 bones (baseline recorded).
+- *Studio:* none yet (2.4.5).
+
+**2.4.2 Skinning: CPU reference and GPU** (~1 week).
+- *Deliverables:* linear blend skinning on the CPU (`jointMatrix = inverse(meshWorld) · jointWorld · inverseBind`, glTF §3.7.3), the reference; GPU skinning in `concordia-render`'s vertex path from a joint palette per skinned draw; shadows skinned too; poses interpolated between ticks; skinned bounds.
+- *Tests first:* `cpu_skinning_matches_reference_vertices` (hand-computed 2-bone fixture), `cpu_skinning_keeps_normals_unit`, `rest_pose_skinning_is_the_bind_mesh`, `gpu_skinning_matches_cpu_skinning` (vertex readback within 1e-4), `gpu_skinning_golden` (new golden, reviewed before blessing), `skinned_meshes_cast_skinned_shadows`, `rendered_pose_interpolates_between_ticks`, every existing render golden unchanged.
+
+**2.4.3 Blend graphs and state machines (`.animgraph.ron`)** (~1–1.5 weeks). Godot `AnimationTree` semantics as the compatibility target, from its MIT docs and source.
+- *Deliverables:* `AnimGraph` asset and importer (canonical RON, reflected schema); nodes clip, blend2, blendN, one-shot (fades, bone filter), time-scale, transition (cross-fade, reset), state machine (switch modes immediate/sync/at-end, advance modes disabled/enabled/auto, advance conditions on parameters, `travel` by shortest path); an `AnimGraphPlayer` component with parameters.
+- *Tests first:* the old list's `blend2_at_half_weight_is_normalized_average_pose`, `one_shot_overlays_then_fades_out_on_completion`, `time_scale_node_scales_playback_rate`, `transition_node_switches_input_with_xfade_and_reset`, `state_machine_travel_finds_shortest_transition_path`, `transition_xfade_blends_over_configured_time`, `at_end_switch_mode_waits_for_clip_end`, `transition_allowed_is_not_transition_taken`; plus `animgraph_roundtrips_canonical` (insta), `invalid_graph_errors_name_the_node` (unknown clip, unknown state, cycle), `graph_parameters_set_by_component_patch_take_effect_next_tick`, `graph_evaluation_is_deterministic_across_thread_counts`.
+
+**2.4.4 Events, attachments, tweens, tools and the skeleton view** (~1 week).
+- *Deliverables:* clip events in seconds (frames shown through `frame_rate` where known) raised as Terra signals; `BoneAttachment { bone }` (Godot's `BoneAttachment3D`); property tweens with easing over reflected fields; `anim.*` methods and MCP tools (first list: `anim.inspect` for pose, bone transforms, graph state and parameters; `anim.travel` and `anim.set_param` on the play world, not journaled, like `input.inject`); the engine-drawn skeleton overlay (D7).
+- *Tests first:* `animation_events_fire_once_per_crossing_including_loops_and_large_steps`, `events_arrive_as_signals_next_tick_in_entity_order`, `bone_attachment_follows_bone_world_transform`, `tween_reaches_target_with_easing_and_dies_with_its_entity`, `tween_holds_at_time_scale_zero`, `anim_methods_have_generated_schemas_and_mcp_tools`, `agent_inspects_a_pose_over_mcp`, `skeleton_overlay_golden` (reviewed).
+
+**2.4.5 The animator role and the done criteria** (~0.5 week; D8).
+- *Deliverables:* the animator enabled in `team.toml`; its scope (`anim_*`, `asset_import`, `sim_*`, `capture_screenshot`, `component_get`, `assets/anim/**`) under the 50k budget; a new skill `concordia-animation-graphs` with no "not available yet" note (Blender clip authoring stays with the 3.7 bridge, said plainly); sync and roster snapshots; an original fixture character made by our Blender script (idle, walk, attack, hit, death).
+- *Tests first:* `animator_is_enabled_with_anim_tools_under_budget`, `animator_skill_is_available`, the sync and roster snapshots (reviewed), `fixture_character_plays_its_states_through_the_graph` (verified by events and a golden).
+
+**Open items from 2.3d, settled here:**
+- **`ClipData::frame_rate`:** see A1.
+- **Retargeting by bone name:** see A1. Name binding needs only `Name`s: `SkinData::joint_names` and the instance's bone entities, found under the skinned entity's root.
+- **The FBX start trim:** tested in 2.4.1 with a hand-written ASCII fixture (A-G5).
+
+**Author decisions (2026-11-21):**
+- **A1. One re-import carries three clip and skin changes:** the `Skinned` link from a mesh to its skin, each channel's bone name (`Channel::target_name`), and `ClipData::frame_rate` (`Some` for FBX, `None` for glTF). Clips then bind to any skeleton without their source file, and events can be shown in frames. glTF goes to version 3, FBX to 2.
+- **A2. One pose per character:** a hashed `Pose` component on the skinned entity holds every bone's local transform (Godot's `Skeleton3D` model, Gregory's pose arrays). The imported bone entities stay as rest-pose handles and name anchors; items follow a posed bone through `BoneAttachment` (2.4.4), and `anim.inspect` reports live bone transforms.
+
+### Phase 2.4.1 As built (2026-11-21, ADR-0074)
+**Reconciled with the code as built:**
+- **`Pose` is one `Vec<Transform>`** (an array of structs), not a structure of arrays as first drafted: `Transform` is already reflected, and at 65 bones the layout doesn't matter. It is still one component per character (A2).
+- **Skeletons come from the skin's own prefab, not the instance.** Every instance shares one `Skeleton` per skin. Non-joint nodes between joints (Blender's `Armature` with its ×100 scale) become each joint's fixed `offset`, so clips keep driving each bone's local transform. Model space is the prefab root's.
+- **Phase:** `FrameEnd`, as settled. `anim.pose` gives a rest pose to players spawned during play (through the command buffer, so they start sampling the next tick); `insert_rest_poses` does the same for the edit world's players when play starts.
+- **Library at play start:** every skin of a `Skinned` entity, and every clip in each player's clip file, bound to that player's skeleton. Failures are logged and listed in `LoadReport`, never fatal; those players hold their pose. Lazy loading was rejected because it would make `sim.step 10` differ from ten `sim.step 1` calls (ADR-0074).
+- **Engine seams, extended rather than duplicated:**
+  - `EngineModule::start_play_in` now takes `&mut Engine` (the module list is cloned first), so a module can load assets; the replay, scripting and test implementations changed only their signatures.
+  - `Engine::registry_and_state_mut` sits beside the existing `registry_and_play_mut`.
+  - Prefab text was read in two places (`prefab.instantiate` and `concordia_import_model::load_prefab_doc`). Both now use `AssetDb::load_prefab_doc` / `prefab_doc`, which the anim library uses too.
+- **The FBX trim:** ufbx resamples curved keys at the rate but keeps keys that are already linear, so the hand-written `late_start.fbx` (two linear keys) imports as two keys from 0 to 1 s. The crate's AGENTS.md now says so.
+- **`[anim]`** is a manifest section with no keys, added after `[assets]` in `Project::modules`. Without an asset database the module logs a warning, and nothing animates.
+
+**Engine:**
+- `concordia-anim` (new): `Skeleton`, `Joint` and `model_matrix`; `Pose`; `validate_clip` and `BoundClip`; `AnimPlayer` and `advance`; `AnimLibrary` and `LoadReport`; `insert_rest_poses` and `add_processors` (`anim.pose`, `anim.sample`, 64-entity chunks); `AnimModule`; `AnimError`.
+- `concordia-assets`: `Skinned`, `Channel::target_name`, `ClipData::frame_rate`, `AssetDb::load_prefab_doc` and `prefab_doc`.
+- `concordia-import-model`: `MeshPart::skin` → `Skinned`.
+- `concordia-import-gltf` v3 and `concordia-import-fbx` v2 (A1).
+- `concordia-api`: `start_play_in(&mut Engine, ..)` and `registry_and_state_mut`. `concordia-app`: `[anim]`, `AnimSection`.
+
+**Tests:**
+- `concordia-anim/tests/skeleton.rs` (4): `skeleton_orders_parents_before_children`, `bad_skeletons_are_errors_naming_the_joint` (cycle, out-of-range parent, duplicate and empty names, short inverse binds, a joint missing from the prefab), `model_space_chains_parents_offsets_and_locals`, and `skeleton_bind_pose_matches_inverse_bind_matrices` (`SimpleSkin` and `skinned.fbx`: every rest skinning matrix is the identity within 1e-4).
+- `sampling.rs` (6):
+  - `clip_sampling_interpolates_trs_linear_slerp_and_step`: slerp at a quarter is 22.5°, where nlerp would give 21.6°; the shortest path is taken; a step key holds from its own time.
+  - `cubic_spline_tracks_sample_per_gltf_spec`: hand-computed Hermite values over unequal spacing; rotations normalized.
+  - `sampling_outside_the_keys_holds_the_end_values`, including cubic splines and a single key.
+  - `looping_wraps_time_and_clamped_clips_hold_the_last_pose`: wrapping, large steps, negative speed, clamping, empty clips, NaN.
+  - `malformed_clip_is_a_descriptive_error`: value count, order, finiteness, no keys, a zero rotation, duration; non-unit rotations are normalized.
+  - `binding_reports_unknown_bones_and_skips_morph_weights`.
+- `binding.rs` (1): `clip_binds_to_another_skeleton_by_bone_name`. `mixamo_run.fbx`'s clip on `skinned.fbx`'s skeleton: at a key time every one of the 7 joints has exactly that key's rotation.
+- `play.rs` (6):
+  - `library_loads_every_skin_and_the_clip_files_clips`: sibling clips load, and a missing clip is reported.
+  - `player_advances_at_fixed_dt_and_time_scale`: 15 ticks at 60 Hz reach 0.25 s, and the pose equals the clip sampled there; time scale 0 freezes playback; scale 0.5 with speed 2 matches normal speed.
+  - `pose_is_part_of_the_world_hash`.
+  - `anim_in_fixed_step_is_deterministic_across_thread_counts`: 100 characters with mixed clips, speeds, offsets and loop modes; hashes at ticks 1, 60 and 300 are equal for 1, 3 and 8 threads.
+  - `players_spawned_during_play_get_a_rest_pose_then_animate`.
+  - `switching_clips_returns_bones_the_new_clip_leaves_alone_to_rest` (added after a mutation survived, below).
+- Importers:
+  - `skinned_parts_get_a_skinned_component_naming_their_skin` (model);
+  - `gltf_skinned_node_gets_a_skinned_component` and `gltf_clip_channels_carry_bone_names_and_no_frame_rate` (`SimpleSkin`, `Fox`, `Box`);
+  - `fbx_skinned_mesh_gets_a_skinned_component`, `fbx_clip_channels_carry_bone_names_and_the_file_frame_rate` (24 fps) and `fbx_stack_with_a_late_start_is_trimmed_to_zero`.
+- App: `anim_module_plays_an_imported_clip_through_sim_step`. `[anim]` and `[assets]`; `prefab.instantiate` of `skinned.fbx`, then `component.set AnimPlayer` with a clip from `anim_stacks.fbx` (a second file, bound by name); 30 ticks reach 0.5 s with a 7-bone `Pose`, the pose moves on, and the edit world never gets a `Pose`.
+- Bench: `concordia-anim/benches/sample.rs` (`BASELINE.md`). 1,000 characters × 65 bones: 2.64 ms raw, 2.80 ms per tick on one thread and 0.66 ms on eight. Hashing 1,000 poses takes 43 ms, and a faster float hash is a follow-up.
+
+**Red run:** every test failed first for the right reason:
+- the skeleton stubs said `not implemented yet`, so the sampling and binding tests failed building their skeletons;
+- `validate_clip` accepted everything, and `advance` returned its input;
+- the library loaded nothing, so there was no skeleton and no pose;
+- the importers wrote empty bone names, no frame rate and no `Skinned`;
+- the app test found no skinned entity.
+
+Changed deliberately during red (my test mistakes):
+- `anim_stacks.fbx` holds only the rig and its actions, with no mesh or skin. The play and app tests now play its clips on `skinned.fbx`, which also covers binding by name.
+- `entity.get` takes `id`, not `entity`.
+- The trim test expected 25 keys, one per frame, but ufbx keeps already-linear keys. It now checks the trim and the endpoints.
+
+These passed at once:
+- `gltf_clip_channels_…`'s frame-rate half (`None` was the stub's value); its name half failed.
+- The trim itself: the shim already trimmed. It is mutation-checked below.
+- `switching_clips_…`: written after the implementation to close a surviving mutation; it fails with that mutation.
+
+**Mutation checks:** 24 mutations, each run against its tests. Caught:
+- **Sampling:** nlerp instead of slerp; slerp without the shortest path; cubic tangents not scaled by the segment; holds reading the in-tangent; the key search off by one; rotations not normalized at bind; `%` instead of `rem_euclid`.
+- **Skeletons:** the offset dropped; inverse binds transposed; parent joints ignored; joints in index order.
+- **Players and the library:** the time scale ignored; speed ignored; no rest pose for spawned players; only the named clip loaded; a missing clip not reported; channels bound by index instead of name; validation of key order off.
+- **Importers:** extra parts left unskinned; glTF bone names dropped; FBX frame rate dropped; FBX skin link dropped; no FBX start trim.
+
+One survived: not resetting to the rest pose before sampling. Every fixture clip drives every bone, so nothing noticed. `switching_clips_returns_bones_the_new_clip_leaves_alone_to_rest` now catches it.
+
+**Goldens:** none (nothing renders a pose until 2.4.2). **Snapshots:** none changed. **Editor schemas:** `Skinned` added (`Skinned.ts`, `Skinned.schema.json`); `Pose` and `AnimPlayer` appear only in projects with `[anim]`. **Studio:** no change; the animator unlocks in 2.4.5.
+
+**Checklist:** `just lint`, Tauri clippy, `CONCORDIA_REQUIRE_GPU=1 just test` (1,291 tests and the doc tests), `just gate-tests M1` and `M3S`, `just deny` (and the editor's), `just editor-schemas` (`Skinned` added, committed) and `just editor-test` (118 unit, 22 end-to-end) all pass. The editor's `Cargo.lock` gains `concordia-anim`.
+
+**Not in 2.4.1:** skinning and rendering poses (2.4.2); graphs (2.4.3); events, attachments, tweens and `anim.*` tools (2.4.4); morph targets and root motion (later).
+
 ### Effort (re-estimated)
 | Phase | Estimate |
 |---|---|
@@ -1489,6 +1642,7 @@ which runs `cargo nextest run --test m2_port_begins` (`tests/gates/m2_port_begin
 - ADR-0069: Terra storage kinds, command buffers, signals and observers (written in phase 2.0b).
 - ADR-0070: Terra templates, traits and spawners; the MCP tool-list budget rises to 16k (written in phase 2.0c; the budget superseded by ADR-0073).
 - ADR-0073: tool budgets are per agent role; access is admin-configured in the roster; no whole-list budget (written 2026-11-20).
+- ADR-0074: animation runtime: one pose per character, clips bound by bone name, sampled in `FrameEnd`; the importer changes (written in phase 2.4.1).
 - ADR-0064 and ADR-0065 (port projects, Godot import identity) move to M5 with the port; their numbers stay reserved.
 
 M2 draws from the 0060–0079 block (`plans/README.md`).

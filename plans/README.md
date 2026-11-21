@@ -11,7 +11,7 @@ The top-level design is in [`../docs/design.md`](../docs/design.md). This folder
 | M-1 Toolchain & scaffold | [M-1-toolchain-and-scaffold.md](M-1-toolchain-and-scaffold.md) | none | Ready to execute | Gate passed |
 | M0 Headless core | [M0-headless-core.md](M0-headless-core.md) | M-1 | Ready to execute | Gate passed |
 | M1 See it | [M1-see-it.md](M1-see-it.md) | M0 | Ready to execute | Gate passed (2026-11-19) |
-| M2 Engine breadth (was Port begins; ADR-0048) | [M2-port-begins.md](M2-port-begins.md) | M1 | Refined (ADR-0067, approved 2026-11-19) | In progress (2.0, 2.0b, 2.0c, 2.6, 2.8, 2.3a, 2.3b, 2.3c, 2.3d done; 2.4 next) |
+| M2 Engine breadth (was Port begins; ADR-0048) | [M2-port-begins.md](M2-port-begins.md) | M1 | Refined (ADR-0067, approved 2026-11-19) | In progress (2.0, 2.0b, 2.0c, 2.6, 2.8, 2.3a, 2.3b, 2.3c, 2.3d, 2.4.1 done; 2.4.2 next) |
 | M3 Closed loop & Studio v1 | [M3-closed-loop-and-studio.md](M3-closed-loop-and-studio.md) | M2 (Studio phases may start after M0) | Needs refinement after M2 | In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b, 3.8 done; Studio checkpoint passed 2026-11-19, deterministic and live); Studio phases 3.3–3.6, 3.8 run right after M1 (ADR-0049) |
 | M4 Unreal-class visuals | [M4-unreal-class-visuals.md](M4-unreal-class-visuals.md) | M1 (render), M2 (graphs) | Needs refinement after M3 | Planned |
 | M5 Bring your game | [M5-bring-your-game.md](M5-bring-your-game.md) | M2 (importer framework) | Needs refinement after M4 | Planned |
@@ -96,7 +96,7 @@ examples/             # small sample projects used by tests and docs
 | `concordia-import-model` | format-neutral model import shared by the glTF and FBX importers: sub-asset names, the prefab from a node tree, mesh finishing, texture color spaces, skin weights reduced to four (M5's `concordia-interchange` may build on it) | M2 (2.3d) |
 | `concordia-physics` (+ `jolt-sys`) | Jolt via its C API, safe wrapper, ECS integration | M1 |
 | `concordia-audio` | mixer, spatial audio, streaming | M2 |
-| `concordia-anim` | skeletons, clips, blending, state machines | M2 |
+| `concordia-anim` | skeletons from imported skins, one hashed `Pose` per character, clips bound by bone name and sampled per glTF, `AnimPlayer`s in `FrameEnd`, the `[anim]` module (2.4.1, ADR-0074); skinning, blend graphs and state machines, events and attachments follow in 2.4.2–2.4.4 | M2 (2.4.1) |
 | `concordia-nav` (+ `recast-sys`) | navmesh build/query, agents/crowds | M2 |
 | `concordia-script-protocol` | the script protocol's types: module, processor and trait descriptors, batches, run outputs (ADR-0062) | M2 (2.6b) |
 | `concordia-script` | scripting host seam: `ScriptBackend`, `ScriptHost`, `ScriptProcessor`, the conformance suite, the in-process test backend (ADR-0062) | M2 (2.6b) |
@@ -140,7 +140,7 @@ New crates may be proposed in a plan's "Open questions" section; they are added 
 - **Exception (ADR in M3):** Studio role files (`studio/agents/<role>.md`) and tasks (`studio/tasks/T-0001-<slug>.task.md`) are Markdown with **YAML frontmatter**, to match Claude Code's native agent format.
 - **Ids:** entities created in the engine get UUIDv7. **Imported** entities get name-based UUIDv5, derived from the source id plus a project import namespace, so re-importing is deterministic.
 - **Asset references:** `"asset:<uuid>"`, `"asset:<uuid>#<sub-path>"`, `"builtin:<kind>/<name>"`. DDC layout: `.concordia/ddc/<2 hex>/<blake3 key>`.
-- Project manifest: `concordia.toml` in a game project's root.
+- Project manifest: `concordia.toml` in a game project's root. Engine modules are sections (`[assets]`, `[render]`, `[physics]`, `[scripts]`, `[replay]`, `[studio]`, `[anim]` since 2.4.1).
 - Assets keep their source formats (`.glb`, `.png`, `.wav`, ...). Per-asset import settings go in a sidecar file `<file>.import.ron`, holding a stable asset id.
 
 ### Engine API & MCP naming
@@ -188,7 +188,7 @@ To avoid collisions, each milestone draws ADR numbers from its own block. Use th
 | 0020–0029 | M-1 | 0020 toolchain pinning · 0021 WASM guest build path · 0022 CI and supply chain |
 | 0030–0039 | M0 | 0030 own archetype ECS (written: safe column storage) · 0031 Engine API error model (written) · 0032 edit world vs play world (written) · 0033 MCP adapter (written: rmcp pin, protocol versions) |
 | 0040–0059 | M1 | 0040–0045 as named in M1's plan (0040, 0041, 0042, 0043, 0044, 0045 written) · 0046 engine modules (written) · 0047 editor UI stays web, native viewport, thin panels (written) · 0048 editor v1 in M1, engine breadth before the port (written) · 0049 agent-first end of M1, Studio right after M1 (written) |
-| 0060–0079 | M2 | 0060–0066 as named in M2's plan (0061 native tier: C ABI, hot reload and migration (written, 2.6c; scripts module and `script.reload`, 2.6d); 0062 script protocol: types and wire encoding written in 2.6a, backend seam, WIT world and WASM backend in 2.6b; 0063 gameplay determinism contract written; 0064–0065 move to M5 with the port) · 0067 M2 refinement: engine breadth on Terra's Mass core (written) · 0068 Substrate-style material model (written, 2.3a; the renderer and the Metal closure budget of 8, 2.3b; migration, `material.get/set` and the editor, 2.3c) · 0069 Terra storage kinds, command buffers, signals and observers (written) · 0070 Terra templates, traits and spawners; tool-list budget 16k (written; the budget superseded by 0073) · 0071 fast automatic CI, manual regression suite (written; amends ADR-0022) · 0072 replay v0: input log, checkpoints and build identity (written, 2.8) · 0073 tool budgets per agent role, no whole-list budget (written) |
+| 0060–0079 | M2 | 0060–0066 as named in M2's plan (0061 native tier: C ABI, hot reload and migration (written, 2.6c; scripts module and `script.reload`, 2.6d); 0062 script protocol: types and wire encoding written in 2.6a, backend seam, WIT world and WASM backend in 2.6b; 0063 gameplay determinism contract written; 0064–0065 move to M5 with the port) · 0067 M2 refinement: engine breadth on Terra's Mass core (written) · 0068 Substrate-style material model (written, 2.3a; the renderer and the Metal closure budget of 8, 2.3b; migration, `material.get/set` and the editor, 2.3c) · 0069 Terra storage kinds, command buffers, signals and observers (written) · 0070 Terra templates, traits and spawners; tool-list budget 16k (written; the budget superseded by 0073) · 0071 fast automatic CI, manual regression suite (written; amends ADR-0022) · 0072 replay v0: input log, checkpoints and build identity (written, 2.8) · 0073 tool budgets per agent role, no whole-list budget (written) · 0074 animation runtime: one pose per character, clips bound by bone name, sampled in `FrameEnd` (written, 2.4.1) |
 | 0080–0099 | M3 | 0080 shared engine and Studio attribution (written) · 0081 team questions and answers (written) · 0082 shared engine: discovery, attach and lifetime (written) · 0083 Studio panel and Claude Code launcher (written) · (to come: YAML-frontmatter exception for Studio files) |
 | 0100–0119 | M4 | 0100 meshlet geometry pipeline (proposed) · (to come: perf testing on reference hardware) |
 | 0120–0139 | M5 | |

@@ -22,9 +22,9 @@ mod sidecar;
 pub use builtin::{Builtin, BuiltinAsset};
 pub use data::{
     AlphaMode, CameraData, Channel, ChannelPath, ClipData, Interpolation, LightData, MeshData,
-    MeshRenderer, SkinData, TextureData, TextureFormat,
+    MeshRenderer, SkinData, Skinned, TextureData, TextureFormat,
 };
-pub use db::{AssetDb, AssetInfo, ImportReport};
+pub use db::{AssetDb, AssetInfo, ImportReport, prefab_doc};
 pub use error::AssetError;
 pub use files::{FileKind, ProjectFile, ProjectFiles};
 pub use image_importer::{ColorSpace, ImageImporter, ImageSettings, decode as decode_image};
@@ -46,10 +46,11 @@ pub use prefab_method::PrefabInstantiate;
 pub use reference::AssetRef;
 pub use sidecar::Sidecar;
 
-/// Registers the asset components (`MeshRenderer`) and the `Material` type (for `schema.get`).
+/// Registers the asset components (`MeshRenderer`, `Skinned`) and the `Material` type (for `schema.get`).
 pub fn register_types(
     registry: &mut concordia_reflect::TypeRegistry,
 ) -> Result<(), concordia_reflect::RegistryError> {
     concordia_terra::register_component::<MeshRenderer>(registry)?;
+    concordia_terra::register_component::<Skinned>(registry)?;
     registry.register::<Material>().map(|_| ())
 }

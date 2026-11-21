@@ -6,11 +6,12 @@ use concordia_api::{ApiError, ApiErrorKind, CallCtx, Engine, Method, WorldSel};
 use concordia_command::{Actor, EditOp};
 use concordia_core::id::EntityId;
 use concordia_reflect::Reflect;
-use concordia_scene::{PrefabDoc, instantiate_prefab, read_prefab};
+use concordia_scene::{PrefabDoc, instantiate_prefab};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::importer::AssetKind;
+use crate::db::prefab_doc;
+use crate::error::AssetError;
 use crate::module::{api_error, db};
 use crate::reference::AssetRef;
 
@@ -90,14 +91,10 @@ fn load(engine: &mut Engine, asset: &AssetRef) -> Result<PrefabDoc, ApiError> {
     let (kind, bytes) = db(engine)?
         .load_artifact(asset)
         .map_err(|e| api_error(e).at("/asset"))?;
-    if kind != AssetKind::Prefab {
-        return Err(invalid(format!(
-            "{asset} is a {kind:?}, not a prefab (import a .gltf or .glb model)"
-        ))
-        .at("/asset"));
-    }
-    let text = String::from_utf8(bytes).map_err(|e| invalid(e.to_string()))?;
-    read_prefab(&text, engine.registry()).map_err(|e| invalid(e.to_string()))
+    prefab_doc(asset, kind, bytes, engine.registry()).map_err(|e| match e {
+        AssetError::Decode(m) => invalid(m).at("/asset"),
+        e => api_error(e).at("/asset"),
+    })
 }
 
 /// Sets the root's parent and translation.

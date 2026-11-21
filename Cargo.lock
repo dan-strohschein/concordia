@@ -578,6 +578,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "concordia-anim"
+version = "0.0.0"
+dependencies = [
+ "concordia-api",
+ "concordia-assets",
+ "concordia-core",
+ "concordia-import-fbx",
+ "concordia-import-gltf",
+ "concordia-import-model",
+ "concordia-reflect",
+ "concordia-scene",
+ "concordia-terra",
+ "criterion",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
 name = "concordia-api"
 version = "0.0.0"
 dependencies = [
@@ -607,6 +628,7 @@ name = "concordia-app"
 version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
+ "concordia-anim",
  "concordia-api",
  "concordia-assets",
  "concordia-core",
@@ -764,6 +786,7 @@ dependencies = [
  "concordia-reflect",
  "concordia-scene",
  "serde",
+ "serde_json",
  "tempfile",
  "uuid",
 ]

@@ -106,7 +106,11 @@ impl EngineModule for ScriptsModule {
     }
 
     /// Every module's processors, in load order; faulted processors get a fresh start.
-    fn start_play_in(&self, engine: &Engine, _world: &mut World) -> Result<PlaySetup, ApiError> {
+    fn start_play_in(
+        &self,
+        engine: &mut Engine,
+        _world: &mut World,
+    ) -> Result<PlaySetup, ApiError> {
         let scripts = self.handle.lock();
         let mut setup = PlaySetup::default();
         if scripts.loaded.is_empty() {

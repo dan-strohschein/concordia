@@ -34,7 +34,8 @@ impl Importer for GltfImporter {
     }
 
     fn version(&self) -> u32 {
-        2
+        // 3 (2.4.1): `Skinned` on skinned renderers, bone names on clip channels.
+        3
     }
 
     fn extensions(&self) -> &'static [&'static str] {

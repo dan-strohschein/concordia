@@ -183,12 +183,13 @@ pub(crate) fn ensure_play(
 
 /// Every module's systems (in module order) and play-time state for a new play world.
 fn start_modules(
-    engine: &Engine,
+    engine: &mut Engine,
     world: &mut World,
 ) -> Result<(Schedule, Vec<PlayState>), ApiError> {
     let mut schedule = Schedule::new();
     let mut states = Vec::new();
-    for module in &engine.modules {
+    let modules = engine.modules.clone();
+    for module in &modules {
         let setup = module.start_play_in(engine, world)?;
         schedule.append(setup.schedule);
         states.extend(setup.state);

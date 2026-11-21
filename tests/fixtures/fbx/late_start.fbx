@@ -1,0 +1,69 @@
+; FBX 7.4.0 project file
+; Hand-written for concordia-import-fbx: one node whose only animation stack runs from 1 s to 2 s.
+; Blender always rebases stacks to 0, so this checks the importer's start trim. KTime: 46186158000 per second.
+FBXHeaderExtension:  {
+	FBXHeaderVersion: 1003
+	FBXVersion: 7400
+	Creator: "concordia hand-written fixture"
+}
+GlobalSettings:  {
+	Version: 1000
+	Properties70:  {
+		P: "UpAxis", "int", "Integer", "",1
+		P: "UpAxisSign", "int", "Integer", "",1
+		P: "FrontAxis", "int", "Integer", "",2
+		P: "FrontAxisSign", "int", "Integer", "",1
+		P: "CoordAxis", "int", "Integer", "",0
+		P: "CoordAxisSign", "int", "Integer", "",1
+		P: "UnitScaleFactor", "double", "Number", "",100
+		P: "TimeMode", "enum", "", "",11
+	}
+}
+Objects:  {
+	Model: 1000, "Model::Mover", "Null" {
+		Version: 232
+		Properties70:  {
+		}
+	}
+	AnimationStack: 2000, "AnimStack::Late", "" {
+		Properties70:  {
+			P: "LocalStart", "KTime", "Time", "",46186158000
+			P: "LocalStop", "KTime", "Time", "",92372316000
+		}
+	}
+	AnimationLayer: 3000, "AnimLayer::Base", "" {
+	}
+	AnimationCurveNode: 4000, "AnimCurveNode::T", "" {
+		Properties70:  {
+			P: "d|X", "Number", "", "A",0
+			P: "d|Y", "Number", "", "A",0
+			P: "d|Z", "Number", "", "A",0
+		}
+	}
+	AnimationCurve: 5000, "AnimCurve::", "" {
+		Default: 0
+		KeyVer: 4009
+		KeyTime: *2 {
+			a: 46186158000,92372316000
+		}
+		KeyValueFloat: *2 {
+			a: 0,2
+		}
+		KeyAttrFlags: *1 {
+			a: 4
+		}
+		KeyAttrDataFloat: *4 {
+			a: 0,0,0,0
+		}
+		KeyAttrRefCount: *1 {
+			a: 2
+		}
+	}
+}
+Connections:  {
+	C: "OO",1000,0
+	C: "OO",3000,2000
+	C: "OO",4000,3000
+	C: "OP",4000,1000, "Lcl Translation"
+	C: "OP",5000,4000, "d|X"
+}

@@ -1,4 +1,4 @@
-//! Skins (`skin/<index>`) and animation clips (`clip/<name>`), stored for M2's animation system.
+//! Skins (`skin/<index>`) and animation clips (`clip/<name>`, channels naming their bones), played by `concordia-anim`.
 
 use concordia_assets::{
     Artifact, AssetKind, Channel, ChannelPath, ClipData, ImportOutput, Interpolation, SkinData,
@@ -51,7 +51,7 @@ pub(crate) fn skins_and_clips(
     for anim in doc.animations() {
         let channels = anim
             .channels()
-            .map(|c| channel(&c, get, entities))
+            .map(|c| channel(&c, get, names, entities))
             .collect::<Result<Vec<_>, String>>()?;
         let duration = channels
             .iter()
@@ -60,6 +60,7 @@ pub(crate) fn skins_and_clips(
         let data = ClipData {
             name: names.clips[anim.index()].clone(),
             duration,
+            frame_rate: None,
             channels,
         };
         let bytes = encode(&data).map_err(|e| e.to_string())?;
@@ -77,6 +78,7 @@ pub(crate) fn skins_and_clips(
 fn channel<'a, 's, F>(
     c: &gltf::animation::Channel<'a>,
     get: F,
+    names: &Names,
     entities: &[EntityId],
 ) -> Result<Channel, String>
 where
@@ -102,9 +104,11 @@ where
         gltf::animation::Interpolation::Step => Interpolation::Step,
         gltf::animation::Interpolation::CubicSpline => Interpolation::CubicSpline,
     };
-    let target = entity(entities, c.target().node().index())?;
+    let node = c.target().node().index();
+    let target = entity(entities, node)?;
     Ok(Channel {
         target,
+        target_name: names.nodes[node].clone(),
         path,
         interpolation,
         times,
