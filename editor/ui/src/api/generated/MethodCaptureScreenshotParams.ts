@@ -55,7 +55,7 @@ export type ViewMode =
   | "subsurface"
   | "thin_film";
 /**
- * Which world to read.
+ * Which world: the scene being edited or the running simulation.
  */
 export type WorldSel = "edit" | "play";
 

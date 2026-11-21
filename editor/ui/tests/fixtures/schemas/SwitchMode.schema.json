@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "When a state machine transition may switch (Godot's switch modes).",
+  "oneOf": [
+    {
+      "const": "Immediate",
+      "description": "Switch now; the destination starts from its beginning (or where it was, without reset)."
+    },
+    {
+      "const": "Sync",
+      "description": "Switch now, seeking the destination to the current state's playback position."
+    },
+    {
+      "const": "AtEnd",
+      "description": "Wait until the current state's playback ends."
+    }
+  ],
+  "title": "SwitchMode",
+  "x-concordia-type": "SwitchMode"
+}

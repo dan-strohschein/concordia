@@ -1,7 +1,8 @@
-//! The play processors in `FrameEnd`: `anim.pose` gives new players a rest pose, and
-//! `anim.sample` advances each player by the tick's scaled dt and samples its clip into its pose.
+//! The play processors in `FrameEnd`: `anim.pose` gives new players a rest pose (and graph
+//! players their starting state), and `anim.sample` advances each player by the tick's scaled dt:
+//! graph players evaluate their graph, clip players sample their clip, into the entity's pose.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
@@ -9,6 +10,7 @@ use concordia_assets::Skinned;
 use concordia_core::id::EntityId;
 use concordia_terra::{Phase, Schedule, SystemCtx, View, World, processor};
 
+use crate::graph_player::{AnimGraphPlayer, AnimGraphState};
 use crate::library::AnimLibrary;
 use crate::player::{AnimPlayer, advance};
 use crate::pose::Pose;
@@ -18,22 +20,40 @@ pub const CHUNK: NonZeroUsize = NonZeroUsize::new(64).unwrap();
 
 /// `anim.pose`: gives players a rest pose.
 pub const POSE: &str = "anim.pose";
-/// `anim.sample`: advances players and samples their clips.
+/// `anim.sample`: advances players, evaluating graphs and sampling clips.
 pub const SAMPLE: &str = "anim.sample";
 
-/// Gives every `AnimPlayer` entity with a known skeleton its rest `Pose`, if it has none.
+/// Gives every player entity with a known skeleton its rest `Pose`, and every graph player with a
+/// known graph its starting `AnimGraphState`, where missing.
 pub fn insert_rest_poses(library: &AnimLibrary, world: &mut World) {
-    let mut missing = Vec::new();
+    let mut poses = Vec::new();
+    let mut states = Vec::new();
     if let Ok(mut query) = world.query::<(&AnimPlayer, &Skinned)>() {
         query.for_each(world, |id, (_, skinned)| {
             if let Some(skeleton) = library.skeleton(&skinned.skin) {
-                missing.push((id, skeleton.rest_pose()));
+                poses.push((id, skeleton.rest_pose()));
             }
         });
     }
-    for (id, pose) in missing {
+    if let Ok(mut query) = world.query::<(&AnimGraphPlayer, &Skinned)>() {
+        query.for_each(world, |id, (player, skinned)| {
+            if let Some(skeleton) = library.skeleton(&skinned.skin) {
+                poses.push((id, skeleton.rest_pose()));
+            }
+            if let Some(graph) = library.graph(&player.graph, &skinned.skin) {
+                states.push((id, graph.initial_state()));
+            }
+        });
+    }
+    for (id, pose) in poses {
         if world.get::<Pose>(id).is_none() {
             let inserted = world.insert(id, pose);
+            debug_assert!(inserted.is_ok(), "the entity was just queried");
+        }
+    }
+    for (id, state) in states {
+        if world.get::<AnimGraphState>(id).is_none() {
+            let inserted = world.insert(id, state);
             debug_assert!(inserted.is_ok(), "the entity was just queried");
         }
     }
@@ -45,6 +65,8 @@ pub fn add_processors(schedule: &mut Schedule, library: Arc<AnimLibrary>) {
     schedule.add_processor(
         processor(POSE, Phase::FrameEnd)
             .reads::<AnimPlayer>()
+            .reads::<AnimGraphPlayer>()
+            .reads::<AnimGraphState>()
             .reads::<Skinned>()
             .reads::<Pose>()
             .run(move |view: &mut View<'_>, _: &SystemCtx<'_>| give_rest_poses(&rest, view)),
@@ -52,6 +74,8 @@ pub fn add_processors(schedule: &mut Schedule, library: Arc<AnimLibrary>) {
     schedule.add_processor(
         processor(SAMPLE, Phase::FrameEnd)
             .writes::<AnimPlayer>()
+            .writes::<AnimGraphPlayer>()
+            .writes::<AnimGraphState>()
             .writes::<Pose>()
             .reads::<Skinned>()
             .after(POSE)
@@ -59,38 +83,93 @@ pub fn add_processors(schedule: &mut Schedule, library: Arc<AnimLibrary>) {
     );
 }
 
-/// Queues a rest pose for each player that has a known skeleton and no pose yet.
+/// Queues a rest pose for each player that has a known skeleton and no pose yet, and a starting
+/// state for each graph player that has a known graph and none.
 fn give_rest_poses(library: &AnimLibrary, view: &mut View<'_>) {
-    let mut posed = BTreeSet::new();
-    if let Ok(query) = view.query::<&Pose>() {
-        query.for_each(|id, _| {
-            posed.insert(id);
-        });
-    }
-    let mut new: Vec<(EntityId, Pose)> = Vec::new();
+    let posed = ids_with::<Pose>(view);
+    let stated = ids_with::<AnimGraphState>(view);
+    let mut poses: BTreeMap<EntityId, Pose> = BTreeMap::new();
+    let mut states: Vec<(EntityId, AnimGraphState)> = Vec::new();
+    let mut want_pose = |id: EntityId, skinned: &Skinned| {
+        let skeleton = library.skeleton(&skinned.skin);
+        if let (false, Some(skeleton)) = (posed.contains(&id), skeleton) {
+            poses.insert(id, skeleton.rest_pose());
+        }
+    };
     if let Ok(query) = view.query::<(&AnimPlayer, &Skinned)>() {
-        query.for_each(|id, (_, skinned)| {
-            let skeleton = library.skeleton(&skinned.skin);
-            if let (false, Some(skeleton)) = (posed.contains(&id), skeleton) {
-                new.push((id, skeleton.rest_pose()));
+        query.for_each(|id, (_, skinned)| want_pose(id, skinned));
+    }
+    if let Ok(query) = view.query::<(&AnimGraphPlayer, &Skinned)>() {
+        query.for_each(|id, (player, skinned)| {
+            want_pose(id, skinned);
+            let graph = library.graph(&player.graph, &skinned.skin);
+            if let (false, Some(graph)) = (stated.contains(&id), graph) {
+                states.push((id, graph.initial_state()));
             }
         });
     }
     if let Ok(commands) = view.commands() {
-        for (id, pose) in new {
+        for (id, pose) in poses {
             commands.insert(id, pose);
+        }
+        for (id, state) in states {
+            commands.insert(id, state);
         }
     }
 }
 
-/// Advances every posed player by the scaled dt and samples its clip, in parallel.
-fn sample_all(library: &AnimLibrary, view: &mut View<'_>, ctx: &SystemCtx<'_>) {
-    let dt = ctx.dt;
-    if let Ok(query) = view.query::<(&mut AnimPlayer, &Skinned, &mut Pose)>() {
-        query.par_for_each(ctx.jobs, CHUNK, |_, (player, skinned, pose)| {
-            sample_one(library, dt, player, skinned, pose);
+/// Entities in the view that have `T`, sorted.
+fn ids_with<T: concordia_terra::Component>(view: &mut View<'_>) -> BTreeSet<EntityId> {
+    let mut ids = BTreeSet::new();
+    if let Ok(query) = view.query::<&T>() {
+        query.for_each(|id, _| {
+            ids.insert(id);
         });
     }
+    ids
+}
+
+/// Advances every posed player by the scaled dt, in parallel: graph players evaluate their graph,
+/// then clip players without a graph sample their clip.
+fn sample_all(library: &AnimLibrary, view: &mut View<'_>, ctx: &SystemCtx<'_>) {
+    let dt = ctx.dt;
+    if let Ok(query) = view.query::<(
+        &mut AnimGraphPlayer,
+        &mut AnimGraphState,
+        &Skinned,
+        &mut Pose,
+    )>() {
+        query.par_for_each(ctx.jobs, CHUNK, |_, (player, state, skinned, pose)| {
+            evaluate_one(library, dt, player, state, skinned, pose);
+        });
+    }
+    let graphs = ids_with::<AnimGraphPlayer>(view);
+    if let Ok(query) = view.query::<(&mut AnimPlayer, &Skinned, &mut Pose)>() {
+        query.par_for_each(ctx.jobs, CHUNK, |id, (player, skinned, pose)| {
+            if !graphs.contains(&id) {
+                sample_one(library, dt, player, skinned, pose);
+            }
+        });
+    }
+}
+
+/// One graph player: unknown skeletons or graphs hold the pose (reported at play start).
+fn evaluate_one(
+    library: &AnimLibrary,
+    dt: f32,
+    player: &mut AnimGraphPlayer,
+    state: &mut AnimGraphState,
+    skinned: &Skinned,
+    pose: &mut Pose,
+) {
+    let (Some(skeleton), Some(graph)) = (
+        library.skeleton(&skinned.skin),
+        library.graph(&player.graph, &skinned.skin),
+    ) else {
+        return;
+    };
+    let evaluated = graph.evaluate(dt, player, state, skeleton, pose);
+    debug_assert!(evaluated.is_ok(), "graphs bound to this skeleton");
 }
 
 /// One player: unknown skeletons or clips hold the pose (the library reported them at play start).

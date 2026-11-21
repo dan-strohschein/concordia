@@ -1,0 +1,116 @@
+{
+  "$defs": {
+    "AdvanceMode": {
+      "description": "Whether a transition is used (Godot's advance modes).",
+      "oneOf": [
+        {
+          "const": "Disabled",
+          "description": "Never used, not even by travel."
+        },
+        {
+          "const": "Enabled",
+          "description": "Used only by travel."
+        },
+        {
+          "const": "Auto",
+          "description": "Taken automatically when its condition holds."
+        }
+      ],
+      "title": "AdvanceMode",
+      "x-concordia-type": "AdvanceMode"
+    },
+    "FadeCurve": {
+      "description": "How a fade's progress (0..1) becomes a blend weight.",
+      "oneOf": [
+        {
+          "const": "Linear",
+          "description": "The progress itself."
+        },
+        {
+          "const": "Smooth",
+          "description": "Smoothstep: 3x² − 2x³."
+        }
+      ],
+      "title": "FadeCurve",
+      "x-concordia-type": "FadeCurve"
+    },
+    "SwitchMode": {
+      "description": "When a state machine transition may switch (Godot's switch modes).",
+      "oneOf": [
+        {
+          "const": "Immediate",
+          "description": "Switch now; the destination starts from its beginning (or where it was, without reset)."
+        },
+        {
+          "const": "Sync",
+          "description": "Switch now, seeking the destination to the current state's playback position."
+        },
+        {
+          "const": "AtEnd",
+          "description": "Wait until the current state's playback ends."
+        }
+      ],
+      "title": "SwitchMode",
+      "x-concordia-type": "SwitchMode"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A state machine transition.",
+  "properties": {
+    "advance": {
+      "$ref": "#/$defs/AdvanceMode",
+      "description": "Whether it is used."
+    },
+    "condition": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string"
+        }
+      ],
+      "description": "A bool or trigger parameter that must hold for `Auto` (none: always)."
+    },
+    "curve": {
+      "$ref": "#/$defs/FadeCurve",
+      "description": "Cross-fade curve."
+    },
+    "from": {
+      "description": "The state it leaves.",
+      "type": "string"
+    },
+    "priority": {
+      "description": "Lower is preferred by travel and `Auto`.",
+      "maximum": 4294967295,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "reset": {
+      "description": "Play the destination from its beginning.",
+      "type": "boolean"
+    },
+    "switch": {
+      "$ref": "#/$defs/SwitchMode",
+      "description": "When it may switch."
+    },
+    "to": {
+      "description": "The state it enters.",
+      "type": "string"
+    },
+    "xfade": {
+      "description": "Cross-fade seconds.",
+      "maximum": 60.0,
+      "minimum": 0.0,
+      "type": "number"
+    }
+  },
+  "required": [
+    "from",
+    "to"
+  ],
+  "title": "StateTransition",
+  "type": "object",
+  "x-concordia-type": "StateTransition"
+}

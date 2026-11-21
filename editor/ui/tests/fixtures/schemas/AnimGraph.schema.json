@@ -1,0 +1,487 @@
+{
+  "$defs": {
+    "AdvanceMode": {
+      "description": "Whether a transition is used (Godot's advance modes).",
+      "oneOf": [
+        {
+          "const": "Disabled",
+          "description": "Never used, not even by travel."
+        },
+        {
+          "const": "Enabled",
+          "description": "Used only by travel."
+        },
+        {
+          "const": "Auto",
+          "description": "Taken automatically when its condition holds."
+        }
+      ],
+      "title": "AdvanceMode",
+      "x-concordia-type": "AdvanceMode"
+    },
+    "AnimNode": {
+      "description": "One node of a graph; other nodes and parameters are named.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Plays a clip, bound to the player's skeleton by bone name.",
+          "properties": {
+            "Clip": {
+              "additionalProperties": false,
+              "properties": {
+                "clip": {
+                  "description": "The clip (`asset:<id>#clip/<name>`).\n\nAsset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+                  "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+                  "type": "string"
+                },
+                "looping": {
+                  "description": "Wraps at the end; otherwise holds the last pose.",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "clip"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Clip"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "`a` blended toward `b` by `amount` (0..1).",
+          "properties": {
+            "Blend2": {
+              "additionalProperties": false,
+              "properties": {
+                "a": {
+                  "description": "The input at amount 0.",
+                  "type": "string"
+                },
+                "amount": {
+                  "description": "A float parameter.",
+                  "type": "string"
+                },
+                "b": {
+                  "description": "The input at amount 1.",
+                  "type": "string"
+                },
+                "filter": {
+                  "description": "Bones blended (empty: all); the others keep `a`.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "a",
+                "b",
+                "amount"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Blend2"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Inputs blended by their weights, normalized by the sum.",
+          "properties": {
+            "BlendN": {
+              "additionalProperties": false,
+              "properties": {
+                "inputs": {
+                  "description": "The inputs.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "weights": {
+                  "description": "One float parameter per input.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "inputs",
+                "weights"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "BlendN"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Plays `shot` once over `base` when `request` fires, fading in and out.",
+          "properties": {
+            "OneShot": {
+              "additionalProperties": false,
+              "properties": {
+                "base": {
+                  "description": "The underlying input.",
+                  "type": "string"
+                },
+                "curve": {
+                  "$ref": "#/$defs/FadeCurve",
+                  "description": "Fade curve."
+                },
+                "fade_in": {
+                  "description": "Fade-in seconds.",
+                  "maximum": 60.0,
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                "fade_out": {
+                  "description": "Fade-out seconds, ending at the shot's end.",
+                  "maximum": 60.0,
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                "filter": {
+                  "description": "Bones the shot drives (empty: all); the others keep `base`.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "request": {
+                  "description": "A trigger parameter that fires the shot.",
+                  "type": "string"
+                },
+                "shot": {
+                  "description": "The input played once.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "base",
+                "shot",
+                "request"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "OneShot"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Plays `input` at `scale` times the rate.",
+          "properties": {
+            "TimeScale": {
+              "additionalProperties": false,
+              "properties": {
+                "input": {
+                  "description": "The input.",
+                  "type": "string"
+                },
+                "scale": {
+                  "description": "A float parameter.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "input",
+                "scale"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "TimeScale"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Plays the input named by `select`, cross-fading when it changes.",
+          "properties": {
+            "Transition": {
+              "additionalProperties": false,
+              "properties": {
+                "curve": {
+                  "$ref": "#/$defs/FadeCurve",
+                  "description": "Cross-fade curve."
+                },
+                "inputs": {
+                  "description": "The inputs.",
+                  "items": {
+                    "$ref": "#/$defs/TransitionInput"
+                  },
+                  "type": "array"
+                },
+                "select": {
+                  "description": "An int parameter: the input's index.",
+                  "type": "string"
+                },
+                "xfade": {
+                  "description": "Cross-fade seconds.",
+                  "maximum": 60.0,
+                  "minimum": 0.0,
+                  "type": "number"
+                }
+              },
+              "required": [
+                "inputs",
+                "select"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Transition"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "States (each a node) joined by transitions; one state plays at a time.",
+          "properties": {
+            "StateMachine": {
+              "additionalProperties": false,
+              "properties": {
+                "start": {
+                  "description": "The state played first.",
+                  "type": "string"
+                },
+                "states": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "States by name, each naming its node.",
+                  "type": "object"
+                },
+                "transitions": {
+                  "description": "The transitions, in priority order within equal priorities.",
+                  "items": {
+                    "$ref": "#/$defs/StateTransition"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "states",
+                "start"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "StateMachine"
+          ],
+          "type": "object"
+        }
+      ],
+      "title": "AnimNode",
+      "x-concordia-type": "AnimNode"
+    },
+    "FadeCurve": {
+      "description": "How a fade's progress (0..1) becomes a blend weight.",
+      "oneOf": [
+        {
+          "const": "Linear",
+          "description": "The progress itself."
+        },
+        {
+          "const": "Smooth",
+          "description": "Smoothstep: 3x² − 2x³."
+        }
+      ],
+      "title": "FadeCurve",
+      "x-concordia-type": "FadeCurve"
+    },
+    "Parameter": {
+      "description": "A graph parameter: its type and default value.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A number (blend amounts, weights, time scales).",
+          "properties": {
+            "Float": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "Float"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "An integer (a transition node's input).",
+          "properties": {
+            "Int": {
+              "maximum": 2147483647,
+              "minimum": -2147483648,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "Int"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A flag (state machine conditions).",
+          "properties": {
+            "Bool": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "Bool"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "Trigger",
+          "description": "A one-tick request (one-shots, conditions), cleared after every evaluation."
+        }
+      ],
+      "title": "Parameter",
+      "x-concordia-type": "Parameter"
+    },
+    "StateTransition": {
+      "additionalProperties": false,
+      "description": "A state machine transition.",
+      "properties": {
+        "advance": {
+          "$ref": "#/$defs/AdvanceMode",
+          "description": "Whether it is used."
+        },
+        "condition": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "A bool or trigger parameter that must hold for `Auto` (none: always)."
+        },
+        "curve": {
+          "$ref": "#/$defs/FadeCurve",
+          "description": "Cross-fade curve."
+        },
+        "from": {
+          "description": "The state it leaves.",
+          "type": "string"
+        },
+        "priority": {
+          "description": "Lower is preferred by travel and `Auto`.",
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reset": {
+          "description": "Play the destination from its beginning.",
+          "type": "boolean"
+        },
+        "switch": {
+          "$ref": "#/$defs/SwitchMode",
+          "description": "When it may switch."
+        },
+        "to": {
+          "description": "The state it enters.",
+          "type": "string"
+        },
+        "xfade": {
+          "description": "Cross-fade seconds.",
+          "maximum": 60.0,
+          "minimum": 0.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ],
+      "title": "StateTransition",
+      "type": "object",
+      "x-concordia-type": "StateTransition"
+    },
+    "SwitchMode": {
+      "description": "When a state machine transition may switch (Godot's switch modes).",
+      "oneOf": [
+        {
+          "const": "Immediate",
+          "description": "Switch now; the destination starts from its beginning (or where it was, without reset)."
+        },
+        {
+          "const": "Sync",
+          "description": "Switch now, seeking the destination to the current state's playback position."
+        },
+        {
+          "const": "AtEnd",
+          "description": "Wait until the current state's playback ends."
+        }
+      ],
+      "title": "SwitchMode",
+      "x-concordia-type": "SwitchMode"
+    },
+    "TransitionInput": {
+      "additionalProperties": false,
+      "description": "One input of a transition node.",
+      "properties": {
+        "node": {
+          "description": "The input node.",
+          "type": "string"
+        },
+        "reset": {
+          "description": "Restart the input when switching to it.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "node"
+      ],
+      "title": "TransitionInput",
+      "type": "object",
+      "x-concordia-type": "TransitionInput"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "An animation graph: parameters, named nodes and the node whose output is the pose.",
+  "properties": {
+    "nodes": {
+      "additionalProperties": {
+        "$ref": "#/$defs/AnimNode"
+      },
+      "description": "Nodes by name.",
+      "type": "object"
+    },
+    "parameters": {
+      "additionalProperties": {
+        "$ref": "#/$defs/Parameter"
+      },
+      "description": "Parameters by name, with their types and defaults.",
+      "type": "object"
+    },
+    "root": {
+      "description": "The node whose output is the pose.",
+      "type": "string"
+    }
+  },
+  "title": "AnimGraph",
+  "type": "object",
+  "x-concordia-type": "AnimGraph"
+}

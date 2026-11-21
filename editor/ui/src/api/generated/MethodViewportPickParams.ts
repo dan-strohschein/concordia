@@ -37,7 +37,7 @@ export type Projection =
       };
     };
 /**
- * Which world to read.
+ * Which world: the scene being edited or the running simulation.
  */
 export type WorldSel = "edit" | "play";
 

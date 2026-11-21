@@ -227,3 +227,216 @@ fn quat_looking(eye: [f32; 3], target: [f32; 3]) -> [f32; 4] {
     let rotation = Quat::from_mat3(&Mat3::from_cols(right, right.cross(forward), -forward));
     rotation.to_array()
 }
+
+/// An engine with `[assets]` and `[anim]`, the FBX character as `hero.fbx` and its actions as
+/// `moves.fbx`, both imported, and one instance of the character.
+struct Stage {
+    _dir: tempfile::TempDir,
+    engine: Engine,
+    session: concordia_core::id::SessionId,
+    moves: String,
+    /// The instance's skinned entity.
+    body: Value,
+}
+
+impl Stage {
+    fn new() -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::write(root.join("concordia.toml"), "[assets]\n\n[anim]\n").unwrap();
+        let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/fbx");
+        for (from, to) in [
+            ("skinned.fbx", "hero.fbx"),
+            ("anim_stacks.fbx", "moves.fbx"),
+        ] {
+            std::fs::copy(fixtures.join(from), root.join(to)).unwrap();
+        }
+        let project = Project::load(root).unwrap();
+        let mut config = EngineConfig::new(root);
+        config.modules = project.modules().unwrap();
+        let mut engine = Engine::new(config).unwrap();
+        let session = engine.open_session();
+        let mut stage = Self {
+            _dir: dir,
+            session,
+            engine,
+            moves: String::new(),
+            body: Value::Null,
+        };
+        stage.ok(
+            "scene.new",
+            json!({"path": "scenes/a.scene.ron", "name": "A", "actor": ACTOR}),
+        );
+        let hero = stage.import("hero.fbx");
+        stage.moves = stage.import("moves.fbx");
+        stage.body = stage.instance(&hero);
+        stage
+    }
+
+    fn ok(&mut self, method: &str, params: Value) -> Value {
+        self.engine
+            .call(self.session, method, params)
+            .unwrap_or_else(|e| panic!("{method}: {e:?}"))
+    }
+
+    fn import(&mut self, path: &str) -> String {
+        self.ok("asset.import", json!({"path": path, "actor": ACTOR}))["id"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    }
+
+    /// Instantiates `asset:<model>` and returns its skinned entity.
+    fn instance(&mut self, model: &str) -> Value {
+        let made = self.ok(
+            "prefab.instantiate",
+            json!({"asset": format!("asset:{model}"), "actor": ACTOR}),
+        );
+        made["entities"]
+            .as_array()
+            .unwrap()
+            .clone()
+            .into_iter()
+            .find(|e| {
+                self.ok("entity.get", json!({"id": e}))["components"]
+                    .get("Skinned")
+                    .is_some()
+            })
+            .expect("the instance has a skinned body")
+    }
+
+    /// Writes and imports `anim/<name>.animgraph.ron`; `{walk}` and `{idle}` name the clips.
+    fn graph(&mut self, name: &str, text: &str) -> String {
+        let clip = |n: &str| format!("asset:{}#clip/Armature|{n}", self.moves);
+        let text = text
+            .replace("{walk}", &clip("Walk"))
+            .replace("{idle}", &clip("Idle"));
+        let path = format!("anim/{name}.animgraph.ron");
+        let root = self._dir.path();
+        std::fs::create_dir_all(root.join("anim")).unwrap();
+        std::fs::write(root.join(&path), text).unwrap();
+        format!("asset:{}", self.import(&path))
+    }
+
+    fn play_get(&mut self, entity: &Value, component: &str) -> Value {
+        self.ok(
+            "component.get",
+            json!({"entity": entity, "component": component, "world": "play"}),
+        )["value"]
+            .clone()
+    }
+}
+
+const MOVES: &str = r#"(
+    parameters: {"moving": Bool(false)},
+    nodes: {
+        "idle": Clip(clip: "{idle}"),
+        "walk": Clip(clip: "{walk}"),
+        "moves": StateMachine(
+            states: {"idle": "idle", "walk": "walk"},
+            start: "walk",
+            transitions: [
+                (from: "walk", to: "idle", xfade: 0.25),
+                (from: "idle", to: "walk", advance: Auto, condition: Some("moving")),
+            ],
+        ),
+    },
+    root: "moves",
+)"#;
+
+#[test]
+fn anim_graph_plays_an_imported_character_through_sim_step() {
+    let mut stage = Stage::new();
+    let graph = stage.graph("moves", MOVES);
+    let body = stage.body.clone();
+    stage.ok(
+        "component.set",
+        json!({"entity": body, "component": "AnimGraphPlayer", "value": {"graph": graph}, "actor": ACTOR}),
+    );
+    // A twin playing Walk as a clip: the graph's walk state must pose it identically.
+    let hero = stage.ok("entity.get", json!({"id": body}))["components"]["Skinned"]["skin"]
+        .as_str()
+        .unwrap()
+        .split('#')
+        .next()
+        .unwrap()
+        .trim_start_matches("asset:")
+        .to_owned();
+    let twin = stage.instance(&hero);
+    let walk = format!("asset:{}#clip/Armature|Walk", stage.moves);
+    stage.ok(
+        "component.set",
+        json!({"entity": twin, "component": "AnimPlayer", "value": {"clip": walk}, "actor": ACTOR}),
+    );
+    stage.ok("sim.step", json!({"ticks": 30}));
+    let pose = stage.play_get(&body, "Pose");
+    assert_eq!(pose["bones"].as_array().map(Vec::len), Some(7), "{pose}");
+    assert_eq!(
+        pose,
+        stage.play_get(&twin, "Pose"),
+        "the walk state is the Walk clip"
+    );
+    let state = stage.play_get(&body, "AnimGraphState");
+    assert_eq!(state["nodes"].as_array().map(Vec::len), Some(3), "{state}");
+
+    let edit = stage.ok("entity.get", json!({"id": body}));
+    assert!(
+        edit["components"].get("AnimGraphState").is_none()
+            && edit["components"].get("Pose").is_none(),
+        "play never writes the edit world"
+    );
+}
+
+#[test]
+fn graph_parameters_set_by_component_patch_take_effect_next_tick() {
+    let mut stage = Stage::new();
+    let graph = stage.graph("moves", MOVES);
+    let body = stage.body.clone();
+    stage.ok(
+        "component.set",
+        json!({"entity": body, "component": "AnimGraphPlayer", "value": {"graph": graph}, "actor": ACTOR}),
+    );
+    // Node order is by name (idle, moves, walk); the machine's states too (idle 0, walk 1).
+    let current =
+        |stage: &mut Stage| stage.play_get(&body, "AnimGraphState")["nodes"][1]["current"].clone();
+    stage.ok("sim.step", json!({"ticks": 5}));
+    assert_eq!(current(&mut stage), 1, "starts in walk");
+
+    stage.ok(
+        "component.patch",
+        json!({"entity": body, "component": "AnimGraphPlayer", "patch": {"travel": {"moves": "idle"}}, "world": "play", "actor": ACTOR}),
+    );
+    let pose = stage.play_get(&body, "Pose");
+    assert_eq!(current(&mut stage), 1, "nothing changes until a tick runs");
+    stage.ok("sim.step", json!({"ticks": 1}));
+    assert_eq!(current(&mut stage), 0, "the next tick travels to idle");
+    assert_ne!(stage.play_get(&body, "Pose"), pose);
+    let player = stage.play_get(&body, "AnimGraphPlayer");
+    assert_eq!(
+        player["travel"],
+        json!({}),
+        "the request was consumed: {player}"
+    );
+
+    stage.ok("sim.step", json!({"ticks": 20}));
+    stage.ok(
+        "component.patch",
+        json!({"entity": body, "component": "AnimGraphPlayer", "patch": {"bools": {"moving": true}}, "world": "play", "actor": ACTOR}),
+    );
+    assert_eq!(current(&mut stage), 0);
+    stage.ok("sim.step", json!({"ticks": 1}));
+    assert_eq!(
+        current(&mut stage),
+        1,
+        "moving takes the auto transition next tick"
+    );
+    let edit = stage.ok(
+        "component.get",
+        json!({"entity": body, "component": "AnimGraphPlayer"}),
+    );
+    assert_eq!(
+        edit["value"]["bools"],
+        json!({}),
+        "the edit world keeps its value"
+    );
+}

@@ -28,12 +28,27 @@ impl Pose {
             .bones
             .iter()
             .zip(&to.bones)
-            .map(|(a, b)| Transform {
-                translation: a.translation.lerp(b.translation, alpha),
-                rotation: a.rotation.slerp(b.rotation, alpha),
-                scale: a.scale.lerp(b.scale, alpha),
-            })
+            .map(|(a, b)| blend_bone(a, b, alpha))
             .collect();
         Ok(Pose { bones })
+    }
+
+    /// Moves each bone `weight` of the way to `to`'s (only bones `mask` marks, if given).
+    pub(crate) fn blend_toward(&mut self, to: &Pose, weight: f32, mask: Option<&[bool]>) {
+        debug_assert_eq!(self.bones.len(), to.bones.len(), "poses of one skeleton");
+        for (j, (a, b)) in self.bones.iter_mut().zip(&to.bones).enumerate() {
+            if mask.is_none_or(|m| m.get(j).copied().unwrap_or(false)) {
+                *a = blend_bone(a, b, weight);
+            }
+        }
+    }
+}
+
+/// One bone `w` of the way from `a` to `b`: lerp, shortest-path slerp, lerp.
+fn blend_bone(a: &Transform, b: &Transform, w: f32) -> Transform {
+    Transform {
+        translation: a.translation.lerp(b.translation, w),
+        rotation: a.rotation.slerp(b.rotation, w),
+        scale: a.scale.lerp(b.scale, w),
     }
 }

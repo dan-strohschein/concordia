@@ -3,13 +3,14 @@
 use concordia_command::{Actor, EditOp};
 use concordia_core::id::EntityId;
 use concordia_reflect::Reflect;
-use concordia_terra::World;
+use concordia_terra::{EcsError, World};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::{EntityRef, WorldSel, edit, require_component, resolve, world_of};
 use crate::engine::Engine;
 use crate::error::{ApiError, ApiErrorKind};
+use crate::map;
 use crate::method::{CallCtx, Method, MethodInfo};
 use crate::patch::merge_patch;
 
@@ -52,7 +53,7 @@ pub struct ComponentAddParams {
     pub actor: Option<Actor>,
 }
 
-/// Insert or replace a component (the whole value; use component.patch to change some fields).
+/// Insert or replace a component (the whole value; use component.patch to change some fields). With world "play", writes the running simulation (not undoable; the next tick sees it).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 pub struct ComponentSet;
 
@@ -68,6 +69,8 @@ pub struct ComponentSetParams {
     pub value: Value,
     /// Actor (defaults to the session's).
     pub actor: Option<Actor>,
+    /// "edit" (default, journaled) or "play" (the running simulation, not journaled).
+    pub world: Option<WorldSel>,
 }
 
 /// `component.set` result.
@@ -77,7 +80,7 @@ pub struct SetResult {
     pub previous: Option<Value>,
 }
 
-/// Change some fields of a component with an RFC 7396 merge patch, e.g. {"scale": [2, 2, 2]}.
+/// Change some fields of a component with an RFC 7396 merge patch, e.g. {"scale": [2, 2, 2]}. With world "play", patches the running simulation (not undoable; the next tick sees it).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 pub struct ComponentPatch;
 
@@ -93,6 +96,8 @@ pub struct ComponentPatchParams {
     pub patch: Value,
     /// Actor (defaults to the session's).
     pub actor: Option<Actor>,
+    /// "edit" (default, journaled) or "play" (the running simulation, not journaled).
+    pub world: Option<WorldSel>,
 }
 
 /// Remove a component from an entity (undoable).
@@ -180,6 +185,12 @@ impl Method for ComponentSet {
         p: ComponentSetParams,
     ) -> Result<SetResult, ApiError> {
         require_component(engine, &p.component)?;
+        if p.world == Some(WorldSel::play) {
+            let previous = write_play(engine, ctx, Self::NAME, &p.entity, &p.component, |_| {
+                Some(p.value)
+            })?;
+            return Ok(SetResult { previous });
+        }
         let world = &engine.scene()?.world;
         let id = resolve(world, &p.entity)?;
         let previous = world.get_json(id, &p.component).ok();
@@ -205,6 +216,19 @@ impl Method for ComponentPatch {
         p: ComponentPatchParams,
     ) -> Result<ValueResult, ApiError> {
         require_component(engine, &p.component)?;
+        if p.world == Some(WorldSel::play) {
+            let patch = |old: Option<Value>| {
+                let mut value = old?;
+                merge_patch(&mut value, &p.patch);
+                Some(value)
+            };
+            write_play(engine, ctx, Self::NAME, &p.entity, &p.component, patch)?;
+            let world = world_of(engine, p.world)?;
+            let id = resolve(world, &p.entity)?;
+            return Ok(ValueResult {
+                value: current(world, id, &p.component)?,
+            });
+        }
         let world = &engine.scene()?.world;
         let id = resolve(world, &p.entity)?;
         let mut value = current(world, id, &p.component)?;
@@ -250,6 +274,39 @@ impl Method for ComponentRemove {
     }
 }
 
+/// Writes `component` of `entity` in the play world (ADR-0075): `value` maps the current value
+/// to the new one (`None`: the entity lacks a component it needs); logged with the actor, never
+/// journaled. Returns the previous value.
+fn write_play(
+    engine: &mut Engine,
+    ctx: &CallCtx,
+    method: &str,
+    entity: &EntityRef,
+    component: &str,
+    value: impl FnOnce(Option<Value>) -> Option<Value>,
+) -> Result<Option<Value>, ApiError> {
+    let actor = ctx.actor()?.to_string();
+    let (registry, play) = engine.registry_and_play_mut();
+    let world = play.ok_or_else(|| ApiError::from_kind(ApiErrorKind::NotPlaying))?;
+    let id = resolve(world, entity)?;
+    let old = world.get_json(id, component).ok();
+    let new = value(old).ok_or_else(|| missing(world, id, component))?;
+    let previous = world
+        .set_json(id, component, new, registry)
+        .map_err(|e| match e {
+            EcsError::Reflect(r) => map::value_invalid(component, &r, registry),
+            other => map::ecs(
+                other,
+                &map::Hints {
+                    registry,
+                    world: None,
+                },
+            ),
+        })?;
+    tracing::info!(target: "concordia::api", actor, method, entity = %id, component, "play world changed");
+    Ok(previous)
+}
+
 /// The registered default of `component`, or an error saying how to add it with a value.
 fn default_of(engine: &Engine, component: &str) -> Result<Value, ApiError> {
     let info = engine
@@ -279,14 +336,19 @@ fn already_has(id: EntityId, component: &str) -> ApiError {
 
 /// The component's current JSON value, or an error naming what the entity does have.
 fn current(world: &World, id: EntityId, component: &str) -> Result<Value, ApiError> {
-    world.get_json(id, component).map_err(|_| {
-        let has = world.component_names(id).unwrap_or_default().join(", ");
-        ApiError::new(
-            ApiErrorKind::ValueInvalid,
-            format!("entity {id} has no {component} component"),
-        )
-        .suggest([format!("it has: {has}; add it with component.set")])
-    })
+    world
+        .get_json(id, component)
+        .map_err(|_| missing(world, id, component))
+}
+
+/// The entity has no `component`: the error names what it does have.
+fn missing(world: &World, id: EntityId, component: &str) -> ApiError {
+    let has = world.component_names(id).unwrap_or_default().join(", ");
+    ApiError::new(
+        ApiErrorKind::ValueInvalid,
+        format!("entity {id} has no {component} component"),
+    )
+    .suggest([format!("it has: {has}; add it with component.set")])
 }
 
 pub(crate) fn methods() -> Vec<MethodInfo> {

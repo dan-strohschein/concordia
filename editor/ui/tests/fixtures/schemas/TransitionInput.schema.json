@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One input of a transition node.",
+  "properties": {
+    "node": {
+      "description": "The input node.",
+      "type": "string"
+    },
+    "reset": {
+      "description": "Restart the input when switching to it.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "node"
+  ],
+  "title": "TransitionInput",
+  "type": "object",
+  "x-concordia-type": "TransitionInput"
+}

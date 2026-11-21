@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A graph parameter: its type and default value.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "A number (blend amounts, weights, time scales).",
+      "properties": {
+        "Float": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "Float"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "An integer (a transition node's input).",
+      "properties": {
+        "Int": {
+          "maximum": 2147483647,
+          "minimum": -2147483648,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "Int"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "A flag (state machine conditions).",
+      "properties": {
+        "Bool": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "Bool"
+      ],
+      "type": "object"
+    },
+    {
+      "const": "Trigger",
+      "description": "A one-tick request (one-shots, conditions), cleared after every evaluation."
+    }
+  ],
+  "title": "Parameter",
+  "x-concordia-type": "Parameter"
+}

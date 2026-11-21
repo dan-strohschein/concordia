@@ -10,6 +10,7 @@ use concordia_reflect::Reflect;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
+use crate::anim_graph_importer::AnimGraphImporter;
 use crate::builtin::{Builtin, BuiltinAsset};
 use crate::data::{MeshData, TextureData};
 use crate::error::{AssetError, io};
@@ -132,14 +133,18 @@ impl std::fmt::Debug for AssetDb {
 }
 
 impl AssetDb {
-    /// The database of the project at `root` (DDC at `.concordia/ddc`), with the image and
-    /// material importers, scanned.
+    /// The database of the project at `root` (DDC at `.concordia/ddc`), with the image, material
+    /// and animation graph importers, scanned.
     pub fn new(root: &Path, ids: Box<dyn IdSource + Send>) -> Result<Self, AssetError> {
         let mut db = Self {
             root: root.to_path_buf(),
             ddc: Ddc::new(root.join(".concordia/ddc")),
             ids,
-            importers: vec![Arc::new(ImageImporter), Arc::new(MaterialImporter)],
+            importers: vec![
+                Arc::new(ImageImporter),
+                Arc::new(MaterialImporter),
+                Arc::new(AnimGraphImporter),
+            ],
             records: BTreeMap::new(),
             generations: BTreeMap::new(),
             keys: BTreeMap::new(),

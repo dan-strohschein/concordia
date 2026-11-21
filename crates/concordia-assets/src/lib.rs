@@ -2,6 +2,8 @@
 //! produce derived data in the content-addressed DDC (`.concordia/ddc`), built-in assets, hot
 //! reload, and the `asset.import` / `asset.list` Engine API methods (ADR-0044).
 
+mod anim_graph;
+mod anim_graph_importer;
 mod builtin;
 mod data;
 mod db;
@@ -19,6 +21,11 @@ mod prefab_method;
 mod reference;
 mod sidecar;
 
+pub use anim_graph::{
+    AdvanceMode, AnimGraph, AnimGraphError, AnimNode, FadeCurve, Parameter, StateTransition,
+    SwitchMode, TransitionInput, read_animgraph, write_animgraph,
+};
+pub use anim_graph_importer::AnimGraphImporter;
 pub use builtin::{Builtin, BuiltinAsset};
 pub use data::{
     AlphaMode, CameraData, Channel, ChannelPath, ClipData, Interpolation, LightData, MeshData,
@@ -46,11 +53,13 @@ pub use prefab_method::PrefabInstantiate;
 pub use reference::AssetRef;
 pub use sidecar::Sidecar;
 
-/// Registers the asset components (`MeshRenderer`, `Skinned`) and the `Material` type (for `schema.get`).
+/// Registers the asset components (`MeshRenderer`, `Skinned`) and the `Material` and `AnimGraph`
+/// types (for `schema.get`).
 pub fn register_types(
     registry: &mut concordia_reflect::TypeRegistry,
 ) -> Result<(), concordia_reflect::RegistryError> {
     concordia_terra::register_component::<MeshRenderer>(registry)?;
     concordia_terra::register_component::<Skinned>(registry)?;
-    registry.register::<Material>().map(|_| ())
+    registry.register::<Material>()?;
+    registry.register::<AnimGraph>().map(|_| ())
 }

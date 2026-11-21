@@ -136,3 +136,90 @@ fn sim_step_without_actor_uses_session_default() {
     let step = h.ok("sim.step", json!({"ticks": 1}));
     assert_eq!(step["tick"], 1);
 }
+
+#[test]
+fn component_set_and_patch_write_the_play_world_unjournaled() {
+    use std::sync::Arc;
+
+    use concordia_core::log::LogRing;
+    use tracing_subscriber::layer::SubscriberExt;
+
+    let ring = Arc::new(LogRing::new(NonZeroUsize::new(64).unwrap()));
+    let subscriber = tracing_subscriber::registry().with(ring.layer());
+    tracing::subscriber::with_default(subscriber, || {
+        let dir = tempfile::tempdir().unwrap();
+        let shared = Arc::clone(&ring);
+        let mut h = Harness::with_config(dir, move |c| c.log_ring = Some(shared)).ready();
+        let id = moving(&mut h);
+        let patch = json!({"entity": id, "component": "Velocity", "patch": {"linear": [0.0, 0.0, 0.0]}, "world": "play", "actor": "agent:gate"});
+        let err = h.err("component.patch", patch.clone());
+        assert_eq!(err.data.kind, "NotPlaying", "no play world yet");
+
+        h.ok("sim.step", json!({"ticks": 30}));
+        let history = h.ok("txn.history", json!({}));
+        let get = |h: &mut Harness, c: &str, world: &str| {
+            h.ok(
+                "component.get",
+                json!({"entity": id, "component": c, "world": world}),
+            )
+        };
+        let x0 = x(&get(&mut h, "Transform", "play"));
+        let patched = h.ok("component.patch", patch);
+        assert_eq!(
+            patched["value"]["linear"],
+            json!([0.0, 0.0, 0.0]),
+            "{patched}"
+        );
+        assert_eq!(
+            x(&get(&mut h, "Transform", "play")),
+            x0,
+            "nothing moves until a tick runs"
+        );
+        h.ok("sim.step", json!({"ticks": 10}));
+        assert_eq!(
+            x(&get(&mut h, "Transform", "play")),
+            x0,
+            "the next tick saw the patch"
+        );
+        assert_eq!(
+            get(&mut h, "Velocity", "edit")["value"]["linear"],
+            json!([1.0, 0.0, 0.5]),
+            "the edit world is untouched"
+        );
+
+        let set = h.ok(
+            "component.set",
+            json!({"entity": id, "component": "Velocity", "value": {"linear": [2.0, 0.0, 0.0], "angular": [0.0, 0.0, 0.0]}, "world": "play", "actor": "agent:gate"}),
+        );
+        assert_eq!(
+            set["previous"],
+            json!({"linear": [0.0, 0.0, 0.0], "angular": [0.0, 1.0, 0.0]})
+        );
+        h.ok("sim.step", json!({"ticks": 30}));
+        let x1 = x(&get(&mut h, "Transform", "play"));
+        assert!((x1 - x0 - 1.0).abs() < 1e-4, "2 m/s for 0.5 s: {x0} → {x1}");
+
+        let bad = h.err(
+            "component.set",
+            json!({"entity": id, "component": "Velocity", "value": {"linear": "fast"}, "world": "play"}),
+        );
+        assert_eq!(bad.data.kind, "ValueInvalid", "{bad:?}");
+        assert_eq!(
+            h.ok("txn.history", json!({})),
+            history,
+            "play writes are never journaled"
+        );
+        let records = h.ok("log.tail", json!({"level": "info"}))["records"].clone();
+        let written: Vec<&Value> = records
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|r| r["message"] == "play world changed")
+            .collect();
+        assert_eq!(written.len(), 2, "{records}");
+        assert_eq!(written[0]["fields"]["actor"], "agent:gate");
+        assert_eq!(written[0]["fields"]["method"], "component.patch");
+        assert_eq!(written[0]["fields"]["component"], "Velocity");
+        assert_eq!(written[1]["fields"]["method"], "component.set");
+    });
+}

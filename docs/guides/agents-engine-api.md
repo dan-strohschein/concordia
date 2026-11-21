@@ -44,7 +44,20 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 - Play one: `prefab.instantiate` the model, then `component.set` `AnimPlayer` `{"clip": "asset:<id>#clip/<name>"}` (optional `time`, `speed` (default 1, negative plays backward), `looping` (default true)) on the entity with `Skinned`. The clip may come from another file if its bone names match (an animation-only download).
 - Playing (`sim.step`/`sim.play`), the play world's entity gets a `Pose` (`bones`: each joint's local transform, in skin order) and `AnimPlayer.time` advances at the fixed step (scaled by the time scale). Read both with `component.get` and `"world": "play"`; poses are part of the world hash, so replays check them.
 - Rendering: `capture.screenshot {"world": "play"}` (and the viewport while playing) draws each character in its current pose, skinned on the GPU, with skinned shadows; the viewport blends poses between ticks. The edit world has no poses, so it draws the bind pose. An extra mesh part of a model follows its parent's pose.
-- The clips a play session can use are loaded when play starts: every clip in the same file as a player's clip. Anything that fails to load is logged (`log.tail`, target `concordia::anim`) and that character holds its pose. Nothing about animation is journaled or changes the scene.
+- The clips a play session can use are loaded when play starts: every clip in the same file as a player's clip, and every clip a graph names. Anything that fails to load is logged (`log.tail`, target `concordia::anim`) and that character holds its pose. Nothing about animation is journaled or changes the scene.
+- Graphs (blend trees and state machines, Godot `AnimationTree` semantics): write an `.animgraph.ron` file and `asset.import` it (`schema.get {"name": "AnimGraph"}` gives its shape). It names its `parameters` (`Float(default)`, `Int(default)`, `Bool(default)`, `Trigger`), its `nodes` and its `root`:
+  - `Clip(clip: "asset:<id>#clip/<name>", looping)`;
+  - `Blend2(a, b, amount, filter)`, where `amount` is a float parameter from 0 to 1, and a non-empty `filter` lists the bones blended;
+  - `BlendN(inputs, weights)`, one float parameter per input, normalized by their sum;
+  - `OneShot(base, shot, request, fade_in, fade_out, curve, filter)`: the `request` trigger plays `shot` once over `base`, and the fade-out ends at the shot's end;
+  - `TimeScale(input, scale)`;
+  - `Transition(inputs: [(node, reset)], select, xfade, curve)`: an int parameter picks the input;
+  - `StateMachine(states: {name: node}, start, transitions)`. Each transition has `from` and `to`; `switch`: `Immediate`, `Sync` or `AtEnd`; `advance`: `Disabled`, `Enabled` (travel only, the default) or `Auto` (when its bool or trigger `condition` holds); and `xfade`, `curve` (`Linear` or `Smooth`), `reset` and `priority` (lower is preferred).
+
+  Nodes refer to each other by name; each node has one parent, and errors name the node.
+- Play a graph: `component.set` `AnimGraphPlayer` `{"graph": "asset:<id>"}` on the entity with `Skinned`. Its `floats`, `ints` and `bools` maps set parameters; missing ones use the graph's defaults. `triggers` (names) and `travel` (`{machine node: target state}`) are one-tick requests, cleared after each evaluation. Travel takes the fewest transitions that aren't disabled, and jumps straight there when there is no path. If an entity also has an `AnimPlayer`, the graph plays.
+- While playing, the play world's entity also gets `AnimGraphState` (per node, in name order: clip times, the current and fading state or input, fade progress, the travel path). It is hashed simulation state; don't edit it.
+- Steer a running game: `component.patch {"entity": <id>, "component": "AnimGraphPlayer", "patch": {"bools": {"moving": true}}, "world": "play"}` (or `"patch": {"travel": {"moves": "idle"}}`). The next `sim.step` tick sees it. Graph files edited during play apply at the next play.
 
 ## Rules
 - Every mutating call needs an actor: `"actor": "agent:<role>"` or the session default. Grammar: `<human|agent|system|tool|script>:<name>[#n]`, lowercase names.
@@ -63,7 +76,7 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `scene.info` | | `{}` → `{scene_id, name, path, dirty, entity_count, components_in_use}` |
 | `scene.text` | | `{}` → `{path, text}`: the open scene as canonical RON, as `scene.save` would write it, without saving |
 | `project.files` | | `{dir?}` → `{files: [{path, kind, size, asset, importer}]}` (projects with `[assets]`; skips hidden, git-ignored and sidecar files) |
-| `asset.import` | | `{path}` → `{id, cached, sub_assets}` (import or re-import a project file: `.gltf`, `.glb`, `.fbx`, `.png`, `.jpg`, `.hdr`, `.material.ron`; idempotent; refer to it as `"asset:<id>"`; changed meshes, textures and materials redraw on the next frame) |
+| `asset.import` | | `{path}` → `{id, cached, sub_assets}` (import or re-import a project file: `.gltf`, `.glb`, `.fbx`, `.png`, `.jpg`, `.hdr`, `.material.ron`, `.animgraph.ron`; idempotent; refer to it as `"asset:<id>"`; changed meshes, textures and materials redraw on the next frame) |
 | `asset.list` | | `{}` → `{assets: [{id, path, importer, sub_assets}]}` |
 | `material.get` | | `{path}` → `{material, migrated, id}` (a `.material.ron` as a layered material; M1 files read as one slab, `migrated: true`) |
 | `material.set` | | `{path, material}` → `{id, written}` (validates, writes canonical text, imports; refused with the `node.field`; attributed in `log.tail`, not undoable) |
@@ -77,8 +90,8 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `entity.get` | | `{id, world?}` → `{id, components}` |
 | `component.get` | | `{entity, component, world?}` → `{value}` |
 | `component.add` | yes | `{entity, component}` → `{value}` (inserts the default; fails if the entity has it already or the component has no default, e.g. `Parent`, `Environment`) |
-| `component.set` | yes | `{entity, component, value}` → `{previous}` |
-| `component.patch` | yes | `{entity, component, patch}` → `{value}` |
+| `component.set` | yes | `{entity, component, value, world?}` → `{previous}` (`world: "play"` writes the running play world: not journaled or undoable, logged with the actor, seen by the next tick; `NotPlaying` without one) |
+| `component.patch` | yes | `{entity, component, patch, world?}` → `{value}` (`world: "play"` as for `component.set`) |
 | `component.remove` | yes | `{entity, component}` → `{previous}` |
 | `query.run` | | `{with, without?, where?, select?, world?, limit?, cursor?}` → `{rows: [{id, components}], next_cursor?}` |
 | `schema.get` | | `{name?}` → `{schema}` (no name: `{types, components: [{name, category, description, addable}], methods}`) |

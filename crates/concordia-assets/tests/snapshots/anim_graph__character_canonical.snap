@@ -1,0 +1,128 @@
+---
+source: crates/concordia-assets/tests/anim_graph.rs
+expression: text
+---
+AnimGraph(
+    nodes: {
+        "crouch": Clip(
+            clip: "asset:018bcfe5-6800-7000-a424-6c55076b137f#clip/Crouch",
+            looping: true,
+        ),
+        "fall": Clip(
+            clip: "asset:018bcfe5-6800-7000-a424-6c55076b137f#clip/Fall",
+            looping: true,
+        ),
+        "gait": Blend2(
+            a: "idle",
+            amount: "speed",
+            b: "walk",
+            filter: [],
+        ),
+        "ground": OneShot(
+            base: "paced",
+            curve: Linear,
+            fade_in: 0.1,
+            fade_out: 0.25,
+            filter: [
+                "Spine",
+                "Arm.R",
+            ],
+            request: "attack",
+            shot: "swing",
+        ),
+        "idle": Clip(
+            clip: "asset:018bcfe5-6800-7000-a424-6c55076b137f#clip/Idle",
+            looping: true,
+        ),
+        "moves": StateMachine(
+            start: "ground",
+            states: {
+                "air": "fall",
+                "ground": "ground",
+            },
+            transitions: [
+                (
+                    advance: Auto,
+                    condition: None,
+                    curve: Linear,
+                    from: "ground",
+                    priority: 1,
+                    reset: true,
+                    switch: Immediate,
+                    to: "air",
+                    xfade: 0.15,
+                ),
+                (
+                    advance: Auto,
+                    condition: Some("grounded"),
+                    curve: Smooth,
+                    from: "air",
+                    priority: 2,
+                    reset: false,
+                    switch: AtEnd,
+                    to: "ground",
+                    xfade: 0.1,
+                ),
+            ],
+        ),
+        "paced": TimeScale(
+            input: "stances",
+            scale: "rate",
+        ),
+        "stances": Transition(
+            curve: Smooth,
+            inputs: [
+                (
+                    node: "gait",
+                    reset: false,
+                ),
+                (
+                    node: "strafe",
+                    reset: true,
+                ),
+                (
+                    node: "crouch",
+                    reset: true,
+                ),
+            ],
+            select: "stance",
+            xfade: 0.2,
+        ),
+        "strafe": BlendN(
+            inputs: [
+                "strafe_l",
+                "strafe_r",
+            ],
+            weights: [
+                "w_left",
+                "w_right",
+            ],
+        ),
+        "strafe_l": Clip(
+            clip: "asset:018bcfe5-6800-7000-a424-6c55076b137f#clip/StrafeL",
+            looping: true,
+        ),
+        "strafe_r": Clip(
+            clip: "asset:018bcfe5-6800-7000-a424-6c55076b137f#clip/StrafeR",
+            looping: true,
+        ),
+        "swing": Clip(
+            clip: "asset:018bcfe5-6800-7000-a424-6c55076b137f#clip/Swing",
+            looping: false,
+        ),
+        "walk": Clip(
+            clip: "asset:018bcfe5-6800-7000-a424-6c55076b137f#clip/Walk",
+            looping: true,
+        ),
+    },
+    parameters: {
+        "attack": Trigger,
+        "grounded": Bool(true),
+        "rate": Float(1.0),
+        "speed": Float(0.0),
+        "stance": Int(0),
+        "w_left": Float(1.0),
+        "w_right": Float(0.0),
+    },
+    root: "moves",
+)
