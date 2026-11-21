@@ -1,5 +1,5 @@
 # ADR-0068: Substrate-style material model
-- Status: Accepted (M2 phase 2.3a, 2026-11-20); the renderer in 2.3b (2026-11-20); migration, editor and Studio in 2.3c (2026-11-20); a pipeline variant per program shape (2.3c follow-ups, 2026-11-21); FBX (2.3d) follows
+- Status: Accepted (M2 phase 2.3a, 2026-11-20); the renderer in 2.3b (2026-11-20); migration, editor and Studio in 2.3c (2026-11-20); a pipeline variant per program shape (2.3c follow-ups, 2026-11-21); FBX import, materials as one slab like glTF (2.3d, 2026-11-21)
 - Date: 2026-11-20
 - Builds on: ADR-0009 (canonical RON), ADR-0040 (renderer), ADR-0044 (assets), ADR-0067 decision D5 (materials follow Substrate, text first)
 

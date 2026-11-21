@@ -279,3 +279,29 @@ fn material_skill_uses_the_real_material_tools_and_arguments() {
         "the skill shows how to read and write a material ({checked} examples)"
     );
 }
+
+#[test]
+fn tech_artist_knows_materials_arrive_inside_gltf_and_fbx_models() {
+    let roster = default_roster();
+    let skill = roster
+        .skills
+        .iter()
+        .find(|(n, _)| *n == "concordia-add-material")
+        .map(|(_, t)| *t)
+        .unwrap();
+    let prompt = roster
+        .roles
+        .iter()
+        .find(|(n, _)| *n == "tech-artist")
+        .map(|(_, t)| *t)
+        .unwrap();
+    for text in [skill, prompt] {
+        for format in ["`.gltf`", "`.glb`", "`.fbx`"] {
+            assert!(text.contains(format), "{format} missing");
+        }
+        assert!(
+            text.contains("#material/<name>"),
+            "imported materials are sub-assets"
+        );
+    }
+}

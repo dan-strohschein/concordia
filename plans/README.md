@@ -11,7 +11,7 @@ The top-level design is in [`../docs/design.md`](../docs/design.md). This folder
 | M-1 Toolchain & scaffold | [M-1-toolchain-and-scaffold.md](M-1-toolchain-and-scaffold.md) | none | Ready to execute | Gate passed |
 | M0 Headless core | [M0-headless-core.md](M0-headless-core.md) | M-1 | Ready to execute | Gate passed |
 | M1 See it | [M1-see-it.md](M1-see-it.md) | M0 | Ready to execute | Gate passed (2026-11-19) |
-| M2 Engine breadth (was Port begins; ADR-0048) | [M2-port-begins.md](M2-port-begins.md) | M1 | Refined (ADR-0067, approved 2026-11-19) | In progress (2.0, 2.0b, 2.0c, 2.6, 2.8, 2.3a, 2.3b, 2.3c done) |
+| M2 Engine breadth (was Port begins; ADR-0048) | [M2-port-begins.md](M2-port-begins.md) | M1 | Refined (ADR-0067, approved 2026-11-19) | In progress (2.0, 2.0b, 2.0c, 2.6, 2.8, 2.3a, 2.3b, 2.3c, 2.3d done; 2.4 next) |
 | M3 Closed loop & Studio v1 | [M3-closed-loop-and-studio.md](M3-closed-loop-and-studio.md) | M2 (Studio phases may start after M0) | Needs refinement after M2 | In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b, 3.8 done; Studio checkpoint passed 2026-11-19, deterministic and live); Studio phases 3.3–3.6, 3.8 run right after M1 (ADR-0049) |
 | M4 Unreal-class visuals | [M4-unreal-class-visuals.md](M4-unreal-class-visuals.md) | M1 (render), M2 (graphs) | Needs refinement after M3 | Planned |
 | M5 Bring your game | [M5-bring-your-game.md](M5-bring-your-game.md) | M2 (importer framework) | Needs refinement after M4 | Planned |
@@ -93,6 +93,7 @@ examples/             # small sample projects used by tests and docs
 | `concordia-material` | Substrate-style material evaluation: closure programs, the closure budget, the CPU reference BSDF and albedo tables (ADR-0068); the model, `.material.ron` and `material.get/set` live in `concordia-assets` (2.3c); `concordia-render`'s shader mirrors it (2.3b) | M2 (2.3a) |
 | `concordia-assets` | asset database, importers registry, content-addressed derived-data cache (`.concordia/ddc`), hot reload | M1 |
 | `concordia-import-gltf` | glTF 2.0 importer | M1 |
+| `concordia-import-model` | format-neutral model import shared by the glTF and FBX importers: sub-asset names, the prefab from a node tree, mesh finishing, texture color spaces, skin weights reduced to four (M5's `concordia-interchange` may build on it) | M2 (2.3d) |
 | `concordia-physics` (+ `jolt-sys`) | Jolt via its C API, safe wrapper, ECS integration | M1 |
 | `concordia-audio` | mixer, spatial audio, streaming | M2 |
 | `concordia-anim` | skeletons, clips, blending, state machines | M2 |
@@ -114,7 +115,7 @@ examples/             # small sample projects used by tests and docs
 | `concordia-testkit` | dev-dependency helpers: FLIP golden compare, `gpu_test!`, bless support | M1 |
 | `concordia-script-native` | native script backend: dylib modules with copy-on-load hot reload, static path, mutable-statics source check (ADR-0061) | M2 (2.6c) |
 | `concordia-script-guest` | guest SDK for `wasm32-wasip2` gameplay components | M2 |
-| `concordia-import-fbx` (+ `ufbx-sys`) | FBX import via ufbx (MIT) | M2 |
+| `concordia-import-fbx` (+ `ufbx-sys`) | FBX import via ufbx (MIT, vendored v0.23.1), into the glTF importer's asset types | M2 (2.3d) |
 | `concordia-translate` | logic-translation tooling (GDScript, C# and Blueprint front ends) | M5 |
 | `concordia-cluster` (+ `meshopt-sys`) | meshlet building and per-meshlet bounds for GPU culling (ADR-0100) | M4 |
 | `concordia-pathtrace` | reference path tracer (test oracle; must not depend on `concordia-render`) | M4 |

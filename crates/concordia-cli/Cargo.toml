@@ -18,7 +18,6 @@ concordia-api.workspace = true
 concordia-app.workspace = true
 concordia-replay.workspace = true
 concordia-assets.workspace = true
-concordia-import-gltf.workspace = true
 concordia-core.workspace = true
 concordia-mcp.workspace = true
 concordia-platform.workspace = true

@@ -5,8 +5,7 @@ The glTF 2.0 importer (`.gltf` and `.glb`): meshes, metallic-roughness materials
 
 ## Public entry points
 - `GltfImporter` (an `concordia_assets::Importer`), `SUPPORTED_EXTENSIONS`
-- `generate_tangents(&mut MeshData)` (MikkTSpace, glTF UV convention)
-- `load_prefab(&mut AssetDb, &ImportReport)` → `PrefabSummary`
+- Re-exported from `concordia-import-model` (where they live since 2.3d): `generate_tangents(&mut MeshData)` (MikkTSpace, glTF UV convention), `load_prefab(&mut AssetDb, &ImportReport)` → `PrefabSummary`
 
 ## Invariants
 - Sub-asset paths: `mesh/<mesh>/<primitive>`, `material/<name>`, `texture/<image>`, `skin/<index>`, `clip/<name>`, `light/<name>`, `camera/<name>`. Names come from the file (`/` → `_`); missing names use the index and duplicates get `#<index>`.
@@ -14,6 +13,8 @@ The glTF 2.0 importer (`.gltf` and `.glb`): meshes, metallic-roughness materials
 - Missing normals → area-weighted smooth normals. Missing UVs → zeros. Missing tangents → MikkTSpace with V flipped (glTF V points down); with no UVs, any perpendicular.
 - An unsupported extension in `extensionsRequired` is an error naming it; only triangle primitives are imported.
 - Imports are deterministic.
+
+- Format-neutral work (names, the prefab, mesh finishing, texture color spaces) is `concordia-import-model`'s, shared with `concordia-import-fbx`; this crate maps glTF into it.
 
 ## How to test
 `just gltf-assets && cargo nextest run -p concordia-import-gltf` (Khronos samples from the pinned commit, plus hand-made fixtures in `tests/fixtures`).
@@ -30,7 +31,7 @@ The glTF 2.0 importer (`.gltf` and `.glb`): meshes, metallic-roughness materials
 - Khronos glTF 2.0 specification and extension specifications; Morten Mikkelsen, MikkTSpace (`bevy_mikktspace`, Zlib/MIT/Apache); `gltf` crate (MIT/Apache).
 
 ## Status
-M1 phase 1.4; materials as one `Slab` built directly from glTF's factors and textures since M2 2.3c (the artifacts are byte-identical to 2.3b's, so the importer stays at version 2).
+M1 phase 1.4; materials as one `Slab` built directly from glTF's factors and textures since M2 2.3c (the artifacts are byte-identical to 2.3b's, so the importer stays at version 2). Its format-neutral code moved to `concordia-import-model` in 2.3d, again byte-identical (every artifact of every sample and fixture hashed before and after), so still version 2.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

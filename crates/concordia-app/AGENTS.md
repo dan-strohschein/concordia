@@ -7,6 +7,7 @@ The composition root: loads a project's `concordia.toml` and builds the engine m
 - `Project::load(root)`, `Project::engine_config()` (modules plus `[sim]` rate and seed and `[journal]` sync: every process that builds an engine from a project starts here, 2.8), `Project::modules()`, `Project::input_map()`
 - `Manifest` and its sections (`[project]`, `[scene]`, `[sim]`, `[journal]`, `[window]`, `[input]`, `[physics]`, `[assets]`, `[scripts]` with `[[scripts.module]]` `kind`/`path`/`source`; the scripts module is added last, 2.6d; `[replay]`, no keys yet, adds the replay module before scripts, 2.8)
 - `SharedEngine::attach_or_host[_on]`, `SharedEngine::attach_live`, `HostedEngine`: one engine per project (ADR-0082)
+- `model_importers()`: the glTF and FBX importers, registered by the assets module and by `concordia import` (2.3d)
 - `AppError`
 
 ## Invariants
