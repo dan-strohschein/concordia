@@ -31,8 +31,8 @@ All of this is test-driven. Perf budgets are tests. Shading quality is measured 
 - Skinned or deforming meshes as meshlets. They stay on the M1 forward+ path and share the depth buffer.
 - Translucent meshlets. Translucent surfaces stay on the M1 forward+ path.
 - A software rasterizer, a visibility buffer with material binning, a cluster LOD DAG, and virtualized geometry streaming from disk (ADR-0100). Any of them needs its own ADR.
-- GI stage B (screen-space radiance cache, surface cache) as a *requirement*. It is scaffolded, and its entry criteria are defined in Phase 4.8.
-- Hardware-ray-traced reflections; frame generation (MetalFX frame interpolation); D3D12; consoles.
+- GI stage B (screen-space radiance cache, surface cache) as a *requirement*. It is scaffolded here and built as M9, Photon (ADR-0013).
+- Hardware-ray-traced reflections (M9, Photon); frame generation (MetalFX frame interpolation); D3D12; consoles.
 - Tessellation or displacement of meshlets; foliage and voxel LODs.
 - Shipping any LLM model or provider in the default build.
 
@@ -492,6 +492,7 @@ The gate is four test binaries in `tests/gates/`:
 2. Is 1706×960 → 2560×1440 the right gate resolution, or should the gate target 1080p output for the first pass?
 3. Should VSM fully replace CSM as the default for projects that do not use meshlets? (Proposed: yes on Apple9+, CSM elsewhere until measured.)
 4. **GI stage B entry criteria:** start stage B (screen-space radiance cache + surface cache) only if (a) the reference port's art review flags missing contact or glossy GI, or (b) `iso_arena` FLIP cannot get under 0.08 with DDGI tuning. Should stage B be M4.5 or go into `later-backlog.md`?
+   *Answered (2026-11-20, ADR-0013):* stage B is its own milestone, **M9 Advanced lighting (Photon)**. M4 keeps the `gi::Technique` seam, the proxy BLAS and the probe volume general enough for Photon to build on (its radiance cache may reuse the probes).
 5. Can the proxy BLAS for GI and the path tracer share an acceleration-structure build without compromising oracle independence? (Proposed: share the builder library, keep separate instances and separate tests.)
 6. Should Behavior graphs replace a dedicated BT editor entirely, or does `concordia-ai` also want a compact BT text view? (Proposed: one format, `.graph.ron`, with an editor *view mode* for trees.)
 7. Which local-model runtime does `concordia-ai-llm-local` wrap (license, Metal support, model size)? It is out of the gate and only needs an interface-level decision in M4.

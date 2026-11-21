@@ -18,6 +18,7 @@ The top-level design is in [`../docs/design.md`](../docs/design.md). This folder
 | M6 Evolve (plugins) | [M6-evolve-plugins.md](M6-evolve-plugins.md) | M2 (parallel with M3) | Needs refinement after M2 | Planned |
 | M7 Terra (large-scale simulation) | [M7-terra.md](M7-terra.md) | M0 (Phase 7.0 rename, done); M1, M2, M4 (simulation features) | Needs refinement after M4 | In progress (Phase 7.0 done; rest after M4) |
 | M8 Advanced physics (destruction, GPU garments; ADR-0012) | [M8-advanced-physics.md](M8-advanced-physics.md) | M1 (destruction); M2 (garments) | Needs refinement after M2 | Planned |
+| M9 Advanced lighting (Photon GI; ADR-0013) | [M9-advanced-lighting.md](M9-advanced-lighting.md) | M4 (ray tracing, HZB, VSM, TAA, path tracer, `gi::Technique`), M2 2.3 (materials) | Outline; needs refinement after M4 | Planned |
 | Later | [later-backlog.md](later-backlog.md) | none | Backlog | n/a |
 
 Status values: `Planned` → `Refined` → `In progress (phase N)` → `Gate passed`.
@@ -124,6 +125,8 @@ examples/             # small sample projects used by tests and docs
 | `concordia-fracture` | offline fracture: patterns, mesh cutting, interior faces, hulls, cluster levels, connection graph | M8 |
 | `concordia-destruction` | runtime destruction on Jolt: strain, breaking, fields, debris, caches | M8 |
 | `concordia-cloth` | garments: asset, CPU reference and GPU (Slang) XPBD solver, collision | M8 |
+| `concordia-sdf` *(proposed)* | mesh signed distance fields: offline sparse-brick build in the DDC, CPU reference queries; independent of the renderer | M9 |
+| `concordia-photon` *(proposed)* | Photon GI: global SDF clipmap, surface cache, tracer chain, screen probes, radiance cache, reflections, translucency volume (implements `gi::Technique`) | M9 |
 
 **Test package:** `tests/` is the `concordia-tests` package (`publish = false`, `autotests = false`, explicit `[[test]]` targets). Shared helpers (MCP test client, binary locators, gate checkers) live in its library, `tests/src/`.
 
@@ -179,7 +182,7 @@ To avoid collisions, each milestone draws ADR numbers from its own block. Use th
 |---|---|---|
 | 0001–0008 | Design | 0001 Rust · 0002 subscription-first · 0003 scripting tiers · 0004 editor · 0005 interchange · 0006 licensing · 0007 TDD/plans · 0008 name (Concordia) |
 | 0009 | M0 | 0009 scene text format (written: canonical RON, own reader/writer) |
-| 0010–0019 | Design additions | 0010 Terra entity system · 0011 Evolve plugin system · 0012 advanced physics milestone M8 (written) |
+| 0010–0019 | Design additions | 0010 Terra entity system · 0011 Evolve plugin system · 0012 advanced physics milestone M8 (written) · 0013 advanced lighting milestone M9, Photon (written) |
 | 0020–0029 | M-1 | 0020 toolchain pinning · 0021 WASM guest build path · 0022 CI and supply chain |
 | 0030–0039 | M0 | 0030 own archetype ECS (written: safe column storage) · 0031 Engine API error model (written) · 0032 edit world vs play world (written) · 0033 MCP adapter (written: rmcp pin, protocol versions) |
 | 0040–0059 | M1 | 0040–0045 as named in M1's plan (0040, 0041, 0042, 0043, 0044, 0045 written) · 0046 engine modules (written) · 0047 editor UI stays web, native viewport, thin panels (written) · 0048 editor v1 in M1, engine breadth before the port (written) · 0049 agent-first end of M1, Studio right after M1 (written) |
@@ -190,6 +193,7 @@ To avoid collisions, each milestone draws ADR numbers from its own block. Use th
 | 0140–0159 | M6 | 0140–0142 as named in M6's plan |
 | 0160–0179 | M7 | 0160–0161 as named in M7's plan |
 | 0180–0199 | M8 | 0180–0183 as named in M8's plan |
+| 0200–0219 | M9 | 0200–0202 as named in M9's plan |
 
 ## Consistency pass log (2026-11-17)
 - Merged each plan's proposed conventions into the sections above.
