@@ -90,6 +90,9 @@ pub struct Renderer {
     shadow_key: Option<u64>,
     /// Materials fitted to the closure budget, as programs.
     programs: Programs,
+    /// GPU copies of forgotten assets; the next frame takes them and frees them when it retires,
+    /// after every earlier frame that may still read them.
+    retired: FrameResources,
 }
 
 /// A presented frame the GPU may still be working on.
@@ -278,8 +281,8 @@ impl Renderer {
         device: Arc<dyn Device>,
         compiler: Box<dyn ShaderCompiler>,
     ) -> Result<Self, RenderError> {
-        let pipelines = Pipelines::new(device.as_ref(), compiler.as_ref())?;
         let culler = ClusterCuller::new(device.clone(), compiler.as_ref())?;
+        let pipelines = Pipelines::new(device.as_ref(), compiler)?;
         let programs = Programs::new(crate::platform_closure_budget(device.caps()));
         Ok(Self {
             device,
@@ -300,6 +303,7 @@ impl Renderer {
             recycle: Recycler::default(),
             shadow_key: None,
             programs,
+            retired: FrameResources::default(),
         })
     }
 
@@ -561,6 +565,24 @@ impl Renderer {
         self.programs.set_project_budget(project)
     }
 
+    /// Drops the GPU copy of a mesh, texture or environment map, so the next frame uploads it again.
+    pub fn forget(&mut self, reference: &AssetRef) {
+        if let Some(mesh) = self.assets.meshes.remove(reference) {
+            self.retired.buffers.extend_from_slice(mesh.buffers());
+        }
+        if let Some((texture, _)) = self.assets.textures.remove(reference) {
+            self.retired.textures.push(texture);
+        }
+        self.retired
+            .textures
+            .extend(self.environments.forget(reference));
+    }
+
+    /// How many forward shaders specialized to a layered program shape have been compiled.
+    pub fn material_variants(&self) -> usize {
+        self.pipelines.material_variants()
+    }
+
     /// The last frame's materials that were simplified to fit the closure budget.
     pub fn closure_reports(&self) -> &[(AssetRef, ClosureReport)] {
         self.programs.reports()
@@ -588,6 +610,7 @@ impl Renderer {
             Msaa::Off => SampleCount::X1,
             Msaa::X4 => SampleCount::X4,
         };
+        frame.adopt(std::mem::take(&mut self.retired));
         let mut up = Uploads::pooled(self.recycle.pool.clone());
         let mut resolved = crate::assets::resolve(world, assets, &|r| self.holds(r))?;
         let materials = self.load_assets(&resolved, &mut up)?;
@@ -750,9 +773,13 @@ impl Renderer {
             let pipeline = match view_mode {
                 crate::ViewMode::wireframe => self.pipelines.debug(device, samples, false)?,
                 crate::ViewMode::overdraw => self.pipelines.debug(device, samples, true)?,
-                _ => self
-                    .pipelines
-                    .forward(device, samples, double_sided, blend)?,
+                _ => self.pipelines.forward(
+                    device,
+                    samples,
+                    double_sided,
+                    blend,
+                    self.programs.shape(&world.draws[item].material),
+                )?,
             };
             let batch = (pipeline, material_index, mesh.indices);
             match draws.last_mut() {
@@ -1238,6 +1265,7 @@ impl Drop for Renderer {
     fn drop(&mut self) {
         let _ = self.device.wait_idle();
         let _ = self.retire(0);
+        std::mem::take(&mut self.retired).release(self.device.as_ref(), &mut self.recycle);
         self.recycle.clear(self.device.as_ref());
         self.assets.destroy(self.device.as_ref());
         self.shadow_maps.destroy(self.device.as_ref());
@@ -1485,6 +1513,13 @@ struct FrameResources {
 }
 
 impl FrameResources {
+    /// Takes over `other`'s buffers and textures (freed with this frame's).
+    fn adopt(&mut self, other: FrameResources) {
+        debug_assert!(other.heap.is_none(), "only frames own heaps");
+        self.buffers.extend(other.buffers);
+        self.textures.extend(other.textures);
+    }
+
     fn keep(&mut self, buffer: Buffer) -> Buffer {
         self.buffers.push(buffer);
         buffer

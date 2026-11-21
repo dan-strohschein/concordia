@@ -10,9 +10,9 @@ use concordia_studio::{Roster, SyncOptions, ToolCatalog, sync};
 use rmcp::model::ClientConfig;
 use serde_json::Value;
 
-/// The most tokens (4 chars each) one role's engine tool definitions may take (ADR-0073).
-/// The largest default role, the level designer, is about 20.4k (ADR-0073 explains the headroom).
-const ROLE_TOOL_BUDGET: usize = 22_000;
+/// The most tokens (4 chars each) one role's engine tool definitions may take (ADR-0073, raised
+/// from 22k to 50k on 2026-11-21 until the tool schemas are slimmed).
+const ROLE_TOOL_BUDGET: usize = 50_000;
 
 /// The roles the default team enables.
 const ENABLED: [&str; 6] = [

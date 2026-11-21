@@ -56,7 +56,7 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `scene.info` | | `{}` → `{scene_id, name, path, dirty, entity_count, components_in_use}` |
 | `scene.text` | | `{}` → `{path, text}`: the open scene as canonical RON, as `scene.save` would write it, without saving |
 | `project.files` | | `{dir?}` → `{files: [{path, kind, size, asset, importer}]}` (projects with `[assets]`; skips hidden, git-ignored and sidecar files) |
-| `asset.import` | | `{path}` → `{id, cached, sub_assets}` (import or re-import a project file; idempotent; refer to it as `"asset:<id>"`) |
+| `asset.import` | | `{path}` → `{id, cached, sub_assets}` (import or re-import a project file; idempotent; refer to it as `"asset:<id>"`; changed meshes, textures and materials redraw on the next frame) |
 | `asset.list` | | `{}` → `{assets: [{id, path, importer, sub_assets}]}` |
 | `material.get` | | `{path}` → `{material, migrated, id}` (a `.material.ron` as a layered material; M1 files read as one slab, `migrated: true`) |
 | `material.set` | | `{path, material}` → `{id, written}` (validates, writes canonical text, imports; refused with the `node.field`; attributed in `log.tail`, not undoable) |

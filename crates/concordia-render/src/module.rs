@@ -7,6 +7,8 @@ use concordia_api::{
     Method, MethodInfo, WorldSel,
 };
 use concordia_assets::AssetDb;
+
+use crate::assets::AssetKind;
 use concordia_command::Actor;
 use concordia_core::math::Vec3;
 use concordia_reflect::Reflect;
@@ -70,8 +72,8 @@ pub(crate) struct RenderState {
     surface: bool,
     /// Meshes and textures already sent to the render thread (it keeps them).
     shipped: BTreeSet<AssetRef>,
-    /// The asset generation of each imported material when it was sent (re-sent when it moves).
-    material_generations: BTreeMap<AssetRef, u64>,
+    /// Each imported asset sent, with its kind and asset generation then (re-sent when it moves).
+    generations: BTreeMap<AssetRef, (AssetKind, u64)>,
     /// What the render thread last saw of the edit and play worlds.
     scenes: [SceneCache; 2],
     /// Recent native-viewport frames (for `viewport.stats`), keyed by frame number.
@@ -151,7 +153,7 @@ impl EngineModule for RenderModule {
             thread: None,
             surface: false,
             shipped: BTreeSet::new(),
-            material_generations: BTreeMap::new(),
+            generations: BTreeMap::new(),
             scenes: Default::default(),
             frames: FrameLog::default(),
             next_frame: Arc::default(),
@@ -363,25 +365,25 @@ fn forget_scene(engine: &mut Engine, slot: usize) {
 }
 
 /// The asset data `world` needs that the render thread has not been sent yet, plus imported
-/// materials whose content changed since they were sent (hot reload, `material.set`).
+/// meshes, materials and textures whose content changed since they were sent (hot reload,
+/// `material.set`, `asset.import`).
 fn ship(engine: &mut Engine, world: &RenderWorld) -> Result<MemoryAssets, ApiError> {
     let (shipped, mut generations) = engine
         .state_mut::<RenderState>()
         .map(|s| {
             (
                 std::mem::take(&mut s.shipped),
-                std::mem::take(&mut s.material_generations),
+                std::mem::take(&mut s.generations),
             )
         })
         .unwrap_or_default();
     let held = |r: &AssetRef| shipped.contains(r);
     let resolved = match engine.state_mut::<AssetDb>() {
         Some(db) => {
-            let stale = stale_materials(&generations, db);
+            let stale = stale_assets(&generations, db);
             crate::resolve(world, db, &held).and_then(|mut assets| {
-                let changed = crate::assets::reload_materials(&stale, db, &|r| {
-                    held(r) || assets.contains(r)
-                })?;
+                let changed =
+                    crate::assets::reload(&stale, db, &|r| held(r) || assets.contains(r))?;
                 assets.merge(changed);
                 note_generations(&assets, db, &mut generations);
                 Ok(assets)
@@ -395,25 +397,32 @@ fn ship(engine: &mut Engine, world: &RenderWorld) -> Result<MemoryAssets, ApiErr
     }
     if let Some(state) = engine.state_mut::<RenderState>() {
         state.shipped = shipped;
-        state.material_generations = generations;
+        state.generations = generations;
     }
     resolved.map_err(api_error)
 }
 
-/// Sent materials whose asset was re-imported with new content.
-fn stale_materials(generations: &BTreeMap<AssetRef, u64>, db: &AssetDb) -> Vec<AssetRef> {
+/// Sent assets whose asset was re-imported with new content.
+fn stale_assets(
+    generations: &BTreeMap<AssetRef, (AssetKind, u64)>,
+    db: &AssetDb,
+) -> Vec<(AssetRef, AssetKind)> {
     generations
         .iter()
-        .filter(|(r, sent)| asset_id(r).is_some_and(|id| db.generation(id) != **sent))
-        .map(|(r, _)| r.clone())
+        .filter(|(r, (_, sent))| asset_id(r).is_some_and(|id| db.generation(id) != *sent))
+        .map(|(r, (kind, _))| (r.clone(), *kind))
         .collect()
 }
 
-/// Records the generation of every imported material in `assets`.
-fn note_generations(assets: &MemoryAssets, db: &AssetDb, into: &mut BTreeMap<AssetRef, u64>) {
-    for (reference, _) in assets.materials() {
+/// Records the kind and generation of every imported asset in `assets`.
+fn note_generations(
+    assets: &MemoryAssets,
+    db: &AssetDb,
+    into: &mut BTreeMap<AssetRef, (AssetKind, u64)>,
+) {
+    for (reference, kind) in assets.kinds() {
         if let Some(id) = asset_id(reference) {
-            into.insert(reference.clone(), db.generation(id));
+            into.insert(reference.clone(), (kind, db.generation(id)));
         }
     }
 }

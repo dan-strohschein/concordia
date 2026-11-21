@@ -114,6 +114,16 @@ impl EnvironmentCache {
         self.envs.contains_key(map)
     }
 
+    /// Drops the environment for `map` (and any prefiltering of it); returns its textures, which
+    /// the caller destroys once no frame in flight uses them.
+    pub(crate) fn forget(&mut self, map: &AssetRef) -> Vec<Texture> {
+        self.pending.remove(map);
+        self.envs
+            .remove(map)
+            .map(|e| e.levels.into_iter().map(|(t, _)| t).collect())
+            .unwrap_or_default()
+    }
+
     pub(crate) fn destroy(&mut self, device: &dyn Device) {
         if let Some((lut, _)) = self.lut.take() {
             device.destroy_texture(lut);

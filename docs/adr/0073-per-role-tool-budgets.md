@@ -1,5 +1,5 @@
 # ADR-0073: Tool budgets are per agent role
-- Status: Accepted (M2, 2026-11-20; the author's decision)
+- Status: Accepted (M2, 2026-11-20; the author's decision). Amended 2026-11-21: the budget is 50,000 tokens (see the amendment).
 - Date: 2026-11-20
 - Supersedes in part: ADR-0033 (the 12k-token `tools/list` budget) and ADR-0070 (its rise to 16k)
 - Builds on: ADR-0080 (Studio scopes enforced by the hook and the server)
@@ -35,6 +35,9 @@ Measured after this change:
 The definitions average about 600 tokens, so the 2.5k first suggested would fit only about four tools. The task and team tools are the floor. Every specialist needs `task_get`, `task_claim`, `task_comment`, `task_update`, `studio_ask`, `studio_answer` and `studio_questions`, and they come to about 7.4k tokens, mostly the task view's output schema (about 740 tokens per task tool).
 
 22k is the largest role plus about 8%, which is room for two or three average tools. Adding more needs a deliberate change: either a role split, or a raised budget written down here. It is about 58% of the 38k full list. Slimming the Studio tools' output schemas is the follow-up that would let the budget drop.
+
+## Amendment (2026-11-21): 50k per role
+The author raised the per-role budget from 22,000 to 50,000 tokens. 22k had left the level designer under 1k of room (≈21.1k after 2.3b), so almost any new tool for it would have needed a role split. 50k is deliberately generous: shrinking the tool definitions (mostly the Studio tools' output schemas) is the follow-up, and the budget comes down after that. Decisions 1–4 are unchanged: no agent gets the whole list, and each role still names its tools explicitly.
 
 ## Alternatives
 - **Keeping a whole-list budget.** Every new module would have to fight for room in a list that no agent loads in full.

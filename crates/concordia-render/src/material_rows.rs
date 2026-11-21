@@ -13,13 +13,11 @@ pub(crate) type Row = [u32; 4];
 pub(crate) const FLAG_UNLIT: u32 = 1;
 pub(crate) const FLAG_MASK: u32 = 2;
 pub(crate) const FLAG_BLEND: u32 = 4;
-/// The program has a vertical layer (only then is light-side transmittance needed).
-pub(crate) const FLAG_LAYERED: u32 = 8;
 
-const OP_SLAB: u32 = 0;
-const OP_VERTICAL: u32 = 1;
-const OP_HORIZONTAL: u32 = 2;
-const OP_COVERAGE: u32 = 3;
+pub(crate) const OP_SLAB: u32 = 0;
+pub(crate) const OP_VERTICAL: u32 = 1;
+pub(crate) const OP_HORIZONTAL: u32 = 2;
+pub(crate) const OP_COVERAGE: u32 = 3;
 
 const FEATURE_HAZE: u32 = 1;
 const FEATURE_FUZZ: u32 = 2;
@@ -50,10 +48,7 @@ pub(crate) fn material_rows(
         ));
     }
     let index = |r: &Option<AssetRef>| r.as_ref().and_then(texture).unwrap_or(NO_TEXTURE);
-    let (mut flags, cutoff) = flags(material);
-    if program.ops().contains(&Op::Vertical) {
-        flags |= FLAG_LAYERED;
-    }
+    let (flags, cutoff) = flags(material);
     let mut rows = Vec::with_capacity(1 + ops + closures * CLOSURE_ROWS);
     rows.push([closures as u32, ops as u32, flags, cutoff.to_bits()]);
     rows.extend(program.ops().iter().map(|op| op_row(op, &index)));
@@ -131,7 +126,7 @@ fn closure_rows(slab: &Slab, texture: &dyn Fn(&Option<AssetRef>) -> u32) -> [Row
 }
 
 /// The optional features a slab has, as shader bits.
-fn features(slab: &Slab) -> u32 {
+pub(crate) fn features(slab: &Slab) -> u32 {
     [
         (slab.haze.is_some(), FEATURE_HAZE),
         (slab.fuzz.is_some(), FEATURE_FUZZ),
@@ -248,31 +243,8 @@ mod tests {
     fn the_header_counts_closures_and_ops_and_holds_flags_and_cutoff() {
         let rows = rows(&layered());
         assert_eq!(rows.len(), 1 + 4 + 2 * CLOSURE_ROWS);
-        assert_eq!(rows[0][..3], [2, 4, FLAG_MASK | FLAG_LAYERED]);
+        assert_eq!(rows[0][..3], [2, 4, FLAG_MASK]);
         assert_eq!(f(rows[0][3]), 0.4);
-    }
-
-    /// Only programs with a vertical layer need light-side transmittance (the shader skips it).
-    #[test]
-    fn only_layered_programs_are_flagged_layered() {
-        let one = Material::default();
-        assert_eq!(rows(&one)[0][2] & FLAG_LAYERED, 0);
-        let mut mixed = one.clone();
-        mixed
-            .nodes
-            .insert("b".into(), MaterialNode::Slab(Slab::default()));
-        mixed.nodes.insert(
-            "h".into(),
-            MaterialNode::Horizontal {
-                a: concordia_assets::SURFACE.into(),
-                b: "b".into(),
-                mix: 0.5,
-                mix_texture: None,
-            },
-        );
-        mixed.root = "h".into();
-        assert_eq!(rows(&mixed)[0][2] & FLAG_LAYERED, 0, "a mix does not layer");
-        assert_ne!(rows(&layered())[0][2] & FLAG_LAYERED, 0);
     }
 
     #[test]

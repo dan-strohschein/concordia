@@ -1,4 +1,5 @@
-//! Shaders and pipelines: forward PBR (per sample count and culling) and tonemapping.
+//! Shaders and pipelines: forward shading (per sample count, culling, blending and program
+//! shape) and tonemapping.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -10,6 +11,7 @@ use concordia_rhi::{
 use concordia_shaders::{CompileRequest, ShaderCompiler, ShaderModule, Stage, Target};
 
 use crate::RenderError;
+use crate::shape::ProgramShape;
 
 /// HDR scene color.
 pub(crate) const HDR: Format = Format::Rgba16Float;
@@ -31,6 +33,18 @@ pub(crate) fn compile(
     entry: &str,
     stage: Stage,
 ) -> Result<ShaderModule, RenderError> {
+    compile_with(device, compiler, file, entry, stage, BTreeMap::new())
+}
+
+/// [`compile`] with preprocessor defines.
+fn compile_with(
+    device: &dyn Device,
+    compiler: &dyn ShaderCompiler,
+    file: &str,
+    entry: &str,
+    stage: Stage,
+    defines: BTreeMap<String, String>,
+) -> Result<ShaderModule, RenderError> {
     let target = match device.caps().backend {
         Backend::Metal => Target::Msl,
         Backend::Vulkan => Target::SpirV,
@@ -40,7 +54,7 @@ pub(crate) fn compile(
         entry: entry.into(),
         stage,
         target,
-        defines: Default::default(),
+        defines,
         include_dirs: vec![concordia_shaders::builtin_dir()],
     };
     compiler
@@ -50,7 +64,11 @@ pub(crate) fn compile(
 
 /// Compiled shaders and lazily created pipelines.
 pub(crate) struct Pipelines {
+    /// Kept to compile a forward fragment variant per program shape on first use.
+    compiler: Box<dyn ShaderCompiler>,
     forward: (ShaderSource, ShaderSource),
+    /// The forward fragment shader specialized to each layered program shape seen.
+    shaped: BTreeMap<ProgramShape, ShaderSource>,
     tonemap: (ShaderSource, ShaderSource),
     tonemaps: BTreeMap<u8, Pipeline>,
     overlay: (ShaderSource, ShaderSource),
@@ -60,17 +78,17 @@ pub(crate) struct Pipelines {
     skies: BTreeMap<u8, Pipeline>,
     grid: (ShaderSource, ShaderSource),
     grids: BTreeMap<u8, Pipeline>,
-    variants: BTreeMap<(u8, bool, bool), Pipeline>,
+    variants: BTreeMap<(u8, bool, bool, Option<ProgramShape>), Pipeline>,
     debug: BTreeMap<(u8, bool), Pipeline>,
 }
 
 impl Pipelines {
     pub(crate) fn new(
         device: &dyn Device,
-        compiler: &dyn ShaderCompiler,
+        compiler: Box<dyn ShaderCompiler>,
     ) -> Result<Self, RenderError> {
         let compile = |file: &str, entry: &str, stage: Stage| {
-            compile(device, compiler, file, entry, stage).map(|m| m.source())
+            compile(device, compiler.as_ref(), file, entry, stage).map(|m| m.source())
         };
         let forward = (
             compile("forward.slang", "vs", Stage::Vertex)?,
@@ -107,7 +125,9 @@ impl Pipelines {
             compile("forward.slang", "sky_fs", Stage::Fragment)?,
         );
         Ok(Self {
+            compiler,
             forward,
+            shaped: BTreeMap::new(),
             tonemap,
             tonemaps: BTreeMap::new(),
             shadow,
@@ -224,6 +244,35 @@ impl Pipelines {
         Ok(pipeline)
     }
 
+    /// How many shape-specialized forward fragment shaders have been compiled.
+    pub(crate) fn material_variants(&self) -> usize {
+        self.shaped.len()
+    }
+
+    /// The forward fragment shader for `shape` (the base shader for one-slab programs).
+    fn fragment(
+        &mut self,
+        device: &dyn Device,
+        shape: Option<&ProgramShape>,
+    ) -> Result<ShaderSource, RenderError> {
+        let Some(shape) = shape else {
+            return Ok(self.forward.1.clone());
+        };
+        if let Some(source) = self.shaped.get(shape) {
+            return Ok(source.clone());
+        }
+        let module = compile_with(
+            device,
+            self.compiler.as_ref(),
+            "forward.slang",
+            "fs",
+            Stage::Fragment,
+            shape.defines(),
+        )?;
+        self.shaped.insert(shape.clone(), module.source());
+        Ok(module.source())
+    }
+
     /// Depth-only pipeline for shadow casters.
     pub(crate) fn shadow(&self) -> Pipeline {
         self.shadow
@@ -267,22 +316,24 @@ impl Pipelines {
         Ok(pipeline)
     }
 
-    /// The forward pipeline for a sample count, face culling and blending (premultiplied alpha,
-    /// no depth write).
+    /// The forward pipeline for a sample count, face culling, blending (premultiplied alpha, no
+    /// depth write) and program shape.
     pub(crate) fn forward(
         &mut self,
         device: &dyn Device,
         samples: SampleCount,
         double_sided: bool,
         blend: bool,
+        shape: Option<&ProgramShape>,
     ) -> Result<Pipeline, RenderError> {
-        let key = (samples.get(), double_sided, blend);
+        let key = (samples.get(), double_sided, blend, shape.cloned());
         if let Some(p) = self.variants.get(&key) {
             return Ok(*p);
         }
+        let fragment = self.fragment(device, shape)?;
         let pipeline = device.create_graphics_pipeline(&GraphicsPipelineDesc {
             vertex: self.forward.0.clone(),
-            fragment: Some(self.forward.1.clone()),
+            fragment: Some(fragment),
             color_formats: vec![HDR],
             depth: Some(DepthState {
                 format: DEPTH,
@@ -301,10 +352,11 @@ impl Pipelines {
                 BlendMode::Opaque
             },
             label: format!(
-                "forward x{}{}{}",
+                "forward x{}{}{}{}",
                 samples.get(),
                 if double_sided { " double-sided" } else { "" },
-                if blend { " blended" } else { "" }
+                if blend { " blended" } else { "" },
+                if shape.is_some() { " layered" } else { "" }
             ),
         })?;
         self.variants.insert(key, pipeline);

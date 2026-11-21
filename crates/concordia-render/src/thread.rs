@@ -394,8 +394,10 @@ impl Worker {
         }
     }
 
-    /// Applies a scene update (taking its delta and assets).
+    /// Applies a scene update (taking its delta and assets). An asset sent again changed (hot
+    /// reload), so the renderer drops its GPU copy and uploads the new data.
     fn update(&mut self, scene: &mut SceneUpdate) {
+        scene.assets.refs().for_each(|r| self.renderer.forget(r));
         self.store.merge(std::mem::take(&mut scene.assets));
         let empty = SceneDelta::Changes {
             upserts: Vec::new(),

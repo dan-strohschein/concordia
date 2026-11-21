@@ -7,14 +7,14 @@
 //! use concordia_terra::World;
 //! use concordia_reflect::TypeRegistry;
 //!
-//! let (mut world, registry, mut log) = (World::new(), TypeRegistry::new(), CommandLog::new());
+//! let (mut world, mut registry, mut log) = (World::new(), TypeRegistry::new(), CommandLog::new());
 //! let mut ids = DeterministicIdGen::new(1);
 //! let author = Author::from("agent:claude-code".parse::<Actor>()?);
 //! let id = ids.next_id()?;
 //! let op = EditOp::Spawn { id, components: Default::default() };
-//! log.apply_one(&mut world, &registry, author.clone(), "spawn", op, &mut ids)?;
+//! log.apply_one(&mut world, &mut registry, author.clone(), "spawn", op, &mut ids)?;
 //! assert!(world.contains(id));
-//! log.undo(&mut world, &registry, author)?;
+//! log.undo(&mut world, &mut registry, author)?;
 //! assert!(!world.contains(id));
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```

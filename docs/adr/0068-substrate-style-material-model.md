@@ -1,5 +1,5 @@
 # ADR-0068: Substrate-style material model
-- Status: Accepted (M2 phase 2.3a, 2026-11-20); the renderer in 2.3b (2026-11-20); migration, editor and Studio in 2.3c (2026-11-20); FBX (2.3d) follows
+- Status: Accepted (M2 phase 2.3a, 2026-11-20); the renderer in 2.3b (2026-11-20); migration, editor and Studio in 2.3c (2026-11-20); a pipeline variant per program shape (2.3c follow-ups, 2026-11-21); FBX (2.3d) follows
 - Date: 2026-11-20
 - Builds on: ADR-0009 (canonical RON), ADR-0040 (renderer), ADR-0044 (assets), ADR-0067 decision D5 (materials follow Substrate, text first)
 
@@ -39,10 +39,11 @@ M1 has one metallic-roughness material (glTF 2.0 core). D5 replaces it with a mo
    - the split-sum, direct-lobe and sheen tables share one texture (two 32×32 halves) read at texel centers, exactly like the CPU tables; it is uploaded with or without an environment;
    - a mix texture's R multiplies `mix`; textures multiply factors as in M1.
    - the mask test compares the program's alpha (slab alphas combined by the operators) before anything is shaded; view-only terms are computed once per closure, and light-side transmittance only for programs with a vertical layer.
+   - **A pipeline variant per program shape** (2.3c follow-ups). A program's shape is its op kinds, which closure each slab op pushes, each closure's features, and whether it has a vertical layer. A material with more than one op draws with `forward.slang` compiled for its shape (preprocessor constants, the same source). The interpreter unrolls, so its stack, closures and feature branches resolve at compile time and stay in registers. Values (colors, mixes, textures) stay in the material rows, so materials of one shape share a variant. One-slab materials keep the base shader. A variant compiles once per shape, about 0.2 s plus Metal's compile, and the shader cache keeps it across runs. Under 1,024 lights a clear coat went from about 8× one slab to 1.6×, and three closures from 18× to 2.5×.
 
 ## Alternatives
 - **A recursive operator tree in the file.** It is natural to write, but `concordia-reflect` has no `Box`, and agents editing deep nesting make more mistakes than with named nodes.
-- **Generating shader code per material.** This is what Substrate does with node graphs, but it means a pipeline per material and a compile on every edit. One interpreted program keeps M1's single pipeline. Code generation can come with M4's graphs.
+- **Generating shader code per material.** This is what Substrate does with node graphs, but it means a pipeline per material and a compile on every edit. One interpreted program kept M1's single pipeline in 2.3b; since the 2.3c follow-ups the same interpreter is specialized per shape, not per material, so editing values never recompiles. Code generation can come with M4's graphs.
 - **Keeping M1's diffuse coupling** for exact golden parity: rejected by the author in favor of exact energy conservation.
 - **A fixed closure budget, or a free project setting:** the author chose platform default plus lowering.
 - **Neubelt's sheen visibility:** simpler, but its albedo reaches 1.7 at grazing views for low roughness. Even Λ needs the albedo table to stay ≤ 1.

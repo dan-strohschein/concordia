@@ -576,6 +576,27 @@ fn masked_materials_keep_fragments_at_or_above_the_cutoff() {
     }
 }
 
+/// Layered programs draw with a pipeline specialized to their shape (ops, slab order, features):
+/// one per shape, shared by materials that differ only in values; one-slab materials need none.
+#[test]
+fn layered_materials_draw_with_one_variant_per_shape() {
+    let Some(mut r) = renderer() else { return };
+    tiles(one(paint()), 3.0).render(&mut r, W, H);
+    assert_eq!(r.material_variants(), 0, "one slab uses the base shader");
+    let coated = tiles(clear_coat(), 3.0).render(&mut r, W, H);
+    assert_eq!(r.material_variants(), 1);
+    tiles(tinted_coat(), 3.0).render(&mut r, W, H);
+    assert_eq!(r.material_variants(), 1, "same shape, other values");
+    tiles(fuzz_layer(), 3.0).render(&mut r, W, H);
+    tiles(dusty_coat(), 3.0).render(&mut r, W, H);
+    assert_eq!(r.material_variants(), 3, "fuzz and the mix are new shapes");
+    assert_eq!(
+        tiles(clear_coat(), 3.0).render(&mut r, W, H),
+        coated,
+        "a variant is reused unchanged"
+    );
+}
+
 /// A material edited under the same reference (hot reload) is fitted and drawn anew.
 #[test]
 fn an_edited_material_is_refitted() {

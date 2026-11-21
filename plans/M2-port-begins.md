@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20) done; 2.3d next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20) and the 2.3c follow-ups (2026-11-21) done; 2.3d next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -871,6 +871,42 @@ These passed at once:
 - **The Metal miscompile is reduced** to `tools/repros/metal-discard-after-private-array`: about 30 lines of hand-written MSL and a Swift host, no Slang. A fragment whose alpha (0.78) is read back from a thread-private struct array is discarded below a cutoff of 0.5; the same alpha read from the buffer is drawn, and writing the compared values out shows them right. Slang's MSL for the engine's shader is equivalent and correct, so it is Apple's compiler (macOS 26.2, 25C56, M3 Pro). Trying the reductions also showed that the trigger is reading the alpha back from the array: 2.3b's mask test placed after the stores, but reading `program_alpha` from the rows, passes. The guarded mask-first order is unchanged. **To do:** file it with Apple (Feedback Assistant), which is the author's call.
 
 **Not in this phase:** hot reload of meshes and textures in the renderer; a node-graph view (M4); FBX (2.3d).
+
+### 2.3c follow-ups As built (2026-11-21, ADR-0068, ADR-0073)
+The author asked for three of 2.3c's open items before more features. They are one branch and one commit.
+
+**1. Layered materials under many lights: a pipeline variant per program shape.**
+- **Measured first** (`many_lights`, M3 Pro, main that morning: 3.38 / 23.47 / 52.46 ms). Skipping per-light transmittance alone gave 12.1 / 31.4 ms. Summing the closures without the program's stack gave 5.6 / 9.6 ms. So the dynamic interpreter (stack and closure indexing in thread memory, branches on data) and per-light transmittance were the cost, not the BSDF.
+- **Built:** `ProgramShape` (`concordia-render/src/shape.rs`) holds the op kinds, which closure each slab op pushes, each closure's features, and whether it has a vertical layer. Each program with more than one op draws with `forward.slang` compiled for its shape (defines, same source; `[ForceUnroll]` over the shape's ops and closures). The stack, closure indices and feature branches resolve at compile time.
+  - `Pipelines` keeps the compiler, compiles a fragment source per shape on first use, and keys forward pipelines by shape.
+  - One-slab materials keep the base shader. `FLAG_LAYERED` left the material rows, because the shape owns it now; its row test moved into `shape.rs`.
+  - `Renderer::material_variants()` counts the variants.
+  - Considered and not done: generating code per material (ADR-0068's alternative), and a linear "monomial" form of the program per light, which is exact only without mixes under layers.
+- **Result** (same Mac, three runs): one slab **2.95–3.01 ms** (unchanged), a clear coat **4.77–4.85 ms** (1.6× one slab, was 8×), three closures **7.28–7.44 ms** (2.5×, was 18×). A new shape costs one compile, about 0.2 s of slangc plus Metal's, cached in the DDC.
+- **Tests:**
+  - `shape.rs`: `one_slab_programs_use_the_base_shader`, `a_shape_defines_its_ops_slabs_features_and_layering`, `materials_differing_only_in_values_share_a_shape`. They failed on `todo!()` first.
+  - `materials.rs`: `layered_materials_draw_with_one_variant_per_shape`. It was written before `material_variants` existed, so its first failure was a compile error.
+  - `shader_matches_cpu_reference_per_feature`, the grazing-light, unlit and albedo comparisons, the masked-material test and every golden are guards: they passed unchanged, now through the variants.
+- **Mutations, all caught:**
+  - no variants: six tests, including the CPU comparisons, the clear-coat and mix goldens, and the variant test;
+  - features dropped from the shape: the per-feature comparison;
+  - layering dropped: three comparisons;
+  - mixes taken as layers: the mix golden and two comparisons.
+
+**2. Hot reload of meshes and textures** (and environment maps).
+- `RenderState` now keeps the kind and generation of every imported mesh, material and texture it sends (`stale_assets`, `note_generations`, `assets::reload`, generalizing 2.3c's material-only bookkeeping).
+- The render thread calls the new `Renderer::forget` on every asset it receives. It drops the GPU copy (mesh buffers, texture, environment levels and any prefiltering of the map).
+- The old resources go to `Renderer::retired`. The next frame adopts them and frees them when it retires, after every earlier frame in flight.
+- **Tests (red first, for the right reason):** `a_reimported_texture_redraws_with_its_new_pixels` and `a_reimported_mesh_redraws_with_its_new_geometry` in `capture.rs`, through the Engine API with the glTF importer. The mesh test checks that the result equals what a fresh engine draws. `forgotten_meshes_textures_and_environments_are_uploaded_again` in `render.rs` covers held assets being reused, then reloaded after `forget`, matching a fresh renderer.
+- **Mutations, all caught:** dropping each of the mesh, texture and environment parts of `forget`; a thread that never forgets; and tracking materials only.
+- **My test mistakes, fixed deliberately:**
+  - sub-asset references use `#` (`asset:<id>#mesh/Quad/0`);
+  - the forget test's first camera used daylight exposure, so it drew black;
+  - one mutation run first failed to compile, so it was re-run.
+
+**3. Per-role tool budget raised to 50k** (the author's decision, ADR-0073 amended). `ROLE_TOOL_BUDGET` is 50,000. Slimming the schemas is the follow-up, and the budget comes down after it. No test changed behavior: the budget test passes before and after.
+
+**Also fixed:** the `concordia-command` crate doc example had been broken since 2.6d, which made `apply_one` and `undo` take `&mut TypeRegistry`. `just test`'s doc-test step failed on main, and 2.3c's checklist missed it.
 
 ### Effort (re-estimated)
 | Phase | Estimate |

@@ -306,6 +306,11 @@ impl GpuMesh {
     pub(crate) fn destroy(&self, device: &dyn Device) {
         self.buffers.iter().for_each(|b| device.destroy_buffer(*b));
     }
+
+    /// The mesh's buffers.
+    pub(crate) fn buffers(&self) -> &[Buffer] {
+        &self.buffers
+    }
 }
 
 /// Meshes and textures uploaded once and reused across frames.

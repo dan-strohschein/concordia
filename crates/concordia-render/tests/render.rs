@@ -988,3 +988,91 @@ fn the_grid_lies_on_the_ground_behind_objects() {
     );
     golden("overlay_grid", &with, 0.01);
 }
+
+/// A uniform `w`×`h` linear texture.
+fn flat_texture(w: u32, h: u32, rgba: [u8; 4]) -> concordia_assets::TextureData {
+    concordia_assets::TextureData {
+        width: w,
+        height: h,
+        format: concordia_assets::TextureFormat::Rgba8Linear,
+        mips: vec![rgba.repeat((w * h) as usize)],
+    }
+}
+
+/// A textured mesh under a sky: forgetting the mesh, texture and map uploads their new data.
+fn reload_scene(mesh: &str, color: [u8; 4], sky: [u8; 4]) -> Scene {
+    let mut s = Scene::new();
+    let data = |name: &str| match concordia_assets::Builtin::of(
+        &format!("builtin:mesh/{name}").parse().unwrap(),
+    ) {
+        Some(concordia_assets::BuiltinAsset::Mesh(m)) => m,
+        _ => unreachable!("a built-in mesh"),
+    };
+    let mesh = s.assets.insert_mesh("m", data(mesh));
+    let texture = s.assets.insert_texture("t", flat_texture(1, 1, color));
+    let map = s.assets.insert_texture("sky", flat_texture(8, 4, sky));
+    let material = s.material(
+        "textured",
+        Material::from_slab(Slab {
+            base_color_texture: Some(texture),
+            ..Slab::default()
+        }),
+    );
+    let id = s.entity(Vec3::ZERO, Quat::IDENTITY, Vec3::ONE);
+    s.world
+        .insert(
+            id,
+            concordia_assets::MeshRenderer {
+                mesh,
+                material,
+                cast_shadows: false,
+            },
+        )
+        .unwrap();
+    let env = s.entity(Vec3::ZERO, Quat::IDENTITY, Vec3::ONE);
+    s.world
+        .insert(
+            env,
+            concordia_render::Environment {
+                map,
+                intensity: 1.0,
+                skybox: true,
+            },
+        )
+        .unwrap();
+    s.sun(Vec3::new(-0.3, -1.0, -0.5), 3.0);
+    let camera = Camera {
+        exposure_ev100: 0.0,
+        tonemap: Tonemap::Linear,
+        ..Camera::default()
+    };
+    s.camera(Vec3::new(0.0, 0.5, 4.0), Vec3::ZERO, camera);
+    s
+}
+
+#[test]
+fn forgotten_meshes_textures_and_environments_are_uploaded_again() {
+    let Some(mut r) = renderer() else { return };
+    let mut s = reload_scene("cube", [200, 30, 30, 255], [30, 30, 200, 255]);
+    let before = s.render(&mut r, 64, 64);
+    let edited = reload_scene("sphere", [30, 200, 30, 255], [200, 200, 30, 255]);
+    s.assets.merge(edited.assets.clone());
+    assert_eq!(s.render(&mut r, 64, 64), before, "held assets are reused");
+
+    for name in ["mesh/m", "texture/t", "texture/sky"] {
+        let reference = edited
+            .assets
+            .refs()
+            .find(|r| r.sub_path() == Some(name))
+            .unwrap()
+            .clone();
+        r.forget(&reference);
+    }
+    let after = s.render(&mut r, 64, 64);
+    let mut fresh = renderer().expect("a GPU");
+    assert_eq!(
+        after,
+        reload_scene("sphere", [30, 200, 30, 255], [200, 200, 30, 255]).render(&mut fresh, 64, 64)
+    );
+    assert_ne!(after, before);
+}

@@ -38,7 +38,7 @@ Agent Studio's harness-neutral source of truth and its engine module: role files
 - The default roster lives only in `roster/`. Its tool scopes name only tools that exist today (M3 refinement G10).
 - Tool access is set by the admin in the roster, and only there (ADR-0073). Default roles name each tool, with no globs. Every tool a role has is one its prompt or preloaded skills use, and every tool those tell it to use is in its scope. A skill's `## For the director` section counts only for the director.
 - The director coordinates and never inspects the world. It has only task tools, `studio_*` and `txn_history`, and it reviews the evidence specialists attach to tasks.
-- There is no budget on the whole tool list. Each enabled default role's tool definitions stay under 22k tokens (`concordia-mcp/tests/role_tool_budget.rs`, ADR-0073).
+- There is no budget on the whole tool list. Each enabled default role's tool definitions stay under 50k tokens (`concordia-mcp/tests/role_tool_budget.rs`, ADR-0073; raised from 22k on 2026-11-21 until the schemas are slimmed).
 - Every role prompt has the sections Mission, You own, You never, Workflow, How you verify, When to escalate and Output contract (with a fenced example). Enabled roles' prompts name only tools in their scope.
 - A role's `skills` must exist in `studio/skills/`. Skill frontmatter uses only `CLAUDE_SKILL_FIELDS`, `name` matches the folder, and description plus `when_to_use` stay within 1,536 chars.
 - A default skill that names a tool the engine doesn't offer yet carries a `> **Not available yet:**` line naming those tools and the phase that brings them (tracked in the M3 plan's 3.1, 3.2 and 3.7 follow-ups).

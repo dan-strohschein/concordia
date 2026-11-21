@@ -10,7 +10,6 @@ static const uint NO_TEXTURE = 0xffffffff;
 static const uint FLAG_UNLIT = 1;
 static const uint FLAG_MASK = 2;
 static const uint FLAG_BLEND = 4;
-static const uint FLAG_LAYERED = 8;
 static const uint OP_SLAB = 0;
 static const uint OP_VERTICAL = 1;
 static const uint OP_HORIZONTAL = 2;
@@ -231,9 +230,36 @@ struct Closure {
 
 bool has(Closure c, uint feature) { return (c.features & feature) != 0; }
 
+// ---- The program's shape (`shape.rs`). A pipeline variant per layered shape defines it, so the
+// interpreter unrolls and its stack, closures and feature branches resolve at compile time. Without
+// defines the shader runs one-slab programs, reading the slab's features from its rows.
+#ifndef SHAPE_OPS
+#define SHAPE_OPS 1
+#define SHAPE_KINDS 0
+#define SHAPE_SLABS 0
+#define SHAPE_CLOSURES 1
+#define SHAPE_LAYERED 0
+#endif
+static const uint SHAPE_KIND[SHAPE_OPS] = { SHAPE_KINDS };
+static const uint SHAPE_SLAB[SHAPE_OPS] = { SHAPE_SLABS };
+// Light-side transmittance only matters under a vertical layer.
+static const bool LAYERED = SHAPE_LAYERED != 0;
+#ifdef SHAPE_FEATURES
+static const uint SHAPE_FEATURE[SHAPE_CLOSURES] = { SHAPE_FEATURES };
+#endif
+
+// Closure k's feature bits, given its rows.
+uint closure_features(uint4* r, uint k) {
+#ifdef SHAPE_FEATURES
+    return SHAPE_FEATURE[k];
+#else
+    return r[3].w;
+#endif
+}
+
 // The fragment's closures (thread-private), loaded once and read by every program run, so the
 // light loops don't copy them.
-static Closure g_closures[MAX_CLOSURES];
+static Closure g_closures[SHAPE_CLOSURES];
 
 float3 shading_normal(VsOut i, uint tex, float scale) {
     float3 n = normalize(i.normal);
@@ -389,7 +415,7 @@ float3 transmittance(Frame* frame, Closure c, float cos_theta) {
 // Diffuse albedo seen head-on: the medium's share of a dielectric, or a metal's base color.
 float3 albedo_of(Closure c) { return c.base * lerp(1.0 - c.transmittance, float3(1.0), c.metallic); }
 
-Closure load_closure(Frame* frame, uint4* r, VsOut i, bool front, float3 v, bool layered) {
+Closure load_closure(Frame* frame, uint4* r, VsOut i, bool front, float3 v, bool layered, uint features) {
     Closure c;
     float4 base = asfloat(r[0]) * sample_or(r[7].x, i.uv, float4(1.0));
     c.base = base.rgb;
@@ -401,7 +427,7 @@ Closure load_closure(Frame* frame, uint4* r, VsOut i, bool front, float3 v, bool
     c.specular = asfloat(r[2].w);
     c.roughness = saturate(asfloat(r[3].x) * mr.g);
     c.occlusion = lerp(1.0, sample_or(r[7].w, i.uv, float4(1.0)).r, asfloat(r[3].z));
-    c.features = r[3].w;
+    c.features = features;
     float4 haze_film = asfloat(r[4]);
     c.haze_roughness = haze_film.x;
     c.haze_weight = haze_film.y;
@@ -504,7 +530,7 @@ float3 feature_value(Closure c, uint mode) {
     return has(c, FEATURE_THIN_FILM) ? float3(saturate(c.film_thickness / 1000.0)) : float3(0.0);
 }
 
-// Light-side transmittance only matters under a vertical layer (`layered`), so it is skipped otherwise.
+// Light-side transmittance is computed only when `layered`.
 Entry slab_entry(Frame* frame, Closure c, uint eval, float3 v, float3 l, uint mode, bool layered) {
     Entry e;
     e.emissive = c.emissive;
@@ -535,33 +561,27 @@ Entry covered(Entry e, bool blend) {
     return x;
 }
 
-// Runs a material's ops; slab alpha is coverage when `blend` (premultiplied results).
+// Runs the shape's ops (unrolled); slab alpha is coverage when `blend` (premultiplied results).
 Entry run(Frame* frame, uint4* rows, uint eval, float3 v, float3 l, float2 uv, uint mode, bool blend) {
-    uint ops = rows[0].y;
-    bool layered = (rows[0].z & FLAG_LAYERED) != 0;
-    if (ops == 1) { return covered(slab_entry(frame, g_closures[0], eval, v, l, mode, false), blend); }
-    Entry stack[MAX_CLOSURES];
+    Entry stack[SHAPE_OPS];
     uint top = 0;
-    for (uint i = 0; i < ops; i++) {
+    [ForceUnroll]
+    for (uint i = 0; i < SHAPE_OPS; i++) {
         uint4 op = rows[1 + i];
-        if (op.x == OP_SLAB) {
-            Entry e = slab_entry(frame, g_closures[min(op.y, MAX_CLOSURES - 1)], eval, v, l, mode, layered);
-            stack[min(top, MAX_CLOSURES - 1)] = covered(e, blend);
+        if (SHAPE_KIND[i] == OP_SLAB) {
+            stack[top] = covered(slab_entry(frame, g_closures[SHAPE_SLAB[i]], eval, v, l, mode, LAYERED), blend);
             top++;
-        } else if (op.x == OP_COVERAGE) {
-            if (top > 0) { stack[top - 1] = cover(stack[top - 1], asfloat(op.z)); }
-        } else if (top >= 2) {
+        } else if (SHAPE_KIND[i] == OP_COVERAGE) {
+            stack[top - 1] = cover(stack[top - 1], asfloat(op.z));
+        } else {
             Entry b = stack[top - 1];
             Entry a = stack[top - 2];
             top--;
-            if (op.x == OP_VERTICAL) {
-                stack[top - 1] = layer(a, b);
-            } else {
-                stack[top - 1] = mix_entries(a, b, asfloat(op.z) * sample_or(op.y, uv, float4(1.0)).r);
-            }
+            stack[top - 1] = SHAPE_KIND[i] == OP_VERTICAL ? layer(a, b)
+                                                         : mix_entries(a, b, asfloat(op.z) * sample_or(op.y, uv, float4(1.0)).r);
         }
     }
-    return top > 0 ? stack[0] : nothing();
+    return stack[0];
 }
 
 // ---- Lights.
@@ -692,16 +712,17 @@ float4 fs(VsOut i, bool front : SV_IsFrontFace, uniform DrawPush push) : SV_Targ
     // `g_closures` miscompiles on Metal (every masked fragment is dropped).
     if ((flags & FLAG_MASK) != 0 && program_alpha(rows, i.uv) < asfloat(rows[0].w)) { discard; }
     uint mode = frame.debug.x;
-    // A one-slab material shaded lit (the common case) keeps its closure in registers; everything
-    // else goes through `g_closures` and the program interpreter.
-    bool single = rows[0].y == 1 && (flags & FLAG_UNLIT) == 0 && (mode == 0 || mode == 7 || mode == 8);
-    bool layered = (flags & FLAG_LAYERED) != 0;
+    // A one-slab material shaded lit (the common case) skips the interpreter; everything else
+    // loads the shape's closures into `g_closures` and runs it.
+    bool single = SHAPE_OPS == 1 && (flags & FLAG_UNLIT) == 0 && (mode == 0 || mode == 7 || mode == 8);
     Closure c0;
     if (single) {
-        c0 = load_closure(frame, rows + 2, i, front, v, false);
+        c0 = load_closure(frame, rows + 2, i, front, v, false, closure_features(rows + 2, 0));
     } else {
-        for (uint c = 0; c < count; c++) {
-            g_closures[c] = load_closure(frame, rows + 1 + rows[0].y + c * CLOSURE_ROWS, i, front, v, layered);
+        [ForceUnroll]
+        for (uint c = 0; c < SHAPE_CLOSURES; c++) {
+            uint4* r = rows + 1 + rows[0].y + c * CLOSURE_ROWS;
+            g_closures[c] = load_closure(frame, r, i, front, v, LAYERED, closure_features(r, c));
         }
         c0 = g_closures[0];
     }
