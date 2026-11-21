@@ -1,7 +1,5 @@
 //! Skins (`skin/<index>`) and animation clips (`clip/<name>`), stored for M2's animation system.
 
-use std::collections::BTreeMap;
-
 use concordia_assets::{
     Artifact, AssetKind, Channel, ChannelPath, ClipData, ImportOutput, Interpolation, SkinData,
     encode,
@@ -18,7 +16,7 @@ pub(crate) fn skins_and_clips(
     doc: &gltf::Document,
     buffers: &[Vec<u8>],
     names: &Names,
-    entities: &BTreeMap<usize, EntityId>,
+    entities: &[EntityId],
     out: &mut ImportOutput,
 ) -> Result<(), String> {
     let get = |b: gltf::Buffer<'_>| buffers.get(b.index()).map(Vec::as_slice);
@@ -35,7 +33,10 @@ pub(crate) fn skins_and_clips(
                 .iter()
                 .map(|j| names.nodes[j.index()].clone())
                 .collect(),
-            joints: joints.iter().map(|j| entities[&j.index()]).collect(),
+            joints: joints
+                .iter()
+                .map(|j| entity(entities, j.index()))
+                .collect::<Result<_, _>>()?,
             inverse_bind,
         };
         let bytes = encode(&data).map_err(|e| e.to_string())?;
@@ -76,7 +77,7 @@ pub(crate) fn skins_and_clips(
 fn channel<'a, 's, F>(
     c: &gltf::animation::Channel<'a>,
     get: F,
-    entities: &BTreeMap<usize, EntityId>,
+    entities: &[EntityId],
 ) -> Result<Channel, String>
 where
     F: Clone + Fn(gltf::Buffer<'a>) -> Option<&'s [u8]>,
@@ -101,9 +102,7 @@ where
         gltf::animation::Interpolation::Step => Interpolation::Step,
         gltf::animation::Interpolation::CubicSpline => Interpolation::CubicSpline,
     };
-    let target = *entities
-        .get(&c.target().node().index())
-        .ok_or("channel targets an unknown node")?;
+    let target = entity(entities, c.target().node().index())?;
     Ok(Channel {
         target,
         path,
@@ -111,4 +110,11 @@ where
         times,
         values,
     })
+}
+
+fn entity(entities: &[EntityId], node: usize) -> Result<EntityId, String> {
+    entities
+        .get(node)
+        .copied()
+        .ok_or_else(|| format!("node {node} has no entity"))
 }

@@ -1,0 +1,20 @@
+[package]
+name = "ufbx-sys"
+description = "Raw FFI to vendored ufbx (MIT) through Concordia's flat C shim."
+links = "ufbx"
+build = "build.rs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[build-dependencies]
+cc = "1.11.2"
+
+[dev-dependencies]
+blake3.workspace = true

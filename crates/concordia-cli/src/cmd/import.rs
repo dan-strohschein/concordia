@@ -1,11 +1,9 @@
 //! `concordia import`: import files and print their asset references.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use concordia_assets::AssetDb;
 use concordia_core::id::SystemIdGen;
-use concordia_import_gltf::GltfImporter;
 
 use crate::Failure;
 
@@ -23,7 +21,9 @@ pub(crate) struct Args {
 pub(crate) fn run(args: &Args) -> Result<(), Failure> {
     let mut db = AssetDb::new(&args.project, Box::new(SystemIdGen))
         .map_err(|e| Failure::usage(e.to_string()))?;
-    db.register(Arc::new(GltfImporter));
+    for importer in concordia_app::model_importers() {
+        db.register(importer);
+    }
     for path in &args.paths {
         let report = db.import(path).map_err(|e| Failure::usage(e.to_string()))?;
         let state = if report.cached {

@@ -1,0 +1,26 @@
+[package]
+name = "concordia-import-fbx"
+description = "Concordia FBX importer through ufbx: meshes, materials, textures, the node hierarchy as a prefab, skins and clips."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+concordia-assets.workspace = true
+concordia-core.workspace = true
+concordia-import-model.workspace = true
+concordia-scene.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+ufbx-sys.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+serde.workspace = true
+tempfile.workspace = true

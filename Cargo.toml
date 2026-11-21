@@ -29,7 +29,9 @@ concordia-physics = { path = "crates/concordia-physics" }
 concordia-platform = { path = "crates/concordia-platform" }
 concordia-command = { path = "crates/concordia-command" }
 concordia-core = { path = "crates/concordia-core" }
+concordia-import-fbx = { path = "crates/concordia-import-fbx" }
 concordia-import-gltf = { path = "crates/concordia-import-gltf" }
+concordia-import-model = { path = "crates/concordia-import-model" }
 concordia-input = { path = "crates/concordia-input" }
 concordia-terra = { path = "crates/concordia-terra" }
 concordia-scene = { path = "crates/concordia-scene" }
@@ -52,6 +54,7 @@ concordia-rhi = { path = "crates/concordia-rhi" }
 concordia-rhi-metal = { path = "crates/concordia-rhi-metal" }
 concordia-testkit = { path = "crates/concordia-testkit" }
 jolt-sys = { path = "crates/jolt-sys" }
+ufbx-sys = { path = "crates/ufbx-sys" }
 bitflags = "2.13"
 blake3 = "1.8"
 criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }

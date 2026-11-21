@@ -13,8 +13,7 @@ mod source;
 
 use concordia_assets::{AssetError, ImportInput, ImportOutput, Importer};
 
-pub use mesh::generate_tangents;
-pub use prefab::{EntitySummary, PrefabSummary, load_prefab};
+pub use concordia_import_model::{EntitySummary, PrefabSummary, generate_tangents, load_prefab};
 
 /// Extensions the importer understands (anything else in `extensionsRequired` is an error).
 pub const SUPPORTED_EXTENSIONS: [&str; 5] = [

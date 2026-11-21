@@ -3,20 +3,13 @@
 use std::collections::BTreeMap;
 
 use concordia_assets::{
-    AlphaMode, Artifact, AssetError, AssetKind, AssetRef, ColorSpace, ImageSettings, ImportOutput,
-    Material, Slab, SubIds, decode_image, encode,
+    AlphaMode, Artifact, AssetError, AssetKind, AssetRef, ImportOutput, Material, Slab, SubIds,
+    decode_image, encode,
 };
+use concordia_import_model::TextureUsage as Usage;
 
 use crate::names::Names;
 use crate::source::uri_bytes;
-
-/// How an image is used, which decides its color space.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Usage {
-    Color,
-    Data,
-    Normal,
-}
 
 /// Decodes every image used by a material; returns the image index → sub-path map.
 pub(crate) fn textures(
@@ -44,17 +37,8 @@ pub(crate) fn textures(
             }
             gltf::image::Source::Uri { uri, .. } => uri_bytes(uri, read_relative)?,
         };
-        let settings = ImageSettings {
-            color_space: if usage == Usage::Color {
-                ColorSpace::Srgb
-            } else {
-                ColorSpace::Linear
-            },
-            generate_mips: true,
-            normal_map: usage == Usage::Normal,
-        };
         let sub = format!("texture/{}", names.images[index]);
-        let texture = decode_image(&bytes, &settings).map_err(|e| format!("{sub}: {e}"))?;
+        let texture = decode_image(&bytes, &usage.settings()).map_err(|e| format!("{sub}: {e}"))?;
         out.artifacts.insert(
             sub.clone(),
             Artifact {

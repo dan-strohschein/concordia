@@ -37,6 +37,8 @@ Every field has a default, so send only what differs:
 
 Physically plausible values: dielectrics have `metallic: 0.0`; metals `1.0` with a colored `base_color`; avoid pure black or pure white base colors (except a clear coat's black).
 
+Materials inside imported models: a model (`.gltf`, `.glb` or `.fbx`, e.g. `mcp__concordia__asset_import {"path": "assets/models/crate.fbx"}`) brings each of its materials as a one-slab sub-asset `"asset:<uuid>#material/<name>"` and each image as `"asset:<uuid>#texture/<name>"`. They are rebuilt from the model file on every import, so `material_set` can't change them: write a `.material.ron` (start from the imported slab's values) and assign that instead.
+
 ## 3. Assign it
 Find the entities (`mcp__concordia__query_run {"with": ["MeshRenderer", "Name"]}`), then in one transaction:
 `mcp__concordia__txn_begin {"label": "red paint on crates"}`, for each entity `mcp__concordia__component_patch {"entity": "<id>", "component": "MeshRenderer", "patch": {"material": "asset:<uuid>"}}`, then `mcp__concordia__txn_commit`.

@@ -3,6 +3,7 @@ Vendored permissively licensed C/C++ sources, each with its LICENSE file and a V
 | Directory | Upstream | Version | License |
 |---|---|---|---|
 | `JoltPhysics/` | jrouwe/JoltPhysics | v5.7.0 | MIT |
+| `ufbx/` | ufbx/ufbx | v0.23.1 | MIT (or Unlicense) |
 
 Downloaded (not vendored) toolchains, pinned with SHA-256:
 

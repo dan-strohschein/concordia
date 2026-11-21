@@ -14,5 +14,5 @@ pub use manifest::{
     RenderSection, SceneSection, ScriptModuleKind, ScriptModuleSection, ScriptsSection, SimSection,
     StudioSection,
 };
-pub use project::Project;
+pub use project::{Project, model_importers};
 pub use shared::{HostedEngine, SharedEngine};

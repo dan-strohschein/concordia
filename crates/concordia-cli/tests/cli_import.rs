@@ -37,3 +37,27 @@ fn import_writes_sidecars_and_prints_ids() {
     );
     assert_eq!(missing.status.code(), Some(1), "{}", stderr(&missing));
 }
+
+#[test]
+fn import_handles_fbx() {
+    let dir = tempfile::tempdir().unwrap();
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/fbx/static_quad.fbx");
+    std::fs::copy(fixture, dir.path().join("static_quad.fbx")).unwrap();
+    let output = run(
+        &[
+            "import",
+            "--project",
+            dir.path().to_str().unwrap(),
+            "static_quad.fbx",
+        ],
+        dir.path(),
+    );
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(
+        stdout(&output).starts_with("static_quad.fbx asset:"),
+        "{}",
+        stdout(&output)
+    );
+    assert!(dir.path().join("static_quad.fbx.import.ron").is_file());
+}

@@ -25,7 +25,7 @@ The asset pipeline: source files with `<file>.import.ron` sidecars holding stabl
 `cargo nextest run -p concordia-assets`
 
 ## Common tasks
-- **Add an importer:** importers claim file-name suffixes (`png`, `material.ron`), so a compound suffix never captures `.scene.ron` or `.prefab.ron`. Implement `Importer` (deterministic; settings via serde from `ImportInput::settings`), `AssetDb::register` it from the composition root, and add tests for the sidecar, determinism and a missing DDC.
+- **Add an importer:** importers claim file-name suffixes (`png`, `material.ron`), so a compound suffix never captures `.scene.ron` or `.prefab.ron`. Implement `Importer` (deterministic; settings via serde from `ImportInput::settings`), `AssetDb::register` it from the composition root, and add tests for the sidecar, determinism and a missing DDC. A model format maps into `concordia-import-model` (names, prefab, mesh finishing, weights) like the glTF and FBX importers, and is added to `concordia_app::model_importers()`.
 - **Add a built-in:** extend `Builtin::of` and the `refs` test.
 
 ## Don'ts

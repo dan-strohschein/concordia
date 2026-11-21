@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20) and the 2.3c follow-ups (2026-11-21) done; 2.3d next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups and 2.3d (2026-11-21) done; 2.4 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -661,7 +661,7 @@ Refined against the code as built. M1 has one flat `MaterialData` (in `concordia
 - **2.3c Migration, editor, Studio** (done, below):
   - Tests: `m1_pbr_materials_migrate_to_one_slab_unchanged_in_golden` (every M1 golden re-run through one slab within its tolerance; any that moves is reviewed), `material_get_and_set_roundtrip_canonical_text`, `material_set_is_attributed_and_not_journaled`, inspector widget tests for struct-variant enums and named-node maps, a Playwright test editing a slab, and the tech-artist scope and skill tests with sync snapshots;
   - `MaterialData` is retired, and glTF materials import as one slab.
-- **2.3d FBX:** `ufbx-sys` and `concordia-import-fbx` (meshes, skins, clips into the glTF importer's asset types), licensing through `just deny`, and fixtures from a script. Tests: the five FBX tests of the older 2.3 section.
+- **2.3d FBX** (done, below): `ufbx-sys` and `concordia-import-fbx` (meshes, skins, clips into the glTF importer's asset types), licensing through `just deny`, and fixtures from a script. Tests: the five FBX tests of the older 2.3 section.
 
 ### Phase 2.3a As built (2026-11-20, ADR-0068)
 - **`concordia-assets`:**
@@ -907,6 +907,97 @@ The author asked for three of 2.3c's open items before more features. They are o
 **3. Per-role tool budget raised to 50k** (the author's decision, ADR-0073 amended). `ROLE_TOOL_BUDGET` is 50,000. Slimming the schemas is the follow-up, and the budget comes down after it. No test changed behavior: the budget test passes before and after.
 
 **Also fixed:** the `concordia-command` crate doc example had been broken since 2.6d, which made `apply_one` and `undo` take `&mut TypeRegistry`. `just test`'s doc-test step failed on main, and 2.3c's checklist missed it.
+
+### Phase 2.3d As built (2026-11-21, ADR-0068)
+**Reconciled with the code as built:**
+- **Skeletons and clips already had asset types**, so none were invented. The glTF importer writes `SkinData` (`skin/<index>`: joint names, the prefab's joint entity ids, inverse bind matrices), `ClipData` (`clip/<name>`: name, duration, TRS channels targeting prefab entities) and per-vertex `joints`/`weights` in `MeshData`. FBX writes exactly these.
+- **"Clips with duration and rate":** `ClipData` has no rate field, and adding one would change every glTF clip artifact. As built, each stack is baked to linear keys from 0 at the file's frame rate (30 if it declares none), so the rate is the key spacing, and `duration` is the stack's playback length. If 2.4 needs the authored rate (for example, events on frames), it can add `ClipData::frame_rate` (glTF has none).
+- **"Targets an existing skeleton by bone name":** a clip's channels target entities of its own file's prefab, as glTF's do. Retargeting goes through names: the target entity's `Name` and `SkinData::joint_names` (the bone nodes' names). 2.4's player maps by these; nothing else is needed now.
+- **Sharing instead of duplicating:** the glTF importer's format-neutral code moved to a new crate, `concordia-import-model`: names, the prefab from a node tree, mesh finishing, texture color spaces and `load_prefab`. It also holds the new weight reduction. The FBX importer maps ufbx into it; glTF re-exports `generate_tangents` and `load_prefab` unchanged. The glTF artifacts are byte-identical: every artifact of every sample and fixture (345) was hashed before and after, by a temporary test that was not committed, so glTF stays at version 2.
+- **ufbx does the conversion while loading:** right-handed, Y-up, meters, with `MODIFY_GEOMETRY` space conversion and geometry transforms baked in. Geometry, node transforms, bind matrices and keys all arrive converted, and the importer only flips V. A file's own handedness is mirrored on Z if it differs. External files are never opened by ufbx.
+- **Blender writes absolute texture paths** (here, the author's home folder) into FBX files. The fixture script exports through `/tmp/concordia-fbx-fixtures/`, and `fixtures_hold_no_user_paths` guards it.
+- **The rig fixtures keep Blender's default export** (objects scaled by 100 in a centimeter file), which many real files share. Only the static quad uses clean transforms, so its positions can be checked directly.
+- **Textures:** embedded bytes, else the file next to the source through the asset database's sandboxed `read_relative`. A missing external file is skipped with a warning and the material keeps its factor; FBX files often point at the artist's own disk (my default, unasked). An image that fails to decode is an error, as in glTF. Textures are named by file stem, since FBX texture names are slot names.
+- **Registration:** `concordia_app::model_importers()` (glTF, FBX) is used by the assets module and `concordia import`, so the list exists once. The CLI no longer depends on the glTF crate.
+- **Studio:** no enabled role imports models. The level designer has no `asset_import`, and the modeler and animator are disabled until 3.7 and 2.4. The tech artist imports textures and owns materials, so its skill (`concordia-add-material`) and prompt now say that `.gltf`, `.glb` and `.fbx` models import the same way and that their materials are `asset:<id>#material/<name>` sub-assets, which `material_set` can't change. No tool scope changed, so the 50k budget test is unaffected.
+- **`deny.toml` unchanged:** ufbx is vendored C, invisible to cargo-deny, and the new crates carry the workspace license. `just deny` passes.
+
+**Engine:**
+- `third_party/ufbx` (v0.23.1, commit 26a482ae, MIT or Unlicense, used under MIT; `VENDOR.md` has the SHA-256 sums).
+- `ufbx-sys`: the `cu_*` flat C shim (`shim/concordia_ufbx.{h,c}`; every entry point bounds-checked), hand-written bindings guarded by a header blake3 and ABI size checks, built with `cc` as C11.
+- `concordia-import-model` (new): `ModelTree`/`ModelNode`/`MeshPart`, `write_prefab` (now an error for a node reached twice or out of range), `load_prefab`, `load_prefab_doc`, `finish_mesh`, `generate_tangents`, `unique_names`, `TextureUsage`, `reduce_influences`, `insert_artifact`.
+- `concordia-import-fbx` (new): `FbxImporter` (`fbx`, version 1). `ffi.rs` is the only `unsafe` (the crate denies it elsewhere).
+- `concordia-import-gltf`: maps into `concordia-import-model` (version 2, byte-identical).
+- `concordia-app`: `model_importers()`. `concordia-cli`: `import` uses it.
+
+**Tests:**
+- `ufbx-sys/tests/smoke.rs` (8): binding drift, struct sizes, declared units and axes, garbage, empty and truncated input, null and out-of-range arguments, triangulated corners and caps, the skinned fixture's seven influences, baking at a rate from 0.
+- `concordia-import-model/tests/model.rs` (7): influences (largest four, sorted then normalized, invalid dropped, none → joint 0), names, mesh finishing, prefab ids by name with extra parts as children, tree errors.
+- `concordia-import-fbx`: `tests/import.rs` (9) and `tests/robustness.rs` (2 proptests, 96 cases each: truncation and random byte edits never panic).
+- `concordia-app`: `assets_module_imports_fbx_through_the_api`. `concordia-cli`: `import_handles_fbx`. Studio: `tech_artist_knows_materials_arrive_inside_gltf_and_fbx_models`.
+- **The plan's tests, as built:**
+  - `fbx_static_mesh_imports_positions_normals_uvs`:
+    - the quad's 4 vertices and 6 indices, positions, +Y normals, UVs flipped to V-down, tangents, counter-clockwise winding, bounds;
+    - the plain material's slab (base color, metallic 1, roughness 0.3);
+    - the textured one's `texture/checker` (2×2 sRGB, top-left red);
+    - the prefab's renderer references and the second quad's world position.
+  - `fbx_skinned_mesh_imports_skeleton_and_weights`:
+    - the 7 joints are the prefab's bone entities, by name;
+    - every vertex's weights sum to 1 over at most 4 joints;
+    - the seven-influence vertex keeps the four largest, renormalized;
+    - **bind pose:** skinning every vertex at rest with the prefab's joints and the inverse binds puts it where the mesh node puts it (1e-4 m).
+  - `fbx_animation_stack_imports_as_clips_with_duration_and_rate`: two clips with durations 0.5 and 1.0 s. Every channel has one key per frame at 24 fps from 0, unit quaternions, and targets a prefab entity. Every bone is rotated, and the leg actually swings.
+  - `fbx_units_and_axes_normalize_to_engine_convention`:
+    - in the Z-up centimeter file, Blender's (100, 200, 300) cm offset lands at the engine's (1, 3, −2) m, and the triangle's corners land where expected;
+    - the normal is +Z (Blender's front), and the winding agrees with it (no mirror);
+    - in Blender's default ×100 centimeter export, the body is 1.4 m tall at its true position.
+  - `fbx_mixamo_style_clip_targets_existing_skeleton_by_bone_name`:
+    - the animation-only file (no mesh, no skin) has one `mixamo.com` clip of 0.75 s;
+    - every channel's target bone exists in the character, and every skin joint is rotated by the clip;
+    - each bone's rest transform in the clip's file equals the character's.
+- **Added:** `garbage_empty_and_truncated_fbx_are_descriptive_errors` (`AssetError::Import` with the path and an `FBX: ` reason), `fbx_import_is_deterministic`, `external_textures_are_read_next_to_the_file_and_missing_ones_are_skipped`, `fixtures_hold_no_user_paths`, the proptests.
+
+**Red run:** every test failed first for the right reason:
+- the shim stubs returned null and zero sizes, and the bindings had no hash line;
+- the weight stub returned zeros;
+- the stub importer said `not implemented yet`;
+- the app and CLI said `no importer for … (extension "fbx")`.
+
+One fix during green: Blender doesn't write `OriginalUpAxis` (ufbx reports it unknown), so the shim reports the file's declared `axes.up`.
+
+These passed at once:
+- The model crate's name, finishing and prefab-id tests: guards over code moved from glTF unchanged.
+- Its two tree-error checks were written with the move, before their test. Both are mutation-checked below.
+- The two proptests: vacuous against the stub, meaningful once ufbx runs.
+- `fixtures_hold_no_user_paths`: a guard, because the fixtures were already fixed. It fails with a planted `/Users/` path.
+- The Studio test: written after the skill edit, and it fails when the skill drops `.fbx`.
+
+**Mutation checks:**
+- **Caught:**
+  - no V flip; no unit conversion; no axis conversion; a left-handed target (a mirror); conversion on the root only;
+  - weights not normalized; three influences; no sort; an inverse bind off by 0.1%; renamed joints; joint indices off by one;
+  - a fixed 30 Hz instead of the file's rate; a halved duration; dropped rotations;
+  - embedded textures ignored; external files never read; a missing texture turned into an error; base color decoded as linear; metallic dropped; the first material in every slot;
+  - the shim ignoring the corner cap; an unchecked node index (the test process crashes);
+  - both tree errors in `write_prefab`;
+  - the skill dropping `.fbx`.
+- **Survived, with the reason:**
+  - `mesh_node_to_bone` instead of `geometry_to_bone`: equivalent, because geometry transforms are baked into meshes.
+  - No start trim: Blender always writes stacks from 0. I tried an action at frame 25, and Blender rebased it too. The trim is kept for other exporters and can't be tested with our fixtures.
+  - The shim's empty-input and weight-range checks: ufbx guarantees both, so they are defense in depth.
+  - A minimum sample rate equal to the frame rate: untestable with our fixtures, so the option was removed rather than kept untested.
+
+**Changed deliberately during green (my test mistakes):** `AssetId` needs a v5 or v7 UUID, not `from_u128`; a `// SAFETY:` comment had to sit directly above its `unsafe` block.
+
+**Goldens:** none added or changed. **Snapshots:** the tech artist's agent file (the edited prompt line and its hash; reviewed).
+
+**Checklist:** `just lint`, Tauri clippy, `CONCORDIA_REQUIRE_GPU=1 just test` (1,267 tests and the doc tests), `just gate-tests M1` and `M3S`, `just deny` (and the editor's), `just editor-schemas` (no change) and `just editor-test` (118 unit, 22 end-to-end) all pass. The editor's `Cargo.lock` gains the new crates.
+
+**Not in this phase:**
+- FBX lights, cameras, blend shapes, vertex colors and a second UV set (glTF imports colors and `uv1`);
+- separate roughness and metalness maps (ufbx gives single-channel maps; packing them into `metallic_roughness_texture` is a follow-up);
+- more than one skin per mesh (the first is used);
+- the Godot `.fbx.import` mapping (M5).
 
 ### Effort (re-estimated)
 | Phase | Estimate |

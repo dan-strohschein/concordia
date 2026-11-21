@@ -4,8 +4,9 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 use concordia_api::EngineModule;
-use concordia_assets::AssetsModule;
+use concordia_assets::{AssetsModule, Importer};
 use concordia_core::math::Vec3;
+use concordia_import_fbx::FbxImporter;
 use concordia_import_gltf::GltfImporter;
 use concordia_input::{InputMap, InputModule};
 use concordia_physics::{PhysicsModule, PhysicsSettings};
@@ -24,6 +25,11 @@ pub struct Project {
     pub root: PathBuf,
     /// `concordia.toml` (defaults if the file is absent).
     pub manifest: Manifest,
+}
+
+/// The model importers every project registers (glTF, FBX), beside the built-in image and material ones.
+pub fn model_importers() -> Vec<Arc<dyn Importer>> {
+    vec![Arc::new(GltfImporter), Arc::new(FbxImporter)]
 }
 
 impl Project {
@@ -104,9 +110,10 @@ impl Project {
             modules.push(Arc::new(PhysicsModule::new(settings)));
         }
         if self.manifest.assets.is_some() {
-            modules.push(Arc::new(
-                AssetsModule::new(&self.root).with_importer(Arc::new(GltfImporter)),
-            ));
+            let assets = model_importers()
+                .into_iter()
+                .fold(AssetsModule::new(&self.root), AssetsModule::with_importer);
+            modules.push(Arc::new(assets));
         }
         if self.manifest.render.is_some() {
             modules.push(Arc::new(

@@ -118,6 +118,34 @@ fn projects_without_an_input_map_have_no_input_module() {
 }
 
 #[test]
+fn assets_module_imports_fbx_through_the_api() {
+    use concordia_api::{Engine, EngineConfig};
+    use serde_json::json;
+
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("concordia.toml"), "[assets]\n").unwrap();
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/fbx/skinned.fbx");
+    std::fs::copy(fixture, dir.path().join("skinned.fbx")).unwrap();
+    let project = Project::load(dir.path()).unwrap();
+    let mut config = EngineConfig::new(dir.path());
+    config.modules = project.modules().unwrap();
+    let mut engine = Engine::new(config).unwrap();
+    let s = engine.open_session();
+    let result = engine
+        .call(
+            s,
+            "asset.import",
+            json!({"path": "skinned.fbx", "actor": "agent:test"}),
+        )
+        .unwrap();
+    let subs = result["sub_assets"].to_string();
+    for sub in ["mesh/Body/0", "skin/0", "material/Skin"] {
+        assert!(subs.contains(sub), "{sub}: {result}");
+    }
+}
+
+#[test]
 fn assets_module_imports_gltf_through_the_api() {
     use concordia_api::{Engine, EngineConfig};
     use serde_json::json;
