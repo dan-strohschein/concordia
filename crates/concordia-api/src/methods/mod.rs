@@ -60,7 +60,7 @@ impl Reflect for EntityRef {
     }
 }
 
-/// Which world to read.
+/// Which world: the scene being edited or the running simulation.
 #[allow(non_camel_case_types)]
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, concordia_reflect::Reflect,

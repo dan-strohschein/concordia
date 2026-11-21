@@ -1,7 +1,7 @@
 # concordia-assets: agent guide
 
 ## Purpose
-The asset pipeline: source files with `<file>.import.ron` sidecars holding stable ids, importers producing derived data in the content-addressed DDC, built-in assets, hot reload, `asset.import` / `asset.list` (ADR-0044), and `material.get` / `material.set` (ADR-0068, M2 2.3c).
+The asset pipeline: source files with `<file>.import.ron` sidecars holding stable ids, importers producing derived data in the content-addressed DDC, built-in assets, hot reload, `asset.import` / `asset.list` (ADR-0044), `material.get` / `material.set` (ADR-0068, M2 2.3c), and the animation graph format (`.animgraph.ron`, M2 2.4.3).
 
 ## Public entry points
 - `AssetDb` (`new`, `register`, `scan`, `import` → `ImportReport`, `load_texture` / `load_mesh` / `load_material` (a layered `Material`), `load_artifact`, `list`, `path_of`, `id_at`, `generation` (bumped whenever an import finds new content, so the renderer re-sends a changed material), `on_files_changed`)
@@ -13,6 +13,7 @@ The asset pipeline: source files with `<file>.import.ron` sidecars holding stabl
 - Layered materials (ADR-0068): `Material` (named `nodes`, `root`, `alpha_mode`, `double_sided`, `unlit`; registered for `schema.get {"name": "Material"}`), `MaterialNode` (`Slab`, `Vertical`, `Horizontal`, `Coverage`), `Slab`, `Haze`, `Fuzz`, `Subsurface`, `ThinFilm`, `MaterialError` (`field`, `node`), `SURFACE`; `read_material` (layered text, or M1 text migrated to one slab), `read_material_with_format` (also says `MaterialFormat::Layered` or `M1`), `write_material`, `Material::from_slab`, `validate`, `reachable`. Material artifacts (`AssetKind::Material`) hold a `Material`; `builtin:material/default` is M1's white dielectric as one slab. Evaluation is in `concordia-material`.
 - M1's flat format is read only by the private `material_m1::M1Material` (M1's fields and defaults: white, metal 1, roughness 1), which migrates to one slab. Nothing writes it; `MaterialData` was retired in 2.3c.
 - `MaterialGet` / `MaterialSet` (`material_method.rs`): `material.get {path}` → `{material, migrated, id}`; `material.set {path, material, actor?}` validates, writes canonical text (only if it changed), imports, logs "material saved" with the actor and publishes an `asset` event → `{id, written}`. Refusals are `InvalidParams` with `field`, `node` and a pointer such as `/material/nodes/coat/Slab/base_color/0`. `asset.import` publishes the `asset` event too.
+- Animation graphs (2.4.3): `AnimGraph` (`parameters`, `nodes`, `root`; registered for `schema.get {"name": "AnimGraph"}`; `validate`, `node`, `clips`, `reachable`), `Parameter` (`Float`, `Int`, `Bool`, `Trigger`), `AnimNode` (`Clip`, `Blend2`, `BlendN`, `OneShot`, `TimeScale`, `Transition`, `StateMachine`; `children`), `TransitionInput`, `StateTransition`, `SwitchMode`, `AdvanceMode`, `FadeCurve`, `AnimGraphError` (`node()`); `read_animgraph`, `write_animgraph`; `AnimGraphImporter` (`animgraph`, version 1, `.animgraph.ron` → `AssetKind::AnimGraph`), registered by `AssetDb::new`. Evaluation is in `concordia-anim`.
 - `Sidecar`, `import_key`, `PLATFORM`; `AssetsModule` (EngineModule)
 
 ## Invariants
@@ -21,6 +22,14 @@ The asset pipeline: source files with `<file>.import.ron` sidecars holding stabl
 - Imports are deterministic (identical bytes in, identical blobs out). Derived data is postcard; the DDC is never committed.
 - Paths are project-relative, with no `..`.
 - A layered material is valid only if every name is `[A-Za-z0-9_-]+`, the root and every reference exist, there is no cycle, every node is reachable from the root, and every value is in range (arrays per element); errors name the node and field. A node may be used twice.
+- An animation graph is valid only if:
+  - every node, parameter and state name is `[A-Za-z0-9_-]+`;
+  - the root and every referenced node, state and parameter exist, and each parameter is of the type its use needs (blend amounts, weights and scales are `Float`, a transition's `select` is `Int`, a one-shot's `request` is a `Trigger`, conditions are `Bool` or `Trigger`);
+  - there is no cycle, every node is reachable from the root, and each node has at most one parent;
+  - in every state machine, every state is reachable from the start through transitions that aren't disabled, and no transition goes to itself;
+  - defaults are finite, `Blend2` amounts are in 0..=1, `BlendN` weights are ≥ 0 with one per input, fades are finite and ≥ 0, and `select` defaults are in range.
+
+  Errors name the node (`AnimGraphError::node`). Clips are checked when `concordia-anim` binds the graph.
 - `asset.import` and `material.set` touch files, not the scene, so they are attributed in `log.tail` and not undoable (decision D9). `material.set` takes only `.material.ron` paths inside the project and never writes a material that fails `validate`.
 
 ## How to test
@@ -36,11 +45,12 @@ The asset pipeline: source files with `<file>.import.ron` sidecars holding stabl
 
 ## References
 - `image` crate (MIT/Apache) for PNG, JPEG and Radiance HDR; postcard (MIT/Apache).
+- Animation graphs: Godot Engine documentation (MIT) for the node set and transition fields (`AnimationTree`, `AnimationNodeStateMachineTransition`, `AnimationNodeOneShot`, `AnimationNodeTransition`), concepts only; see `concordia-anim`.
 - Layered materials: Epic Games' public Substrate documentation and the SIGGRAPH 2023 Substrate course (Hillaire & de Rousiers); no Unreal source consulted (see `concordia-material`).
 - M1's flat format is glTF 2.0's metallic-roughness model (Khronos glTF 2.0 specification, §3.9).
 
 ## Status
-M1 phase 1.4; layered material model M2 phase 2.3a; imported and loaded as `Material` since 2.3b; `material.get` / `material.set` and `MaterialData` retired in 2.3c; `Skinned`, clip bone names and frame rates, and `load_prefab_doc` in 2.4.1.
+M1 phase 1.4; layered material model M2 phase 2.3a; imported and loaded as `Material` since 2.3b; `material.get` / `material.set` and `MaterialData` retired in 2.3c; `Skinned`, clip bone names and frame rates, and `load_prefab_doc` in 2.4.1; the animation graph format and importer in 2.4.3.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

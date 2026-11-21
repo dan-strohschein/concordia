@@ -21,3 +21,6 @@ Saving never captures simulation state; "press play, experiment, stop" leaves th
 
 ## Update (M2 phase 2.8, ADR-0072)
 Injected input and play outcomes are now recorded by `concordia-replay` (`replay.record`, `replay.run`), never the command journal. Both start a fresh play world from the edit world, which they never change.
+
+## Update (M2 phase 2.4.3, ADR-0075)
+`component.set` and `component.patch` take `world: "play"` to write the running play world: validated, not journaled or undoable, logged with the actor, and seen by the next tick. Replay v0 doesn't record these writes.

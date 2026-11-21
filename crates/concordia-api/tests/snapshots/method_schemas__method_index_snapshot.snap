@@ -14,7 +14,7 @@ expression: index
     "name": "component.get"
   },
   {
-    "description": "Change some fields of a component with an RFC 7396 merge patch, e.g. {\"scale\": [2, 2, 2]}.",
+    "description": "Change some fields of a component with an RFC 7396 merge patch, e.g. {\"scale\": [2, 2, 2]}. With world \"play\", patches the running simulation (not undoable; the next tick sees it).",
     "mutates": true,
     "name": "component.patch"
   },
@@ -24,7 +24,7 @@ expression: index
     "name": "component.remove"
   },
   {
-    "description": "Insert or replace a component (the whole value; use component.patch to change some fields).",
+    "description": "Insert or replace a component (the whole value; use component.patch to change some fields). With world \"play\", writes the running simulation (not undoable; the next tick sees it).",
     "mutates": true,
     "name": "component.set"
   },

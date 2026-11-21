@@ -179,7 +179,7 @@ expression: capture.input_schema.as_ref()
       "x-concordia-type": "ViewMode"
     },
     "WorldSel": {
-      "description": "Which world to read.",
+      "description": "Which world: the scene being edited or the running simulation.",
       "oneOf": [
         {
           "const": "edit",

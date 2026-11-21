@@ -1,6 +1,6 @@
-//! Animation errors: each names the skeleton joint, clip channel or asset at fault.
+//! Animation errors: each names the skeleton joint, clip channel, graph node or asset at fault.
 
-use concordia_assets::AssetError;
+use concordia_assets::{AnimGraphError, AssetError};
 
 /// Why a skeleton, clip or pose was refused.
 #[derive(Debug, thiserror::Error)]
@@ -39,6 +39,17 @@ pub enum AnimError {
     /// A mesh can't be skinned with the given palette.
     #[error("skinning: {0}")]
     Mesh(String),
+    /// A graph node can't be bound (an unknown clip, say).
+    #[error("graph node {node:?}: {reason}")]
+    Graph {
+        /// The node at fault.
+        node: String,
+        /// What is wrong.
+        reason: String,
+    },
+    /// The graph itself is malformed.
+    #[error(transparent)]
+    GraphFile(#[from] AnimGraphError),
     /// Loading an asset failed.
     #[error(transparent)]
     Asset(#[from] AssetError),

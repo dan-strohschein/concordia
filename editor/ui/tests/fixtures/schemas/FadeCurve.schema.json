@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "How a fade's progress (0..1) becomes a blend weight.",
+  "oneOf": [
+    {
+      "const": "Linear",
+      "description": "The progress itself."
+    },
+    {
+      "const": "Smooth",
+      "description": "Smoothstep: 3x² − 2x³."
+    }
+  ],
+  "title": "FadeCurve",
+  "x-concordia-type": "FadeCurve"
+}

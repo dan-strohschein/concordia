@@ -5,7 +5,7 @@ expression: params_schema(method)
 {
   "$defs": {
     "WorldSel": {
-      "description": "Which world to read.",
+      "description": "Which world: the scene being edited or the running simulation.",
       "oneOf": [
         {
           "const": "edit",

@@ -18,7 +18,7 @@ The one Engine API: typed `domain.verb` methods with generated schemas, JSON-RPC
 ## Invariants
 - Every mutating method requires an actor (explicit `actor` or the session default) and changes the edit world only through `methods::edit` → `CommandLog`. A grep for direct world mutation finds only the play world's `SimRng`.
 - Only the session holding an open transaction may mutate; others get `TxnConflict` with `holder`. Open transactions abort on session close and after `txn_timeout` (journal reasons `session_closed`, `timeout`).
-- Simulation runs only on the play world (ADR-0032).
+- Simulation runs only on the play world (ADR-0032). `component.set` and `component.patch` with `world: "play"` (2.4.3, ADR-0075) write the running play world: validated, never journaled or undoable, `NotPlaying` without one, logged at info (`concordia::api`, "play world changed", with actor, method, entity and component). The next tick sees them. Replay v0 doesn't record them.
 - Every error kind has a code, a default message and a suggestion (ADR-0031); mapping lives in `src/map.rs`.
 - Method docs (the marker type's doc comment) and param/result field docs are agent-facing: they become tool descriptions and schemas. Params and results are `#[derive(Reflect)]`; nothing is hand-written.
 - Scene paths are project-relative `.scene.ron` paths without `..`. WebSocket binds to loopback only, requires the token, and rejects non-local Origins.
@@ -44,7 +44,7 @@ The one Engine API: typed `domain.verb` methods with generated schemas, JSON-RPC
 - OWASP guidance on cross-site WebSocket hijacking (Origin checks, tokens).
 
 ## Status
-M0 phase 0.6 complete. M1 phase 1.0: engine modules. M2 phase 2.6d: module hooks for scripts; 2.8: fingerprints and play helpers for replays; 2.4.1: `start_play_in` takes `&mut Engine`, `registry_and_state_mut`.
+M0 phase 0.6 complete. M1 phase 1.0: engine modules. M2 phase 2.6d: module hooks for scripts; 2.8: fingerprints and play helpers for replays; 2.4.1: `start_play_in` takes `&mut Engine`, `registry_and_state_mut`; 2.4.3: play-world writes through `component.set` / `component.patch` (ADR-0075).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

@@ -179,7 +179,7 @@ expression: "params_schema(&MethodInfo::of::<CaptureScreenshot>())"
       "x-concordia-type": "ViewMode"
     },
     "WorldSel": {
-      "description": "Which world to read.",
+      "description": "Which world: the scene being edited or the running simulation.",
       "oneOf": [
         {
           "const": "edit",

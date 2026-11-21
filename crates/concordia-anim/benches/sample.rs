@@ -5,8 +5,14 @@ use std::hint::black_box;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use concordia_anim::{AnimLibrary, AnimPlayer, BoundClip, Joint, Skeleton, add_processors};
-use concordia_assets::{AssetRef, Channel, ChannelPath, ClipData, Interpolation, Skinned};
+use concordia_anim::{
+    AnimGraphPlayer, AnimLibrary, AnimPlayer, BoundClip, BoundGraph, Joint, Skeleton,
+    add_processors,
+};
+use concordia_assets::{
+    AdvanceMode, AnimGraph, AnimNode, AssetRef, Channel, ChannelPath, ClipData, FadeCurve,
+    Interpolation, Parameter, Skinned, StateTransition, SwitchMode,
+};
 use concordia_core::id::{DeterministicIdGen, EntityId};
 use concordia_core::jobs::JobSystem;
 use concordia_core::math::{Mat4, Quat, Vec3};
@@ -117,5 +123,133 @@ fn tick(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, sample, tick);
+/// Idle and walk states: walk is a `Blend2` of two clips under a one-shot of a third.
+fn locomotion(clip: &AssetRef) -> AnimGraph {
+    let clip_node = |looping| AnimNode::Clip {
+        clip: clip.clone(),
+        looping,
+    };
+    let nodes = [
+        ("idle", clip_node(true)),
+        ("slow", clip_node(true)),
+        ("fast", clip_node(true)),
+        ("swing", clip_node(false)),
+        (
+            "gait",
+            AnimNode::Blend2 {
+                a: "slow".into(),
+                b: "fast".into(),
+                amount: "speed".into(),
+                filter: vec![],
+            },
+        ),
+        (
+            "walk",
+            AnimNode::OneShot {
+                base: "gait".into(),
+                shot: "swing".into(),
+                request: "attack".into(),
+                fade_in: 0.1,
+                fade_out: 0.2,
+                curve: FadeCurve::Linear,
+                filter: (0..BONES / 2).map(|j| format!("bone{j}")).collect(),
+            },
+        ),
+        (
+            "moves",
+            AnimNode::StateMachine {
+                states: [("idle", "idle"), ("walk", "walk")]
+                    .into_iter()
+                    .map(|(s, n)| (s.to_owned(), n.to_owned()))
+                    .collect(),
+                start: "walk".into(),
+                transitions: vec![
+                    StateTransition {
+                        from: "walk".into(),
+                        to: "idle".into(),
+                        switch: SwitchMode::Immediate,
+                        advance: AdvanceMode::Enabled,
+                        condition: None,
+                        xfade: 0.2,
+                        curve: FadeCurve::Linear,
+                        reset: true,
+                        priority: 1,
+                    },
+                    StateTransition {
+                        from: "idle".into(),
+                        to: "walk".into(),
+                        switch: SwitchMode::Immediate,
+                        advance: AdvanceMode::Enabled,
+                        condition: None,
+                        xfade: 0.2,
+                        curve: FadeCurve::Linear,
+                        reset: true,
+                        priority: 1,
+                    },
+                ],
+            },
+        ),
+    ];
+    AnimGraph {
+        parameters: [
+            ("speed".to_owned(), Parameter::Float(0.5)),
+            ("attack".to_owned(), Parameter::Trigger),
+        ]
+        .into_iter()
+        .collect(),
+        nodes: nodes.into_iter().map(|(n, d)| (n.to_owned(), d)).collect(),
+        root: "moves".into(),
+    }
+}
+
+/// 1,000 characters through `locomotion`, each with an active one-shot (three clips blended).
+fn graph(c: &mut Criterion) {
+    let skin: AssetRef = "asset:018bcfe5-6800-7000-a424-6c55076b137f#skin/0"
+        .parse()
+        .unwrap();
+    let clip_ref: AssetRef = "asset:018bcfe5-6800-7000-a424-6c55076b137f#clip/bench"
+        .parse()
+        .unwrap();
+    let graph_ref: AssetRef = "asset:018bcfe5-6800-7000-a424-6c55076b137f"
+        .parse()
+        .unwrap();
+    let skeleton = skeleton();
+    let bound = BoundClip::bind(&clip(), &skeleton).unwrap();
+    let graph = BoundGraph::bind(
+        &locomotion(&clip_ref),
+        &skeleton,
+        &mut |_| Ok(bound.clone()),
+    )
+    .unwrap();
+    let mut library = AnimLibrary::new();
+    library.insert_graph(graph_ref.clone(), skin.clone(), graph);
+    library.insert_skeleton(skin.clone(), skeleton);
+    let library = Arc::new(library);
+    let mut world = World::new();
+    let mut ids = DeterministicIdGen::new(3);
+    for i in 0..CHARACTERS {
+        let id = world.spawn(&mut ids).unwrap();
+        world.insert(id, Skinned { skin: skin.clone() }).unwrap();
+        let mut player = AnimGraphPlayer::new(graph_ref.clone());
+        player.floats.insert("speed".into(), (i % 10) as f32 / 10.0);
+        world.insert(id, player).unwrap();
+    }
+    concordia_anim::insert_rest_poses(&library, &mut world);
+    let mut schedule = Schedule::new();
+    add_processors(&mut schedule, library);
+    let mut sim = SimLoop::new(TickRate::HZ_60, schedule, &mut world).unwrap();
+    for threads in [1, 8] {
+        let jobs = JobSystem::new(NonZeroUsize::new(threads).unwrap()).unwrap();
+        c.bench_function(&format!("graph_1000_characters_{threads}_threads"), |b| {
+            b.iter(|| {
+                // Keep every one-shot playing: fire it again before it ends.
+                let mut q = world.query::<&mut AnimGraphPlayer>().unwrap();
+                q.for_each(&mut world, |_, p| p.triggers.push("attack".into()));
+                sim.step(&mut world, &jobs, 1);
+            });
+        });
+    }
+}
+
+criterion_group!(benches, sample, tick, graph);
 criterion_main!(benches);

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Whether a transition is used (Godot's advance modes).",
+  "oneOf": [
+    {
+      "const": "Disabled",
+      "description": "Never used, not even by travel."
+    },
+    {
+      "const": "Enabled",
+      "description": "Used only by travel."
+    },
+    {
+      "const": "Auto",
+      "description": "Taken automatically when its condition holds."
+    }
+  ],
+  "title": "AdvanceMode",
+  "x-concordia-type": "AdvanceMode"
+}

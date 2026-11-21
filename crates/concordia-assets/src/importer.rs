@@ -27,6 +27,8 @@ pub enum AssetKind {
     Camera,
     /// Animation clip.
     Clip,
+    /// `AnimGraph` (M2 phase 2.4.3).
+    AnimGraph,
 }
 
 /// One derived artifact.

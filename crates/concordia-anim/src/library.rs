@@ -3,12 +3,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use concordia_assets::{AssetDb, AssetKind, AssetRef, ClipData, SkinData, Skinned};
+use concordia_assets::{AnimGraph, AssetDb, AssetKind, AssetRef, ClipData, SkinData, Skinned};
+use concordia_core::id::EntityId;
 use concordia_reflect::TypeRegistry;
 use concordia_terra::World;
 
 use crate::clip::BoundClip;
 use crate::error::AnimError;
+use crate::graph::BoundGraph;
+use crate::graph_player::AnimGraphPlayer;
 use crate::player::AnimPlayer;
 use crate::skeleton::{Skeleton, bind_mesh};
 
@@ -17,6 +20,7 @@ use crate::skeleton::{Skeleton, bind_mesh};
 pub struct AnimLibrary {
     skeletons: BTreeMap<AssetRef, Arc<Skeleton>>,
     clips: BTreeMap<(AssetRef, AssetRef), BoundClip>,
+    graphs: BTreeMap<(AssetRef, AssetRef), BoundGraph>,
 }
 
 /// What loading skipped, each with its reason (logged; the entities hold their pose).
@@ -52,21 +56,42 @@ impl AnimLibrary {
         self.skeletons.get(skin).cloned()
     }
 
+    /// Adds `graph` bound to the skeleton of `skin`.
+    pub fn insert_graph(&mut self, graph: AssetRef, skin: AssetRef, bound: BoundGraph) {
+        self.graphs.insert((graph, skin), bound);
+    }
+
+    /// `graph` bound to the skeleton of `skin`.
+    pub fn graph(&self, graph: &AssetRef, skin: &AssetRef) -> Option<&BoundGraph> {
+        self.graphs.get(&(graph.clone(), skin.clone()))
+    }
+
     /// `clip` bound to the skeleton of `skin`.
     pub fn clip(&self, clip: &AssetRef, skin: &AssetRef) -> Option<&BoundClip> {
         self.clips.get(&(clip.clone(), skin.clone()))
     }
 
-    /// Loads every skin a `Skinned` entity uses, and for every `AnimPlayer`, all clips of its
-    /// clip's file bound to its skeleton. What fails is reported, never fatal.
+    /// Loads every skin a `Skinned` entity uses; for every `AnimPlayer`, all clips of its clip's
+    /// file; and for every `AnimGraphPlayer`, its graph and the clips it names; all bound to the
+    /// entity's skeleton. What fails is reported, never fatal.
     pub fn load(
         db: &mut AssetDb,
         registry: &TypeRegistry,
         world: &mut World,
     ) -> Result<(Self, LoadReport), AnimError> {
-        let (skins, pairs) = references(world)?;
+        let References {
+            skins,
+            clips: pairs,
+            graphs,
+            both,
+        } = references(world)?;
         let mut library = Self::new();
         let mut report = LoadReport::default();
+        for id in both {
+            report.problems.push(format!(
+                "entity {id} has both AnimPlayer and AnimGraphPlayer; the graph plays"
+            ));
+        }
         for skin in skins {
             match load_skeleton(db, registry, &skin) {
                 Ok(skeleton) => library.insert_skeleton(skin, skeleton),
@@ -79,7 +104,58 @@ impl AnimLibrary {
             };
             library.load_clip_file(db, &clip, &skin, &skeleton, &mut report);
         }
+        for (graph, skin) in graphs {
+            let Some(skeleton) = library.skeletons.get(&skin).cloned() else {
+                continue;
+            };
+            if let Err(e) = library.load_graph(db, &graph, &skin, &skeleton) {
+                report.problems.push(format!("graph {graph}: {e}"));
+            }
+        }
         Ok((library, report))
+    }
+
+    /// Binds `graph` to `skeleton`, with every clip it names (each clip bound once per skin).
+    fn load_graph(
+        &mut self,
+        db: &mut AssetDb,
+        graph: &AssetRef,
+        skin: &AssetRef,
+        skeleton: &Skeleton,
+    ) -> Result<(), AnimError> {
+        let data: AnimGraph = db.load(graph, AssetKind::AnimGraph)?;
+        let mut failed = BTreeMap::new();
+        for clip in data.clips() {
+            if self.clip(clip, skin).is_some() {
+                continue;
+            }
+            let bound = db
+                .load::<ClipData>(clip, AssetKind::Clip)
+                .map_err(AnimError::from)
+                .and_then(|c| BoundClip::bind(&c, skeleton));
+            match bound {
+                Ok(bound) => self.insert_clip(clip.clone(), skin.clone(), bound),
+                Err(e) => {
+                    failed.insert(clip.clone(), e.to_string());
+                }
+            }
+        }
+        let bound = BoundGraph::bind(&data, skeleton, &mut |clip| {
+            if let Some(reason) = failed.get(clip) {
+                return Err(AnimError::ClipHeader {
+                    clip: clip.to_string(),
+                    reason: reason.clone(),
+                });
+            }
+            self.clip(clip, skin)
+                .cloned()
+                .ok_or_else(|| AnimError::ClipHeader {
+                    clip: clip.to_string(),
+                    reason: "not loaded".to_owned(),
+                })
+        })?;
+        self.insert_graph(graph.clone(), skin.clone(), bound);
+        Ok(())
     }
 
     /// Binds every clip of `clip`'s file to `skeleton` (once per skin).
@@ -111,21 +187,44 @@ impl AnimLibrary {
     }
 }
 
-/// Skins of `Skinned` entities, and (clip, skin) of entities that also play a clip, sorted.
-type References = (BTreeSet<AssetRef>, BTreeSet<(AssetRef, AssetRef)>);
+/// What the edit world plays, sorted: skins, (clip, skin) and (graph, skin) pairs, and entities
+/// with both kinds of player.
+struct References {
+    skins: BTreeSet<AssetRef>,
+    clips: BTreeSet<(AssetRef, AssetRef)>,
+    graphs: BTreeSet<(AssetRef, AssetRef)>,
+    both: BTreeSet<EntityId>,
+}
 
 fn references(world: &mut World) -> Result<References, AnimError> {
     let mut skins = BTreeSet::new();
     world.query::<&Skinned>()?.for_each(world, |_, s| {
         skins.insert(s.skin.clone());
     });
-    let mut pairs = BTreeSet::new();
+    let mut clips = BTreeSet::new();
     world
         .query::<(&AnimPlayer, &Skinned)>()?
         .for_each(world, |_, (p, s)| {
-            pairs.insert((p.clip.clone(), s.skin.clone()));
+            clips.insert((p.clip.clone(), s.skin.clone()));
         });
-    Ok((skins, pairs))
+    let mut graphs = BTreeSet::new();
+    world
+        .query::<(&AnimGraphPlayer, &Skinned)>()?
+        .for_each(world, |_, (p, s)| {
+            graphs.insert((p.graph.clone(), s.skin.clone()));
+        });
+    let mut both = BTreeSet::new();
+    world
+        .query::<(&AnimGraphPlayer, &AnimPlayer)>()?
+        .for_each(world, |id, _| {
+            both.insert(id);
+        });
+    Ok(References {
+        skins,
+        clips,
+        graphs,
+        both,
+    })
 }
 
 /// The skeleton of `skin`, from the skin and its model's prefab.

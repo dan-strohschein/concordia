@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4.1 and 2.4.2 (2026-11-21) done; 2.4.3 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4.1, 2.4.2 and 2.4.3 (2026-11-21) done; 2.4.4 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -1000,7 +1000,7 @@ These passed at once:
 - the Godot `.fbx.import` mapping (M5).
 
 ### Phase 2.4 refinement (2026-11-21)
-**Status: author decisions A1 and A2 taken (2026-11-21); 2.4.1 and 2.4.2 done; 2.4.3 next.**
+**Status: author decisions A1 and A2 taken (2026-11-21); 2.4.1, 2.4.2 and 2.4.3 done; 2.4.4 next.**
 
 Refined against the code as built after 2.3d. The old 2.4 text (under *Phases*) is superseded where this section differs.
 
@@ -1253,6 +1253,187 @@ One survived: not resetting to the rest pose before sampling. Every fixture clip
 Both `Cargo.lock`s gain `concordia-anim` under `concordia-render`.
 
 **Not in 2.4.2:** dual-quaternion skinning, morph targets, a GPU palette or compute pre-skin pass (M4, with the visibility buffer), and posed selection boxes in the editor overlay, which still use the bind box.
+
+### Phase 2.4.3 refinement (2026-11-21, against 2.4.2 as built)
+**Status: one author decision (B1, 2026-11-21); my other calls below (say if you disagree). Done (see 2.4.3 As built).**
+
+**What exists (checked in code):** `AnimPlayer` and `anim.sample` (one clip per entity; rest pose, then the clip); `BoundClip::sample`; `Pose::lerp` (lerp, slerp, lerp); `AnimLibrary::load` at play start (skins, and every clip of each player's clip file); `Material` and `read_material` / `write_material` (a flat map of named nodes, canonical RON through `concordia_scene::{read_document, write_document}`, validation naming the node) as the pattern for a node-graph file; `MaterialImporter` registered by `AssetDb::new`. `component.set` / `component.patch` write only the edit world (journaled), and Terra views have no filtered queries.
+
+**Author decision B1 (2026-11-21): play-world writes.** `component.set` and `component.patch` take an optional `world: "play"`. It writes the running play world directly (it must exist, or the call is `NotPlaying`), isn't journaled or undoable, is logged with the actor, and takes effect on the next tick. This is the general way agents tweak a running game, and 2.4.4's `anim.set_param` becomes a convenience over it. ADR-0075 records it (it amends ADR-0032's "the play world cannot be edited through the API"). Replay v0 doesn't record these writes, so a recording that uses them fails its checkpoints. The ADR says so.
+
+**Settled without a question (my calls):**
+- **Where the format lives:** `AnimGraph` and its reader, writer, validation and importer are in `concordia-assets` (`anim_graph.rs`, `anim_graph_importer.rs`, `AssetKind::AnimGraph`), beside `Material` and `ClipData`. Evaluation is in `concordia-anim`, as material evaluation is in `concordia-material`. `AnimGraphImporter` (`animgraph`, version 1, `animgraph.ron`) is registered by `AssetDb::new` like `MaterialImporter`. `AnimGraph` is registered for `schema.get`.
+- **The format** is a flat map of named nodes plus a root, like materials (reflection has no `Box`, and names make errors and agent edits easy):
+  - `parameters: {name: Float(default) | Int(default) | Bool(default) | Trigger}`;
+  - `nodes`:
+    - `Clip(clip: "asset:<id>#clip/<name>", looping)`;
+    - `Blend2(a, b, amount: <float param>, filter: [bone names])`;
+    - `BlendN(inputs: [...], weights: [<float params>])`;
+    - `OneShot(base, shot, request: <trigger>, fade_in, fade_out, curve, filter)`;
+    - `TimeScale(input, scale: <float param>)`;
+    - `Transition(inputs: [(node, reset)], select: <int param>, xfade, curve)`;
+    - `StateMachine(states: {name: node}, start, transitions: [(from, to, switch, advance, condition, xfade, curve, reset, priority)])`.
+  - `root`.
+  - Knobs are always named parameters, as in Godot, so agents and gameplay drive them the same way. Fade curves are `Linear` or `Smooth` (smoothstep), standing in for Godot's unit `Curve` resources. Canonical text comes from `write_document`. Clips are asset references and bind to the player's skeleton by bone name, as players' clips do.
+- **Validation in `AnimGraph::validate`, each error naming the node:**
+  - names are `[A-Za-z0-9_-]+`;
+  - the root and every referenced node, state and parameter exist, and each parameter has the right type;
+  - there are no cycles;
+  - every node is reachable from the root, and each node has one parent (node state is per node, so a node can't be ticked twice);
+  - every state is reachable from `start` through transitions that aren't disabled; there are no self-transitions;
+  - defaults are finite, `Blend2` amounts are in 0..=1, `BlendN` weights are ≥ 0 and there is one per input, fades are ≥ 0, and a transition's `select` default is in range.
+
+  Clips are checked when the library loads (`AnimError::Graph` names the graph and the node). Filter bone names the skeleton lacks are reported, not errors, like unmatched clip channels.
+- **Players:** a new `AnimGraphPlayer { graph, floats, ints, bools, triggers, travel }` beside `AnimPlayer`, which is unchanged. If an entity has both, the graph plays, `AnimPlayer` is left alone, and the library's report says so.
+  - Missing parameter values fall back to the graph's defaults, and unknown names are ignored.
+  - `triggers` (names) and `travel` (state machine node → target state) are requests. `anim.sample` clears both after every evaluation, whether or not they were used, so they never carry over (Godot clears `OneShot`'s `request` the same way).
+  - Gameplay that sets parameters in `PostPhysics` is seen the same tick; `component.patch` with `world: "play"` between ticks is seen on the next tick.
+- **Graph state** is its own component, `AnimGraphState { nodes: [NodeState] }`, one entry per graph node in name order: clip time, one-shot active and elapsed, the transition's or state machine's current and previous input, fade progress, the transition being faded, the travel path, and whether the current state ended last tick.
+  - It is ordinary simulation state, so it is hashed. The player is the input (gameplay writes it), and the state is the output (only `anim.sample` writes it).
+  - It is inserted at play start (and by `anim.pose` for players spawned during play), as rest poses are. A state of the wrong size is reset.
+- **Library:** at play start, for each (`AnimGraphPlayer`, `Skinned`) pair, the graph is loaded and every clip it names is bound to that skeleton (the graph names every clip it can play, as ADR-0074 point 6 foresaw). Failures are reported, and those entities hold their pose. Graph files edited during play apply at the next play (the library is fixed at play start; hot reload re-imports the file, so the next play sees it).
+- **Evaluation** (`BoundGraph::evaluate`, recursive from the root) runs at the tick's dt. Every node writes a full pose: a clip node resets to the rest pose and samples. Each node also returns its playback (position, remaining time, ended this tick).
+  - `Blend2` / `OneShot` / cross-fades blend bone by bone: lerp for translation and scale, shortest-path slerp for rotation. Bones outside a non-empty filter keep the first input.
+  - `BlendN` clamps weights to ≥ 0 and normalizes them by their sum (all zero gives the first input). Translation and scale are weighted sums. Rotation is the normalized weighted sum, with each quaternion flipped into the first input's hemisphere (order-independent beyond that choice, cheap, and the usual N-way blend).
+  - Every input of a blend advances every tick, even at weight 0 (Godot's `sync`), so feet stay in phase. Inactive states and inputs don't advance.
+  - Playback passes through: from `Blend2`'s `b` when the amount is > 0.5, otherwise from `a` (Godot's rule), from `BlendN`'s heaviest input, and from the base, input or current state otherwise.
+- **One-shot (Godot's `AnimationNodeOneShot`):** its trigger fires the shot (restarting it if it is already active). The shot is reset, then advanced with everything else.
+  - Its weight is the curve of min(elapsed / fade_in, remaining / fade_out), so the fade-out ends at the shot's end.
+  - It ends when the shot's playback ends, or when a looping shot first wraps (Godot's break-loop-at-end). Then the output is the base.
+- **Transition node (Godot's `AnimationNodeTransition`):** when the int parameter names another input, the node switches to it. A `reset` input restarts, and the previous one fades out over `xfade`. An out-of-range value is ignored. There is no transition to self.
+- **State machine (Godot's `AnimationNodeStateMachine`):**
+  - Each tick, a travel request is resolved first: a path of transitions, or a teleport (reset, no fade) when the target can't be reached from the current state, as in Godot.
+  - At most one transition is then taken, decided from this tick's parameters and from whether the current state ended last tick. The next travel step is preferred. Otherwise the first `Auto` transition from the current state is taken whose condition holds (a true bool, a fired trigger, or no condition), in (priority, file order).
+  - `Immediate` and `Sync` may switch at any time, and `AtEnd` only when the current state ended last tick. `Enabled` transitions are used only by travel, and `Disabled` ones never.
+  - Taking a transition makes the old state the fading one. The destination is reset (`reset`), seeked to the old state's position (`Sync`), or left where it was. The machine then evaluates the new state at this tick's dt.
+  - A transition taken during a fade interrupts it: the old fade's source is dropped, as in Godot 4.
+  - `travel` takes the fewest transitions. Ties go to the path that comes first in (priority, file order) at each step: a breadth-first search with sorted edges. Godot weights its A* by where the states sit in the editor graph, which our text format doesn't have.
+- **Processors:** `anim.pose` also gives graph players a rest pose and an initial state. `anim.sample` runs two passes in fixed 64-entity chunks. First, graph players are evaluated. Second, clip players are sampled, skipping entities that have a graph (a sorted id set; views have no filtered queries). The library's clip pass is unchanged, and the graph pass reuses `BoundClip::sample`, `advance` and the pose blend.
+- **Performance:** extend `benches/sample.rs` with 1,000 characters through a state machine over a `Blend2` of two clips plus a one-shot, at 1 and 8 threads. The 43 ms pose hash stays a follow-up: replays hash every 60 ticks, and graph state adds only a few numbers per character.
+- **Docs:** ADR-0074 gains a consequence (graphs as it foresaw). ADR-0075 is B1. `docs/design.md` doesn't change.
+
+### Phase 2.4.3 As built (2026-11-21, ADR-0074, ADR-0075)
+**Reconciled with the code as built:** the refinement held. Details it left open:
+- **Int parameters** join float, bool and trigger: a `Transition` node picks its input by index, as Godot's does.
+- **Inside `BoundGraph`:** `bind` validates, indexes nodes in name order and binds clips through a callback. The library passes clips it bound once per skin, so a graph and an `AnimPlayer` share them.
+- **Turn order:** a state machine decides its transition at the start of the tick, from this tick's parameters and whether the current state ended last tick. It then evaluates the new state at this tick's dt, so `AtEnd` switches on the tick after the end. A fade drops its source on the tick it completes, without advancing it.
+- **Hand-edited state:** `evaluate` resets a state of the wrong size, and any node entry with out-of-range indices or non-finite times (agents can now patch the play world), so evaluation never indexes out of range.
+- **Godot features not in 2.4.3 (none was in the plan's list):**
+  - one-shot abort and fade-out requests, autorestart and additive mix;
+  - transition-node auto-advance and transitions to self;
+  - advance expressions and `break_loop_at_end` (a looping state "ends" each time it wraps);
+  - `Curve` resources (`Linear` and `Smooth` stand in for them).
+- **Playback pass-through** (`Blend2` reports its `b` input's playback above 0.5, `BlendN` its heaviest input's) follows Godot. No test covers it yet; it matters only for `AtEnd` over a blend.
+- **The editor overlay's selection box** still uses the bind box (from 2.4.2). Fixing it needs the posed bounds in the overlay's pick path, which isn't trivial, so it is left as is.
+
+**Engine:**
+- `concordia-assets`:
+  - `AnimGraph`, `AnimNode`, `Parameter`, `TransitionInput`, `StateTransition`, `SwitchMode`, `AdvanceMode`, `FadeCurve` and `AnimGraphError` (`anim_graph.rs`);
+  - `read_animgraph` / `write_animgraph`;
+  - `AnimGraphImporter` (`animgraph` v1, registered by `AssetDb::new`) and `AssetKind::AnimGraph`;
+  - `AnimGraph` registered for `schema.get`;
+  - the crate now has a README.
+- `concordia-anim`:
+  - `BoundGraph` (`graph.rs`) and its evaluator (`graph_eval.rs`);
+  - `AnimGraphPlayer`, `AnimGraphState` and `NodeState` (`graph_player.rs`);
+  - `AnimLibrary::{insert_graph, graph}`, with graphs and their clips loaded at play start and entities with both players reported;
+  - `insert_rest_poses`, `anim.pose` and `anim.sample` extended (graph pass, then clip pass);
+  - `Pose::blend_toward` sharing `blend_bone` with `Pose::lerp`;
+  - `AnimError::{Graph, GraphFile}`.
+- `concordia-api`: `component.set` / `component.patch` with `world: "play"` (B1, ADR-0075). `WorldSel`'s description is now "Which world: the scene being edited or the running simulation."
+- Docs:
+  - ADR-0075 (new);
+  - ADR-0074 (a 2.4.3 consequence) and ADR-0032 (an update);
+  - `docs/guides/agents-engine-api.md` (graphs, the player, play writes and the method rows);
+  - the AGENTS.md of `concordia-anim`, `concordia-assets` and `concordia-api`;
+  - the READMEs of `concordia-anim` and `concordia-assets`;
+  - `plans/README.md` (the crate table, the index and the ADR registry; `.animgraph.ron` was already in the conventions).
+
+**Tests:**
+- `concordia-anim/tests/graph.rs` (16, on a hand-built two-bone skeleton with constant and ramp clips at dt = 1/8 s, so every expected value is hand-computed):
+  - `blend2_at_half_weight_is_normalized_average_pose`: x = 2 between 1 and 3; slerp at a quarter is 22.5° (nlerp would give 21.6°); amounts are clamped.
+  - `blend_n_normalizes_weights_and_aligns_hemispheres`: weights 1:3 give x = 2.5; zero or negative weights give the first input; the rotation is (0, 0, 0.562 095, 0.827 070), also for a negated input quaternion.
+  - `one_shot_overlays_then_fades_out_on_completion`: x = 3, 5, 5, 5, 4, 3, 2, then 1; restart on refire; smoothstep values 4.375 and 1.625; an arm-only filter.
+  - `time_scale_node_scales_playback_rate`: scales 2, 0.5, 0 and −1.
+  - `transition_node_switches_input_with_xfade_and_reset`: half-way blends, reset and non-reset inputs, out-of-range picks ignored.
+  - `state_machine_travel_finds_shortest_transition_path`: a disabled shortcut is skipped, priority breaks a tie, file order breaks the next, unreachable targets teleport, unknown targets are ignored.
+  - `transition_xfade_blends_over_configured_time`: 1.5, 2, 2.5, 3; smoothstep back; an interrupted fade drops its source.
+  - `at_end_switch_mode_waits_for_clip_end`: clamped, looping and immediate.
+  - `sync_switch_mode_seeks_to_the_current_position`: 100.5 against reset's 100.125; a state without reset continues where it was.
+  - `transition_allowed_is_not_transition_taken`.
+  - `triggers_and_travel_requests_clear_after_every_evaluation`.
+  - `invalid_graph_errors_name_the_node`: an unknown clip, an unknown state, a cycle.
+  - `filter_bones_the_skeleton_lacks_are_reported`.
+  - `a_state_of_the_wrong_size_is_reset` and `a_corrupt_state_is_reset_not_trusted`.
+- `concordia-anim/tests/graph_play.rs` (6, the FBX rig with clips from `anim_stacks.fbx`):
+  - `library_loads_graphs_and_the_clips_they_name`: a missing clip is reported naming the node; an entity with both players is reported.
+  - `graph_player_shares_the_clip_players_pose_path`: a one-clip graph poses exactly as an `AnimPlayer`; the state is hashed.
+  - `graph_parameters_set_in_post_physics_take_effect_the_same_tick`.
+  - `graph_players_spawned_during_play_get_a_state_then_animate`.
+  - `graph_evaluation_is_deterministic_across_thread_counts`: 100 characters driven by gameplay in `PostPhysics` (bools, triggers, travel); hashes at ticks 1, 60 and 300 are equal for 1, 3 and 8 threads, and every character is posed and animates.
+  - `an_entity_with_both_players_plays_its_graph`.
+- `concordia-assets/tests/anim_graph.rs` (7):
+  - `animgraph_roundtrips_canonical` (insta `character_canonical`);
+  - `omitted_fields_take_their_defaults` (Godot's transition defaults);
+  - `graph_validation_names_the_node`, `state_machine_validation_names_the_machine` and `bad_weights_and_values_are_errors`, which cover every validation rule;
+  - `animgraph_imports_through_the_asset_db` (sidecar id, cache, an invalid file's error names the node);
+  - `animgraph_is_registered_for_schema_get`.
+- `concordia-api/tests/sim.rs`: `component_set_and_patch_write_the_play_world_unjournaled`. It covers `NotPlaying`, nothing moving until a tick, the edit world untouched, `previous`, a refused bad value, no journal entries, and the log records with actor, method and component.
+- `concordia-app/tests/anim.rs`:
+  - `anim_graph_plays_an_imported_character_through_sim_step`: an imported `.animgraph.ron` on `skinned.fbx` with clips from a second file; the walk state's pose equals a twin `AnimPlayer`'s.
+  - `graph_parameters_set_by_component_patch_take_effect_next_tick`: travel and a bool patched with `world: "play"` change nothing until the next `sim.step` tick, then switch the state; the request is consumed, and the edit world keeps its value.
+- Bench: `graph_1000_characters_{1,8}_threads` in `benches/sample.rs` (`BASELINE.md`): 9.30 ms and 2.08 ms for three blended clips per character (a load average of about 17, so upper bounds). The 43 ms pose hash stays a follow-up.
+
+**Red run:**
+- `graph.rs`: all 14 first tests failed for the right reason. The stub wrote no pose, accepted every graph and never cleared requests.
+- `anim_graph.rs`: 6 of 7 failed on the reader's "not implemented yet".
+- `graph_play.rs` and the app tests first failed on the reader stub (the wrong reason), so I ran them again once the reader worked. Then they failed for lack of loaded graphs, poses and states.
+- The API test failed with `InvalidParams` (`world` was an unknown field).
+- **Passed at once:**
+  - `animgraph_is_registered_for_schema_get`: I registered the type along with the stub.
+  - `graph_evaluation_is_deterministic_across_thread_counts`, vacuously: gameplay changes the player components every tick, so the hashes differed with nothing animating. It now also requires every character to be posed and 90 or more poses to change, and it failed on the stub.
+  - `an_entity_with_both_players_plays_its_graph` and `a_corrupt_state_is_reset_not_trusted` were written after the implementation, to cover code no test reached. Both are mutation-checked below.
+
+**Changed deliberately (my test mistakes):**
+- The first `blend2` test was built awkwardly from a bigger graph; it is now two direct graphs.
+- The `BlendN` quaternion constants were off in the sixth digit.
+- The reset test left `go` set, so it would have faded at once.
+- The test clip lookup returned a graph error instead of a clip error.
+- The broken-file edit didn't match the canonical text.
+- The corrupt-state test pointed at the wrong node index (10, not 8), so its second half tested nothing; caught while checking it.
+
+**Mutation checks:** 29 mutations, each run against its tests, with restored files given a fresh mtime. All were caught. One first failed to build (an unused binding) and was rewritten as a zero fade-in.
+- **Blending:** weights not normalized, no hemisphere flip, nlerp instead of slerp.
+- **Fades:** a linear smooth curve, the fade-out ignored, the fade-in ignored, the bone filter ignored, a finished fade still advancing its source.
+- **Switch modes:** at-end switching at once, sync resetting instead, the reset flag ignored.
+- **Travel:** priority ignored, depth-first search, disabled transitions used, no teleport.
+- **Advance:** enabled transitions taken as auto, conditions ignored.
+- **Timing:** transitions decided after evaluating (one tick late), parameter defaults ignored.
+- **Requests:** triggers not cleared, travel not cleared.
+- **Robustness:** the state not sanitized.
+- **Processors:** the clip pass not skipping graph players, spawned graph players getting no state.
+- **Library:** graph clips not loaded, entities with both players not reported.
+- **Validation:** reachability skipped, shared nodes allowed.
+- **API:** play writes not logged.
+
+**Goldens:** none new or changed. **Snapshots** (each shown to and approved by the author before blessing, 2026-11-21):
+- new: `concordia-assets` `anim_graph__character_canonical`;
+- changed: `concordia-api` `method_index_snapshot` (the set and patch descriptions);
+- changed by the `WorldSel` description only: `concordia-physics` `physics_raycast_validates_its_ray`, `concordia-render` `capture_screenshot_schema_is_reflect_generated` and the M1 gate's `capture_screenshot_input_schema`.
+
+**Editor schemas:** `AnimGraph`, `AnimNode`, `Parameter`, `StateTransition`, `TransitionInput`, `SwitchMode`, `AdvanceMode` and `FadeCurve` are added. `world` is added to the set and patch params, and the `WorldSel` description changes everywhere. All committed.
+
+**Studio:** no change; the role tool budgets still pass with the longer descriptions.
+
+**Checklist:** all of these pass:
+- `just lint` and Tauri clippy;
+- `CONCORDIA_REQUIRE_GPU=1 just test` (1,339 tests and the doc tests);
+- `just gate-tests M1` (4) and `M3S` (13);
+- `just deny` and the editor's;
+- `just editor-schemas` (changes committed);
+- `just editor-test` (118 unit, 22 end-to-end).
+
+**Not in 2.4.3:** events, attachments, tweens and `anim.*` tools (2.4.4); the Godot features listed above; recording play-world writes in replays (ADR-0075).
 
 ### Effort (re-estimated)
 | Phase | Estimate |

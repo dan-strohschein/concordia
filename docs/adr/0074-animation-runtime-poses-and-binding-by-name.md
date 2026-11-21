@@ -55,3 +55,9 @@ The author decided the first and the last (M2 plan, decisions A1 and A2, 2026-11
   - The palette is `inverse(bindMesh) · jointModel · inverseBind`, built on the CPU from the pose interpolated between ticks.
   - Vertices are skinned in the forward and shadow vertex shaders.
   - Rendering never writes the world. See the M2 plan's 2.4.2 As built.
+- **2.4.3 (2026-11-21):** graphs follow point 6, as this ADR foresaw:
+  - An `.animgraph.ron` (`AnimGraph`, in `concordia-assets`) names every clip it can play. At play start the library loads each `AnimGraphPlayer`'s graph and those clips, bound to the entity's skeleton.
+  - `anim.sample` evaluates graph players before clip players, sharing the sampler and pose blend. An entity with both players plays its graph.
+  - The graph's playback is a hashed `AnimGraphState` component beside the player.
+  - Parameters set by gameplay in `PostPhysics` take effect the same tick (point 5). An agent's `component.patch` with `world: "play"` (ADR-0075) takes effect on the next tick.
+  - See the M2 plan's 2.4.3 As built.

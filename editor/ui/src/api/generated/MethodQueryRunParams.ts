@@ -5,7 +5,7 @@
  */
 export type CmpOp = "eq" | "ne" | "lt" | "le" | "gt" | "ge" | "contains";
 /**
- * Which world to read.
+ * Which world: the scene being edited or the running simulation.
  */
 export type WorldSel = "edit" | "play";
 
