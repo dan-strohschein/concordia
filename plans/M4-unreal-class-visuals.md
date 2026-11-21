@@ -329,6 +329,7 @@ There are two parallel tracks. **Track R (rendering)** is 4.1–4.8; 4.1 comes f
 
 ### Phase 4.10: Graph compiler, runtime, hot reload and MCP authoring
 - **Objective:** Compile checked graphs to fast, sandboxed and deterministic code, and let agents author them entirely through MCP as text.
+- **Note (2026-11-20, ADR-0016):** `graph.apply` needs undoable document edits in `concordia-command`. M12 12.8 needs the same operation for rig, clip and pose-library files; whichever phase lands first adds it, records it in its ADR, and the other reuses it.
 - **Compiler choice: WASM components (via an in-process emitter), with an IR interpreter as oracle and debugger**
   - *Codegen to Rust* was rejected as the default. It needs a Rust toolchain on the author's machine and a rebuild per edit (seconds to minutes), it is not sandboxed (a graph from a mod or an agent could do anything), and it cannot hot-reload in a shipped game.
   - *A register VM* was rejected as the shipping path. It is a second runtime to secure and optimize, and it would be about 5–20× slower than Cranelift-compiled WASM for math-heavy graphs.
@@ -360,6 +361,7 @@ There are two parallel tracks. **Track R (rendering)** is 4.1–4.8; 4.1 comes f
 ---
 
 ### Phase 4.11: Editor graph panel and Studio skills
+- **Note (2026-11-20, ADR-0016):** M12 recommends (its open question 1) that this panel later gain a view of `.rig.ron` rigs, edited through `rig.apply`, after M12's gate. Rigs don't become a `.graph.ron` kind.
 - **Objective:** A visual editor over the same text, and agent skills, so humans and agents work on the same graph files side by side.
 - **Deliverables**
   - `editor/ui/src/panels/graph/`: React panel using React Flow (`@xyflow/react`, MIT). Node palette from `graph.list_nodes`, inline diagnostics from `graph.check`, edits through `graph.apply` (so every human edit is a transaction with `human:local`), live trace overlay from `graph.trace`, and a "view as text" split showing the canonical `.graph.ron`.

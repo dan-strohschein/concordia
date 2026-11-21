@@ -203,7 +203,7 @@ Bring Chaos-class physics to Concordia **on top of Jolt**, not instead of it:
   - **Two meshes:** a simulation mesh (coarse, welded) and the render mesh, which is embedded in it by barycentric mapping with a normal offset.
   - **Per-vertex maps:** max distance (0 = fully skinned), backstop distance and radius, stiffness scale, mass and damping.
   - **Long-range attachment tethers,** computed from the skinned vertices (geodesic or Euclidean).
-  - **Binding** to the M2 skeleton by skin weights.
+  - **Binding** to the M2 skeleton by skin weights. *Note (2026-11-20, ADR-0016):* with M12's rigs, garments and body proxies follow the final presented pose, after both Simulation and Presentation rigs (M12 open question 16).
   - **`.garment.ron`,** in canonical text.
   - **`cloth.create {mesh, ...}`** for agents.
 - **Tests first:**
