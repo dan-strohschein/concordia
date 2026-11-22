@@ -1992,7 +1992,7 @@ The second M3S snapshot only appeared once the first was accepted, because the g
 - `just editor-test` (118 unit, 22 end-to-end).
 
 ### Phase 2.5b refinement (2026-11-22, against the code after 2.5a)
-**Status: author decisions N2 and N3 taken (2026-11-22); my other calls below (say if you disagree). 2.5b is split: 2.5b.1 agents (`m2/2.5b.1-agents`, done; see its As built), then 2.5b.2 click-to-move (next).**
+**Status: author decisions N2 and N3 taken (2026-11-22); my other calls below (say if you disagree). 2.5b is split: 2.5b.1 agents (`m2/2.5b.1-agents`, done; see its As built), then 2.5b.2 click-to-move (refined and split into 2.5b.2a and 2.5b.2b; see the Phase 2.5b.2 refinement).**
 
 Refined against `main` after #58: the 2.5 refinement (its 2.5b row and carry-over items), the 2.5a As built, ADR-0077, ADR-0076 and the old Phase 2.5 test list. **This section wins wherever they disagree.**
 
@@ -2140,6 +2140,131 @@ Details the refinement left open:
 - `just gate-tests M1` (4) and `M3S` (13);
 - `just deny` and the editor's, both `Cargo.lock`s, fresh advisory DB (the editor's lock is unchanged; its deny prints the existing "no crate matched" warning);
 - `just editor-schemas` (no change);
+- `just editor-test` (118 unit, 22 end-to-end).
+
+### Phase 2.5b.2 refinement (2026-11-22, against the code after 2.5b.1)
+**Status: author decision N4 taken (2026-11-22); my other calls below (say if you disagree). 2.5b.2 is split: 2.5b.2a click-to-move (`m2/2.5b.2a-click-to-move`, done; see its As built), then 2.5b.2b windowed play (next).**
+
+Refined against `main` after #59. **This section wins over the 2.5b refinement's 2.5b.2 row.**
+
+**What exists (checked in code):**
+- Input: `InputEvent` (`PointerMove` in logical pixels, buttons, keys, motion, scroll), `Binding::PointerPosition` (an `Axis2d`), `InputSampler::push` / `sample`, and `input.inject`. `ActionStates` is a play resource; replays (ADR-0072, `.replay.ron` version 0) record each tick's changed `ActionState`s, so a new value kind is recorded with no format change.
+- **Nothing plays the game in a window.** `concordia run` opens the window and draws the *edit* world from the editor camera (`viewport.navigate` → `viewport.present`). Window input never reaches a play world: M1 1.1 deferred that wiring "to rendering (1.5)", and no plan picked it up. M2's gate (2.10) is headless, through `input.inject`.
+- Cameras are `concordia-render`'s `Camera` (`Projection::matrix(aspect)`) on an entity; `capture.screenshot` picks a camera entity (default: the highest priority) or a `View`. `pointer_ray(cursor, viewport, inv_view_proj)` is in `concordia-input`.
+- Physics raycasts exist only as `physics.raycast`. The runtime sits in the play state behind a mutex, so processors can't reach it.
+- No Studio role has `input_inject`.
+
+**Author decision (2026-11-22):**
+- **N4. Windowed play is built too**, as its own sub-phase. N2 holds: the pointer becomes a world ray where the screen is known, and the simulation only ever sees rays. Two places know the screen: `viewport.pointer_ray` for agents and tests (2.5b.2a), and `concordia run`, which plays the scene in its window and turns cursor moves into rays from the camera it draws with (2.5b.2b). Both use one function in `concordia-render`.
+
+**My calls (say if you disagree):**
+- **The ray kind:** `ActionKind::Ray` and `ActionValue::Ray { origin, direction }` (direction normalized). `InputEvent::PointerRay { origin, direction }` must be finite with a non-zero direction (`input.inject` refuses it otherwise). `Binding::PointerRay` (only on a `Ray` action) holds the latest ray. A ray is "active" once one has arrived, so `pressed` is true from then on. Replays record ray changes like any action. `.replay.ron` stays version 0, and older recordings read unchanged.
+- **The lens:** `concordia_render::pointer_ray_from_camera(world, camera, cursor, size)` uses the camera's world transform and `Projection::matrix(width / height)`, through `concordia_input::pointer_ray`. `viewport.pointer_ray {x, y, width, height, camera?, view?, world?}` → `{origin, direction}` takes the same camera choice as `capture.screenshot`. MCP: `viewport_pointer_ray`.
+- **Physics queries for processors:** physics inserts a `PhysicsQueries` play resource (a handle to the same runtime; not hashed) with `raycast(ray, max, layers)`. `physics.raycast` and processors share one code path. A processor in `PrePhysics` sees last tick's bodies, which is deterministic.
+- **`ClickToMove`** (on an agent; gameplay the engine ships, so it writes `NavAgent.target`): `click` (a `Button` action name), `pointer` (a `Ray` action name), `hold` (false: retarget on `just_pressed`; true: every tick while pressed, which the 2.5b.1 replan threshold keeps cheap), `layers` (empty: all) and `max_distance` (1,000 m).
+  - **`nav.click`** (in `PrePhysics`, before `nav.plan`) reads `ActionStates`, `PhysicsQueries` and `NavMeshes`. It takes the ray, the nearest physics hit, then that point snapped onto the agent's navmesh (`nearest_point`, 2 m), and sets the target the same tick.
+  - **A click on nothing** (no hit, or a hit with no navmesh near) changes nothing and raises nothing. UI feedback for it waits for 2.7, which also lets the HUD take a click first (`pointer_over_ui_consumes_click_before_world`).
+  - Action names that are missing or of the wrong kind warn once at the first click check and the component is ignored.
+- **ADR-0078 (pointer rays as input; click-to-move)** records N2, N4, the ray kind and its replay recording, the lens, `PhysicsQueries` and `ClickToMove`. ADR-0072 gets a one-line note that ray values are recorded.
+- **Studio:** QA gains `input_inject` and `viewport_pointer_ray`, so a playtest can click like a player. Its prompt gets a click-to-move recipe (project the point, convert, inject the ray and the button, step). `input_inject`'s schema grows (the new event), so every role's numbers are reported.
+- **Editor schemas** change (`InputEvent`, `ActionValue`, the new method) and are regenerated.
+
+**Sub-phases:**
+| Sub-phase | Content |
+|---|---|
+| **2.5b.2a Click-to-move** (`m2/2.5b.2a-click-to-move`) | The ray kind, event and binding; injection and replay of rays; the lens and `viewport.pointer_ray`; `PhysicsQueries`; `ClickToMove` and `nav.click`; ADR-0078; QA's tools |
+| **2.5b.2b Windowed play** | `concordia run` plays the main scene: `sim.play` in real time, window input sampled into the play world (cursor moves also sent as rays from the drawing camera), the play world drawn from its highest-priority camera, `--edit` keeping today's editor view; refined again at its start |
+
+**2.5b.2a tests (first list):**
+- `concordia-input`: `pointer_ray_event_sets_a_ray_action`, `ray_bindings_fit_only_ray_actions`, `inject_rejects_bad_rays`.
+- `concordia-replay`: `replays_record_and_play_back_pointer_rays`.
+- `concordia-physics`: `processors_raycast_through_physics_queries` (the same hit as `physics.raycast`).
+- `concordia-render`: `pointer_ray_from_camera_matches_hand_computed_rays` (perspective and orthographic, the image centre and a corner), and `viewport_pointer_ray_over_api` (camera choice and errors).
+- `concordia-nav`, `tests/click.rs`:
+  - `click_sets_the_target_to_the_snapped_hit` (exact);
+  - `click_on_a_wall_snaps_to_the_nearest_walkable_point`;
+  - `click_on_nothing_changes_nothing`;
+  - `hold_retargets_while_pressed`;
+  - `click_actions_of_the_wrong_kind_warn_once`.
+- `concordia-app`: `player_click_to_move_reaches_marker` (a project with `[input]`, `[render]`, `[physics]` and `[nav]`: a marker is projected to a pixel, converted with `viewport.pointer_ray`, injected as a ray and a click, and the hero walks there; equal hashes at 1 and 8 threads).
+- `concordia-studio`: `qa_clicks_like_a_player_with_input_inject_and_pointer_rays`.
+
+### Phase 2.5b.2a As built (2026-11-22, ADR-0078)
+**Reconciled with the code as built:** the refinement held, with one addition:
+- **Every project starts with an input map.** Giving QA `input_inject` exposed that Studio refuses a role naming a tool its project lacks, and `input_inject` exists only with an `[input] map`. `concordia new` never wrote one. Following the `[nav]` precedent:
+  - `concordia new` now writes `input/default.input.ron` (`InputMap::starter`: `move` on the left mouse button and `pointer_ray` on the pointer ray, which are `ClickToMove`'s defaults) and `[input] map`.
+  - `concordia studio init` adds both when missing, inside an existing `[input]` table if there is one, and keeps a project's own map.
+  - Knock-ons: `cli_replay` now repoints the map instead of appending a second `[input]`. The Studio projects in `role_scope`, `shared_engine` and the role-budget test gain the starter map. Studio's test catalogue gains `input_inject` and `viewport_pointer_ray`, so `concordia-record-replay`'s M3 note no longer uses the "Not available yet" marker.
+
+Details the refinement left open:
+- **Physics queries find nothing on tick 0.** They see bodies as of the last step, and syncing bodies at play start would change every existing play hash, so clicks count from tick 1.
+- **The lens starts rays on the near plane**, through `concordia_input::pointer_ray`. `scene_camera` and `RenderWorld::camera` share `choose_camera` (the highest priority, ties to the lowest id). `viewport.pointer_ray` takes fractional pixels in 0..=width and needs no GPU.
+- **`physics.raycast` keeps its own lock**, so a poisoned runtime is still an error rather than a silent miss. It calls the same `PhysicsRuntime::raycast` as `PhysicsQueries`.
+- **Ordering:** `nav.click` runs after `input.sample` by registration order (input's module comes first), and before `nav.plan` by constraint.
+
+**Engine:**
+- `concordia-input`: `ActionKind::Ray`, `ActionValue::Ray`, `InputEvent::PointerRay`, `Binding::PointerRay`, ray checks and normalizing, and `InputMap::starter`.
+- `concordia-render`: `camera_ray`, `scene_camera`, and `viewport.pointer_ray` (`ViewportPointerRay{,Params,Result}`).
+- `concordia-physics`: `PhysicsQueries`.
+- `concordia-nav`: `ClickToMove`, `nav.click` (`add_click_processor`, `CLICK`), and a dependency on `concordia-input`.
+- `concordia-cli`: `concordia new` and `studio init` write the starter map.
+- Studio: QA gains `input_inject` and `viewport_pointer_ray`, and a "play like a player" recipe.
+- Docs:
+  - ADR-0078, and a note in ADR-0072;
+  - the AGENTS.md of `concordia-input`, `-render`, `-physics`, `-nav`, `-cli` and `-studio`;
+  - the READMEs of `concordia-input` and `-nav`;
+  - `docs/guides/agents-engine-api.md` and `plans/README.md`.
+
+**Tests (15 new, 3 extended):**
+- `concordia-input/tests/ray.rs` (3): `pointer_ray_event_sets_a_ray_action`, `ray_bindings_fit_only_ray_actions`, `inject_rejects_bad_rays`.
+- `concordia-replay`: `replays_record_and_play_back_pointer_rays` (four recorded changes: the three new rays, plus the tick where `just_pressed` falls; replayed to the same hash).
+- `concordia-physics`: `processors_raycast_through_physics_queries` (nothing on tick 0, then the ground 9.5 m down, the same hit as `physics.raycast`).
+- `concordia-render/tests/pointer.rs` (2):
+  - `pointer_ray_from_camera_matches_hand_computed_rays` (perspective: the centre and the corner (−0.685994, 0.514496, −0.514496); orthographic: the corner (−6.666667, 10, −5));
+  - `viewport_pointer_ray_over_api` (the default and a named camera, a view, and errors at `/x`, `/y`, `/view`).
+- `concordia-nav/tests/click.rs` (5):
+  - `click_sets_the_target_to_the_snapped_hit` ((3, 0.2, −4), planned the same tick);
+  - `click_on_a_wall_snaps_to_the_nearest_walkable_point` ((3.25, 0.2, 0) with exact outlines);
+  - `click_on_nothing_changes_nothing`;
+  - `hold_retargets_while_pressed`;
+  - `click_actions_of_the_wrong_kind_warn_once`.
+- `concordia-app`: `player_click_to_move_reaches_marker` (the marker's pixel comes back as the marker; arrives; equal hashes at 1 and 8 threads).
+- `concordia-studio`: `qa_clicks_like_a_player_with_input_inject_and_pointer_rays`.
+- `concordia-cli`: `studio_init_adds_an_input_map_when_missing_for_qa` (appended, inserted into an existing table, or a project's own map kept).
+- Extended: `new_project_enables_modules_and_studio` (the starter map, matching `ClickToMove`'s defaults), `new_minimal_has_no_modules` (no `[input]`), and the role-budget project.
+
+**Red run:** against stubs (the new types with no behavior, a `camera_ray` returning an error, an unregistered method, a `PhysicsQueries` that never hits, no `nav.click`, an empty starter map), every test above failed for the right reason. The exceptions:
+- **Test mistakes I fixed deliberately:**
+  - The replay count is four, not three (the tick where `just_pressed` falls is a change).
+  - The "no camera" message says "Camera".
+  - The wall test first used the default volume. Its 1.3-cell outline error cut the edge diagonally (2.5a's rule), so the test now uses `edge_max_error` 0.5 and a wall off cell boundaries.
+- **Passed immediately:**
+  - `click_on_nothing_changes_nothing` passed vacuously against the stub (the target stayed null). It became meaningful once clicks worked, and "a miss clears the target" catches it.
+  - The replay and app chain tests were written after the code. They were shown red by "rays ignored by the sampler" and "pixel x and y swapped".
+- **A bug the tests caught in my own code:** `studio init` first dropped a map inserted into an existing `[input]` table, because the file was written only when sections were appended. The extended test covers it.
+
+**Mutation checks:** 15 mutations, each run against its tests with the restored file given a fresh mtime. All 15 were caught:
+- **Input:** rays ignored by the sampler, directions not normalized, bad action rays accepted, the ray binding fitting any kind.
+- **Physics:** no `PhysicsQueries` resource.
+- **The lens:** the aspect ignored, the lowest-priority camera chosen, pixel x and y swapped.
+- **Clicks:** firing while held without `hold`, hits not snapped, a miss clearing the target, `hold` ignored, warnings on every tick.
+- **The starter map:** `pointer_ray` missing from it, and the map not added to an existing `[input]` table.
+
+**Studio and budgets** (served definitions, 4 chars a token):
+- QA: 22 → 24 tools, ≈18.5k → ≈21.5k (18,494 → 21,519).
+- Unchanged, since no other role has `input_inject`: level designer 37 ≈23.1k (23,078), tech artist 23 ≈20.1k (20,106), animator 22 ≈16.8k (16,824), gameplay programmer 17 ≈12.9k (12,946), director 13 ≈12.5k (12,453), writer 11 ≈9.6k (9,576).
+- All are under 50k.
+
+**Not in 2.5b.2a:** windowed play (2.5b.2b); UI consuming clicks first and miss feedback (2.7).
+
+**Goldens and snapshots:** no golden is new or changed. Three snapshots changed, all reviewed and accepted by the author: `input.inject`'s schema (`PointerRay`, `ActionValue::Ray`), QA's agent file, and the M3S agents-and-skills list. They were collected with `INSTA_FORCE_PASS`, so no gate could hide a second mismatch. **Editor schemas:** `MethodInputInjectParams` changes, and `MethodViewportPointerRay{Params,Result}` are new; committed.
+
+**Checklist:** all of these pass:
+- `just lint` and Tauri clippy;
+- `CONCORDIA_REQUIRE_GPU=1` full suite with `--no-fail-fast` (1,471 tests: 1,471 pass, 8 skipped; 14 doc tests);
+- `just gate-tests M1` (4) and `M3S` (13);
+- `just deny` and the editor's, both `Cargo.lock`s, fresh advisory DB (the editor's lock gains `concordia-input` under `concordia-render` and `concordia-nav`; its deny prints the existing "no crate matched" warning);
+- `just editor-schemas` (committed);
 - `just editor-test` (118 unit, 22 end-to-end).
 
 ### Effort (re-estimated)

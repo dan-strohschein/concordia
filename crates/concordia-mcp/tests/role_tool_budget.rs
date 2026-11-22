@@ -26,13 +26,15 @@ const ENABLED: [&str; 7] = [
 ];
 
 /// Every module a Studio project can enable, so every role's tools are served.
-const MODULES: &str =
-    "[physics]\n\n[nav]\n\n[assets]\n\n[anim]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n";
+const MODULES: &str = "[input]\nmap = \"input/default.input.ron\"\n\n[physics]\n\n[nav]\n\n[assets]\n\n[anim]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n";
 
 /// The served tool definitions of a project with the default roster, by name.
 async fn served_tools(dir: &tempfile::TempDir) -> BTreeMap<String, Value> {
     concordia_studio::init(dir.path(), Path::new("studio")).unwrap();
     std::fs::write(dir.path().join("concordia.toml"), MODULES).unwrap();
+    std::fs::create_dir_all(dir.path().join("input")).unwrap();
+    let starter = concordia_input::InputMap::starter().to_ron().unwrap();
+    std::fs::write(dir.path().join("input/default.input.ron"), starter).unwrap();
     let mut opts = options(dir);
     opts.modules = concordia_app::Project::load(dir.path())
         .unwrap()

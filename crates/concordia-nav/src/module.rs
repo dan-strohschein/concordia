@@ -126,6 +126,7 @@ impl EngineModule for NavModule {
         insert_agent_states(world);
         let mut setup = PlaySetup::default();
         add_agent_processors(&mut setup.schedule, self.agents);
+        crate::click::add_click_processor(&mut setup.schedule);
         Ok(setup)
     }
 

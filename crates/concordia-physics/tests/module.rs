@@ -16,12 +16,18 @@ struct Rig {
 
 impl Rig {
     fn new() -> Self {
+        Self::with(Vec::new())
+    }
+
+    /// The physics module and `extra` modules.
+    fn with(extra: Vec<Arc<dyn concordia_api::EngineModule>>) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let mut config = EngineConfig::new(dir.path());
         config.deterministic_ids = Some(3);
         config.threads = NonZeroUsize::MIN;
         config.journal.sync = false;
         config.modules = vec![Arc::new(PhysicsModule::new(PhysicsSettings::default()))];
+        config.modules.extend(extra);
         let mut engine = Engine::new(config).unwrap();
         let session = engine.open_session();
         let mut rig = Self {
@@ -161,5 +167,68 @@ fn collider_edits_apply_to_the_next_play_session_and_undo_restores_them() {
     assert!(
         (rig.y(&id, "play") - 0.5).abs() < 0.05,
         "undo restored the cube"
+    );
+}
+
+type Hits = Arc<std::sync::Mutex<Vec<(u64, Option<concordia_physics::RayHit>)>>>;
+
+/// A test module whose processor casts a ray straight down from (0, 10, 0) every tick.
+#[derive(Debug)]
+struct Prober(Hits);
+
+impl concordia_api::EngineModule for Prober {
+    fn name(&self) -> &'static str {
+        "test-prober"
+    }
+
+    fn start_play(
+        &self,
+        _: &mut concordia_terra::World,
+    ) -> Result<concordia_api::PlaySetup, concordia_api::ApiError> {
+        use concordia_core::math::{Ray, Vec3};
+        use concordia_physics::{LayerMask, PhysicsQueries};
+        use concordia_terra::{Phase, SystemCtx, View, processor};
+        let hits = self.0.clone();
+        let mut setup = concordia_api::PlaySetup::default();
+        setup.schedule.add_processor(
+            processor("test.probe", Phase::PrePhysics)
+                .reads_resource::<PhysicsQueries>()
+                .run(move |view: &mut View<'_>, ctx: &SystemCtx<'_>| {
+                    let ray = Ray::new(Vec3::new(0.0, 10.0, 0.0), Vec3::NEG_Y).unwrap();
+                    let hit = view
+                        .resource::<PhysicsQueries>()
+                        .ok()
+                        .and_then(|q| q.raycast(&ray, 100.0, LayerMask::ALL));
+                    hits.lock().unwrap().push((ctx.tick.0, hit));
+                }),
+        );
+        Ok(setup)
+    }
+}
+
+#[test]
+fn processors_raycast_through_physics_queries() {
+    // Queries see the bodies as of the last physics step: nothing on tick 0, then the ground's
+    // top (y = 0.5 for a box of half 0.5 at y = 0) 9.5 m below the ray's start.
+    let hits: Hits = Arc::default();
+    let mut rig = Rig::with(vec![Arc::new(Prober(hits.clone()))]);
+    let ground_id = rig.spawn(0.0, "Static", ground());
+    rig.ok("sim.step", json!({"ticks": 2}));
+    let got = hits.lock().unwrap().clone();
+    assert_eq!(got.len(), 2, "{got:?}");
+    assert_eq!(got[0], (0, None), "nothing is stepped before tick 0");
+    let (tick, hit) = got[1];
+    assert_eq!(tick, 1);
+    let hit = hit.expect("the ground");
+    assert_eq!(hit.entity.to_string(), ground_id);
+    assert!((hit.distance - 9.5).abs() < 1e-4, "{hit:?}");
+    let api = rig.ok(
+        "physics.raycast",
+        json!({"origin": [0.0, 10.0, 0.0], "direction": [0.0, -1.0, 0.0], "max_distance": 100.0, "world": "play"}),
+    );
+    assert_eq!(api["hit"]["entity"], ground_id.as_str());
+    assert!(
+        (api["hit"]["distance"].as_f64().unwrap() - f64::from(hit.distance)).abs() < 1e-6,
+        "the same hit as physics.raycast: {api}"
     );
 }

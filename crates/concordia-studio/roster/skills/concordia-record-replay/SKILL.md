@@ -6,7 +6,7 @@ user-invocable: false
 ---
 # Recording and replaying
 
-> **Not available yet:** `ab` runs and divergence bisection to the entity and field come in M3 phase 3.1; `mcp__concordia__input_inject` exists only in projects with an `[input] map`.
+> `ab` runs and divergence bisection to the entity and field come in M3 phase 3.1. `mcp__concordia__input_inject` exists only in projects with an `[input] map`.
 
 A replay is text (`tests/replays/<name>.replay.ron`, format version 0): a header (engine, scene and its hash, seed, tick rate, the script builds), the input changes per tick, and checkpoint hashes. It replays bit-exactly on the same build and platform, at any thread count. Recording and replaying never change the scene.
 

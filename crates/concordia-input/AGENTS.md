@@ -4,7 +4,7 @@
 Turns device events into per-tick action states deterministically, and serves `input.inject` so agents and tests drive the play world exactly as a player would.
 
 ## Public entry points
-- `InputMap` (`parse`, `to_ron`, `validate`): actions, `ActionKind`, `Binding`, from `.input.ron`
+- `InputMap` (`parse`, `to_ron`, `validate`, `starter`): actions, `ActionKind` (`Button`, `Axis1d`, `Axis2d`, `Ray`), `Binding`, from `.input.ron`
 - `InputSampler` (`push(tick, event)`, `sample(tick)`, `check`) and `tick_for_time`
 - `InputEvent`, `ActionValue`, `ActionState`, `ActionStates` (play-world resource), `InputFrame`
 - `KeyCode`, `MouseButton`, `Modifier`
@@ -19,6 +19,8 @@ Turns device events into per-tick action states deterministically, and serves `i
 - During playback each tick's states are the previous tick's plus that tick's recorded changes; device events queued for playback ticks are dropped. `play_back` checks every action name and value kind first.
 - Action names match `[a-z][a-z0-9_]*` (≤ 64); bindings must fit the action kind. Action ids are sorted-name indices.
 - Pointer rays assume reverse-Z, Y-up NDC (Metal); they work for orthographic and perspective cameras.
+- Rays as input (2.5b.2a, ADR-0078): `InputEvent::PointerRay` and `Binding::PointerRay` (only on `Ray` actions); directions are normalized when they arrive, and non-finite or zero rays are refused (`InputError::Pointer`), as events and as action values. A ray action is idle until its first ray, then pressed. The simulation never sees pixels for clicks: the lens is `concordia-render`'s `camera_ray`.
+- `InputMap::starter()` is the map `concordia new` writes: `move` (left click) and `pointer_ray`, `ClickToMove`'s defaults.
 
 ## How to test
 `cargo nextest run -p concordia-input`
@@ -36,7 +38,7 @@ Turns device events into per-tick action states deterministically, and serves `i
 - Fixed-step input sampling practice (Glenn Fiedler, "Fix Your Timestep!", gafferongames.com); reverse-Z unprojection (standard projective geometry).
 
 ## Status
-M1 phase 1.1; M2 phase 2.8 (playback for replays).
+M1 phase 1.1; M2 phase 2.8 (playback for replays); M2 phase 2.5b.2a (the `Ray` kind, `PointerRay`, the starter map).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

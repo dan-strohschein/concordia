@@ -119,6 +119,7 @@ pub fn register_types(registry: &mut TypeRegistry) -> Result<(), RegistryError> 
     register_component::<NavArea>(registry)?;
     register_component::<NavAreaGrid>(registry)?;
     register_component::<crate::agent::NavAgent>(registry)?;
+    register_component::<crate::click::ClickToMove>(registry)?;
     register_component::<crate::agent::NavAgentState>(registry)?;
     register_component::<crate::agent::NavArrived>(registry)?;
     register_component::<crate::agent::NavPathFailed>(registry)

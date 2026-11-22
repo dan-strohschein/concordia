@@ -18,6 +18,7 @@ concordia-api.workspace = true
 concordia-assets.workspace = true
 concordia-command.workspace = true
 concordia-core.workspace = true
+concordia-input.workspace = true
 concordia-material.workspace = true
 concordia-reflect.workspace = true
 concordia-rhi.workspace = true

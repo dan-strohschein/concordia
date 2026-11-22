@@ -23,16 +23,33 @@ impl Rig {
 
     /// An engine with `threads` job threads, logging into `ring` if given.
     pub fn with(threads: usize, ring: Option<Arc<LogRing>>) -> Self {
+        Self::with_modules(threads, ring, Vec::new())
+    }
+
+    /// An engine with input (`map`), physics and nav.
+    pub fn with_input(map: &str, ring: Option<Arc<LogRing>>) -> Self {
+        let input =
+            concordia_input::InputModule::new(concordia_input::InputMap::parse(map).unwrap());
+        Self::with_modules(2, ring, vec![Arc::new(input)])
+    }
+
+    /// An engine with `first` modules, then physics and nav.
+    pub fn with_modules(
+        threads: usize,
+        ring: Option<Arc<LogRing>>,
+        first: Vec<Arc<dyn concordia_api::EngineModule>>,
+    ) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let mut config = EngineConfig::new(dir.path());
         config.deterministic_ids = Some(5);
         config.threads = NonZeroUsize::new(threads).unwrap();
         config.journal.sync = false;
         config.log_ring = ring;
-        config.modules = vec![
-            Arc::new(PhysicsModule::new(PhysicsSettings::default())),
-            Arc::new(NavModule::new()),
-        ];
+        config.modules = first;
+        config
+            .modules
+            .push(Arc::new(PhysicsModule::new(PhysicsSettings::default())));
+        config.modules.push(Arc::new(NavModule::new()));
         let mut engine = Engine::new(config).unwrap();
         let session = engine.open_session();
         let mut rig = Self {

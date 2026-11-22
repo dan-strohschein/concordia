@@ -16,9 +16,10 @@ fn project(dir: &std::path::Path) -> std::path::PathBuf {
     std::fs::write(root.join("default.input.ron"), MAP).unwrap();
     let manifest = root.join("concordia.toml");
     let text = std::fs::read_to_string(&manifest).unwrap();
+    // New projects point [input] at the starter map; this test's map replaces it.
     std::fs::write(
         &manifest,
-        format!("{text}\n[input]\nmap = \"default.input.ron\"\n"),
+        text.replace("input/default.input.ron", "default.input.ron"),
     )
     .unwrap();
     root

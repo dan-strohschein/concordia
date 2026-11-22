@@ -22,6 +22,7 @@ mod module;
 mod orbit;
 mod overlay;
 mod pipelines;
+mod pointer;
 mod programs;
 mod renderer;
 mod representation;
@@ -62,6 +63,10 @@ pub use overlay::{
     gizmo_pick, gizmo_rings, ring_hit,
 };
 pub use pipelines::shader_dir;
+pub use pointer::{
+    ViewportPointerRay, ViewportPointerRayParams, ViewportPointerRayResult, camera_ray,
+    scene_camera,
+};
 pub use renderer::{FrameCallbacks, Image, MAX_SIZE, RenderRequest, RenderStats, Renderer};
 pub use representation::Representation;
 pub use scene_cache::{RenderScene, SceneCache, SceneDelta, SceneItems};

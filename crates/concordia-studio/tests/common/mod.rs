@@ -31,6 +31,7 @@ pub const PROJECT_TOOLS: &[&str] = &[
     "entity_reparent",
     "entity_spawn",
     "entity_templates",
+    "input_inject",
     "log_tail",
     "material_get",
     "material_set",
@@ -79,6 +80,7 @@ pub const PROJECT_TOOLS: &[&str] = &[
     "txn_redo",
     "txn_undo",
     "txn_undo_to",
+    "viewport_pointer_ray",
 ];
 
 /// The catalog of [`PROJECT_TOOLS`].

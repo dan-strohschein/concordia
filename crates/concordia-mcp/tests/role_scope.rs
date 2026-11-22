@@ -14,9 +14,13 @@ async fn studio(dir: &tempfile::TempDir, team_edit: impl Fn(String) -> String) -
     std::fs::write(&team, team_edit(std::fs::read_to_string(&team).unwrap())).unwrap();
     std::fs::write(
         dir.path().join("concordia.toml"),
-        "[physics]\n\n[nav]\n\n[assets]\n\n[anim]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n",
+        "[input]\nmap = \"input/default.input.ron\"\n\n[physics]\n\n[nav]\n\n[assets]\n\n[anim]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n",
     )
     .unwrap();
+    // QA injects input, so the project has an input map (2.5b.2a).
+    std::fs::create_dir_all(dir.path().join("input")).unwrap();
+    let starter = concordia_input::InputMap::starter().to_ron().unwrap();
+    std::fs::write(dir.path().join("input/default.input.ron"), starter).unwrap();
     let mut opts = options(dir);
     opts.modules = concordia_app::Project::load(dir.path())
         .unwrap()

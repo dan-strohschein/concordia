@@ -34,3 +34,4 @@ The engine is deterministic per binary and machine: the same inputs from the sam
 - A replay is valid for one engine version, platform and build. Thread count doesn't matter.
 - Divergence is located to a checkpoint window and the parts that differ. Finding the exact tick and field is M3 phase 3.1's bisection.
 - Agents get reproducible evidence. QA records and verifies, and programmers resimulate to prove fixes.
+- **Note (M2 phase 2.5b.2a, ADR-0078):** pointer rays (`ActionValue::Ray`) are recorded like any action value, so a click replays without the window size or camera. The format stays version 0.

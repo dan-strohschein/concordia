@@ -81,7 +81,7 @@ pub fn add_agent_processors(schedule: &mut Schedule, config: AgentConfig) {
 }
 
 /// Volumes by id.
-fn volumes(view: &mut View<'_>) -> Vec<Volume> {
+pub(crate) fn volumes(view: &mut View<'_>) -> Vec<Volume> {
     let mut out = Vec::new();
     if let Ok(query) = view.query::<(&NavMeshVolume, &Transform)>() {
         query.for_each(|id, (v, t)| {

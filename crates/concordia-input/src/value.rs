@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use concordia_core::math::Vec2;
+use concordia_core::math::{Vec2, Vec3};
 use concordia_reflect::Reflect;
 use serde::{Deserialize, Serialize};
 
@@ -17,6 +17,13 @@ pub enum ActionValue {
     Axis1d(f32),
     /// Two axes.
     Axis2d(Vec2),
+    /// A world-space ray (the direction is normalized; zero before any ray arrives).
+    Ray {
+        /// Start point.
+        origin: Vec3,
+        /// Unit direction.
+        direction: Vec3,
+    },
 }
 
 impl ActionValue {
@@ -26,6 +33,10 @@ impl ActionValue {
             ActionKind::Button => Self::Button(false),
             ActionKind::Axis1d => Self::Axis1d(0.0),
             ActionKind::Axis2d => Self::Axis2d(Vec2::ZERO),
+            ActionKind::Ray => Self::Ray {
+                origin: Vec3::ZERO,
+                direction: Vec3::ZERO,
+            },
         }
     }
 
@@ -35,15 +46,17 @@ impl ActionValue {
             Self::Button(_) => ActionKind::Button,
             Self::Axis1d(_) => ActionKind::Axis1d,
             Self::Axis2d(_) => ActionKind::Axis2d,
+            Self::Ray { .. } => ActionKind::Ray,
         }
     }
 
-    /// True for a pressed button or a non-zero axis.
+    /// True for a pressed button, a non-zero axis or a ray.
     pub fn is_active(self) -> bool {
         match self {
             Self::Button(b) => b,
             Self::Axis1d(v) => v != 0.0,
             Self::Axis2d(v) => v != Vec2::ZERO,
+            Self::Ray { direction, .. } => direction != Vec3::ZERO,
         }
     }
 }

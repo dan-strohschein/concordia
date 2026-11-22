@@ -9,6 +9,7 @@ mod agent;
 mod agents;
 mod build;
 mod cache;
+mod click;
 mod components;
 mod data;
 mod debug;
@@ -27,6 +28,7 @@ pub use agent::{NavAgent, NavAgentState, NavArrived, NavFailure, NavPathFailed, 
 pub use agents::{AgentConfig, FOLLOW, PLAN, add_agent_processors, insert_agent_states};
 pub use build::build_tiles;
 pub use cache::{Loaded, NavCache};
+pub use click::{CLICK, ClickToMove, add_click_processor};
 pub use components::{NavArea, NavAreaGrid, NavAreaKind, NavMeshVolume, register_types};
 pub use data::NavMeshData;
 pub use error::NavError;

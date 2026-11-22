@@ -39,7 +39,7 @@ Safe, deterministic rigid-body physics for Terra worlds over Jolt (via `jolt-sys
 - Jolt Physics documentation and samples (MIT); Jorrit Rouwé, "Architecting Jolt Physics for Horizon Forbidden West" (GDC 2022); Glenn Fiedler, "Fix Your Timestep!".
 
 ## Status
-M2 phase 2.5a: `static_solids` for navigation. M1 phase 1.7b.
+M2 phase 2.5a: `static_solids` for navigation. M2 phase 2.5b.2a: `PhysicsQueries`, a play resource processors raycast through (bodies as of the last step; nothing on tick 0; not hashed). M1 phase 1.7b.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

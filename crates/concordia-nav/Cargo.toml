@@ -15,6 +15,7 @@ workspace = true
 blake3.workspace = true
 concordia-api.workspace = true
 concordia-core.workspace = true
+concordia-input.workspace = true
 concordia-physics.workspace = true
 concordia-reflect.workspace = true
 concordia-scene.workspace = true

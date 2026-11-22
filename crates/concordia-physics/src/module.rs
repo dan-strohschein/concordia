@@ -25,6 +25,23 @@ const MAX_THREADS: usize = 8;
 #[derive(Debug, Clone)]
 struct SharedRuntime(Arc<Mutex<PhysicsRuntime>>);
 
+/// Read-only physics queries for processors (a play resource sharing the play session's runtime;
+/// not hashed). Queries see the bodies as of the last physics step.
+#[derive(Debug, Clone)]
+pub struct PhysicsQueries(SharedRuntime);
+
+impl PhysicsQueries {
+    /// The nearest body hit within `max_distance` on `layers`.
+    pub fn raycast(
+        &self,
+        ray: &Ray,
+        max_distance: f32,
+        layers: LayerMask,
+    ) -> Option<crate::runtime::RayHit> {
+        self.0.0.lock().ok()?.raycast(ray, max_distance, layers)
+    }
+}
+
 /// Registers physics components and steps Jolt in every play world.
 #[derive(Debug, Clone, Default)]
 pub struct PhysicsModule {
@@ -54,12 +71,13 @@ impl EngineModule for PhysicsModule {
         vec![MethodInfo::of::<PhysicsRaycast>()]
     }
 
-    fn start_play(&self, _world: &mut World) -> Result<PlaySetup, ApiError> {
+    fn start_play(&self, world: &mut World) -> Result<PlaySetup, ApiError> {
         let threads = std::thread::available_parallelism().map_or(1, |n| n.get().min(MAX_THREADS));
         let threads = NonZeroUsize::new(threads).unwrap_or(NonZeroUsize::MIN);
         let runtime = PhysicsRuntime::new(self.settings.clone(), threads)
             .map_err(|e| ApiError::new(ApiErrorKind::Internal, e.to_string()))?;
         let shared = SharedRuntime(Arc::new(Mutex::new(runtime)));
+        world.insert_resource(PhysicsQueries(shared.clone()));
         let mut schedule = Schedule::new();
         schedule.add_in(Phase::Physics, step_system(shared.clone()));
         Ok(PlaySetup {
