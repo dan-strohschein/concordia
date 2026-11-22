@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "distances": [
+      25.0,
+      50.0,
+      100.0
+    ],
+    "hysteresis": 2.0,
+    "rates": [
+      2,
+      4,
+      8
+    ]
+  },
+  "description": "Where simulation LOD levels start and how often each level ticks; shared per archetype.",
+  "properties": {
+    "distances": {
+      "description": "Meters from the nearest viewer where levels 1, 2 and 3 start (ascending).",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array"
+    },
+    "hysteresis": {
+      "description": "Meters an entity must come back inside a boundary before it regains detail.",
+      "type": "number"
+    },
+    "rates": {
+      "description": "Ticks between updates at levels 1, 2 and 3 (level 0 updates every tick).",
+      "items": {
+        "maximum": 4294967295,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array"
+    }
+  },
+  "required": [
+    "distances",
+    "rates",
+    "hysteresis"
+  ],
+  "title": "LodProfile",
+  "type": "object",
+  "x-concordia-category": "LOD",
+  "x-concordia-type": "LodProfile"
+}

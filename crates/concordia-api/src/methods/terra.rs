@@ -6,7 +6,9 @@ use std::collections::BTreeSet;
 use concordia_core::id::EntityId;
 use concordia_core::math::Vec3;
 use concordia_reflect::Reflect;
-use concordia_terra::{DynamicQuery, SimLoop, StorageKind, TerraStats as Counters, World};
+use concordia_terra::{
+    DynamicQuery, SimLoop, StorageKind, TerraStats as Counters, World, lod_stats,
+};
 use concordia_terra_sim::{Distribution, Spawner};
 use serde::{Deserialize, Serialize};
 
@@ -171,6 +173,17 @@ pub struct PhaseStats {
     pub waves: Vec<Vec<String>>,
 }
 
+/// Simulation LOD counts.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct LodBuckets {
+    /// Entities with `LodViewer`.
+    pub viewers: u64,
+    /// Entities with a `SimLod` at levels 0–3.
+    pub levels: Vec<u64>,
+    /// Of those, due this tick.
+    pub due: u64,
+}
+
 /// `terra.stats` result.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 pub struct StatsResult {
@@ -186,6 +199,8 @@ pub struct StatsResult {
     pub skipped_commands: u64,
     /// Play schedule (empty for edit).
     pub phases: Vec<PhaseStats>,
+    /// Simulation LOD.
+    pub lod: LodBuckets,
 }
 
 impl Method for TerraStats {
@@ -211,6 +226,7 @@ impl Method for TerraStats {
                 .resource::<Counters>()
                 .map_or(0, |c| c.skipped_commands),
             phases: sim.map(phases).unwrap_or_default(),
+            lod: buckets(world),
         })
     }
 }
@@ -295,6 +311,16 @@ impl Method for TerraInspect {
                 })
                 .collect(),
         })
+    }
+}
+
+/// The world's simulation LOD counts.
+fn buckets(world: &World) -> LodBuckets {
+    let stats = lod_stats(world);
+    LodBuckets {
+        viewers: stats.viewers,
+        levels: stats.levels.to_vec(),
+        due: stats.due,
     }
 }
 

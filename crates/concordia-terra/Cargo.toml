@@ -24,5 +24,9 @@ proptest.workspace = true
 name = "iter"
 harness = false
 
+[[bench]]
+name = "lod"
+harness = false
+
 [lints]
 workspace = true

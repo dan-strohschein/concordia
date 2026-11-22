@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "f64",
+  "type": "number",
+  "x-concordia-type": "f64"
+}

@@ -16,6 +16,7 @@ use concordia_core::time::Tick;
 
 use crate::command::{CommandBuffer, TerraStats};
 use crate::error::ScheduleError;
+use crate::lod::Due;
 use crate::observer::{Observe, TypeKey};
 use crate::processor::{Access, Phase, Processor, ProcessorDecl};
 use crate::query::ViewCol;
@@ -591,6 +592,11 @@ fn run_processors(
         let mut views = build_views(world, &decls, &mut lent);
         for view in &mut views {
             view.observed = observed.to_vec();
+            view.step = Due {
+                dt: ctx.dt,
+                dt_exact: ctx.dt_exact,
+                level: 0,
+            };
         }
         let mut work: Vec<(&mut Box<dyn Processor>, &mut View<'_>)> = members
             .iter_mut()
@@ -652,6 +658,11 @@ fn build_views<'w>(
             signals: &*signals,
             resources: Vec::new(),
             observed: Vec::new(),
+            step: Due {
+                dt: 0.0,
+                dt_exact: 0.0,
+                level: 0,
+            },
             touched: Vec::new(),
             commands: CommandBuffer::new(),
         })

@@ -1,7 +1,9 @@
 //! The play processors in `FrameEnd`: `anim.pose` gives new players a rest pose (and graph
-//! players their starting state), and `anim.sample` advances each player by the tick's scaled dt:
-//! graph players evaluate their graph, clip players sample their clip, into the entity's pose,
-//! and the clip events they cross are raised as `AnimEvent` signals (2.4.4).
+//! players their starting state), and `anim.sample` advances each player by its elapsed scaled
+//! time: graph players evaluate their graph, clip players sample their clip, into the entity's
+//! pose, and the clip events they cross are raised as `AnimEvent` signals (2.4.4). `anim.sample`
+//! is LOD-aware (2.4b.1, ADR-0076): a far character poses only when due, stepping over everything
+//! since it last did.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroUsize;
@@ -80,6 +82,7 @@ pub fn add_processors(schedule: &mut Schedule, library: Arc<AnimLibrary>) {
             .writes::<AnimGraphState>()
             .writes::<Pose>()
             .reads::<Skinned>()
+            .lod()
             .after(POSE)
             .run({
                 let library = library.clone();
@@ -135,21 +138,20 @@ fn ids_with<T: concordia_terra::Component>(view: &mut View<'_>) -> BTreeSet<Enti
     ids
 }
 
-/// Advances every posed player by the scaled dt, in parallel: graph players evaluate their graph,
-/// then clip players without a graph sample their clip.
+/// Advances every due posed player by its elapsed scaled time, in parallel: graph players
+/// evaluate their graph, then clip players without a graph sample their clip.
 fn sample_all(library: &AnimLibrary, view: &mut View<'_>, ctx: &SystemCtx<'_>) {
-    let dt = ctx.dt;
     if let Ok(query) = view.query::<(
         &mut AnimGraphPlayer,
         &mut AnimGraphState,
         &Skinned,
         &mut Pose,
     )>() {
-        query.par_for_each_deferred(
+        query.par_for_each_deferred_due(
             ctx.jobs,
             CHUNK,
-            |commands, id, (player, state, skinned, pose)| {
-                for event in evaluate_one(library, dt, player, state, skinned, pose) {
+            |commands, id, due, (player, state, skinned, pose)| {
+                for event in evaluate_one(library, due.dt, player, state, skinned, pose) {
                     commands.signal(id, event);
                 }
             },
@@ -157,13 +159,17 @@ fn sample_all(library: &AnimLibrary, view: &mut View<'_>, ctx: &SystemCtx<'_>) {
     }
     let graphs = ids_with::<AnimGraphPlayer>(view);
     if let Ok(query) = view.query::<(&mut AnimPlayer, &Skinned, &mut Pose)>() {
-        query.par_for_each_deferred(ctx.jobs, CHUNK, |commands, id, (player, skinned, pose)| {
-            if !graphs.contains(&id) {
-                for event in sample_one(library, dt, player, skinned, pose) {
-                    commands.signal(id, event);
+        query.par_for_each_deferred_due(
+            ctx.jobs,
+            CHUNK,
+            |commands, id, due, (player, skinned, pose)| {
+                if !graphs.contains(&id) {
+                    for event in sample_one(library, due.dt, player, skinned, pose) {
+                        commands.signal(id, event);
+                    }
                 }
-            }
-        });
+            },
+        );
     }
 }
 

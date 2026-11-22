@@ -81,6 +81,8 @@ pub(crate) struct Access {
     pub(crate) resource_writes: Vec<Key>,
     /// Signal types it receives (delivered read-only, so they never conflict).
     pub(crate) receives: Vec<Key>,
+    /// LOD-aware: its queries visit only entities due this tick (2.4b.1, ADR-0076).
+    pub(crate) lod: bool,
 }
 
 impl Access {
@@ -217,6 +219,22 @@ impl ProcessorDecl {
     pub fn writes_resource<R: Resource>(mut self) -> Self {
         self.access.resource_writes.push(Key::resource::<R>());
         self
+    }
+
+    /// Makes it LOD-aware: its queries visit only entities due this tick, and the `*_due`
+    /// variants hand each its elapsed scaled time (ADR-0076).
+    #[must_use]
+    pub fn lod(mut self) -> Self {
+        if !self.access.lod {
+            self.access.lod = true;
+            self.access.reads.push(Key::of::<crate::lod::SimLod>());
+        }
+        self
+    }
+
+    /// True if LOD-aware.
+    pub fn is_lod(&self) -> bool {
+        self.access.lod
     }
 
     /// Runs after the processor or system `name` (same phase).

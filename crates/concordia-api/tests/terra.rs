@@ -262,3 +262,50 @@ fn terra_stats_and_inspect_report_storage() {
     assert_eq!(edit["entities"], 0);
     assert_eq!(edit["phases"], json!([]), "the edit world has no schedule");
 }
+
+#[test]
+fn terra_stats_reports_lod_buckets() {
+    let mut h = harness();
+    let place = |h: &mut Harness, x: f32| {
+        let id = h.ok("entity.create", json!({"template": "Empty"}))["id"].clone();
+        h.ok(
+            "component.patch",
+            json!({"entity": id, "component": "Transform", "patch": {"translation": [x, 0.0, 0.0]}}),
+        );
+        id
+    };
+    let viewer = place(&mut h, 0.0);
+    h.ok(
+        "component.set",
+        json!({"entity": viewer, "component": "LodViewer", "value": null}),
+    );
+    for x in [5.0, 15.0, 30.0, 50.0, 60.0] {
+        let id = place(&mut h, x);
+        h.ok(
+            "component.set",
+            json!({"entity": id, "component": "LodProfile", "value": {
+                "distances": [10.0, 20.0, 40.0], "rates": [2, 4, 8], "hysteresis": 1.0}}),
+        );
+    }
+    h.ok("sim.step", json!({"ticks": 1}));
+    let stats = h.ok("terra.stats", json!({"world": "play"}));
+    // Levels from distances 5, 15, 30, 50 and 60; every entity is due on its first tick.
+    assert_eq!(
+        stats["lod"],
+        json!({"viewers": 1, "levels": [1, 1, 1, 2], "due": 5}),
+        "{stats}"
+    );
+    let pre = stats["phases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["phase"] == "PrePhysics")
+        .unwrap();
+    assert_eq!(pre["waves"][1], json!(["terra.lod"]), "{stats}");
+    let edit = h.ok("terra.stats", json!({}));
+    assert_eq!(
+        edit["lod"],
+        json!({"viewers": 1, "levels": [0, 0, 0, 0], "due": 0}),
+        "the edit world has no SimLod"
+    );
+}

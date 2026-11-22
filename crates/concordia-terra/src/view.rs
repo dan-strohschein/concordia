@@ -11,10 +11,12 @@ use crate::command::CommandBuffer;
 use crate::component::Component;
 use crate::entity::EntityTable;
 use crate::error::QueryError;
+use crate::lod::{Due, SimLod};
 use crate::processor::{Access, Phase};
 use crate::query::{ElemAccess, Piece, QueryData, ViewCol, ViewColumn, split_chunks};
 use crate::resource::Resource;
 use crate::signal::SignalQueue;
+use crate::storage::column::typed;
 
 /// One archetype as a view sees it: its ids and the declared columns it has.
 pub(crate) struct ViewArch<'w> {
@@ -40,6 +42,9 @@ pub struct View<'w> {
     pub(crate) resources: Vec<(TypeId, ViewRes<'w>)>,
     /// For an observer: the entities that triggered it.
     pub(crate) observed: Vec<EntityId>,
+    /// This tick's step, handed to entities without a `SimLod` (and to every entity of a
+    /// processor that isn't LOD-aware).
+    pub(crate) step: Due,
     /// Archetypes each mutable query visited (their entities count as changed).
     pub(crate) touched: Vec<Vec<usize>>,
     /// Structural changes, applied at the end of the phase.
@@ -162,10 +167,13 @@ pub struct ViewQuery<'v, 'w, D: QueryData> {
     marker: std::marker::PhantomData<fn() -> D>,
 }
 
+/// One piece's rows and, for a LOD-aware view, their `SimLod`s (`None`: every row is due).
+type Rows<'v, D> = (Piece<'v, D>, Option<&'v [SimLod]>);
+
 /// One archetype's matching slices.
 struct Matched<'v, D: QueryData> {
     archetype: usize,
-    pieces: Vec<Piece<'v, D>>,
+    pieces: Vec<Rows<'v, D>>,
 }
 
 /// What a view query borrows to run.
@@ -174,35 +182,80 @@ struct Run<'v, D: QueryData> {
     touched: Touched<'v>,
     commands: &'v mut CommandBuffer,
     entities: &'v EntityTable,
+    step: Due,
+}
+
+impl<'v, D: QueryData> Run<'v, D> {
+    /// Every piece, in archetype then row order.
+    fn pieces(&mut self) -> Vec<Rows<'v, D>> {
+        std::mem::take(&mut self.matched)
+            .into_iter()
+            .flat_map(|m| m.pieces)
+            .collect()
+    }
+}
+
+/// Calls `f` for each due row of one piece (every row without `SimLod`s).
+fn visit<D: QueryData>(
+    (ids, slices): &mut Piece<'_, D>,
+    lod: Option<&[SimLod]>,
+    step: Due,
+    mut f: impl FnMut(EntityId, Due, D::Item<'_>),
+) {
+    for (row, &id) in ids.iter().enumerate() {
+        let due = match lod.map(|rows| &rows[row]) {
+            None => step,
+            Some(l) if !l.due => continue,
+            Some(l) => Due {
+                dt: l.elapsed as f32,
+                dt_exact: l.elapsed,
+                level: l.level,
+            },
+        };
+        f(id, due, D::get(slices, row));
+    }
 }
 
 impl<'v, D: QueryData> ViewQuery<'v, '_, D> {
-    /// Calls `f` for every matching entity.
+    /// Calls `f` for every matching entity (for a LOD-aware processor, every one due this tick).
     pub fn for_each(self, mut f: impl FnMut(EntityId, D::Item<'_>)) {
-        let run = self.run(usize::MAX);
-        for (ids, mut slices) in run.matched.into_iter().flat_map(|m| m.pieces) {
-            for (row, &id) in ids.iter().enumerate() {
-                f(id, D::get(&mut slices, row));
-            }
+        self.for_each_due(|id, _, item| f(id, item));
+    }
+
+    /// Like [`ViewQuery::for_each`], handing each entity its [`Due`] step.
+    pub fn for_each_due(self, mut f: impl FnMut(EntityId, Due, D::Item<'_>)) {
+        let mut run = self.run(usize::MAX);
+        let step = run.step;
+        for (mut piece, lod) in run.pieces() {
+            visit::<D>(&mut piece, lod, step, &mut f);
         }
         run.touched.record();
     }
 
-    /// Calls `f` for every matching entity in parallel, in fixed `chunk`-row pieces (chunking
-    /// depends only on `chunk`, never on the thread count).
+    /// Calls `f` for every matching (and, if LOD-aware, due) entity in parallel, in fixed
+    /// `chunk`-row pieces (chunking depends only on `chunk`, never on the thread count or LOD).
     pub fn par_for_each(
         self,
         jobs: &JobSystem,
         chunk: NonZeroUsize,
         f: impl Fn(EntityId, D::Item<'_>) + Sync,
     ) {
-        let run = self.run(chunk.get());
-        let mut pieces: Vec<_> = run.matched.into_iter().flat_map(|m| m.pieces).collect();
+        self.par_for_each_due(jobs, chunk, |id, _, item| f(id, item));
+    }
+
+    /// Like [`ViewQuery::par_for_each`], handing each entity its [`Due`] step.
+    pub fn par_for_each_due(
+        self,
+        jobs: &JobSystem,
+        chunk: NonZeroUsize,
+        f: impl Fn(EntityId, Due, D::Item<'_>) + Sync,
+    ) {
+        let mut run = self.run(chunk.get());
+        let step = run.step;
+        let mut pieces = run.pieces();
         jobs.par_chunks_mut(&mut pieces, NonZeroUsize::MIN, |_, work| {
-            for (ids, slices) in work.iter_mut() {
-                for (row, &id) in ids.iter().enumerate() {
-                    f(id, D::get(slices, row));
-                }
+            for (piece, lod) in work.iter_mut() {
+                visit::<D>(piece, *lod, step, &f);
             }
         });
         drop(pieces);
@@ -217,18 +270,28 @@ impl<'v, D: QueryData> ViewQuery<'v, '_, D> {
         chunk: NonZeroUsize,
         f: impl Fn(&mut CommandBuffer, EntityId, D::Item<'_>) + Sync,
     ) {
-        let run = self.run(chunk.get());
+        self.par_for_each_deferred_due(jobs, chunk, |c, id, _, item| f(c, id, item));
+    }
+
+    /// Like [`ViewQuery::par_for_each_deferred`], handing each entity its [`Due`] step.
+    pub fn par_for_each_deferred_due(
+        self,
+        jobs: &JobSystem,
+        chunk: NonZeroUsize,
+        f: impl Fn(&mut CommandBuffer, EntityId, Due, D::Item<'_>) + Sync,
+    ) {
+        let mut run = self.run(chunk.get());
+        let step = run.step;
         let mut work: Vec<_> = run
-            .matched
+            .pieces()
             .into_iter()
-            .flat_map(|m| m.pieces)
-            .map(|piece| (piece, CommandBuffer::new()))
+            .map(|rows| (rows, CommandBuffer::new()))
             .collect();
         jobs.par_chunks_mut(&mut work, NonZeroUsize::MIN, |_, items| {
-            for ((ids, slices), commands) in items.iter_mut() {
-                for (row, &id) in ids.iter().enumerate() {
-                    f(commands, id, D::get(slices, row));
-                }
+            for ((piece, lod), commands) in items.iter_mut() {
+                visit::<D>(piece, *lod, step, |id, due, item| {
+                    f(commands, id, due, item)
+                });
             }
         });
         for (_, commands) in work {
@@ -237,7 +300,8 @@ impl<'v, D: QueryData> ViewQuery<'v, '_, D> {
         run.touched.record();
     }
 
-    /// Calls `f` for each of `ids` that is alive and matches, in the order given.
+    /// Calls `f` for each of `ids` that is alive and matches, in the order given, whatever its
+    /// LOD (signal targets are always reachable, ADR-0076).
     pub fn for_each_of(self, ids: &[EntityId], mut f: impl FnMut(EntityId, D::Item<'_>)) {
         let run = self.run(usize::MAX);
         let mut matched = run.matched;
@@ -246,14 +310,15 @@ impl<'v, D: QueryData> ViewQuery<'v, '_, D> {
                 continue;
             };
             let found = matched.iter_mut().find(|m| m.archetype == loc.archetype);
-            if let Some((_, slices)) = found.and_then(|m| m.pieces.first_mut()) {
+            if let Some(((_, slices), _)) = found.and_then(|m| m.pieces.first_mut()) {
                 f(id, D::get(slices, loc.row));
             }
         }
         run.touched.record();
     }
 
-    /// The matching archetypes' slices, split into `chunk`-row pieces.
+    /// The matching archetypes' slices, split into `chunk`-row pieces, with their `SimLod`s if
+    /// the view is LOD-aware.
     fn run(self, chunk: usize) -> Run<'v, D> {
         let mutable = self.elems.iter().any(|e| e.mutable);
         let elems = self.elems;
@@ -262,11 +327,15 @@ impl<'v, D: QueryData> ViewQuery<'v, '_, D> {
             touched,
             commands,
             entities,
+            access,
+            step,
             ..
         } = self.view;
+        let lod_aware = access.lod;
         let mut visited = Vec::new();
         let mut matched = Vec::new();
         for arch in archetypes.iter_mut().filter(|a| !a.ids.is_empty()) {
+            let lod = if lod_aware { sim_lods(arch) } else { None };
             let mut picked: Vec<Option<ViewColumn<'_>>> = (0..elems.len()).map(|_| None).collect();
             for (name, column) in arch.columns.iter_mut() {
                 if let Some(k) = elems.iter().position(|e| e.name == *name) {
@@ -283,9 +352,10 @@ impl<'v, D: QueryData> ViewQuery<'v, '_, D> {
             visited.push(arch.index);
             let mut pieces = Vec::new();
             split_chunks::<D>(arch.ids, D::fetch_view(columns), chunk, &mut pieces);
+            let lods = split_lods(lod, chunk, pieces.len());
             matched.push(Matched {
                 archetype: arch.index,
-                pieces,
+                pieces: pieces.into_iter().zip(lods).collect(),
             });
         }
         let record = if mutable { Some(visited) } else { None };
@@ -294,6 +364,28 @@ impl<'v, D: QueryData> ViewQuery<'v, '_, D> {
             touched: Touched { touched, record },
             commands,
             entities,
+            step: *step,
+        }
+    }
+}
+
+/// An archetype's `SimLod` rows, if it has them (a LOD-aware view always reads them).
+fn sim_lods<'w>(arch: &ViewArch<'w>) -> Option<&'w [SimLod]> {
+    let name = <SimLod as concordia_reflect::Reflect>::type_info().name;
+    arch.columns.iter().find_map(|(n, c)| match c {
+        ViewCol::Read(c) if *n == name => Some(typed::<SimLod>(*c).as_slice()),
+        _ => None,
+    })
+}
+
+/// `lod` split like [`split_chunks`] splits rows into `pieces` pieces of `chunk` rows.
+fn split_lods(lod: Option<&[SimLod]>, chunk: usize, pieces: usize) -> Vec<Option<&[SimLod]>> {
+    match lod {
+        None => vec![None; pieces],
+        Some(rows) => {
+            let mut out: Vec<Option<&[SimLod]>> = rows.chunks(chunk.max(1)).map(Some).collect();
+            out.resize(pieces, Some(&[]));
+            out
         }
     }
 }

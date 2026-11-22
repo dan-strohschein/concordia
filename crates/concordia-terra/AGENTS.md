@@ -1,7 +1,7 @@
 # concordia-terra: agent guide
 
 ## Purpose
-**Terra**, Concordia's entity system (ADR-0010): our own archetype ECS (ADR-0030): entities keyed by stable `EntityId`, typed and by-name component access, typed queries (sequential and parallel), resources, sequential schedules, a deterministic fixed-step `SimLoop` and layout-independent world hashing. Since M2 (ADR-0067) it grows Mass-style features: processors with declared access in processing phases, run in deterministic parallel waves (2.0, ADR-0063); storage kinds (shared, chunk, tag), command buffers, signals, observers and resources in views (2.0b, ADR-0069); then templates and LOD (2.0c onward). M7 keeps the large scale.
+**Terra**, Concordia's entity system (ADR-0010): our own archetype ECS (ADR-0030): entities keyed by stable `EntityId`, typed and by-name component access, typed queries (sequential and parallel), resources, sequential schedules, a deterministic fixed-step `SimLoop` and layout-independent world hashing. Since M2 (ADR-0067) it grows Mass-style features: processors with declared access in processing phases, run in deterministic parallel waves (2.0, ADR-0063); storage kinds (shared, chunk, tag), command buffers, signals, observers and resources in views (2.0b, ADR-0069); then templates (2.0c) and simulation LOD (2.4b.1, ADR-0076). M7 keeps the large scale.
 
 ## Public entry points
 - `World` (`spawn`, `spawn_with_id`, `despawn`, `insert`, `remove`, `get`, `get_mut`, resources, `state_hash`, `Clone` for play worlds)
@@ -17,6 +17,7 @@
 - Resources in views (2.0b): `ProcessorDecl::reads_resource` / `writes_resource`, `View::resource` / `resource_mut`
 - Script types and named access (2.6a, ADR-0062): `register_dynamic_component`, `World::insert_dynamic`, `World::signal_dynamic`, `ReflectComponent::dynamic` / `signal`; `ProcessorDecl::reads_named` / `writes_named` / `receives_named`; `View::batch(&NamedQuery)` → `Batch` (ids + `WireColumn`s), `View::write_batch`, `View::signal_batch`, `View::signals_named`; `CommandBuffer::insert_reflect` / `remove_named` / `signal_reflect`; `ReflectComponent::from_wire` (decode one wire row as the component's value: `T` for Rust types, `DynamicValue` for script types; 2.6b); `World::migrate_dynamic` / `migrate_dynamic_all` (move stored script types to new versions, all or nothing; 2.6c, ADR-0061); `World::stores(name)` (2.6d)
 - Replay support (2.8, ADR-0072): `World::state_digest` → `StateDigest` (the world hash plus one hash per component name and `@entities`, `@clock`, `@rng`, `@signals`, in one pass); `Schedule::add_tick_end` / `tick_end_names`, `tick_end(name, |world: &World| ..)`, the `TickEnd` trait: read-only hooks `SimLoop::step` runs after each tick, once the clock has advanced
+- Simulation LOD (2.4b.1, ADR-0076): `LodViewer` (tag), `LodProfile` (shared: `distances`, `rates`, `hysteresis`; `new`, `validate`, `rate`, `level`), `SimLod` (hashed: `level`, `due`, `elapsed`, `last_time`), `lod_system(position)` (`terra.lod`, `LOD`; an exclusive system, first in `PrePhysics`) with `LodPosition`, `lod_phase`, `is_due`, `lod_stats` → `LodStats`, `register_lod`; `ProcessorDecl::lod` / `is_lod`, `ViewQuery::{for_each_due, par_for_each_due, par_for_each_deferred_due}` → `Due { dt, dt_exact, level }`
 - Introspection (2.0c): `World::entity_storage` (`EntityStorage`: archetype, chunk, storage kinds, pending signals), `Schedule::waves` / `observers`, `SimLoop::schedule`, `ReflectComponent::register_shared` (type-erased shared registration for templates)
 
 ## Invariants
@@ -32,6 +33,11 @@
 - A processor's `View` holds only its declared columns (disjoint borrows, no `unsafe`); undeclared or read-only-as-mutable queries are `QueryError`s.
 - Presentation-only components are never hashed; `Presentation` processors write only them, and other phases never touch them (checked when a `SimLoop` is built).
 - `state_digest().world == state_hash()` always; parts are hashed alongside, never instead. End-of-tick hooks see `&World` only and run after the clock advances, in registration order (`append` keeps them).
+- Simulation LOD (ADR-0076):
+  - Levels come only from hashed state: the nearest `LodViewer` by squared world distance (through the `LodPosition` the schedule was given), the entity's `LodProfile`, its previous `SimLod`, the clock and its id. Never from a camera, layout or thread count. No viewer, no position or an invalid profile means level 0.
+  - Detail is lost at a boundary (d ≥ dᵢ) and regained only inside it by the hysteresis (d < dᵢ − h); `validate` keeps h below d₁.
+  - Due: `(tick + lod_phase(id)) mod rate = 0`, or the level changed this tick (a new `SimLod` starts at level 0, so its first tick is always due). Due entities get `elapsed = end − last_time`, then `last_time = end`, where `end` is the clock's time plus this tick's scaled step.
+  - A LOD-aware processor's queries skip rows that aren't due; pieces are still cut every `chunk` rows. Entities without `SimLod` are due every tick with the tick's `dt`. `View::signals` and `ViewQuery::for_each_of` ignore LOD (signals are never cleared unseen).
 - `dt` is the fixed step times `SimClock::time_scale`; `SimClock::time` sums the scaled steps; both are hashed. Edit worlds have no clock, so their hashes (recorded in command journals) never depend on it.
 - Simulation reads time only from `SimClock`/`SystemCtx` and randomness only from `SimRng`.
 - A query mentions each component at most once (`QueryError::Conflict`).
@@ -42,7 +48,7 @@
 - Archetype moves never drop component values; despawn and remove drop or return them exactly once.
 
 ## How to test
-`cargo nextest run -p concordia-terra` (debug), `just perf-smoke` (release perf guard), `just bench -p concordia-terra` (criterion; update `benches/BASELINE.md` when numbers move meaningfully).
+`cargo nextest run -p concordia-terra` (debug; the crate builds at `opt-level = 1` in dev so the 100k-entity tests stay fast; `tests/lod.rs` holds hand-computed due ticks, levels and elapsed times), `just perf-smoke` (release perf guard), `just bench -p concordia-terra` (criterion; update `benches/BASELINE.md` when numbers move meaningfully).
 
 ## Common tasks
 - **Add a component:** derive `Clone, PartialEq, Serialize, Deserialize, Reflect` with doc comments; call `register_component::<T>(&mut registry)` so the API and scenes can use it by name.
@@ -51,12 +57,14 @@
 - **Raise and handle a signal:** `commands.signal(entity, MySignal { .. })` (or `world.signal` in a system); receive with `processor(..).receives::<MySignal>()` and `view.signals::<MySignal>()?`, then `query.for_each_of(&targets, ..)` for their components.
 - **React to a component appearing or disappearing:** `schedule.add_processor(observer::<T>("name", Observe::Add).run(|view, ctx| for id in view.observed() { .. }))`.
 - **Write an exclusive system** (whole world, runs alone): `schedule.add_in(Phase::PostPhysics, system("name", |world: &mut World, ctx: &SystemCtx| { ... }))`; use `world.resource_scope` to borrow a resource (e.g. `SimRng`) while querying.
+- **Make a processor cheaper far away:** add `.lod()` to its declaration and use `par_for_each_due` (or `for_each_due`, `par_for_each_deferred_due`), advancing each entity by `due.dt` instead of `ctx.dt`. Entities need a `LodProfile`; the schedule needs `lod_system` first in `PrePhysics` (the core schedule has it, from `concordia_scene::builtin::lod_position`).
 - **Add a determinism test:** run the same schedule with `JobSystem`s of 1 and 8 threads and compare `state_hash()` at several ticks (see `tests/determinism.rs`).
 
 ## Don'ts
 - Don't mutate an edit world directly from engine services; edits go through `concordia-command`.
 - Don't derive chunk sizes from `jobs.threads()`.
 - Don't let simulation depend on chunk components unless they are rebuilt from hashed state (they aren't hashed).
+- Don't use `ctx.dt` for an entity in a LOD-aware processor; use its `Due`. Don't write `SimLod` outside `terra.lod`.
 - Don't read wall-clock time or OS randomness in systems.
 - Don't iterate `HashMap`s where order affects results; use the sorted id list.
 
@@ -67,13 +75,15 @@
 - Unreal Engine's public MassEntity documentation (processors, processing phases, fragments and execution order), concepts only (clean room, ADR-0067); no Unreal source.
 - Unreal Engine's public Mass documentation on shared fragments, chunk fragments, tags, deferred commands (command buffers flushed at phase ends), observer processors and the Mass signal subsystem (2.0b, ADR-0069); concepts only.
 - Unreal Engine's public Mass documentation on processors querying fragments by type through `FMassEntityQuery` (2.6a named access); concepts only.
+- Unreal Engine's public Mass documentation on LOD (LOD collectors and calculators from viewer distances with hysteresis, variable tick rates per LOD) and the Mass talks' descriptions of LOD-based ticking (2.4b.1, ADR-0076); concepts only, no Unreal source.
+- Guy L. Steele, Doug Lea and Christine H. Flood, "Fast Splittable Pseudorandom Number Generators" (OOPSLA 2014): the SplitMix64 mixer behind `lod_phase`.
 - flecs documentation on observers and deferred operations (Sander Mertens, MIT); Bevy documentation on commands and observers; concepts only, no code copied.
 - Timothy Ford, "Overwatch Gameplay Architecture and Netcode", GDC 2017.
 - Richard Fabian, *Data-Oriented Design*.
 - Glenn Fiedler, "Fix Your Timestep!" and "Floating Point Determinism" (Gaffer on Games).
 
 ## Status
-M0 phase 0.3 complete; renamed to Terra in M7 Phase 7.0 (2026-11-18); M2 phases 2.0 (processors, ADR-0063) and 2.0b (storage kinds, commands, signals, observers, ADR-0069) and 2.6a (script types and named access, ADR-0062) complete; 2.6b added `ReflectComponent::from_wire` for script commands; 2.6c added type-version migration; 2.8 added state digests and end-of-tick hooks (ADR-0072); 2.4.4 added `World::pending_signals` (read-only, for inspection) and `JsonComponent` (a registry-free component codec, which `World::set_json` uses).
+M0 phase 0.3 complete; renamed to Terra in M7 Phase 7.0 (2026-11-18); M2 phases 2.0 (processors, ADR-0063) and 2.0b (storage kinds, commands, signals, observers, ADR-0069) and 2.6a (script types and named access, ADR-0062) complete; 2.6b added `ReflectComponent::from_wire` for script commands; 2.6c added type-version migration; 2.8 added state digests and end-of-tick hooks (ADR-0072); 2.4.4 added `World::pending_signals` (read-only, for inspection) and `JsonComponent` (a registry-free component codec, which `World::set_json` uses); 2.4b.1 added simulation LOD (ADR-0076).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

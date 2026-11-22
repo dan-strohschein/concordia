@@ -5,7 +5,7 @@ use std::num::NonZeroUsize;
 use concordia_core::id::EntityId;
 use concordia_core::math::{Quat, Vec3};
 use concordia_reflect::{Reflect, RegistryError, TypeRegistry};
-use concordia_terra::{Schedule, SystemCtx, World, register_component, system};
+use concordia_terra::{Phase, Schedule, SystemCtx, World, lod_system, register_component, system};
 use serde::{Deserialize, Serialize};
 
 /// Human-readable entity name. Not required to be unique.
@@ -77,9 +77,11 @@ pub fn integrate_velocity(world: &mut World, ctx: &SystemCtx<'_>) {
     });
 }
 
-/// The default headless schedule: `integrate_velocity`.
+/// The default headless schedule: `terra.lod` (first in `PrePhysics`, from world positions) and
+/// `integrate_velocity`.
 pub fn headless_schedule() -> Schedule {
     let mut schedule = Schedule::new();
+    schedule.add_in(Phase::PrePhysics, lod_system(lod_position));
     schedule.add(system("integrate_velocity", integrate_velocity));
     schedule
 }
@@ -157,4 +159,13 @@ fn resolve(world: &World, id: EntityId, out: &mut WorldTransforms) {
         );
         out.transforms.insert(entity, base);
     }
+}
+
+/// An entity's world position for simulation LOD (`terra.lod`); `None` without a `Transform`.
+pub fn lod_position(world: &World, id: EntityId) -> Option<[f32; 3]> {
+    let local = world.get::<Transform>(id)?;
+    if world.get::<Parent>(id).is_none() {
+        return Some(local.translation.to_array());
+    }
+    world_transform(world, id).map(|m| m.w_axis.truncate().to_array())
 }

@@ -16,6 +16,7 @@ export interface MethodTerraStatsResult {
    * Entities.
    */
   entities: number;
+  lod: LodBuckets;
   /**
    * Play schedule (empty for edit).
    */
@@ -28,6 +29,23 @@ export interface MethodTerraStatsResult {
    * Commands whose target was gone.
    */
   skipped_commands: number;
+}
+/**
+ * Simulation LOD.
+ */
+export interface LodBuckets {
+  /**
+   * Of those, due this tick.
+   */
+  due: number;
+  /**
+   * Entities with a `SimLod` at levels 0–3.
+   */
+  levels: number[];
+  /**
+   * Entities with `LodViewer`.
+   */
+  viewers: number;
 }
 /**
  * One phase of the play schedule.
