@@ -142,6 +142,7 @@ There are two parallel tracks. **Track R (rendering)** is 4.1–4.8; 4.1 comes f
 ---
 
 ### Phase 4.3: GPU scene buffers and meshlet drawing into Forward+
+- **Note (2026-11-20, ADR-0015):** the RHI's indirect draw commands are shared by this phase's compute fallback, M10 10.7 and M11 11.7 (Sparx); whichever lands first adds them and the others reuse them.
 - **Objective:** Draw meshlets (no culling yet) straight into M1's clustered Forward+ pass, through mesh shaders or a compute fallback, with the same image as the M1 path.
 - **Decision (ADR-0100):** meshes are split offline into 64- or 128-triangle meshlets with meshoptimizer, and the geometry is uploaded into large bindless GPU buffers. Per-meshlet frustum, backface (cone) and HZB occlusion culling (4.4) runs in object/mesh shaders (Metal 3 first, then `VK_EXT_mesh_shader`, then D3D12 mesh shaders), or in compute with indirect draws where mesh shaders are missing. The hardware rasterizer draws the surviving meshlets into the Forward+ pass (or a G-buffer if M4 adds one). There is no software rasterizer and no visibility-buffer material binning. LOD starts with culling only; discrete per-meshlet LODs and HLODs come later (4.5), and virtualized geometry streaming is out of scope at first.
 - **Deliverables**
@@ -196,6 +197,7 @@ There are two parallel tracks. **Track R (rendering)** is 4.1–4.8; 4.1 comes f
 - **Deliverables**
   - A `TemporalUpscaler` trait with `OwnTaau` (all backends) and `MetalFxTemporal` (Apple; through `objc2-metal-fx`, MIT/Apache) implementations, chosen by `render.temporal.backend = Own | MetalFx | Off`.
   - Own TAAU: Halton(2,3) sub-pixel jitter (8 or 16 phases), reprojection with the motion vectors from 4.3, history sampling with Catmull-Rom, YCoCg variance clipping, disocclusion detection from depth/velocity, reactive mask (written by VFX and particles), and luminance-weighted resolve. Upscale ratios are 1.0×, 1.5× and 2.0×.
+  - *Note (2026-11-20, ADR-0015):* particles come from M11 (Sparx); its sprite renderer writes the reactive mask once this phase exists.
   - Mip bias for texture sampling at the internal resolution (`log2(internal/output) − ε`).
   - Exposure and pre-exposure plumbing shared with GI.
 - **Tests first**
@@ -214,6 +216,7 @@ There are two parallel tracks. **Track R (rendering)** is 4.1–4.8; 4.1 comes f
 
 ### Phase 4.7: Virtual shadow maps
 - **Objective:** Page-based, cached, high-resolution shadows for the sun and many local lights. VSM replaces CSM for meshlet and forward geometry, and CSM stays as the fallback.
+- **Note (2026-11-20, ADR-0014):** M10 plans a tiled shadow atlas for local lights that needs no meshlets. If it lands first, this phase reuses its light selection (`shadow_atlas::select`, which this phase's `many_local_lights_select_top_64_by_importance` tests), its invalidation model, its `render.stats` counters and `concordia-bvh`. Whether VSM local lights replace the atlas or become an opt-in tier above it is M10's open question 1.
 - **Deliverables**
   - Virtual address space: 16k × 16k texels per virtual shadow map, 128 × 128 texel pages (a 128 × 128 page table). Physical page pool: a depth atlas (default 8192², 4096 pages; configurable).
   - **Directional light:** a clipmap of N levels (default 16), each 2× the extent of the previous, centered on the camera and snapped to page granularity so cached pages stay valid as the camera moves.
@@ -326,6 +329,7 @@ There are two parallel tracks. **Track R (rendering)** is 4.1–4.8; 4.1 comes f
 
 ### Phase 4.10: Graph compiler, runtime, hot reload and MCP authoring
 - **Objective:** Compile checked graphs to fast, sandboxed and deterministic code, and let agents author them entirely through MCP as text.
+- **Note (2026-11-20, ADR-0016):** `graph.apply` needs undoable document edits in `concordia-command`. M12 12.8 needs the same operation for rig, clip and pose-library files; whichever phase lands first adds it, records it in its ADR, and the other reuses it.
 - **Compiler choice: WASM components (via an in-process emitter), with an IR interpreter as oracle and debugger**
   - *Codegen to Rust* was rejected as the default. It needs a Rust toolchain on the author's machine and a rebuild per edit (seconds to minutes), it is not sandboxed (a graph from a mod or an agent could do anything), and it cannot hot-reload in a shipped game.
   - *A register VM* was rejected as the shipping path. It is a second runtime to secure and optimize, and it would be about 5–20× slower than Cranelift-compiled WASM for math-heavy graphs.
@@ -357,6 +361,7 @@ There are two parallel tracks. **Track R (rendering)** is 4.1–4.8; 4.1 comes f
 ---
 
 ### Phase 4.11: Editor graph panel and Studio skills
+- **Note (2026-11-20, ADR-0016):** M12 recommends (its open question 1) that this panel later gain a view of `.rig.ron` rigs, edited through `rig.apply`, after M12's gate. Rigs don't become a `.graph.ron` kind.
 - **Objective:** A visual editor over the same text, and agent skills, so humans and agents work on the same graph files side by side.
 - **Deliverables**
   - `editor/ui/src/panels/graph/`: React panel using React Flow (`@xyflow/react`, MIT). Node palette from `graph.list_nodes`, inline diagnostics from `graph.check`, edits through `graph.apply` (so every human edit is a transaction with `human:local`), live trace overlay from `graph.trace`, and a "view as text" split showing the canonical `.graph.ron`.
@@ -490,7 +495,7 @@ The gate is four test binaries in `tests/gates/`:
 ## Open questions
 1. **Which Mac is the reference?** The plan assumes an Apple9+ (M3/M4-class) Pro or Max GPU. Confirmed: the author's M3 Pro (Apple9), which has Metal 3 mesh shaders.
 2. Is 1706×960 → 2560×1440 the right gate resolution, or should the gate target 1080p output for the first pass?
-3. Should VSM fully replace CSM as the default for projects that do not use meshlets? (Proposed: yes on Apple9+, CSM elsewhere until measured.)
+3. Should VSM fully replace CSM as the default for projects that do not use meshlets? (Proposed: yes on Apple9+, CSM elsewhere until measured.) For local lights, see also M10's tiled shadow atlas (ADR-0014, its open question 1).
 4. **GI stage B entry criteria:** start stage B (screen-space radiance cache + surface cache) only if (a) the reference port's art review flags missing contact or glossy GI, or (b) `iso_arena` FLIP cannot get under 0.08 with DDGI tuning. Should stage B be M4.5 or go into `later-backlog.md`?
    *Answered (2026-11-20, ADR-0013):* stage B is its own milestone, **M9 Advanced lighting (Photon)**. M4 keeps the `gi::Technique` seam, the proxy BLAS and the probe volume general enough for Photon to build on (its radiance cache may reuse the probes).
 5. Can the proxy BLAS for GI and the path tracer share an acceleration-structure build without compromising oracle independence? (Proposed: share the builder library, keep separate instances and separate tests.)
@@ -501,7 +506,7 @@ The gate is four test binaries in `tests/gates/`:
 
 ## ADRs to write
 - **ADR-0100: Meshlet geometry pipeline** (written, Proposed). Offline meshlets via meshoptimizer, bindless buffers, per-meshlet frustum/cone/two-pass HZB culling in mesh shaders (Metal 3 first) with a compute + indirect fallback, drawn into Forward+; no software raster, visibility buffer or streaming; LODs and HLODs later.
-- **ADR: Shadows: VSM default, CSM fallback.**
+- **ADR: Shadows: VSM default, CSM fallback.** It must also place M10's local-light atlas (ADR-0014).
 - **ADR: GI staging: DDGI-style probes first, radiance cache later**, with the isometric/spell-light justification and stage B entry criteria.
 - **ADR: Graph compilation target: WASM components plus an IR interpreter as oracle** (alternatives: Rust codegen, register VM).
 - **ADR: Runtime AI and the LLM plugin policy.** No LLM by default; opt-in providers chosen by the game developer; replay recording of responses; never the developer's subscription.

@@ -86,7 +86,9 @@ Rules that still apply to everything here: subscription-first (no item may *requ
 - **Hardware ray tracing and a reference path tracer** (after M4). Ground truth for golden images and GI validation.
 - **Upscaling and frame generation** (after M4). FSR (MIT) in core; MetalFX and DLSS as optional platform plugins.
 - **Terrain, foliage, water, volumetrics** (after M4). Each a separate plan; terrain ties into world partition.
-- **Motion matching, full-body IK, physics-based animation** (after M2, realistically after M4). Extends `concordia-anim`.
+- **Motion matching, full-body IK, physics-based animation** (after M2, realistically after M4). Extends `concordia-anim`. *Note (2026-11-20, ADR-0016):* M12 brings the rig runtime and limb IK (two-bone, FABRIK, CCD); full-body IK would extend `concordia-rig`.
+- **Rig follow-ups** (after M12). Retargeting between skeletons, stateful units (springs, secondary motion), WASM rig units, a visual rig view in M4's graph panel, and a timeline or dope-sheet panel (M12 open questions 1, 9, 12–14).
+- **Cinematic sequencer** (after M12). Multi-entity tracks for transforms, cameras, audio and events over M12's clips and curves.
 - **Web export via WebGPU** (after M1). Investigate a `wgpu`-style backend or WebGPU RHI for browser demos; WASM host already exists.
 - **Jolt GPU strand hair** (after M8). Wrap Jolt's Cosserat-rod hair (v5.6, work in progress upstream) once stable, bridging its compute interface to `concordia-rhi`.
 - **Flesh, muscles and panel-sewn garments** (after M8). Volumetric soft tissue and 2D-pattern garment authoring.

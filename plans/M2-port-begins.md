@@ -71,7 +71,7 @@ The numbers 2.1, 2.2 and 2.9 are retired: they moved to M5, and reusing them wou
 | 10 | **2.7 Audio and in-game UI** | audio stack and cues; retained ECS UI, taffy, cosmic-text (ADR-0060) | old 2.7 (Godot import and sound bank out) | sound-designer, composer (synth in M3 3.7), ui-ux |
 | 11 | **2.10 Sample game and gate** | an original sample game (D2), the deterministic gate, an optional live Studio gate | D2 | |
 
-The VFX artist stays disabled: particles are not in M2 (open question, unchanged).
+The VFX artist stays disabled: particles are not in M2 (open question, unchanged). M11 (Sparx, ADR-0015) enables it.
 
 **New-phase tests (first lists; each phase is refined again at its start):**
 - **2.0:**
@@ -1433,7 +1433,7 @@ Both `Cargo.lock`s gain `concordia-anim` under `concordia-render`.
 - `just editor-schemas` (changes committed);
 - `just editor-test` (118 unit, 22 end-to-end).
 
-**Not in 2.4.3:** events, attachments, tweens and `anim.*` tools (2.4.4); the Godot features listed above, which the planned M13 (Advanced Godot features, ADR-0017) takes up (its plan is on the `plans/m13-advanced-godot-features` branch, not yet on main); recording play-world writes in replays (ADR-0075).
+**Not in 2.4.3:** events, attachments, tweens and `anim.*` tools (2.4.4); the Godot features listed above, which M13 (Advanced Godot features, ADR-0017, [`M13-advanced-godot-features.md`](M13-advanced-godot-features.md)) takes up; recording play-world writes in replays (ADR-0075).
 
 ### Phase 2.4.4 refinement (2026-11-21, against 2.4.3 as built)
 **Status: no author questions; my calls below (say if you disagree). Done (see 2.4.4 As built).**
@@ -1531,7 +1531,7 @@ Both `Cargo.lock`s gain `concordia-anim` under `concordia-render`.
 - `just editor-schemas` (changes committed);
 - `just editor-test` (118 unit, 22 end-to-end).
 
-**Open items:** the selection box now uses posed bounds (2.4.2's open item, closed). The Metal repro has no FB number yet. 2.4.3's "Not in 2.4.3" line now points at M13, whose plan is still on its own branch.
+**Open items:** the selection box now uses posed bounds (2.4.2's open item, closed). The Metal repro has no FB number yet. 2.4.3's "Not in 2.4.3" line points at M13 (its plan landed after this phase, with M10–M12).
 
 **Not in 2.4.4:** the animator role and its skill (2.4.5); recording play-world writes in replays (ADR-0075); events from glTF extras or FBX markers (no standard; authored in the sidecar); tween loops and sequences (Godot's `set_loops`, chained tweeners); drawing the bind skeleton in the edit world.
 
@@ -1710,7 +1710,7 @@ These facts shape every phase below.
 - Pixel parity with Godot. Golden images are of *our* render of the slice, blessed after human review. Cross-engine parity is checked only with luma statistics (Phase 2.9).
 - A particle/VFX system (reported as unmapped; see Open questions), visual graphs (M4), playtest assertions and general replay (M3), the Studio (M3), USD (M5), Unity/Unreal importers (M5).
 - Porting the game's level-editor plugin. It keeps working in Godot; its `.tres` output is re-imported. An engine-native level editor is later work.
-- Motion matching, IK, retargeting beyond same-skeleton clips, audio DSP effects, rich text, UI theming.
+- Motion matching, IK, retargeting beyond same-skeleton clips, audio DSP effects, rich text, UI theming. *Note (2026-11-20, ADR-0016):* IK, rigs and in-engine keyframing are now M12; motion matching and retargeting stay in the backlog.
 - Windows/Linux for the gate (macOS/Metal first, per M1).
 
 ## Dependencies (what must already exist, from which milestone)
@@ -1887,6 +1887,7 @@ Phase order is a dependency order, but 2.3–2.8 can run in parallel once 2.1 an
 - **Done criteria:** tests green; the corpus report exists; translator output for the slice's shaders compiles (manual items may remain until 2.9).
 
 ### Phase 2.4: concordia-anim: skinning, blending, state machines
+- **Note (2026-11-20, ADR-0016):** M12 (Rigging v1.0) builds rigs, IK and in-engine keyframing on this crate. It asks 2.4 to leave two seams: a `PoseProcessor` trait run after an entity's animation graph (so `concordia-rig` plugs in without `concordia-anim` depending on it), and clip channels that can be addressed by bone name, so M12's `.clip.ron` text model maps onto the runtime clip. A separate render (presentation) pose, if 2.4 has one, is what M12's Presentation rigs write. Neither changes 2.4's tests.
 
 - **Objective:** play the ARPG character set: the hero rig and the two melee enemy rigs with their `AnimationTree` graphs, in the fixed-step sim so animation-timed gameplay (a throw released at a frame, an attack landing) is deterministic.
 - **Deliverables:** `concordia-anim` (skeleton, clips, sampling, CPU reference skinning, graph nodes: clip, blend2/blendN, one-shot, time-scale, transition, state machine), animation events (from Godot method/call tracks), `BoneAttachment`, property tweens; GPU skinning in `concordia-render`; `.animgraph.ron`; `concordia-import-godot::animtree` (AnimationTree/AnimationNode* → animgraph).
@@ -2096,7 +2097,7 @@ which runs `cargo nextest run --test m2_port_begins` (`tests/gates/m2_port_begin
 
 - Grid layers (walkability, terrain type, ground surface, ...) as base64 in `.data.ron`, or as PNG layers beside it (diffable images, editable in tools)?
 - Wire encoding across the WIT boundary: reflect-described fixed layout (planned) vs. a schema'd format such as postcard; how strings/lists are arena-encoded.
-- Particles: a minimal CPU emitter in M2 for loot effects and fire patches, or wait for an M4 VFX graph? (Planned: wait; report as non-blocking.)
+- Particles: a minimal CPU emitter in M2 for loot effects and fire patches, or wait for an M4 VFX graph? (Planned: wait; report as non-blocking.) *Note (2026-11-20, ADR-0015):* M4 plans no VFX graph kind; particles are now M11 (Sparx). Its open question 11 recommends answering "wait for M11", with no CPU emitter in M2.
 - Should the port project be its own private git repository (planned) or a private branch of the game repo?
 - Do probe scripts run with Godot's `--script` from outside the project reliably for everything we need (terrain sampling is pure; luma harnesses need a window)? Fallback: capture probe values once by hand and commit them to the port project.
 - Should the reference port's grid-to-polygon navmesh builder be ported verbatim as an alternative nav source, if Recast reachability ever disagrees with the grid oracle?
