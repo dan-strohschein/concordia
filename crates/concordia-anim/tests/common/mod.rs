@@ -141,6 +141,7 @@ pub fn clip(
         name: "test".to_owned(),
         duration: times.last().copied().unwrap_or(0.0),
         frame_rate: None,
+        events: Vec::new(),
         channels: vec![Channel {
             target: "018bcfe5-6800-7000-a424-6c55076b137f".parse().unwrap(),
             target_name: bone.to_owned(),

@@ -68,8 +68,29 @@ impl Skeleton {
 
     /// Skinning matrices for `pose` in the bind mesh's space (the identity at rest).
     pub fn palette(&self, pose: &Pose) -> Result<Vec<Mat4>, AnimError> {
-        let model = self.model_space(pose)?;
-        Ok(self.joint_palette(&model, self.mesh))
+        Ok(self.skin_matrices(&self.entity_space(pose)?))
+    }
+
+    /// Skinning matrices from joint matrices in the entity's space ([`Skeleton::entity_space`]):
+    /// each times its inverse bind.
+    pub fn skin_matrices(&self, entity_space: &[Mat4]) -> Vec<Mat4> {
+        debug_assert_eq!(entity_space.len(), self.len());
+        entity_space
+            .iter()
+            .zip(&self.joints)
+            .map(|(m, j)| *m * j.inverse_bind)
+            .collect()
+    }
+
+    /// Each joint's matrix in the skinned entity's own space, `inverse(mesh) · model`: where a
+    /// posed skin draws the joint, relative to the entity's world matrix.
+    pub fn entity_space(&self, pose: &Pose) -> Result<Vec<Mat4>, AnimError> {
+        let to_mesh = self.mesh.inverse();
+        Ok(self
+            .model_space(pose)?
+            .into_iter()
+            .map(|m| to_mesh * m)
+            .collect())
     }
 
     /// The skeleton of `skin`, whose joints are entities of `prefab` (the same import).
@@ -132,11 +153,30 @@ impl Skeleton {
         self.check(pose)?;
         let mut model = vec![Mat4::IDENTITY; self.len()];
         for &j in &self.order {
-            let joint = &self.joints[j];
-            let parent = joint.parent.map_or(Mat4::IDENTITY, |p| model[p]);
-            model[j] = parent * joint.offset * local(&pose.bones[j]);
+            let parent = self.joints[j].parent.map_or(Mat4::IDENTITY, |p| model[p]);
+            model[j] = parent * self.joint_local(j, pose);
         }
         Ok(model)
+    }
+
+    /// Joint `j`'s matrix in the skinned entity's space (one row of [`Skeleton::entity_space`]),
+    /// walking only its own chain; `None` for a bad joint or a pose of the wrong size.
+    pub fn entity_matrix(&self, pose: &Pose, j: usize) -> Option<Mat4> {
+        self.check(pose).ok()?;
+        let mut chain = vec![j];
+        while let Some(p) = self.joints.get(*chain.last()?)?.parent {
+            chain.push(p);
+        }
+        let model = chain
+            .iter()
+            .rev()
+            .fold(Mat4::IDENTITY, |m, &k| m * self.joint_local(k, pose));
+        Some(self.mesh.inverse() * model)
+    }
+
+    /// Joint `j`'s transform relative to its parent joint: the fixed offset, then the pose.
+    fn joint_local(&self, j: usize, pose: &Pose) -> Mat4 {
+        self.joints[j].offset * local(&pose.bones[j])
     }
 
     /// Skinning matrices: mesh space → posed mesh space, given the mesh entity's model matrix.

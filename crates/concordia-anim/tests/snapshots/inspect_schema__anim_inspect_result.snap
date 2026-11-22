@@ -1,0 +1,475 @@
+---
+source: crates/concordia-anim/tests/inspect_schema.rs
+assertion_line: 9
+expression: result_schema(&method)
+---
+{
+  "$defs": {
+    "AnimEvent": {
+      "additionalProperties": false,
+      "description": "Raised on a skinned entity when its playback crosses a clip event; delivered next tick.",
+      "properties": {
+        "clip": {
+          "description": "The clip it belongs to.\n\nAsset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+          "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+          "type": "string"
+        },
+        "name": {
+          "description": "The event's name.",
+          "type": "string"
+        },
+        "node": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "The graph's clip node that played it (none for an `AnimPlayer`)."
+        },
+        "time": {
+          "description": "The event's time in the clip, in seconds.",
+          "type": "number"
+        },
+        "weight": {
+          "description": "The clip's share of the pose when it fired (1 for an `AnimPlayer`).",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "clip",
+        "time",
+        "weight"
+      ],
+      "title": "AnimEvent",
+      "type": "object",
+      "x-concordia-category": "Animation",
+      "x-concordia-type": "AnimEvent"
+    },
+    "BoneReport": {
+      "additionalProperties": false,
+      "description": "One bone's transforms.",
+      "properties": {
+        "local": {
+          "$ref": "#/$defs/Transform",
+          "description": "Relative to its parent (the pose)."
+        },
+        "model": {
+          "$ref": "#/$defs/Transform",
+          "description": "Relative to the model's root."
+        },
+        "name": {
+          "description": "Its name.",
+          "type": "string"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Its parent bone."
+        },
+        "world": {
+          "$ref": "#/$defs/Transform",
+          "description": "In the world."
+        }
+      },
+      "required": [
+        "name",
+        "local",
+        "model",
+        "world"
+      ],
+      "title": "BoneReport",
+      "type": "object",
+      "x-concordia-type": "BoneReport"
+    },
+    "ClipReport": {
+      "additionalProperties": false,
+      "description": "A clip being played.",
+      "properties": {
+        "clip": {
+          "description": "The clip.\n\nAsset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+          "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+          "type": "string"
+        },
+        "duration": {
+          "description": "Length in seconds.",
+          "type": "number"
+        },
+        "events": {
+          "description": "The clip's events.",
+          "items": {
+            "$ref": "#/$defs/EventReport"
+          },
+          "type": "array"
+        },
+        "frame": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "description": "The position in frames, when the clip has a frame rate."
+        },
+        "looping": {
+          "description": "Wraps at the end.",
+          "type": "boolean"
+        },
+        "speed": {
+          "description": "Playback rate (clip players only; 1 in graphs).",
+          "type": "number"
+        },
+        "time": {
+          "description": "Playback position in seconds.",
+          "type": "number"
+        }
+      },
+      "required": [
+        "clip",
+        "time",
+        "duration",
+        "speed",
+        "looping",
+        "events"
+      ],
+      "title": "ClipReport",
+      "type": "object",
+      "x-concordia-type": "ClipReport"
+    },
+    "EventReport": {
+      "additionalProperties": false,
+      "description": "One clip event.",
+      "properties": {
+        "frame": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "description": "The same in frames, when the clip has a frame rate."
+        },
+        "name": {
+          "description": "Its name.",
+          "type": "string"
+        },
+        "time": {
+          "description": "Seconds from the clip's start.",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "time"
+      ],
+      "title": "EventReport",
+      "type": "object",
+      "x-concordia-type": "EventReport"
+    },
+    "GraphReport": {
+      "additionalProperties": false,
+      "description": "A graph being played.",
+      "properties": {
+        "graph": {
+          "description": "The graph.\n\nAsset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+          "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+          "type": "string"
+        },
+        "nodes": {
+          "description": "Every node, in name order.",
+          "items": {
+            "$ref": "#/$defs/NodeReport"
+          },
+          "type": "array"
+        },
+        "parameters": {
+          "description": "Every parameter's effective value (the player's, else the graph's default).",
+          "items": {
+            "$ref": "#/$defs/ParameterReport"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "graph",
+        "nodes",
+        "parameters"
+      ],
+      "title": "GraphReport",
+      "type": "object",
+      "x-concordia-type": "GraphReport"
+    },
+    "NodeReport": {
+      "additionalProperties": false,
+      "description": "One graph node's playback.",
+      "properties": {
+        "active": {
+          "description": "One-shots: playing.",
+          "type": "boolean"
+        },
+        "clip": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/ClipReport"
+            }
+          ],
+          "description": "Clip nodes: the clip, its position and events."
+        },
+        "current": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Transitions: the input played; state machines: the state."
+        },
+        "fade": {
+          "description": "Seconds into the fade.",
+          "type": "number"
+        },
+        "kind": {
+          "description": "Its kind: Clip, Blend2, BlendN, OneShot, TimeScale, Transition or StateMachine.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Its name.",
+          "type": "string"
+        },
+        "previous": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "The input or state fading out."
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "active",
+        "fade"
+      ],
+      "title": "NodeReport",
+      "type": "object",
+      "x-concordia-type": "NodeReport"
+    },
+    "Parameter": {
+      "description": "A graph parameter: its type and default value.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A number (blend amounts, weights, time scales).",
+          "properties": {
+            "Float": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "Float"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "An integer (a transition node's input).",
+          "properties": {
+            "Int": {
+              "maximum": 2147483647,
+              "minimum": -2147483648,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "Int"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A flag (state machine conditions).",
+          "properties": {
+            "Bool": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "Bool"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "Trigger",
+          "description": "A one-tick request (one-shots, conditions), cleared after every evaluation."
+        }
+      ],
+      "title": "Parameter",
+      "x-concordia-type": "Parameter"
+    },
+    "ParameterReport": {
+      "additionalProperties": false,
+      "description": "A parameter and its effective value.",
+      "properties": {
+        "name": {
+          "description": "Its name.",
+          "type": "string"
+        },
+        "requested": {
+          "description": "Triggers: fired for the next evaluation.",
+          "type": "boolean"
+        },
+        "value": {
+          "$ref": "#/$defs/Parameter",
+          "description": "Its kind and value (a trigger shows whether it is requested in `requested`)."
+        }
+      },
+      "required": [
+        "name",
+        "value",
+        "requested"
+      ],
+      "title": "ParameterReport",
+      "type": "object",
+      "x-concordia-type": "ParameterReport"
+    },
+    "Transform": {
+      "additionalProperties": false,
+      "default": {
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "description": "Local transform relative to `Parent` (or to the world if there is no parent).",
+      "properties": {
+        "rotation": {
+          "description": "Orientation (unit quaternion).\n\nRotation quaternion as [x, y, z, w]; identity is [0, 0, 0, 1].",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 4,
+          "minItems": 4,
+          "type": "array",
+          "x-concordia-widget": "quat"
+        },
+        "scale": {
+          "description": "Per-axis scale factor.\n\n3D vector as [x, y, z].",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-concordia-widget": "vec3"
+        },
+        "translation": {
+          "description": "Position in meters.\n\n3D vector as [x, y, z].",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 3,
+          "type": "array",
+          "x-concordia-widget": "vec3"
+        }
+      },
+      "required": [
+        "translation",
+        "rotation",
+        "scale"
+      ],
+      "title": "Transform",
+      "type": "object",
+      "x-concordia-category": "Core",
+      "x-concordia-type": "Transform"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`anim.inspect` result.",
+  "properties": {
+    "bones": {
+      "description": "Every bone, in skin joint order.",
+      "items": {
+        "$ref": "#/$defs/BoneReport"
+      },
+      "type": "array"
+    },
+    "clip": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/ClipReport"
+        }
+      ],
+      "description": "The clip player, if it plays one clip."
+    },
+    "graph": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/GraphReport"
+        }
+      ],
+      "description": "The graph player, if it plays a graph (it wins over a clip player)."
+    },
+    "pending_events": {
+      "description": "Events raised last tick, delivered as signals on the next tick.",
+      "items": {
+        "$ref": "#/$defs/AnimEvent"
+      },
+      "type": "array"
+    },
+    "skin": {
+      "description": "The skin the pose belongs to.\n\nAsset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+      "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "skin",
+    "bones",
+    "pending_events"
+  ],
+  "title": "InspectResult",
+  "type": "object",
+  "x-concordia-type": "InspectResult"
+}

@@ -15,6 +15,7 @@ mod prefab;
 mod skin;
 
 use concordia_assets::{AssetError, ImportInput, ImportOutput, Importer};
+use concordia_import_model::ModelSettings;
 
 /// The FBX importer.
 #[derive(Debug, Clone, Copy, Default)]
@@ -27,7 +28,8 @@ impl Importer for FbxImporter {
 
     fn version(&self) -> u32 {
         // 2 (2.4.1): `Skinned` on skinned renderers, bone names and the frame rate on clips.
-        2
+        // 3 (2.4.4): clip events from the import settings.
+        3
     }
 
     fn extensions(&self) -> &'static [&'static str] {
@@ -64,7 +66,8 @@ impl Importer for FbxImporter {
         let clusters =
             skin::skins(&scene, &meshes, &names, &entities, &mut output).map_err(fail)?;
         mesh::meshes(&scene, &meshes, &clusters, &names, &mut output).map_err(fail)?;
-        anim::clips(&scene, &stacks, &names, &entities, &mut output).map_err(fail)?;
+        let settings = ModelSettings::from_json(input.settings).map_err(&fail)?;
+        anim::clips(&scene, &stacks, &names, &entities, &settings, &mut output).map_err(fail)?;
         for sub in output.artifacts.keys().filter(|k| !k.is_empty()) {
             input.sub_ids.id(sub);
         }

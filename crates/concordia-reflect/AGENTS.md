@@ -5,7 +5,7 @@ Every engine type describes itself: wire shape, doc comments, defaults and range
 
 ## Public entry points
 - `Reflect` (trait + `#[derive(Reflect)]`), `TypeInfo`, `Shape`, `FieldInfo`, `VariantInfo`, `TypeRef`
-- `TypeRegistry` (`register`, `get`, `get_by_name`, `from_json`, `schema_for`, `schema_index`) and `TypeRegistration` (type-data slots, `deserialize`)
+- `TypeRegistry` (`register`, `get`, `get_by_name`, `from_json`, `schema_for`, `schema_index`) and `TypeRegistration` (type-data slots, `deserialize`, `json_builder` → `JsonBuilder`: a copyable JSON constructor, 2.4.4)
 - `DynReflect` (`to_json`, `clone_dyn`, `eq_dyn`, downcasting)
 - `schema_for(&TypeInfo)`, `canonical_hash(&dyn DynReflect, &mut blake3::Hasher)`
 - `validate_json(&Value, &TypeInfo)` (JSON Pointer errors), `example_json(&TypeInfo)` (schema-valid examples), `find_non_finite(&dyn DynReflect)`
@@ -52,7 +52,7 @@ Every engine type describes itself: wire shape, doc comments, defaults and range
 - WebAssembly Component Model canonical ABI documentation (flat little-endian layouts, lists as pointer/length pairs) and Cap'n Proto / FlatBuffers encoding documentation, read for prior art on fixed layouts with out-of-line data (2.6a); the wire format is our own.
 
 ## Status
-M0 phase 0.2 complete; M2 phase 2.6a (dynamic types, wire codec) complete.
+M0 phase 0.2 complete; M2 phase 2.6a (dynamic types, wire codec) complete; 2.4.4 added `TypeRegistration::json_builder` (`JsonBuilder`, a copyable JSON constructor for one type).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

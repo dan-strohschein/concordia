@@ -32,7 +32,7 @@ The glTF 2.0 importer (`.gltf` and `.glb`): meshes, metallic-roughness materials
 - Khronos glTF 2.0 specification and extension specifications; Morten Mikkelsen, MikkTSpace (`bevy_mikktspace`, Zlib/MIT/Apache); `gltf` crate (MIT/Apache).
 
 ## Status
-M1 phase 1.4; materials as one `Slab` built directly from glTF's factors and textures since M2 2.3c (the artifacts are byte-identical to 2.3b's, so the importer stays at version 2). Its format-neutral code moved to `concordia-import-model` in 2.3d, again byte-identical (every artifact of every sample and fixture hashed before and after), so still version 2. Version 3 in 2.4.1 (ADR-0074): `Skinned` and channel bone names.
+M1 phase 1.4; materials as one `Slab` built directly from glTF's factors and textures since M2 2.3c (the artifacts are byte-identical to 2.3b's, so the importer stays at version 2). Its format-neutral code moved to `concordia-import-model` in 2.3d, again byte-identical (every artifact of every sample and fixture hashed before and after), so still version 2. Version 3 in 2.4.1 (ADR-0074): `Skinned` and channel bone names. Version 4 in 2.4.4: clip events from the sidecar's `clip_events` (`concordia_import_model::ModelSettings`).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

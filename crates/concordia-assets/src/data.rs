@@ -233,6 +233,40 @@ pub struct ClipData {
     pub frame_rate: Option<f32>,
     /// Channels.
     pub channels: Vec<Channel>,
+    /// Named moments (footsteps, hits), sorted by time; from the import settings (2.4.4).
+    pub events: Vec<ClipEvent>,
+}
+
+/// A named moment in a clip, raised as a signal when playback crosses it (M2 phase 2.4.4).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct ClipEvent {
+    /// Seconds from the clip's start (0..=duration).
+    pub time: f32,
+    /// What happens (gameplay matches on it).
+    pub name: String,
+}
+
+/// Checks a clip's events: finite times within `0..=duration`, in order, with non-empty names.
+pub fn validate_events(clip: &ClipData) -> Result<(), String> {
+    for (i, e) in clip.events.iter().enumerate() {
+        if e.name.is_empty() {
+            return Err(format!("event {i} (at {} s) has an empty name", e.time));
+        }
+        if !(e.time.is_finite() && (0.0..=clip.duration).contains(&e.time)) {
+            return Err(format!(
+                "event {:?} at {} s is outside the clip (0..={} s)",
+                e.name, e.time, clip.duration
+            ));
+        }
+    }
+    if let Some(w) = clip.events.windows(2).find(|w| w[1].time < w[0].time) {
+        return Err(format!(
+            "events are out of order: {:?} at {} s comes after {:?} at {} s",
+            w[1].name, w[1].time, w[0].name, w[0].time
+        ));
+    }
+    Ok(())
 }
 
 /// A punctual light from an imported file (turned into light components when rendering arrives).

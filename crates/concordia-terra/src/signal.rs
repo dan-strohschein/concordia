@@ -161,6 +161,18 @@ impl SignalQueue {
         }
     }
 
+    /// Raised `S` signals not yet delivered, sorted by target (raise order kept per target).
+    pub(crate) fn pending<S: Component>(&self) -> Vec<(EntityId, &S)> {
+        let mut out: Vec<(EntityId, &S)> = self
+            .pending
+            .get(S::type_info().name)
+            .and_then(|l| l.as_any().downcast_ref::<Typed<S>>())
+            .map(|t| t.0.iter().map(|(id, s)| (*id, s)).collect())
+            .unwrap_or_default();
+        out.sort_by_key(|(id, _)| *id);
+        out
+    }
+
     /// This tick's `S` signals.
     pub(crate) fn delivered<S: Component>(&self) -> &[(EntityId, S)] {
         self.delivered
@@ -227,5 +239,11 @@ impl World {
     /// This tick's delivered `S` signals, by entity then raise order.
     pub fn signals<S: Component>(&self) -> &[(EntityId, S)] {
         self.signals.delivered::<S>()
+    }
+
+    /// `S` signals raised and not yet delivered (they arrive next tick), sorted by entity then
+    /// raise order; read-only, for inspection.
+    pub fn pending_signals<S: Component>(&self) -> Vec<(EntityId, &S)> {
+        self.signals.pending::<S>()
     }
 }

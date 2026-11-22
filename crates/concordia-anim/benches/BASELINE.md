@@ -13,8 +13,12 @@ A synthetic 65-bone chain; one 1 s clip at 30 fps with translation, rotation and
 | `world_hash_1000_poses` (65,000 bone transforms) | 43.1 ms |
 | `graph_1000_characters_1_threads` (2.4.3: a state machine over a `Blend2` of two clips under an active one-shot of a third, half-skeleton filter) | 9.30 ms |
 | `graph_1000_characters_8_threads` | 2.08 ms |
+| `events_attachments_1000_characters_1_threads` (2.4.4: clip players with four events a second, one item attached to the last bone of the 65-bone chain each) | 3.88 ms |
+| `events_attachments_1000_characters_8_threads` | 1.90 ms |
 
 - The ECS adds about 6% over raw sampling, and eight threads give about 4.2× (64-entity chunks).
 - Hashing poses is the expensive part: about 0.66 µs per bone transform, against about 0.44 µs per small component in `concordia-terra`'s `world_hash_10k`. Replays hash every 60 ticks by default, so this costs under 1 ms per tick on average. A faster hash for float arrays is a follow-up if crowds of full skeletons need frequent checkpoints.
 
 **2.4.3 (2026-11-21, same machine, load average about 17: upper bounds).** The rows above were re-measured the same day and are unchanged within 1%. A graph tick samples three clips per character and costs 3.3× a one-clip tick (9.30 against 2.78 ms on one thread), so cost follows the clips sampled. Blending and per-node scratch poses add about 15% over three bare samples (3 × 2.63 ms). Eight threads give 4.5×. Graph state adds a few numbers per character, so the pose hash (above) is still the expensive part; its follow-up stays open.
+
+**2.4.4 (2026-11-21, same machine, load average about 11: upper bounds).** The earlier rows, re-measured the same run: 2.50, 2.59, 0.68, 42.3, 8.58 and 2.14 ms (within noise of the table). Events and attachments add about 1.3 ms per tick for 1,000 characters at one thread and 1.2 ms at eight: the attachment pass is sequential and walks the bone's chain, here the worst case (64 parents deep; real rigs are about 10). About 67 events are raised per tick. The pose-hash follow-up stays open: events don't need more frequent checkpoints.

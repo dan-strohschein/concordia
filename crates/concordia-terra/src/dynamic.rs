@@ -1,7 +1,7 @@
 //! By-name component access and queries, for the Engine API, commands and scenes.
 
 use concordia_core::id::EntityId;
-use concordia_reflect::{DynReflect, TypeRegistration, TypeRegistry};
+use concordia_reflect::{DynReflect, JsonBuilder, TypeRegistration, TypeRegistry};
 use serde_json::Value;
 
 use crate::component::ReflectComponent;
@@ -39,9 +39,7 @@ impl World {
         registry: &TypeRegistry,
     ) -> Result<Option<Box<dyn DynReflect>>, EcsError> {
         if value.as_any().is::<concordia_reflect::DynamicValue>() {
-            let value = crate::storage::column::downcast_dynamic(value)?;
-            let old = self.insert_dynamic(id, value)?;
-            return Ok(old.map(|v| Box::new(v) as Box<dyn DynReflect>));
+            return self.insert_reflected(id, value, None);
         }
         let name = value.info().name;
         let registration = registry
@@ -49,7 +47,28 @@ impl World {
             .ok_or_else(|| EcsError::ComponentNotRegistered {
                 name: name.to_owned(),
             })?;
-        reflect_component(registration)?.insert(self, id, value)
+        let reflect = *reflect_component(registration)?;
+        self.insert_reflected(id, value, Some(&reflect))
+    }
+
+    /// Inserts a built value: script values directly, Rust values through `reflect`.
+    fn insert_reflected(
+        &mut self,
+        id: EntityId,
+        value: Box<dyn DynReflect>,
+        reflect: Option<&ReflectComponent>,
+    ) -> Result<Option<Box<dyn DynReflect>>, EcsError> {
+        if value.as_any().is::<concordia_reflect::DynamicValue>() {
+            let value = crate::storage::column::downcast_dynamic(value)?;
+            let old = self.insert_dynamic(id, value)?;
+            return Ok(old.map(|v| Box::new(v) as Box<dyn DynReflect>));
+        }
+        let name = value.info().name;
+        reflect
+            .ok_or_else(|| EcsError::NotAComponent {
+                name: name.to_owned(),
+            })?
+            .insert(self, id, value)
     }
 
     /// Validates `json` as component `name` and inserts it; returns the previous value as JSON.
@@ -60,8 +79,7 @@ impl World {
         json: Value,
         registry: &TypeRegistry,
     ) -> Result<Option<Value>, EcsError> {
-        let value = component_from_json(registry, name, json)?;
-        let old = self.insert_dyn(id, value, registry)?;
+        let old = JsonComponent::of(registry, name)?.set(self, id, json)?;
         Ok(old.map(|v| v.to_json()).transpose()?)
     }
 
@@ -100,6 +118,41 @@ fn component_registration<'r>(
             })?;
     reflect_component(registration)?;
     Ok(registration)
+}
+
+/// One component's JSON codec, copied out of the registry so play systems can write components by
+/// name without it (tweens, 2.4.4).
+#[derive(Debug, Clone, Copy)]
+pub struct JsonComponent {
+    builder: JsonBuilder,
+    reflect: ReflectComponent,
+}
+
+impl JsonComponent {
+    /// The codec of the component named `name`.
+    pub fn of(registry: &TypeRegistry, name: &str) -> Result<Self, EcsError> {
+        let registration = component_registration(registry, name)?;
+        Ok(Self {
+            builder: registration.json_builder(),
+            reflect: *reflect_component(registration)?,
+        })
+    }
+
+    /// The component's stable name.
+    pub fn name(&self) -> &'static str {
+        self.builder.info().name
+    }
+
+    /// Validates `json` and inserts it on `id`; returns the previous value.
+    pub fn set(
+        &self,
+        world: &mut World,
+        id: EntityId,
+        json: Value,
+    ) -> Result<Option<Box<dyn DynReflect>>, EcsError> {
+        let value = self.builder.from_json(json)?;
+        world.insert_reflected(id, value, Some(&self.reflect))
+    }
 }
 
 fn reflect_component(registration: &TypeRegistration) -> Result<&ReflectComponent, EcsError> {

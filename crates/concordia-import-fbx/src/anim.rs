@@ -2,7 +2,7 @@
 
 use concordia_assets::{AssetKind, Channel, ChannelPath, ClipData, ImportOutput, Interpolation};
 use concordia_core::id::EntityId;
-use concordia_import_model::insert_artifact;
+use concordia_import_model::{ModelSettings, insert_artifact};
 
 use crate::ffi::{Bake, Key, Scene, Stack};
 use crate::names::Names;
@@ -22,8 +22,10 @@ pub(crate) fn clips(
     stacks: &[Stack],
     names: &Names,
     entities: &[Option<EntityId>],
+    settings: &ModelSettings,
     out: &mut ImportOutput,
 ) -> Result<(), String> {
+    settings.check_clips(names.clips.iter().map(String::as_str))?;
     let fps = scene.frames_per_second();
     let rate = if fps.is_finite() && fps > 0.0 {
         fps
@@ -33,12 +35,16 @@ pub(crate) fn clips(
     for (index, _) in stacks.iter().enumerate() {
         let sub = format!("clip/{}", names.clips[index]);
         let bake = scene.bake(index, rate).map_err(|e| format!("{sub}: {e}"))?;
-        let data = ClipData {
+        let mut data = ClipData {
             name: names.clips[index].clone(),
             duration: bake.duration() as f32,
             frame_rate: Some(rate as f32),
             channels: channels(&bake, names, entities),
+            events: Vec::new(),
         };
+        settings
+            .apply(&mut data)
+            .map_err(|e| format!("{sub}: {e}"))?;
         insert_artifact(out, sub, AssetKind::Clip, &data).map_err(|e| e.to_string())?;
     }
     Ok(())

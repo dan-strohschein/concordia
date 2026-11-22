@@ -1,0 +1,23 @@
+---
+source: crates/concordia-anim/tests/inspect_schema.rs
+assertion_line: 8
+expression: params_schema(&method)
+---
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`anim.inspect` params.",
+  "properties": {
+    "entity": {
+      "description": "The posed entity (the one with `Skinned` and `Pose`).\n\nEntity id (UUID string). If you pass a name instead, the error suggests the matching id.",
+      "format": "uuid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "entity"
+  ],
+  "title": "InspectParams",
+  "type": "object",
+  "x-concordia-type": "InspectParams"
+}

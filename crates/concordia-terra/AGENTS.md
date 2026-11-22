@@ -10,10 +10,10 @@
 - `register_component::<T>(&mut TypeRegistry)` and `ReflectComponent`
 - `processor(name, phase)` → `ProcessorDecl` (`reads`, `writes`, `writes_presentation`, `after`, `before`, `run`), the `Processor` trait, `View` (`query` → `ViewQuery::for_each` / `par_for_each`), `Phase` (`PrePhysics`, `Physics`, `PostPhysics`, `FrameEnd`, `Presentation`)
 - `Schedule` (`add` = exclusive system in `PostPhysics`, `add_in(phase, ..)`, `add_processor`, `append`, `plan`), `system(name, closure)`, `SystemCtx` (`dt`, `dt_exact`), `SimLoop::new(rate, schedule, &mut world) -> Result<_, ScheduleError>` (`step`, `advance`, `rate`, `set_rate`), `SimClock` (`time_scale`, `time`), `TimeScale`, `Timer`, `World::register_presentation`, `WorldHash` (hex `Display`/`FromStr`, serde)
-- `component_from_json(&TypeRegistry, name, json)` (validate a component value without a world)
+- `component_from_json(&TypeRegistry, name, json)` (validate a component value without a world); `JsonComponent::of(registry, name)` → `set(world, id, json)` (2.4.4: a copyable codec, so play systems write components by name without the registry)
 - Storage kinds (2.0b): `World::register_shared`, `storage_kind`, `storage_stats` (`StorageStats`), `chunk` / `set_chunk`, `CHUNK_ROWS`, `StorageKind` (`Dense`, `Shared`, `Tag`; zero-sized types are tags)
 - Commands (2.0b): `View::commands` → `CommandBuffer` (`spawn` → `Pending`, `insert`, `remove`, `despawn`, `signal`, `append`, `apply` → `ApplyReport`), `ViewQuery::par_for_each_deferred`, `TerraStats` (skipped commands)
-- Signals and observers (2.0b): `World::signal` / `signals`, `ProcessorDecl::receives`, `View::signals`, `ViewQuery::for_each_of`; `observer::<T>(name, Observe::Add | Remove)`, `View::observed`
+- Signals and observers (2.0b): `World::signal` / `signals` / `pending_signals` (2.4.4: raised, not yet delivered, sorted by entity), `ProcessorDecl::receives`, `View::signals`, `ViewQuery::for_each_of`; `observer::<T>(name, Observe::Add | Remove)`, `View::observed`
 - Resources in views (2.0b): `ProcessorDecl::reads_resource` / `writes_resource`, `View::resource` / `resource_mut`
 - Script types and named access (2.6a, ADR-0062): `register_dynamic_component`, `World::insert_dynamic`, `World::signal_dynamic`, `ReflectComponent::dynamic` / `signal`; `ProcessorDecl::reads_named` / `writes_named` / `receives_named`; `View::batch(&NamedQuery)` → `Batch` (ids + `WireColumn`s), `View::write_batch`, `View::signal_batch`, `View::signals_named`; `CommandBuffer::insert_reflect` / `remove_named` / `signal_reflect`; `ReflectComponent::from_wire` (decode one wire row as the component's value: `T` for Rust types, `DynamicValue` for script types; 2.6b); `World::migrate_dynamic` / `migrate_dynamic_all` (move stored script types to new versions, all or nothing; 2.6c, ADR-0061); `World::stores(name)` (2.6d)
 - Replay support (2.8, ADR-0072): `World::state_digest` → `StateDigest` (the world hash plus one hash per component name and `@entities`, `@clock`, `@rng`, `@signals`, in one pass); `Schedule::add_tick_end` / `tick_end_names`, `tick_end(name, |world: &World| ..)`, the `TickEnd` trait: read-only hooks `SimLoop::step` runs after each tick, once the clock has advanced
@@ -73,7 +73,7 @@
 - Glenn Fiedler, "Fix Your Timestep!" and "Floating Point Determinism" (Gaffer on Games).
 
 ## Status
-M0 phase 0.3 complete; renamed to Terra in M7 Phase 7.0 (2026-11-18); M2 phases 2.0 (processors, ADR-0063) and 2.0b (storage kinds, commands, signals, observers, ADR-0069) and 2.6a (script types and named access, ADR-0062) complete; 2.6b added `ReflectComponent::from_wire` for script commands; 2.6c added type-version migration; 2.8 added state digests and end-of-tick hooks (ADR-0072).
+M0 phase 0.3 complete; renamed to Terra in M7 Phase 7.0 (2026-11-18); M2 phases 2.0 (processors, ADR-0063) and 2.0b (storage kinds, commands, signals, observers, ADR-0069) and 2.6a (script types and named access, ADR-0062) complete; 2.6b added `ReflectComponent::from_wire` for script commands; 2.6c added type-version migration; 2.8 added state digests and end-of-tick hooks (ADR-0072); 2.4.4 added `World::pending_signals` (read-only, for inspection) and `JsonComponent` (a registry-free component codec, which `World::set_json` uses).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

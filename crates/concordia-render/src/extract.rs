@@ -41,7 +41,7 @@ pub struct PoseView {
     pub pose: Pose,
 }
 
-/// A posed character as drawn: its world matrix and joint palette (bind mesh space).
+/// A posed character as drawn: its world matrix, joint palette (bind mesh space) and joints.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SkinView {
     /// The posed entity.
@@ -50,6 +50,10 @@ pub struct SkinView {
     pub world: Mat4,
     /// One skinning matrix per joint ([`Skeleton::palette`]).
     pub palette: Vec<Mat4>,
+    /// Each joint's matrix in the entity's space ([`Skeleton::entity_space`]; the skeleton overlay).
+    pub joints: Vec<Mat4>,
+    /// The skeleton (joint names and parents).
+    pub skeleton: Arc<Skeleton>,
 }
 
 /// A light.
@@ -225,11 +229,13 @@ pub(crate) fn placement(world: &World, id: EntityId) -> Option<Mat4> {
 impl SkinView {
     /// The palette of `pose`, or `None` when the pose doesn't fit its skeleton.
     fn of(pose: &PoseView) -> Option<Self> {
-        let palette = pose.skeleton.palette(&pose.pose).ok()?;
+        let joints = pose.skeleton.entity_space(&pose.pose).ok()?;
         Some(Self {
             entity: pose.entity,
             world: pose.world,
-            palette,
+            palette: pose.skeleton.skin_matrices(&joints),
+            joints,
+            skeleton: pose.skeleton.clone(),
         })
     }
 }

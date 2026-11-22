@@ -44,7 +44,7 @@ mod world;
 
 pub use command::{ApplyReport, CommandBuffer, Pending, Target, TerraStats};
 pub use component::{Component, ReflectComponent, register_component, register_dynamic_component};
-pub use dynamic::{DynamicQuery, component_from_json};
+pub use dynamic::{DynamicQuery, JsonComponent, component_from_json};
 pub use entity::Entity;
 pub use error::{EcsError, QueryError, ScheduleError};
 pub use hash::{ParseHashError, StateDigest, WorldHash};

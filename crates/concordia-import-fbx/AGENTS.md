@@ -31,7 +31,7 @@ The FBX importer (`.fbx`, through `ufbx-sys`): meshes, materials (one `Slab` eac
 - ufbx (MIT) and its documentation; Blender's FBX exporter (GPL, used only as a tool to write fixtures, never as code). No Autodesk FBX SDK or other non-open source was consulted.
 
 ## Status
-M2 phase 2.3d; version 2 in 2.4.1 (`Skinned`, bone names, `frame_rate`). Lights, cameras and blend shapes are not imported yet; Godot `.fbx.import` mapping is M5.
+M2 phase 2.3d; version 2 in 2.4.1 (`Skinned`, bone names, `frame_rate`); version 3 in 2.4.4 (clip events from the sidecar's `clip_events`, through `concordia_import_model::ModelSettings`). Lights, cameras and blend shapes are not imported yet; Godot `.fbx.import` mapping is M5.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

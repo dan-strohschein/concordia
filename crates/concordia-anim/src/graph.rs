@@ -9,6 +9,7 @@ use concordia_assets::{
 
 use crate::clip::BoundClip;
 use crate::error::AnimError;
+use crate::events::AnimEvent;
 use crate::graph_eval::Eval;
 use crate::graph_player::{AnimGraphPlayer, AnimGraphState, NodeState};
 use crate::pose::Pose;
@@ -29,6 +30,7 @@ pub struct BoundGraph {
 pub(crate) enum Node {
     Clip {
         clip: BoundClip,
+        reference: AssetRef,
         looping: bool,
     },
     Blend2 {
@@ -141,6 +143,7 @@ impl BoundGraph {
     }
 
     /// Advances the graph by `dt` and writes `pose`; then clears the player's triggers and travel.
+    /// Returns the clip events crossed, in firing order.
     pub fn evaluate(
         &self,
         dt: f32,
@@ -148,16 +151,18 @@ impl BoundGraph {
         state: &mut AnimGraphState,
         skeleton: &Skeleton,
         pose: &mut Pose,
-    ) -> Result<(), AnimError> {
+    ) -> Result<Vec<AnimEvent>, AnimError> {
         if state.nodes.len() != self.nodes.len() {
             *state = self.initial_state();
         }
         self.sanitize(state);
         let dt = if dt.is_finite() { dt } else { 0.0 };
-        Eval::new(self, player, skeleton).node(self.root, dt, &mut state.nodes, pose);
+        let eval = Eval::new(self, player, skeleton);
+        eval.node(self.root, dt, &mut state.nodes, pose);
+        let events = eval.events();
         player.triggers.clear();
         player.travel.clear();
-        Ok(())
+        Ok(events)
     }
 
     /// The node named `name`.
@@ -225,6 +230,7 @@ fn bind_node(
     Ok(match node {
         AnimNode::Clip { clip, looping } => Node::Clip {
             clip: clips(clip).map_err(|e| format!("clip {clip}: {e}"))?,
+            reference: clip.clone(),
             looping: *looping,
         },
         AnimNode::Blend2 {

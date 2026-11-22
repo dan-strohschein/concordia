@@ -12,6 +12,7 @@ mod prefab;
 mod source;
 
 use concordia_assets::{AssetError, ImportInput, ImportOutput, Importer};
+use concordia_import_model::ModelSettings;
 
 pub use concordia_import_model::{EntitySummary, PrefabSummary, generate_tangents, load_prefab};
 
@@ -35,7 +36,8 @@ impl Importer for GltfImporter {
 
     fn version(&self) -> u32 {
         // 3 (2.4.1): `Skinned` on skinned renderers, bone names on clip channels.
-        3
+        // 4 (2.4.4): clip events from the import settings.
+        4
     }
 
     fn extensions(&self) -> &'static [&'static str] {
@@ -83,8 +85,16 @@ impl Importer for GltfImporter {
             .and_then(|s| s.to_str())
             .unwrap_or("gltf");
         let entities = prefab::prefab(&gltf.document, &names, stem, input.sub_ids, &mut output)?;
-        anim::skins_and_clips(&gltf.document, &buffers, &names, &entities, &mut output)
-            .map_err(fail)?;
+        let settings = ModelSettings::from_json(input.settings).map_err(&fail)?;
+        anim::skins_and_clips(
+            &gltf.document,
+            &buffers,
+            &names,
+            &entities,
+            &settings,
+            &mut output,
+        )
+        .map_err(fail)?;
         for sub in output.artifacts.keys().filter(|k| !k.is_empty()) {
             input.sub_ids.id(sub);
         }

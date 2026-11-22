@@ -5,6 +5,7 @@ use concordia_assets::{
     encode,
 };
 use concordia_core::id::EntityId;
+use concordia_import_model::ModelSettings;
 
 use crate::names::Names;
 
@@ -17,8 +18,10 @@ pub(crate) fn skins_and_clips(
     buffers: &[Vec<u8>],
     names: &Names,
     entities: &[EntityId],
+    settings: &ModelSettings,
     out: &mut ImportOutput,
 ) -> Result<(), String> {
+    settings.check_clips(names.clips.iter().map(String::as_str))?;
     let get = |b: gltf::Buffer<'_>| buffers.get(b.index()).map(Vec::as_slice);
     for skin in doc.skins() {
         let joints: Vec<gltf::Node<'_>> = skin.joints().collect();
@@ -57,12 +60,14 @@ pub(crate) fn skins_and_clips(
             .iter()
             .flat_map(|c| c.times.last().copied())
             .fold(0.0f32, f32::max);
-        let data = ClipData {
+        let mut data = ClipData {
             name: names.clips[anim.index()].clone(),
             duration,
             frame_rate: None,
             channels,
+            events: Vec::new(),
         };
+        settings.apply(&mut data)?;
         let bytes = encode(&data).map_err(|e| e.to_string())?;
         out.artifacts.insert(
             format!("clip/{}", names.clips[anim.index()]),

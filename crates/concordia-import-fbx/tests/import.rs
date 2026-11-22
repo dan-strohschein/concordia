@@ -501,3 +501,76 @@ fn fixtures_hold_no_user_paths() {
         }
     }
 }
+
+/// Replaces the sidecar's empty settings with `settings` (JSON in RON) and re-imports.
+fn reimport_with(
+    p: &mut Project,
+    name: &str,
+    settings: &str,
+) -> Result<concordia_assets::ImportReport, concordia_assets::AssetError> {
+    let sidecar = p.dir.path().join(format!("{name}.import.ron"));
+    let text = std::fs::read_to_string(&sidecar).unwrap();
+    assert!(text.contains("settings: {}"), "{text}");
+    std::fs::write(
+        &sidecar,
+        text.replace("settings: {}", &format!("settings: {settings}")),
+    )
+    .unwrap();
+    p.db.import(std::path::Path::new(name))
+}
+
+#[test]
+fn fbx_clip_events_come_from_the_import_settings() {
+    let mut p = Project::new();
+    let first = p.fixture("anim_stacks.fbx").unwrap();
+    let walk: ClipData = p.load(&first, "clip/Armature|Walk", AssetKind::Clip);
+    assert!(walk.events.is_empty(), "no events unless authored");
+    let report = reimport_with(
+        &mut p,
+        "anim_stacks.fbx",
+        r#"{"clip_events": {"Armature|Walk": [{"time": 0.5, "name": "step"}, {"time": 0.25, "name": "lift"}, {"time": 0.5, "name": "dust"}]}}"#,
+    )
+    .unwrap();
+    assert!(!report.cached, "new settings, new import");
+    let walk: ClipData = p.load(&report, "clip/Armature|Walk", AssetKind::Clip);
+    let events: Vec<(f32, &str)> = walk
+        .events
+        .iter()
+        .map(|e| (e.time, e.name.as_str()))
+        .collect();
+    assert_eq!(
+        events,
+        [(0.25, "lift"), (0.5, "step"), (0.5, "dust")],
+        "sorted by time, ties in authored order"
+    );
+    let idle: ClipData = p.load(&report, "clip/Armature|Idle", AssetKind::Clip);
+    assert!(idle.events.is_empty(), "only the named clip gets them");
+}
+
+#[test]
+fn bad_clip_events_are_descriptive_import_errors() {
+    for (settings, needles) in [
+        (
+            r#"{"clip_events": {"Armature|Walk": [{"time": 99.0, "name": "late"}]}}"#,
+            &["Armature|Walk", "late", "99"][..],
+        ),
+        (
+            r#"{"clip_events": {"Armature|Walk": [{"time": 0.1, "name": ""}]}}"#,
+            &["Armature|Walk", "name"][..],
+        ),
+        (
+            r#"{"clip_events": {"Armature|Wlak": [{"time": 0.1, "name": "step"}]}}"#,
+            &["Armature|Wlak", "Armature|Walk"][..],
+        ),
+        (r#"{"clip_event": {}}"#, &["clip_event"][..]),
+    ] {
+        let mut p = Project::new();
+        p.fixture("anim_stacks.fbx").unwrap();
+        let err = reimport_with(&mut p, "anim_stacks.fbx", settings)
+            .expect_err(settings)
+            .to_string();
+        for needle in needles {
+            assert!(err.contains(needle), "{settings}: {err} lacks {needle}");
+        }
+    }
+}

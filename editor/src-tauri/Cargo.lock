@@ -733,6 +733,7 @@ dependencies = [
  "concordia-reflect",
  "concordia-scene",
  "serde",
+ "serde_json",
  "uuid",
 ]
 
