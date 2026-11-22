@@ -27,3 +27,4 @@ These are guardrails, not a security boundary. An agent that bypasses hooks gets
 - The editor's Agent Activity panel shows Claude Code's edits live, and `txn.undo_to` can undo them.
 - Parallel roles get `TxnConflict` instead of corrupting each other's transactions.
 - The Studio journal adds a second log format, versioned like the scene journal.
+- M2 2.4.5 refines the server's path check for `asset.import`: importing writes only the file's sidecar (`<path>.import.ron`) and the cache, so a role may import a file it may write or one whose sidecar it may write. The animator adds clip events to models it doesn't own (`assets/models/**/*.import.ron`, shared with the modeler). Other default roles' results are unchanged.

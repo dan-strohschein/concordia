@@ -831,6 +831,7 @@ dependencies = [
  "concordia-anim",
  "concordia-api",
  "concordia-app",
+ "concordia-assets",
  "concordia-command",
  "concordia-core",
  "concordia-reflect",
@@ -1150,11 +1151,14 @@ name = "concordia-studio"
 version = "0.0.0"
 dependencies = [
  "blake3",
+ "concordia-anim",
  "concordia-api",
  "concordia-assets",
  "concordia-command",
  "concordia-core",
+ "concordia-import-model",
  "concordia-reflect",
+ "concordia-render",
  "concordia-replay",
  "globset",
  "insta",

@@ -9,6 +9,7 @@ expression: managed_block(&root)
 This project is built by a team of agents inside Claude Code; no API key is needed. The main session is the **Director** (`director`).
 
 **Team** (`studio/team.toml`):
+- `animator` (Animator, ×1): Wires imported clips into animation graphs (.animgraph.ron), authors clip events, and checks every state, transition and event in its own preview scenes with sim steps, pose inspection and skeleton screenshots.
 - `director` (Director, ×1): Plans the work: turns goals into tasks with clear acceptance criteria, assigns each task to one role, routes finished work to review and escalates blocked work to the human. Never edits game files.
 - `gameplay-programmer` (Gameplay Programmer, ×1): Implements and fixes gameplay logic test-first: reproduces each bug with a failing check before fixing it, never weakens a test, and hands the fix to QA with evidence.
 - `level-designer` (Level Designer, ×2): Builds and edits scenes through the engine: places geometry, lights, cameras, physics bodies and crowds (templates and spawners), checks them with screenshots and simulation, and hands finished scenes to QA.
@@ -16,7 +17,7 @@ This project is built by a team of agents inside Claude Code; no API key is need
 - `tech-artist` (Technical Artist, ×1): Owns materials, shaders and textures: imports them, assigns them to entities and verifies the look with screenshots while keeping rendering costs in budget.
 - `writer` (Writer, ×1): Writes dialogue, quest text and UI strings as text assets with stable localization keys and a consistent voice.
 
-Disabled: `animator` (animation arrives in M2), `composer` (audio arrives in M2 and music generation in M3 phase 3.7), `modeler` (mesh generation and the Blender bridge arrive in M3 phase 3.7), `sound-designer` (audio arrives in M2), `ui-ux` (in-game UI arrives in M2), `vfx-artist` (particles and VFX arrive in M2).
+Disabled: `composer` (audio arrives in M2 and music generation in M3 phase 3.7), `modeler` (mesh generation and the Blender bridge arrive in M3 phase 3.7), `sound-designer` (audio arrives in M2), `ui-ux` (in-game UI arrives in M2), `vfx-artist` (particles and VFX arrive in M2).
 
 **How work flows**
 1. The Director turns goals into tasks (`task_create`) with acceptance criteria and delegates each task to one role with the Agent tool, passing the task id.

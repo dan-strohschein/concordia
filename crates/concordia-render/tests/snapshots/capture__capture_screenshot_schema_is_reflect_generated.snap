@@ -242,6 +242,17 @@ expression: "params_schema(&MethodInfo::of::<CaptureScreenshot>())"
       ],
       "description": "Draw the editor overlays (`viewport.overlays`: selection, gizmo) on top."
     },
+    "skeleton": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        }
+      ],
+      "description": "Draw every posed skeleton's bones on top (play world), whatever the editor overlays are."
+    },
     "view": {
       "anyOf": [
         {

@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4.1, 2.4.2, 2.4.3 and 2.4.4 (2026-11-21) done; 2.4.5 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) done; 2.4b next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -1000,7 +1000,7 @@ These passed at once:
 - the Godot `.fbx.import` mapping (M5).
 
 ### Phase 2.4 refinement (2026-11-21)
-**Status: author decisions A1 and A2 taken (2026-11-21); 2.4.1, 2.4.2, 2.4.3 and 2.4.4 done; 2.4.5 next.**
+**Status: author decisions A1 and A2 taken (2026-11-21); 2.4.1–2.4.5 done: Phase 2.4 is done.**
 
 Refined against the code as built after 2.3d. The old 2.4 text (under *Phases*) is superseded where this section differs.
 
@@ -1534,6 +1534,90 @@ Both `Cargo.lock`s gain `concordia-anim` under `concordia-render`.
 **Open items:** the selection box now uses posed bounds (2.4.2's open item, closed). The Metal repro has no FB number yet. 2.4.3's "Not in 2.4.3" line points at M13 (its plan landed after this phase, with M10–M12).
 
 **Not in 2.4.4:** the animator role and its skill (2.4.5); recording play-world writes in replays (ADR-0075); events from glTF extras or FBX markers (no standard; authored in the sidecar); tween loops and sequences (Godot's `set_loops`, chained tweeners); drawing the bind skeleton in the edit world.
+
+### Phase 2.4.5 refinement (2026-11-21, against 2.4.4 as built)
+**Status: three author decisions (C1–C3, 2026-11-21); my other calls below (say if you disagree). Done (see 2.4.5 As built).**
+
+**What exists (checked in code):** the animator's role file (disabled; 10 tools, Blender-bridge workflow, `assets/anim/**` and `assets/blender/**`); the roster tests already apply ADR-0073's rule to every role file (`every_scoped_tool_is_used_by_the_role_prompt_or_its_skills`, `every_tool_a_role_skill_tells_it_to_use_is_in_scope`, `enabled_role_prompts_name_only_tools_in_their_scope`); a roster whose scope names a tool the project doesn't offer fails to load, so every Studio project then needs `[anim]` (as `[scripts]` and `[replay]` before it); the server checks `scene.new`, `scene.save`, `asset.import` and `material.set` paths against the role's write paths, `asset.import` by its source path although import writes only the sidecar (and the cache); `viewport.overlays` (the skeleton overlay's switch) is editor-only, so no agent can draw bones; graphs load when play starts, so an `AnimGraphPlayer` must be in the edit world before `sim.step`; scripts resolve engine types by name, but no test shows a guest module receiving an engine signal such as `AnimEvent`.
+
+**Author decisions (2026-11-21):**
+- **C1. Preview scenes.** The animator tries graphs in its own scenes under `assets/anim/previews/`: it instantiates the character, sets `AnimGraphPlayer`, saves, plays, steers, inspects and captures. Game scenes stay the level designer's; wiring a graph into one is a handoff.
+- **C2. The animator edits model sidecars.** It may write `assets/models/**/*.import.ron` (declared shared with the modeler), never the model. The server's `asset.import` check passes if the role may write the source or the sidecar import writes; existing roles behave the same.
+- **C3. Skeletons in captures.** `capture.screenshot` gains `skeleton: true`: every posed skeleton drawn on that image, whatever the editor's overlay state.
+
+**Settled without a question (my calls):**
+- **Scope (ADR-0073: every tool the prompt or skills use, nothing else), 22 tools:** the seven task and team tools; `asset_import` (graphs, re-imports after sidecar edits), `asset_list` (clip ids of models others imported), `schema_get` (`AnimGraph`'s shape); `scene_new`, `scene_open`, `scene_save`, `prefab_instantiate`, `query_run` (find the `Skinned` entity), `component_set` (`AnimGraphPlayer`) for previews; `sim_step`, `sim_stop` (graphs reload at the next play), `component_patch` (steering with `world: "play"`), `anim_inspect`, `capture_screenshot` (with `skeleton`), `log_tail` (load failures are logged under `concordia::anim`). Not taken: `component_get` (the plan's; `anim_inspect` reports the pose, states and parameters), `sim_play`/`sim_pause` (stepping is exact), `viewport_overlays` (editor-only; C3 replaces it), `txn_*` (each preview edit is one step), `entity_create` (previews need no light: `view_mode: "normals"` reads the shape). M12's 12.14 widens it later (`rig_*`, `anim_key_*`).
+- **Paths:** `assets/anim/**` and `assets/models/**/*.import.ron` (C2). `assets/blender/**` and the `concordia-generate-mesh-blender` skill leave the animator until the 3.7 bridge: it couldn't run a Blender script, and the prompt says so plainly.
+- **`[anim]` everywhere Studio is:** `concordia new` and `concordia studio init` add `[anim]` (needs `[assets]`; `studio init` adds `[assets]` too if missing), as 2.6d did for `[scripts]`.
+- **Skill `concordia-animation-graphs`:** the graph format (parameters, every node, transitions), wiring and previews, play-world steering (`travel`, `floats`/`bools`, `triggers`), clip events in sidecars (frames at the clip's rate, the crossing rule, shares in graphs), `BoneAttachment`, `Tweens`, `anim_inspect` and `skeleton: true`; Blender clip authoring waits for the 3.7 bridge; example calls parsed as the real params (as the material and replay skills).
+- **Other roles:** none gains a skill section. The gameplay programmer receives `AnimEvent` in Rust processors (`receives::<AnimEvent>()`, tested in 2.4.4); receiving it in a guest module is untested, so it stays out of `concordia-scripting` (open item).
+- **The fixture character** (`tests/fixtures/character/`, our own content): `character.fbx` from `make_fbx.py` (a new `character` target; the script takes optional target names so other fixtures aren't regenerated); 17 bones with original names (`pelvis`, `spine`, `chest`, `neck`, `head`, `upper_arm`/`forearm`/`hand`, `thigh`/`shin`/`foot` `.L`/`.R`), a box per bone weighted 1 to it, 1.85 m tall; five actions at 24 fps: Idle (24 frames, looping), Walk (24, looping), Attack (15), Hit (9), Death (27, held). `character.fbx.import.ron` fixes its id and holds the events; `character.animgraph.ron` is a five-state machine.
+- **Events on odd frames:** at 24 fps an odd frame is half-way between 60 Hz ticks, so each event has one exact tick (no rounding at boundaries). Idle `breathe` frame 11; Walk `step_left` 5, `step_right` 17; Attack `swing` 7; Hit `flinch` 1; Death `fall` 13 and `land` 27 (the end: a held clip reaching its end covers it).
+- **The graph:** states idle (start), walk, attack, hit, death. Travel (`Enabled`): idle↔walk (0.1 s), idle/walk→attack (0), idle/walk/attack→death (0). `Auto` on the trigger `hurt`: idle/walk/attack→hit (0). `Auto` + `AtEnd`: attack→idle and hit→idle (0.1 s).
+- **`fixture_character_plays_its_states_through_the_graph`** (`concordia-app/tests/anim.rs`, at 60 Hz, one tick per `sim.step`; tick *n* covers state time [*j*/60, (*j*+1)/60) where *j* is ticks since entering): requests are made before the tick named; `anim.inspect`'s `pending_events` after each tick give the raising tick; a listener module checks delivery the next tick:
+
+  | Tick | Request | State after | Raised (node, share 1) |
+  |---|---|---|---|
+  | 28 | | idle | `breathe` (27.5 ticks) |
+  | 31 | travel walk | walk (fade to 36) | |
+  | 43 | | walk | `step_left` (31 + 12) |
+  | 73 | | walk | `step_right` (31 + 42) |
+  | 81 | travel attack | attack | |
+  | 98 | | attack | `swing` (81 + 17) |
+  | 118 | | attack (clip ends: 38/60 ≥ 0.625) | |
+  | 119 | | idle (`AtEnd`) | |
+  | 146 | | idle | `breathe` (119 + 27) |
+  | 150 | trigger `hurt` | hit | |
+  | 152 | | hit | `flinch` (150 + 2) |
+  | 173 | | idle (hit ended at 172) | |
+  | 180 | travel death | death | |
+  | 212 | | death | `fall` (180 + 32) |
+  | 247 | | death (held) | `land` (180 + 67) |
+
+  No other events through tick 300 (faded-out sources are clamped or don't cross; a looping death would fall again at 280). **The golden** `anim/fixture_character_states`: five 160×240 panels side by side, one per state at its event's tick (28, 43, 98, 152, 247), lit by a sun, with `skeleton: true`.
+- **Open items the done criteria need:** none. Posed-bounds selection is done (2.4.4); attachments between ticks interpolate as transforms (2.4.4's note) and nothing here captures between ticks. **The 43 ms pose-hash follow-up stays open:** this phase hashes no more often than before.
+- **No ADR:** C1–C3 change no design or ADR contract. ADR-0073 gains a consequence (the animator's numbers), and ADR-0080's path check is refined (C2) as a consequence there.
+
+### Phase 2.4.5 As built (2026-11-21)
+**Reconciled with the code as built:** the refinement held, with these additions:
+- **Multi-part models:** the fixture has four materials, so four mesh parts, each with `Skinned`; the parts below the first are its children. The topmost one plays (the bind mesh, 2.4.2), and a player on a child part poses that part alone. The test helper first picked a child part (only one part moved, seen in the first render); it now picks the topmost, and the skill, the prompt, the guide and `concordia-anim`'s AGENTS.md say to play the topmost (`query_run` with `select: ["Name", "Parent"]`).
+- **Facing:** Blender's front (−Y) imports as +Z through the FBX exporter's defaults, found by rendering the head from four sides; the golden's camera and sun are in front.
+- **The fixture FBX is about 500 KB** (simplified keys; 660 KB without), because each of the five stacks carries curves for all 17 bones.
+- **The run goes to tick 300**, not 260, so a death clip that looped (falling again at 280) would be seen.
+- **`[anim]` comment:** `concordia new`'s manifest comment avoids the text `[assets]` (a test counts sections by that text).
+- **Shared scenes (author's request, 2026-11-21):** the tech artist's prompt saves the scenes it assigns materials in, but it had no `scenes/` path, so the server refused (reproduced with a throwaway test). Scenes are now shared in `team.toml` (`scenes/**`): the level designer edits them but doesn't own them alone, and they aren't locked down yet. The tech artist gets `scenes/**/*.scene.ron`, not all of `scenes/`: the existing `server_rejects_material_writes_outside_the_role_paths` caught that `scenes/**` would also let it write `scenes/x.material.ron`. Tests: `tech_artist_saves_the_scene_it_assigned_materials_in`, `scenes_are_shared_by_the_level_designer_and_the_tech_artist` (both red first; three mutations caught).
+- **No ADR.** ADR-0073 and ADR-0080 gain consequences.
+
+**Engine and tools:**
+- `concordia-render`: `CaptureScreenshotParams::skeleton` (adds the skeleton overlay to that capture; the editor's overlays are kept). Editor schemas regenerated.
+- `concordia-mcp`: `asset.import` passes the path check if the role may write the file or its sidecar (`import_decision`).
+- `concordia-cli`: `concordia new` writes `[anim]`; `concordia studio init` adds `[assets]` and `[anim]` when missing.
+- `concordia-studio`: the animator enabled (22 tools; `assets/anim/**`, `assets/models/**/*.import.ron`; `concordia-task-workflow`, `concordia-animation-graphs`, `concordia-team-comms`), the new skill, `team.toml` (animator on, model sidecars shared).
+- `tools/fixtures/make_fbx.py`: the `character` target, and target names on the command line. `tests/fixtures/character/`: `character.fbx`, its sidecar (fixed id, clip events), `character.animgraph.ron` and a README.
+- Docs: `docs/guides/agents-engine-api.md` (the `skeleton` flag, multi-part models, the animator), ADR-0073 and ADR-0080 consequences, `plans/README.md`, the AGENTS.md of `concordia-studio`, `-mcp`, `-render`, `-cli` and `-anim`, the READMEs of `concordia-studio`, `-render` and `-anim`, and the fixture READMEs.
+
+**Tests (11 new, 4 extended):**
+- `concordia-studio`: `animator_skill_is_available`; `animation_skill_examples_are_real_params_and_a_valid_graph` (its calls parsed as `InspectParams`, `CaptureScreenshotParams`, prefab params and the animation components, its graph read and validated, its sidecar line parsed as `ModelSettings`); `animator_previews_and_steers_graphs_with_its_tools_and_skill` (the exact 22 tools, paths and skills); `animator_writes_only_anim_files_and_model_sidecars` (the hook); `scenes_are_shared_by_the_level_designer_and_the_tech_artist`. The existing ADR-0073 rule tests now cover the enabled animator.
+- `concordia-mcp`: `animator_is_enabled_with_anim_tools_under_budget`; `server_holds_the_animator_to_its_paths` (imports a model through its sidecar, refuses other folders, previews in `assets/anim/previews/`, never game scenes, no `material_set`); `tech_artist_saves_the_scene_it_assigned_materials_in`; the budget test prints every role's size.
+- `concordia-cli`: `studio_init_adds_anim_when_missing_for_the_animator`; `[anim]` in the new-project tests.
+- `concordia-app`: `capture_skeleton_draws_posed_bones_without_the_editor_overlays` (equal to the editor's overlay, added to the selection box, never replacing it); `fixture_character_plays_its_states_through_the_graph` (the table above through tick 300: 15 state checks, 8 events with node, clip and share 1, delivery the next tick, the graph's canonical text, and the golden).
+- `concordia-import-fbx`: `fixtures_hold_no_user_paths` also checks `tests/fixtures/character/`.
+
+**Red run:** every new test failed for the right reason (no animator, no skill, the hook and server refusing its paths, no `[anim]`, the unknown `skeleton` field), except:
+- **Failed on a missing fixture, then passed at once:** `fixture_character_plays_its_states_through_the_graph` first failed because the fixture didn't exist. Once it did, every state and event assertion passed on the first run, since the engine features are 2.4.1–2.4.4's; the hand-computed table held. Mutations back it (below).
+- **Changed deliberately:** `director_agent_tools_restrict_spawnable_roles` lists the animator; `Stage::with` split into `Stage::empty` and `instance()` picks the topmost skinned entity (above).
+
+**Mutation checks:** 24 mutations, each run against its tests with the restored file given a fresh mtime; all 24 caught: scope (a tool dropped, one added, `component_patch` dropped), paths (sidecars dropped, all of `assets/models/`), `team.toml`'s shared sidecars, the server (source-only import, a sidecar denial allowed), the graph (attack and hit returning immediately, hit without its trigger, a 0.3 s fade, a looping death), event ticks (step on a tick boundary, swing two frames late, land a frame early), the capture flag (ignored, replacing the editor's overlays), the CLI (`studio init` and `new` without `[anim]`), a misnamed skill example, and shared scenes (the tech artist without scene files, with all of `scenes/`, scenes undeclared).
+
+**Goldens:** one new, `anim/fixture_character_states` (five 160×240 panels at ticks 28, 43, 98, 152 and 247, with `skeleton: true`), shown to the author on a review page and committed at the author's go-ahead (2026-11-21). No existing golden changed. **Snapshots:** new `agent_animator`; changed `agent_director` (the animator in its `Agent(...)` list), `agent_tech-artist` (scene files), the CLAUDE.md block (Studio and M3S), M3S's agents and skills, and `capture.screenshot`'s schema (render and M1). **Editor schemas:** `MethodCaptureScreenshotParams.ts` gains `skeleton`.
+
+**Studio and budgets** (served definitions, 4 chars a token): animator 22 tools ≈16.7k, level designer 35 ≈21.5k, tech artist 23 ≈20.0k, QA 22 ≈18.4k, director 13 ≈12.5k, gameplay programmer 16 ≈12.4k, writer 11 ≈9.6k; all under 50k.
+
+**Checklist:** all of these pass: `just lint` and Tauri clippy; `CONCORDIA_REQUIRE_GPU=1 just test` (1,374 tests and the doc tests); `just gate-tests M1` (4) and `M3S` (13; the checker that flaked once in 2.4.4 passed); `just deny` and the editor's; `just editor-schemas` (committed); `just editor-test` (118 unit, 22 end-to-end).
+
+**Open items:** guest modules receiving `AnimEvent` are untested, so `concordia-scripting` doesn't mention it (Rust processors receive it, 2.4.4). The 43 ms pose-hash follow-up stays open. The Metal repro has no FB number yet.
+
+**Not in 2.4.5:** Blender clip authoring (the 3.7 bridge); the animator wiring graphs into game scenes (a handoff, C1); M12's `rig_*` and `anim_key_*` tools.
 
 ### Effort (re-estimated)
 | Phase | Estimate |

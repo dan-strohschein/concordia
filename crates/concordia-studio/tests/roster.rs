@@ -608,3 +608,108 @@ fn director_coordinates_with_task_team_and_history_tools_only() {
         );
     }
 }
+
+/// The animator's scope (M2 2.4.5, ADR-0073): previews, steering, inspection and the team tools.
+const ANIMATOR_TOOLS: [&str; 22] = [
+    "anim_inspect",
+    "asset_import",
+    "asset_list",
+    "capture_screenshot",
+    "component_patch",
+    "component_set",
+    "log_tail",
+    "prefab_instantiate",
+    "query_run",
+    "scene_new",
+    "scene_open",
+    "scene_save",
+    "schema_get",
+    "sim_step",
+    "sim_stop",
+    "studio_answer",
+    "studio_ask",
+    "studio_questions",
+    "task_claim",
+    "task_comment",
+    "task_get",
+    "task_update",
+];
+
+#[test]
+fn animator_previews_and_steers_graphs_with_its_tools_and_skill() {
+    let (_dir, roster) = roster();
+    let animator = roster
+        .roles()
+        .iter()
+        .find(|r| r.role.as_str() == "animator")
+        .expect("the animator is enabled");
+    assert_eq!(animator.mcp_tools, ANIMATOR_TOOLS);
+    assert_eq!(
+        animator.write,
+        ["assets/anim/**", "assets/models/**/*.import.ron"]
+    );
+    assert_eq!(
+        animator.skills,
+        [
+            "concordia-task-workflow",
+            "concordia-animation-graphs",
+            "concordia-team-comms"
+        ]
+    );
+    for needle in [
+        "mcp__concordia__anim_inspect",
+        "mcp__concordia__component_patch",
+        "\"world\": \"play\"",
+        "\"skeleton\": true",
+        "assets/anim/previews/",
+        ".animgraph.ron",
+        "clip_events",
+        "phase 3.7",
+    ] {
+        assert!(
+            animator.body.contains(needle),
+            "the prompt explains {needle}"
+        );
+    }
+    assert!(
+        !animator.body.contains("Disabled in the default team"),
+        "{}",
+        animator.body
+    );
+    assert!(
+        roster
+            .team
+            .paths
+            .shared
+            .iter()
+            .any(|p| p == "assets/models/**/*.import.ron"),
+        "the modeler and the animator share model sidecars: {:?}",
+        roster.team.paths.shared
+    );
+}
+
+#[test]
+fn scenes_are_shared_by_the_level_designer_and_the_tech_artist() {
+    let (_dir, roster) = roster();
+    assert!(
+        roster.team.paths.shared.iter().any(|p| p == "scenes/**"),
+        "{:?}",
+        roster.team.paths.shared
+    );
+    // The level designer may write anything under scenes/; the tech artist only scene files.
+    for (role, pattern) in [
+        ("level-designer", "scenes/**"),
+        ("tech-artist", "scenes/**/*.scene.ron"),
+    ] {
+        let found = roster
+            .roles()
+            .iter()
+            .find(|r| r.role.as_str() == role)
+            .unwrap_or_else(|| panic!("{role} is enabled"));
+        assert!(
+            found.write.iter().any(|p| p == pattern),
+            "{role}: {:?}",
+            found.write
+        );
+    }
+}

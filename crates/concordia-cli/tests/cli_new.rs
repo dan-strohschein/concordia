@@ -99,6 +99,7 @@ fn new_project_enables_modules_and_studio() {
     for section in [
         "[physics]",
         "[assets]",
+        "[anim]",
         "[render]",
         "[scripts]",
         "[replay]",
@@ -167,6 +168,7 @@ fn new_minimal_has_no_modules() {
     for section in [
         "[physics]",
         "[assets]",
+        "[anim]",
         "[render]",
         "[scripts]",
         "[replay]",
