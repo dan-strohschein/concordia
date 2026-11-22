@@ -1831,7 +1831,7 @@ A capture at 100k now takes about 84 ms (160 before). A playing 100k crowd is st
 
 **Phase 2.4b is done** (2.4b.1 and 2.4b.2).
 
-**Not in 2.4b.2:** hysteresis for representation (E2: only if flicker shows); a columnar, incremental extraction for crowds that move every tick (M7); spreading a far character's held pose over its interval in rendering.
+**Not in 2.4b.2:** hysteresis for representation (E2: only if flicker shows); a columnar, incremental extraction for crowds that move every tick (M7 phase 7.7, with tests and a target); spreading a far character's held pose over its interval in rendering.
 
 ### Effort (re-estimated)
 | Phase | Estimate |
