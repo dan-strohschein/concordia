@@ -1,5 +1,5 @@
 # M5: Bring your game
-> **ADR-0048:** this milestone also takes the reference port from M2: phases 2.1 (Godot text formats and the interchange model), 2.2 (GDScript tools and the translation workflow) and 2.9 (the playable slice). M2's refinement (ADR-0067) also moves here every Godot-specific mapping that was inside M2 2.3–2.7: the gdshader→Slang translator, Godot `.import` and `StandardMaterial3D` mapping, AnimationTree→`.animgraph.ron` import, the `NavigationAgent3D`/`NavigationRegion3D` mapping, `Control`→UI prefab import and sound-bank cues. These map onto M2's engine-native features. `concordia-interchange` v0 and ADRs 0064–0065 move too, so 5.1 builds interchange v1 directly. The moved phase text stays in the M2 plan until this plan is refined after M4.
+> **ADR-0048:** this milestone also takes the reference port from M2: phases 2.1 (Godot text formats and the interchange model), 2.2 (GDScript tools and the translation workflow) and 2.9 (the playable slice). M2's refinement (ADR-0067) also moves here every Godot-specific mapping that was inside M2 2.3–2.7: the gdshader→Slang translator, Godot `.import` and `StandardMaterial3D` mapping, AnimationTree→`.animgraph.ron` import, the `NavigationAgent3D`/`NavigationRegion3D` mapping, `Control`→UI prefab import and sound-bank cues. These map onto M2's engine-native features; the AnimationTree features M2 2.4.3 left out (one-shot requests and additive mix, transition-node auto-advance, advance expressions, `Curve` fades) come in M13 (ADR-0017), which should land before the AnimationTree import. `concordia-interchange` v0 and ADRs 0064–0065 move too, so 5.1 builds interchange v1 directly. The moved phase text stays in the M2 plan until this plan is refined after M4.
 
 Status: Planned · Depends on: M2 (Terra core, WASM host, anim, nav, UI, audio, materials; the importer framework and interchange v0 are now built here, ADR-0067), M3 (replay, playtest assertions, Studio), M4 (visual graphs, `concordia-graph`) · Detail level: **Needs refinement after M4** · Estimated effort: ~19 weeks (range 16–24), author plus agents
 
@@ -31,7 +31,7 @@ Principles applied: subscription-first (the engine provides tools and the agents
 **Non-goals (M5)**
 - Automatic logic conversion. Agents translate logic; the tooling only serves structure, maps, mechanical skeletons and tests.
 - Unity binary serialization (we detect it and tell the user how to switch), Unity UI/uGUI/UI Toolkit/TextMeshPro layouts, Shader Graph/Amplify custom shaders beyond parameter extraction, VFX Graph, Timeline, Cinemachine, NetCode, and DOTS/Entities.
-- Unreal cooked content, IoStore (`.utoc`/`.ucas`), `.pak` reading, Niagara, Control Rig, MetaSounds, World Partition streaming (the plugin exports loaded cells only), and Nanite/Lumen settings beyond what the report records.
+- Unreal cooked content, IoStore (`.utoc`/`.ucas`), `.pak` reading, Niagara, Control Rig (M12 builds its own rigs from public concepts and imports none; ADR-0016), MetaSounds, World Partition streaming (the plugin exports loaded cells only), and Nanite/Lumen settings beyond what the report records.
 - Re-import that preserves user edits made after import (later backlog). M5 re-import is deterministic overwrite, so it diffs cleanly.
 - A legal verdict on any asset.
 - Round-tripping back *into* Unity or Unreal. "Round-trip" in design.md's M5 gate means source → engine, verified against oracles exported from the source editor.
@@ -490,7 +490,7 @@ The gate passes only if all of these pass in CI. Goldens are refreshed with `jus
 7. Does M0's prefab override model support property-path overrides on nested prefab children and removed components? If not, extend `concordia-scene` in 5.1 **(refine)**.
 8. Engine coordinate convention and light units: confirm M0/M1 fixed right-handed +Y-up meters and physical light units.
 9. Should a dedicated Studio role (`porter`) exist, or are the porting skills on the Gameplay Programmer role enough?
-10. Should humanoid (muscle-space) retargeting be in M5, or later?
+10. Should humanoid (muscle-space) retargeting be in M5, or later? *Note (2026-11-20, ADR-0016):* M12 adds rigs and IK but leaves retargeting out (its open question 13); a same-topology retarget can be written as a rig of constraints. M12 open question 15 also recommends mapping Godot 4's skeleton modifiers to rig units in the Godot importer.
 
 ## ADRs to write
 - ADR: Interchange schema v1, versioning and migration policy (JSON wire format and RON in-repo, generated JSON Schema for external exporters).
