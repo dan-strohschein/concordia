@@ -1,5 +1,5 @@
 # ADR-0077: Navigation: Recast/Detour navmeshes from static colliders, engine-native marks, per-agent crowds
-- Status: Accepted (M2 phase 2.5a, 2026-11-22; author decision N1)
+- Status: Accepted (M2 phase 2.5a, 2026-11-22; author decision N1; updated in 2.5b.1 with N2 and N3)
 - Date: 2026-11-22
 - Builds on: ADR-0063 (determinism contract), ADR-0069 (storage kinds), ADR-0072 (replay), ADR-0076 (Terra LOD), ADR-0067 (Godot mappings move to M5)
 
@@ -32,3 +32,14 @@ M2's navigation phase builds navmeshes with Recast, answers path queries with De
 - Recast rules to know: a span is at least one cell tall, so a floor's walkable surface sits up to one `cell_height` above it; a face exactly on a cell boundary belongs to one side only; erosion keeps the cell diagonal to a blocked corner (Recast's distance transform). Detour's A* runs over portal midpoints, so paths across tile seams can bend at a seam.
 - Cross-platform byte equality depends on glam's arithmetic paths and Recast's floats with `-ffp-contract=off`; equality across thread counts and insertion orders is tested.
 - M5 maps `NavigationAgent3D`/`NavigationRegion3D` and the port's grid onto these components (semantics only, from Godot's MIT docs). M7 7.7 keeps `crowd_of_10k_agents_avoids_overlap` and crowd-scale extraction.
+
+## Update (M2 phase 2.5b.1, 2026-11-22): agents
+- **`NavAgent` is gameplay's request; `NavAgentState` is the engine's.** `NavAgent` (target, max speed, radius, height, path and target desired distances, path max distance, an optional volume) follows Godot's `NavigationAgent3D` semantics (MIT docs; M5 maps onto it) and is written only by gameplay. `NavAgentState` (status, the target it planned for, the string-pulled waypoints, the next corner, partial, volume, the tick it started waiting) is hashed and written only by nav's processors, in N1's spirit. The polygon corridor is 2.5c's crowd state.
+- **Two processors in `PrePhysics`.** `nav.plan` reads the `NavMeshes` resource and plans the agents that need it, at most `[nav] plans_per_tick` (default 32) a tick in `(waiting_since, id)` order, so nobody starves. `nav.follow` advances corners, checks arrival and writes `CharacterMotion`, slowed on the last stretch so no tick passes the end. Physics moves the body the same tick. An entity's `NavAgent` owns its `CharacterMotion`.
+- **Distances are sideways**, within half the agent's height vertically (the navmesh surface sits up to one `cell_height` above the floor). The agent turns within `path_desired_distance` of a corner, so its track stays within that distance of the path.
+- **Replanning** happens when the target moves farther than `target_desired_distance`, or when the agent is more than `path_max_distance` off its current segment. There's no timer until navmeshes change at runtime. A failed target is retried only when the target moves.
+- **Signals:** `NavArrived { target, position, partial }` (an unreachable target walks to the closest point and arrives partial), and `NavPathFailed { target, reason, detail }` once per target. Both are raised on the agent and delivered next tick (ADR-0069), whatever its LOD (ADR-0076).
+- **No LOD opt-in.** Following costs a few vector operations, physics moves every character every tick anyway, and a skipped follower would overshoot by holding its velocity. Planning is budgeted instead; 2.5c's steering and avoidance opt in.
+- **N3. Sizes:** the controller is the body and always collides. An agent whose radius or height differs from its controller's, or whose radius is wider than its navmesh's `agent_radius`, warns once per agent and volume and still moves.
+- **N2. Click-to-move (2.5b.2):** the pointer becomes a world-space ray in input, recorded by replays, so simulation never depends on the window or the renderer. An engine processor turns the ray into a target (physics raycast, then `nearest_point`).
+- Scripts set targets by writing `NavAgent` and receive the signals by name, mirroring the types field for field (ADR-0062); no new import. The `nav_paths` debug layer draws each walking agent's remaining path.

@@ -8,12 +8,13 @@ use concordia_studio::{CLAUDE_SKILL_FIELDS, Roster, SkillFile, default_roster, i
 
 /// The eight built-in skills the plan names (3.6), plus team comms (3.6b), animation (M2 2.4.5)
 /// and navigation (M2 2.5a).
-const PLANNED: [&str; 13] = [
+const PLANNED: [&str; 14] = [
     "concordia-add-material",
     "concordia-animation-graphs",
     "concordia-director-planning",
     "concordia-fix-bug-with-replay",
     "concordia-generate-mesh-blender",
+    "concordia-nav-agents",
     "concordia-navigation",
     "concordia-record-replay",
     "concordia-scripting",
@@ -584,4 +585,67 @@ fn navigation_skill_examples_are_real_params_and_components() {
     ] {
         assert!(seen.contains(needed), "the skill shows {needed}: {seen:?}");
     }
+}
+
+#[test]
+fn nav_agents_skill_examples_are_real_params_and_its_mirror_matches_nav_agent() {
+    let text = default_roster()
+        .skills
+        .iter()
+        .find(|(n, _)| *n == "concordia-nav-agents")
+        .map(|(_, t)| *t)
+        .expect("the nav agents skill");
+    let mut seen = std::collections::BTreeSet::new();
+    for (tool, args) in examples(text, "") {
+        let checked = match tool.as_str() {
+            "nav_path" => {
+                serde_json::from_value::<concordia_nav::NavPathParams>(args.clone()).map(|_| ())
+            }
+            "query_run" => {
+                const FIELDS: [&str; 7] = [
+                    "with", "without", "where", "select", "world", "limit", "cursor",
+                ];
+                let keys = args.as_object().expect("an object");
+                assert!(
+                    keys.keys().all(|k| FIELDS.contains(&k.as_str())),
+                    "query_run {args}: only query.run's fields"
+                );
+                assert!(
+                    args["with"].is_array(),
+                    "query_run {args}: `with` is required"
+                );
+                serde_json::from_value::<concordia_api::WorldSel>(args["world"].clone()).map(|_| ())
+            }
+            _ => continue,
+        };
+        checked.unwrap_or_else(|e| panic!("{tool} {args}: {e}"));
+        seen.insert(tool);
+    }
+    for needed in ["nav_path", "query_run"] {
+        assert!(seen.contains(needed), "the skill shows {needed}: {seen:?}");
+    }
+    // The script mirror of NavAgent names every field, in order (wire layouts follow fields).
+    let mirror = text
+        .split("```rust")
+        .nth(1)
+        .and_then(|r| r.split("```").next())
+        .expect("a rust block");
+    let start = mirror
+        .find("pub struct NavAgent")
+        .expect("the NavAgent mirror");
+    let body = &mirror[start
+        ..mirror[start..]
+            .find('}')
+            .map_or(mirror.len(), |e| start + e)];
+    let fields: Vec<&str> = body
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("pub "))
+        .filter_map(|l| l.split_once(':').map(|(name, _)| name.trim()))
+        .collect();
+    let info = <concordia_nav::NavAgent as concordia_reflect::Reflect>::type_info();
+    let concordia_reflect::Shape::Struct { fields: want, .. } = &info.shape else {
+        panic!("NavAgent is a struct")
+    };
+    let want: Vec<&str> = want.iter().map(|f| f.name).collect();
+    assert_eq!(fields, want, "the mirror in the skill matches NavAgent");
 }

@@ -74,7 +74,11 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 - `nav.path {"from": [x, y, z], "to": [x, y, z]}` snaps both ends to the navmesh (2 m sideways) and returns corner `waypoints`, `length` and `partial` (the goal is unreachable; the path ends at the closest reachable point). A point with no navmesh near is `ValueInvalid`. With `"world": "play"`, it uses the navmeshes built when play started.
 - The walkable surface sits up to one `cell_height` above the floor; compare positions sideways.
 - See it: `capture.screenshot {"debug": ["navmesh"]}` draws every polygon colored by island; `viewport.overlays {"debug": ["navmesh"]}` does the same in the editor.
-- In the Studio, the level designer (`concordia-navigation`) builds and checks navmeshes.
+- **Agents (2.5b.1).** A `NavAgent` (`target`, `max_speed`, `radius`, `height`, `path_desired_distance`, `target_desired_distance`, `path_max_distance`, `volume`) walks its entity's `CharacterController` to `target`; the entity needs a `CharacterController`, and nav owns its `CharacterMotion`. Send one in a running game with `component.patch {"entity": <id>, "component": "NavAgent", "world": "play", "patch": {"target": [x, y, z]}}` and read `NavAgentState` (`status`: `Idle`, `Waiting`, `Moving`, `Arrived`, `Failed`; `waypoints`, `next`, `partial`, `planned_for`) with `component.get` or `query.run` (`"world": "play"`).
+- Agents plan again when the target moves farther than `target_desired_distance` or they're pushed more than `path_max_distance` off their path; at most `[nav] plans_per_tick` (default 32) plan a tick, longest-waiting first. Arrival and corners are measured sideways, within half the agent's height.
+- Signals, on the agent the tick after: `NavArrived {target, position, partial}` (partial: the closest reachable point), and `NavPathFailed {target, reason, detail}` once per target (`NoNavmesh`, `StartOffNavmesh`, `TargetOffNavmesh`, `InvalidAgent`). A size that disagrees with the controller, or is wider than the navmesh's `agent_radius`, warns once in `log.tail`.
+- `capture.screenshot {"debug": ["nav_paths"]}` draws each walking agent's remaining path.
+- In the Studio, the level designer (`concordia-navigation`) builds and checks navmeshes; the gameplay programmer (`concordia-nav-agents`) walks characters and checks routes with `nav.path`.
 
 ## Rules
 - Every mutating call needs an actor: `"actor": "agent:<role>"` or the session default. Grammar: `<human|agent|system|tool|script>:<name>[#n]`, lowercase names.

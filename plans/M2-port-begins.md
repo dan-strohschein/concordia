@@ -1834,7 +1834,7 @@ A capture at 100k now takes about 84 ms (160 before). A playing 100k crowd is st
 **Not in 2.4b.2:** hysteresis for representation (E2: only if flicker shows); a columnar, incremental extraction for crowds that move every tick (M7 phase 7.7, with tests and a target); spreading a far character's held pose over its interval in rendering.
 
 ### Phase 2.5 refinement (2026-11-22, against the code after 2.4b.2)
-**Status: author decision N1 taken (2026-11-22); my other calls below (say if you disagree). 2.5a done (see its As built); 2.5b next.**
+**Status: author decision N1 taken (2026-11-22); my other calls below (say if you disagree). 2.5a done (see its As built); 2.5b refined and split into 2.5b.1 (agents, done) and 2.5b.2 (click-to-move, next); see the Phase 2.5b refinement.**
 
 Refined against the code as built. The old Phase 2.5 section, this refinement's *2.5 (added)* tests, M7's 7.7 and 2.4b's As built are the starting point. **This section wins wherever the old Phase 2.5 text disagrees.**
 
@@ -1863,7 +1863,7 @@ Refined against the code as built. The old Phase 2.5 section, this refinement's 
 | Sub-phase | Content | Effort |
 |---|---|---|
 | **2.5a Navmesh: recast-sys, build and queries** (`m2/2.5a-navmesh`) | vendored Recast/Detour v1.6.0 and the shim; `concordia-nav`'s components, gathering, tiled parallel build, DDC cache, islands, nearest point, path and raycast; `nav.build`/`nav.path` and MCP tools; a generic debug-layer hook and the `navmesh` layer, with a golden; ADR-0077; level-designer tools and skill | 1–1.5 weeks |
-| **2.5b Agents and click-to-move** | `NavAgent` (Godot-like semantics: radius, height, target/path desired distance) following a path through `CharacterMotion` in `PrePhysics`; replanning; `NavArrived`/`NavPathFailed` signals; click-to-move (pointer ray → physics raycast → `nearest_point`); the carried-over guest-signal test (below) | 0.5–1 week |
+| **2.5b Agents and click-to-move** (split into 2.5b.1 and 2.5b.2 at its refinement) | `NavAgent` (Godot-like semantics: radius, height, target/path desired distance) following a path through `CharacterMotion` in `PrePhysics`; replanning; `NavArrived`/`NavPathFailed` signals; click-to-move (pointer ray → physics raycast → `nearest_point`); the carried-over guest-signal test (below) | 0.5–1 week |
 | **2.5c Crowds as Terra processors (N1)** | `concordia-terra-crowd`: `CrowdAgent` components and a `Crowd` trait, a deterministic spatial grid, processors for paths (budgeted), corridor, neighbours, steering, avoidance (Detour's sampled velocity obstacles), integration on the navmesh surface and collision resolution (Jacobi, last-tick state); LOD opt-in; the `crowd` debug layer | 1.5 weeks |
 | **2.5d Lane-based traffic** | a lane graph (lanes as polylines with speed limits and connections, junctions with priorities) as text; vehicles following lanes with a car-following model (the Intelligent Driver Model, Treiber, Hennecke and Helbing 2000); deterministic yielding at junctions; the `lanes` debug layer; rule-based only (AI-driven behavior stays M7/M4) | 1 week |
 
@@ -1989,6 +1989,157 @@ The second M3S snapshot only appeared once the first was accepted, because the g
 - `just gate-tests M1` (4) and `M3S` (13);
 - `just deny` and the editor's, both `Cargo.lock`s, fresh advisory DB (the editor's lock gains `concordia-nav` and `recast-sys`; its deny prints an existing "no crate matched" warning for an ignore entry);
 - `just editor-schemas` (committed);
+- `just editor-test` (118 unit, 22 end-to-end).
+
+### Phase 2.5b refinement (2026-11-22, against the code after 2.5a)
+**Status: author decisions N2 and N3 taken (2026-11-22); my other calls below (say if you disagree). 2.5b is split: 2.5b.1 agents (`m2/2.5b.1-agents`, done; see its As built), then 2.5b.2 click-to-move (next).**
+
+Refined against `main` after #58: the 2.5 refinement (its 2.5b row and carry-over items), the 2.5a As built, ADR-0077, ADR-0076 and the old Phase 2.5 test list. **This section wins wherever they disagree.**
+
+**What exists (checked in code):**
+- `NavMesh` answers `nearest_point` (2 m sideways), `path` (snapped ends; a partial corridor ends at the closest reachable point) and `raycast`, from any thread. The play world's navmeshes are the `NavMeshes` resource (by volume id), built at play start. Processors can read it with `reads_resource`.
+- `CharacterController` (capsule `height` 1.8, `radius` 0.3) is moved in `Physics` by `physics.step` from `CharacterMotion.velocity` (y ignored); feet are at `Transform.translation`, and physics owns the position once the character exists. The default `NavMeshVolume` is sized for that capsule (`agent_radius` 0.3, `agent_height` 1.8).
+- Terra processors declare reads, writes, received signals and resources; `commands.signal` raises a signal that arrives next tick; `.lod()` processors see only due entities, and signal receivers see every signal (ADR-0076).
+- Scripts resolve component and signal names against the whole registry, so a guest can read, write and receive engine types by name (wire-encoded from their shapes, ADR-0062).
+- **Nothing in the simulation knows the screen.** `pointer_ray(cursor, viewport, inv_view_proj)` exists, but the camera's `Projection` lives in `concordia-render`, the window size in the app, no gameplay code reads `ActionStates` yet, and physics raycasts are reachable only through `physics.raycast` (the runtime is play state, not a resource).
+
+**Author decisions (2026-11-22):**
+- **N2. The pointer ray is an input value.** Input gains a world-space ray kind. The app (and `input.inject`) turns the pointer into a ray using the camera it draws with, and replays record the ray, so a replay never depends on window size or the renderer. An engine processor does ray → physics raycast → `nearest_point` → `NavAgent.target`. Because this touches input, replay, physics and the app, it is its own sub-phase, **2.5b.2**.
+- **N3. NavAgent keeps its own radius and height (Godot semantics), and the body wins.** Physics moves the `CharacterController`'s capsule, so collision always follows the controller. When an agent's radius or height differs from its controller's (by more than 1 mm), or its radius is larger than its navmesh's `agent_radius`, the engine logs a warning once per agent and still moves it. 2.5c's avoidance uses the agent's radius.
+
+**My calls on the brief's other questions (say if you disagree):**
+- **`NavAgent`** (scene data, written by gameplay, never by the engine): `target: Option<Vec3>` (none is idle), `max_speed` (4 m/s), `radius` (0.3), `height` (1.8), `path_desired_distance` (0.5 m: a corner counts as reached), `target_desired_distance` (0.5 m: arrival), `path_max_distance` (2 m: farther than this from the path is off it), `volume: Option<EntityId>` (none: the first volume by id whose box holds the agent's feet). Every number must be finite and above 0. Semantics follow Godot's `NavigationAgent3D` docs (MIT); M5 maps onto it.
+- **`NavAgentState`** (hashed, written only by nav's processors, the "corridor state" of N1's spirit): `status` (`Idle`, `Waiting`, `Moving`, `Arrived`, `Failed`), `planned_for` (the target its path is for), `waypoints`, `next` (the corner being walked to), `partial`, `volume`, `waiting_since` (the tick it started waiting for a plan). 2.5b.1 stores the string-pulled waypoints, not Detour's polygon corridor; the per-polygon corridor is 2.5c's crowd state.
+- **How a path is followed:** two processors in `PrePhysics`, after `terra.lod`:
+  - `nav.plan` reads `NavAgent`, `Transform`, `CharacterController` and the `NavMeshes` resource, and writes `NavAgentState`. It gives new agents a state and plans the agents that need one, up to the budget.
+  - `nav.follow` reads `NavAgent` and `Transform`, writes `NavAgentState` and `CharacterMotion`, and raises the signals. It advances past corners, checks arrival, and sets the velocity toward the next corner at `max_speed`, slowed on the last segment so a tick never carries the agent past the final point.
+  - Physics moves the body the same tick. Agents need a `CharacterController`; one without fails with `InvalidAgent`. An agent's position is its `Transform.translation`, the controller's own rule.
+- **Arrival and heights:** distances are measured **sideways** (x and z), with a vertical tolerance of **half the agent's height**. The navmesh surface sits up to one `cell_height` above the floor the feet stand on (0.2 m on the default volume), well inside 0.9 m, and a floor 3 m up isn't mistaken for this one. Corners use `path_desired_distance`; the final point uses `target_desired_distance` (the snapped end, or the closest reachable point of a partial path). Once arrived, the velocity is zero.
+- **Replanning** happens when a target is set and has no plan for it, when the target moves farther than `target_desired_distance` from `planned_for`, or when the agent is farther than `path_max_distance` sideways from its current segment (pushed off it). There's no timer: navmeshes don't change at runtime yet, so a timer would only re-find the same path. A failed target is retried only when the target moves.
+  - **The budget:** `[nav] plans_per_tick` (default 32). The agents that need a plan are taken in `(waiting_since, id)` order, so the longest-waiting go first and nobody starves. The rest are `Waiting` and keep following their old path, if any. All of it uses hashed state only, so it is deterministic at any thread count.
+- **Signals** (raised on the agent, delivered next tick, received whatever the agent's LOD; ADR-0069, ADR-0076):
+  - `NavArrived { target, position, partial }`: the requested target, where the feet are, and whether it was only the closest reachable point.
+  - `NavPathFailed { target, reason, detail }`, where `reason` is one of `NoNavmesh` (no volume holds the agent, or its navmesh didn't build), `StartOffNavmesh`, `TargetOffNavmesh` or `InvalidAgent`, and `detail` is a sentence. It fires once per target. An unreachable target isn't a failure: the agent walks to the closest point and arrives with `partial: true`.
+- **Simulation LOD:** neither processor opts in. `nav.follow` costs a few vector operations per agent, and physics moves every character every tick anyway. A far agent that was skipped would hold its velocity and overshoot corners and its target by up to *r* − 1 ticks. Planning, the expensive part, is budgeted instead. Far agents behave exactly like near ones in 2.5b; LOD savings arrive with 2.5c's steering and avoidance, which opt in.
+- **Size checks (N3)** run at an agent's first plan for each volume and warn once (`concordia::nav`).
+- **Scripting:** the carried-over `guest_receives_anim_and_nav_signals` runs a WASM guest (a new fixture, `tests/fixtures/script/nav-guest`) in a project with `[assets]`, `[anim]`, `[physics]`, `[nav]` and `[scripts]`. The guest sets a `NavAgent`'s target by writing the component (no new import: guests write engine components by name), receives `AnimEvent` from a real clip event and `NavArrived` from the walk, and records both in a guest component the test reads. **Guests set targets exactly as Rust gameplay does.**
+- **Debug layer:** `nav_paths` draws each moving agent's remaining path (feet → next corner → … → end), lifted 2 cm. It is tested by its geometry; the renderer's path is the `navmesh` golden's, so there's no new golden.
+- **API:** no new methods. Gameplay and agents set `NavAgent` with `component.set` / `component.patch` (`world: "play"`, ADR-0075) and read `NavAgentState` with `component.get` or `query.run`.
+- **Studio:** the gameplay programmer gains `nav_path` and the `concordia-navigation` skill, which gains an "Agents" section (`NavAgent`, `NavAgentState`, the signals, replanning, the budget). The level designer's tools don't change. No tool schema changes, so only the gameplay programmer's budget moves; every role's numbers are reported in As built.
+- **ADR-0077** gains an update section (agents, N2, N3). 2.5b.2 records the input ray kind in an ADR of its own (or an update to ADR-0072, decided at its refinement).
+
+**Sub-phases:**
+| Sub-phase | Content |
+|---|---|
+| **2.5b.1 Agents** (`m2/2.5b.1-agents`) | `NavAgent`, `NavAgentState`, `nav.plan` (budgeted) and `nav.follow`; replanning; `NavArrived` / `NavPathFailed`; N3's warnings; `[nav] plans_per_tick`; the `nav_paths` layer; the guest test; Studio |
+| **2.5b.2 Click-to-move** | Input's ray kind (`ActionKind::Ray`, a `PointerRay` binding and event, recorded by replays); the app's pointer-to-ray conversion from the drawing camera; `input.inject` rays; a read-only physics query resource for processors; `ClickToMove` (click and pointer action names, layers, reach) and `nav.click` before `nav.plan`; refined again at its start |
+
+**2.5b.1 tests (first list).** Most agent tests use a rig with no physics: a test system in `Physics` moves each `Transform` by `CharacterMotion.velocity × dt`, so every tick is hand-computable. One test runs real Jolt characters.
+- `concordia-nav/tests/agents.rs`:
+  - `nav_agent_walks_a_straight_path_and_arrives_within_tolerance` (the exact arrival tick, position and signal tick);
+  - `nav_agent_turns_corners_within_path_desired_distance` (2.5a's hand-derived wall path);
+  - `nav_agent_replans_when_the_target_moves_past_its_tolerance`;
+  - `nav_agent_replans_when_pushed_off_its_path`;
+  - `unreachable_target_walks_to_the_closest_point_and_arrives_partial`;
+  - `nav_path_failed_names_the_reason_once_per_target`;
+  - `plans_are_budgeted_per_tick_longest_waiting_first`;
+  - `far_agents_follow_at_full_rate_and_signals_ignore_lod`;
+  - `malformed_nav_agents_are_descriptive_errors`;
+  - `nav_paths_debug_layer_draws_remaining_paths`.
+- `concordia-nav/tests/agents_physics.rs`:
+  - `nav_agent_arrives_within_tolerance_using_character_controller` (the old 2.5 test; Jolt);
+  - `nav_agents_are_deterministic_across_runs_and_threads` (16 agents chasing moving targets with physics: equal world hashes over runs and at 1 and 8 threads).
+- `concordia-nav/tests/api.rs`: `nav_agent_moves_in_the_play_world_over_the_api` (set the target with `world: "play"`, step, read `NavAgentState`), and `nav_agent_size_mismatch_warns_once` (`log.tail`).
+- `concordia-app/tests/nav.rs`: `nav_section_sets_plans_per_tick`, and `guest_receives_anim_and_nav_signals` (WASM).
+- `concordia-studio`: `gameplay_programmer_checks_paths_with_nav_path_and_the_navigation_skill`, and the navigation skill's examples test extended to the agent components.
+
+### Phase 2.5b.1 As built (2026-11-22, ADR-0077 update)
+**Reconciled with the code as built:** the refinement held, with three changes:
+- **Studio: a new skill, not the navigation skill.** `concordia-navigation` tells its reader to call `entity_spawn`, `component_set`, `nav_build` and `capture_screenshot`, which the gameplay programmer can't call. The roster guard `every_tool_a_role_skill_tells_it_to_use_is_in_scope` refused it. The gameplay programmer sets targets from code, so it preloads a new `concordia-nav-agents` skill instead. That skill uses only the role's tools (`nav_path`, `query_run`, `sim_step`) and shows the script mirror of `NavAgent`, which a test checks field by field against the real type. `concordia-navigation` gains one line naming it and the `nav_paths` layer.
+- **Test locations:** `nav_paths_debug_layer_draws_remaining_paths` is in `tests/api.rs` (the layer needs an engine), and the guest test has its own file, `concordia-app/tests/nav_guest.rs`.
+- **An entity's `NavAgent` owns its `CharacterMotion`:** `nav.follow` writes it every tick, zero when idle, arrived or failed. Gameplay that wants to steer a character itself removes the `NavAgent`. One writer per component keeps the scheduler's rule simple.
+
+Details the refinement left open:
+- **Volume choice:** `NavAgent.volume`, or the first volume by id whose box holds the feet (rotation ignored, as for building).
+- **Failure order:** invalid settings, no controller (`InvalidAgent`), no volume or no built navmesh (`NoNavmesh`), the start then the target off the navmesh (`StartOffNavmesh`, `TargetOffNavmesh`). Detour's nearest-polygon search tests quantized polygon bounds, so a point just past the 2 m reach can still snap. The test puts its off-mesh agent 4.75 m out.
+- **Corners:** the agent heads at its next corner and turns within `path_desired_distance` of it. Each stretch then stays within that distance of the path, a bound the corner test checks every tick.
+- **New agents** get an idle `NavAgentState` at play start (`insert_agent_states`). Agents spawned during play get one through `nav.plan`'s commands and plan from the next tick.
+
+**Engine:**
+- `concordia-nav`:
+  - `agent.rs`: `NavAgent` (`validate`), `NavAgentState`, `NavStatus`, `NavArrived`, `NavPathFailed`, `NavFailure`.
+  - `plan.rs`: who needs a plan, one plan, applying it.
+  - `follow.rs`: one tick of walking.
+  - `agents.rs`: `nav.plan` and `nav.follow`, `AgentConfig`, `add_agent_processors`, `insert_agent_states`.
+  - `NavMeshes::new`, `NavModule::with_plans_per_tick`, the `nav_paths` layer (`NAV_PATHS_LAYER`), and the four new types registered.
+- `concordia-app`: `[nav] plans_per_tick` (a `NonZeroU32`, default 32).
+- Studio: the gameplay programmer gains `nav_path` and `concordia-nav-agents` (14 skills).
+- `tests/fixtures/script/nav-guest` (built by `just wasm`, linted by `just lint`).
+- Docs: ADR-0077's update; the AGENTS.md of `concordia-nav`, `-app` and `-studio`; `concordia-nav`'s README; `docs/guides/agents-engine-api.md`; `plans/README.md`; this plan.
+
+**Tests (18 new, 1 extended, 1 unit test):**
+- `concordia-nav/tests/agents.rs` (9, on a rig without physics: a test system moves each `Transform` by its velocity):
+  - `nav_agent_walks_a_straight_path_and_arrives_within_tolerance` (arrives on tick 195 at x = 4.75; with a 0.02 m arrival distance, slowed onto 5.23 and arrives on tick 205);
+  - `nav_agent_turns_corners_within_path_desired_distance` (2.5a's wall; within 0.2 m of the path every tick, never in the wall, corners 1 to 5 in turn);
+  - `nav_agent_replans_when_the_target_moves_past_its_tolerance` (0.4 m keeps the plan; 0.6 m and 1.5 m straight up replan; no target stops);
+  - `nav_agent_replans_when_pushed_off_its_path` (1.5 m off keeps it, 2.5 m replans from there);
+  - `unreachable_target_walks_to_the_closest_point_and_arrives_partial` (tick 86 at x = −1.73);
+  - `nav_path_failed_names_the_reason_once_per_target` (all five reasons, once each, again for a new target);
+  - `plans_are_budgeted_per_tick_longest_waiting_first` (2 a tick over 5 agents; 1 a tick with a replanning agent waiting behind earlier waiters);
+  - `far_agents_follow_at_full_rate_and_signals_ignore_lod` (a level-3 agent arrives on the same tick; an LOD-aware receiver hears both);
+  - `malformed_nav_agents_are_descriptive_errors`.
+- `concordia-nav/tests/agents_physics.rs` (2, Jolt):
+  - `nav_agent_arrives_within_tolerance_using_character_controller` (the old 2.5 test: Jolt's flat-ground step matches the rig, tick 195 at x = 4.75 within 1 mm);
+  - `nav_agents_are_deterministic_across_runs_and_threads` (16 agents crossing past pillars, targets turned at tick 120; five hashes equal at 1 and 8 threads and run to run).
+- `concordia-nav/tests/api.rs` (3 new; its engine rig moved to `tests/common/engine.rs` for both files):
+  - `nav_agent_moves_in_the_play_world_over_the_api`;
+  - `nav_agent_size_mismatch_warns_once`;
+  - `nav_paths_debug_layer_draws_remaining_paths`.
+- `concordia-nav` unit test: `off_path_measures_sideways_from_the_current_segment`.
+- `concordia-app`: `nav_section_sets_plans_per_tick` (`tests/nav.rs`) and `guest_receives_anim_and_nav_signals` (`tests/nav_guest.rs`: the guest sets the target, hears `NavArrived` on tick 197 at x = 4.75, and hears Walk's `step@0.25`). This closes the carried-over `AnimEvent` item.
+- `concordia-studio`:
+  - `gameplay_programmer_checks_paths_with_nav_path_and_the_nav_agents_skill`;
+  - `nav_agents_skill_examples_are_real_params_and_its_mirror_matches_nav_agent`;
+  - extended: `the_default_roster_ships_the_planned_skills` (14).
+
+**Red run:** written against stubs (no states inserted, `validate` accepting everything, processors doing nothing, no `nav_paths` layer, no `plans_per_tick`, no skill), every test above failed for the right reason. The exceptions:
+- **Test mistakes I fixed deliberately:**
+  - the budget test's closure captured the first rig's ids;
+  - the first off-mesh point (2.15 m out) snapped (Detour's quantized bounds, above);
+  - `component.patch` takes a merge patch, not a JSON Patch list;
+  - a full `navg.Heard` value is required.
+- **Passed immediately (written after the code they test):**
+  - `agents_physics.rs` (2) and the guest test. Each was then shown red by mutation: "never plans" for the physics tests, and "arrival not signalled" for the guest test on its own.
+  - The guest test's `AnimEvent` half passed immediately as expected: the item was "untested", not "broken".
+  - The vertical-replan assertion, added during mutation planning (caught by "vertical tolerance ignored").
+
+**Mutation checks:** 16 mutations, each run against its tests with the restored file given a fresh mtime. All 16 were caught:
+- **Following:** no slow-down on the last stretch, arrival using the corner distance, a corner that never advances, the vertical tolerance ignored.
+- **Replanning:** off-path never replanning, target moves never replanning, failed targets retried every tick.
+- **Budget:** ordered by id instead of waiting time, and no budget at all.
+- **LOD:** the follower opting in.
+- **Signals and planning:** no arrival signal, never planning, no controller check.
+- **Warnings:** a size warning on every plan.
+- **Debug layer:** `nav_paths` drawn from the path's start instead of the feet.
+- **Manifest:** `plans_per_tick` ignored.
+
+**Studio and budgets** (served definitions, 4 chars a token; no tool schema changed):
+- Gameplay programmer: 16 → 17 tools, ≈12.4k → ≈12.9k (12,363 → 12,946).
+- Unchanged: level designer 37 tools ≈23.1k (23,078), tech artist 23 ≈20.1k (20,106), QA 22 ≈18.5k (18,494), animator 22 ≈16.8k (16,824), director 13 ≈12.5k (12,453), writer 11 ≈9.6k (9,576).
+- All are under 50k.
+
+**Carry-over:** the editor's deny warning and the `navmesh` layer's re-gather (a scene change counter) stand as before; ADR-0069's chunk components wait for M7 7.7.
+
+**Not in 2.5b.1:** click-to-move (2.5b.2); crowds (2.5c); traffic (2.5d); a replan timer (waits for runtime navmesh changes).
+
+**Goldens and snapshots:** no golden is new or changed (`nav_paths` is tested by its geometry; the renderer's path is the `navmesh` golden's). Two snapshots changed, both reviewed and accepted by the author: the gameplay programmer's agent file (Studio) and the M3S agents-and-skills list. They were collected with `INSTA_FORCE_PASS`, so the gate couldn't stop at its first mismatch and hide a second. **Editor schemas:** unchanged (`just editor-schemas` gives no diff; the schema project has no `[nav]`).
+
+**Checklist:** all of these pass:
+- `just lint` (now with `nav-guest`) and Tauri clippy;
+- `CONCORDIA_REQUIRE_GPU=1` full suite with `--no-fail-fast` (1,456 tests: 1,456 pass, 8 skipped; 14 doc tests);
+- `just gate-tests M1` (4) and `M3S` (13);
+- `just deny` and the editor's, both `Cargo.lock`s, fresh advisory DB (the editor's lock is unchanged; its deny prints the existing "no crate matched" warning);
+- `just editor-schemas` (no change);
 - `just editor-test` (118 unit, 22 end-to-end).
 
 ### Effort (re-estimated)
