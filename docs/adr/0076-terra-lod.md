@@ -32,3 +32,12 @@ Mass-style crowds need far entities to cost less: fewer updates for what nobody 
 - `concordia-terra` builds at `opt-level = 1` in dev, so its 100k-entity tests stay well inside nextest's hang guard.
 - Representation LOD (full, instanced, hidden, chosen per frame from the drawing camera; E2) is 2.4b.2. It is presentation-only and never touches the hash.
 - ADR-0069 expected LOD to be chunk components' first consumer. It isn't, so processor access to chunk components still waits for one.
+
+## Update (M2 phase 2.4b.2, 2026-11-21): representation LOD
+- **`Representation { instanced, instanced_from, hidden_from }`** is presentation-only by type (`#[reflect(presentation)]`, below), so no world hashes it and simulation can't read or write it.
+- **Chosen per frame from the drawing camera (E2), with no memory.** `RenderWorld::represented(eye)` runs at the start of every frame and every pick. Extraction and the scene cache stay camera-agnostic. Each capture, viewport and pick is right for its own camera.
+- **Distance** runs from the eye to the world position of the entity that owns the `Representation`. Boundaries go to the far side: d ≥ `hidden_from` is hidden, d ≥ `instanced_from` is instanced if a cheaper mesh is given, else full. An invalid one is drawn full and logged once.
+- **A character's parts** follow their nearest ancestor with the same skin. Instanced, the owner draws the cheaper mesh unskinned and the other parts aren't drawn. Hidden, no part is drawn, so it casts no shadow and can't be picked or boxed.
+- **Palettes are built per frame only for draws still skinned.** 100k instanced characters build none, so 2.4.2's palette follow-ups (3×4 rows, parallel or GPU palettes) aren't needed for far crowds.
+- **The `lod` view mode** shows both kinds: hue from the simulation level (white: none; green, yellow, orange, red: 0–3), half brightness when instanced; hidden entities aren't drawn.
+- **Measured at 100k** (`crowd_100k`): one instanced pass at 1080p takes 37 ms, and full extraction 47 ms (134 before). Re-extracting a crowd that moves every tick still costs about 113 ms. A columnar, incremental extraction is M7's large-scale work.

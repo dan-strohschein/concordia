@@ -36,6 +36,8 @@ pub enum ViewMode {
     subsurface,
     /// Thin-film thickness (white: 1000 nm or more).
     thin_film,
+    /// Level of detail: hue by simulation LOD (white none; green to red for 0–3), instanced dimmed.
+    lod,
 }
 
 impl ViewMode {

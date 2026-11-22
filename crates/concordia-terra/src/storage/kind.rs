@@ -80,6 +80,7 @@ impl World {
             };
         }
         self.components.register_as::<T>(StorageKind::Shared)?;
+        self.note_presentation::<T>();
         Ok(())
     }
 

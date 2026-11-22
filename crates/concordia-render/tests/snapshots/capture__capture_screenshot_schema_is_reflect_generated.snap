@@ -173,6 +173,10 @@ expression: "params_schema(&MethodInfo::of::<CaptureScreenshot>())"
         {
           "const": "thin_film",
           "description": "Thin-film thickness (white: 1000 nm or more)."
+        },
+        {
+          "const": "lod",
+          "description": "Level of detail: hue by simulation LOD (white none; green to red for 0–3), instanced dimmed."
         }
       ],
       "title": "ViewMode",

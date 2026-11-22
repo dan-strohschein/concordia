@@ -1,0 +1,69 @@
+{
+  "$defs": {
+    "MeshRenderer": {
+      "additionalProperties": false,
+      "default": {
+        "cast_shadows": true,
+        "material": "builtin:material/default",
+        "mesh": "builtin:mesh/cube"
+      },
+      "description": "Draws an imported or built-in mesh with a material (read by the renderer).",
+      "properties": {
+        "cast_shadows": {
+          "description": "Casts shadows.",
+          "type": "boolean"
+        },
+        "material": {
+          "description": "The material.\n\nAsset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+          "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+          "type": "string"
+        },
+        "mesh": {
+          "description": "The mesh.\n\nAsset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+          "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mesh",
+        "material"
+      ],
+      "title": "MeshRenderer",
+      "type": "object",
+      "x-concordia-category": "Rendering",
+      "x-concordia-type": "MeshRenderer"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "How an entity is drawn by distance from the camera: in full, then `instanced`, then not at all.",
+  "properties": {
+    "hidden_from": {
+      "description": "Meters from the camera where nothing is drawn (at least `instanced_from`).",
+      "type": "number"
+    },
+    "instanced": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/MeshRenderer"
+        }
+      ],
+      "description": "The cheaper mesh and material drawn from `instanced_from` (unskinned; it stands for every\npart of a character). None: drawn in full until hidden."
+    },
+    "instanced_from": {
+      "description": "Meters from the camera where the cheaper mesh takes over.",
+      "type": "number"
+    }
+  },
+  "required": [
+    "instanced_from",
+    "hidden_from"
+  ],
+  "title": "Representation",
+  "type": "object",
+  "x-concordia-category": "Rendering",
+  "x-concordia-type": "Representation"
+}

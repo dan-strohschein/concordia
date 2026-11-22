@@ -20,7 +20,7 @@ pub fn derive_reflect(input: TokenStream) -> TokenStream {
         .into()
 }
 
-/// Builder calls for the optional type-level `category` and `default`.
+/// Builder calls for the optional type-level `category`, `default` and `presentation`.
 fn extras(container: &attrs::ContainerAttrs) -> proc_macro2::TokenStream {
     let category = container
         .category
@@ -40,7 +40,10 @@ fn extras(container: &attrs::ContainerAttrs) -> proc_macro2::TokenStream {
             })
         }
     });
-    quote! { #category #default }
+    let presentation = container
+        .presentation
+        .then(|| quote! { .with_presentation() });
+    quote! { #category #default #presentation }
 }
 
 fn expand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {

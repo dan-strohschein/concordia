@@ -52,3 +52,7 @@ harness = false
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 objc2-quartz-core = "0.3.2"
+
+[[bench]]
+name = "crowd_100k"
+harness = false

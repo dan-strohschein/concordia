@@ -53,7 +53,8 @@ export type ViewMode =
   | "haze"
   | "fuzz"
   | "subsurface"
-  | "thin_film";
+  | "thin_film"
+  | "lod";
 /**
  * Which world: the scene being edited or the running simulation.
  */

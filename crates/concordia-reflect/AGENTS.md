@@ -34,6 +34,7 @@ Every engine type describes itself: wire shape, doc comments, defaults and range
 ## Common tasks
 - **Make a type reflectable:** derive `Clone, PartialEq, Serialize, Deserialize, Reflect`; doc-comment the type, every field and every variant; register it with `TypeRegistry::register::<T>()` (dependencies register automatically).
 - **Add a default or range:** `#[reflect(default = 100.0, range(min = 0.0, max = 1000.0))]` on the field. Range bounds are numeric literals with `min <= max`.
+- **Make a component presentation-only** (never hashed, off limits to simulation; ADR-0063): `#[reflect(presentation)]` on the type sets `TypeInfo::presentation`; every Terra world then treats it as `World::register_presentation` would, from the first time it stores it (2.4b.2, `Representation`).
 - **Rename a type's stable name:** `#[reflect(name = "game.Health")]` (never `#[serde(rename)]`).
 - **Make a component discoverable and addable:** `#[reflect(category = "Lighting", default)]` on the type (`default` uses `Default::default()`; `default = expr` gives a value). `TypeInfo::category`/`default` feed the schema (`default`, `x-concordia-category`), the index and `component.add`. Leave `default` off when no value makes sense alone (e.g. `Parent`, `Environment`).
 - **Support a new foreign type:** add an impl under `src/impls/` and a case to `tests/schema_matches_serde.rs`.

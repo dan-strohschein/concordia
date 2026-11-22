@@ -45,12 +45,14 @@ struct Frame {
     float4 inv_view_proj[4]; float4 sh[9]; float4 ibl;
     uint4 env_a; uint4 env_b;
     // debug.x = view mode (ViewMode order: 0 lit, 1 unlit, 2 wireframe, 3 normals, 4 albedo,
-    // 5 roughness/metallic, 6 overdraw, 7 shadow cascades, 8 light clusters).
+    // 5 roughness/metallic, 6 overdraw, 7 shadow cascades, 8 light clusters, 9 closures, 10–13 the
+    // feature views, 14 lod).
     uint4 debug;
 };
 // Per light: position+range, direction, exposed radiance, spot (scale, offset).
 struct Light { float4 position_range; float4 direction; float4 radiance; float4 spot; };
-// skin = (first palette matrix, joint count, 0, 0); a count of 0 is unskinned.
+// skin = (first palette matrix, joint count, lod, 0); a count of 0 is unskinned; lod = simulation
+// LOD level + 1 (0: none), plus 16 when drawn as its representation's cheaper mesh.
 struct Instance { float4 model[4]; float4 normal[4]; uint4 skin; };
 // Materials are `uint4` rows (floats as bits; `material_rows.rs`): a header (closures, ops, flags,
 // mask cutoff), one row per op (kind, slab index or mix texture, parameter), then CLOSURE_ROWS
@@ -71,6 +73,7 @@ struct VsOut {
     float4 tangent : TANGENT;
     float2 uv : UV;
     float3 bary : BARY;
+    nointerpolation uint lod : LOD;
 };
 
 float4 xform(float4 m[4], float4 v) { return m[0] * v.x + m[1] * v.y + m[2] * v.z + m[3] * v.w; }
@@ -103,7 +106,19 @@ VsOut vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform DrawPush push
     o.uv = ((float2*)g_buffers.ptr[push.uvs])[v];
     uint corner = vid % 3; // vertices are pulled per triangle corner
     o.bary = float3(corner == 0 ? 1.0 : 0.0, corner == 1 ? 1.0 : 0.0, corner == 2 ? 1.0 : 0.0);
+    o.lod = inst.skin.z;
     return o;
+}
+
+// The `lod` view mode's color (linear; the output is sRGB): hue from the simulation LOD (white
+// without one, then green, yellow, orange, red for levels 0–3), half brightness when instanced.
+float3 lod_color(uint code) {
+    const float3 hues[5] = {
+        float3(1.0, 1.0, 1.0), float3(0.021, 0.578, 0.045), float3(0.871, 0.716, 0.013),
+        float3(1.0, 0.223, 0.003), float3(0.791, 0.013, 0.013)
+    };
+    float3 c = hues[min(code & 15u, 4u)];
+    return (code & 16u) != 0 ? c * 0.214 : c; // 0.214 linear is half of display white
 }
 
 float4 cascade_xform(Frame* frame, uint c, float4 p) {
@@ -754,6 +769,10 @@ float4 fs(VsOut i, bool front : SV_IsFrontFace, uniform DrawPush push) : SV_Targ
     if (mode == 3) { return float4(c0.n * 0.5 + 0.5, 1.0); }
     if (mode == 5) { return float4(0.0, c0.roughness, c0.metallic, 1.0); }
     if (mode == 9) { return float4(heat(float(count), 1.0, 4.0, 8.0), 1.0); }
+    if (mode == 14) {
+        float facing = saturate(dot(normalize(i.normal) * (front ? 1.0 : -1.0), v));
+        return float4(lod_color(i.lod) * (0.55 + 0.45 * facing), 1.0);
+    }
     if (mode >= 10) { return float4(saturate(run(frame, rows, EVAL_VALUE, v, v, i.uv, mode, false).color), 1.0); }
 
     float3 geometric = normalize(i.normal) * (front ? 1.0 : -1.0);

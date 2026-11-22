@@ -141,6 +141,14 @@ impl World {
         }
     }
 
+    /// Records `T` as presentation-only if its type says so (`#[reflect(presentation)]`).
+    pub(crate) fn note_presentation<T: Component>(&mut self) {
+        let info = T::type_info();
+        if info.presentation {
+            self.presentation.insert(info.name);
+        }
+    }
+
     /// Declares `T` presentation-only: never part of the world hash, and off limits to simulation
     /// processors (ADR-0063).
     pub fn register_presentation<T: Component>(&mut self) {
@@ -276,6 +284,7 @@ impl World {
     ) -> Result<Option<C>, EcsError> {
         let loc = self.entities.location(id)?;
         let cid = self.components.register::<C>()?;
+        self.note_presentation::<C>();
         if self.components.info(cid).kind != StorageKind::Dense {
             return self.insert_shared(id, loc, cid, component);
         }
@@ -342,11 +351,13 @@ impl World {
 
     /// Borrows a component.
     pub fn get<C: Component>(&self, id: EntityId) -> Option<&C> {
-        match self.column_of(id, TypeId::of::<C>()) {
-            Some((loc, col)) => {
-                typed::<C>(&*self.archetypes.list[loc.archetype].table.columns[col]).get(loc.row)
-            }
-            None => self.get_shared(id),
+        // Type first: a type the world never stored needs no entity lookup.
+        let cid = self.components.id_of(TypeId::of::<C>())?;
+        let loc = self.entities.location(id).ok()?;
+        let arch = &self.archetypes.list[loc.archetype];
+        match arch.column_index(cid) {
+            Some(col) => typed::<C>(&*arch.table.columns[col]).get(loc.row),
+            None => self.shared.get::<C>(cid, arch.shared_value(cid)?),
         }
     }
 
@@ -548,13 +559,6 @@ impl World {
         let name = self.components.info(cid).name;
         self.structural.record(name, id, false);
         Some(copy)
-    }
-
-    fn get_shared<C: Component>(&self, id: EntityId) -> Option<&C> {
-        let loc = self.entities.location(id).ok()?;
-        let cid = self.components.id_of(TypeId::of::<C>())?;
-        let value = self.archetypes.list[loc.archetype].shared_value(cid)?;
-        self.shared.get::<C>(cid, value)
     }
 
     /// `id`'s component `cid` in any storage kind, reflected.

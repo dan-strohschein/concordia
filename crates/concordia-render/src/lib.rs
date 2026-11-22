@@ -24,6 +24,7 @@ mod overlay;
 mod pipelines;
 mod programs;
 mod renderer;
+mod representation;
 mod scene_cache;
 pub mod shadow;
 mod shadow_pass;
@@ -62,6 +63,7 @@ pub use overlay::{
 };
 pub use pipelines::shader_dir;
 pub use renderer::{FrameCallbacks, Image, MAX_SIZE, RenderRequest, RenderStats, Renderer};
+pub use representation::Representation;
 pub use scene_cache::{RenderScene, SceneCache, SceneDelta, SceneItems};
 pub use shadow_pass::ShadowPush;
 pub use stats::{
@@ -79,5 +81,6 @@ pub fn register_types(
     concordia_terra::register_component::<DirectionalLight>(registry)?;
     concordia_terra::register_component::<PointLight>(registry)?;
     concordia_terra::register_component::<SpotLight>(registry)?;
-    concordia_terra::register_component::<Environment>(registry)
+    concordia_terra::register_component::<Environment>(registry)?;
+    concordia_terra::register_component::<Representation>(registry)
 }

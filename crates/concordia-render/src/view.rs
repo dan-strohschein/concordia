@@ -177,6 +177,8 @@ pub fn pick(
     let (near, far) = pixel_ray(view, (x, y), (width, height))?;
     let forward = (view.target - view.eye).normalize();
     let mut best: Option<Pick> = None;
+    // What this view draws (representation LOD, ADR-0076): hidden entities can't be picked.
+    let world = world.represented(view.eye);
     for draw in &world.draws {
         let Some(aabb) = bounds(&draw.mesh) else {
             continue;

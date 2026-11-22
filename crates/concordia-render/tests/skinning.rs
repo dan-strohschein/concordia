@@ -215,7 +215,7 @@ fn skinned_draws_find_their_pose_on_themselves_or_an_ancestor() {
     let plain = spawn(&mut s, Vec3::ZERO, &arm, &paint, None, None);
 
     let edit = RenderWorld::extract(&s.world);
-    assert!(edit.skins.is_empty(), "without skeletons nothing is posed");
+    assert!(edit.poses.is_empty(), "without skeletons nothing is posed");
     assert!(edit.draws.iter().all(|d| d.skin.is_none()));
 
     s.world.insert_resource(library());
@@ -230,15 +230,17 @@ fn skinned_draws_find_their_pose_on_themselves_or_an_ancestor() {
     assert_eq!(draw_skin(&play, other), None, "another skin: the bind mesh");
     assert_eq!(draw_skin(&play, alone), None, "no pose anywhere above");
     assert_eq!(draw_skin(&play, plain), None, "not skinned");
-    assert_eq!(play.skins.len(), 1);
-    let posed = &play.skins[0];
+    // Palettes are built as drawn (2.4b.2): for the poses that still deform a draw.
+    let drawn = play.represented(Vec3::ZERO);
+    assert_eq!(drawn.skins.len(), 1);
+    let posed = &drawn.skins[0];
     assert_eq!(posed.entity, owner);
     assert_eq!(posed.world, Mat4::from_translation(Vec3::X));
     assert_eq!(posed.palette, skeleton().palette(&pose).unwrap());
 
     // A pose of the wrong size is not drawn posed.
     s.world.get_mut::<Pose>(owner).unwrap().bones.pop();
-    let broken = RenderWorld::extract(&s.world);
+    let broken = RenderWorld::extract(&s.world).represented(Vec3::ZERO);
     assert!(broken.skins.is_empty());
     assert_eq!(draw_skin(&broken, part), None);
 }
@@ -264,7 +266,7 @@ fn rendered_pose_interpolates_between_ticks() {
     s.world.get_mut::<Transform>(owner).unwrap().translation = Vec3::new(4.0, 0.0, 0.0);
     scene.apply_tick(cache.update(&s.world));
     for alpha in [0.0, 0.25, 0.5, 1.0] {
-        let world = scene.world_at(alpha);
+        let world = scene.world_at(alpha).represented(Vec3::ZERO);
         let expected = bent(0.0).lerp(&bent(1.2), alpha).unwrap();
         let posed = &world.skins[0];
         let want = skeleton().palette(&expected).unwrap();
@@ -281,7 +283,7 @@ fn rendered_pose_interpolates_between_ticks() {
         );
     }
     assert_eq!(
-        scene.world().skins[0].palette,
+        scene.world().represented(Vec3::ZERO).skins[0].palette,
         skeleton().palette(&bent(1.2)).unwrap()
     );
 }
@@ -319,7 +321,7 @@ fn presentation_pose_never_changes_world_hash() {
     scene.apply_tick(cache.update(&s.world));
     for alpha in [0.1, 0.5, 0.9] {
         let world = scene.world_at(alpha);
-        assert_eq!(world.skins.len(), 1);
+        assert_eq!(world.represented(Vec3::ZERO).skins.len(), 1);
         if let Some(mut r) = renderer() {
             render(&mut r, &mut s, &world, 64, 64, ViewMode::lit);
         }

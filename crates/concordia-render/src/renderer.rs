@@ -96,6 +96,8 @@ pub struct Renderer {
     retired: FrameResources,
     /// Skinned meshes already reported as drawn at their bind pose.
     unskinnable: std::collections::BTreeSet<AssetRef>,
+    /// Entities whose invalid `Representation` was logged.
+    invalid_representations: std::collections::BTreeSet<EntityId>,
 }
 
 /// A presented frame the GPU may still be working on.
@@ -308,6 +310,7 @@ impl Renderer {
             programs,
             retired: FrameResources::default(),
             unskinnable: std::collections::BTreeSet::new(),
+            invalid_representations: std::collections::BTreeSet::new(),
         })
     }
 
@@ -508,6 +511,9 @@ impl Renderer {
         self.retire(keep)?;
         let allocated = self.recycle.created();
         let mut frame = FrameResources::default();
+        // Representation LOD is this camera's choice for this frame only (ADR-0076, E2).
+        self.report_invalid_representations(world);
+        let world = &world.represented(crate::camera::eye(&view.world));
         let result = self.render_frame(
             world,
             assets,
@@ -973,6 +979,20 @@ impl Renderer {
     }
 
     /// Logs, once per mesh, skinned meshes drawn at their bind pose.
+    /// Logs each entity whose `Representation` is invalid once (it is drawn full).
+    fn report_invalid_representations(&mut self, world: &RenderWorld) {
+        for draw in &world.draws {
+            let Some((by, representation)) = &draw.representation else {
+                continue;
+            };
+            if let Err(e) = representation.validate()
+                && self.invalid_representations.insert(*by)
+            {
+                tracing::warn!(target: "concordia::render", entity = %by, error = %e, "Representation ignored; drawn in full");
+            }
+        }
+    }
+
     fn report_unskinnable(&mut self, refused: &[AssetRef]) {
         for mesh in refused {
             if self.unskinnable.insert(mesh.clone()) {
@@ -1040,7 +1060,10 @@ impl Renderer {
         let mut instances = Vec::new();
         order.iter().for_each(|d| {
             let placed = &placements[d.item];
-            instance_block(&mut instances, &placed.world, placed.skin);
+            let draw = &world.draws[d.item];
+            let mut skin = placed.skin;
+            skin[2] = lod_code(draw.sim_lod, draw.instanced);
+            instance_block(&mut instances, &placed.world, skin);
         });
         Ok(FrameBlocks {
             instances,
@@ -1712,6 +1735,12 @@ fn read_overflow(device: &dyn Device, buffer: Buffer, clusters: u64) -> Result<u
         .iter()
         .map(|w| u32::from_le_bytes(*w))
         .sum())
+}
+
+/// The `lod` view mode's per-instance code: simulation level + 1 (0: none), plus 16 if instanced.
+fn lod_code(sim_lod: Option<u8>, instanced: bool) -> u32 {
+    let level = sim_lod.map_or(0, |l| u32::from(l.min(3)) + 1);
+    level | if instanced { 16 } else { 0 }
 }
 
 fn hash_matrix(m: &Mat4, hasher: &mut impl std::hash::Hasher) {

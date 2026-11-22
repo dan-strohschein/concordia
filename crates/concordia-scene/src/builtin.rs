@@ -110,16 +110,29 @@ impl WorldTransforms {
 pub fn world_transforms(world: &World) -> WorldTransforms {
     let mut out = WorldTransforms::default();
     for id in world.entity_ids_sorted() {
-        if world.get::<Transform>(id).is_some() && !out.transforms.contains_key(&id) {
+        let Some(t) = world.get::<Transform>(id) else {
+            continue;
+        };
+        if world.get::<Parent>(id).is_none() {
+            out.transforms.insert(id, local_matrix(t));
+        } else if !out.transforms.contains_key(&id) {
             resolve(world, id, &mut out);
         }
     }
     out
 }
 
+/// A transform's matrix relative to its parent.
+fn local_matrix(t: &Transform) -> concordia_core::math::Mat4 {
+    concordia_core::math::Mat4::from_scale_rotation_translation(t.scale, t.rotation, t.translation)
+}
+
 /// One entity's world matrix (`None` without a `Transform`); same rules as [`world_transforms`].
 pub fn world_transform(world: &World, id: EntityId) -> Option<concordia_core::math::Mat4> {
-    world.get::<Transform>(id)?;
+    let t = world.get::<Transform>(id)?;
+    if world.get::<Parent>(id).is_none() {
+        return Some(local_matrix(t));
+    }
     let mut out = WorldTransforms::default();
     resolve(world, id, &mut out);
     out.transforms.get(&id).copied()
@@ -152,11 +165,7 @@ fn resolve(world: &World, id: EntityId, out: &mut WorldTransforms) {
     }
     for entity in chain.into_iter().rev() {
         let t = world.get::<Transform>(entity).copied().unwrap_or_default();
-        base *= concordia_core::math::Mat4::from_scale_rotation_translation(
-            t.scale,
-            t.rotation,
-            t.translation,
-        );
+        base *= local_matrix(&t);
         out.transforms.insert(entity, base);
     }
 }

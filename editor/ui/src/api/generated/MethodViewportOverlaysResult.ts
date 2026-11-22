@@ -25,7 +25,8 @@ export type ViewMode =
   | "haze"
   | "fuzz"
   | "subsurface"
-  | "thin_film";
+  | "thin_film"
+  | "lod";
 
 /**
  * `viewport.overlays` result.
