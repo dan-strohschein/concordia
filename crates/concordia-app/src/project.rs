@@ -16,6 +16,7 @@ use concordia_render::{ClosureBudget, RenderModule};
 use concordia_replay::ReplayModule;
 use concordia_scripting::{ScriptEntry, ScriptKind, ScriptsConfig, ScriptsModule};
 use concordia_studio::StudioModule;
+use concordia_terra_crowd::CrowdModule;
 
 use crate::error::AppError;
 use crate::manifest::{Manifest, RenderSection, ScriptModuleKind, ScriptsSection};
@@ -113,6 +114,7 @@ impl Project {
         }
         if let Some(nav) = &self.manifest.nav {
             modules.push(Arc::new(NavModule::with_plans_per_tick(nav.plans_per_tick)));
+            modules.push(Arc::new(CrowdModule::new()));
         }
         if self.manifest.assets.is_some() {
             let assets = model_importers()

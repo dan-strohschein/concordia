@@ -7,6 +7,7 @@ Vendored Recast and Detour v1.6.0 (zlib) through Concordia's flat C shim (`shim/
 - `build_tile(&BuildConfig, &TileInput)` → `Option<TileData>` (one tile: rasterize, filter, compact, mark, erode, watershed regions, contours, polygons, detail, Detour data); `BuildConfig`, `TileInput`, `BoxMark`, `Area` (`BLOCKED`, `WALKABLE`, `cost(2..=62)`), `TileData` (`from_bytes`, `bytes`)
 - `DtNavMesh` (`new(&NavMeshParams)`, `add_tile`, `tiles` → `TileInfo`, `poly`, `polys` → `Poly`, `links`); `PolyRef`
 - `DtQuery` (`new(Arc<DtNavMesh>, max_nodes)`, `nearest`, `find_path` → `Corridor`, `straight_path`, `raycast` → `RayResult`); `AreaCosts`
+- Crowd queries (2.5c.1): `DtQuery::move_along_surface` → `SurfaceMove` (`moveAlongSurface`: slides along walls; the visited polygons, the start's first), `poly_height` (`getPolyHeight`; `None` outside the polygon, the shim's `CR_EMPTY`), `raycast_path` → `RayPath` (`raycast` with the polygons it crossed)
 - `RecastError` (`Input`, `Alloc`, `Build(BuildStage)`, `AddTile`, `NotFound`, `Query`), `RECAST_VERSION`, `MAX_VERTS_PER_POLY`, `live_allocations()`, `abi_mismatches()`
 
 ## Invariants
@@ -17,7 +18,7 @@ Vendored Recast and Detour v1.6.0 (zlib) through Concordia's flat C shim (`shim/
 - `src/ffi.rs` mirrors the header by hand. `tests/smoke.rs` checks the header's blake3 against its `// header blake3:` line, and every struct's size against the C compiler's (`cr_struct_size`).
 
 ## How to test
-`cargo nextest run -p recast-sys`. The flat-plane values are derived in `tests/smoke.rs`' header (ledge filter, erosion, the one-cell-tall span rule).
+`cargo nextest run -p recast-sys`. The flat-plane values are derived in `tests/smoke.rs`' header (ledge filter, erosion, the one-cell-tall span rule); the crowd queries run on a 20 × 10 m plane cut into two tiles at x = 5 (derived above those tests). It builds at `opt-level = 2` in dev (the crowd's tests call Detour millions of times).
 
 ## Common tasks
 - **Add a shim function:** declare it in the header, implement and validate it in the `.cpp`, mirror it in `src/ffi.rs`, update the hash line (the test prints it) and `cr_struct_size` for new structs, wrap it safely here, and test it in `tests/smoke.rs`.
@@ -25,14 +26,14 @@ Vendored Recast and Detour v1.6.0 (zlib) through Concordia's flat C shim (`shim/
 
 ## Don'ts
 - Don't expose Recast or Detour structs; flatten what Rust needs into `cr_*` structs.
-- Don't vendor DetourCrowd: crowds are Terra processors (ADR-0077, N1).
+- Don't vendor DetourCrowd: crowds are Terra processors (ADR-0077, N1). Add only the single queries they need.
 - Don't add `unsafe` to other navigation crates; extend this one.
 
 ## References
 - Recast & Detour (zlib), vendored: their headers' documentation and source, RecastDemo's `Sample_TileMesh` build steps (zlib); Mikko Mononen's talks and blog posts (digestingduck.blogspot.com). No Unreal or other non-open source was consulted.
 
 ## Status
-M2 phase 2.5a (tile build, navmesh, nearest point, paths, surface raycast).
+M2 phase 2.5a (tile build, navmesh, nearest point, paths, surface raycast); 2.5c.1 (surface moves, polygon heights, raycasts with their polygons).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

@@ -189,6 +189,13 @@ fn ffi_handles_are_released() {
             .unwrap()
             .unwrap();
         let _ = query.find_path(&costs, start, start, 8).expect("path");
+        let _ = query
+            .move_along_surface(&costs, start.0, start.1, [3.0, 0.2, 0.0], 16)
+            .expect("move");
+        let _ = query.poly_height(start.0, start.1).expect("height");
+        let _ = query
+            .raycast_path(&costs, start.0, start.1, [9.0, 0.2, 0.0], 32)
+            .expect("ray");
         assert!(
             live_allocations() > before,
             "the navmesh and query are counted"
@@ -318,6 +325,40 @@ fn shim_rejects_bad_input() {
             && costs.set(3, 0.5).is_err()
             && costs.set(3, f32::NAN).is_err()
     );
+    let mut query = DtQuery::new(plane_mesh(), 64).unwrap();
+    let costs = AreaCosts::default();
+    let (poly, p) = query
+        .nearest(&costs, [0.0, 0.2, 0.0], [0.5, 1.0, 0.5])
+        .unwrap()
+        .unwrap();
+    let nan = [f32::NAN, 0.0, 0.0];
+    let stale = recast_sys::PolyRef(std::num::NonZeroU64::new(0xdead_beef).unwrap());
+    assert!(input(
+        query
+            .move_along_surface(&costs, poly, nan, p, 16)
+            .unwrap_err()
+    ));
+    assert!(
+        input(query.move_along_surface(&costs, poly, p, p, 0).unwrap_err()),
+        "no visited slots"
+    );
+    assert_eq!(
+        query.move_along_surface(&costs, stale, p, p, 16),
+        Err(RecastError::NotFound)
+    );
+    assert!(input(query.poly_height(poly, nan).unwrap_err()));
+    assert_eq!(query.poly_height(stale, p), Err(RecastError::NotFound));
+    assert!(input(
+        query.raycast_path(&costs, poly, p, nan, 32).unwrap_err()
+    ));
+    assert!(
+        input(query.raycast_path(&costs, poly, p, p, 0).unwrap_err()),
+        "no path slots"
+    );
+    assert_eq!(
+        query.raycast_path(&costs, stale, p, p, 32),
+        Err(RecastError::NotFound)
+    );
     let tile = build_tile(&config(), &plane_input()).unwrap().unwrap();
     let mut mesh = DtNavMesh::new(&params()).unwrap();
     mesh.add_tile(&tile).unwrap();
@@ -325,5 +366,119 @@ fn shim_rejects_bad_input() {
         mesh.add_tile(&tile),
         Err(RecastError::AddTile),
         "the slot is taken"
+    );
+}
+
+// Crowd queries (2.5c.1). A 20 × 10 m plane (x −5..15, z −5..5) cut into two 10 m tiles at x = 5:
+// - outer edges lose 0.75 m as on the single plane (ledge ring + 2 eroded cells), so the walkable
+//   floor is x −4.25..14.25, z ±4.25, at y = 0.2;
+// - the seam at x = 5 isn't an edge: each tile's border reaches into the other's geometry, so
+//   nothing is eroded there and the two tiles link across it.
+
+const LONG_PLANE: [[f32; 3]; 4] = [
+    [-5.0, 0.0, -5.0],
+    [15.0, 0.0, -5.0],
+    [15.0, 0.0, 5.0],
+    [-5.0, 0.0, 5.0],
+];
+
+fn two_tile_mesh() -> Arc<DtNavMesh> {
+    let mut mesh = DtNavMesh::new(&params()).expect("navmesh");
+    for (x, min_x) in [(0, -5.0), (1, 5.0)] {
+        let input = TileInput {
+            vertices: &LONG_PLANE,
+            triangles: &UP,
+            marks: &[],
+            tile: [x, 0],
+            min: [min_x, -1.0, -5.0],
+            max: [min_x + 10.0, 1.0, 5.0],
+        };
+        let tile = build_tile(&config(), &input)
+            .expect("builds")
+            .expect("not empty");
+        mesh.add_tile(&tile).expect("adds");
+    }
+    Arc::new(mesh)
+}
+
+fn snap(query: &mut DtQuery, p: [f32; 3]) -> (recast_sys::PolyRef, [f32; 3]) {
+    query
+        .nearest(&AreaCosts::default(), p, [0.5, 1.0, 0.5])
+        .expect("query")
+        .expect("on the floor")
+}
+
+fn close(a: [f32; 3], b: [f32; 3]) -> bool {
+    a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-3)
+}
+
+#[test]
+fn move_along_surface_slides_and_stops_at_edges() {
+    let mut query = DtQuery::new(two_tile_mesh(), 256).expect("query");
+    let costs = AreaCosts::default();
+    let (a, start) = snap(&mut query, [0.0, 0.2, 0.0]);
+    let (b, _) = snap(&mut query, [8.0, 0.2, 0.0]);
+    assert_ne!(a, b, "one polygon per tile side of the seam");
+    // Across the seam: the end is reached, through both polygons, the start's first.
+    let moved = query
+        .move_along_surface(&costs, a, start, [8.0, 0.2, 0.0], 16)
+        .expect("moves");
+    assert!(close(moved.position, [8.0, 0.2, 0.0]), "{moved:?}");
+    assert_eq!(moved.visited, vec![a, b]);
+    // Past the far edge: it stops at x = 14.25.
+    let stopped = query
+        .move_along_surface(&costs, a, start, [20.0, 0.2, 0.0], 16)
+        .expect("moves");
+    assert!(close(stopped.position, [14.25, 0.2, 0.0]), "{stopped:?}");
+    // Into a side wall at a slant: it slides along z = 4.25 instead of stopping (x keeps going).
+    let slid = query
+        .move_along_surface(&costs, a, start, [2.0, 0.2, 6.0], 16)
+        .expect("moves");
+    assert!(close(slid.position, [2.0, 0.2, 4.25]), "{slid:?}");
+    assert_eq!(slid.visited, vec![a]);
+    // One visited slot keeps only the start's polygon.
+    let short = query
+        .move_along_surface(&costs, a, start, [8.0, 0.2, 0.0], 1)
+        .expect("moves");
+    assert_eq!(short.visited.len(), 1, "{short:?}");
+}
+
+#[test]
+fn poly_height_reads_the_surface() {
+    let mut query = DtQuery::new(two_tile_mesh(), 256).expect("query");
+    let (b, _) = snap(&mut query, [8.0, 0.2, 0.0]);
+    let h = query.poly_height(b, [8.0, 5.0, 1.0]).expect("query");
+    assert!(h.is_some_and(|h| (h - SURFACE).abs() < 1e-4), "{h:?}");
+    assert_eq!(
+        query.poly_height(b, [0.0, 0.0, 0.0]).expect("query"),
+        None,
+        "x = 0 is in the other tile's polygon"
+    );
+}
+
+#[test]
+fn raycast_path_lists_visited_polygons() {
+    let mut query = DtQuery::new(two_tile_mesh(), 256).expect("query");
+    let costs = AreaCosts::default();
+    let (a, start) = snap(&mut query, [0.0, 0.2, 0.0]);
+    let (b, _) = snap(&mut query, [8.0, 0.2, 0.0]);
+    let free = query
+        .raycast_path(&costs, a, start, [8.0, 0.2, 0.0], 32)
+        .expect("ray");
+    assert_eq!((free.ray.hit, free.polys.clone()), (None, vec![a, b]));
+    // From x = 0 toward x = 20 the far edge is at 14.25: t = 14.25 / 20.
+    let hit = query
+        .raycast_path(&costs, a, start, [20.0, 0.2, 0.0], 32)
+        .expect("ray");
+    let t = hit.ray.hit.expect("hits the far edge");
+    assert!((t - 14.25 / 20.0).abs() < 1e-4, "t = {t}");
+    assert_eq!(hit.polys, vec![a, b]);
+    assert_eq!(
+        query
+            .raycast(&costs, a, start, [20.0, 0.2, 0.0])
+            .expect("ray")
+            .hit,
+        hit.ray.hit,
+        "the same ray as cr_raycast"
     );
 }

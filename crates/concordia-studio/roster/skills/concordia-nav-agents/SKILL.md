@@ -35,3 +35,38 @@ A `NavAgent` walks its entity's `CharacterController` to `target` along the navm
 - At most `[nav] plans_per_tick` (default 32) agents plan a tick, longest-waiting first; the rest are `Waiting` and keep walking their old path.
 - Arrival and corners are measured sideways, within half the agent's height vertically (the navmesh surface sits a little above the floor). The agent cuts each corner by at most `path_desired_distance`; keep it at or under the navmesh's `agent_radius` where corners are tight.
 - Agents follow every tick whatever their simulation LOD, and signals reach receivers whatever theirs.
+
+## Crowds
+A `NavAgent` with a `CrowdAgent` too is a crowd agent: the crowd steers it with its neighbours (separation, collision pushes and, from 2.5c.2, avoidance) instead of `nav.follow`. Gameplay drives it exactly like any agent: set `NavAgent.target`, hear the same `NavArrived` and `NavPathFailed`, and `ClickToMove` works on it. Crowd agents usually come from a template's `Crowd` trait (the level designer's `concordia-terra-templates`).
+- **Two bodies:** with no `CharacterController` it is a **surface** agent (the crowd moves its `Transform` along the navmesh; cheap, fine for thousands). With a `CharacterController` the crowd writes its `CharacterMotion` and physics moves it. Every `CharacterController` (the player too) is solid to surface agents: they step aside for it and never push it.
+- **Its state:** `CrowdState` (hashed: `velocity`, `desired_velocity`, `corners`, `neighbours`, …); its polygon corridor is `NavAgentState.corridor`. Read them with `mcp__concordia__query_run {"with": ["CrowdAgent", "CrowdState"], "select": ["CrowdState", "NavAgentState"], "world": "play"}`.
+- **See it:** the `crowd` debug layer draws each crowd agent's ring, velocity, desired velocity, corners and neighbour links (ask whoever has `capture_screenshot`).
+- To change a crowd agent's tuning from a script, mirror both types field for field:
+  ```rust
+  #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
+  #[reflect(name = "CrowdAgent", default)]
+  pub struct CrowdAgent {
+      pub max_acceleration: f32,
+      pub collision_query_range: f32,
+      pub path_optimization_range: f32,
+      pub anticipate_turns: bool,
+      pub optimize_visibility: bool,
+      pub separation: bool,
+      pub separation_weight: f32,
+      pub avoidance: Option<CrowdAvoidance>,
+  }
+
+  #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
+  #[reflect(name = "CrowdAvoidance", default)]
+  pub struct CrowdAvoidance {
+      pub velocity_bias: f32,
+      pub weight_desired: f32,
+      pub weight_current: f32,
+      pub weight_side: f32,
+      pub weight_toi: f32,
+      pub horizon: f32,
+      pub divs: u8,
+      pub rings: u8,
+      pub depth: u8,
+  }
+  ```

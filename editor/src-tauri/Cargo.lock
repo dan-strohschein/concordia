@@ -610,6 +610,7 @@ dependencies = [
  "concordia-rhi-metal",
  "concordia-scripting",
  "concordia-studio",
+ "concordia-terra-crowd",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -1057,6 +1058,22 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "concordia-terra-crowd"
+version = "0.0.0"
+dependencies = [
+ "concordia-api",
+ "concordia-core",
+ "concordia-nav",
+ "concordia-physics",
+ "concordia-reflect",
+ "concordia-scene",
+ "concordia-terra",
+ "concordia-terra-sim",
+ "serde",
+ "tracing",
 ]
 
 [[package]]

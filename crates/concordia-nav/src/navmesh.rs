@@ -59,6 +59,26 @@ pub struct NavPath {
     pub partial: bool,
     /// Total length in meters.
     pub length: f32,
+    /// The polygon corridor (raw Detour references), from the start's polygon.
+    pub corridor: Vec<u64>,
+}
+
+/// A surface move's end and the polygons it crossed.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SurfaceMove {
+    /// The reached point (its height is the target's; see [`NavMesh::poly_height`]).
+    pub position: Vec3,
+    /// Polygons crossed (raw references), from the start's.
+    pub visited: Vec<u64>,
+}
+
+/// A surface raycast's stop and the polygons it crossed.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SurfaceRay {
+    /// The fraction along the ray where it hit an edge, or `None` if it reached the end.
+    pub hit: Option<f32>,
+    /// Polygons crossed (raw references), from the start's.
+    pub polys: Vec<u64>,
 }
 
 /// A surface raycast's result.
@@ -203,6 +223,7 @@ impl NavMesh {
                 waypoints,
                 partial: corridor.partial,
                 length,
+                corridor: corridor.polys.iter().map(|p| p.0.get()).collect(),
             })
         })
     }
@@ -220,6 +241,81 @@ impl NavMesh {
         Ok(NavRay {
             hit: ray.hit.map(|t| s.lerp(end, t)),
             normal: Vec3::from_array(ray.normal),
+        })
+    }
+
+    /// The nearest polygon (a raw reference) and point within the search reach.
+    pub fn nearest_poly(&self, point: Vec3) -> Option<(u64, NavPoint)> {
+        self.nearest_within(point, Vec3::from_array(self.data.search))
+            .ok()
+            .flatten()
+            .map(|(poly, p)| (poly.0.get(), p))
+    }
+
+    /// Corners along `corridor` from `from` to `to` (both included), at most `max`; an end
+    /// outside the last polygon is clamped to it.
+    pub fn straight_path(
+        &self,
+        from: Vec3,
+        to: Vec3,
+        corridor: &[u64],
+        max: usize,
+    ) -> Result<Vec<Vec3>, NavError> {
+        let polys = corridor
+            .iter()
+            .map(|&r| poly_ref(r))
+            .collect::<Result<Vec<_>, _>>()?;
+        let points = self
+            .with_query(|q| Ok(q.straight_path(from.to_array(), to.to_array(), &polys, max)?))?;
+        Ok(points.into_iter().map(Vec3::from_array).collect())
+    }
+
+    /// Moves from `from` (on `poly`) toward `to` along the surface, sliding along walls and
+    /// crossing at most `max_visited` polygons.
+    pub fn move_along_surface(
+        &self,
+        poly: u64,
+        from: Vec3,
+        to: Vec3,
+        max_visited: usize,
+    ) -> Result<SurfaceMove, NavError> {
+        let poly = poly_ref(poly)?;
+        let moved = self.with_query(|q| {
+            Ok(q.move_along_surface(
+                &self.costs,
+                poly,
+                from.to_array(),
+                to.to_array(),
+                max_visited,
+            )?)
+        })?;
+        Ok(SurfaceMove {
+            position: Vec3::from_array(moved.position),
+            visited: moved.visited.iter().map(|p| p.0.get()).collect(),
+        })
+    }
+
+    /// The surface height of `poly` under `at`, or `None` when `at` is outside it.
+    pub fn poly_height(&self, poly: u64, at: Vec3) -> Result<Option<f32>, NavError> {
+        let poly = poly_ref(poly)?;
+        self.with_query(|q| Ok(q.poly_height(poly, at.to_array())?))
+    }
+
+    /// Walks the surface from `from` (on `poly`) toward `to`, listing at most `max` polygons.
+    pub fn raycast_path(
+        &self,
+        poly: u64,
+        from: Vec3,
+        to: Vec3,
+        max: usize,
+    ) -> Result<SurfaceRay, NavError> {
+        let poly = poly_ref(poly)?;
+        let ray = self.with_query(|q| {
+            Ok(q.raycast_path(&self.costs, poly, from.to_array(), to.to_array(), max)?)
+        })?;
+        Ok(SurfaceRay {
+            hit: ray.ray.hit,
+            polys: ray.polys.iter().map(|p| p.0.get()).collect(),
         })
     }
 
@@ -258,6 +354,13 @@ impl NavMesh {
         }
         out
     }
+}
+
+/// A raw reference as a `PolyRef` (zero is no polygon).
+fn poly_ref(raw: u64) -> Result<PolyRef, NavError> {
+    std::num::NonZeroU64::new(raw)
+        .map(PolyRef)
+        .ok_or(NavError::Recast(recast_sys::RecastError::NotFound))
 }
 
 /// Each polygon's island (numbered by first polygon) and the island count.

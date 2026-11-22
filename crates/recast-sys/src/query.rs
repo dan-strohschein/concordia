@@ -52,6 +52,24 @@ pub struct RayResult {
     pub normal: [f32; 3],
 }
 
+/// Where a surface move ended, and the polygons it crossed.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SurfaceMove {
+    /// The reached point (its height is the end's; read the surface with `poly_height`).
+    pub position: [f32; 3],
+    /// Polygons crossed, from the start's to the one holding `position`.
+    pub visited: Vec<PolyRef>,
+}
+
+/// A surface raycast and the polygons it crossed.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RayPath {
+    /// Where it stopped.
+    pub ray: RayResult,
+    /// Polygons crossed, from the start's.
+    pub polys: Vec<PolyRef>,
+}
+
 /// A Detour query object (its node pool is reused between calls).
 #[derive(Debug)]
 pub struct DtQuery {
@@ -211,6 +229,116 @@ impl DtQuery {
             normal,
         })
     }
+}
+
+impl DtQuery {
+    /// Moves from `start` (on `poly`) toward `end` along the surface, sliding along walls,
+    /// crossing at most `max_visited` polygons (1..=65536).
+    pub fn move_along_surface(
+        &mut self,
+        costs: &AreaCosts,
+        poly: PolyRef,
+        start: [f32; 3],
+        end: [f32; 3],
+        max_visited: usize,
+    ) -> Result<SurfaceMove, RecastError> {
+        finite(&[start, end])?;
+        let cap = slots(max_visited, "visited")?;
+        let mut visited = vec![0u64; cap];
+        let (mut position, mut count) = ([0f32; 3], 0i32);
+        let filter = costs.filter();
+        // SAFETY: `visited` holds `cap` references; the other pointers are valid during the call.
+        let code = unsafe {
+            ffi::cr_move_along_surface(
+                self.ptr.as_ptr(),
+                &filter,
+                raw(poly),
+                start.as_ptr(),
+                end.as_ptr(),
+                position.as_mut_ptr(),
+                visited.as_mut_ptr(),
+                cap as i32,
+                &mut count,
+            )
+        };
+        check(code)?;
+        Ok(SurfaceMove {
+            position,
+            visited: refs(visited, count),
+        })
+    }
+
+    /// The surface height of `poly` under `pos`, or `None` when `pos` is outside it.
+    pub fn poly_height(
+        &mut self,
+        poly: PolyRef,
+        pos: [f32; 3],
+    ) -> Result<Option<f32>, RecastError> {
+        finite(&[pos])?;
+        let mut height = 0f32;
+        // SAFETY: valid pointers during the call.
+        let code =
+            unsafe { ffi::cr_poly_height(self.ptr.as_ptr(), raw(poly), pos.as_ptr(), &mut height) };
+        match code {
+            ffi::CR_EMPTY => Ok(None),
+            code => check(code).map(|()| Some(height)),
+        }
+    }
+
+    /// `raycast`, also listing up to `max` polygons the ray crossed (1..=65536).
+    pub fn raycast_path(
+        &mut self,
+        costs: &AreaCosts,
+        poly: PolyRef,
+        start: [f32; 3],
+        end: [f32; 3],
+        max: usize,
+    ) -> Result<RayPath, RecastError> {
+        finite(&[start, end])?;
+        let cap = slots(max, "path")?;
+        let mut path = vec![0u64; cap];
+        let (mut t, mut normal, mut count) = (0f32, [0f32; 3], 0i32);
+        let filter = costs.filter();
+        // SAFETY: `path` holds `cap` references; the other pointers are valid during the call.
+        let code = unsafe {
+            ffi::cr_raycast_path(
+                self.ptr.as_ptr(),
+                &filter,
+                raw(poly),
+                start.as_ptr(),
+                end.as_ptr(),
+                &mut t,
+                normal.as_mut_ptr(),
+                path.as_mut_ptr(),
+                cap as i32,
+                &mut count,
+            )
+        };
+        check(code)?;
+        Ok(RayPath {
+            ray: RayResult {
+                hit: (t <= 1.0).then_some(t),
+                normal,
+            },
+            polys: refs(path, count),
+        })
+    }
+}
+
+/// A buffer size in 1..=65536.
+fn slots(n: usize, what: &str) -> Result<usize, RecastError> {
+    match n {
+        1..=65536 => Ok(n),
+        _ => Err(RecastError::Input(format!(
+            "{n} {what} slots (needs 1..=65536)"
+        ))),
+    }
+}
+
+/// The first `count` references of `buffer`.
+fn refs(mut buffer: Vec<u64>, count: i32) -> Vec<PolyRef> {
+    buffer.truncate((count.max(0) as usize).min(buffer.len()));
+    buffer.into_iter().filter_map(from_raw).collect()
 }
 
 impl Drop for DtQuery {

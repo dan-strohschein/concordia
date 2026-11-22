@@ -39,6 +39,7 @@ concordia-replay.workspace = true
 concordia-scene.workspace = true
 concordia-terra.workspace = true
 concordia-terra-sim.workspace = true
+concordia-terra-crowd.workspace = true
 insta.workspace = true
 proptest.workspace = true
 tempfile.workspace = true

@@ -226,6 +226,12 @@ fn nav_paths_debug_layer_draws_remaining_paths() {
     }));
     let hero = rig.character(-6.0, 1.0, json!({"target": [7.0, 0.0, 2.0]}));
     rig.character(3.0, -8.0, json!({}));
+    // A crowd agent walking the same way is the `crowd` layer's, not this one's.
+    rig.spawn(json!({
+        "Transform": Rig::at(-6.0, 0.0, 3.0),
+        "NavAgent": {"target": [7.0, 0.0, 4.0]},
+        "CrowdAgent": {},
+    }));
     assert_eq!(
         rig.engine.debug_geometry("nav_paths", WorldSel::edit),
         None,

@@ -8,7 +8,7 @@
 - `World::query` / `query_filtered` → `QueryState` (`for_each`, `par_for_each`) with `With` / `Without`
 - `World::{get_dyn, get_json, set_json, insert_dyn, remove_dyn}` and `DynamicQuery` (by stable name, through the `TypeRegistry`)
 - `register_component::<T>(&mut TypeRegistry)` and `ReflectComponent`
-- `processor(name, phase)` → `ProcessorDecl` (`reads`, `writes`, `writes_presentation`, `after`, `before`, `run`), the `Processor` trait, `View` (`query` → `ViewQuery::for_each` / `par_for_each`), `Phase` (`PrePhysics`, `Physics`, `PostPhysics`, `FrameEnd`, `Presentation`)
+- `processor(name, phase)` → `ProcessorDecl` (`reads`, `writes`, `writes_presentation`, `after`, `before`, `run`), the `Processor` trait, `View` (`query` → `ViewQuery::for_each` / `par_for_each`; `query_filtered::<D, F>` with `With` / `Without` over declared components, tags included, 2.5c.1; queries of up to six elements), `Phase` (`PrePhysics`, `Physics`, `PostPhysics`, `FrameEnd`, `Presentation`)
 - `Schedule` (`add` = exclusive system in `PostPhysics`, `add_in(phase, ..)`, `add_processor`, `append`, `plan`), `system(name, closure)`, `SystemCtx` (`dt`, `dt_exact`), `SimLoop::new(rate, schedule, &mut world) -> Result<_, ScheduleError>` (`step`, `advance`, `rate`, `set_rate`), `SimClock` (`time_scale`, `time`), `TimeScale`, `Timer`, `World::register_presentation`, `WorldHash` (hex `Display`/`FromStr`, serde)
 - `component_from_json(&TypeRegistry, name, json)` (validate a component value without a world); `JsonComponent::of(registry, name)` → `set(world, id, json)` (2.4.4: a copyable codec, so play systems write components by name without the registry)
 - Storage kinds (2.0b): `World::register_shared`, `storage_kind`, `storage_stats` (`StorageStats`), `chunk` / `set_chunk`, `CHUNK_ROWS`, `StorageKind` (`Dense`, `Shared`, `Tag`; zero-sized types are tags)
@@ -83,7 +83,7 @@
 - Glenn Fiedler, "Fix Your Timestep!" and "Floating Point Determinism" (Gaffer on Games).
 
 ## Status
-M0 phase 0.3 complete; renamed to Terra in M7 Phase 7.0 (2026-11-18); M2 phases 2.0 (processors, ADR-0063) and 2.0b (storage kinds, commands, signals, observers, ADR-0069) and 2.6a (script types and named access, ADR-0062) complete; 2.6b added `ReflectComponent::from_wire` for script commands; 2.6c added type-version migration; 2.8 added state digests and end-of-tick hooks (ADR-0072); 2.4.4 added `World::pending_signals` (read-only, for inspection) and `JsonComponent` (a registry-free component codec, which `World::set_json` uses); 2.4b.1 added simulation LOD (ADR-0076); 2.4b.2 made `World::get` do one lookup of each kind and worlds learn presentation-only types from reflection.
+M0 phase 0.3 complete; renamed to Terra in M7 Phase 7.0 (2026-11-18); M2 phases 2.0 (processors, ADR-0063) and 2.0b (storage kinds, commands, signals, observers, ADR-0069) and 2.6a (script types and named access, ADR-0062) complete; 2.6b added `ReflectComponent::from_wire` for script commands; 2.6c added type-version migration; 2.8 added state digests and end-of-tick hooks (ADR-0072); 2.4.4 added `World::pending_signals` (read-only, for inspection) and `JsonComponent` (a registry-free component codec, which `World::set_json` uses); 2.4b.1 added simulation LOD (ADR-0076); 2.4b.2 made `World::get` do one lookup of each kind and worlds learn presentation-only types from reflection; 2.5c.1 added `View::query_filtered` and five- and six-element queries.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

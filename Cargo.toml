@@ -44,6 +44,7 @@ concordia-script-native = { path = "crates/concordia-script-native" }
 concordia-script-wasm = { path = "crates/concordia-script-wasm" }
 concordia-scripting = { path = "crates/concordia-scripting" }
 concordia-terra-sim = { path = "crates/concordia-terra-sim" }
+concordia-terra-crowd = { path = "crates/concordia-terra-crowd" }
 concordia-shaders = { path = "crates/concordia-shaders" }
 concordia-studio = { path = "crates/concordia-studio" }
 concordia-reflect = { path = "crates/concordia-reflect" }
@@ -110,3 +111,11 @@ opt-level = 2
 # approach nextest's hang guard under a full parallel test run.
 [profile.dev.package.concordia-terra]
 opt-level = 1
+
+# Crowd tests step 1,000 and 10,000 agents (each with Detour queries) for hundreds of ticks; the
+# crowd and the Detour it calls are optimized so they stay well inside nextest's hang guard.
+[profile.dev.package.concordia-terra-crowd]
+opt-level = 2
+
+[profile.dev.package.recast-sys]
+opt-level = 2

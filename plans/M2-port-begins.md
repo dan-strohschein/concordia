@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d) and 2.5a (2026-11-22) done; 2.5b next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c refined (2.5c.1, 2.5c.2) and 2.5c.1 (2026-11-22) done; 2.5c.2 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -1834,7 +1834,7 @@ A capture at 100k now takes about 84 ms (160 before). A playing 100k crowd is st
 **Not in 2.4b.2:** hysteresis for representation (E2: only if flicker shows); a columnar, incremental extraction for crowds that move every tick (M7 phase 7.7, with tests and a target); spreading a far character's held pose over its interval in rendering.
 
 ### Phase 2.5 refinement (2026-11-22, against the code after 2.4b.2)
-**Status: author decision N1 taken (2026-11-22); my other calls below (say if you disagree). 2.5a done (see its As built); 2.5b refined and split into 2.5b.1 (agents, done) and 2.5b.2 (click-to-move, next); see the Phase 2.5b refinement.**
+**Status: author decision N1 taken (2026-11-22); my other calls below (say if you disagree). 2.5a done (see its As built); 2.5b done (2.5b.1, 2.5b.2a, 2.5b.2b); 2.5c refined (N5) and split into 2.5c.1 and 2.5c.2; see the Phase 2.5c refinement.**
 
 Refined against the code as built. The old Phase 2.5 section, this refinement's *2.5 (added)* tests, M7's 7.7 and 2.4b's As built are the starting point. **This section wins wherever the old Phase 2.5 text disagrees.**
 
@@ -2349,6 +2349,220 @@ A first form of the "both accepted" mutation didn't compile, so it was rewritten
 - `just deny` and the editor's, both `Cargo.lock`s, fresh advisory DB (the editor's lock gains `concordia-app`'s `serde_json` and `tracing`; its deny prints the existing "no crate matched" warning);
 - `just editor-schemas` (committed);
 - `just editor-test` (118 unit, 22 end-to-end).
+
+### Phase 2.5c refinement (2026-11-22, against the code after 2.5b.2b)
+**Status: author decision N5 taken (2026-11-22); my other calls below (say if you disagree). 2.5c is split: 2.5c.1 crowd core (`m2/2.5c.1-crowd-core`, done; see its As built), then 2.5c.2 avoidance and LOD (`m2/2.5c.2-avoidance-lod`, next).**
+
+Refined against `main` after #61: the Phase 2.5 refinement (its 2.5c row, N1, "Scheduling (one rule)", "The 10k test lives in M7" and the simulation-LOD bullet), the As builts of 2.5a, 2.5b.1, 2.5b.2a and 2.5b.2b, ADR-0077 (with its 2.5b.1 update), ADR-0078, ADR-0076, ADR-0069, ADR-0063 and M7's 7.7 note. **This section wins wherever they disagree.** The implementation follows DetourCrowd v1.6.0's zlib source (`DetourCrowd.cpp`, `DetourObstacleAvoidance.cpp`, `DetourPathCorridor.cpp`, `DetourLocalBoundary.cpp`, `DetourProximityGrid.cpp`, at the vendored commit `6dc1667f`). It is read, not vendored (N1).
+
+**What exists (checked in code):**
+- `NavAgent` (gameplay's request) and `NavAgentState` (hashed: status, `planned_for`, string-pulled `waypoints`, `next`, `partial`, `volume`, `waiting_since`). `nav.plan` plans every agent that needs a plan, within `[nav] plans_per_tick`, in `(waiting_since, id)` order. It fails an agent with no `CharacterController` (`InvalidAgent`). `nav.follow` writes `CharacterMotion` for every agent. Both run in `PrePhysics`.
+- `nav.click` writes `NavAgent.target` and needs no controller. `NavArrived` and `NavPathFailed` are raised on the agent and delivered next tick, whatever its LOD.
+- `NavMesh` gives `nearest_point`, `path` (corridor plus string pulling; the polygon corridor is thrown away) and `raycast`, from a pool of Detour query objects. The shim has `cr_find_nearest`, `cr_find_path`, `cr_straight_path` and `cr_raycast` (`t` and the normal only, with no visited polygons). There is no `moveAlongSurface`, `getPolyHeight`, `findLocalNeighbourhood` or `getPolyWallSegments`, and no raycast that returns its visited polygons.
+- Terra views have `query` only, with no `With`/`Without` filter (`World::query_filtered` exists). Processors may read and write the same component in two passes: a snapshot pass, then a parallel pass.
+- **Jolt characters don't collide with each other** (`CharacterVirtual` with no character-vs-character collision). Two `NavAgent` characters walk through each other today.
+- Templates compose traits (`Movement`, `Lod`); spawners expand them at play start in id order.
+- `concordia-terra-crowd` doesn't exist yet.
+
+**Author decision (2026-11-22):**
+- **N5. Two kinds of body, picked per entity.** A crowd agent without a `CharacterController` is a **surface agent**: it integrates on the navmesh surface without physics (DetourCrowd's way, so it scales to 10k), and the crowd writes its `Transform`. A crowd agent with a controller is a **physics agent**: the crowd's chosen velocity goes to `CharacterMotion`, and Jolt moves it. Surface agents treat every `CharacterController` (the player, physics agents, plain nav characters) as a solid obstacle: they steer round it and are pushed aside by it, but never push it. Physics doesn't see surface agents. Physics agents are kept apart from each other by the crowd, since Jolt characters don't collide with one another.
+
+**My calls (say if you disagree):**
+- **A crowd agent is a `NavAgent` plus a `CrowdAgent`.** One entity carries both. `NavAgent` stays the request (target, speed, sizes, distances; Godot semantics). `CrowdAgent` says "the crowd steers this agent" and holds the crowd's tuning, the way Godot's `NavigationAgent3D.avoidance_enabled` turns on avoidance for the same agent. A `CrowdAgent` without a `NavAgent` does nothing and warns once. `CrowdAgent` lives in **`concordia-nav`**, next to `NavAgent`: nav must know which agents it doesn't follow, and it can't depend on the crowd crate. The crowd's work (its state, processors, grid, trait and debug layer) lives in **`concordia-terra-crowd`**, which depends on nav.
+  - **`CrowdAgent` fields** (DetourCrowd's `dtCrowdAgentParams`, with the defaults DetourCrowd's sample uses for a 0.3 m agent): `max_acceleration` (8 m/s²), `collision_query_range` (3.6 m, 12 radii), `path_optimization_range` (9 m, 30 radii), `anticipate_turns` (true), `optimize_visibility` (true), `separation` (false) and `separation_weight` (2), and `avoidance: Option<CrowdAvoidance>` (on by default; none turns it off). **`CrowdAvoidance`** holds DetourCrowd's sampling parameters as component fields, with `dtCrowd::init`'s defaults: `velocity_bias` 0.4, `weight_desired` 2, `weight_current` 0.75, `weight_side` 0.75, `weight_toi` 2.5, `horizon` 2.5 s, `divs` 7 (1..=32), `rings` 2 (1..=4), `depth` 5 (1..=8). Every number is checked like `NavAgent`'s. Neighbours are capped at DetourCrowd's 6, and corners at 4: these are constants, not fields.
+- **Planning is shared: `nav.plan`, one queue, one budget.** Crowd agents queue with plain agents in `(waiting_since, id)` order under `plans_per_tick`, so nobody starves. For a crowd agent, `nav.plan` also keeps the **polygon corridor**, in a new `NavAgentState.corridor: Vec<u64>` (Detour polygon references from the agent's polygon to the end). The 2.5b.1 refinement named this as 2.5c's crowd state. The field is empty for plain agents, and references are stable because the navmesh is byte-identical. Crowd agents need no controller to be planned (N5). They skip the off-path replan, since the corridor follows them. Instead, the crowd asks for a replan by setting `Waiting` when it loses the corridor (the agent can't be moved along it). Without a target, the state resets but keeps the corridor's first polygon, as DetourCrowd's `corridor.reset` does, so idle agents can still be pushed and kept on the navmesh. **`nav.follow` skips crowd agents**, through a new `View::query_filtered` (`Without<CrowdAgent>`, Terra's existing filters). `nav_paths` draws plain agents only; the `crowd` layer draws crowd agents.
+- **N1's "corridor, velocities, neighbours, target in hashed components", as built:**
+  - the **target** is `NavAgent.target`, and its snapped end is the last of `NavAgentState.waypoints`;
+  - the **corridor** is `NavAgentState.corridor`, starting at the agent's position (`Transform`);
+  - **velocities and neighbours** are a new hashed **`CrowdState`** (in `concordia-terra-crowd`, written only by `crowd.*`): `velocity`, `desired_velocity`, `desired_speed`, `new_velocity`, `candidate` (the position before collision, within a tick), `corners` (at most 4), `neighbours` (at most 6, nearest first) and, in 2.5c.2, the local boundary (`boundary_center` and at most 8 `walls`).
+- **The processor chain**, in `PrePhysics` after `nav.plan` (`nav.click` → `nav.plan` → `crowd.*`). Each step names what it reads and writes, then why it's deterministic. Every per-agent step uses `par_for_each`, `par_for_each_deferred` or the `_due` variants, in fixed 256-row pieces. An agent writes only its own components and reads others only from a snapshot.
+  1. **`crowd.grid`** (full rate). Reads `Transform`, `NavAgent`, `CrowdAgent`, `CrowdState`, `CharacterController` and `CharacterMotion`. Writes the **`CrowdGrid`** resource: a snapshot of every crowd agent and every other `CharacterController` (id, feet, radius, height, velocity, desired velocity, and whether it is solid), bucketed into square cells as wide as the largest `collision_query_range`, so a query touches at most 3 × 3 cells. *Deterministic:* it is built in one pass, in id order, from hashed state. It is a resource rebuilt each tick, not hashed (derived data; ADR-0069's rule), and it holds every agent whatever its LOD. ADR-0069's chunk components aren't used: chunk rows follow spawn order, not space.
+  2. **`crowd.corridor`** (`.lod()`, DetourCrowd's corner and visibility steps). Reads `NavMeshes`, `NavAgent`, `CrowdAgent` and `Transform`. Writes `NavAgentState` (corridor, status) and `CrowdState.corners`.
+     - A physics agent's corridor follows its body first: `movePosition` to `Transform`, through `moveAlongSurface` and `dtMergeCorridorStartMoved`.
+     - Corners come from `findCorners`: straight-path corners along the corridor, at most 4, dropping those within 0.01 m. With `optimize_visibility`, a surface raycast toward the second corner (stretched to `path_optimization_range`) that reaches it (t > 0.99, more than one polygon) shortcuts the corridor (`dtMergeCorridorStartShortcut`).
+     - Topology optimization (the sliced local re-plan) is left out: it is an optimization queue that the rest doesn't depend on (later).
+     - *Deterministic:* each agent's Detour calls read only the navmesh and its own state, from a pooled query object that each call resets.
+  3. **`crowd.neighbours`** (full rate, DetourCrowd's `getNeighbours`). Reads `CrowdGrid`, `Transform`, `NavAgent` and `CrowdAgent`. Writes `CrowdState.neighbours`: every snapshot entry within `collision_query_range` sideways that overlaps vertically (|Δy| < (hₐ + h_b) / 2), sorted by **(distance², id)**, first 6. DetourCrowd caps its grid query at 32 items in hash order, which can miss the nearest; ours takes everything in range. *Deterministic:* the sort has no ties.
+  4. **`crowd.steer`** (`.lod()`, DetourCrowd's steering and separation). Reads `CrowdState.corners`, `NavAgent`, `CrowdAgent` and `CrowdGrid`. Writes `desired_velocity` and `desired_speed`. The direction is smooth with `anticipate_turns` (`calcSmoothSteerDirection`) or straight. The speed is `max_speed`, scaled by min(distance to end, 2r) / 2r when the last corner is the end (DetourCrowd's slow-down). With `separation`, it adds separation from the neighbours' snapshot positions (weighted 1 − (d / range)², averaged, and clamped to the desired speed). Agents that are idle, arrived, failed or waiting with no corridor want zero. *Deterministic:* sums run in neighbour order.
+  5. **`crowd.avoid`** (`.lod()`, 2.5c.2, DetourCrowd's sampled velocity obstacles: `sampleVelocityAdaptive`).
+     - **Obstacles:** the neighbours become circles, with their snapshot position, radius, velocity and desired velocity. Wall segments come from the local boundary, refreshed when the agent has moved more than a quarter of its range (`findLocalNeighbourhood` + `getPolyWallSegments`); segments behind the agent are skipped.
+     - **The search:** the sample pattern is aligned to the desired velocity. Each candidate's penalty adds the desired-velocity, current-velocity, side and time-of-impact terms, with the early-out. The search runs `depth` passes, halving the radius each time.
+     - **Output:** `new_velocity`. Without `avoidance` (and in all of 2.5c.1), `new_velocity` = `desired_velocity`.
+     - **No trigonometry:** DetourCrowd's `cosf`/`sinf` of 2π/divs and π/divs come from a fixed table for divs 1..=32, checked against `std` by a test, as 2.5a's tessellation tables are.
+     - *Deterministic:* each agent reads only snapshots, and every candidate is tried in a fixed order.
+  6. **`crowd.integrate`** (full rate, DetourCrowd's `integrate`). Writes `velocity` and `candidate`. It moves `velocity` toward `new_velocity` by at most `max_acceleration × dt`, then sets `candidate = feet + velocity × dt` (a velocity under 0.0001 m/s becomes zero). On the last stretch the step is clamped so a tick never passes the end. That is an addition to DetourCrowd, carried over from 2.5b.1's follower.
+  7. **`crowd.collide`** (full rate, DetourCrowd's collision loop). It runs 4 **Jacobi** iterations. Each one snapshots every agent's `candidate`, then computes every displacement from that snapshot alone, in parallel. No agent sees a position that changed in the same iteration, so the order agents run in can't matter.
+     - **Between agents:** DetourCrowd's rule. The penetration is p = rₐ + r_b − d, and each agent moves (p / 2) × 0.7 along the separating direction, averaged over its contacts. Coincident agents split perpendicular to their desired velocities, using the id order to choose the side, with p = 0.01.
+     - **Against a solid** (a `CharacterController`), a surface agent takes the whole correction (p × 0.7).
+     - **Physics agents** aren't displaced. Their correction from other physics agents becomes a velocity (displacement / dt) added to what they hand to `CharacterMotion`.
+     - This collision step uses **this tick's** integrated positions, as DetourCrowd does. **Last tick's state** is what neighbours and avoidance read, through `CrowdGrid`.
+  8. **`crowd.move`** (full rate, DetourCrowd's `movePosition`). It writes `Transform`, `CharacterMotion`, `NavAgentState` and `CrowdState`, and raises signals.
+     - **Surface agents:** `moveAlongSurface` from the feet (on the corridor's first polygon) to the candidate (16 visited polygons at most), merged into the corridor, then `getPolyHeight` for y. The result is written to `Transform.translation`.
+     - **Physics agents:** the velocity (plus the collision correction) is written to `CharacterMotion`, and physics moves them the same tick.
+     - **Arrival:** when the last corner is the end and the feet are within `target_desired_distance` (sideways, half the height vertically: 2.5b.1's rule), the agent is `Arrived`, its velocities are zeroed and `NavArrived` is raised.
+     - **Lost corridors:** a surface move that fails, or a corridor that has emptied, sets `Waiting` (a replan).
+     - Arrived and idle agents still collide and are pushed (DetourCrowd does the same), and stay arrived.
+     - *Deterministic:* signals go through deferred buffers joined in piece order.
+- **Simulation LOD (ADR-0076; 2.5c.2):**
+  - **What opts in with `.lod()`:** `crowd.corridor`, `crowd.steer` and `crowd.avoid`, the expensive per-agent queries and sampling. A far agent at level *i* chooses its velocity every *rᵢ* ticks and holds it in between.
+  - **What stays at full rate:** `crowd.grid`, `crowd.neighbours`, `crowd.integrate`, `crowd.collide` and `crowd.move`. They are cheap, and they keep far agents from walking through each other, leaving the navmesh or overshooting their end.
+  - **Neighbours** always read `CrowdGrid`, which holds every agent's last stored state whatever its LOD.
+  - **Signals** are checked at full rate in `crowd.move`, so arrival never waits for a due tick.
+  - Feature cuts by level (no avoidance when far) still wait for M7.
+- **Signals:** crowd agents raise the same `NavArrived { target, position, partial }` (from `crowd.move`) and `NavPathFailed { target, reason, detail }` (from `nav.plan`, unchanged). **`ClickToMove` works on crowd agents unchanged**, because it writes `NavAgent.target` and needs no controller; a test proves it.
+- **The `Crowd` trait** (ADR-0070, in `concordia-terra-crowd`): `Crowd { agent: NavAgent, crowd: CrowdAgent }`, both with defaults. It adds `Transform`, `NavAgent` (no target) and `CrowdAgent`, and requires `crowd.move`, so a template is refused without the crowd. Surface is the default body; a template adds a `CharacterController` component for physics agents. A template for 1,000 grunts, spawned by `Spawner { template: "grunt", count: 1000, seed: 7, distribution: … }`:
+  ```ron
+  Template(
+      format: 1,
+      description: "A grunt: walks with the crowd.",
+      traits: {
+          "Crowd": (agent: (max_speed: 3.5), crowd: (separation: true)),
+          "Lod": (distances: (20.0, 60.0, 120.0), rates: (2, 4, 8), hysteresis: 2.0),
+      },
+      components: { "Name": "Grunt" },
+  )
+  ```
+  Gameplay then sets each grunt's `NavAgent.target` (with `component.patch`, a script, or `ClickToMove`).
+- **The crowd module:** `CrowdModule` ("crowd") registers `CrowdState` and the `Crowd` trait, gives crowd agents states at play start, adds the chain and names the `crowd` layer. **`concordia-app` enables it whenever `[nav]` is on**, so there is no new manifest section (crowds are part of navigation).
+- **The Detour queries the chain needs**, each added to the shim narrowly, with a smoke test and the header-hash update:
+  - 2.5c.1: `cr_move_along_surface` (`moveAlongSurface`, with visited polygons), `cr_poly_height` (`getPolyHeight`) and `cr_raycast_path` (`raycast` with its visited polygons, for the visibility shortcut).
+  - 2.5c.2: `cr_local_neighbourhood` (`findLocalNeighbourhood`) and `cr_poly_wall_segments` (`getPolyWallSegments`).
+  - **Rewritten in Rust instead, as pure list operations with unit tests from Detour's code:** the corridor helpers (`dtMergeCorridorStartMoved`, `dtMergeCorridorStartShortcut`, `findCorners`' pruning).
+  - **Not needed:** sliced pathfinding (`nav.plan`'s `find_path`), `isValidPolyRef` (navmeshes don't change at runtime) and off-mesh connections (none are built).
+  - The safe wrappers are `DtQuery` methods in `recast-sys`, exposed by `NavMesh` with raw `u64` references, so the crowd crate needs no `recast-sys`. `concordia-terra-crowd` is `#![forbid(unsafe_code)]`.
+- **Debug layer `crowd`:** for each crowd agent, a 16-sided ring of its radius (2.5a's fixed table), its velocity and desired velocity (as 0.5 s of travel), its corners, and a link to each neighbour (drawn once per pair, from the lower id), lifted 2 cm. It is tested by its geometry, like `nav_paths`, with no golden: the renderer's path is the `navmesh` golden's. Avoidance samples aren't hashed state, so drawing them waits for a debug-agent hook like DetourCrowd's `dtCrowdAgentDebugInfo` (later).
+- **Studio:**
+  - **Gameplay programmer:** the `concordia-nav-agents` skill gains a "Crowds" section (`CrowdAgent`, `CrowdState`, surface and physics bodies, the same signals, the `crowd` layer), and its mirror test extends to `CrowdAgent`.
+  - **Level designer:** `concordia-terra-templates` gains the `Crowd` trait template (checked by its examples test), and `concordia-navigation` names the `crowd` layer.
+  - No tool schema changes, so the budgets shouldn't move; every role's numbers are reported in As built.
+- **ADR-0077** gains a 2.5c update (N5, `CrowdAgent` in nav, the corridor in `NavAgentState`, the chain, `CrowdGrid`, LOD). No new ADR: N1 already decided the shape.
+
+**Sub-phases:**
+| Sub-phase | Content |
+|---|---|
+| **2.5c.1 Crowd core** (`m2/2.5c.1-crowd-core`, done) | the three shim queries; `CrowdAgent`; `NavAgentState.corridor`; `nav.plan` and `nav.follow` changes; `View::query_filtered`; `concordia-terra-crowd` (`CrowdState`, `CrowdGrid`, the corridor helpers, corridor, neighbours, steering and separation, integration, collision, move and arrival, both bodies, `CrowdModule`, the `Crowd` trait, the `crowd` layer); ADR-0077's update; Studio |
+| **2.5c.2 Avoidance and LOD** (`m2/2.5c.2-avoidance-lod`) | the two boundary queries; the local boundary; sampled velocity-obstacle avoidance (fixed tables); the LOD opt-in; the `crowd_10k` bench in `BASELINE.md`; refined again at its start |
+
+**2.5c.1 tests (first list).** The expected values are derived in the test headers, using 2.5a's Recast rules and 2.5b.1's rig tick rules (60 Hz, positions moved by velocity × dt). Surface agents need no rig, since the crowd moves them itself.
+- `recast-sys` (`tests/smoke.rs`): `move_along_surface_slides_and_stops_at_edges`, `poly_height_reads_the_surface`, `raycast_path_lists_visited_polygons`, plus the new entry points in `shim_rejects_bad_input`, `ffi_handles_are_released` and `header_hash_and_struct_sizes_match`.
+- `concordia-nav`:
+  - `crowd_agents_are_planned_with_their_corridor_in_the_shared_budget`;
+  - `nav_follow_leaves_crowd_agents_to_the_crowd`;
+  - `malformed_crowd_agents_are_descriptive_errors`.
+- `concordia-terra-crowd` (unit tests): `merge_start_moved_matches_detour`, `merge_start_shortcut_matches_detour`, `corners_drop_points_at_the_start`.
+- `concordia-terra-crowd/tests/crowd.rs`:
+  - `crowd_agent_walks_to_its_target_and_arrives` (the arrival tick and position, `NavArrived`);
+  - `crowd_agent_slides_along_walls_and_stays_on_the_navmesh`;
+  - `crowd_corridor_shortcuts_visible_corners`;
+  - `crowd_agents_separate_and_do_not_overlap` (1,000 agents, hand-derived separation bounds);
+  - `surface_agents_yield_to_characters_and_never_push_them`;
+  - `physics_crowd_agents_keep_apart_and_arrive` (Jolt);
+  - `crowd_signals_and_click_to_move_work_like_nav_agents` (`NavPathFailed`, `ClickToMove`);
+  - `crowd_is_deterministic_across_runs_and_threads` (10,000 agents at 1 and 8 threads; a hash test, not a perf target);
+  - `crowd_template_spawns_a_thousand_agents`;
+  - `crowd_debug_layer_draws_agents_velocities_and_links`.
+- `concordia-app`: `nav_section_adds_the_crowd_module`.
+- `concordia-studio`: the nav-agents mirror test extended to `CrowdAgent`, and the templates skill's examples test covering the `Crowd` template.
+
+**2.5c.2 tests (first list):** `cr_local_neighbourhood`/`cr_poly_wall_segments` smoke tests; `avoidance_pattern_tables_match_std`; `head_on_agents_pass_without_touching`; `avoidance_keeps_agents_off_walls`; `far_crowd_agents_steer_less_often_and_still_arrive`; `neighbours_read_last_tick_state_whatever_their_lod`; the 1,000-agent and 10,000-agent tests re-run with avoidance and LOD on; the `crowd_10k` bench (recorded in `crates/concordia-terra-crowd/benches/BASELINE.md`, with no pass/fail line). `crowd_of_10k_agents_avoids_overlap` stays in M7 7.7.
+
+**References:** DetourCrowd's zlib source (above) and Mikko Mononen's blog posts on DetourCrowd and its sampled avoidance; van den Berg, Lin and Manocha, "Reciprocal Velocity Obstacles for Real-Time Multi-Agent Navigation" (ICRA 2008), and van den Berg, Guy, Lin and Manocha, "Reciprocal n-Body Collision Avoidance" (ISRR 2009); Godot's `NavigationAgent3D` avoidance docs (MIT), for semantics only. No Unreal or other non-open source.
+
+**Carry-over items:**
+- The `#[ignore]`d `run_bench_latency_measures_the_engine_window_alone` (frames queued but never presented on this machine): looked into at the end of 2.5c.1 if it is cheap.
+- The `navmesh` layer's re-gather, the editor's deny warning, ADR-0069's chunk components (M7 7.7), and physics queries seeing last-step bodies all stand as before.
+
+### Phase 2.5c.1 As built (2026-11-22, ADR-0077 update)
+**Reconciled with the code as built:** the refinement held. What the code taught:
+- **`nav.plan` places idle crowd agents** on the polygon they stand on (with its volume), outside the budget. So an agent without a target needn't keep its old first polygon: the refinement's "keep the corridor's first polygon" was written, then removed, because a mutation showed it changed nothing (the agent is placed again the same tick). This is 2.5a's redundant clamp again.
+- **Terra gained two small general things:** `View::query_filtered` (`With` / `Without` over declared components, tags included), which `nav.follow` and `crowd.move` use, and five- and six-element queries.
+- **`CrowdState.surface`** (where the agent stands on the navmesh, its corridor's start) was added to the refinement's fields. A physics agent's corridor follows its body from there, and a surface agent's `Transform` is set to it. `correction` holds a physics agent's collision push for the tick.
+- **One `move_on_surface`** (`moveAlongSurface`, `dtMergeCorridorStartMoved`, `getPolyHeight`) serves both bodies: a physics agent's corridor following its body in `crowd.corridor`, and a surface agent's move in `crowd.move`.
+- **Test names:** `crowd_signals_and_click_to_move_work_like_nav_agents` became two tests, `crowd_path_failures_are_signalled_once_like_nav_agents` (no physics) and `click_to_move_drives_a_crowd_agent` (an engine with input). `crowd_agent_never_steps_past_its_end` was added for the end clamp.
+- **Build profile:** `concordia-terra-crowd` and `recast-sys` build at `opt-level = 2` in dev. The 10,000-agent test runs three 90-tick runs in about 14 s.
+
+**Engine:**
+- `recast-sys`: `cr_move_along_surface`, `cr_poly_height` (`CR_EMPTY` outside the polygon) and `cr_raycast_path`; `DtQuery::{move_along_surface, poly_height, raycast_path}` with `SurfaceMove` and `RayPath`; the header hash updated.
+- `concordia-terra`: `View::query_filtered`, `QueryFilter::names`, and five- and six-element `QueryData`.
+- `concordia-nav`:
+  - `CrowdAgent` and `CrowdAvoidance` (`validate`);
+  - `NavAgentState.corridor`, and `NavPath.corridor`;
+  - `nav.plan` plans crowd agents (no controller needed, no off-path replan, idle placement), and `nav.follow` / `nav_paths` skip them;
+  - `NavMesh::{nearest_poly, straight_path, move_along_surface, poly_height, raycast_path}` with `SurfaceMove` and `SurfaceRay`;
+  - public `sideways`, `NavAgent::near` and the circle table (`CIRCLE_STEPS`, `circle_step`).
+- `concordia-terra-crowd` (new):
+  - `CrowdState`, `CrowdGrid` and `GridEntry`;
+  - the corridor helpers (`corridor.rs`), steering (`steer.rs`), integration (`motion.rs`) and collision (`collide.rs`);
+  - the seven steps (`steps/`), `add_crowd_processors` and `insert_crowd_states`;
+  - `CrowdModule`, the `Crowd` trait and the `crowd` layer.
+- `concordia-app`: `[nav]` adds `CrowdModule` after `NavModule`.
+- Studio:
+  - `concordia-nav-agents` gains "Crowds";
+  - `concordia-terra-templates` gains "Crowds that walk the navmesh";
+  - `concordia-navigation` names the `crowd` layer.
+- Docs:
+  - ADR-0077's 2.5c.1 update;
+  - the AGENTS.md of `recast-sys`, `concordia-terra`, `-nav`, `-terra-crowd` (new), `-app` and `-studio`;
+  - the READMEs of `recast-sys` and `concordia-terra-crowd` (new);
+  - `docs/guides/agents-engine-api.md` (Crowds), `plans/README.md` (crates and the ADR registry), and this plan.
+
+**Tests (25 new, 2 extended, 4 unit tests):**
+- `recast-sys/tests/smoke.rs` (3 new, 2 extended): `move_along_surface_slides_and_stops_at_edges` (a 20 × 10 m plane in two tiles: across the seam to (8, 0.2, 0) through both polygons; stopped at x = 14.25; slid to (2, 0.2, 4.25)), `poly_height_reads_the_surface`, `raycast_path_lists_visited_polygons` (t = 14.25 / 20); `shim_rejects_bad_input` and `ffi_handles_are_released` cover the new entry points.
+- `concordia-terra`: `view_queries_filter_with_and_without`.
+- `concordia-nav` (3 new, 1 extended): `crowd_agents_are_planned_with_their_corridor_in_the_shared_budget` (five agents, two plans a tick by id across both kinds; the corridor's string pulling gives back the waypoints; idle placement), `nav_follow_leaves_crowd_agents_to_the_crowd`, `malformed_crowd_agents_are_descriptive_errors`; `nav_paths_debug_layer_draws_remaining_paths` leaves a crowd agent out.
+- `concordia-terra-crowd/tests/crowd.rs` (8, on a rig without physics; the header derives 2/15 m/s of acceleration a tick and the 0.0081-per-tick collision contraction):
+  - `crowd_agent_walks_to_its_target_and_arrives` (tick 205 at x = 4.762222);
+  - `crowd_agent_never_steps_past_its_end` (2 m/s² would need 2.25 m to stop);
+  - `crowd_agent_slides_along_walls_and_stays_on_the_navmesh`;
+  - `crowd_corridor_shortcuts_visible_corners` (8 m tiles: the plan bends at (−4, −4), 0.2 m off the line; with the shortcut the walk stays within 0.005 m of it);
+  - `crowd_agents_separate_and_do_not_overlap` (1,000 agents in 500 lanes; no overlap above 0.0081 × 0.1 / 0.9919 = 0.000817 m);
+  - `surface_agents_yield_to_characters_and_never_push_them` (bounds 0.000408 and 0.000272 m; the character never moves);
+  - `crowd_path_failures_are_signalled_once_like_nav_agents`;
+  - `crowd_is_deterministic_across_runs_and_threads` (10,000 agents, 1 and 8 threads and run to run; exactly 60 × 64 = 3,840 moved over 1 m, from the plan budget).
+- `concordia-terra-crowd/tests/engine.rs` (4): `physics_crowd_agents_keep_apart_and_arrive` (Jolt), `click_to_move_drives_a_crowd_agent`, `crowd_template_spawns_a_thousand_agents`, `crowd_debug_layer_draws_agents_velocities_and_links` (3 × 16 ring lines, 2 × 3 velocity and corner lines, 1 link).
+- Unit tests: `merge_start_moved_matches_detour`, `merge_start_shortcut_matches_detour`, `corners_drop_points_at_the_start`, `neighbours_are_the_nearest_six_by_distance_then_id`.
+- `concordia-app`: `nav_section_adds_the_crowd_module`.
+- `concordia-studio` (1 new, 1 extended): `terra_templates_skill_crowd_example_is_a_valid_template`; `nav_agents_skill_examples_are_real_params_and_its_mirror_matches_nav_agent` checks the `CrowdAgent` and `CrowdAvoidance` mirrors too.
+
+**Red run:** against stubs (shim methods returning `Query`, `query_filtered` ignoring its filter, `CrowdAgent::validate` accepting everything, crowd processors doing nothing, a trait adding nothing, no layer, no module in the app, skills without crowd sections), every test above failed for the right reason. The exceptions:
+- **Test mistakes I fixed deliberately:**
+  - the walk test compared the corner's y exactly (it is 0.20000005);
+  - the first slide scenario had B pass on A's left and stop 0.5 m short, so A was never pinned (B now pushes from A's right with a 0.05 m arrival distance);
+  - the 10,000-agent count first assumed most agents move, when the 64-a-tick plan budget allows exactly 3,840 (now derived and asserted);
+  - the app test first lacked `[assets]` and `[render]` for the fixture's floor (2.5a's lesson) and spawned without an actor.
+- **Passed immediately (written after the code they test), then shown red by mutation:** `crowd_corridor_shortcuts_visible_corners` ("no visibility shortcut"), `crowd_agent_never_steps_past_its_end` ("no end clamp", after it was strengthened; below), `physics_crowd_agents_keep_apart_and_arrive` ("physics agents never corrected"), `click_to_move_drives_a_crowd_agent` ("surface agents not moved"), `neighbours_are_the_nearest_six_by_distance_then_id` ("neighbours by id").
+- **Passed vacuously at first:** the 10,000-agent hash test (the clock alone changes the hash); it now also counts moved agents.
+
+**Mutation checks:** 26 mutations, each run against its tests with the restored file given a fresh mtime; the crowd's 15 were run again after its steps moved into `steps/`. 23 were caught at once. Of the 3 that survived:
+- **"Idle crowd agents lose their polygon"** survived because the code was redundant (`nav.plan` places them again), so it was removed.
+- **"No end clamp"** survived the first end-clamp test (at 8 m/s² the slow-down happened to stop short). It is caught at 2 m/s².
+- **"Neighbours by id"** survived the 1,000-agent test (never more than 6 in range). It is caught by the new unit test.
+
+The caught ones:
+- **Shim:** visited polygons dropped, the height ignored, the ray's polygons empty.
+- **Terra:** `Without` ignored.
+- **Nav:** the corridor not kept, crowd agents needing a controller, crowd agents replanning off their path, idle agents never placed, `nav_paths` drawing crowd agents, validation skipped.
+- **Crowd:** moves not merged into the corridor, no shortcut, solids pushed half, one collision iteration, physics agents never corrected, no acceleration limit, the candidate taken without the navmesh, characters left out of the grid, arrival not signalled, surface agents not moved, the trait adding no `CrowdAgent`, links drawn both ways.
+- **App:** no crowd with `[nav]`.
+
+**Studio and budgets** (served definitions, 4 chars a token; no tool or tool schema changed): level designer 37 tools ≈23.1k (23,078), QA 24 ≈21.5k (21,519), tech artist 23 ≈20.1k (20,106), animator 22 ≈16.8k (16,824), gameplay programmer 17 ≈12.9k (12,946), director 13 ≈12.5k (12,453), writer 11 ≈9.6k (9,576), all unchanged and under 50k.
+
+**Carry-over:**
+- `run_bench_latency_measures_the_engine_window_alone` was looked into, not fixed. Metal reports `presentedTime` 0 for a drawable that never reaches the screen, and the frame log then records no presentation time. That fits a window this machine doesn't show (occluded, another Space, or the display asleep); confirming it needs a desktop session. It is left noted.
+- The `navmesh` layer's re-gather, the editor's deny warning, ADR-0069's chunk components (M7 7.7), and physics queries seeing last-step bodies all stand.
+
+**Not in 2.5c.1:** sampled avoidance, the local wall boundary and the LOD opt-in, with the `crowd_10k` bench (2.5c.2); topology optimization (later); traffic (2.5d).
+
+**Goldens and snapshots:** none new or changed (collected with `INSTA_FORCE_PASS=1 INSTA_UPDATE=new`: no `.snap.new` appeared). **Editor schemas:** unchanged (`just editor-schemas` gives no diff; the schema project has no `[nav]`).
+
+**Checklist:** all of these pass:
+- `just lint` and Tauri clippy;
+- `just wasm`, `just native-fixtures`, then the `CONCORDIA_REQUIRE_GPU=1` full suite with `--no-fail-fast` (1,506 tests: 1,506 pass, 9 skipped; 14 doc tests);
+- `just gate-tests M1` (4) and `M3S` (13);
+- `just deny` and the editor's, both `Cargo.lock`s, fresh advisory DB (the editor's lock gains `concordia-terra-crowd` under `concordia-app`; its deny prints the existing "no crate matched" warning);
+- `just editor-schemas` (no change);
+- `just editor-test` (118 unit, 22 end-to-end).
+
 
 ### Effort (re-estimated)
 | Phase | Estimate |

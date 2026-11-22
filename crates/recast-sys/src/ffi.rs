@@ -1,5 +1,5 @@
 //! Hand-written bindings mirroring `shim/concordia_recast.h`.
-// header blake3: 17b91b87c33c3f9fb4f37a63574d432d26bf5506d281cf92b908e3aae45548ed
+// header blake3: 9780e205a9c9edd8162368d67f0d96a8a8e0ea5e7fa14d4340795a2c3ab3166d
 
 #![allow(non_camel_case_types, missing_docs)]
 
@@ -159,5 +159,34 @@ unsafe extern "C" {
         end: *const f32,
         t: *mut f32,
         normal: *mut f32,
+    ) -> i32;
+    pub fn cr_move_along_surface(
+        query: *mut cr_query,
+        filter: *const cr_filter,
+        start_ref: u64,
+        start: *const f32,
+        end: *const f32,
+        out_point: *mut f32,
+        visited: *mut u64,
+        cap: i32,
+        count: *mut i32,
+    ) -> i32;
+    pub fn cr_poly_height(
+        query: *mut cr_query,
+        r#ref: u64,
+        pos: *const f32,
+        height: *mut f32,
+    ) -> i32;
+    pub fn cr_raycast_path(
+        query: *mut cr_query,
+        filter: *const cr_filter,
+        start_ref: u64,
+        start: *const f32,
+        end: *const f32,
+        t: *mut f32,
+        normal: *mut f32,
+        path: *mut u64,
+        cap: i32,
+        count: *mut i32,
     ) -> i32;
 }

@@ -11,6 +11,7 @@ mod build;
 mod cache;
 mod click;
 mod components;
+mod crowd_agent;
 mod data;
 mod debug;
 mod error;
@@ -24,12 +25,15 @@ mod service;
 mod settings;
 mod tessellate;
 
-pub use agent::{NavAgent, NavAgentState, NavArrived, NavFailure, NavPathFailed, NavStatus};
+pub use agent::{
+    NavAgent, NavAgentState, NavArrived, NavFailure, NavPathFailed, NavStatus, sideways,
+};
 pub use agents::{AgentConfig, FOLLOW, PLAN, add_agent_processors, insert_agent_states};
 pub use build::build_tiles;
 pub use cache::{Loaded, NavCache};
 pub use click::{CLICK, ClickToMove, add_click_processor};
 pub use components::{NavArea, NavAreaGrid, NavAreaKind, NavMeshVolume, register_types};
+pub use crowd_agent::{CrowdAgent, CrowdAvoidance};
 pub use data::NavMeshData;
 pub use error::NavError;
 pub use gather::NavInput;
@@ -38,5 +42,6 @@ pub use methods::{
     NavPathResult,
 };
 pub use module::{NAV_PATHS_LAYER, NAVMESH_LAYER, NavMeshes, NavModule};
-pub use navmesh::{NavMesh, NavPath, NavPoint, NavPoly, NavRay, NavStats};
+pub use navmesh::{NavMesh, NavPath, NavPoint, NavPoly, NavRay, NavStats, SurfaceMove, SurfaceRay};
 pub use settings::NavSettings;
+pub use tessellate::{SEGMENTS as CIRCLE_STEPS, unit as circle_step};
