@@ -80,6 +80,10 @@ export interface MethodCaptureScreenshotParams {
    */
   overlays?: null | boolean;
   /**
+   * Draw every posed skeleton's bones on top (play world), whatever the editor overlays are.
+   */
+  skeleton?: null | boolean;
+  /**
    * Render from this viewpoint instead of a camera entity (the editor's view).
    */
   view?: null | View;

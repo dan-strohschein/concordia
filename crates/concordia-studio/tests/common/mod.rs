@@ -13,8 +13,9 @@ use concordia_core::id::SessionId;
 use concordia_studio::{StudioModule, ToolCatalog};
 use serde_json::{Value, json};
 
-/// Tools a `concordia new` project offers (core + physics, assets, render and Studio).
+/// Tools a `concordia new` project offers (core + physics, assets, anim, render and Studio).
 pub const PROJECT_TOOLS: &[&str] = &[
+    "anim_inspect",
     "asset_import",
     "asset_list",
     "capture_screenshot",

@@ -15,7 +15,8 @@ use serde_json::Value;
 const ROLE_TOOL_BUDGET: usize = 50_000;
 
 /// The roles the default team enables.
-const ENABLED: [&str; 6] = [
+const ENABLED: [&str; 7] = [
+    "animator",
     "director",
     "gameplay-programmer",
     "level-designer",
@@ -25,7 +26,8 @@ const ENABLED: [&str; 6] = [
 ];
 
 /// Every module a Studio project can enable, so every role's tools are served.
-const MODULES: &str = "[physics]\n\n[assets]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n";
+const MODULES: &str =
+    "[physics]\n\n[assets]\n\n[anim]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n";
 
 /// The served tool definitions of a project with the default roster, by name.
 async fn served_tools(dir: &tempfile::TempDir) -> BTreeMap<String, Value> {
@@ -109,6 +111,9 @@ async fn every_enabled_default_role_stays_under_its_tool_budget() {
         .iter()
         .map(|(role, tools)| (role.clone(), tools.len(), tokens(tools, &served)))
         .collect();
+    for (role, count, size) in &sizes {
+        println!("{role}: {count} tools, about {size} tokens");
+    }
     let over: Vec<String> = sizes
         .iter()
         .filter(|(_, _, size)| *size >= ROLE_TOOL_BUDGET)
@@ -117,5 +122,31 @@ async fn every_enabled_default_role_stays_under_its_tool_budget() {
     assert!(
         over.is_empty(),
         "over the {ROLE_TOOL_BUDGET}-token role budget: {over:?} (all roles: {sizes:?})"
+    );
+}
+
+#[tokio::test]
+async fn animator_is_enabled_with_anim_tools_under_budget() {
+    let dir = tempfile::tempdir().unwrap();
+    let served = served_tools(&dir).await;
+    let catalog = ToolCatalog::from_names(served.keys().cloned());
+    let roles = synced_role_tools(dir.path(), &catalog);
+    let animator = roles.get("animator").expect("the animator is enabled");
+    for tool in [
+        "anim_inspect",
+        "asset_import",
+        "component_patch",
+        "capture_screenshot",
+        "sim_step",
+        "scene_new",
+    ] {
+        assert!(animator.iter().any(|t| t == tool), "{tool}: {animator:?}");
+    }
+    let size = tokens(animator, &served);
+    println!("animator: {} tools, about {size} tokens", animator.len());
+    assert!(
+        size < ROLE_TOOL_BUDGET,
+        "the animator's {} tools take about {size} tokens",
+        animator.len()
     );
 }

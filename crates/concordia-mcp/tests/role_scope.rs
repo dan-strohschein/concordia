@@ -14,7 +14,7 @@ async fn studio(dir: &tempfile::TempDir, team_edit: impl Fn(String) -> String) -
     std::fs::write(&team, team_edit(std::fs::read_to_string(&team).unwrap())).unwrap();
     std::fs::write(
         dir.path().join("concordia.toml"),
-        "[physics]\n\n[assets]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n",
+        "[physics]\n\n[assets]\n\n[anim]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n",
     )
     .unwrap();
     let mut opts = options(dir);
@@ -277,4 +277,105 @@ async fn per_task_mutation_budget_exhaustion_blocks_the_task() {
     let task = task.structured_content.unwrap();
     assert_eq!(task["task"]["status"], "blocked");
     assert_eq!(task["task"]["assignee"], "human:local");
+}
+
+#[tokio::test]
+async fn server_holds_the_animator_to_its_paths() {
+    let dir = tempfile::tempdir().unwrap();
+    let client = studio(&dir, |t| t).await;
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/fbx/skinned.fbx");
+    for at in ["assets/models/hero.fbx", "content/hero.fbx"] {
+        std::fs::create_dir_all(dir.path().join(at).parent().unwrap()).unwrap();
+        std::fs::copy(&fixture, dir.path().join(at)).unwrap();
+    }
+    let animator = |args: Value| with(args, "animator", "s/7");
+    // Importing writes only the model's sidecar, which the animator may write (clip events).
+    let model = call(
+        &client,
+        "asset_import",
+        animator(json!({"path": "assets/models/hero.fbx"})),
+    )
+    .await;
+    assert_ne!(model.is_error, Some(true), "{}", text(&model));
+    assert!(
+        dir.path()
+            .join("assets/models/hero.fbx.import.ron")
+            .is_file()
+    );
+    let outside = call(
+        &client,
+        "asset_import",
+        animator(json!({"path": "content/hero.fbx"})),
+    )
+    .await;
+    assert_eq!(outside.is_error, Some(true), "{}", text(&outside));
+    assert!(
+        text(&outside).contains("assets/anim/**"),
+        "{}",
+        text(&outside)
+    );
+    assert!(!dir.path().join("content/hero.fbx.import.ron").exists());
+    // Another role still needs the model's folder: the tech artist may not import it.
+    let artist = call(
+        &client,
+        "asset_import",
+        with(
+            json!({"path": "assets/models/hero.fbx"}),
+            "tech-artist",
+            "s/2",
+        ),
+    )
+    .await;
+    assert_eq!(artist.is_error, Some(true), "{}", text(&artist));
+
+    // Previews live under assets/anim/; game scenes are the level designer's.
+    let preview = call(
+        &client,
+        "scene_new",
+        animator(json!({"path": "assets/anim/previews/hero.scene.ron", "name": "Hero preview"})),
+    )
+    .await;
+    assert_ne!(preview.is_error, Some(true), "{}", text(&preview));
+    let saved = call(&client, "scene_save", animator(json!({}))).await;
+    assert_ne!(saved.is_error, Some(true), "{}", text(&saved));
+    assert!(
+        dir.path()
+            .join("assets/anim/previews/hero.scene.ron")
+            .is_file()
+    );
+    for path in ["scenes/hero.scene.ron", "assets/models/hero.scene.ron"] {
+        let game = call(&client, "scene_save", animator(json!({"path": path}))).await;
+        assert_eq!(game.is_error, Some(true), "{path}: {}", text(&game));
+        assert!(!dir.path().join(path).exists(), "{path}");
+    }
+    let material = call(
+        &client,
+        "material_set",
+        animator(json!({"path": "assets/anim/x.material.ron", "material": {"nodes": {"s": {"Slab": {}}}, "root": "s"}})),
+    )
+    .await;
+    assert_eq!(material.is_error, Some(true));
+    assert!(
+        text(&material).contains("NotPermitted"),
+        "{}",
+        text(&material)
+    );
+}
+
+#[tokio::test]
+async fn tech_artist_saves_the_scene_it_assigned_materials_in() {
+    let dir = tempfile::tempdir().unwrap();
+    let client = studio(&dir, |t| t).await;
+    // Scenes are shared (studio/team.toml): the level designer edits them but doesn't own them alone.
+    let saved = call(&client, "scene_save", with(json!({}), "tech-artist", "s/2")).await;
+    assert_ne!(saved.is_error, Some(true), "{}", text(&saved));
+    assert!(dir.path().join("scenes/a.scene.ron").is_file());
+    let elsewhere = call(
+        &client,
+        "scene_save",
+        with(json!({"path": "content/a.scene.ron"}), "tech-artist", "s/2"),
+    )
+    .await;
+    assert_eq!(elsewhere.is_error, Some(true), "{}", text(&elsewhere));
 }

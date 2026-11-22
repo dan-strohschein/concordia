@@ -201,10 +201,26 @@ pub struct CaptureScreenshotParams {
     /// Draw the editor overlays (`viewport.overlays`: selection, gizmo) on top.
     #[serde(default)]
     pub overlays: Option<bool>,
+    /// Draw every posed skeleton's bones on top (play world), whatever the editor overlays are.
+    #[serde(default)]
+    pub skeleton: Option<bool>,
 }
 
 fn default_width() -> u32 {
     768
+}
+
+/// What a capture draws on top: the editor overlays if asked, plus the skeletons if asked.
+fn capture_overlays(engine: &Engine, p: &CaptureScreenshotParams) -> Option<crate::Overlays> {
+    let mut overlays = (p.overlays == Some(true))
+        .then(|| engine.state::<RenderState>().map(|s| s.overlays.clone()))
+        .flatten();
+    if p.skeleton == Some(true) {
+        overlays
+            .get_or_insert_with(crate::Overlays::default)
+            .skeleton = true;
+    }
+    overlays
 }
 
 fn default_height() -> u32 {
@@ -253,9 +269,7 @@ impl Method for CaptureScreenshot {
             view: p.view.clone(),
             width: p.width,
             height: p.height,
-            overlays: (p.overlays == Some(true))
-                .then(|| engine.state::<RenderState>().map(|s| s.overlays.clone()))
-                .flatten(),
+            overlays: capture_overlays(engine, &p),
             view_mode: p.view_mode.unwrap_or_default(),
         };
         let scene = scene_update(engine, p.world.unwrap_or_default(), None)?;

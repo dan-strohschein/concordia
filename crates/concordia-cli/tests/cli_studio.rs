@@ -303,3 +303,24 @@ fn studio_init_adds_replay_when_missing_for_the_qa_playtester() {
     assert_eq!(manifest.matches("[replay]").count(), 1, "{manifest}");
     assert!(root.join(".claude/agents/qa-playtester.md").is_file());
 }
+
+#[test]
+fn studio_init_adds_anim_when_missing_for_the_animator() {
+    let dir = tempfile::tempdir().unwrap();
+    // A project made before [anim] existed.
+    let root = new_project(dir.path(), &["--no-studio"]);
+    let manifest_path = root.join("concordia.toml");
+    let manifest = std::fs::read_to_string(&manifest_path).unwrap();
+    assert!(manifest.contains("[anim]\n"), "{manifest}");
+    std::fs::write(&manifest_path, manifest.replace("[anim]\n", "")).unwrap();
+    let output = run(&["studio", "init"], &root);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let manifest = std::fs::read_to_string(&manifest_path).unwrap();
+    assert_eq!(manifest.matches("[anim]").count(), 1, "{manifest}");
+    assert_eq!(
+        manifest.matches("[assets]").count(),
+        1,
+        "not added twice: {manifest}"
+    );
+    assert!(root.join(".claude/agents/animator.md").is_file());
+}

@@ -211,3 +211,34 @@ fn hook_fails_closed_on_malformed_input() {
     assert_eq!(outcome.exit, 2);
     assert!(outcome.stderr.contains("hook input"), "{}", outcome.stderr);
 }
+
+#[test]
+fn animator_writes_only_anim_files_and_model_sidecars() {
+    let dir = project();
+    let verdict = |path: &str| {
+        let input = pre(
+            Some("animator"),
+            "Write",
+            json!({"file_path": dir.path().join(path), "content": "x"}),
+        );
+        decision(&run(dir.path(), PreToolUse, &input)).0
+    };
+    for allowed in [
+        "assets/anim/hero.animgraph.ron",
+        "assets/anim/previews/hero.scene.ron",
+        "assets/models/hero.fbx.import.ron",
+        "assets/models/people/guard.glb.import.ron",
+    ] {
+        assert_eq!(verdict(allowed), "allow", "{allowed}");
+    }
+    for denied in [
+        "assets/models/hero.fbx",
+        "assets/models/hero.fbx.import.ron.bak",
+        "assets/blender/hero.py",
+        "scenes/main.scene.ron",
+        "scripts/hero/src/lib.rs",
+        "assets/materials/skin.material.ron",
+    ] {
+        assert_eq!(verdict(denied), "deny", "{denied}");
+    }
+}

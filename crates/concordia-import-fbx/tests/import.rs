@@ -488,8 +488,12 @@ fn fbx_stack_with_a_late_start_is_trimmed_to_zero() {
 
 #[test]
 fn fixtures_hold_no_user_paths() {
-    let dir = fixture("");
-    for entry in std::fs::read_dir(&dir).unwrap().flatten() {
+    let character = fixture("").join("../character");
+    assert!(character.is_dir(), "the fixture character (M2 2.4.5)");
+    let entries = [fixture(""), character]
+        .into_iter()
+        .flat_map(|dir| std::fs::read_dir(dir).unwrap().flatten());
+    for entry in entries {
         let bytes = std::fs::read(entry.path()).unwrap();
         for needle in [&b"/Users/"[..], b"/home/", b"\\Users\\", b"/var/folders/"] {
             assert!(

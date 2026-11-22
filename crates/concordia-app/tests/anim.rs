@@ -247,30 +247,15 @@ impl Stage {
 
     /// A stage with `manifest` and `extra` modules after the project's.
     fn with(manifest: &str, extra: Vec<std::sync::Arc<dyn concordia_api::EngineModule>>) -> Self {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path();
-        std::fs::write(root.join("concordia.toml"), manifest).unwrap();
         let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/fbx");
-        for (from, to) in [
-            ("skinned.fbx", "hero.fbx"),
-            ("anim_stacks.fbx", "moves.fbx"),
-        ] {
-            std::fs::copy(fixtures.join(from), root.join(to)).unwrap();
-        }
-        let project = Project::load(root).unwrap();
-        let mut config = EngineConfig::new(root);
-        config.modules = project.modules().unwrap();
-        config.modules.extend(extra);
-        let mut engine = Engine::new(config).unwrap();
-        let session = engine.open_session();
-        let mut stage = Self {
-            _dir: dir,
-            session,
-            engine,
-            hero: String::new(),
-            moves: String::new(),
-            body: Value::Null,
-        };
+        let mut stage = Self::empty(
+            manifest,
+            extra,
+            &[
+                (fixtures.join("skinned.fbx"), "hero.fbx"),
+                (fixtures.join("anim_stacks.fbx"), "moves.fbx"),
+            ],
+        );
         stage.ok(
             "scene.new",
             json!({"path": "scenes/a.scene.ron", "name": "A", "actor": ACTOR}),
@@ -280,6 +265,37 @@ impl Stage {
         let hero = stage.hero.clone();
         stage.body = stage.instance(&hero);
         stage
+    }
+
+    /// An engine for a project with `manifest`, `extra` modules and `files` copied in
+    /// (source, project path); nothing imported and no scene.
+    fn empty(
+        manifest: &str,
+        extra: Vec<std::sync::Arc<dyn concordia_api::EngineModule>>,
+        files: &[(std::path::PathBuf, &str)],
+    ) -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::write(root.join("concordia.toml"), manifest).unwrap();
+        for (from, to) in files {
+            let to = root.join(to);
+            std::fs::create_dir_all(to.parent().unwrap()).unwrap();
+            std::fs::copy(from, &to).unwrap_or_else(|e| panic!("{}: {e}", from.display()));
+        }
+        let project = Project::load(root).unwrap();
+        let mut config = EngineConfig::new(root);
+        config.modules = project.modules().unwrap();
+        config.modules.extend(extra);
+        let mut engine = Engine::new(config).unwrap();
+        let session = engine.open_session();
+        Self {
+            _dir: dir,
+            session,
+            engine,
+            hero: String::new(),
+            moves: String::new(),
+            body: Value::Null,
+        }
     }
 
     fn ok(&mut self, method: &str, params: Value) -> Value {
@@ -295,22 +311,28 @@ impl Stage {
             .to_owned()
     }
 
-    /// Instantiates `asset:<model>` and returns its skinned entity.
+    /// Instantiates `asset:<model>` and returns its topmost skinned entity (the one that plays;
+    /// a model's other mesh parts are its children and follow its pose).
     fn instance(&mut self, model: &str) -> Value {
         let made = self.ok(
             "prefab.instantiate",
             json!({"asset": format!("asset:{model}"), "actor": ACTOR}),
         );
-        made["entities"]
+        let skinned: Vec<(Value, Value)> = made["entities"]
             .as_array()
             .unwrap()
             .clone()
             .into_iter()
-            .find(|e| {
-                self.ok("entity.get", json!({"id": e}))["components"]
-                    .get("Skinned")
-                    .is_some()
+            .filter_map(|e| {
+                let got = self.ok("entity.get", json!({"id": e}))["components"].clone();
+                got.get("Skinned")
+                    .map(|_| (e, got.get("Parent").cloned().unwrap_or(Value::Null)))
             })
+            .collect();
+        skinned
+            .iter()
+            .find(|(_, parent)| !skinned.iter().any(|(e, _)| e == parent))
+            .map(|(e, _)| e.clone())
             .expect("the instance has a skinned body")
     }
 
@@ -760,4 +782,333 @@ fn inspected_bones_at_rest_sit_on_the_imported_bone_entities() {
         }
     }
     assert_eq!(matched, 7, "every bone has its entity");
+}
+
+/// Whether a Metal device exists; without one, `CONCORDIA_REQUIRE_GPU=1` fails the test.
+fn has_gpu() -> bool {
+    match concordia_rhi_metal::new_headless() {
+        Err(concordia_rhi::RhiError::NoDevice { reason }) => {
+            assert!(
+                !concordia_testkit::gpu_required(),
+                "CONCORDIA_REQUIRE_GPU=1 but no device: {reason}"
+            );
+            false
+        }
+        _ => true,
+    }
+}
+
+#[test]
+fn capture_skeleton_draws_posed_bones_without_the_editor_overlays() {
+    if !has_gpu() {
+        return;
+    }
+    let mut stage = Stage::with("[assets]\n\n[anim]\n\n[render]\n", Vec::new());
+    let body = stage.body.clone();
+    let walk = format!("asset:{}#clip/Armature|Walk", stage.moves);
+    stage.ok(
+        "component.set",
+        json!({"entity": body, "component": "AnimPlayer", "value": {"clip": walk}, "actor": ACTOR}),
+    );
+    stage.ok("sim.step", json!({"ticks": 15}));
+    let view = json!({"eye": [2.6, 1.2, 0.8], "target": [0.0, 1.15, 0.0], "projection": {"Perspective": {"fov_y": 0.8, "near": 0.1, "far": 50.0}}});
+    let shot = |stage: &mut Stage, extra: Value| {
+        let mut params = json!({"world": "play", "width": 160, "height": 120, "view": view});
+        params
+            .as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        decode(&stage.ok("capture.screenshot", params))
+    };
+    let plain = shot(&mut stage, json!({}));
+    let bones = shot(&mut stage, json!({"skeleton": true}));
+    let changed = plain
+        .pixels()
+        .chunks(4)
+        .zip(bones.pixels().chunks(4))
+        .filter(|(a, b)| a != b)
+        .count();
+    assert!(changed > 100, "the bones are drawn ({changed} pixels)");
+    assert_eq!(
+        shot(&mut stage, json!({"overlays": true})),
+        plain,
+        "the editor draws no overlays yet"
+    );
+    stage.ok("viewport.overlays", json!({"skeleton": true}));
+    assert_eq!(
+        shot(&mut stage, json!({"overlays": true})),
+        bones,
+        "the same bones the editor's skeleton overlay draws"
+    );
+    assert_eq!(
+        shot(&mut stage, json!({"overlays": true, "skeleton": true})),
+        bones,
+        "drawn once"
+    );
+    // The flag adds the bones to whatever the editor draws; it never replaces it.
+    stage.ok("viewport.overlays", json!({"selection": [body]}));
+    let boxed = shot(&mut stage, json!({"overlays": true}));
+    assert_ne!(boxed, plain, "the selection box is drawn");
+    let both = shot(&mut stage, json!({"overlays": true, "skeleton": true}));
+    assert_ne!(both, boxed, "the bones are added");
+    assert_ne!(both, bones, "the selection box is kept");
+    let edit = stage.ok(
+        "capture.screenshot",
+        json!({"width": 160, "height": 120, "view": view, "skeleton": true}),
+    );
+    assert_eq!(
+        decode(&edit).pixels().len(),
+        160 * 120 * 4,
+        "the edit world has no poses, so nothing is drawn, and nothing fails"
+    );
+}
+
+/// A test-only module: every `AnimEvent` a body receives appends " <name>" to its `Name`
+/// (gameplay receiving animation events, as a real game's processor would).
+#[derive(Debug)]
+struct EventLog;
+
+impl concordia_api::EngineModule for EventLog {
+    fn name(&self) -> &'static str {
+        "test-event-log"
+    }
+
+    fn start_play(
+        &self,
+        _: &mut concordia_terra::World,
+    ) -> Result<concordia_api::PlaySetup, concordia_api::ApiError> {
+        use concordia_anim::AnimEvent;
+        use concordia_scene::builtin::Name;
+        use concordia_terra::{Phase, SystemCtx, View, processor};
+        let mut setup = concordia_api::PlaySetup::default();
+        setup.schedule.add_processor(
+            processor("test.event_log", Phase::PostPhysics)
+                .receives::<AnimEvent>()
+                .writes::<Name>()
+                .run(|view: &mut View<'_>, _: &SystemCtx<'_>| {
+                    let mut heard = std::collections::BTreeMap::<_, String>::new();
+                    for (id, e) in view.signals::<AnimEvent>().unwrap().iter() {
+                        let log = heard.entry(*id).or_default();
+                        log.push(' ');
+                        log.push_str(&e.name);
+                    }
+                    let targets: Vec<_> = heard.keys().copied().collect();
+                    let names = view.query::<&mut Name>().unwrap();
+                    names.for_each_of(&targets, |id, name| name.0.push_str(&heard[&id]));
+                }),
+        );
+        Ok(setup)
+    }
+}
+
+/// The original fixture character (M2 2.4.5): its FBX (`tools/fixtures/make_fbx.py`), the
+/// sidecar with its clip events, and its graph.
+fn character_fixture(name: &str) -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/character")
+        .join(name)
+}
+
+/// What the test asks of the graph before a tick (one-tick requests through play-world patches).
+fn character_request(tick: u32) -> Option<Value> {
+    match tick {
+        31 => Some(json!({"travel": {"moves": "walk"}})),
+        81 => Some(json!({"travel": {"moves": "attack"}})),
+        150 => Some(json!({"triggers": ["hurt"]})),
+        180 => Some(json!({"travel": {"moves": "death"}})),
+        _ => None,
+    }
+}
+
+/// The state the machine is in after the tick (hand-computed; see the plan's 2.4.5 table).
+const CHARACTER_STATES: [(u32, &str); 15] = [
+    (1, "idle"),
+    (30, "idle"),
+    (31, "walk"),
+    (80, "walk"),
+    (81, "attack"),
+    (118, "attack"),
+    (119, "idle"),
+    (149, "idle"),
+    (150, "hit"),
+    (172, "hit"),
+    (173, "idle"),
+    (179, "idle"),
+    (180, "death"),
+    (260, "death"),
+    (300, "death"),
+];
+
+/// Every event the character raises through tick 300 (a looping death would fall again at 280).
+const CHARACTER_EVENTS: [(u32, &str, &str); 8] = [
+    (28, "breathe", "idle"),
+    (43, "step_left", "walk"),
+    (73, "step_right", "walk"),
+    (98, "swing", "attack"),
+    (146, "breathe", "idle"),
+    (152, "flinch", "hit"),
+    (212, "fall", "death"),
+    (247, "land", "death"),
+];
+
+/// The clip each state plays.
+fn character_clip(state: &str) -> &'static str {
+    match state {
+        "idle" => "Idle",
+        "walk" => "Walk",
+        "attack" => "Attack",
+        "hit" => "Hit",
+        "death" => "Death",
+        other => panic!("no state {other}"),
+    }
+}
+
+#[test]
+fn fixture_character_plays_its_states_through_the_graph() {
+    let gpu = has_gpu();
+    let manifest = match gpu {
+        true => "[assets]\n\n[anim]\n\n[render]\n",
+        false => "[assets]\n\n[anim]\n",
+    };
+    let mut stage = Stage::empty(
+        manifest,
+        vec![std::sync::Arc::new(EventLog)],
+        &[
+            (
+                character_fixture("character.fbx"),
+                "assets/models/character.fbx",
+            ),
+            (
+                character_fixture("character.fbx.import.ron"),
+                "assets/models/character.fbx.import.ron",
+            ),
+            (
+                character_fixture("character.animgraph.ron"),
+                "assets/anim/character.animgraph.ron",
+            ),
+        ],
+    );
+    let sidecar =
+        concordia_assets::Sidecar::read(&character_fixture("character.fbx.import.ron")).unwrap();
+    let text = std::fs::read_to_string(character_fixture("character.animgraph.ron")).unwrap();
+    let canonical =
+        concordia_assets::write_animgraph(&concordia_assets::read_animgraph(&text).unwrap())
+            .unwrap();
+    assert_eq!(text, canonical, "the fixture graph is canonical text");
+    let model = stage.import("assets/models/character.fbx");
+    assert_eq!(model, sidecar.id.to_string(), "the sidecar fixes the id");
+    let graph = format!(
+        "asset:{}",
+        stage.import("assets/anim/character.animgraph.ron")
+    );
+    stage.ok(
+        "scene.new",
+        json!({"path": "assets/anim/previews/character.scene.ron", "name": "Character preview", "actor": ACTOR}),
+    );
+    let body = stage.instance(&model);
+    stage.ok(
+        "component.set",
+        json!({"entity": body, "component": "AnimGraphPlayer", "value": {"graph": graph}, "actor": ACTOR}),
+    );
+    if gpu {
+        let sun = json!({
+            "Transform": {
+                "translation": [0.0, 0.0, 0.0],
+                "rotation": quat_looking([0.0, 0.0, 0.0], [-0.4, -1.0, -0.6]),
+                "scale": [1.0, 1.0, 1.0],
+            },
+            "DirectionalLight": {"color": [1.0, 1.0, 1.0], "illuminance_lux": 64000.0},
+        });
+        stage.ok("entity.spawn", json!({"components": sun, "actor": ACTOR}));
+    }
+    let original = stage.play_name_or_edit(&body);
+
+    let mut raised = Vec::new();
+    let mut panels = Vec::new();
+    for tick in 1..=300u32 {
+        if let Some(patch) = character_request(tick) {
+            stage.ok(
+                "component.patch",
+                json!({"entity": body, "component": "AnimGraphPlayer", "patch": patch, "world": "play", "actor": ACTOR}),
+            );
+        }
+        stage.ok("sim.step", json!({"ticks": 1}));
+        let seen = stage.ok("anim.inspect", json!({"entity": body}));
+        for event in seen["pending_events"].as_array().unwrap() {
+            raised.push((tick, event.clone()));
+        }
+        if let Some((_, state)) = CHARACTER_STATES.iter().find(|(t, _)| *t == tick) {
+            let machine = seen["graph"]["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|n| n["name"] == "moves")
+                .unwrap_or_else(|| panic!("no machine: {seen}"));
+            assert_eq!(machine["current"], *state, "tick {tick}: {machine}");
+        }
+        if gpu && CHARACTER_EVENTS.iter().any(|(t, ..)| *t == tick) {
+            panels.push(decode(&stage.ok(
+                "capture.screenshot",
+                json!({"world": "play", "width": 160, "height": 240, "view": character_view(), "skeleton": true}),
+            )));
+        }
+    }
+    let expected: Vec<(u32, Value)> = CHARACTER_EVENTS
+        .iter()
+        .map(|(tick, name, state)| {
+            let clip = format!("asset:{model}#clip/Character|{}", character_clip(state));
+            (
+                *tick,
+                json!({"name": name, "clip": clip, "node": state, "weight": 1.0}),
+            )
+        })
+        .collect();
+    let got: Vec<(u32, Value)> = raised
+        .iter()
+        .map(|(tick, e)| {
+            let mut e = e.clone();
+            e.as_object_mut().unwrap().remove("time");
+            (*tick, e)
+        })
+        .collect();
+    assert_eq!(got, expected, "every event, once, on its tick");
+    assert_eq!(
+        stage.play_get(&body, "Name"),
+        json!(format!(
+            "{original} breathe step_left step_right swing breathe flinch fall land"
+        )),
+        "gameplay received each event on the tick after it was raised"
+    );
+    if gpu {
+        // One panel per state, at its first event (idle, walk, attack, hit, death).
+        let firsts = [0, 1, 3, 5, 7];
+        let strip = side_by_side(&firsts.map(|i| &panels[i]));
+        concordia_testkit::golden::assert_golden(
+            "anim",
+            "fixture_character_states",
+            &strip,
+            concordia_testkit::golden::Tolerance::mean(0.01),
+        );
+    }
+}
+
+/// The preview camera: a front three-quarter view (the character faces +Z), standing or fallen.
+fn character_view() -> Value {
+    json!({"eye": [2.4, 1.5, 3.4], "target": [0.0, 0.8, -0.3], "projection": {"Perspective": {"fov_y": 0.75, "near": 0.1, "far": 50.0}}})
+}
+
+/// `images` (equal heights) placed left to right.
+fn side_by_side(
+    images: &[&concordia_testkit::golden::RgbaImage],
+) -> concordia_testkit::golden::RgbaImage {
+    let height = images[0].height();
+    let width: u32 = images.iter().map(|i| i.width()).sum();
+    let mut pixels = Vec::with_capacity((width * height * 4) as usize);
+    for row in 0..height as usize {
+        for image in images {
+            let stride = image.width() as usize * 4;
+            pixels.extend_from_slice(&image.pixels()[row * stride..(row + 1) * stride]);
+        }
+    }
+    concordia_testkit::golden::RgbaImage::new(width, height, pixels).unwrap()
 }

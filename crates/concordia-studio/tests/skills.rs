@@ -6,9 +6,10 @@ use std::path::Path;
 
 use concordia_studio::{CLAUDE_SKILL_FIELDS, Roster, SkillFile, default_roster, init};
 
-/// The eight built-in skills the plan names (3.6), plus the team-comms skill (3.6b).
-const PLANNED: [&str; 11] = [
+/// The eight built-in skills the plan names (3.6), plus team comms (3.6b) and animation (M2 2.4.5).
+const PLANNED: [&str; 12] = [
     "concordia-add-material",
+    "concordia-animation-graphs",
     "concordia-director-planning",
     "concordia-fix-bug-with-replay",
     "concordia-generate-mesh-blender",
@@ -303,5 +304,157 @@ fn tech_artist_knows_materials_arrive_inside_gltf_and_fbx_models() {
             text.contains("#material/<name>"),
             "imported materials are sub-assets"
         );
+    }
+}
+
+/// The animation skill's text.
+fn animation_skill() -> &'static str {
+    default_roster()
+        .skills
+        .iter()
+        .find(|(n, _)| *n == "concordia-animation-graphs")
+        .map(|(_, t)| *t)
+        .expect("2.4.5 adds concordia-animation-graphs")
+}
+
+#[test]
+fn animator_skill_is_available() {
+    let text = animation_skill();
+    assert!(
+        !text.contains("Not available yet"),
+        "every tool it names exists"
+    );
+    for needle in [
+        "StateMachine(",
+        "Blend2(",
+        "BlendN(",
+        "OneShot(",
+        "TimeScale(",
+        "Transition(",
+        "AtEnd",
+        "Auto",
+        "\"travel\"",
+        "\"triggers\"",
+        "\"world\": \"play\"",
+        "clip_events",
+        "AnimEvent",
+        "BoneAttachment",
+        "Tweens",
+        "mcp__concordia__anim_inspect",
+        "\"skeleton\": true",
+        "assets/anim/previews/",
+        ".import.ron",
+        "phase 3.7",
+    ] {
+        assert!(text.contains(needle), "the skill explains {needle}");
+    }
+    let animator = default_roster()
+        .roles
+        .iter()
+        .find(|(n, _)| *n == "animator")
+        .map(|(_, t)| concordia_studio::RoleFile::parse(t).unwrap())
+        .unwrap();
+    assert!(
+        animator
+            .spec
+            .skills
+            .iter()
+            .any(|s| s == "concordia-animation-graphs"),
+        "the animator preloads it: {:?}",
+        animator.spec.skills
+    );
+}
+
+/// The fenced ```ron blocks of `text`.
+fn ron_blocks(text: &str) -> Vec<&str> {
+    text.split("```ron\n")
+        .skip(1)
+        .filter_map(|rest| rest.split_once("\n```").map(|(block, _)| block))
+        .collect()
+}
+
+#[test]
+fn animation_skill_examples_are_real_params_and_a_valid_graph() {
+    let text = animation_skill();
+    let mut checked = 0;
+    for (tool, args) in examples(text, "") {
+        let parsed: Result<(), String> = match tool.as_str() {
+            "anim_inspect" => serde_json::from_value::<concordia_anim::InspectParams>(args.clone())
+                .map(|_| ())
+                .map_err(|e| e.to_string()),
+            "capture_screenshot" => {
+                serde_json::from_value::<concordia_render::CaptureScreenshotParams>(args.clone())
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }
+            "prefab_instantiate" => serde_json::from_value::<
+                <concordia_assets::PrefabInstantiate as concordia_api::Method>::Params,
+            >(args.clone())
+            .map(|_| ())
+            .map_err(|e| e.to_string()),
+            "component_set" => component_value(&args["component"], args["value"].clone()),
+            "component_patch" => {
+                let mut value = serde_json::to_value(concordia_anim::AnimGraphPlayer::new(
+                    "asset:0190a2b4-0000-7000-8000-000000000001"
+                        .parse()
+                        .unwrap(),
+                ))
+                .unwrap();
+                merge(&mut value, &args["patch"]);
+                component_value(&args["component"], value)
+            }
+            _ => continue,
+        };
+        parsed.unwrap_or_else(|e| panic!("{tool} {args}: {e}"));
+        checked += 1;
+    }
+    assert!(
+        checked >= 6,
+        "the skill shows inspecting, capturing, previewing and steering ({checked} examples)"
+    );
+    let blocks = ron_blocks(text);
+    let graph = blocks
+        .iter()
+        .find(|b| b.contains("StateMachine("))
+        .expect("a whole graph example");
+    concordia_assets::read_animgraph(graph).unwrap_or_else(|e| panic!("the graph example: {e}"));
+    let settings = text
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("settings: "))
+        .and_then(|s| s.strip_suffix(','))
+        .expect("a sidecar settings line");
+    let settings: serde_json::Value = serde_json::from_str(settings).unwrap();
+    let events = concordia_import_model::ModelSettings::from_json(&settings).unwrap();
+    assert!(!events.clip_events.is_empty(), "{settings}");
+}
+
+/// Deserializes `value` as the named animation component.
+fn component_value(component: &serde_json::Value, value: serde_json::Value) -> Result<(), String> {
+    let result = match component.as_str() {
+        Some("AnimGraphPlayer") => {
+            serde_json::from_value::<concordia_anim::AnimGraphPlayer>(value).map(|_| ())
+        }
+        Some("BoneAttachment") => {
+            serde_json::from_value::<concordia_anim::BoneAttachment>(value).map(|_| ())
+        }
+        Some("Tweens") => serde_json::from_value::<concordia_anim::Tweens>(value).map(|_| ()),
+        other => return Err(format!("no example check for {other:?}")),
+    };
+    result.map_err(|e| e.to_string())
+}
+
+/// JSON merge patch (RFC 7386), as `component.patch` applies it.
+fn merge(target: &mut serde_json::Value, patch: &serde_json::Value) {
+    let (Some(target), Some(patch)) = (target.as_object_mut(), patch.as_object()) else {
+        *target = patch.clone();
+        return;
+    };
+    for (key, value) in patch {
+        match value {
+            serde_json::Value::Null => {
+                target.remove(key);
+            }
+            _ => merge(target.entry(key).or_insert(serde_json::Value::Null), value),
+        }
     }
 }

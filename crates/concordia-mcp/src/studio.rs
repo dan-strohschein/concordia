@@ -135,7 +135,11 @@ impl StudioGate {
             },
             _ => return Ok(()),
         };
-        match policy.write(Some(role), &path) {
+        let decision = match method.name {
+            "asset.import" => import_decision(policy, role, &path),
+            _ => policy.write(Some(role), &path),
+        };
+        match decision {
             Decision::Deny(reason) => Err(not_permitted(&reason).at("/path")),
             _ => Ok(()),
         }
@@ -223,6 +227,20 @@ async fn current_task(engine: &dyn EngineLink, base: SessionId, actor: &Actor) -
     let params = json!({"status": "in_progress", "assignee": actor.to_string()});
     let listed = engine.call(base, "task.list", params).await.ok()?;
     listed["tasks"][0]["id"].as_str().map(str::to_owned)
+}
+
+/// Importing writes only `<path>.import.ron`: a role may import a file it may write, or one whose
+/// sidecar it may write (the animator's clip events on a modeler's model, M2 2.4.5).
+fn import_decision(policy: &Policy, role: &str, path: &str) -> Decision {
+    let source = policy.write(Some(role), path);
+    if !matches!(source, Decision::Deny(_)) {
+        return source;
+    }
+    let sidecar = format!("{path}{}", concordia_assets::Sidecar::SUFFIX);
+    match policy.write(Some(role), &sidecar) {
+        Decision::Deny(_) => source,
+        allowed => allowed,
+    }
 }
 
 fn parse_stamp(value: Value) -> Result<Stamp, ApiError> {

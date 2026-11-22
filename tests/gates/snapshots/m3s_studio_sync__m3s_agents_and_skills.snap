@@ -2,9 +2,12 @@
 source: tests/gates/m3s_studio_sync.rs
 expression: outline(&root)
 ---
+.claude/agents/animator.md
+  name: animator
+  tools: Read, Grep, Glob, Edit, Write, mcp__concordia__anim_inspect, mcp__concordia__asset_import, mcp__concordia__asset_list, mcp__concordia__capture_screenshot, mcp__concordia__component_patch, mcp__concordia__component_set, mcp__concordia__log_tail, mcp__concordia__prefab_instantiate, mcp__concordia__query_run, mcp__concordia__scene_new, mcp__concordia__scene_open, mcp__concordia__scene_save, mcp__concordia__schema_get, mcp__concordia__sim_step, mcp__concordia__sim_stop, mcp__concordia__studio_answer, mcp__concordia__studio_ask, mcp__concordia__studio_questions, mcp__concordia__task_claim, mcp__concordia__task_comment, mcp__concordia__task_get, mcp__concordia__task_update
 .claude/agents/director.md
   name: director
-  tools: Read, Grep, Glob, Agent(gameplay-programmer, level-designer, qa-playtester, tech-artist, writer), mcp__concordia__studio_activity, mcp__concordia__studio_answer, mcp__concordia__studio_ask, mcp__concordia__studio_escalate, mcp__concordia__studio_questions, mcp__concordia__studio_roster, mcp__concordia__studio_status, mcp__concordia__task_comment, mcp__concordia__task_create, mcp__concordia__task_get, mcp__concordia__task_list, mcp__concordia__task_update, mcp__concordia__txn_history
+  tools: Read, Grep, Glob, Agent(animator, gameplay-programmer, level-designer, qa-playtester, tech-artist, writer), mcp__concordia__studio_activity, mcp__concordia__studio_answer, mcp__concordia__studio_ask, mcp__concordia__studio_escalate, mcp__concordia__studio_questions, mcp__concordia__studio_roster, mcp__concordia__studio_status, mcp__concordia__task_comment, mcp__concordia__task_create, mcp__concordia__task_get, mcp__concordia__task_list, mcp__concordia__task_update, mcp__concordia__txn_history
 .claude/agents/gameplay-programmer.md
   name: gameplay-programmer
   tools: Read, Grep, Glob, Edit, Write, Bash, mcp__concordia__log_tail, mcp__concordia__query_run, mcp__concordia__replay_record, mcp__concordia__replay_run, mcp__concordia__scene_open, mcp__concordia__schema_get, mcp__concordia__script_reload, mcp__concordia__sim_step, mcp__concordia__sim_stop, mcp__concordia__studio_answer, mcp__concordia__studio_ask, mcp__concordia__studio_questions, mcp__concordia__task_claim, mcp__concordia__task_comment, mcp__concordia__task_get, mcp__concordia__task_update
@@ -22,6 +25,8 @@ expression: outline(&root)
   tools: Read, Grep, Glob, Edit, Write, mcp__concordia__asset_import, mcp__concordia__asset_list, mcp__concordia__project_files, mcp__concordia__query_run, mcp__concordia__studio_answer, mcp__concordia__studio_ask, mcp__concordia__studio_questions, mcp__concordia__task_claim, mcp__concordia__task_comment, mcp__concordia__task_get, mcp__concordia__task_update
 .claude/skills/concordia-add-material/SKILL.md
   name: concordia-add-material
+.claude/skills/concordia-animation-graphs/SKILL.md
+  name: concordia-animation-graphs
 .claude/skills/concordia-director-planning/SKILL.md
   name: concordia-director-planning
 .claude/skills/concordia-fix-bug-with-replay/SKILL.md

@@ -15,6 +15,7 @@ fn sync_default_roster_generates_expected_agent_files() {
     assert_eq!(
         names,
         [
+            "animator.md",
             "director.md",
             "gameplay-programmer.md",
             "level-designer.md",

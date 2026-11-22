@@ -1,0 +1,63 @@
+Sidecar(
+    id: "01a20103-5d67-756e-88d8-b68de978aece",
+    importer: "fbx",
+    importer_version: 3,
+    settings: {
+        "clip_events": {
+            "Character|Attack": [
+                {
+                    "name": "swing",
+                    "time": 0.29166666,
+                },
+            ],
+            "Character|Death": [
+                {
+                    "name": "fall",
+                    "time": 0.5416667,
+                },
+                {
+                    "name": "land",
+                    "time": 1.125,
+                },
+            ],
+            "Character|Hit": [
+                {
+                    "name": "flinch",
+                    "time": 0.041666668,
+                },
+            ],
+            "Character|Idle": [
+                {
+                    "name": "breathe",
+                    "time": 0.45833334,
+                },
+            ],
+            "Character|Walk": [
+                {
+                    "name": "step_left",
+                    "time": 0.20833333,
+                },
+                {
+                    "name": "step_right",
+                    "time": 0.7083333,
+                },
+            ],
+        },
+    },
+    sub_assets: {
+        "clip/Character|Attack": "7b0ddc51-eae3-5ce9-8dd9-754e6fa52f6a",
+        "clip/Character|Death": "0ee489b8-badc-5401-8d86-3dbf43a57904",
+        "clip/Character|Hit": "4e26f956-974b-5469-bb40-8756051cebdd",
+        "clip/Character|Idle": "4881ea6b-1fe3-5f26-b70e-d64dcae73f18",
+        "clip/Character|Walk": "859b2391-54c0-5f5c-80da-9b408f56b9a3",
+        "material/Boot": "770a8683-aa42-5bdf-9f76-0d2500bb8929",
+        "material/Cloth": "4730ffc0-3906-5171-990e-529dc7ae76ec",
+        "material/Shirt": "edbe4cd8-61cc-5ce0-a53a-3c974efb1b60",
+        "material/Skin": "3b6fee51-1707-58d1-ac53-0306a6e54e30",
+        "mesh/Mannequin/0": "e594d734-3e1d-5a95-ba5f-a0ffb65efb48",
+        "mesh/Mannequin/1": "7df88457-93db-5079-8641-0015d11297a7",
+        "mesh/Mannequin/2": "b2db6366-0007-5e2e-a797-3a0e81b8e41d",
+        "mesh/Mannequin/3": "e720db9f-407a-565d-a9c8-70d52f871797",
+        "skin/0": "1b7b96f8-ad1e-556b-9191-fcf905f6fb78",
+    },
+)

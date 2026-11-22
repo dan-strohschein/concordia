@@ -13,10 +13,6 @@ count = 2
 enabled = false
 reason = "mesh generation and the Blender bridge arrive in M3 phase 3.7"
 
-[roles.animator]
-enabled = false
-reason = "animation arrives in M2"
-
 [roles.vfx-artist]
 enabled = false
 reason = "particles and VFX arrive in M2"
@@ -57,4 +53,5 @@ max_attempts_per_task = 3
 
 [paths]
 deny = [".env", "**/*.key"]
-shared = ["assets/blender/**", "tests/playtests/**"]
+# Scenes are shared for now: the level designer lays them out; others save what they change in them.
+shared = ["assets/blender/**", "assets/models/**/*.import.ron", "scenes/**", "tests/playtests/**"]

@@ -223,7 +223,7 @@ fn studio_project(dir: &Path) {
     concordia_studio::init(dir, Path::new("studio")).unwrap();
     std::fs::write(
         dir.join("concordia.toml"),
-        "[physics]\n\n[assets]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n",
+        "[physics]\n\n[assets]\n\n[anim]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n",
     )
     .unwrap();
 }
