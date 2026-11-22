@@ -491,6 +491,10 @@ The gate passes only if all of these pass in CI. Goldens are refreshed with `jus
 8. Engine coordinate convention and light units: confirm M0/M1 fixed right-handed +Y-up meters and physical light units.
 9. Should a dedicated Studio role (`porter`) exist, or are the porting skills on the Gameplay Programmer role enough?
 10. Should humanoid (muscle-space) retargeting be in M5, or later? *Note (2026-11-20, ADR-0016):* M12 adds rigs and IK but leaves retargeting out (its open question 13); a same-topology retarget can be written as a rig of constraints. M12 open question 15 also recommends mapping Godot 4's skeleton modifiers to rig units in the Godot importer.
+11. *(From M2's open questions, 2026-11-21.)* Grid layers (walkability, terrain type, ground surface, ...) as base64 in `.data.ron`, or as PNG layers beside it (diffable images, editable in tools)?
+12. *(From M2.)* Should the port project be its own private git repository (planned) or a private branch of the game repo?
+13. *(From M2.)* Do probe scripts run with Godot's `--script` from outside the project reliably for everything we need (terrain sampling is pure; luma harnesses need a window)? Fallback: capture probe values once by hand and commit them to the port project.
+14. *(From M2.)* Should the reference port's grid-to-polygon navmesh builder be ported verbatim as an alternative nav source, if Recast reachability ever disagrees with the grid oracle?
 
 ## ADRs to write
 - ADR: Interchange schema v1, versioning and migration policy (JSON wire format and RON in-repo, generated JSON Schema for external exporters).

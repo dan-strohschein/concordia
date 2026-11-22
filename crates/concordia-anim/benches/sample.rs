@@ -309,5 +309,82 @@ fn events_and_attachments(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, sample, tick, graph, events_and_attachments);
+/// Characters on a 2 m grid with a viewer at its center: one tick at full rate (no profiles,
+/// before 2.4b.1) and with simulation LOD (profiles, `terra.lod`; 2.4b.1).
+fn lod_ticks(c: &mut Criterion) {
+    use concordia_scene::builtin::lod_position;
+    use concordia_terra::{LodProfile, LodViewer, Phase, lod_system};
+    let skin: AssetRef = "asset:018bcfe5-6800-7000-a424-6c55076b137f#skin/0"
+        .parse()
+        .unwrap();
+    let clip_ref: AssetRef = "asset:018bcfe5-6800-7000-a424-6c55076b137f#clip/bench"
+        .parse()
+        .unwrap();
+    let skeleton = skeleton();
+    let bound = BoundClip::bind(&clip(), &skeleton).unwrap();
+    let mut library = AnimLibrary::new();
+    library.insert_clip(clip_ref.clone(), skin.clone(), bound);
+    library.insert_skeleton(skin.clone(), skeleton);
+    let library = Arc::new(library);
+    let profile = LodProfile::new([20.0, 60.0, 120.0], [2, 4, 8], 3.0).unwrap();
+    let place = |world: &mut World, id: EntityId, x: f32, z: f32| {
+        let t = Transform {
+            translation: Vec3::new(x, 0.0, z),
+            ..Transform::default()
+        };
+        world.insert(id, t).unwrap();
+    };
+    for n in [1_000usize, 100_000] {
+        for lod in [false, true] {
+            let mut world = World::new();
+            world.register_shared::<LodProfile>().unwrap();
+            let mut ids = DeterministicIdGen::new(3);
+            let side = (n as f32).sqrt().ceil() as usize;
+            let center = side as f32;
+            let viewer = world.spawn(&mut ids).unwrap();
+            place(&mut world, viewer, center, center);
+            world.insert(viewer, LodViewer).unwrap();
+            for i in 0..n {
+                let id = world.spawn(&mut ids).unwrap();
+                place(
+                    &mut world,
+                    id,
+                    (i % side) as f32 * 2.0,
+                    (i / side) as f32 * 2.0,
+                );
+                world.insert(id, Skinned { skin: skin.clone() }).unwrap();
+                world.insert(id, AnimPlayer::new(clip_ref.clone())).unwrap();
+                if lod {
+                    world.insert(id, profile).unwrap();
+                }
+            }
+            concordia_anim::insert_rest_poses(&library, &mut world);
+            let mut schedule = Schedule::new();
+            schedule.add_in(Phase::PrePhysics, lod_system(lod_position));
+            add_processors(&mut schedule, library.clone());
+            let mut sim = SimLoop::new(TickRate::HZ_60, schedule, &mut world).unwrap();
+            let kind = if lod { "lod" } else { "full" };
+            let count = if n >= 1000 {
+                format!("{}k", n / 1000)
+            } else {
+                n.to_string()
+            };
+            for threads in [1, 8] {
+                let jobs = JobSystem::new(NonZeroUsize::new(threads).unwrap()).unwrap();
+                sim.step(&mut world, &jobs, 8);
+                let name = format!("{kind}_tick_{count}_characters_{threads}_threads");
+                c.bench_function(&name, |b| b.iter(|| sim.step(&mut world, &jobs, 1)));
+            }
+        }
+    }
+}
+
+criterion_group!(
+    benches,
+    sample,
+    tick,
+    graph,
+    events_and_attachments,
+    lod_ticks
+);
 criterion_main!(benches);

@@ -10,7 +10,7 @@ use concordia_core::id::{DeterministicIdGen, IdSource};
 use concordia_core::math::Vec3;
 use concordia_scene::builtin::{Name, Transform, Velocity};
 use concordia_scene::{read_template, write_template};
-use concordia_terra::{StorageKind, World};
+use concordia_terra::{LodProfile, StorageKind, World};
 use concordia_terra_sim::{Template, TemplateError};
 use serde_json::json;
 
@@ -132,8 +132,8 @@ fn template_schemas_come_from_reflection() {
     let traits: Vec<&str> = concordia_terra_sim::trait_names(&registry).collect();
     assert_eq!(
         traits,
-        ["Drifting", "Faction", "Movement", "Moving"],
-        "with the built-in Movement"
+        ["Drifting", "Faction", "Lod", "Movement", "Moving"],
+        "with the built-ins Lod and Movement"
     );
 }
 
@@ -203,5 +203,67 @@ fn concordia_fmt_formats_templates_canonically() {
     assert_eq!(
         concordia_scene::format(&canonical, &registry).unwrap(),
         canonical
+    );
+}
+
+/// A crowd member with a simulation LOD profile (2.4b.1, ADR-0076).
+const WALKER: &str = r#"Template(
+    format: 1,
+    description: "A crowd member that ticks less when far away.",
+    traits: {
+        "Lod": (
+            distances: (20.0, 60.0, 120.0),
+            hysteresis: 3.0,
+            rates: (2, 4, 8),
+        ),
+        "Moving": (
+            speed: 1.0,
+        ),
+    },
+    components: {},
+)
+"#;
+
+#[test]
+fn lod_trait_sets_a_shared_profile() {
+    let registry = registry();
+    let doc = read_template(WALKER, &registry).unwrap();
+    let compiled = Template::from_doc("walker", &doc)
+        .unwrap()
+        .compile(&registry)
+        .unwrap();
+    assert_eq!(
+        compiled.component_names(),
+        ["LodProfile", "Transform", "Velocity"]
+    );
+    assert_eq!(compiled.requires(), ["integrate_velocity", "terra.lod"]);
+    let mut world = World::new();
+    let mut ids = DeterministicIdGen::new(9);
+    let (a, b) = (ids.next_id().unwrap(), ids.next_id().unwrap());
+    compiled.spawn(&mut world, a).unwrap();
+    compiled.spawn(&mut world, b).unwrap();
+    let expected = LodProfile::new([20.0, 60.0, 120.0], [2, 4, 8], 3.0).unwrap();
+    assert_eq!(world.get::<LodProfile>(a), Some(&expected));
+    assert_eq!(
+        world.storage_kind::<LodProfile>(),
+        Some(StorageKind::Shared)
+    );
+    assert_eq!(
+        world.storage_stats().shared_values,
+        1,
+        "one profile for both"
+    );
+
+    // A bad profile is the trait's error, naming the rule.
+    let bad = WALKER.replace("(2, 4, 8)", "(4, 2, 8)");
+    let doc = read_template(&bad, &registry).unwrap();
+    let err = Template::from_doc("walker", &doc)
+        .unwrap()
+        .compile(&registry)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("Lod") && err.contains("LOD profile rates"),
+        "{err}"
     );
 }

@@ -30,5 +30,21 @@ A template is a text file, `templates/<name>.template.ron`, named by its file st
 4. Try it in the play world: `mcp__concordia__terra_spawn_batch {"template": "mote", "count": 200, "seed": 1, "distribution": {"Disc": {"radius": 10.0}}}`, `mcp__concordia__sim_step {"ticks": 60}`, then `mcp__concordia__terra_stats {"world": "play"}`. Clear with `mcp__concordia__terra_despawn_batch {"with": ["Name"]}` or `mcp__concordia__sim_stop {}`.
 5. Put it in the level: one entity with a `Transform` and a `Spawner` (`mcp__concordia__component_set`, value `{"template": "mote", "count": 200, "seed": 1, "distribution": {"Grid": {"spacing": 2.0}}}`). The scene stores only the spawner; the same seed gives the same crowd every play.
 
+## Simulation LOD (crowds far from the player)
+Far entities can tick less often. Add the `Lod` trait to a crowd template, and mark what detail is measured from (the player, or a camera rig in the scene) with the `LodViewer` tag:
+```ron
+traits: {
+    "Lod": (
+        distances: (20.0, 60.0, 120.0),
+        hysteresis: 3.0,
+        rates: (2, 4, 8),
+    ),
+},
+```
+- Levels 1, 2 and 3 start at `distances` (meters from the nearest viewer, ascending) and update every 2, 4 and 8 ticks (`rates`, ascending); level 0 updates every tick. An entity regains detail only once it is `hysteresis` meters inside a boundary, which must be less than the first distance.
+- Mark the viewer: `mcp__concordia__component_set {"entity": "<player id>", "component": "LodViewer", "value": null}`. The render camera never counts. With no viewer, everything stays at full detail.
+- Check it in play: `mcp__concordia__terra_stats {"world": "play"}` reports `lod` (`viewers`, entities per level in `levels`, and how many are `due` this tick).
+- Animation already follows LOD: far characters pose less often, and their clip events still fire once.
+
 ## Output contract
-In the task comment: the template path, its traits, the spawner's entity name and parameters, and the play-world count from `terra_stats`.
+In the task comment: the template path, its traits, the spawner's entity name and parameters, and the play-world count from `terra_stats` (with its `lod` levels when the template has `Lod`).

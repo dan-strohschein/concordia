@@ -5,6 +5,7 @@
 
 mod catalog;
 mod error;
+mod lod;
 mod movement;
 mod spawner;
 mod template;
@@ -12,6 +13,7 @@ mod traits;
 
 pub use catalog::{TEMPLATE_DIR, TemplateCatalog};
 pub use error::TemplateError;
+pub use lod::Lod;
 pub use movement::Movement;
 pub use spawner::{Distribution, Spawner, expand_spawners};
 pub use template::{CompiledTemplate, Template};
@@ -25,5 +27,7 @@ use concordia_reflect::{RegistryError, TypeRegistry};
 /// Registers this crate's component (`Spawner`) and built-in trait (`Movement`).
 pub fn register(registry: &mut TypeRegistry) -> Result<(), RegistryError> {
     concordia_terra::register_component::<Spawner>(registry)?;
-    register_trait::<Movement>(registry)
+    concordia_terra::register_lod(registry)?;
+    register_trait::<Movement>(registry)?;
+    register_trait::<Lod>(registry)
 }

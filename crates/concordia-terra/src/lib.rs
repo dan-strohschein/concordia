@@ -28,6 +28,7 @@ mod dynamic;
 mod entity;
 mod error;
 mod hash;
+mod lod;
 mod migrate;
 mod named;
 mod observer;
@@ -48,6 +49,10 @@ pub use dynamic::{DynamicQuery, JsonComponent, component_from_json};
 pub use entity::Entity;
 pub use error::{EcsError, QueryError, ScheduleError};
 pub use hash::{ParseHashError, StateDigest, WorldHash};
+pub use lod::{
+    Due, LOD, LOD_LEVELS, LodPosition, LodProfile, LodStats, LodViewer, SimLod, is_due, lod_phase,
+    lod_stats, lod_system, register_lod,
+};
 pub use named::{Batch, NamedQuery};
 pub use observer::{Observe, observer};
 pub use processor::{FnProcessor, Phase, Processor, ProcessorDecl, processor};

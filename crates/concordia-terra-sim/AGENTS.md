@@ -8,7 +8,7 @@ Terra's templates, traits and spawners (M2 phase 2.0c, ADR-0070), on top of `con
 - `Template` (`new`, `from_doc`, `to_doc`, `compile`) → `CompiledTemplate` (`component_names`, `requires`, `missing_processors`, `components_json`, `spawn`, `spawn_batch`, `record` (a deferred spawn into a `CommandBuffer`))
 - `TemplateCatalog::load(project, builtins, registry)` (`get`, `iter`), `TEMPLATE_DIR`
 - `Spawner` (`points`, `MAX_COUNT`), `Distribution` (`Grid`, `Box`, `Disc`), `expand_spawners`
-- `Movement` (the built-in trait), `register` (registers `Spawner` and `Movement`), `TemplateError`
+- `Movement` and `Lod` (the built-in traits; `Lod` adds a shared `LodProfile`, checked by `LodProfile::new`, and requires `terra.lod`; 2.4b.1, ADR-0076), `register` (registers `Spawner`, Terra's LOD types and both traits), `TemplateError`
 - The text format itself is `concordia_scene::{read_template, write_template, TemplateDoc}`.
 
 ## Invariants
@@ -37,7 +37,7 @@ Terra's templates, traits and spawners (M2 phase 2.0c, ADR-0070), on top of `con
 - Bevy documentation on bundles and required components; flecs documentation on prefabs; concepts only, no code copied.
 
 ## Status
-M2 phase 2.0c complete (2026-11-20); 2.6b added script traits and `CompiledTemplate::record`.
+M2 phase 2.0c complete (2026-11-20); 2.6b added script traits and `CompiledTemplate::record`; 2.4b.1 added the `Lod` trait.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

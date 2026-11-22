@@ -103,3 +103,8 @@ opt-level = 1
 # it blocks the engine for seconds (and timed out the editor's e2e tests in CI).
 [profile.dev.package.concordia-render]
 opt-level = 2
+
+# Terra's 100k-entity determinism tests (templates, LOD) run hundreds of ticks; unoptimized they
+# approach nextest's hang guard under a full parallel test run.
+[profile.dev.package.concordia-terra]
+opt-level = 1

@@ -8,7 +8,7 @@ The text source of truth: canonical RON scenes and prefabs (ADR-0009) with stabl
 - `read_document::<T>` / `write_document` for other typed RON files (input maps, later materials and sidecars): schema-validated, canonical (sorted fields, root named after the type)
 - `SceneDoc`, `PrefabDoc`, `EntityDoc`, `SceneMeta`, `FORMAT_VERSION`
 - `load_into_world`, `snapshot_world`, `instantiate_prefab` (returns `EditOp`s for `concordia-command`)
-- `builtin::{Name, Transform, Parent, Velocity, register, integrate_velocity, headless_schedule}`
+- `builtin::{Name, Transform, Parent, Velocity, register, integrate_velocity, headless_schedule, lod_position}`; `headless_schedule` puts `terra.lod` (from `lod_position`, the world translation) first in `PrePhysics` (2.4b.1, ADR-0076)
 - `SceneError`
 
 ## Invariants
@@ -37,7 +37,7 @@ The text source of truth: canonical RON scenes and prefabs (ADR-0009) with stabl
 - Ryū float formatting via the `ryu` crate (Ulf Adams, "Ryū: fast float-to-string conversion", PLDI 2018).
 
 ## Status
-M0 phase 0.5 complete.
+M0 phase 0.5 complete. M2 phase 2.4b.1: `lod_position` and `terra.lod` in the core schedule.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

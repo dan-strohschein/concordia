@@ -458,3 +458,52 @@ fn merge(target: &mut serde_json::Value, patch: &serde_json::Value) {
         }
     }
 }
+
+#[test]
+fn terra_templates_skill_lod_examples_are_real_params_and_a_valid_template() {
+    let text = default_roster()
+        .skills
+        .iter()
+        .find(|(n, _)| *n == "concordia-terra-templates")
+        .map(|(_, t)| *t)
+        .unwrap();
+    let mut checked = 0;
+    for (tool, args) in examples(text, "") {
+        match tool.as_str() {
+            "component_set" if args["component"] == "LodViewer" => {
+                serde_json::from_value::<concordia_terra::LodViewer>(args["value"].clone())
+                    .unwrap_or_else(|e| panic!("{args}: {e}"));
+            }
+            "terra_stats" => {
+                serde_json::from_value::<concordia_api::WorldSel>(args["world"].clone())
+                    .unwrap_or_else(|e| panic!("{args}: {e}"));
+            }
+            _ => continue,
+        }
+        checked += 1;
+    }
+    assert!(
+        checked >= 3,
+        "marking a viewer and reading the buckets ({checked})"
+    );
+    let block = ron_blocks(text)
+        .into_iter()
+        .find(|b| b.contains("\"Lod\""))
+        .expect("a Lod trait example");
+    let doc = format!(
+        "Template(\n    format: 1,\n    description: \"Skill example.\",\n    {block}\n    components: {{}},\n)\n"
+    );
+    let mut registry = concordia_reflect::TypeRegistry::new();
+    concordia_scene::builtin::register(&mut registry).unwrap();
+    concordia_terra_sim::register(&mut registry).unwrap();
+    let doc = concordia_scene::read_template(&doc, &registry)
+        .unwrap_or_else(|e| panic!("the Lod example: {e}"));
+    let compiled = concordia_terra_sim::Template::from_doc("example", &doc)
+        .unwrap()
+        .compile(&registry)
+        .unwrap_or_else(|e| panic!("the Lod example: {e}"));
+    assert_eq!(compiled.component_names(), ["LodProfile"]);
+    for needle in ["LodViewer", "hysteresis", "`lod`", "`levels`", "`due`"] {
+        assert!(text.contains(needle), "the skill explains {needle}");
+    }
+}

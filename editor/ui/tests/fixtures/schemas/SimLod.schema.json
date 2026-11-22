@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "An entity's simulation LOD this tick (hashed; written only by `terra.lod`).",
+  "properties": {
+    "due": {
+      "description": "LOD-aware processors visit it this tick.",
+      "type": "boolean"
+    },
+    "elapsed": {
+      "description": "Scaled seconds this tick's update covers (0 when not due).",
+      "type": "number"
+    },
+    "last_time": {
+      "description": "Scaled time its simulation has reached.",
+      "type": "number"
+    },
+    "level": {
+      "description": "0 (full detail) to 3.",
+      "maximum": 255,
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "level",
+    "due",
+    "elapsed",
+    "last_time"
+  ],
+  "title": "SimLod",
+  "type": "object",
+  "x-concordia-category": "LOD",
+  "x-concordia-type": "SimLod"
+}

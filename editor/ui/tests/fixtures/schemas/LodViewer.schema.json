@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "default": null,
+  "description": "Marks an entity that simulation LOD is measured from (the player, a scene's camera rig).",
+  "title": "LodViewer",
+  "type": "null",
+  "x-concordia-category": "LOD",
+  "x-concordia-type": "LodViewer"
+}

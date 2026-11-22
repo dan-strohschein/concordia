@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) done; 2.4b next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b.1 (2026-11-21) done; 2.4b.2 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -1619,6 +1619,128 @@ Both `Cargo.lock`s gain `concordia-anim` under `concordia-render`.
 
 **Not in 2.4.5:** Blender clip authoring (the 3.7 bridge); the animator wiring graphs into game scenes (a handoff, C1); M12's `rig_*` and `anim_key_*` tools.
 
+### Phase 2.4b refinement (2026-11-21, against the code after 2.4.5)
+**Status: author decisions E1–E3 taken (2026-11-21); my other calls below (say if you disagree). 2.4b.1 done (see its As built); 2.4b.2 next.**
+
+Refined against the code as built. The first test list (under *New-phase tests*) and M7's 7.4 and 7.6 notes are the starting point.
+
+**What exists (checked in code):**
+- **No LOD code anywhere.** Terra has processors in five phases, deterministic parallel waves, shared, chunk and tag storage, command buffers, signals (delivered at the start of the next tick, then cleared) and observers. `SystemCtx` carries one `dt` for the whole tick.
+- **Chunk components are logical (`CHUNK_ROWS` = 1024) and never hashed;** the rule is that simulation may not depend on them unless they are rebuilt from hashed state. 2.0b left "processor access to chunk components" for 2.4b's first consumer.
+- **Instancing already exists:** extraction gives one `DrawItem` per `MeshRenderer` (in entity order), and the renderer merges consecutive instances of one mesh and material into one instanced call (skinned copies too, each with its own palette). So "instanced representation" means switching an entity to a cheaper, unskinned mesh, not new instancing machinery.
+- **Costs at scale:** extraction builds an `EntityItems` per drawn entity and the scene cache interpolates every entity's matrix; 2.4.2's bench drew 1,000 skinned characters in one call (6.5 ms at 1080p). Nothing has measured 100k entities.
+- **`terra.stats`** reports counts, archetypes, columns, shared values, skipped commands and per-phase waves; no LOD buckets.
+- **The animation processors** (`anim.sample`, `anim.attach`, `anim.tween`) run every tick for every player; the pose is hashed simulation state.
+
+**Gaps:**
+| # | Gap | Resolution |
+|---|---|---|
+| L-G1 | Nothing marks where detail matters | `LodViewer`, a hashed component on simulation entities (the player, a camera rig that is part of the scene); never the render camera (M7 7.4) |
+| L-G2 | Hysteresis needs memory, and chunk components aren't hashed | Each entity's level and last-tick time are a hashed component (`SimLod`), rebuilt every tick from hashed inputs |
+| L-G3 | One `dt` per tick can't serve entities that ticked 4 ticks ago | LOD-aware processors get each entity's elapsed scaled time since it last ticked |
+| L-G4 | A signal to an entity skipped this tick would be cleared unseen | Rule below |
+| L-G5 | No cheaper mesh to switch to | `Representation` (presentation-only): the cheap mesh and material and the distances |
+| L-G6 | No way to see LOD | `view_mode: "lod"` (engine-drawn, D7) and LOD buckets in `terra.stats` |
+
+**Author decisions (2026-11-21):**
+- **E1. Staggered ticks.** An entity at rate r ticks when (tick + phase(id)) mod r = 0, with phase(id) a fixed hash of its id, so each tick does an even share of the far work. Each entity gets its exact elapsed scaled time since it last ticked.
+- **E2. Representation per frame, no memory.** The renderer picks full, instanced or hidden by distance from the camera drawing that frame; every capture and viewport is right for its own camera. Hysteresis is added later only if flicker shows.
+- **E3. Animation is the first consumer.** `anim.sample` opts in: far characters pose at their LOD rate, advancing clips and graphs by their elapsed time, so events and attachments stay correct. Measured on the 1,000-character bench.
+- **Also:** the stale open questions (moved to M5 or answered by 2.0b) are cleaned up in 2.4b.1's commit.
+
+**Settled without a question (my calls; say if you disagree):**
+- **Levels and settings:** levels 0 (full) to 3. A shared component `LodProfile { distances: [d1, d2, d3], rates: [1, r1, r2, r3], hysteresis }`, so a template's trait sets it once per archetype; entities without a profile are always level 0.
+- **No viewer means full detail:** with no `LodViewer` in the world every entity is level 0, so headless tests and scenes without a player behave exactly as today.
+- **Level storage:** `SimLod { level, last_time }` is a dense hashed component (not chunk data, which isn't hashed; not a shared component, whose archetype moves would make every transition a structural change). A `terra.lod` exclusive system at the start of `PrePhysics` computes it: nearest viewer distance (squared, from world transforms), hysteresis as a margin on the way back up, then the due rule.
+- **Opt-in per processor:** `ProcessorDecl::lod()` makes a processor LOD-aware. Its queries visit only entities due this tick, and `ViewQuery` gives each one its elapsed scaled time (`clock.time − last_time`), exact under time-scale changes. Others run every tick as now.
+- **Signals (L-G4):** receivers see every signaled target whatever its LOD; LOD throttles only the regular query. `signals_survive_lod_changes` covers a level change on the tick a signal is raised and on the tick it is delivered.
+- **Representation (L-G5):** `Representation { instanced: Option<MeshRenderer>, instanced_from, hidden_from }`. Full uses the entity's own `MeshRenderer` and pose; instanced draws the cheaper mesh unskinned; hidden draws nothing. It never touches the world hash.
+- **ADR-0076 (Terra LOD):** the viewer rule, the hashed level and elapsed time, the opt-in and the signal rule are a new determinism contract next to ADR-0063 and ADR-0069; `docs/design.md` doesn't change.
+- **Sub-phases (one PR each, off main):** **2.4b.1 Simulation LOD** (viewers, profiles, `SimLod`, the due rule, opt-in processors, signals, `terra.stats` buckets, ADR-0076) and **2.4b.2 Representation LOD** (`Representation`, extraction, the `lod` view mode, the 100k instanced golden and a perf baseline). Branches `m2/2.4b.<n>-<slug>`.
+- **Tests:** the first list, plus `no_viewer_means_full_detail`, `lod_processors_get_exact_elapsed_time_under_time_scale_changes`, `non_lod_processors_still_run_every_tick`, `lod_is_deterministic_across_thread_counts` (100k entities, 1 and 8 threads, hashes at ticks 1, 60 and 300), `terra_stats_reports_lod_buckets` and a `lod` view-mode golden; hand-computed due ticks and levels throughout.
+- **Studio:** no role change; the level designer already has `terra_stats` and `capture_screenshot`, and its skill gains a short LOD section (`LodProfile` in templates, `LodViewer`).
+
+### Phase 2.4b.1 refinement (2026-11-21, against the code)
+**Status: no author questions; my calls below (say if you disagree). Done (see 2.4b.1 As built).**
+
+**Checked in code:** `View` hands processors disjoint column borrows, and `ViewQuery` cuts each archetype into fixed `chunk`-row pieces; `for_each_of` reaches signaled entities by location; `SystemCtx` has one `dt`; the clock adds `dt_exact` to `time` after the schedule runs; transforms (and `world_transform`) live in `concordia-scene`, above Terra; the core module's `headless_schedule` is the first schedule of every play world; `anim.sample` uses `ctx.dt` for every player; `terra.stats` has no LOD fields.
+
+**Settled without a question (my calls):**
+- **Due rule (E1):** `phase(id)` is SplitMix64 of the id's two 64-bit halves XORed, top 32 bits; due when `(tick + phase) mod rate = 0`, computed without overflow. **An entity is also due on any tick its level changes** (both ways), so something walking closer updates at once and something walking away takes its last fine step. A new `SimLod` starts at level 0, so its first tick is always due (a changed level, or level 0's rate of 1).
+- **Elapsed:** when due, `elapsed = end − last_time` and `last_time = end`, with `end = clock.time + dt_exact`, the same sum the clock makes after the tick, so it is exact under time-scale changes (time scale 0 gives 0).
+- **`SimLod { level, due, elapsed, last_time }`** (dense, hashed). `due` and `elapsed` are stored rather than recomputed in views, so a view needs only the `SimLod` column, not the profile or the clock.
+- **`terra.lod`** is an exclusive system in Terra, built by `lod_system(position)`. Terra doesn't know transforms, so the scene supplies `lod_position` (the world translation; a parented entity goes through `world_transform`). `headless_schedule` adds it first, so it runs in `PrePhysics` right after `terra.timers`, before every module's processors. It adds and removes `SimLod`s, then computes levels in parallel (1,024-entity pieces).
+- **Levels:** the nearest viewer by squared distance (no square roots). A boundary belongs to the far side (d ≥ dᵢ is level *i*); detail comes back only inside dᵢ − h. **h must be below d₁** (otherwise the inner level could never be regained); a profile breaking a rule in a world (one that skipped `LodProfile::new`) means level 0. Losing or gaining several levels at once jumps straight there.
+- **Profile shape:** `rates: [r1, r2, r3]` for levels 1–3 (level 0 is always every tick), not the four-element array the refinement sketched; distances and rates ascending (equal allowed).
+- **Opt-in API:** `ProcessorDecl::lod()` adds a read of `SimLod`. All of that processor's queries skip rows that aren't due; `for_each_due`, `par_for_each_due` and `par_for_each_deferred_due` hand each entity `Due { dt, dt_exact, level }`, and the plain methods are those with the step ignored. Pieces are still cut every `chunk` rows, skipped rows included, so chunking depends on neither LOD nor thread count. Entities without a `SimLod` are due every tick with the tick's `dt` at level 0; so is every entity in a processor that didn't opt in.
+- **Signal rule:** `View::signals` and `ViewQuery::for_each_of` ignore LOD.
+- **Animation (E3):** `anim.sample` opts in; clips and graphs advance by `Due::dt`, and events use the crossing rule on the whole step since the last pose. `anim.pose`, `anim.attach` and `anim.tween` stay full-rate: rest poses must appear at once, a held pose places an attachment the same way every tick, and tweens animate arbitrary entities that have no profile. **Rendering is unchanged:** the scene cache still interpolates the pose tick to tick, so a far character moves over the tick it poses on and holds between. Spreading that over its interval is a representation question for 2.4b.2.
+- **`terra.stats`:** `lod: { viewers, levels: [4 counts], due }`. The level designer is the role with `terra_stats`; its budget impact is reported in As built.
+- **Templates:** a built-in `Lod` trait (`distances`, `rates`, `hysteresis`, checked by `LodProfile::new`) adds the shared `LodProfile` and requires `terra.lod`.
+- **ADR-0076** records the viewer rule, the hashed level, elapsed time, the opt-in and the signal rule.
+
+### Phase 2.4b.1 As built (2026-11-21, ADR-0076)
+**Reconciled with the code as built:** the refinement and my calls above held. Details they left open:
+- **No sentinel level:** a new `SimLod` starts at level 0. Its first tick is due anyway: either its level changes, or it stays at level 0, which ticks every tick.
+- **Invalid profiles in a world** (hand-edited, bypassing `LodProfile::new`) give level 0; `validate` runs per entity in `terra.lod`.
+- **`terra.lod` runs in wave 1 of `PrePhysics`**, alone, right after `terra.timers` (an exclusive system conflicts with everything), as `terra.stats` shows.
+- **`concordia-terra` builds at `opt-level = 1` in dev** (`Cargo.toml`): the 100k-entity, 300-tick determinism test took 38 s unoptimized, too close to nextest's 120 s guard under a parallel `just test`; it now takes 13 s.
+
+**Engine:**
+- `concordia-terra`: `lod.rs` (`LodViewer`, `LodProfile`, `SimLod`, `Due`, `lod_phase`, `is_due`, `lod_system` / `LOD`, `LodPosition`, `lod_stats` / `LodStats`, `register_lod`); `ProcessorDecl::lod` / `is_lod`; `ViewQuery::{for_each_due, par_for_each_due, par_for_each_deferred_due}`, with every view iteration going through one row visitor that applies the due filter; `View` carries the tick's step.
+- `concordia-scene`: `builtin::lod_position`; `headless_schedule` adds `terra.lod` first.
+- `concordia-terra-sim`: the built-in `Lod` trait; `register` also registers Terra's LOD types.
+- `concordia-anim`: `anim.sample` is LOD-aware and advances by `Due::dt`.
+- `concordia-api`: `terra.stats` gains `lod` (`LodBuckets`: `viewers`, `levels`, `due`).
+- Studio: the level designer's `concordia-terra-templates` skill gains a "Simulation LOD" section (the `Lod` trait, `LodViewer`, `terra_stats`' `lod`).
+- Docs: ADR-0076; `docs/guides/agents-engine-api.md` (the templates section and the `terra.stats` row); the AGENTS.md of `concordia-terra`, `-terra-sim`, `-scene`, `-anim` and `-api`; the READMEs of `concordia-terra`, `-terra-sim` and `-anim`; both `BASELINE.md`s; `plans/README.md` (status, ADR registry); this plan's open questions, with the port ones moved to M5's (11–14).
+
+**Tests (19 new, 2 extended):**
+- `concordia-terra/tests/lod.rs` (13), at 64 Hz so every step is exact; the six test ids' phases (mod 2, 4 and 8) were computed separately and are in the file's header:
+  - `lod_phase_is_a_fixed_hash_of_the_id` (six pinned phases; `is_due` at both ends of the ranges);
+  - `far_entities_tick_at_their_lod_rate` (levels 0–3 plus an unprofiled entity over 16 ticks: due ticks [0, 2, 4, …], [0, 4, 8, 12], [0, 2, 6, 10, 14] (the same level, another phase) and [0, 4, 12]; elapsed 1, 4 and 8 steps; `last_time`; `lod_stats` at tick 15: levels [1, 1, 2, 1], 1 due);
+  - `lod_transitions_are_hysteresis_damped` (15 ticks of hand-picked distances around 10/20/40 m with a 2 m margin: boundaries belong to the far side, exactly d − h still stays coarse, jumps of several levels, and due on every change, odd ticks included);
+  - `level_rule_uses_squared_distances_with_a_margin`, `malformed_profiles_are_descriptive_errors` (eight cases, including a margin as wide as the first distance), `invalid_profiles_in_the_world_mean_full_detail`;
+  - `simulation_lod_depends_only_on_deterministic_inputs` (reverse insertion order, archetype churn, chunk data and a presentation-only "camera" moving elsewhere: equal levels, visits and hashes; a different viewer path differs);
+  - `signals_survive_lod_changes` (raised on ticks 1, 6 and 8 at an entity due on [0, 4, 6, 8, 9, 12]; delivered on 2, 7 and 9, two of them not due, one a level change on the raise tick and one on the delivery tick; `for_each_of` reaches every target);
+  - `no_viewer_means_full_detail` (every tick, `dt`, level 0; a viewer appearing, then going (level 0 and due at once); a removed profile removes the `SimLod`);
+  - `lod_processors_get_exact_elapsed_time_under_time_scale_changes` (scales 1, 0.5, 0, 2, 1: elapsed 2, 5, 1, 12 and 10 half-steps at level 2, every tick's exact `dt` at level 0, and both sum to the clock's time exactly);
+  - `non_lod_processors_still_run_every_tick` (a non-LOD processor reading `SimLod` beside a LOD one: 16 visits each with the tick's `dt` at level 0);
+  - `the_nearest_viewer_sets_the_level` (two viewers);
+  - `lod_is_deterministic_across_thread_counts` (100,489 entities, two moving viewers, hashes at ticks 1, 60 and 300 equal at 1 and 8 threads; every level holds over 1,000 entities and under half are due).
+- `concordia-anim/tests/lod.rs`: `far_characters_fire_events_once_on_the_right_tick_and_match_full_rate_poses` (8 Hz, near and far clip and graph players: the far clip player is due on [0, 1, 5, 9, 13] and the far graph on [0, 2, 6, 10, 14]; at those ticks their poses equal full rate's, and they hold between; events `left`/`right` raised on ticks 5 and 13 (clip) and 2 and 10 (graph), once each, against 2 and 10 at full rate).
+- `concordia-scene`: `lod_position_is_the_world_translation` (a scaled parent), `headless_schedule_runs_simulation_lod_from_world_positions`.
+- `concordia-terra-sim`: `lod_trait_sets_a_shared_profile` (one shared value for two entities; requires `terra.lod`; a bad profile names the rule).
+- `concordia-api`: `terra_stats_reports_lod_buckets` (distances 5, 15, 30, 50 and 60: levels [1, 1, 1, 2], 5 due on the first tick; `terra.lod` in `PrePhysics` wave 1; the edit world's buckets).
+- `concordia-studio`: `terra_templates_skill_lod_examples_are_real_params_and_a_valid_template` (the `Lod` block compiled as a template, `LodViewer` and `terra_stats` calls parsed).
+- Extended: `template_schemas_come_from_reflection` lists the built-in `Lod` (expected knock-on); `non_lod_processors_still_run_every_tick` now also reads `SimLod` (see the mutations).
+
+**Red run:** against stubs (no filtering, phase 0, level 0, no validation, no `SimLod`, no `Lod` trait output, no `lod_position`, `terra.stats` without `lod`, `anim.sample` at full rate), all 12 first Terra tests and the 5 cross-crate ones failed for the right reason. Not seen red:
+- **Written after the implementation:** `the_nearest_viewer_sets_the_level` (no first test told nearest from first viewer; it catches the farthest-viewer mutation) and the skill-example test (the skill section was written with the code; a guard that its examples parse).
+- **Changed deliberately (my test mistakes):** entities that already have a viewer get their real level on their first tick, not 0; the noisy world spawned one entity more than the plain one (entity existence is hashed), so both now spawn the camera holder; a hysteresis margin at least as wide as the first distance would make the inner level unreachable, so it became a validation error instead of a level-rule case.
+
+**Mutation checks:** 22 mutations, each run against its tests with the restored file given a fresh mtime; all 22 caught:
+- **The due rule:** phase ignored, off by one, other hash bits, one half of the id, not due on a level change.
+- **Hysteresis and levels:** no margin, the margin applied going out too, boundaries exclusive.
+- **The viewer rule:** the farthest viewer, no viewer measured from the origin, invalid profiles used anyway.
+- **Elapsed time:** missing this tick's step, `last_time` not advanced, the tick's `dt` handed out instead.
+- **Views:** no due filter; filtering processors that didn't opt in (caught only once the non-LOD test read `SimLod`).
+- **The signal rule:** signal targets filtered by due.
+- **Bookkeeping:** a stale `SimLod` kept, due not counted in `lod_stats`.
+- **Animation:** the tick's `dt` instead of the elapsed step, for clips and graphs; `anim.sample` not LOD-aware.
+
+**Goldens and snapshots:** none new or changed. **Editor schemas:** `MethodTerraStatsResult.ts` gains `lod`; new `Lod`, `LodProfile`, `LodViewer`, `SimLod` and `F64` types and schema fixtures; committed.
+
+**Studio and budgets** (served definitions, 4 chars a token): the level designer is the only role with `terra_stats`; 35 tools, about 21.5k → 21.7k. Animator 22 tools ≈16.7k, tech artist 23 ≈20.0k, QA 22 ≈18.4k, director 13 ≈12.5k, gameplay programmer 16 ≈12.4k, writer 11 ≈9.6k (unchanged); all under 50k.
+
+**Perf** (both `BASELINE.md`s): `terra.lod` costs about 65 ns per profiled entity on one thread (6.55 ms at 100k; 2.02 ms on eight), three quarters of it position lookups (a follow-up for M7's scale: positions in query order). For animation it pays well: 1,000 characters 2.72 → 1.90 ms per tick on one thread, and 100k characters 280 → 70 ms (one thread) and 52 → 23 ms (eight). Existing rows are unchanged. **The 43 ms pose hash is unchanged by LOD:** held poses are hashed like any other, and the cost follows the number of poses; the follow-up stays open.
+
+**Checklist:** all of these pass: `just lint` and Tauri clippy; `CONCORDIA_REQUIRE_GPU=1 just test` (1,393 tests and the doc tests); `just gate-tests M1` (4) and `M3S` (13; `m3s_live_checker_accepts_a_scripted_session_and_rejects_violations` passed, no flake seen); `just deny` and the editor's; `just editor-schemas` (committed); `just editor-test` (118 unit, 22 end-to-end).
+
+**Open items:** guest modules receiving `AnimEvent` are still untested (this phase doesn't touch scripting). The renderer interpolates a far character's pose tick to tick, so it moves over its due tick and holds between; whether to spread that over the interval is 2.4b.2's call. Processor access to chunk components still has no consumer (ADR-0069 expected LOD to be it; `SimLod` is dense instead).
+
+**Not in 2.4b.1:** representation LOD, the `lod` view mode and the 100k instanced golden (2.4b.2); LOD for `anim.attach` and `anim.tween`; per-processor rates; a query-order position path.
+
 ### Effort (re-estimated)
 | Phase | Estimate |
 |---|---|
@@ -2094,15 +2216,16 @@ which runs `cargo nextest run --test m2_port_begins` (`tests/gates/m2_port_begin
 - **Weak oracles.** Several suites are "structural" (e.g. a health-bar suite that asserts shader parameters). *Mitigation:* re-target structural assertions to our equivalents, and rely on playthrough/replay/golden tests for behavior.
 
 ## Open questions
+*Cleaned up in 2.4b.1 (2026-11-21):* the port questions moved to M5 with the Godot work (ADR-0048, ADR-0067) and are now M5's open questions 11–14; two are answered (where noted); particles and the text stack stay open.
 
-- Grid layers (walkability, terrain type, ground surface, ...) as base64 in `.data.ron`, or as PNG layers beside it (diffable images, editable in tools)?
-- Wire encoding across the WIT boundary: reflect-described fixed layout (planned) vs. a schema'd format such as postcard; how strings/lists are arena-encoded.
-- Particles: a minimal CPU emitter in M2 for loot effects and fire patches, or wait for an M4 VFX graph? (Planned: wait; report as non-blocking.) *Note (2026-11-20, ADR-0015):* M4 plans no VFX graph kind; particles are now M11 (Sparx). Its open question 11 recommends answering "wait for M11", with no CPU emitter in M2.
-- Should the port project be its own private git repository (planned) or a private branch of the game repo?
-- Do probe scripts run with Godot's `--script` from outside the project reliably for everything we need (terrain sampling is pure; luma harnesses need a window)? Fallback: capture probe values once by hand and commit them to the port project.
-- Should the reference port's grid-to-polygon navmesh builder be ported verbatim as an alternative nav source, if Recast reachability ever disagrees with the grid oracle?
-- Does M0 already provide typed ECS events and timers, or does M2 add them to `concordia-terra`?
-- Is `cosmic-text` the right text stack for the shipped game UI, or is a smaller atlas-only rasterizer enough for M2?
+- ~~Grid layers (walkability, terrain type, ground surface, ...) as base64 in `.data.ron`, or as PNG layers beside it?~~ **Moved to M5** (open question 11), with `.data.ron` and the Godot importer.
+- ~~Wire encoding across the WIT boundary: reflect-described fixed layout vs. a schema'd format such as postcard?~~ **Answered in 2.6a (ADR-0062):** a fixed layout per type, derived from its shape; postcard was rejected (no random access to rows).
+- Particles: a minimal CPU emitter in M2 for loot effects and fire patches, or wait? (Open. *Note (2026-11-20, ADR-0015):* particles are M11's (Sparx), and M11's open question 11 recommends "wait for M11", with no CPU emitter in M2.)
+- ~~Should the port project be its own private git repository or a private branch of the game repo?~~ **Moved to M5** (open question 12).
+- ~~Do probe scripts run with Godot's `--script` from outside the project reliably?~~ **Moved to M5** (open question 13).
+- ~~Should the reference port's grid-to-polygon navmesh builder be ported as an alternative nav source?~~ **Moved to M5** (open question 14); 2.5 builds navmeshes with Recast only.
+- ~~Does M0 already provide typed ECS events and timers, or does M2 add them?~~ **Answered by 2.0 and 2.0b:** M2 added them (timers in 2.0, ADR-0063; typed signals and observers in 2.0b, ADR-0069).
+- Is `cosmic-text` the right text stack for the shipped game UI, or is a smaller atlas-only rasterizer enough for M2? (Open; settled at 2.7's refinement with ADR-0060.)
 
 ## ADRs to write
 - ADR-0067: M2 refinement: engine breadth on Terra's Mass core, Substrate-style materials, Godot mappings to M5, sample-game gate (written).
