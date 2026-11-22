@@ -1433,7 +1433,7 @@ Both `Cargo.lock`s gain `concordia-anim` under `concordia-render`.
 - `just editor-schemas` (changes committed);
 - `just editor-test` (118 unit, 22 end-to-end).
 
-**Not in 2.4.3:** events, attachments, tweens and `anim.*` tools (2.4.4); the Godot features listed above, which the planned M13 (Advanced Godot features, ADR-0017) takes up (its plan is on the `plans/m13-advanced-godot-features` branch, not yet on main); recording play-world writes in replays (ADR-0075).
+**Not in 2.4.3:** events, attachments, tweens and `anim.*` tools (2.4.4); the Godot features listed above, which M13 (Advanced Godot features, ADR-0017, [`M13-advanced-godot-features.md`](M13-advanced-godot-features.md)) takes up; recording play-world writes in replays (ADR-0075).
 
 ### Phase 2.4.4 refinement (2026-11-21, against 2.4.3 as built)
 **Status: no author questions; my calls below (say if you disagree). Done (see 2.4.4 As built).**
@@ -1531,7 +1531,7 @@ Both `Cargo.lock`s gain `concordia-anim` under `concordia-render`.
 - `just editor-schemas` (changes committed);
 - `just editor-test` (118 unit, 22 end-to-end).
 
-**Open items:** the selection box now uses posed bounds (2.4.2's open item, closed). The Metal repro has no FB number yet. 2.4.3's "Not in 2.4.3" line now points at M13, whose plan is still on its own branch.
+**Open items:** the selection box now uses posed bounds (2.4.2's open item, closed). The Metal repro has no FB number yet. 2.4.3's "Not in 2.4.3" line points at M13 (its plan landed after this phase, with M10–M12).
 
 **Not in 2.4.4:** the animator role and its skill (2.4.5); recording play-world writes in replays (ADR-0075); events from glTF extras or FBX markers (no standard; authored in the sidecar); tween loops and sequences (Godot's `set_loops`, chained tweeners); drawing the bind skeleton in the edit world.
 
