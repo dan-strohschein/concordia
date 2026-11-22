@@ -20,7 +20,7 @@ struct Cli {
 enum Command {
     /// Create a project: concordia.toml, scenes/main.scene.ron, .gitignore, .mcp.json and Agent Studio.
     New(cmd::new::Args),
-    /// Open the project's window (simulation and rendering are wired in later M1 phases).
+    /// Open the project's window and play its main scene there (`--edit`: show the edit world).
     Run(cmd::run::Args),
     /// Run the engine headless, serving the Engine API over stdio (default) or WebSocket.
     Headless(cmd::headless::Args),

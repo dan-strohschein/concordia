@@ -79,3 +79,40 @@ fn run_bench_latency_measures_the_engine_window_alone() {
         "frames with input and display times: {presented}\n{report}"
     );
 }
+
+#[test]
+fn run_plays_by_default_and_edit_keeps_the_editor() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = run(&["run", "--help"], dir.path());
+    let help = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(help.contains("--edit"), "{help}");
+    assert!(help.contains("play its main scene"), "{help}");
+}
+
+/// Needs a desktop session: `cargo nextest run --run-ignored only -E 'test(in_its_window)'`.
+#[test]
+#[ignore = "opens a real window"]
+fn run_plays_the_main_scene_in_its_window() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = example("m1-physics-stack");
+    let play = run(
+        &["run", "--project", &project, "--exit-after-ms", "800"],
+        dir.path(),
+    );
+    assert!(play.status.success(), "{}", stderr(&play));
+    assert!(stderr(&play).contains("playing"), "{}", stderr(&play));
+    let edit = run(
+        &[
+            "run",
+            "--project",
+            &project,
+            "--edit",
+            "--exit-after-ms",
+            "500",
+        ],
+        dir.path(),
+    );
+    assert!(edit.status.success(), "{}", stderr(&edit));
+    assert!(!stderr(&edit).contains("playing"), "{}", stderr(&edit));
+}

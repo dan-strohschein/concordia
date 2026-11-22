@@ -38,3 +38,12 @@ Replays (ADR-0072) re-run the simulation from recorded input only, so anything a
 - New: `concordia-input`'s ray kind and `InputMap::starter`; `concordia-render`'s `camera_ray`, `scene_camera` and `viewport.pointer_ray`; `concordia-physics`'s `PhysicsQueries`; `concordia-nav`'s `ClickToMove` and `nav.click`. `concordia-nav` now depends on `concordia-input`, and `concordia-render` on `concordia-input` too.
 - `input.inject`'s schema gains `PointerRay`, and the editor's generated types change. QA gains `input_inject` and `viewport_pointer_ray`.
 - **2.5b.2b (N4):** `concordia run` plays the main scene. Window input is sampled into the play world, cursor moves are also sent as rays through `camera_ray`, and the play world is drawn from its highest-priority camera.
+
+## Update (M2 phase 2.5b.2b, 2026-11-22): windowed play
+- **`concordia run` plays by default.** `--edit` (or `--bench-latency`) keeps the editor view of the edit world.
+- **`concordia_app::Player` is the logic.** It turns window events into Engine API calls through a call function, so the window takes the same path as any agent:
+  - `sim.play` on open, and `sim.stop` on close;
+  - each input event as `input.inject` for the next tick, and each cursor move also as a `PointerRay`, from `viewport.pointer_ray` over the window's logical size on the play world's camera;
+  - `viewport.present` of the play world on open and on each resize.
+- **Losing focus releases every held key and button.** Drawing and ray failures (no GPU, no camera) warn once, and play goes on.
+- **`viewport.present` draws from a scene camera when it has no `view`.** It uses its `camera`, or the highest-priority one, and passing both is refused. The render state remembers that choice, so the redraw after each real-time tick (`after_sim`) uses the same camera. That is why a window needs no frame timer: ticks redraw it.
