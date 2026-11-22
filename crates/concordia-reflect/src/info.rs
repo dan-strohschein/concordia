@@ -24,6 +24,9 @@ pub struct TypeInfo {
     pub category: Option<&'static str>,
     /// `#[reflect(default)]` or `#[reflect(default = ..)]`: the whole value's default as JSON.
     pub default: Option<DefaultValue>,
+    /// `#[reflect(presentation)]`: a presentation-only component (never hashed, off limits to
+    /// simulation; ADR-0063).
+    pub presentation: bool,
 }
 
 /// A default value as JSON: computed by a function (derived types) or stored (dynamic types).
@@ -68,6 +71,7 @@ impl TypeInfo {
             widget: None,
             category: None,
             default: None,
+            presentation: false,
         }
     }
 
@@ -81,6 +85,12 @@ impl TypeInfo {
     pub fn with_category(mut self, category: &'static str) -> Self {
         debug_assert!(!category.trim().is_empty(), "empty category");
         self.category = Some(category);
+        self
+    }
+
+    /// The same type, presentation-only.
+    pub fn with_presentation(mut self) -> Self {
+        self.presentation = true;
         self
     }
 
@@ -101,6 +111,7 @@ impl TypeInfo {
             widget: None,
             category: None,
             default: None,
+            presentation: false,
         }
     }
 

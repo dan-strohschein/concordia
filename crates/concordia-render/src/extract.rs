@@ -7,7 +7,7 @@ use concordia_assets::{AssetRef, MeshRenderer, Skinned};
 use concordia_core::id::EntityId;
 use concordia_core::math::{Mat4, Vec3};
 use concordia_scene::builtin::{Parent, Transform, world_transform, world_transforms};
-use concordia_terra::World;
+use concordia_terra::{SimLod, World};
 
 use crate::{Camera, DirectionalLight, Environment, PointLight, RenderError, SpotLight};
 
@@ -26,6 +26,13 @@ pub struct DrawItem {
     pub cast_shadows: bool,
     /// The entity whose pose deforms it (itself or an ancestor with the same skin), if any.
     pub skin: Option<EntityId>,
+    /// How it is drawn by distance from the camera, and whose it is: its own, else its nearest
+    /// ancestor's with the same skin (a character's parts follow the bind mesh; 2.4b.2).
+    pub representation: Option<(EntityId, Arc<crate::Representation>)>,
+    /// Drawn as its representation's cheaper mesh this frame (set by [`RenderWorld::represented`]).
+    pub instanced: bool,
+    /// Its simulation LOD level (its own `SimLod`, else its pose owner's; the `lod` view mode).
+    pub sim_lod: Option<u8>,
 }
 
 /// A posed character as extracted: its skeleton, pose and world matrix.
@@ -124,43 +131,51 @@ pub struct RenderWorld {
     pub environment: Option<Environment>,
     /// Cameras.
     pub cameras: Vec<CameraView>,
-    /// Posed characters, in entity-id order.
+    /// Posed characters as extracted, in entity-id order.
+    pub poses: Vec<PoseView>,
+    /// Posed characters as drawn (palettes), in entity-id order.
     pub skins: Vec<SkinView>,
 }
 
 impl RenderWorld {
     /// Copies render components and world transforms out of `world`.
     pub fn extract(world: &World) -> Self {
-        let items: Vec<EntityItems> = placements(world)
-            .iter()
-            .map(|(&entity, &matrix)| EntityItems::extract(world, entity, matrix))
-            .collect();
-        Self::assemble(items.iter())
+        Self::assemble_owned(
+            placements(world)
+                .iter()
+                .map(|(&entity, &matrix)| EntityItems::extract(world, entity, matrix)),
+        )
     }
 
-    /// Joins per-entity items (in entity-id order) into a render world; poses become palettes.
+    /// Joins per-entity items (in entity-id order) into a render world (palettes are built per
+    /// frame by [`RenderWorld::represented`]).
     pub fn assemble<'a>(items: impl Iterator<Item = &'a EntityItems>) -> Self {
+        Self::assemble_owned(items.cloned())
+    }
+
+    /// [`RenderWorld::assemble`] from owned items, without copying them.
+    pub fn assemble_owned(items: impl IntoIterator<Item = EntityItems>) -> Self {
         let mut out = Self::default();
         for item in items {
-            out.skins.extend(item.pose.as_ref().and_then(SkinView::of));
-            out.draws.extend(item.draw.iter().cloned());
-            out.lights.extend(item.light.iter().cloned());
-            out.punctual.extend(item.punctual.iter().cloned());
+            out.poses.extend(item.pose);
+            out.draws.extend(item.draw);
+            out.lights.extend(item.light);
+            out.punctual.extend(item.punctual);
             if out.environment.is_none() {
-                out.environment.clone_from(&item.environment);
+                out.environment = item.environment;
             }
-            out.cameras.extend(item.camera.iter().cloned());
+            out.cameras.extend(item.camera);
         }
         out.drop_missing_poses();
         out
     }
 
-    /// Draws whose pose isn't drawn this frame (removed, or the wrong size) use their bind mesh.
+    /// Draws whose posed entity isn't extracted (removed) use their bind mesh.
     fn drop_missing_poses(&mut self) {
-        let skins = &self.skins;
+        let poses = &self.poses;
         for draw in &mut self.draws {
             if let Some(owner) = draw.skin
-                && skins.binary_search_by_key(&owner, |s| s.entity).is_err()
+                && poses.binary_search_by_key(&owner, |p| p.entity).is_err()
             {
                 draw.skin = None;
             }
@@ -226,9 +241,40 @@ pub(crate) fn placement(world: &World, id: EntityId) -> Option<Mat4> {
     }
 }
 
+/// `entity`'s `Representation` and whose it is: its own, else the nearest ancestor's whose
+/// `Skinned` names the same skin.
+fn representation_of(
+    world: &World,
+    entity: EntityId,
+) -> Option<(EntityId, Arc<crate::Representation>)> {
+    if let Some(own) = world.get::<crate::Representation>(entity) {
+        return Some((entity, Arc::new(own.clone())));
+    }
+    let skin = &world.get::<Skinned>(entity)?.skin;
+    let mut seen = std::collections::BTreeSet::from([entity]);
+    let mut at = world.get::<Parent>(entity).map(|p| p.0);
+    while let Some(id) = at.filter(|id| seen.insert(*id)) {
+        if world.get::<Skinned>(id).is_none_or(|s| s.skin != *skin) {
+            return None;
+        }
+        if let Some(r) = world.get::<crate::Representation>(id) {
+            return Some((id, Arc::new(r.clone())));
+        }
+        at = world.get::<Parent>(id).map(|p| p.0);
+    }
+    None
+}
+
+/// `entity`'s simulation LOD level: its own `SimLod`, else its pose owner's.
+fn sim_lod_of(world: &World, entity: EntityId) -> Option<u8> {
+    let own = world.get::<SimLod>(entity);
+    own.or_else(|| world.get::<SimLod>(pose_owner(world, entity)?))
+        .map(|l| l.level)
+}
+
 impl SkinView {
     /// The palette of `pose`, or `None` when the pose doesn't fit its skeleton.
-    fn of(pose: &PoseView) -> Option<Self> {
+    pub(crate) fn of(pose: &PoseView) -> Option<Self> {
         let joints = pose.skeleton.entity_space(&pose.pose).ok()?;
         Some(Self {
             entity: pose.entity,
@@ -315,6 +361,9 @@ impl EntityItems {
                 material: r.material.clone(),
                 cast_shadows: r.cast_shadows,
                 skin: pose_owner(world, entity),
+                representation: representation_of(world, entity),
+                instanced: false,
+                sim_lod: sim_lod_of(world, entity),
             }),
             light: world
                 .get::<DirectionalLight>(entity)

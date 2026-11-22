@@ -478,6 +478,10 @@ fn terra_templates_skill_lod_examples_are_real_params_and_a_valid_template() {
                 serde_json::from_value::<concordia_api::WorldSel>(args["world"].clone())
                     .unwrap_or_else(|e| panic!("{args}: {e}"));
             }
+            "capture_screenshot" => {
+                serde_json::from_value::<concordia_render::CaptureScreenshotParams>(args.clone())
+                    .unwrap_or_else(|e| panic!("{args}: {e}"));
+            }
             _ => continue,
         }
         checked += 1;
@@ -503,6 +507,22 @@ fn terra_templates_skill_lod_examples_are_real_params_and_a_valid_template() {
         .compile(&registry)
         .unwrap_or_else(|e| panic!("the Lod example: {e}"));
     assert_eq!(compiled.component_names(), ["LodProfile"]);
+    let block = ron_blocks(text)
+        .into_iter()
+        .find(|b| b.contains("\"Representation\""))
+        .expect("a Representation example");
+    concordia_assets::register_types(&mut registry).unwrap();
+    concordia_render::register_types(&mut registry).unwrap();
+    let doc = format!(
+        "Template(\n    format: 1,\n    description: \"Skill example.\",\n    traits: {{}},\n    {block}\n)\n"
+    );
+    let doc = concordia_scene::read_template(&doc, &registry)
+        .unwrap_or_else(|e| panic!("the Representation example: {e}"));
+    let compiled = concordia_terra_sim::Template::from_doc("example", &doc)
+        .unwrap()
+        .compile(&registry)
+        .unwrap_or_else(|e| panic!("the Representation example: {e}"));
+    assert_eq!(compiled.component_names(), ["Representation"]);
     for needle in ["LodViewer", "hysteresis", "`lod`", "`levels`", "`due`"] {
         assert!(text.contains(needle), "the skill explains {needle}");
     }

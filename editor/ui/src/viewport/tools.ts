@@ -36,6 +36,7 @@ export const VIEW_MODES = [
   { id: "fuzz", label: "Fuzz" },
   { id: "subsurface", label: "Subsurface" },
   { id: "thin_film", label: "Thin Film" },
+  { id: "lod", label: "LOD" },
 ] as const;
 export type ViewModeId = (typeof VIEW_MODES)[number]["id"];
 

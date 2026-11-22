@@ -25,7 +25,8 @@ export type ViewMode =
   | "haze"
   | "fuzz"
   | "subsurface"
-  | "thin_film";
+  | "thin_film"
+  | "lod";
 
 /**
  * What the engine draws over the viewport.

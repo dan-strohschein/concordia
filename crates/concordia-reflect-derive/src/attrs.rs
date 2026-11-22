@@ -21,6 +21,7 @@ pub struct ContainerAttrs {
     pub name: Option<LitStr>,
     pub category: Option<LitStr>,
     pub default: Option<ContainerDefault>,
+    pub presentation: bool,
     pub transparent: bool,
     pub deny_unknown: bool,
     pub serde_default: bool,
@@ -124,6 +125,8 @@ fn parse_container_reflect(meta: &ParseNestedMeta, out: &mut ContainerAttrs) -> 
             return Err(meta.error("category must not be empty"));
         }
         out.category = Some(category);
+    } else if meta.path.is_ident("presentation") {
+        out.presentation = true;
     } else if meta.path.is_ident("default") {
         out.default = Some(if meta.input.peek(Token![=]) {
             ContainerDefault::Expr(Box::new(meta.value()?.parse()?))
@@ -132,7 +135,7 @@ fn parse_container_reflect(meta: &ParseNestedMeta, out: &mut ContainerAttrs) -> 
         });
     } else {
         return Err(meta.error(
-            "unknown reflect attribute; expected `name = \"...\"`, `category = \"...\"`, `default` or `default = ...`",
+            "unknown reflect attribute; expected `name = \"...\"`, `category = \"...\"`, `presentation`, `default` or `default = ...`",
         ));
     }
     Ok(())

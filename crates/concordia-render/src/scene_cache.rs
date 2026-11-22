@@ -149,15 +149,12 @@ impl RenderScene {
         } else {
             1.0
         };
-        let blended: Vec<EntityItems> = self
-            .items
-            .iter()
-            .map(|(id, now)| match self.previous.get(id) {
+        RenderWorld::assemble_owned(self.items.iter().map(
+            |(id, now)| match self.previous.get(id) {
                 Some(before) => blend(before, now, alpha),
                 None => now.clone(),
-            })
-            .collect();
-        RenderWorld::assemble(blended.iter())
+            },
+        ))
     }
 
     /// Applies a delta from the engine side.

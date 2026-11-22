@@ -14,6 +14,9 @@ pub enum RenderError {
     /// Camera parameters are out of range.
     #[error("invalid camera: {0}")]
     InvalidCamera(String),
+    /// A `Representation`'s distances are out of order or not finite.
+    #[error("invalid Representation: {0}")]
+    InvalidRepresentation(String),
     /// Capture size out of range.
     #[error("invalid size {width}×{height}: each side must be 1..={max}")]
     InvalidSize {

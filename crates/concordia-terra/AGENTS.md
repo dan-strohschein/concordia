@@ -31,7 +31,7 @@
 - Change tracking keeps one bulk tick per archetype for write queries; an entity's change tick is the later of its own and its archetype's.
 - Phases run in order. Within a phase the order is explicit constraints, then registration order; processors that conflict (one writes what the other touches) never share a wave, so parallel runs equal sequential ones. Exclusive systems run alone. Parallel queries chunk by a caller-chosen constant, never by thread count.
 - A processor's `View` holds only its declared columns (disjoint borrows, no `unsafe`); undeclared or read-only-as-mutable queries are `QueryError`s.
-- Presentation-only components are never hashed; `Presentation` processors write only them, and other phases never touch them (checked when a `SimLoop` is built).
+- Presentation-only components are never hashed (registered with `World::register_presentation`, or learned from `#[reflect(presentation)]` when a world first stores the type, 2.4b.2); `Presentation` processors write only them, and other phases never touch them (checked when a `SimLoop` is built).
 - `state_digest().world == state_hash()` always; parts are hashed alongside, never instead. End-of-tick hooks see `&World` only and run after the clock advances, in registration order (`append` keeps them).
 - Simulation LOD (ADR-0076):
   - Levels come only from hashed state: the nearest `LodViewer` by squared world distance (through the `LodPosition` the schedule was given), the entity's `LodProfile`, its previous `SimLod`, the clock and its id. Never from a camera, layout or thread count. No viewer, no position or an invalid profile means level 0.
@@ -83,7 +83,7 @@
 - Glenn Fiedler, "Fix Your Timestep!" and "Floating Point Determinism" (Gaffer on Games).
 
 ## Status
-M0 phase 0.3 complete; renamed to Terra in M7 Phase 7.0 (2026-11-18); M2 phases 2.0 (processors, ADR-0063) and 2.0b (storage kinds, commands, signals, observers, ADR-0069) and 2.6a (script types and named access, ADR-0062) complete; 2.6b added `ReflectComponent::from_wire` for script commands; 2.6c added type-version migration; 2.8 added state digests and end-of-tick hooks (ADR-0072); 2.4.4 added `World::pending_signals` (read-only, for inspection) and `JsonComponent` (a registry-free component codec, which `World::set_json` uses); 2.4b.1 added simulation LOD (ADR-0076).
+M0 phase 0.3 complete; renamed to Terra in M7 Phase 7.0 (2026-11-18); M2 phases 2.0 (processors, ADR-0063) and 2.0b (storage kinds, commands, signals, observers, ADR-0069) and 2.6a (script types and named access, ADR-0062) complete; 2.6b added `ReflectComponent::from_wire` for script commands; 2.6c added type-version migration; 2.8 added state digests and end-of-tick hooks (ADR-0072); 2.4.4 added `World::pending_signals` (read-only, for inspection) and `JsonComponent` (a registry-free component codec, which `World::set_json` uses); 2.4b.1 added simulation LOD (ADR-0076); 2.4b.2 made `World::get` do one lookup of each kind and worlds learn presentation-only types from reflection.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

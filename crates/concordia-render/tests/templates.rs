@@ -73,3 +73,82 @@ fn entity_create_spawns_each_render_template_renderable() {
         assert_eq!(world.cameras.len(), cameras, "after {name}");
     }
 }
+
+/// A crowd member drawn as a cube from 20 m and not at all from 50 m (2.4b.2): `Representation`
+/// is a plain component value in a template.
+const WALKER: &str = r#"Template(
+    format: 1,
+    description: "A crowd member with a cheap far representation.",
+    traits: {},
+    components: {
+        "MeshRenderer": (
+            material: "builtin:material/default",
+            mesh: "builtin:mesh/sphere",
+        ),
+        "Representation": (
+            hidden_from: 50.0,
+            instanced: Some((
+                material: "builtin:material/default",
+                mesh: "builtin:mesh/cube",
+            )),
+            instanced_from: 20.0,
+        ),
+        "Transform": (
+            rotation: (0.0, 0.0, 0.0, 1.0),
+            scale: (1.0, 1.0, 1.0),
+            translation: (30.0, 0.0, 0.0),
+        ),
+    },
+)
+"#;
+
+#[test]
+fn templates_carry_a_representation() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("templates")).unwrap();
+    std::fs::write(dir.path().join("templates/walker.template.ron"), WALKER).unwrap();
+    let mut config = EngineConfig::new(dir.path());
+    config.modules = vec![
+        Arc::new(AssetsModule::new(dir.path())),
+        Arc::new(RenderModule::new(Arc::new(
+            concordia_rhi_metal::new_headless,
+        ))),
+    ];
+    let mut engine = Engine::new(config).unwrap();
+    let s = engine.open_session();
+    engine
+        .call(
+            s,
+            "scene.new",
+            json!({"path": "scenes/t.scene.ron", "name": "T", "actor": "agent:test"}),
+        )
+        .unwrap();
+    let listed = engine.call(s, "entity.templates", json!({})).unwrap();
+    let walker = listed["templates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "walker")
+        .unwrap_or_else(|| panic!("{listed}"));
+    assert!(walker["problem"].is_null(), "{walker}");
+    let id = engine
+        .call(
+            s,
+            "entity.create",
+            json!({"template": "walker", "actor": "agent:test"}),
+        )
+        .unwrap()["id"]
+        .clone();
+    let world = engine.world(WorldSel::edit).unwrap();
+    let drawn = RenderWorld::extract(world).represented(concordia_core::math::Vec3::ZERO);
+    let draw = drawn
+        .draws
+        .iter()
+        .find(|d| d.entity.to_string() == id.as_str().unwrap())
+        .unwrap();
+    assert_eq!(
+        draw.mesh.to_string(),
+        "builtin:mesh/cube",
+        "30 m away: instanced"
+    );
+}

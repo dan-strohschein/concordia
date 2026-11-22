@@ -61,19 +61,22 @@ crates/concordia-api/          terra.* methods
 - **Tests first:** `template_composes_traits_into_an_archetype`; `trait_conflicts_are_reported_with_both_traits`; `template_roundtrips_byte_identical`; `batch_spawn_of_100k_from_template_is_deterministic`; `template_schemas_come_from_reflection`.
 - **Notes:** `.template.ron` holds traits and defaults; traits are reflected types plus the processors they require.
 
-### Phase 7.4: Simulation & representation LOD (moved to M2 phase 2.4b)
+### Phase 7.4: Simulation & representation LOD (moved to M2 phase 2.4b; done, ADR-0076)
 - **Tests first:** `far_entities_tick_at_their_lod_rate`; `lod_transitions_are_hysteresis_damped`; `simulation_lod_depends_only_on_deterministic_inputs`; `representation_lod_follows_the_camera_without_affecting_world_hash`.
 - **Notes:** simulation LOD is driven by LOD reference points that are part of simulation state (e.g. the player in the play world), never by the render camera, so replays stay deterministic; representation LOD may use the camera.
 
 ### Phase 7.5: Signals & observers (moved to M2 phase 2.0b)
 - **Tests first:** `signal_raised_this_tick_is_delivered_next_tick_in_entity_order`; `observers_fire_on_add_and_remove_once` (both done in M2 2.0b, ADR-0069); `signals_survive_lod_changes` (moved to M2 2.4b, with LOD).
 
-### Phase 7.6: Spawners & representation switching (moved to M2 phases 2.0c and 2.4b)
+### Phase 7.6: Spawners & representation switching (moved to M2 phases 2.0c and 2.4b; done)
 - **Tests first:** `spawner_places_count_with_seeded_distribution`; `representation_switches_between_full_instanced_and_hidden`; `instanced_representation_draws_100k_in_one_pass` (GPU, golden image).
 
 ### Phase 7.7: Crowds & traffic (basic crowds and lane traffic moved to M2 phase 2.5; AI-driven behavior and 10k+ scale stay here)
 - **Tests first:** `crowd_of_10k_agents_avoids_overlap`; `traffic_follows_lanes_and_yields_at_junctions`; `behavior_from_runtime_ai_drives_terra_agents`; `crowd_is_deterministic_across_runs_and_threads`.
 - **Notes:** builds on M2 Detour crowds and M4 runtime AI; M2's single-threaded crowd constraint is revisited with Terra's parallel scheduler.
+- **Render extraction at crowd scale (from M2 2.4b.2).** Today extraction builds one `DrawItem` per entity and the scene cache diffs them: a 100k crowd that moves every tick costs about 113 ms to re-extract (`crowd_100k`, render `BASELINE.md`), far over a 60 Hz frame. Make it columnar and incremental: copy changed transform columns per archetype straight into instance data, and touch mesh, material and representation only when they change. This replaces the per-entity path rather than adding a second one.
+  - **Tests first:** `moving_crowd_extraction_matches_full_extraction` (same draws as a fresh `RenderWorld::extract`); `unchanged_entities_are_not_reextracted`; every render golden unchanged.
+  - **Target:** 100k instanced entities that all moved this tick: extraction, interpolation and the frame together fit the 60 Hz budget on the reference machine, measured with `crowd_100k`; exact split set at refinement.
 
 ### Phase 7.8: Agent tooling & debug views (the basic `terra.*` tools move to M2 phase 2.0c; scale views stay here)
 - **Tests first:** `terra_methods_have_generated_schemas_and_mcp_tools`; `terra_stats_reports_counts_lod_buckets_and_processor_times`; `agent_spawns_a_crowd_from_a_template_over_mcp`.
@@ -85,7 +88,7 @@ crates/concordia-api/          terra.* methods
 `just gate M7` (`tests/gates/m7_*.rs`):
 1. Over MCP (no API key), an agent creates a `.template.ron` for a pedestrian, a spawner for 100,000 of them on a test map, and runs `sim.step`.
 2. Determinism: world hashes at ticks 1, 100 and 1000 are identical for 1 and 8 threads and across two runs.
-3. Performance (reference machine, `tests/perf/reference.ron`): 100,000 crowd agents simulate at 60 Hz with simulation LOD; budget set at refinement.
+3. Performance (reference machine, `tests/perf/reference.ron`): 100,000 crowd agents simulate at 60 Hz with simulation LOD, and the moving crowd renders within the same frame budget (7.7's extraction target); budget set at refinement.
 4. LOD: entities beyond the LOD distance tick at their reduced rate; representation switches without changing the world hash.
 5. Golden image of the instanced crowd (FLIP tolerance).
 

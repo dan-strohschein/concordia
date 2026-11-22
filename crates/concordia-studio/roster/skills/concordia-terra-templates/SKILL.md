@@ -46,5 +46,22 @@ traits: {
 - Check it in play: `mcp__concordia__terra_stats {"world": "play"}` reports `lod` (`viewers`, entities per level in `levels`, and how many are `due` this tick).
 - Animation already follows LOD: far characters pose less often, and their clip events still fire once.
 
+## Representation LOD (what the camera draws far away)
+Far entities can also be drawn more cheaply: a `Representation` component draws a cheaper mesh from `instanced_from` meters from the camera, and nothing from `hidden_from`. It is chosen each frame from the camera drawing it, so it never changes the game, and it can go in a template's `components`:
+```ron
+components: {
+    "Representation": (
+        hidden_from: 150.0,
+        instanced: Some((
+            material: "builtin:material/default",
+            mesh: "builtin:mesh/cube",
+        )),
+        instanced_from: 40.0,
+    ),
+},
+```
+- The cheaper mesh is drawn unskinned and stands for a whole character (its other parts aren't drawn); hidden entities cast no shadow and can't be picked. Without `instanced`, the entity stays full until it's hidden.
+- See both kinds of LOD: `mcp__concordia__capture_screenshot {"view_mode": "lod"}` colors each entity by its simulation level (white: none; green, yellow, orange, red: levels 0–3) and draws instanced ones at half brightness; hidden ones aren't drawn.
+
 ## Output contract
 In the task comment: the template path, its traits, the spawner's entity name and parameters, and the play-world count from `terra_stats` (with its `lod` levels when the template has `Lod`).

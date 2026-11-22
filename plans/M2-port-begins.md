@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b.1 (2026-11-21) done; 2.4b.2 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -1620,7 +1620,7 @@ Both `Cargo.lock`s gain `concordia-anim` under `concordia-render`.
 **Not in 2.4.5:** Blender clip authoring (the 3.7 bridge); the animator wiring graphs into game scenes (a handoff, C1); M12's `rig_*` and `anim_key_*` tools.
 
 ### Phase 2.4b refinement (2026-11-21, against the code after 2.4.5)
-**Status: author decisions E1–E3 taken (2026-11-21); my other calls below (say if you disagree). 2.4b.1 done (see its As built); 2.4b.2 next.**
+**Status: author decisions E1–E3 taken (2026-11-21); my other calls below (say if you disagree). 2.4b.1 and 2.4b.2 done (see their As built).**
 
 Refined against the code as built. The first test list (under *New-phase tests*) and M7's 7.4 and 7.6 notes are the starting point.
 
@@ -1740,6 +1740,98 @@ Refined against the code as built. The first test list (under *New-phase tests*)
 **Open items:** guest modules receiving `AnimEvent` are still untested (this phase doesn't touch scripting). The renderer interpolates a far character's pose tick to tick, so it moves over its due tick and holds between; whether to spread that over the interval is 2.4b.2's call. Processor access to chunk components still has no consumer (ADR-0069 expected LOD to be it; `SimLod` is dense instead).
 
 **Not in 2.4b.1:** representation LOD, the `lod` view mode and the 100k instanced golden (2.4b.2); LOD for `anim.attach` and `anim.tween`; per-processor rates; a query-order position path.
+
+### Phase 2.4b.2 refinement (2026-11-21, against the code after 2.4b.1)
+**Status: no author questions; my calls below (say if you disagree). Done (see 2.4b.2 As built).**
+
+**Checked in code:** extraction (`RenderWorld::extract`, `EntityItems::extract`) and the scene cache are camera-agnostic, and the camera is known only inside `Renderer::render` (a world camera or the editor's `View`); `assemble` builds a joint palette for every posed character; consecutive instances of one mesh and material already merge into one instanced call (shadows too); the overlay draws selection boxes from each draw's placement and skeletons from `RenderWorld::skins`; `viewport.pick` tests a `View`'s ray against `RenderWorld::draws`; view modes are one switch in `forward.slang` (`ViewMode` order); presentation-only types are registered per world (`World::register_presentation`), and no module does it for its own types.
+
+**Measured first** (`benches/crowd_100k.rs`, 1080p, a shadow-casting sun, cheap cubes, one draw call):
+
+| Stage | 1,000 | 100,000 |
+|---|---|---|
+| Full extraction | 1.2 ms | 134 ms |
+| Scene-cache update after every entity moved | 1.4 ms | 178 ms |
+| Interpolation (`world_at`) | 0.2 ms | 26 ms |
+| The frame (CPU, submit, readback) | 2.1 ms | 26 ms |
+
+Extraction is dominated by `world_transforms` (34 ms: a chain `Vec` and a `BTreeSet` per entity, then `BTreeMap` inserts) and by about ten `World::get` calls per entity (two or three hash lookups each). And `assemble` builds a palette for every posed character, about 3 µs each, so 100k far characters would cost about 300 ms whatever they are drawn as.
+
+**Settled without a question (my calls):**
+- **`Representation { instanced: Option<MeshRenderer>, instanced_from, hidden_from }`** in `concordia-render`, `#[reflect(presentation)]`: a new reflect flag, so a world treats the type as presentation-only the first time it stores it. It is never hashed and off limits to simulation, in edit and play worlds alike, with no per-world registration. Distances are finite, at least 0, and `instanced_from ≤ hidden_from`. An invalid one is drawn full and logged once.
+- **Chosen per frame from the drawing camera (E2)**, in the renderer, not in extraction or the scene cache, which stay camera-agnostic. `RenderWorld::represented(eye)` gives the world as that camera draws it: distance from the eye to the owner's world position, with boundaries on the far side (d ≥ `instanced_from` is instanced, d ≥ `hidden_from` is hidden). No memory between frames. Captures, viewports and picks each use their own camera.
+- **Multi-part characters:** a draw takes its own entity's `Representation`, else its pose owner's (the bind mesh, 2.4.2), measured from the owner. Instanced: the owner's draw becomes the cheap mesh (unskinned, its own material and `cast_shadows`), and the other parts aren't drawn. Hidden: no part is drawn.
+- **What follows from a draw being gone or unskinned:** a hidden entity casts no shadow, isn't picked and has no selection box. An instanced one is picked and boxed by the cheap mesh's bounds and casts its shadow, and it has no palette and no skeleton overlay. **Palettes are built per frame, after selection, only for draws drawn skinned**; `RenderWorld` keeps the extracted poses (`poses`), and `represented` builds `skins` from them.
+- **The `lod` view mode (D7)**, last in `ViewMode`, flat-shaded: hue from simulation LOD when the entity has a `SimLod` (play world; level 0 green, 1 yellow, 2 orange, 3 red), white without one (the edit world, unprofiled entities); instanced draws at half brightness; hidden ones aren't drawn. The legend is in `ViewMode`'s docs, the agent guide and the editor's view-mode list ("LOD").
+- **G8 and 100k: what changes here.** The one pass already works (one draw call per mesh and material). For a usable frame I fix what is local, with no new architecture:
+  - palettes only for drawn skinned characters (above), so 100k instanced characters need none of 2.4.2's palette follow-ups (3×4 rows, parallel or GPU palettes);
+  - world transforms without the per-entity chain allocations for entities without a parent;
+  - one entity lookup per extracted entity instead of about ten (a read-only `World::entity(id)` view in Terra).
+  
+  A columnar, incremental extraction for crowds that move every tick stays M7's large-scale work. The numbers after are in As built.
+- **Templates** carry `Representation` as a plain component value (`components: {"Representation": ...}`). No trait: it is presentation-only and needs no processor. The level designer's skill gains a short section.
+- **No ADR:** ADR-0076's consequences gain the representation rules. The reflect flag is a small extension of ADR-0063's "presentation-ness belongs to the type", recorded there as a 2.4b.2 consequence.
+
+### Phase 2.4b.2 As built (2026-11-21, ADR-0076)
+**Reconciled with the code as built:** the refinement held. Details it left open:
+- **Ownership is carried, not recomputed:** `DrawItem::representation` holds `(owner, Arc<Representation>)`. The `Arc` matters at 100k: copying the value (two string asset refs) on every draw clone cost about 10 ms a frame.
+- **`represented` copies only what it keeps.** A first version cloned the whole world and then replaced the draws, copying 100k draws twice (46 ms frames).
+- **`World::get` does one lookup of each kind** (type, then entity) and returns at once for a type the world never stored. Before, a miss looked up both twice through `get_shared`. Extraction's ten gets per entity were most of its cost.
+- **`world_transforms`** composes roots (no `Parent`) directly, without the chain and cycle-set allocations, and gives bit-identical matrices (the identity times M is exactly M).
+- **`RenderWorld::assemble_owned`**: `world_at` and `extract` assemble from owned items instead of cloning them again.
+- **The 100k golden uses unlit materials** at 0.9 m: lit 0.6 m spheres are under a pixel at 480×270 and read as near-black.
+
+**Engine:**
+- `concordia-reflect` (and the derive): `#[reflect(presentation)]`, `TypeInfo::presentation` / `with_presentation`.
+- `concordia-terra`: worlds learn presentation-only types from reflection when they first store them; `World::get` with one lookup of each kind.
+- `concordia-scene`: the root fast path in `world_transforms` and `world_transform`.
+- `concordia-render`: `Representation` (`representation.rs`: `validate`, per-frame choice, `RenderWorld::represented`); `DrawItem::{representation, instanced, sim_lod}`; `RenderWorld::poses`; palettes built in `represented`; `RenderWorld::assemble_owned`; `RenderError::InvalidRepresentation`; the renderer resolves each frame for its camera and logs invalid ones once; `pick` resolves for its view; `ViewMode::lod` (`forward.slang`, the instance row's `skin.z`); `benches/crowd_100k.rs`.
+- Editor: "LOD" in the view-mode list; schemas regenerated.
+- Studio: the level designer's skill gains "Representation LOD".
+- Docs: ADR-0076 and ADR-0063 updates; `docs/guides/agents-engine-api.md`; the AGENTS.md of `concordia-render`, `-reflect` and `-terra`; `concordia-render`'s README; `plans/README.md`.
+
+**Tests (10 new, 4 changed):**
+- `concordia-render/tests/representation.rs` (9):
+  - `representation_switches_between_full_instanced_and_hidden`: distances 19.99, 20, 49.99, 50, 30 and 60 against 20/50, an entity without one at 1,000 m, the cheap mesh's material and shadow flag, a second camera, and back again (no memory), and a 3D distance.
+  - `instanced_and_hidden_characters_build_no_palette` (two-part characters at 10, 30 and 70 m: one palette, the cheap mesh unskinned, the part dropped, nothing when hidden).
+  - `malformed_representations_are_descriptive_errors_and_draw_full`.
+  - `representation_lod_follows_the_camera_without_affecting_world_hash` (inserting it leaves the hash unchanged, two cameras give two pictures, and a simulation processor reading it is refused).
+  - `picking_follows_the_representation`.
+  - GPU: `hidden_entities_are_not_drawn_and_cast_no_shadow` (byte-equal to the scene without it), `instanced_entities_draw_the_cheap_mesh_unskinned` (byte-equal to drawing the cube directly; 2 draw calls), `instanced_representation_draws_100k_in_one_pass` (100,489 spheres: draws = full + instanced counted independently, 0 culled, 2 draw calls, golden), `lod_view_mode_colors_simulation_lod_and_representation` (eight cells, each color checked, golden).
+- `concordia-render/tests/templates.rs`: `templates_carry_a_representation`.
+- Changed deliberately: three `skinning.rs` tests read palettes from `represented(..)` (they are built per frame now); `capture_screenshot_schema_is_reflect_generated`'s snapshot gains `lod`; the editor's view-mode test counts 15; `terra_templates_skill_..._a_valid_template` also compiles the skill's `Representation` example and parses its `lod` capture.
+
+**Red run:** against stubs (`represented` a plain clone, no validation, no presentation flag in worlds, the `lod` mode falling into the feature views), all 10 failed for the right reason. `templates_carry_a_representation` first failed on my template text (maps instead of RON structs), then for the right reason. The two GPU goldens' structural checks all passed before their images existed; their first green failure was the missing golden.
+
+**Mutation checks:** 13 mutations, each run against its tests with the restored file given a fresh mtime; all 13 caught:
+- **The distance thresholds:** the hidden boundary exclusive, the instanced boundary exclusive.
+- **Hidden skipping shadows:** a hidden entity drawn anyway, its shadow included.
+- **Instanced skipping skinning:** the instanced draw keeping its skin, palettes built for every pose, other parts kept.
+- **Validation:** an invalid one used by its numbers.
+- **The hash staying untouched:** worlds not learning presentation types.
+- **The renderer and picking:** the renderer ignoring representation, measuring from the origin instead of the camera, picking ignoring it.
+- **The view mode:** instanced not flagged, the level off by one.
+
+**Goldens:** two new, `render/representation_100k` (480×270) and `render/view_mode_lod` (400×100), reviewed by the author and blessed locally. Every existing render golden is unchanged. **Snapshots:** `capture.screenshot`'s schema (`view_mode` gains `lod`), reviewed and accepted. **Editor schemas:** `MethodCaptureScreenshotParams`, `MethodRenderStatsResult` and `MethodViewportOverlays{Params,Result}` gain `lod`; new `Representation`.
+
+**Studio and budgets** (served definitions, 4 chars a token; `capture_screenshot`'s schema gained `lod`): level designer 35 tools ≈21.7k (21,694 → 21,757), tech artist 23 ≈20.1k (19,996 → 20,059), QA 22 ≈18.4k (18,384 → 18,447), animator 22 ≈16.8k (16,746 → 16,777), director 13 ≈12.5k, gameplay programmer 16 ≈12.4k, writer 11 ≈9.6k (unchanged); all under 50k. No role gains a tool.
+
+**Perf** (100k cubes, 1080p, a shadow-casting sun, one draw call; `concordia-render`'s AGENTS.md):
+
+| Stage | Before | After |
+|---|---|---|
+| Full extraction | 134 ms | 47 ms |
+| Scene-cache update after every entity moved | 178 ms | 113 ms |
+| Interpolation | 26 ms | 27 ms |
+| The frame | 26 ms | 37 ms |
+
+A capture at 100k now takes about 84 ms (160 before). A playing 100k crowd is still above a 60 Hz frame: re-extracting and interpolating every moved entity is M7's columnar work. **Open items answered:** 100k instanced characters need none of 2.4.2's palette follow-ups (they build no palette), and the 43 ms pose hash is unchanged by representation (it is presentation-only and never hashed).
+
+**Checklist:** `just lint`, Tauri clippy, `CONCORDIA_REQUIRE_GPU=1` full suite (1,403 passed, 8 skipped; 14 doc tests), `just gate-tests` M1 (4) and M3S (13), `just deny` and the editor's, `just editor-schemas` (committed), `just editor-test` (118 unit, 22 end-to-end): all clean.
+
+**Phase 2.4b is done** (2.4b.1 and 2.4b.2).
+
+**Not in 2.4b.2:** hysteresis for representation (E2: only if flicker shows); a columnar, incremental extraction for crowds that move every tick (M7 phase 7.7, with tests and a target); spreading a far character's held pose over its interval in rendering.
 
 ### Effort (re-estimated)
 | Phase | Estimate |

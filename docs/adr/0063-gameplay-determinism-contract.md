@@ -49,3 +49,6 @@ M2 builds every gameplay subsystem as Terra processors (ADR-0067). M0's `Schedul
 - `SimLoop` runs read-only end-of-tick hooks (`Schedule::add_tick_end`) after the clock advances, so replay checkpoints equal `sim.step`'s hash.
 - `World::state_digest` adds per-part hashes (each component, `@entities`, `@clock`, `@rng`, `@signals`) next to the unchanged world hash.
 - Excluding presentation-only components (point 4) is all the "restrict the hash to simulation state" the old replay plan asked for.
+
+## Update (M2 phase 2.4b.2, ADR-0076)
+- Presentation-ness can belong to the type itself: `#[reflect(presentation)]` sets `TypeInfo::presentation`. Every world then treats the type as point 4 says (left out of the hash, off limits to simulation) from the first time it stores it, with no per-world registration. `Representation` is the first such type. `World::register_presentation` still works for others.

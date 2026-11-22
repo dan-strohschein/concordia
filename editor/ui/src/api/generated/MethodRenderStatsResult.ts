@@ -21,7 +21,8 @@ export type ViewMode =
   | "haze"
   | "fuzz"
   | "subsurface"
-  | "thin_film";
+  | "thin_film"
+  | "lod";
 
 /**
  * `render.stats` result.
