@@ -117,6 +117,7 @@ impl EngineModule for RenderModule {
             MethodInfo::of::<ViewportPresent>(),
             MethodInfo::of::<ViewportStats>(),
             MethodInfo::of::<ViewportNavigate>(),
+            MethodInfo::of::<crate::pointer::ViewportPointerRay>(),
             MethodInfo::of::<ViewportOverlays>(),
             MethodInfo::of::<crate::gizmo::ViewportGizmo>(),
             MethodInfo::of::<crate::stats::RenderStatsGet>(),
@@ -512,7 +513,7 @@ fn encode_png(image: &Image) -> Result<Vec<u8>, ApiError> {
 }
 
 /// Maps renderer errors to API errors agents can act on.
-fn api_error(error: RenderError) -> ApiError {
+pub(crate) fn api_error(error: RenderError) -> ApiError {
     let message = error.to_string();
     match error {
         RenderError::NoCamera => ApiError::new(ApiErrorKind::InvalidParams, message)

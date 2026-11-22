@@ -35,6 +35,28 @@ export type InputEvent =
       };
     }
   | {
+      PointerRay: {
+        /**
+         * Direction (any non-zero length).
+         *
+         * 3D vector as [x, y, z].
+         *
+         * @minItems 3
+         * @maxItems 3
+         */
+        direction: [number, number, number];
+        /**
+         * Start point.
+         *
+         * 3D vector as [x, y, z].
+         *
+         * @minItems 3
+         * @maxItems 3
+         */
+        origin: [number, number, number];
+      };
+    }
+  | {
       MouseMotion: {
         /**
          * Horizontal motion.
@@ -164,6 +186,28 @@ export type ActionValue =
        * @maxItems 2
        */
       Axis2d: [number, number];
+    }
+  | {
+      Ray: {
+        /**
+         * Unit direction.
+         *
+         * 3D vector as [x, y, z].
+         *
+         * @minItems 3
+         * @maxItems 3
+         */
+        direction: [number, number, number];
+        /**
+         * Start point.
+         *
+         * 3D vector as [x, y, z].
+         *
+         * @minItems 3
+         * @maxItems 3
+         */
+        origin: [number, number, number];
+      };
     };
 
 /**

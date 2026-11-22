@@ -340,3 +340,64 @@ fn studio_init_adds_nav_when_missing_for_the_level_designer() {
     assert_eq!(manifest.matches("[nav]").count(), 1, "{manifest}");
     assert!(root.join(".claude/agents/level-designer.md").is_file());
 }
+
+#[test]
+fn studio_init_adds_an_input_map_when_missing_for_qa() {
+    let dir = tempfile::tempdir().unwrap();
+    // A project made before input maps were written by default.
+    let root = new_project(dir.path(), &["--no-studio"]);
+    let manifest_path = root.join("concordia.toml");
+    let manifest = std::fs::read_to_string(&manifest_path).unwrap();
+    let section = "[input]\nmap = \"input/default.input.ron\"\n";
+    assert!(manifest.contains(section), "{manifest}");
+    std::fs::write(&manifest_path, manifest.replace(section, "")).unwrap();
+    std::fs::remove_file(root.join("input/default.input.ron")).unwrap();
+    let output = run(&["studio", "init"], &root);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let manifest = std::fs::read_to_string(&manifest_path).unwrap();
+    assert_eq!(manifest.matches("[input]").count(), 1, "{manifest}");
+    assert!(
+        manifest.contains("map = \"input/default.input.ron\""),
+        "{manifest}"
+    );
+    assert!(root.join("input/default.input.ron").is_file());
+    assert!(root.join(".claude/agents/qa-playtester.md").is_file());
+
+    // An [input] table without a map gains one inside it.
+    let dir = tempfile::tempdir().unwrap();
+    let root = new_project(dir.path(), &["--no-studio"]);
+    let manifest = std::fs::read_to_string(root.join("concordia.toml")).unwrap();
+    std::fs::write(
+        root.join("concordia.toml"),
+        manifest.replace("map = \"input/default.input.ron\"\n", ""),
+    )
+    .unwrap();
+    let output = run(&["studio", "init"], &root);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let after = std::fs::read_to_string(root.join("concordia.toml")).unwrap();
+    assert_eq!(after.matches("[input]").count(), 1, "{after}");
+    assert!(
+        after.contains("[input]\nmap = \"input/default.input.ron\"\n"),
+        "{after}"
+    );
+
+    // A project with its own map keeps it.
+    let dir = tempfile::tempdir().unwrap();
+    let root = new_project(dir.path(), &["--no-studio"]);
+    let manifest = std::fs::read_to_string(root.join("concordia.toml")).unwrap();
+    let own = manifest.replace("input/default.input.ron", "input/mine.input.ron");
+    std::fs::write(root.join("concordia.toml"), &own).unwrap();
+    std::fs::rename(
+        root.join("input/default.input.ron"),
+        root.join("input/mine.input.ron"),
+    )
+    .unwrap();
+    let output = run(&["studio", "init"], &root);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let after = std::fs::read_to_string(root.join("concordia.toml")).unwrap();
+    assert_eq!(after.matches("[input]").count(), 1, "{after}");
+    assert!(
+        after.contains("input/mine.input.ron") && !root.join("input/default.input.ron").exists(),
+        "{after}"
+    );
+}

@@ -1369,7 +1369,7 @@ fn editor_camera(world: &RenderWorld, view: &crate::View) -> Result<CameraView, 
 }
 
 /// Stands in for an entity id when an editor view renders a scene without cameras.
-const EDITOR_VIEW: &str = "0193a1c2-7e40-7000-8000-00000000ed17";
+pub(crate) const EDITOR_VIEW: &str = "0193a1c2-7e40-7000-8000-00000000ed17";
 
 fn check_size(request: &RenderRequest) -> Result<(NonZeroU32, NonZeroU32), RenderError> {
     let bad = || RenderError::InvalidSize {

@@ -105,9 +105,16 @@ fn new_project_enables_modules_and_studio() {
         "[scripts]",
         "[replay]",
         "[studio]",
+        "[input]\nmap = \"input/default.input.ron\"",
     ] {
         assert!(manifest.contains(section), "{section} missing:\n{manifest}");
     }
+    // The starter map: a click and a pointer ray, the names ClickToMove uses by default.
+    let map = std::fs::read_to_string(dir.path().join("g/input/default.input.ron")).unwrap();
+    let map = concordia_input::InputMap::parse(&map).unwrap();
+    assert_eq!(map, concordia_input::InputMap::starter());
+    let defaults = concordia_nav::ClickToMove::default();
+    assert!(map.action(&defaults.click).is_some() && map.action(&defaults.pointer).is_some());
 }
 
 #[test]
@@ -175,6 +182,7 @@ fn new_minimal_has_no_modules() {
         "[scripts]",
         "[replay]",
         "[studio]",
+        "[input]",
     ] {
         assert!(
             !manifest.contains(section),

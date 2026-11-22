@@ -372,6 +372,30 @@ fn level_designer_checks_reachability_with_nav_tools_and_the_navigation_skill() 
 }
 
 #[test]
+fn qa_clicks_like_a_player_with_input_inject_and_pointer_rays() {
+    let (_dir, roster) = roster();
+    let role = roster
+        .roles()
+        .iter()
+        .find(|r| r.role.as_str() == "qa-playtester")
+        .expect("QA is enabled");
+    for tool in ["input_inject", "viewport_pointer_ray"] {
+        assert!(
+            role.mcp_tools.iter().any(|t| t == tool),
+            "{tool}: {:?}",
+            role.mcp_tools
+        );
+    }
+    for needle in [
+        "mcp__concordia__viewport_pointer_ray",
+        "PointerRay",
+        "mcp__concordia__input_inject",
+    ] {
+        assert!(role.body.contains(needle), "the prompt explains {needle}");
+    }
+}
+
+#[test]
 fn gameplay_programmer_checks_paths_with_nav_path_and_the_nav_agents_skill() {
     let (_dir, roster) = roster();
     let role = roster

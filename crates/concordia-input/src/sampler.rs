@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
-use concordia_core::math::Vec2;
+use concordia_core::math::{Vec2, Vec3};
 use concordia_core::time::TickRate;
 
 use crate::device::{KeyCode, MouseButton};
@@ -24,6 +24,7 @@ struct Devices {
     keys: BTreeSet<KeyCode>,
     buttons: BTreeSet<MouseButton>,
     pointer: Vec2,
+    ray: Option<ActionValue>,
     motion: Vec2,
     scroll: Vec2,
 }
@@ -92,7 +93,13 @@ impl InputSampler {
             });
         }
         match event {
-            InputEvent::Action { action, value } => self.check_action(action, *value),
+            InputEvent::Action { action, value } => {
+                self.check_action(action, *value)?;
+                ray_value(*value).map(|_| ())
+            }
+            InputEvent::PointerRay { origin, direction } => {
+                normalized_ray(*origin, *direction).map(|_| ())
+            }
             _ => Ok(()),
         }
     }
@@ -184,9 +191,13 @@ impl InputSampler {
             InputEvent::Key { key, pressed } => toggle(&mut d.keys, key, pressed),
             InputEvent::MouseButton { button, pressed } => toggle(&mut d.buttons, button, pressed),
             InputEvent::PointerMove { x, y } => d.pointer = Vec2::new(x, y),
+            InputEvent::PointerRay { origin, direction } => {
+                d.ray = normalized_ray(origin, direction).ok().or(d.ray);
+            }
             InputEvent::MouseMotion { dx, dy } => d.motion += Vec2::new(dx, dy),
             InputEvent::Scroll { dx, dy } => d.scroll += Vec2::new(dx, dy),
             InputEvent::Action { action, value } => {
+                let value = ray_value(value).unwrap_or(value);
                 self.forced.insert(action, value);
             }
         }
@@ -235,6 +246,25 @@ impl InputSampler {
     }
 }
 
+/// A ray value with its direction normalized; rejects non-finite or zero rays.
+fn normalized_ray(origin: Vec3, direction: Vec3) -> Result<ActionValue, InputError> {
+    let unit = direction.try_normalize().filter(|_| origin.is_finite());
+    unit.map(|direction| ActionValue::Ray { origin, direction })
+        .ok_or_else(|| {
+            InputError::Pointer(format!(
+                "ray from {origin} along {direction}: both must be finite and the direction non-zero"
+            ))
+        })
+}
+
+/// `value` normalized if it is a ray (other kinds pass through).
+fn ray_value(value: ActionValue) -> Result<ActionValue, InputError> {
+    match value {
+        ActionValue::Ray { origin, direction } => normalized_ray(origin, direction),
+        other => Ok(other),
+    }
+}
+
 fn idle(kind: ActionKind) -> ActionState {
     ActionState {
         pressed: false,
@@ -256,6 +286,11 @@ fn bound_value(d: &Devices, def: &ActionDef) -> ActionValue {
         ActionKind::Button => ActionValue::Button(def.bindings.iter().any(|b| held(d, b))),
         ActionKind::Axis1d => ActionValue::Axis1d(def.bindings.iter().map(|b| axis1d(d, b)).sum()),
         ActionKind::Axis2d => ActionValue::Axis2d(def.bindings.iter().map(|b| axis2d(d, b)).sum()),
+        ActionKind::Ray => def
+            .bindings
+            .iter()
+            .find_map(|b| (*b == Binding::PointerRay).then_some(d.ray).flatten())
+            .unwrap_or(ActionValue::zero(ActionKind::Ray)),
     }
 }
 

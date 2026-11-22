@@ -28,6 +28,7 @@ tracing.workspace = true
 concordia-studio.workspace = true
 
 [dev-dependencies]
+concordia-input.workspace = true
 base64.workspace = true
 concordia-anim.workspace = true
 concordia-nav.workspace = true

@@ -223,9 +223,13 @@ fn studio_project(dir: &Path) {
     concordia_studio::init(dir, Path::new("studio")).unwrap();
     std::fs::write(
         dir.join("concordia.toml"),
-        "[physics]\n\n[nav]\n\n[assets]\n\n[anim]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n",
+        "[input]\nmap = \"input/default.input.ron\"\n\n[physics]\n\n[nav]\n\n[assets]\n\n[anim]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n",
     )
     .unwrap();
+    // QA injects input, so the project has an input map (2.5b.2a).
+    std::fs::create_dir_all(dir.join("input")).unwrap();
+    let starter = concordia_input::InputMap::starter().to_ron().unwrap();
+    std::fs::write(dir.join("input/default.input.ron"), starter).unwrap();
 }
 
 fn stamped(mut args: Value, role: &str, agent: &str) -> Value {

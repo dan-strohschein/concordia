@@ -184,18 +184,7 @@ impl RenderWorld {
 
     /// The requested camera, or the highest-priority one (ties: lowest id).
     pub fn camera(&self, requested: Option<EntityId>) -> Result<&CameraView, RenderError> {
-        match requested {
-            Some(id) => self
-                .cameras
-                .iter()
-                .find(|c| c.entity == id)
-                .ok_or(RenderError::UnknownCamera(id)),
-            None => self
-                .cameras
-                .iter()
-                .max_by_key(|c| (c.camera.priority, std::cmp::Reverse(c.entity)))
-                .ok_or(RenderError::NoCamera),
-        }
+        crate::pointer::choose_camera(&self.cameras, requested)
     }
 }
 

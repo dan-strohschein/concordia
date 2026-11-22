@@ -1,6 +1,5 @@
 ---
 source: crates/concordia-input/tests/inject.rs
-assertion_line: 71
 expression: params_schema(method)
 ---
 {
@@ -50,6 +49,46 @@ expression: params_schema(method)
           },
           "required": [
             "Axis2d"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A world-space ray (the direction is normalized; zero before any ray arrives).",
+          "properties": {
+            "Ray": {
+              "additionalProperties": false,
+              "properties": {
+                "direction": {
+                  "description": "Unit direction.\n\n3D vector as [x, y, z].",
+                  "items": {
+                    "type": "number"
+                  },
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "type": "array",
+                  "x-concordia-widget": "vec3"
+                },
+                "origin": {
+                  "description": "Start point.\n\n3D vector as [x, y, z].",
+                  "items": {
+                    "type": "number"
+                  },
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "type": "array",
+                  "x-concordia-widget": "vec3"
+                }
+              },
+              "required": [
+                "origin",
+                "direction"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Ray"
           ],
           "type": "object"
         }
@@ -170,6 +209,46 @@ expression: params_schema(method)
           },
           "required": [
             "PointerMove"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The pointer as a world-space ray, from the camera the pointer is over.",
+          "properties": {
+            "PointerRay": {
+              "additionalProperties": false,
+              "properties": {
+                "direction": {
+                  "description": "Direction (any non-zero length).\n\n3D vector as [x, y, z].",
+                  "items": {
+                    "type": "number"
+                  },
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "type": "array",
+                  "x-concordia-widget": "vec3"
+                },
+                "origin": {
+                  "description": "Start point.\n\n3D vector as [x, y, z].",
+                  "items": {
+                    "type": "number"
+                  },
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "type": "array",
+                  "x-concordia-widget": "vec3"
+                }
+              },
+              "required": [
+                "origin",
+                "direction"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "PointerRay"
           ],
           "type": "object"
         },

@@ -73,8 +73,19 @@ impl EngineModule for Steer {
                     Some(ActionValue::Axis2d(v)) => v,
                     _ => Default::default(),
                 };
+                // An `aim` ray (maps that have one) adds its direction.
+                let aim = match world
+                    .resource::<ActionStates>()
+                    .and_then(|s| s.get("aim"))
+                    .map(|s| s.value)
+                {
+                    Some(ActionValue::Ray { direction, .. }) => direction,
+                    _ => Vec3::ZERO,
+                };
                 let mut query = world.query::<&mut Velocity>().unwrap();
-                query.for_each(world, |_, v| v.linear = Vec3::new(pan.x, 0.0, pan.y) * 2.0);
+                query.for_each(world, |_, v| {
+                    v.linear = Vec3::new(pan.x, 0.0, pan.y) * 2.0 + aim
+                });
                 if ctx.tick.0 == perturb.load(Ordering::SeqCst) {
                     let first = world.entity_ids_sorted()[0];
                     if let Some(t) = world.get_mut::<Transform>(first) {
@@ -104,6 +115,8 @@ pub struct Opts {
     pub seed: u64,
     pub ring: Option<Arc<LogRing>>,
     pub extra: Vec<Arc<dyn EngineModule>>,
+    /// The input map (default: the m1 example's).
+    pub map: &'static str,
 }
 
 impl Default for Opts {
@@ -113,6 +126,7 @@ impl Default for Opts {
             seed: 5,
             ring: None,
             extra: Vec::new(),
+            map: MAP,
         }
     }
 }
@@ -137,7 +151,7 @@ impl Rig {
         config.sim_seed = opts.seed;
         config.log_ring = opts.ring;
         let input: Arc<dyn EngineModule> =
-            Arc::new(InputModule::new(InputMap::parse(MAP).unwrap()));
+            Arc::new(InputModule::new(InputMap::parse(opts.map).unwrap()));
         let mut modules = vec![input, Arc::clone(&steer) as Arc<dyn EngineModule>];
         modules.extend(opts.extra);
         modules.push(Arc::new(ReplayModule::new()));

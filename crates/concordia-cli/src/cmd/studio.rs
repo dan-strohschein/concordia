@@ -265,8 +265,9 @@ fn studio_project(root: &Path) -> Result<Project, Failure> {
 }
 
 /// Writes the default Studio files and adds `[studio]` to `concordia.toml`, plus `[scripts]`,
-/// `[replay]`, `[anim]` (with `[assets]`) and `[nav]` if missing: the default gameplay programmer
-/// reloads scripts, QA replays, the animator inspects poses and the level designer builds navmeshes.
+/// `[replay]`, `[anim]` (with `[assets]`), `[nav]` and an input map if missing: the default gameplay
+/// programmer reloads scripts, QA replays and injects input, the animator inspects poses and the
+/// level designer builds navmeshes.
 fn init(project: &Path) -> Result<(), Failure> {
     let files = concordia_studio::init(project, Path::new("studio"))
         .map_err(|e| Failure::usage(e.to_string()))?;
@@ -274,37 +275,69 @@ fn init(project: &Path) -> Result<(), Failure> {
     let manifest = concordia_app::Project::load(project)
         .map_err(|e| Failure::usage(e.to_string()))?
         .manifest;
-    let mut sections = Vec::new();
+    let mut sections: Vec<String> = Vec::new();
     if manifest.scripts.is_none() {
-        sections.push("[scripts]");
+        sections.push("[scripts]".to_owned());
     }
     if manifest.replay.is_none() {
-        sections.push("[replay]");
+        sections.push("[replay]".to_owned());
     }
     if manifest.assets.is_none() {
-        sections.push("[assets]");
+        sections.push("[assets]".to_owned());
     }
     if manifest.anim.is_none() {
-        sections.push("[anim]");
+        sections.push("[anim]".to_owned());
     }
     if manifest.nav.is_none() {
-        sections.push("[nav]");
+        sections.push("[nav]".to_owned());
     }
     if manifest.studio.is_none() {
-        sections.push("[studio]");
+        sections.push("[studio]".to_owned());
     }
-    if !sections.is_empty() {
-        let mut text = std::fs::read_to_string(&manifest_path).unwrap_or_default();
-        if !text.is_empty() && !text.ends_with('\n') {
-            text.push('\n');
-        }
-        for section in sections {
-            text.push_str(&format!("\n{section}\n"));
-        }
+    let original = std::fs::read_to_string(&manifest_path).unwrap_or_default();
+    let mut text = original.clone();
+    if manifest.input.map.is_none() {
+        add_starter_map(project, &mut text, &mut sections)?;
+    }
+    if !text.is_empty() && !text.ends_with('\n') {
+        text.push('\n');
+    }
+    for section in sections {
+        text.push_str(&format!("\n{section}\n"));
+    }
+    if text.trim_end() != original.trim_end() {
         std::fs::write(&manifest_path, text)
             .map_err(|e| Failure::usage(format!("{}: {e}", manifest_path.display())))?;
     }
     eprintln!("added Agent Studio: {} files under studio/", files.len());
+    Ok(())
+}
+
+/// Writes the starter input map (unless the file exists) and points `[input] map` at it: in an
+/// existing `[input]` table, or as a new section.
+fn add_starter_map(
+    project: &Path,
+    text: &mut String,
+    sections: &mut Vec<String>,
+) -> Result<(), Failure> {
+    use super::new::{STARTER_MAP, starter_map};
+    let path = project.join(STARTER_MAP);
+    if !path.exists() {
+        let failed = |e: std::io::Error| Failure::usage(format!("{}: {e}", path.display()));
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(failed)?;
+        }
+        std::fs::write(&path, starter_map()?).map_err(failed)?;
+    }
+    let line = format!("map = \"{STARTER_MAP}\"");
+    match text.lines().position(|l| l.trim() == "[input]") {
+        Some(at) => {
+            let mut lines: Vec<&str> = text.lines().collect();
+            lines.insert(at + 1, &line);
+            *text = lines.join("\n") + "\n";
+        }
+        None => sections.push(format!("[input]\n{line}")),
+    }
     Ok(())
 }
 

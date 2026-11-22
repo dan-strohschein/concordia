@@ -289,3 +289,37 @@ fn a_recording_whose_play_world_failed_to_start_does_not_join_a_later_one() {
     let err = rig.err("replay.record", json!({"action": "stop"}));
     assert!(err.message.contains("nothing is being recorded"), "{err:?}");
 }
+
+/// The m1 map plus a ray action, `aim`, which the steer module adds to every velocity.
+const RAY_MAP: &str = r#"InputMap(
+    actions: {
+        "camera_pan": (kind: Axis2d, bindings: [KeyAxis2d(up: W, down: S, left: A, right: D)]),
+        "aim": (kind: Ray, bindings: [PointerRay]),
+    },
+)"#;
+
+#[test]
+fn replays_record_and_play_back_pointer_rays() {
+    let mut rig = Rig::with(Opts {
+        map: RAY_MAP,
+        ..Opts::default()
+    });
+    let ray = |tick: u64, d: [f32; 3]| json!({"tick": tick, "event": {"PointerRay": {"origin": [0.0, 10.0, 0.0], "direction": d}}});
+    let events = json!([
+        ray(5, [1.0, -1.0, 0.0]),
+        ray(40, [0.0, -1.0, 2.0]),
+        ray(80, [-3.0, 0.0, 0.0])
+    ]);
+    let (_, recorded_hash) = rig.record(PATH, 30, events, 120);
+    let text = rig.file(PATH);
+    // Ticks 5, 40 and 80 bring new rays; tick 6 is recorded too, as `just_pressed` falls.
+    assert_eq!(text.matches("Ray(").count(), 4, "{text}");
+    let recorded = translations(&rig);
+    assert_ne!(recorded[0], [0.0, 0.0, 0.0], "the rays really moved them");
+
+    rig.ok("sim.stop", json!({}));
+    let run = rig.ok("replay.run", json!({"path": PATH}));
+    assert_eq!(run["ok"], true, "{run}");
+    assert_eq!(run["world_hash"], recorded_hash.as_str());
+    assert_eq!(translations(&rig), recorded);
+}

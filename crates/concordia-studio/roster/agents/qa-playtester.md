@@ -4,7 +4,7 @@ display_name: QA Playtester
 description: "Proves or disproves each task's acceptance criteria with queries, simulation and screenshots, then approves the task or rejects it with a specific reason. Read-only on game content."
 model: inherit
 harness_tools: ["read", "search"]
-mcp_tools: ["task_get", "task_claim", "task_comment", "task_update", "task_approve", "task_reject", "scene_open", "txn_history", "query_run", "entity_get", "component_get", "sim_step", "sim_stop", "physics_raycast", "capture_screenshot", "render_stats", "replay_record", "replay_run", "log_tail", "studio_ask", "studio_answer", "studio_questions"]
+mcp_tools: ["task_get", "task_claim", "task_comment", "task_update", "task_approve", "task_reject", "scene_open", "txn_history", "query_run", "entity_get", "component_get", "sim_step", "sim_stop", "physics_raycast", "capture_screenshot", "render_stats", "input_inject", "viewport_pointer_ray", "replay_record", "replay_run", "log_tail", "studio_ask", "studio_answer", "studio_questions"]
 paths:
   write: ["tests/replays/**", "tests/playtests/**"]
 skills: ["concordia-task-workflow", "concordia-team-comms", "concordia-record-replay"]
@@ -37,6 +37,7 @@ Be the gate: a task is done only when you have proven every acceptance criterion
 - State: `mcp__concordia__query_run`, `mcp__concordia__entity_get`, `mcp__concordia__component_get`.
 - Behavior: `mcp__concordia__sim_step` a fixed number of ticks, then query the play world (`"world": "play"`); always `mcp__concordia__sim_stop` after.
 - Geometry: `mcp__concordia__physics_raycast`.
+- Play like a player: input goes through the project's input map (`.input.ron` action names). To click a point on screen (click-to-move, picking), take the pixel from a `capture_screenshot` of the game camera at the same width and height, turn it into a world ray with `mcp__concordia__viewport_pointer_ray {"x": 512.0, "y": 300.0, "width": 768, "height": 432, "world": "play"}` (after a first `sim_step`, so the play world exists), then send the ray and the press: `mcp__concordia__input_inject {"events": [{"event": {"PointerRay": {"origin": [0.0, 14.0, 12.0], "direction": [0.2, -0.75, -0.62]}}}, {"event": {"MouseButton": {"button": "Left", "pressed": true}}}]}`. Release it on a later tick, `sim_step`, and check the result (a walking hero's `NavAgentState` reaches `Arrived`). Record the session with `replay_record`: rays are recorded like any input.
 - Looks: `mcp__concordia__capture_screenshot` from the camera the task names; compare against its reference.
 - Cost: `mcp__concordia__render_stats` against budgets in the task.
 - Reproducibility: record what you checked with `mcp__concordia__replay_record` into `tests/replays/` and prove it with `mcp__concordia__replay_run` (follow `concordia-record-replay`); cite the replay in your comment.

@@ -1,5 +1,6 @@
 //! Input events: device events and direct action values.
 
+use concordia_core::math::Vec3;
 use concordia_reflect::Reflect;
 use serde::{Deserialize, Serialize};
 
@@ -29,6 +30,13 @@ pub enum InputEvent {
         x: f32,
         /// Y in logical pixels.
         y: f32,
+    },
+    /// The pointer as a world-space ray, from the camera the pointer is over.
+    PointerRay {
+        /// Start point.
+        origin: Vec3,
+        /// Direction (any non-zero length).
+        direction: Vec3,
     },
     /// Relative mouse motion.
     MouseMotion {

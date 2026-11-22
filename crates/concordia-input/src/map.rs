@@ -18,6 +18,8 @@ pub enum ActionKind {
     Axis1d,
     /// Two values (key axes are normalized; pointer is in logical pixels).
     Axis2d,
+    /// A world-space ray (the pointer through the camera).
+    Ray,
 }
 
 /// A device input that drives an action.
@@ -58,6 +60,8 @@ pub enum Binding {
     MouseDelta,
     /// Scroll this tick (Axis2d; Axis1d uses the vertical delta).
     Scroll,
+    /// The latest world-space pointer ray (Ray).
+    PointerRay,
 }
 
 impl Binding {
@@ -69,6 +73,7 @@ impl Binding {
             Self::KeyAxis { .. } => kind == Axis1d,
             Self::KeyAxis2d { .. } | Self::PointerPosition | Self::MouseDelta => kind == Axis2d,
             Self::Scroll => matches!(kind, Axis1d | Axis2d),
+            Self::PointerRay => kind == ActionKind::Ray,
         }
     }
 }
@@ -130,6 +135,27 @@ impl InputMap {
             }
         }
         Ok(())
+    }
+
+    /// The map new projects start with: `move` (left click) and `pointer_ray` (the pointer as a
+    /// world ray), the actions `ClickToMove` uses by default.
+    pub fn starter() -> Self {
+        let action = |kind, binding| ActionDef {
+            kind,
+            bindings: vec![binding],
+        };
+        Self {
+            actions: BTreeMap::from([
+                (
+                    "move".to_owned(),
+                    action(ActionKind::Button, Binding::MouseButton(MouseButton::Left)),
+                ),
+                (
+                    "pointer_ray".to_owned(),
+                    action(ActionKind::Ray, Binding::PointerRay),
+                ),
+            ]),
+        }
     }
 
     /// Action names in id order (sorted).

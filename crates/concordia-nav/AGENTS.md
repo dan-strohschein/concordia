@@ -10,6 +10,7 @@ Navigation (M2 phase 2.5, ADR-0077): navmeshes built with Recast from the static
 - `NavMesh` (`from_data`, `data`, `stats` → `NavStats`, `polygons` → `NavPoly` with islands, `nearest_point` → `NavPoint`, `island_at`, `path` → `NavPath`, `raycast` → `NavRay`)
 - `NavCache` (`new(Ddc)`, `load_or_build` → `Loaded`), `NavError`
 - `NavModule` (`[nav]`; `with_plans_per_tick`): methods `NavBuild` (`nav.build`) and `NavPathMethod` (`nav.path`) with their params and results; the `NavMeshes` play-world resource (`new`, `get`, `iter`); the `NAVMESH_LAYER` and `NAV_PATHS_LAYER` debug layers
+- Click-to-move (2.5b.2a, ADR-0078): `ClickToMove` and `add_click_processor` (`nav.click`, in `PrePhysics` before `nav.plan`)
 - Agents (2.5b.1): `NavAgent` (gameplay's request; `validate`), `NavAgentState` and `NavStatus` (the engine's, hashed), the signals `NavArrived` and `NavPathFailed` (`NavFailure`); `add_agent_processors(schedule, AgentConfig)` (`nav.plan`, `nav.follow` in `PrePhysics`) and `insert_agent_states` (play start)
 
 ## Invariants
@@ -24,6 +25,7 @@ Navigation (M2 phase 2.5, ADR-0077): navmeshes built with Recast from the static
 - Distances for corners, arrival, target moves and off-path checks are sideways, with a vertical tolerance of half the agent's height. Replans: a new target (moved past `target_desired_distance`), or off the current segment by more than `path_max_distance`; a failed target is retried only when it moves. `NavPathFailed` is raised once per target; unreachable targets walk to the closest point and arrive with `partial`.
 - The last stretch is slowed to `gap / dt`, so no tick carries an agent past its path's end; a `Waiting` agent walks its old path but never arrives on it.
 - Size checks (N3) warn once per (agent, volume) and never refuse; the controller collides.
+- `nav.click` reads `ActionStates`, `PhysicsQueries` and `NavMeshes`. When the click fires (`just_pressed`, or `pressed` with `hold`), it takes the ray's nearest physics hit, snaps it onto the agent's navmesh (`nearest_point`) and writes `NavAgent.target`; a miss changes nothing. Bad action names or kinds, layers or reach warn once per agent and the component is ignored. It runs after input sampling by registration order (input's module comes first).
 - Recast rules the tests rely on: the walkable surface of a floor is up to one `cell_height` above it (a span is at least one cell tall); a face exactly on a cell boundary belongs to one side only (fixtures put floor edges inside a cell); erosion keeps the cell diagonal to a blocked corner; contours are exact to the cell when `edge_max_error` < 0.7. Detour's A* runs over portal midpoints, so path shapes are pinned on single-tile fixtures.
 
 ## How to test
@@ -43,7 +45,7 @@ Navigation (M2 phase 2.5, ADR-0077): navmeshes built with Recast from the static
 - Recast & Detour documentation and source (zlib) and Mikko Mononen's talks and posts (implementation); Godot's navigation docs and source (MIT) for semantics only (agent radius and height, target and path desired distances, path max distance, region and agent roles; `NavigationAgent3D`); Greg Snook, "Simplified 3D Movement and Pathfinding Using Navigation Meshes", *Game Programming Gems* (2000). No Unreal or other non-open source was consulted.
 
 ## Status
-M2 phase 2.5a (navmesh build, queries, cache, `nav.*`, debug layer); 2.5b.1 (agents, signals, `nav_paths`). Click-to-move is 2.5b.2; crowds (`concordia-terra-crowd`) 2.5c; traffic 2.5d.
+M2 phase 2.5a (navmesh build, queries, cache, `nav.*`, debug layer); 2.5b.1 (agents, signals, `nav_paths`); 2.5b.2a (click-to-move). Windowed play is 2.5b.2b; crowds (`concordia-terra-crowd`) 2.5c; traffic 2.5d.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

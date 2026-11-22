@@ -20,7 +20,9 @@ pub use components::{
 pub use error::PhysicsError;
 pub use events::{ContactBegan, ContactEnded};
 pub use layers::{LayerMask, PhysicsLayer};
-pub use module::{PhysicsModule, PhysicsRaycast, RaycastHit, RaycastParams, RaycastResult};
+pub use module::{
+    PhysicsModule, PhysicsQueries, PhysicsRaycast, RaycastHit, RaycastParams, RaycastResult,
+};
 pub use runtime::{PhysicsRuntime, RayHit, StateHash, TickReport};
 pub use settings::PhysicsSettings;
 pub use solids::{StaticSolid, static_solids};

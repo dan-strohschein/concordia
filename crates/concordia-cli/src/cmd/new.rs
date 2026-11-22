@@ -43,6 +43,9 @@ pub(crate) fn run(args: &Args) -> Result<(), Failure> {
     let write = |relative: &str, text: String| write_file(&args.dir.join(relative), &text);
     write("concordia.toml", manifest(&name, &features))?;
     write("scenes/main.scene.ron", main_scene()?)?;
+    if features.modules {
+        write(STARTER_MAP, starter_map()?)?;
+    }
     write(
         ".gitignore",
         ".concordia/\n.claude/settings.local.json\n".to_owned(),
@@ -83,6 +86,9 @@ fn manifest(name: &str, features: &Features) -> String {
         "# Concordia project manifest.\n[project]\nname = {name}\n\n[scene]\nmain = \"scenes/main.scene.ron\"\n\n[sim]\nrate_hz = 60\nseed = 0\n\n[journal]\nsync = true\n"
     );
     if features.modules {
+        text.push_str(&format!(
+            "\n# Input: actions and their bindings (the starter map clicks to move).\n[input]\nmap = \"{STARTER_MAP}\"\n"
+        ));
         text.push_str("\n[physics]\ngravity = [0.0, -9.81, 0.0]\n");
         text.push_str(
             "\n# Navigation: navmeshes from static colliders (NavMeshVolume), nav.build and nav.path.\n[nav]\n",
@@ -105,6 +111,16 @@ fn manifest(name: &str, features: &Features) -> String {
         );
     }
     text
+}
+
+/// Where new projects keep their input map.
+pub(crate) const STARTER_MAP: &str = "input/default.input.ron";
+
+/// The starter input map's text.
+pub(crate) fn starter_map() -> Result<String, Failure> {
+    concordia_input::InputMap::starter()
+        .to_ron()
+        .map_err(|e| Failure::usage(e.to_string()))
 }
 
 fn main_scene() -> Result<String, Failure> {
