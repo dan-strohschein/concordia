@@ -146,6 +146,7 @@ impl Scene {
                     height,
                     overlays: None,
                     view_mode,
+                    debug: Vec::new(),
                 },
             )
             .expect("render")

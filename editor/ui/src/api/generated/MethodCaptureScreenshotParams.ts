@@ -73,6 +73,10 @@ export interface MethodCaptureScreenshotParams {
    */
   camera?: null | string;
   /**
+   * Debug layers to draw on top, e.g. ["navmesh"]; an unknown name's error lists the layers.
+   */
+  debug?: null | string[];
+  /**
    * Height in pixels.
    */
   height?: number;

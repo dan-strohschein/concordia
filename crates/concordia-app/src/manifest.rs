@@ -33,7 +33,15 @@ pub struct Manifest {
     pub replay: Option<ReplaySection>,
     /// `[anim]`; animation components and play processors exist only if this section exists (needs `[assets]`).
     pub anim: Option<AnimSection>,
+    /// `[nav]`; navigation components and `nav.*` exist only if this section exists (navmeshes are
+    /// built from `[physics]` colliders).
+    pub nav: Option<NavSection>,
 }
+
+/// `[nav]` (no settings yet; ADR-0077).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct NavSection {}
 
 /// `[anim]` (no settings yet; ADR-0074).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

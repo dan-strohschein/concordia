@@ -39,6 +39,10 @@ export interface MethodViewportOverlaysResult {
  */
 export interface Overlays {
   /**
+   * Debug layers drawn under the other overlays, e.g. "navmesh" (each module names its own).
+   */
+  debug?: string[];
+  /**
    * The Move gizmo, if shown.
    */
   gizmo?: null | GizmoOverlay;

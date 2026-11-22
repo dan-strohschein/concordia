@@ -51,6 +51,21 @@ pub trait EngineModule: Send + Sync + fmt::Debug {
         Ok(PlaySetup::default())
     }
 
+    /// Debug layers this module draws (names unique across modules), e.g. `"navmesh"`.
+    fn debug_layers(&self) -> Vec<&'static str> {
+        Vec::new()
+    }
+
+    /// `layer`'s geometry in `world`, or `None` when there is nothing to draw.
+    fn debug_geometry(
+        &self,
+        _engine: &crate::Engine,
+        _world: crate::WorldSel,
+        _layer: &str,
+    ) -> Option<crate::DebugGeometry> {
+        None
+    }
+
     /// [`EngineModule::start_play`] with the engine in view (its registry, templates, seed and
     /// module states, e.g. to load assets); the engine calls this, and by default it calls `start_play`.
     fn start_play_in(

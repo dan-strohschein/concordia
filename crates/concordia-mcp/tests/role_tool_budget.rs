@@ -27,7 +27,7 @@ const ENABLED: [&str; 7] = [
 
 /// Every module a Studio project can enable, so every role's tools are served.
 const MODULES: &str =
-    "[physics]\n\n[assets]\n\n[anim]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n";
+    "[physics]\n\n[nav]\n\n[assets]\n\n[anim]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n";
 
 /// The served tool definitions of a project with the default roster, by name.
 async fn served_tools(dir: &tempfile::TempDir) -> BTreeMap<String, Value> {

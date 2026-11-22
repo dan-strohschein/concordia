@@ -9,6 +9,7 @@ Safe, deterministic rigid-body physics for Terra worlds over Jolt (via `jolt-sys
 - `PhysicsSettings` (gravity, `max_bodies`, `set_collides`), `LayerMask`
 - `ContactBegan` / `ContactEnded { other, sensor }`: Terra signals raised on both entities by the physics step, delivered next tick in entity order (M2 phase 2.0b, ADR-0069)
 - `PhysicsModule` (EngineModule) and `physics.raycast` (`RaycastParams` / `RaycastResult`)
+- `static_solids(&World)` → `StaticSolid`s (entity, translation, rotation, collider): the static, non-sensor bodies the step accepts, by entity id, using the step's own validation; navigation builds navmeshes from them (M2 2.5a, ADR-0077)
 
 ## Invariants
 - Determinism: entities are visited in `EntityId` order (`entity_ids_sorted`), bodies are created in that order, events are sorted, and nothing iterates a `HashMap`. Results are identical across runs, thread counts (1/2/8 tested) and scene entity order.
@@ -38,7 +39,7 @@ Safe, deterministic rigid-body physics for Terra worlds over Jolt (via `jolt-sys
 - Jolt Physics documentation and samples (MIT); Jorrit Rouwé, "Architecting Jolt Physics for Horizon Forbidden West" (GDC 2022); Glenn Fiedler, "Fix Your Timestep!".
 
 ## Status
-M1 phase 1.7b.
+M2 phase 2.5a: `static_solids` for navigation. M1 phase 1.7b.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

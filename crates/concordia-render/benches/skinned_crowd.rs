@@ -37,6 +37,7 @@ fn main() {
         height: 1080,
         overlays: None,
         view_mode: Default::default(),
+        debug: Vec::new(),
     };
     for skinned in [false, true] {
         let (world, mut assets) = crowd(skinned);

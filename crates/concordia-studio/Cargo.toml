@@ -33,6 +33,7 @@ uuid.workspace = true
 concordia-anim.workspace = true
 concordia-assets.workspace = true
 concordia-import-model.workspace = true
+concordia-nav.workspace = true
 concordia-render.workspace = true
 concordia-replay.workspace = true
 concordia-scene.workspace = true

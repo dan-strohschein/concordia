@@ -347,6 +347,31 @@ fn level_designer_places_crowds_with_terra_tools_templates_and_the_template_skil
 }
 
 #[test]
+fn level_designer_checks_reachability_with_nav_tools_and_the_navigation_skill() {
+    let (_dir, roster) = roster();
+    let role = roster
+        .roles()
+        .iter()
+        .find(|r| r.role.as_str() == "level-designer")
+        .expect("the level designer is enabled");
+    for tool in ["nav_build", "nav_path"] {
+        assert!(
+            role.mcp_tools.iter().any(|t| t == tool),
+            "{tool}: {:?}",
+            role.mcp_tools
+        );
+    }
+    assert!(
+        role.skills.iter().any(|s| s == "concordia-navigation"),
+        "{:?}",
+        role.skills
+    );
+    for needle in ["NavMeshVolume", "mcp__concordia__nav_build", "islands"] {
+        assert!(role.body.contains(needle), "the prompt explains {needle}");
+    }
+}
+
+#[test]
 fn gameplay_programmer_writes_and_reloads_scripts_with_the_scripting_skill() {
     let (_dir, roster) = roster();
     let role = roster

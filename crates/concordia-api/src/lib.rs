@@ -20,6 +20,7 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
+mod debug_draw;
 mod engine;
 mod error;
 mod events;
@@ -36,6 +37,7 @@ mod templates;
 pub mod transport;
 
 pub use concordia_terra_sim::Template;
+pub use debug_draw::{DebugGeometry, DebugLine, DebugTriangle};
 pub use engine::{Engine, EngineConfig};
 pub use error::{ApiError, ApiErrorKind, ErrorData};
 pub use events::{EventSink, Topic};

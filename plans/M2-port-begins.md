@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d) and 2.5a (2026-11-22) done; 2.5b next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -120,7 +120,7 @@ The VFX artist stays disabled: particles are not in M2 (open question, unchanged
   - `signals_survive_lod_changes` (from M7 7.5; moved here from 2.0b because LOD lands here);
   - `instanced_representation_draws_100k_in_one_pass` (GPU, golden).
 - **2.5 (added):**
-  - `crowd_of_10k_agents_avoids_overlap` (perf on the reference machine);
+  - ~~`crowd_of_10k_agents_avoids_overlap` (perf on the reference machine)~~ stays in M7 7.7 (2.5 refinement); 2.5c proves overlap at 1,000 agents and determinism at 10,000;
   - `traffic_follows_lanes_and_yields_at_junctions`;
   - `crowd_is_deterministic_across_runs_and_threads` (with Terra's parallel scheduler; this replaces the old "single-threaded crowd" constraint).
 - **2.10:** set with the sample game's design. Its shape: scripted headless play driven through `input.inject`, `sim.step` and `query.run`; replay across thread counts; goldens; zero error logs; every Studio role that M2 unlocks lists at least one tool it uses in the sample.
@@ -1833,6 +1833,164 @@ A capture at 100k now takes about 84 ms (160 before). A playing 100k crowd is st
 
 **Not in 2.4b.2:** hysteresis for representation (E2: only if flicker shows); a columnar, incremental extraction for crowds that move every tick (M7 phase 7.7, with tests and a target); spreading a far character's held pose over its interval in rendering.
 
+### Phase 2.5 refinement (2026-11-22, against the code after 2.4b.2)
+**Status: author decision N1 taken (2026-11-22); my other calls below (say if you disagree). 2.5a done (see its As built); 2.5b next.**
+
+Refined against the code as built. The old Phase 2.5 section, this refinement's *2.5 (added)* tests, M7's 7.7 and 2.4b's As built are the starting point. **This section wins wherever the old Phase 2.5 text disagrees.**
+
+**What exists (checked in code):**
+- **No navigation code:** no `recast-sys`, `concordia-nav` or `concordia-terra-crowd`, and no `third_party/recastnavigation`. `plans/README.md` already names `concordia-nav` (+ `recast-sys`) and `concordia-terra-crowd` for M2.
+- **Physics** collides only primitives (`Box`, `Sphere`, `Capsule`, `Cylinder`; no mesh or heightfield colliders), and static bodies are `RigidBody { kind: Static }` plus a `Collider`. `PhysicsRuntime::raycast` and `physics.raycast` exist; input gives pointer rays (`pointer.rs`).
+- **The `-sys` pattern** (`jolt-sys`, `ufbx-sys`): vendored sources under `third_party/` with `VENDOR.md`, a narrow shim built with `cc` or CMake, a counted allocator (`live_allocations`), a header hash test, and the safe wrapper in the consuming crate (`concordia-physics/src/jolt.rs`, `concordia-import-fbx/src/ffi.rs`).
+- **Terra:** processors in five phases (`PrePhysics`, `Physics`, `PostPhysics`, `FrameEnd`, `Presentation`; the old `Sim` set became `PostPhysics`, 2.0 As built) with deterministic parallel waves, command buffers, signals, templates and traits, and simulation LOD (`ProcessorDecl::lod`, `Due`, ADR-0076).
+- **DDC:** `concordia_core::ddc::{Ddc, DdcKey}`, content-addressed blobs.
+- **Overlays:** screen-space triangles over the tonemapped image (selection, gizmos, skeletons). `capture.screenshot` takes `overlays` and `skeleton`; nothing lets another module add debug geometry.
+
+**Author decision (2026-11-22):**
+- **N1. Crowds are per-agent Terra processors.** The crowd's state (corridor, velocities, neighbours, target) lives in hashed components. Detour's crowd steps (path request, corridor update, neighbour gathering, steering, obstacle avoidance, integration, collision resolution) are rewritten in Rust as processors over Detour's navmesh queries, following DetourCrowd's zlib source. Agents run in parallel and LOD thins far ones. `dtCrowd` itself is not wrapped.
+
+**The questions in the brief, settled (my calls; say if you disagree):**
+- **Scheduling (one rule).** Navigation and crowd processors are ordinary Terra processors in Terra's deterministic parallel scheduler (2.0, ADR-0063). The old "single-threaded inside the `Sim` set" constraint is gone. `Sim` is `PostPhysics`. Determinism comes from the scheduler's rules: each processor writes only its own agents, reads neighbours' last-tick state, and stable entity order is used wherever results combine. It is tested with 1 and 8 threads. The old section's implementation note and the risk line are updated to say so.
+- **The 10k test lives in M7.** 2.5c proves correctness at 1,000 agents (`crowd_agents_separate_and_do_not_overlap`) and determinism at 10,000 (`crowd_is_deterministic_across_runs_and_threads`, 1 and 8 threads: a hash test, not a perf target). It also records a `crowd_10k` bench in a `BASELINE.md` with no pass/fail line. `crowd_of_10k_agents_avoids_overlap`, a perf test on the reference machine (`tests/perf/reference.ron`, which arrives with M4), stays in M7 7.7 with its 100k target. M7's 7.7 note is updated.
+- **The Godot mapping stays out.** D1 moved `NavigationAgent3D`/`NavigationRegion3D` to M5 (its plan lists it), so `navigation_agent3d_maps_to_nav_agent_component` leaves 2.5. The component fields keep the semantics that M5's mapping needs (agent radius and height, target and path desired distances). That's semantics only, from Godot's MIT docs.
+- **Area marks come from engine components, not a game.** `NavArea` is a box volume (`Blocked`, or a travel `cost` ≥ 1). `NavAreaGrid` is a cell grid with three marks per cell: `.` keep what the geometry says, `#` blocked, `o` walkable again (overriding a volume). It is stored as text rows so agents can read and diff it. Grid marks apply after volumes. M5 maps the reference port's grid onto `NavAreaGrid`; no port names appear in tracked files.
+- **What the navmesh is built from:** the static colliders inside a `NavMeshVolume`, the same geometry characters walk on. Primitives are tessellated with fixed tables, so there is no trigonometry at build time. Render meshes are not a source until physics gains mesh colliders. A level whose ground isn't collidable isn't walkable either, so the two stay consistent.
+- **Simulation LOD for far agents (ADR-0076):** the crowd's per-agent processors opt in with `.lod()` and advance by `Due::dt`, so far agents step less often over a longer interval. Neighbours are read from their last stored state whatever their LOD. Path requests and replans run at full rate but are budgeted per tick in entity order. Signals (`NavArrived`, `NavPathFailed`) ignore LOD (the 2.4b.1 signal rule). Feature cuts by level (no avoidance when far) wait for M7.
+- **Where things live:** `recast-sys` holds the vendored Recast and Detour, the shim, **and its safe wrapper**. That differs from `jolt-sys` and `ufbx-sys`, so that no `unsafe` exists outside `recast-sys`; `concordia-nav` and `concordia-terra-crowd` are `#![forbid(unsafe_code)]`. `concordia-nav` covers build, cache, queries, agents, `nav.*` and the debug layer. `concordia-terra-crowd` covers crowds and traffic as Terra processors over `concordia-nav`.
+- **ADR-0077 (navigation)** records the sources, the marks, tiles and the cache, determinism, N1 and the unsafe boundary. `docs/design.md` doesn't change (Recast/Detour are already listed).
+
+**Sub-phases (each its own branch off main, one commit, PR to main; each refined again at its start):**
+| Sub-phase | Content | Effort |
+|---|---|---|
+| **2.5a Navmesh: recast-sys, build and queries** (`m2/2.5a-navmesh`) | vendored Recast/Detour v1.6.0 and the shim; `concordia-nav`'s components, gathering, tiled parallel build, DDC cache, islands, nearest point, path and raycast; `nav.build`/`nav.path` and MCP tools; a generic debug-layer hook and the `navmesh` layer, with a golden; ADR-0077; level-designer tools and skill | 1–1.5 weeks |
+| **2.5b Agents and click-to-move** | `NavAgent` (Godot-like semantics: radius, height, target/path desired distance) following a path through `CharacterMotion` in `PrePhysics`; replanning; `NavArrived`/`NavPathFailed` signals; click-to-move (pointer ray → physics raycast → `nearest_point`); the carried-over guest-signal test (below) | 0.5–1 week |
+| **2.5c Crowds as Terra processors (N1)** | `concordia-terra-crowd`: `CrowdAgent` components and a `Crowd` trait, a deterministic spatial grid, processors for paths (budgeted), corridor, neighbours, steering, avoidance (Detour's sampled velocity obstacles), integration on the navmesh surface and collision resolution (Jacobi, last-tick state); LOD opt-in; the `crowd` debug layer | 1.5 weeks |
+| **2.5d Lane-based traffic** | a lane graph (lanes as polylines with speed limits and connections, junctions with priorities) as text; vehicles following lanes with a car-following model (the Intelligent Driver Model, Treiber, Hennecke and Helbing 2000); deterministic yielding at junctions; the `lanes` debug layer; rule-based only (AI-driven behavior stays M7/M4) | 1 week |
+
+**2.5a in detail:**
+- **Vendored:** `third_party/recastnavigation`, tag **v1.6.0** (commit `6dc1667f580357e8a2154c28b7867bea7e8ad3a7`), zlib (`License.txt`). Only `Recast/` and `Detour/` (`Include` and `Source`), unmodified, with the SHA-256s in `VENDOR.md`. DetourCrowd, DetourTileCache, DebugUtils and the demo aren't vendored: N1 rewrites the crowd, and the debug draw is ours.
+- **Shim** (`shim/concordia_recast.{h,cpp}`, C ABI, C++17 via `cc`): counted allocations through `rcAllocSetCustom` and `dtAllocSetCustom`; `cr_build_tile` (one tile from triangles and marks to Detour tile data, or an error code); navmesh create, add tile, free and stats; poly walking (vertices, area, links) for islands and drawing; query create and free, nearest poly, find path plus straight path (partial flag) and raycast, with a filter of area costs. Every entry point validates its input and returns an error code instead of crashing, and nothing calls back into Rust. Bindings are hand-written and checked by a header blake3 and struct-size test, as in `ufbx-sys`.
+- **Determinism:** each tile is built independently from the triangles that overlap it (plus the border) in entity order. Tiles build in parallel and are added in (y, x) order. The serialized navmesh (a header plus each tile's bytes) is byte-identical for any thread count and any entity insertion order.
+- **Cache:** a `DdcKey` of a format tag, the Recast version, the canonical config and the gathered input (vertices, triangles, marks). A hit skips the build. Play worlds build (or hit the cache) at play start. The navmesh is a world resource, not hashed, because it is derived from hashed state.
+- **API:** `nav.build` (`world`, optional `volume`) gives per volume the tiles, polygons, islands, bounds, whether it was cached, and the key. `nav.path` (`from`, `to`, optional `volume` and `world`) gives the waypoints, `partial` and `length`. MCP tools `nav_build` and `nav_path`. A missing or empty navmesh is a descriptive error with suggestions.
+- **Debug layers:** `EngineModule` gains a default-empty hook through which a module names debug layers and supplies world-space lines and triangles. `Overlays.debug` and `capture.screenshot`'s `debug` name the layers to draw, and the renderer projects them like the other overlays. Nav provides `navmesh` (polygons tinted by island, blocked areas absent, edges outlined). It is extended in 2.5c (`crowd`) and 2.5d (`lanes`) without editing the renderer.
+- **Studio:** the level designer gains `nav_build` and `nav_path` and a new skill, `concordia-navigation`. Budgets for every role are reported in As built.
+- **Tests (first list):**
+  - `recast-sys`: `recast_builds_navmesh_for_flat_plane`, `ffi_handles_are_released`, `shim_rejects_bad_input`, `header_hash_and_struct_sizes_match`.
+  - `concordia-nav`: `navmesh_build_is_deterministic_byte_identical`, `static_colliders_are_the_navmesh_source`, `blocked_area_marks_carve_unwalkable_cells`, `grid_walkability_reachability_equivalence_fixture`, `area_costs_steer_paths`, `path_query_returns_straight_path_on_open_floor`, `path_avoids_blocked_cells`, `nearest_point_snaps_click_to_navmesh`, `unreachable_target_returns_partial_path_to_closest_point`, `raycast_stops_at_the_navmesh_edge`, `large_level_tiles_without_silent_islands`, `malformed_nav_settings_are_descriptive_errors`, `navmesh_is_cached_in_the_ddc`.
+  - API, MCP and render: `nav_build_over_api_reports_tiles_polygons_and_islands`, `nav_path_over_api_returns_waypoints`, `nav_tools_have_generated_schemas_and_mcp_tools`, the GPU golden `navmesh_debug_layer_draws_a_fixture_level`; the level designer's scope test.
+- **References:** the Recast/Detour documentation and source (zlib) and Mikko Mononen's talks and blog posts (implementation); Godot's navigation docs and source (MIT) for semantics only; Snook, "Simplified 3D Movement and Pathfinding Using Navigation Meshes" (*Game Programming Gems*). No Unreal or other non-open source.
+
+**Carry-over items:**
+- **Guest `AnimEvent` is still untested.** 2.5b raises the first new gameplay signals since 2.4.4, so it adds `guest_receives_anim_and_nav_signals` (a WASM guest sees `AnimEvent` and `NavArrived`), closing the item.
+- **ADR-0069's chunk components:** nav and crowds aren't a natural first user. Crowd agents in one 1,024-row chunk are close in spawn order, not in space, so per-chunk data is a poor broad phase, and the neighbour grid is a resource rebuilt from positions. The natural first user is M7 7.7's columnar extraction ("did anything in this chunk move?" flags, rebuilt each tick). The item moves there.
+
+### Phase 2.5a As built (2026-11-22, ADR-0077)
+**Reconciled with the code as built:** the refinement held. Details it left open, and what the tests taught:
+- **The safe wrapper is in `recast-sys`** (the brief's rule: no `unsafe` outside it), unlike `jolt-sys` and `ufbx-sys`. The shim is `cr_*`: build a tile, create a navmesh and add tiles, walk polygons and links, and query (nearest, find path, straight path, raycast). `cr_closest_point` was written, then removed: Detour's `findStraightPath` already clamps a partial corridor's end to its last polygon, and a mutation showed the extra clamp changed nothing.
+- **Marking is the shim's own step:** marks apply in order with a temporary blocked id. Blocked becomes Recast's null area before erosion, so agents keep their radius from blocked cells. RecastDemo marks after erosion; Recast's `rcMarkBoxArea` skips null spans and can't revive ground.
+- **Marks are half-open.** `rcMarkBoxArea` includes the cell an upper bound lands on, so a grid cell [2, 3) marked [2, 3.25). `push_mark` now insets upper bounds by 0.001 of a cell.
+- **`NavMeshVolume.edge_max_error`** (cells; default Recast's 1.3) was added. At 1.3, or even 0.9, simplification cut corner cells diagonally. Below 0.7, outlines are exact to the cell, which fixtures and grid-shaped levels use.
+- **Recast rules the hand-computed tests now state** (each one first caught as my mistake, then fixed deliberately in the tests' headers):
+  - `rcFilterLedgeSpans` removes a floor's outer ring of cells (the cell next to a drop) before erosion.
+  - A span is at least one cell tall, so a floor at y = 0 has its walkable surface at y = 0.2 (one `cell_height`).
+  - A face exactly on a cell boundary belongs to one side only. A floor edge on a boundary is walkable to −9.5 on one side and +9.75 on the other, so fixture floors put their edges 0.1 m inside a cell.
+  - Erosion is a chamfer distance transform (2 orthogonal, 3 diagonal), so the cell diagonal to a blocked corner stays walkable.
+  - Detour's A* runs over portal midpoints, so a corridor across tile seams can bend at a seam (a bend at a tile corner showed it). Path-shape tests use one tile, and seams are covered by reachability.
+- **Tiles copy their own vertices** (each gathered triangle owns three). Passing the level's whole vertex array made every tile re-validate it.
+- **Debug layers are a generic `EngineModule` hook** (`debug_layers`, `debug_geometry`), with unique names checked by `Engine::new`. `capture.screenshot` gains `debug` and `Overlays` gains `debug`; the renderer projects layers under the selection and gizmos (premultiplied triangles, then 1.5-point lines).
+- **`concordia_physics::static_solids`** reuses the step's own body rules (static, non-sensor, valid), so nav and physics agree on what is solid.
+- **`[nav]`** follows the `[anim]` precedent: `concordia new` writes it, and `concordia studio init` adds it when missing for the level designer. Studio test projects that list their modules gained it (expected knock-on).
+
+**Engine:**
+- `third_party/recastnavigation` (v1.6.0, `6dc1667f`, zlib; `Recast/` and `Detour/` only, SHA-256s in `VENDOR.md`).
+- `recast-sys`: the shim, hand-written bindings (header blake3 and struct-size checks), counted allocators, `build_tile`, `DtNavMesh`, `DtQuery`, `AreaCosts`, `RecastError`.
+- `concordia-nav`: `NavMeshVolume`, `NavArea`, `NavAreaGrid`; `NavInput::gather` / `key`; `build_tiles` (rayon, per-tile buckets); `NavMeshData` (`CNAV` v1); `NavMesh` (islands by union-find over links, pooled queries); `NavCache`; `NavModule` with `nav.build` / `nav.path`, the `NavMeshes` play resource and the `navmesh` layer.
+- `concordia-api`: `DebugGeometry`, `DebugLine`, `DebugTriangle`; `EngineModule::{debug_layers, debug_geometry}`; `Engine::{debug_layers, debug_geometry}`.
+- `concordia-render`: `RenderRequest::debug`, `Overlays::debug`, `capture.screenshot` `debug`, layer validation (`InvalidParams` listing the layers).
+- `concordia-physics`: `static_solids`, `StaticSolid`.
+- `concordia-app` (`[nav]`, `NavSection`), `concordia-cli` (`new`, `studio init`).
+- Studio: the level designer gains `nav_build` and `nav_path`, the `concordia-navigation` skill, and workflow and verification steps.
+- Docs: ADR-0077; the AGENTS.md and README.md of `recast-sys` and `concordia-nav`; the AGENTS.md of `concordia-api`, `-render`, `-physics`, `-app`, `-cli` and `-studio`; `concordia-render`'s README; `docs/guides/agents-engine-api.md` (a Navigation section, the `nav.*` rows, `debug`); `plans/README.md`; `third_party/README.md`; this plan's refinement and M7's 7.7 note.
+
+**Tests (35 new, 4 extended):**
+- `recast-sys/tests/smoke.rs` (5):
+  - `header_hash_and_struct_sizes_match`;
+  - `recast_builds_navmesh_for_flat_plane` (one quad at ±4.25, y = 0.2, no links; the derivation is in the header);
+  - `queries_work_on_the_plane` (snap, an off-mesh miss, a one-polygon corridor, a two-point path, a raycast at t = 3.25 / 9 with normal −x, a free ray);
+  - `ffi_handles_are_released` (counts back to the start after navmeshes, queries, failed builds and refused tiles);
+  - `shim_rejects_bad_input` (nine bad configs, empty input, an out-of-range index, NaN, empty bounds, four bad navmesh params, zero nodes, bad costs, a taken slot).
+- `concordia-nav/tests/build.rs` (9):
+  - `navmesh_build_is_deterministic_byte_identical` (1, 3 and 8 threads and reversed insertion, equal blake3; a 3 × 3 grid);
+  - `static_colliders_are_the_navmesh_source` (dynamic, kinematic and sensor bodies don't carve; a box, a box turned 45°, a 6 m box turned 90°, a cylinder and an offset collider do);
+  - `blocked_area_marks_carve_unwalkable_cells` (area 19.5² − (4.5² − 4 × 0.25²) = 360.25 exactly);
+  - `grid_walkable_marks_reopen_a_blocked_volume` (2 islands, then 1, and a 10 m path);
+  - `grid_walkability_reachability_equivalence_fixture` (a 24 × 16 maze with 3 parts: navmesh islands equal flood-fill components over every pair of open cells);
+  - `large_level_tiles_without_silent_islands` (1 km, 15,625 pillars, 32 × 32 tiles, over 10,000 polygons, 1 island, a corner-to-corner path);
+  - `malformed_nav_settings_are_descriptive_errors` (nine volume fields, six mark errors, 62 costs, not a volume);
+  - `navmesh_data_roundtrips_bytes`; `navmesh_is_cached_in_the_ddc` (a hit, a changed key, a corrupt entry rebuilt and stored again).
+- `concordia-nav/tests/query.rs` (7):
+  - `path_query_returns_straight_path_on_open_floor` (√185);
+  - `path_avoids_blocked_cells` (six exact waypoints around the eroded wall end and its kept corner cells; 2√50.0625 + 2√0.125 + 2);
+  - `area_costs_steer_paths` (cost 1 straight; cost 10 round the strip corners, 2√58 + 2);
+  - `nearest_point_snaps_click_to_navmesh` (on-mesh, 1.5 m up, inside a blocked cell to the kept corner (2, 3) at 0.566 m, beyond reach, `island_at`);
+  - `unreachable_target_returns_partial_path_to_closest_point` (ends at (−1.25, 0.2, 0), 4.75 m);
+  - `raycast_stops_at_the_navmesh_edge`; `queries_from_many_threads_agree` (8 threads × 50).
+- `concordia-nav/tests/api.rs` (3): `nav_build_over_api_reports_tiles_polygons_and_islands`; `nav_path_over_api_returns_waypoints` (across a seam, then around a wall spawned without `nav.build`, then off the navmesh, then the play world and its `NavMeshes`); `navmesh_debug_layer_draws_every_polygon` (n edges and n − 2 triangles per polygon, lifted 2 cm).
+- `concordia-api/tests/debug_layers.rs` (2), `concordia-app/tests/nav.rs` (3: `nav_section_adds_the_nav_module`, `capture_rejects_unknown_debug_layers`, the GPU golden `navmesh_debug_layer_draws_a_fixture_level`, which also checks the viewport's `debug` gives the same image), `concordia-mcp/tests/nav_tools.rs` (2), `concordia-studio` (`level_designer_checks_reachability_with_nav_tools_and_the_navigation_skill`, `navigation_skill_examples_are_real_params_and_components`), `concordia-cli` (`studio_init_adds_nav_when_missing_for_the_level_designer`).
+- Extended: `the_default_roster_ships_the_planned_skills` (13 skills), `new_project_enables_modules_and_studio` and the `--minimal` case (`[nav]`), the role-budget project (`[nav]`).
+
+**Red run:** written against stubs (a shim returning errors, `gather` returning `NoVolume`, empty builds and queries, methods returning `Internal`, no layers), every `recast-sys`, `concordia-nav`, debug-layer, app (`capture.screenshot` without `debug`), Studio and CLI test failed for the right reason. Not seen red:
+- **`shim_rejects_bad_input`'s bad-config loop** passed vacuously against the stub, which rejected everything; the test went red at its first valid-input check.
+- **The debug-layer hook's two tests** were written in the same step as the hook. I then stubbed the Engine side, saw both fail (no layers, no uniqueness error) and restored it with a fresh mtime.
+- **`nav_tools.rs` (2)** were written after the methods existed: MCP serves module methods generically, so they guard the wiring.
+- **`nav_section_adds_the_nav_module`** first failed on my fixture (`MeshRenderer` and `Camera` need `[assets]` and `[render]`), with `[nav]` already wired, so it guards the manifest.
+
+**Changed deliberately (my mistakes, each explained in the tests' headers):**
+- The plane's walkable edge is ±4.25 (the ledge filter), not ±4.5, and its surface is y = 0.2, not 0.
+- Fixture floors moved off cell boundaries.
+- The blocked square's area keeps its four corner cells.
+- The maze has 3 parts, not 4.
+- The snap test's click moved from (2.5, 2.6), a tie, to (2.4, 2.6).
+- The API's invalid-volume case uses `half_extents` (reflect ranges already reject `cell_size: 0` at the boundary, which is better).
+- The 90° box moved into the right test after my edit put it in `busy_level`.
+
+**Mutation checks:** 20 mutations, each run against its tests with the restored file given a fresh mtime; all 20 caught after two fixes:
+- **The shim:** blocked left walkable, erosion before marks, a query not freed.
+- **Marks:** an inclusive upper bound, `o` blocking, costs ignored.
+- **Sources:** rotation ignored, offset ignored, sensors carving, dynamic bodies carving.
+- **Queries:** no islands from links, an inverted raycast hit, `island_at` without its sideways check.
+- **Data and cache:** trailing bytes accepted, a hit reported as a build, the cache never read.
+- **Validation:** the slope unchecked.
+- **Render and API:** the layer not drawn, unknown layers accepted, the play world without navmeshes.
+
+The two fixes: **rotation ignored** first survived (the 45° box's test points also lay inside its axis-aligned footprint), so a 6 m box turned 90° was added. **The partial-path clamp** survived because it was redundant, so it was removed (above). One corrupt-cache mutation didn't compile; it was replaced by the two cache mutations above.
+
+**Perf** (release, M3 Pro; the 1 km fixture: 15,625 pillars, 0.5 m cells): gather 17 ms; build 1.37 s on one thread, 0.22 s on eight; 1,024 tiles, 89,195 polygons, one island, 14.1 MB; load 18 ms; a corner-to-corner path 4.4 ms (125 waypoints, 1,426.8 m). The `navmesh` layer re-gathers the level on each draw so it follows edits (fine at these sizes; a scene change counter would make it free, later).
+
+**Studio and budgets** (served definitions, 4 chars a token; `capture_screenshot` gained `debug`): level designer 35 → 37 tools ≈21.8k → 23.1k (21,757 → 23,078), tech artist 23 ≈20.1k (20,059 → 20,106), QA 22 ≈18.5k (18,447 → 18,494), animator 22 ≈16.8k (16,777 → 16,824), director 13 ≈12.5k (12,453), gameplay programmer 16 ≈12.4k (12,363), writer 11 ≈9.6k (9,576), all unchanged in tools except the level designer; all under 50k.
+
+**Carry-over:**
+- Guest `AnimEvent` is still untested; 2.5b's `guest_receives_anim_and_nav_signals` closes it.
+- ADR-0069's chunk components have no user yet; the first natural one is M7 7.7's columnar extraction (refinement above).
+
+**Not in 2.5a:** agents, click-to-move and nav signals (2.5b); crowds (2.5c); traffic (2.5d); runtime navmesh rebuilds for moving obstacles; render meshes as sources (waits for mesh colliders); a scene change counter for the debug layer.
+
+**Goldens and snapshots:** one new golden, `nav/navmesh_debug_layer` (400 × 300), reviewed by the author and blessed locally. Every existing golden is unchanged. Six snapshots changed, all reviewed and accepted by the author:
+- `capture.screenshot`'s schema, in both the render and M1 gate snapshots (`debug`);
+- the level designer's agent file and the CLAUDE.md team block, in both the Studio and M3S gate snapshots;
+- the M3S agents-and-skills list (`concordia-navigation`).
+
+The second M3S snapshot only appeared once the first was accepted, because the gate test stops at its first mismatch. **Editor schemas:** `MethodCaptureScreenshotParams` and `MethodViewportOverlays{Params,Result}` gain `debug`; committed.
+
+**Checklist:** all of these pass:
+- `just lint` and Tauri clippy;
+- `CONCORDIA_REQUIRE_GPU=1` full suite with `--no-fail-fast` (1,437 tests: 1,437 pass after the review, 8 skipped; 14 doc tests);
+- `just gate-tests M1` (4) and `M3S` (13);
+- `just deny` and the editor's, both `Cargo.lock`s, fresh advisory DB (the editor's lock gains `concordia-nav` and `recast-sys`; its deny prints an existing "no crate matched" warning for an ignore entry);
+- `just editor-schemas` (committed);
+- `just editor-test` (118 unit, 22 end-to-end).
+
 ### Effort (re-estimated)
 | Phase | Estimate |
 |---|---|
@@ -2134,6 +2292,8 @@ Phase order is a dependency order, but 2.3–2.8 can run in parallel once 2.1 an
 
 ### Phase 2.5: concordia-nav + recast-sys: navmesh, click-to-move, crowds
 
+> **Superseded in detail by the "Phase 2.5 refinement (2026-11-22)" section above** (sub-phases 2.5a–2.5d; crowds as per-agent Terra processors in the parallel scheduler; the Godot mapping in M5; area marks from `NavArea`/`NavAreaGrid`). The text below is the original plan.
+
 - **Objective:** build navmeshes with Recast, answer path queries with Detour, move agents (player click-to-move, enemy chase) and run enemy crowds deterministically; reproduce the reachability of the reference port's grid-built navmesh.
 - **Deliverables:** `recast-sys` (vendored recastnavigation, zlib, `cc` build, a narrow C shim); `concordia-nav` (tiled build from collision geometry + per-cell area marks, path/straight-path/nearest-point/raycast queries, `NavAgent` path follower, `NavCrowd` over `dtCrowd`); `NavigationAgent3D`/`NavigationRegion3D` mapping; API `nav.build`, `nav.path` (MCP `nav_build`, `nav_path`).
 - **Tests first**
@@ -2298,7 +2458,7 @@ which runs `cargo nextest run --test m2_port_begins` (`tests/gates/m2_port_begin
 
 - **The full port is large, and M2 only starts it.** Roughly 100k+ lines of game GDScript (plus a large test suite and in-project tools), hundreds of scenes, dozens of shaders. The slice is roughly a fifth of the game code. Even at a sustained pace of a few thousand *verified* lines per week across several agents, the remainder is **months of work, realistically 6–12 months**, with the long tail in procedural level generation and biomes, UI windows, skills and the story system. *Mitigation / how it continues:* the port ledger is the backlog. M3's Agent Studio turns it into the task board: the Director assigns `ready` ledger rows to Gameplay Programmer instances per subsystem, the Shader/Tech Artist works through the shader report, the QA/Playtester proves each subsystem with oracle suites and replays, and the Level Designer later ports the level editor. Suggested order after M2: items/economy and skills (pure, heavily tested) → enemy roster and ranks → procedural zones, generator and biomes → story/dialogue → remaining UI windows → tools and the native GDExtension (rewritten in Rust; it is the author's own code). Each subsystem lands behind its oracle suites and a new slice replay.
 - **Godot semantics leak into behavior** (`_ready` order, scene-tree order, synchronous signals, `await` timing, `_process` vs `_physics_process`). *Mitigation:* explicit idiom table, oracle tests, and the playthrough/replay tests that cover what the game's own suite cannot (input, movement, animation, overlap, feel).
-- **Determinism** (Jolt, Detour crowd, animation-timed events, hit-stop time scale, WASM floats, hash-map iteration). *Mitigation:* single-threaded nav/crowd in stable order, anim in the `Sim` set, `SimClock` time scale, NaN canonicalization and fuel in WASM, cross-thread-count replay tests in 2.4/2.5/2.6/2.8, Jolt's deterministic build flags (assumes M1).
+- **Determinism** (Jolt, Detour crowd, animation-timed events, hit-stop time scale, WASM floats, hash-map iteration). *Mitigation:* nav and crowd processors in Terra's deterministic parallel scheduler (2.5 refinement; neighbours read from last-tick state), anim in `FrameEnd`, `SimClock` time scale, NaN canonicalization and fuel in WASM, cross-thread-count replay tests in 2.4/2.5/2.6/2.8, Jolt's deterministic build flags (assumes M1).
 - **Visual parity**: custom `light()` toon shading, screen/depth-texture shaders, `WorldEnvironment` features and particles have no M1 equivalent. *Mitigation:* the lighting-model hook (2.3), luma-statistics parity against the game's own measuring harnesses, goldens of our own output blessed after review, particles reported and deferred.
 - **tree-sitter-gdscript may lag recent Godot 4.x syntax.** *Mitigation:* vendored grammar, corpus test over every `.gd` file in the reference port, patch upstream.
 - **Scope: 12+ crates in one milestone.** *Mitigation:* each crate ships the minimum the slice needs (no IK/retargeting, no audio DSP, no rich text, single navmesh); phases 2.3–2.8 run in parallel; anything not needed by the gate goes to the backlog.

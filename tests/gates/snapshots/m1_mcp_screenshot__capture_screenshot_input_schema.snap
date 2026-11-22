@@ -228,6 +228,20 @@ expression: capture.input_schema.as_ref()
       ],
       "description": "Camera entity; default: the highest-priority Camera."
     },
+    "debug": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      ],
+      "description": "Debug layers to draw on top, e.g. [\"navmesh\"]; an unknown name's error lists the layers."
+    },
     "height": {
       "default": 432,
       "description": "Height in pixels.",

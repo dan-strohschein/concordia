@@ -51,9 +51,9 @@ impl std::fmt::Display for StateHash {
 
 /// Authoring data a body was built from; a change rebuilds the body.
 #[derive(Debug, Clone, PartialEq)]
-struct Source {
-    body: RigidBody,
-    collider: Collider,
+pub(crate) struct Source {
+    pub(crate) body: RigidBody,
+    pub(crate) collider: Collider,
     /// Only for static bodies (dynamic ones own their transform; kinematic ones are moved).
     fixed_at: Option<(Vec3, Quat)>,
 }
@@ -335,7 +335,7 @@ impl PhysicsRuntime {
     }
 }
 
-fn source_of(world: &World, id: EntityId) -> Option<(Transform, Source)> {
+pub(crate) fn source_of(world: &World, id: EntityId) -> Option<(Transform, Source)> {
     let t = *world.get::<Transform>(id)?;
     let body = world.get::<RigidBody>(id)?.clone();
     let collider = world.get::<Collider>(id)?.clone();
@@ -350,7 +350,7 @@ fn source_of(world: &World, id: EntityId) -> Option<(Transform, Source)> {
     ))
 }
 
-fn validate(source: &Source, t: &Transform) -> Result<(), String> {
+pub(crate) fn validate(source: &Source, t: &Transform) -> Result<(), String> {
     let positive = |name: &str, x: f32| match x.is_finite() && x > 0.0 {
         true => Ok(()),
         false => Err(format!("{name} must be a positive number, got {x}")),

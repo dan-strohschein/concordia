@@ -2,6 +2,7 @@
 //! and the Move, Rotate and Scale gizmos, as screen-space triangles over the tonemapped image. The
 //! gizmo geometry here is the one source for drawing and hit-testing.
 
+use concordia_api::DebugGeometry;
 use concordia_core::id::EntityId;
 use concordia_core::math::{Mat4, Vec3};
 use concordia_reflect::Reflect;
@@ -92,6 +93,9 @@ pub struct Overlays {
     /// How the native viewport draws the scene (lit, or a debug view).
     #[serde(default)]
     pub view_mode: crate::ViewMode,
+    /// Debug layers drawn under the other overlays, e.g. "navmesh" (each module names its own).
+    #[serde(default)]
+    pub debug: Vec<String>,
 }
 
 /// One gizmo arrow on screen (pixels, y down).
@@ -288,6 +292,7 @@ pub(crate) fn triangles(
     world: &RenderWorld,
     projector: &Projector,
     boxes: &[(Mat4, (Vec3, Vec3))],
+    debug: &[DebugGeometry],
 ) -> Vec<f32> {
     let mut out = Vec::new();
     let scale = overlays
@@ -295,6 +300,9 @@ pub(crate) fn triangles(
         .filter(|s| s.is_finite())
         .unwrap_or(1.0)
         .clamp(0.5, 4.0);
+    for geometry in debug {
+        debug_triangles(&mut out, projector, geometry, scale);
+    }
     let selection_color = linear([1.0, 0.6, 0.1]);
     for (draw, (at, (lo, hi))) in world.draws.iter().zip(boxes) {
         if overlays.selection.contains(&draw.entity) {
@@ -428,11 +436,38 @@ fn box_edges(
 }
 
 fn vertex(out: &mut Vec<f32>, at: [f32; 2], color: [f32; 3]) {
-    out.extend_from_slice(&[at[0], at[1], color[0], color[1], color[2], 1.0]);
+    vertex_rgba(out, at, [color[0], color[1], color[2], 1.0]);
+}
+
+/// A vertex with a premultiplied linear RGBA color.
+fn vertex_rgba(out: &mut Vec<f32>, at: [f32; 2], color: [f32; 4]) {
+    out.extend_from_slice(&[at[0], at[1], color[0], color[1], color[2], color[3]]);
+}
+
+/// A debug layer's triangles, then its lines (1.5 points wide), skipping anything behind the eye.
+fn debug_triangles(out: &mut Vec<f32>, p: &Projector, geometry: &DebugGeometry, scale: f32) {
+    let premultiplied = |[r, g, b, a]: [f32; 4]| [r * a, g * a, b * a, a];
+    for t in &geometry.triangles {
+        if let [Some(a), Some(b), Some(c)] = t.points.map(|q| p.project(q)) {
+            for at in [a, b, c] {
+                vertex_rgba(out, at, premultiplied(t.color));
+            }
+        }
+    }
+    for l in &geometry.lines {
+        if let (Some(a), Some(b)) = (p.project(l.from), p.project(l.to)) {
+            line_rgba(out, a, b, 1.5 * scale, premultiplied(l.color));
+        }
+    }
 }
 
 /// A `width`-pixel line as two triangles.
 fn line(out: &mut Vec<f32>, a: [f32; 2], b: [f32; 2], width: f32, color: [f32; 3]) {
+    line_rgba(out, a, b, width, [color[0], color[1], color[2], 1.0]);
+}
+
+/// A `width`-pixel line in a premultiplied RGBA color.
+fn line_rgba(out: &mut Vec<f32>, a: [f32; 2], b: [f32; 2], width: f32, color: [f32; 4]) {
     let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
     let n = dx.hypot(dy).max(1e-6);
     let (nx, ny) = (-dy / n * width / 2.0, dx / n * width / 2.0);
@@ -443,7 +478,7 @@ fn line(out: &mut Vec<f32>, a: [f32; 2], b: [f32; 2], width: f32, color: [f32; 3
         [a[0] - nx, a[1] - ny],
     ];
     for i in [0, 1, 2, 0, 2, 3] {
-        vertex(out, q[i], color);
+        vertex_rgba(out, q[i], color);
     }
 }
 

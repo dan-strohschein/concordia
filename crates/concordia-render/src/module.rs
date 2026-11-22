@@ -204,6 +204,9 @@ pub struct CaptureScreenshotParams {
     /// Draw every posed skeleton's bones on top (play world), whatever the editor overlays are.
     #[serde(default)]
     pub skeleton: Option<bool>,
+    /// Debug layers to draw on top, e.g. ["navmesh"]; an unknown name's error lists the layers.
+    #[serde(default)]
+    pub debug: Option<Vec<String>>,
 }
 
 fn default_width() -> u32 {
@@ -225,6 +228,44 @@ fn capture_overlays(engine: &Engine, p: &CaptureScreenshotParams) -> Option<crat
 
 fn default_height() -> u32 {
     432
+}
+
+/// Unknown debug layer names, as an `InvalidParams` error listing the known ones.
+fn check_layers(engine: &Engine, names: &[String]) -> Result<(), ApiError> {
+    let known = engine.debug_layers();
+    match names.iter().find(|n| !known.contains(&n.as_str())) {
+        Some(name) => Err(ApiError::new(
+            ApiErrorKind::InvalidParams,
+            format!("unknown debug layer {name:?}; the layers are {known:?}"),
+        )
+        .at("/debug")),
+        None => Ok(()),
+    }
+}
+
+/// The geometry of each named layer (once each, in order) in `world`; unknown names are skipped.
+fn layer_geometry(
+    engine: &Engine,
+    names: &[String],
+    world: WorldSel,
+) -> Vec<concordia_api::DebugGeometry> {
+    let mut seen = std::collections::BTreeSet::new();
+    names
+        .iter()
+        .filter(|n| seen.insert(n.as_str()))
+        .filter_map(|n| engine.debug_geometry(n, world))
+        .collect()
+}
+
+/// A capture's layers: its own `debug`, plus the viewport's when it draws the editor overlays.
+fn capture_layers(engine: &Engine, p: &CaptureScreenshotParams) -> Vec<String> {
+    let mut names = p.debug.clone().unwrap_or_default();
+    if p.overlays == Some(true)
+        && let Some(state) = engine.state::<RenderState>()
+    {
+        names.extend(state.overlays.debug.iter().cloned());
+    }
+    names
 }
 
 /// `capture.screenshot` result (MCP returns `image` as image content).
@@ -261,6 +302,12 @@ impl Method for CaptureScreenshot {
             .at("/view"));
         }
         p.view.as_ref().map(check_view).transpose()?;
+        check_layers(engine, p.debug.as_deref().unwrap_or_default())?;
+        let debug = layer_geometry(
+            engine,
+            &capture_layers(engine, &p),
+            p.world.unwrap_or_default(),
+        );
         let world = engine.world(p.world.unwrap_or_default())?;
         let camera = p.camera.as_ref().map(|c| c.resolve(world)).transpose()?;
         let sim_tick = world.resource::<SimClock>().map_or(0, |c| c.tick.0);
@@ -271,6 +318,7 @@ impl Method for CaptureScreenshot {
             height: p.height,
             overlays: capture_overlays(engine, &p),
             view_mode: p.view_mode.unwrap_or_default(),
+            debug,
         };
         let scene = scene_update(engine, p.world.unwrap_or_default(), None)?;
         let slot = scene.slot;
@@ -742,6 +790,14 @@ pub(crate) fn redraw_viewport(
     queue_present(engine, view, target)
 }
 
+/// The viewport's debug layers (`viewport.overlays`).
+fn viewport_layers(engine: &Engine) -> Vec<String> {
+    engine
+        .state::<RenderState>()
+        .map(|s| s.overlays.debug.clone())
+        .unwrap_or_default()
+}
+
 /// Snapshots the world and queues a frame of `view` on the render thread.
 pub(crate) fn queue_present(
     engine: &mut Engine,
@@ -761,6 +817,11 @@ pub(crate) fn queue_present(
             .state::<RenderState>()
             .map(|s| s.overlays.view_mode)
             .unwrap_or_default(),
+        debug: layer_geometry(
+            engine,
+            &viewport_layers(engine),
+            t.world.unwrap_or_default(),
+        ),
     };
     let (log, id) = queue_record(engine, &t);
     if let Some(state) = engine.state_mut::<RenderState>() {
@@ -1092,6 +1153,7 @@ impl Method for ViewportOverlays {
         _: &CallCtx,
         p: crate::Overlays,
     ) -> Result<ViewportOverlaysResult, ApiError> {
+        check_layers(engine, &p.debug)?;
         let state = engine.state_mut::<RenderState>().ok_or_else(|| {
             ApiError::new(ApiErrorKind::Internal, "the render module has no state")
         })?;

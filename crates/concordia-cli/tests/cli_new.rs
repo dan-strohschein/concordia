@@ -98,6 +98,7 @@ fn new_project_enables_modules_and_studio() {
     let manifest = std::fs::read_to_string(dir.path().join("g/concordia.toml")).unwrap();
     for section in [
         "[physics]",
+        "[nav]",
         "[assets]",
         "[anim]",
         "[render]",
@@ -168,6 +169,7 @@ fn new_minimal_has_no_modules() {
     for section in [
         "[physics]",
         "[assets]",
+        "[nav]",
         "[anim]",
         "[render]",
         "[scripts]",

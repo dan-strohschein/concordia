@@ -6,13 +6,15 @@ use std::path::Path;
 
 use concordia_studio::{CLAUDE_SKILL_FIELDS, Roster, SkillFile, default_roster, init};
 
-/// The eight built-in skills the plan names (3.6), plus team comms (3.6b) and animation (M2 2.4.5).
-const PLANNED: [&str; 12] = [
+/// The eight built-in skills the plan names (3.6), plus team comms (3.6b), animation (M2 2.4.5)
+/// and navigation (M2 2.5a).
+const PLANNED: [&str; 13] = [
     "concordia-add-material",
     "concordia-animation-graphs",
     "concordia-director-planning",
     "concordia-fix-bug-with-replay",
     "concordia-generate-mesh-blender",
+    "concordia-navigation",
     "concordia-record-replay",
     "concordia-scripting",
     "concordia-synthesize-sfx",
@@ -525,5 +527,61 @@ fn terra_templates_skill_lod_examples_are_real_params_and_a_valid_template() {
     assert_eq!(compiled.component_names(), ["Representation"]);
     for needle in ["LodViewer", "hysteresis", "`lod`", "`levels`", "`due`"] {
         assert!(text.contains(needle), "the skill explains {needle}");
+    }
+}
+
+#[test]
+fn navigation_skill_examples_are_real_params_and_components() {
+    let text = default_roster()
+        .skills
+        .iter()
+        .find(|(n, _)| *n == "concordia-navigation")
+        .map(|(_, t)| *t)
+        .expect("the navigation skill");
+    let mut seen = std::collections::BTreeSet::new();
+    for (tool, args) in examples(text, "") {
+        let checked = match tool.as_str() {
+            "nav_build" => {
+                serde_json::from_value::<concordia_nav::NavBuildParams>(args.clone()).map(|_| ())
+            }
+            "nav_path" => {
+                serde_json::from_value::<concordia_nav::NavPathParams>(args.clone()).map(|_| ())
+            }
+            "capture_screenshot" => {
+                serde_json::from_value::<concordia_render::CaptureScreenshotParams>(args.clone())
+                    .map(|_| ())
+            }
+            "component_set" => match args["component"].as_str() {
+                Some("NavMeshVolume") => {
+                    serde_json::from_value::<concordia_nav::NavMeshVolume>(args["value"].clone())
+                        .map(|_| ())
+                }
+                Some("NavArea") => {
+                    serde_json::from_value::<concordia_nav::NavArea>(args["value"].clone())
+                        .map(|_| ())
+                }
+                Some("NavAreaGrid") => {
+                    serde_json::from_value::<concordia_nav::NavAreaGrid>(args["value"].clone())
+                        .map(|_| ())
+                }
+                other => panic!("no example check for {other:?}"),
+            },
+            _ => continue,
+        };
+        checked.unwrap_or_else(|e| panic!("{tool} {args}: {e}"));
+        seen.insert(match tool.as_str() {
+            "component_set" => args["component"].as_str().unwrap().to_owned(),
+            t => t.to_owned(),
+        });
+    }
+    for needed in [
+        "nav_build",
+        "nav_path",
+        "capture_screenshot",
+        "NavMeshVolume",
+        "NavArea",
+        "NavAreaGrid",
+    ] {
+        assert!(seen.contains(needed), "the skill shows {needed}: {seen:?}");
     }
 }

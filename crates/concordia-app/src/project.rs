@@ -10,6 +10,7 @@ use concordia_core::math::Vec3;
 use concordia_import_fbx::FbxImporter;
 use concordia_import_gltf::GltfImporter;
 use concordia_input::{InputMap, InputModule};
+use concordia_nav::NavModule;
 use concordia_physics::{PhysicsModule, PhysicsSettings};
 use concordia_render::{ClosureBudget, RenderModule};
 use concordia_replay::ReplayModule;
@@ -109,6 +110,9 @@ impl Project {
             settings.gravity = Vec3::from_array(physics.gravity);
             settings.max_bodies = physics.max_bodies;
             modules.push(Arc::new(PhysicsModule::new(settings)));
+        }
+        if self.manifest.nav.is_some() {
+            modules.push(Arc::new(NavModule::new()));
         }
         if self.manifest.assets.is_some() {
             let assets = model_importers()
