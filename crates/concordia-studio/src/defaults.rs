@@ -36,7 +36,7 @@ const ROLES: [(&str, &str); 12] = [
 ];
 
 /// Engine skills of the default roster: (name, `SKILL.md`), sorted by name.
-const SKILLS: [(&str, &str); 12] = [
+const SKILLS: [(&str, &str); 13] = [
     (
         "concordia-add-material",
         include_str!("../roster/skills/concordia-add-material/SKILL.md"),
@@ -56,6 +56,10 @@ const SKILLS: [(&str, &str); 12] = [
     (
         "concordia-generate-mesh-blender",
         include_str!("../roster/skills/concordia-generate-mesh-blender/SKILL.md"),
+    ),
+    (
+        "concordia-navigation",
+        include_str!("../roster/skills/concordia-navigation/SKILL.md"),
     ),
     (
         "concordia-record-replay",

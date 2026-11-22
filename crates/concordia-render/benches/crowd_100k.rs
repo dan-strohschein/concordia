@@ -49,6 +49,7 @@ fn main() {
             height: 1080,
             overlays: None,
             view_mode: Default::default(),
+            debug: Vec::new(),
         };
         renderer.render(&rw, &mut assets, &request).expect("render");
         let frame = median(11, || {

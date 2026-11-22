@@ -143,6 +143,7 @@ impl Engine {
     pub fn new(config: EngineConfig) -> Result<Self, ApiError> {
         let modules = crate::module::with_core(&config.modules);
         require_unique_names(&modules)?;
+        require_unique_layers(&modules)?;
         let registry = register_types(&modules)?;
         let methods = Arc::new(MethodRegistry::build(&modules)?);
         let states = modules.iter().filter_map(|m| m.engine_state()).collect();
@@ -169,6 +170,23 @@ impl Engine {
             ring,
             events: crate::events::EventHub::default(),
         })
+    }
+
+    /// Every module's debug layers, sorted.
+    pub fn debug_layers(&self) -> Vec<&'static str> {
+        let mut layers: Vec<&'static str> =
+            self.modules.iter().flat_map(|m| m.debug_layers()).collect();
+        layers.sort_unstable();
+        layers
+    }
+
+    /// `layer`'s geometry in `world` from the module that draws it (`None`: unknown or empty).
+    pub fn debug_geometry(&self, layer: &str, world: WorldSel) -> Option<crate::DebugGeometry> {
+        let module = self
+            .modules
+            .iter()
+            .find(|m| m.debug_layers().contains(&layer))?;
+        module.debug_geometry(self, world, layer)
     }
 
     /// The type registry.
@@ -440,6 +458,19 @@ fn require_unique_names(modules: &[Arc<dyn EngineModule>]) -> Result<(), ApiErro
         Some(m) => Err(internal(format!("module {} is added twice", m.name()))),
         None => Ok(()),
     }
+}
+
+fn require_unique_layers(modules: &[Arc<dyn EngineModule>]) -> Result<(), ApiError> {
+    let mut seen = BTreeSet::new();
+    for module in modules {
+        if let Some(layer) = module.debug_layers().into_iter().find(|l| !seen.insert(*l)) {
+            return Err(internal(format!(
+                "debug layer {layer} is drawn by two modules (the second is {})",
+                module.name()
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn register_types(modules: &[Arc<dyn EngineModule>]) -> Result<TypeRegistry, ApiError> {

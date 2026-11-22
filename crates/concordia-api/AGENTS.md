@@ -9,6 +9,7 @@ The one Engine API: typed `domain.verb` methods with generated schemas, JSON-RPC
 - `EngineModule` and `PlaySetup` (ADR-0046): how other crates add types, methods, play systems and play-time state; `start_play_in(&mut engine, world)` sees the engine (registry, templates, seed, module states such as the asset database) when play starts (2.6d; `&mut` since 2.4.1, ADR-0074), and `Engine::registry_and_state_mut::<T>()` borrows the registry beside a module's state
 - For modules' own edits (2.6d): `Engine::commit_edits_as(actor, label, ops)` (one transaction by a non-session actor, e.g. `script:<module>`; refused while a transaction is open), `Engine::undo_as(actor, txn)`, `Engine::registry_and_play_mut`, `Engine::template_catalog`, `Engine::sim_seed`; error kind `ScriptFailed` (−32018)
 - For replays (2.8, ADR-0072): `EngineModule::fingerprints` → `Fingerprint` (module, name, kind, hash: the code a module runs) and `Engine::fingerprints`; `Engine::restart_play(rate)` (a fresh paused play world at tick 0), `Engine::step_play(ticks)` (what `sim.step` runs, returning the hash), `Engine::scene_path`, `threads`, `sim_rate`, `project_file(path, extension)` (project-relative, no `..`); error kind `ReplayMismatch` (−32019)
+- Debug layers (M2 2.5a, ADR-0077): `EngineModule::debug_layers` names a module's layers and `debug_geometry(engine, world, layer)` supplies world-space `DebugGeometry` (`DebugLine`, `DebugTriangle`, linear RGBA); `Engine::debug_layers` (sorted) and `Engine::debug_geometry(layer, world)`. Layer names are unique across modules (checked by `Engine::new`); the renderer draws them (`capture.screenshot` / `viewport.overlays` `debug`).
 - `methods()` → the core `MethodRegistry`; `Engine::methods()` is the full set. `MethodRegistry::build`, `params_schema`, `result_schema`, the `Method` trait
 - `ApiError`, `ApiErrorKind`, `ErrorData`
 - `transport::stdio::serve`, `transport::ws::{serve, WsConfig, WsServer}` (dropping the server closes its connections)
@@ -44,7 +45,7 @@ The one Engine API: typed `domain.verb` methods with generated schemas, JSON-RPC
 - OWASP guidance on cross-site WebSocket hijacking (Origin checks, tokens).
 
 ## Status
-M0 phase 0.6 complete. M1 phase 1.0: engine modules. M2 phase 2.6d: module hooks for scripts; 2.8: fingerprints and play helpers for replays; 2.4.1: `start_play_in` takes `&mut Engine`, `registry_and_state_mut`; 2.4.3: play-world writes through `component.set` / `component.patch` (ADR-0075); 2.4b.1: `terra.stats` reports `lod` (viewers, entities per level, due; ADR-0076).
+M2 phase 2.5a: debug layers. M0 phase 0.6 complete. M1 phase 1.0: engine modules. M2 phase 2.6d: module hooks for scripts; 2.8: fingerprints and play helpers for replays; 2.4.1: `start_play_in` takes `&mut Engine`, `registry_and_state_mut`; 2.4.3: play-world writes through `component.set` / `component.patch` (ADR-0075); 2.4b.1: `terra.stats` reports `lod` (viewers, entities per level, due; ADR-0076).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

@@ -83,7 +83,11 @@ fn manifest(name: &str, features: &Features) -> String {
         "# Concordia project manifest.\n[project]\nname = {name}\n\n[scene]\nmain = \"scenes/main.scene.ron\"\n\n[sim]\nrate_hz = 60\nseed = 0\n\n[journal]\nsync = true\n"
     );
     if features.modules {
-        text.push_str("\n[physics]\ngravity = [0.0, -9.81, 0.0]\n\n[assets]\n");
+        text.push_str("\n[physics]\ngravity = [0.0, -9.81, 0.0]\n");
+        text.push_str(
+            "\n# Navigation: navmeshes from static colliders (NavMeshVolume), nav.build and nav.path.\n[nav]\n",
+        );
+        text.push_str("\n[assets]\n");
         text.push_str(
             "\n# Animation: skeletons, clips, .animgraph.ron graphs and events (uses the assets module).\n[anim]\n",
         );

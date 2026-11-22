@@ -602,6 +602,7 @@ dependencies = [
  "concordia-import-fbx",
  "concordia-import-gltf",
  "concordia-input",
+ "concordia-nav",
  "concordia-physics",
  "concordia-platform",
  "concordia-render",
@@ -760,6 +761,24 @@ dependencies = [
  "concordia-assets",
  "concordia-core",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "concordia-nav"
+version = "0.0.0"
+dependencies = [
+ "blake3",
+ "concordia-api",
+ "concordia-core",
+ "concordia-physics",
+ "concordia-reflect",
+ "concordia-scene",
+ "concordia-terra",
+ "rayon",
+ "recast-sys",
+ "serde",
+ "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]
@@ -4373,6 +4392,14 @@ checksum = "22e18b0f0062d30d4230b2e85ff77fdfe4326feb054b9783a3460d8435c8ab91"
 dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
+]
+
+[[package]]
+name = "recast-sys"
+version = "0.0.0"
+dependencies = [
+ "cc",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

@@ -52,6 +52,8 @@ pub struct RenderRequest {
     pub overlays: Option<crate::Overlays>,
     /// The lit image or a debug view.
     pub view_mode: crate::ViewMode,
+    /// Debug layers' world-space geometry, drawn over the image under the editor overlays.
+    pub debug: Vec<concordia_api::DebugGeometry>,
 }
 
 /// A rendered image: sRGB-encoded RGBA8, rows top to bottom.
@@ -178,6 +180,7 @@ struct FrameTarget {
     output: Output,
     overlays: Option<crate::Overlays>,
     view_mode: crate::ViewMode,
+    debug: Vec<concordia_api::DebugGeometry>,
 }
 
 /// Where a frame ends up.
@@ -524,6 +527,7 @@ impl Renderer {
                 output,
                 overlays: request.overlays.clone(),
                 view_mode: request.view_mode,
+                debug: request.debug.clone(),
             },
             &mut frame,
         );
@@ -613,6 +617,7 @@ impl Renderer {
             output,
             overlays,
             view_mode,
+            debug,
         } = target;
         let aspect = width.get() as f32 / height.get() as f32;
         let view_m = view_matrix(&view.world);
@@ -885,19 +890,23 @@ impl Renderer {
                 }
                 false => None,
             },
-            overlay: overlays.as_ref().map_or_else(Vec::new, |o| {
-                let projector = crate::overlay::Projector::new(
-                    view_proj,
-                    width.get() as f32,
-                    height.get() as f32,
-                );
-                let boxes: Vec<_> = skinning
-                    .placements
-                    .iter()
-                    .map(|p| (p.world, p.bounds))
-                    .collect();
-                crate::overlay::triangles(o, world, &projector, &boxes)
-            }),
+            overlay: overlays
+                .clone()
+                .or_else(|| (!debug.is_empty()).then(crate::Overlays::default))
+                .as_ref()
+                .map_or_else(Vec::new, |o| {
+                    let projector = crate::overlay::Projector::new(
+                        view_proj,
+                        width.get() as f32,
+                        height.get() as f32,
+                    );
+                    let boxes: Vec<_> = skinning
+                        .placements
+                        .iter()
+                        .map(|p| (p.world, p.bounds))
+                        .collect();
+                    crate::overlay::triangles(o, world, &projector, &boxes, &debug)
+                }),
             tonemap: match view_mode.tonemapped() {
                 true => view.camera.tonemap,
                 false => Tonemap::Linear,

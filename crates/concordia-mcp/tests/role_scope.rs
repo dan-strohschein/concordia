@@ -14,7 +14,7 @@ async fn studio(dir: &tempfile::TempDir, team_edit: impl Fn(String) -> String) -
     std::fs::write(&team, team_edit(std::fs::read_to_string(&team).unwrap())).unwrap();
     std::fs::write(
         dir.path().join("concordia.toml"),
-        "[physics]\n\n[assets]\n\n[anim]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n",
+        "[physics]\n\n[nav]\n\n[assets]\n\n[anim]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n",
     )
     .unwrap();
     let mut opts = options(dir);

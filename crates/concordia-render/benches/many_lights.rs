@@ -115,6 +115,7 @@ fn main() {
         height: 1080,
         overlays: None,
         view_mode: Default::default(),
+        debug: Vec::new(),
     };
     let frame = |renderer: &mut Renderer, assets: &mut MemoryAssets| {
         for _ in 0..3 {

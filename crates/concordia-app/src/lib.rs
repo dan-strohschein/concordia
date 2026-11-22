@@ -10,7 +10,7 @@ mod shared;
 
 pub use error::AppError;
 pub use manifest::{
-    AnimSection, AssetsSection, InputSection, JournalSection, Manifest, PhysicsSection,
+    AnimSection, AssetsSection, InputSection, JournalSection, Manifest, NavSection, PhysicsSection,
     ProjectSection, RenderSection, SceneSection, ScriptModuleKind, ScriptModuleSection,
     ScriptsSection, SimSection, StudioSection,
 };

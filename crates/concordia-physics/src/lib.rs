@@ -12,6 +12,7 @@ mod layers;
 mod module;
 mod runtime;
 mod settings;
+mod solids;
 
 pub use components::{
     BodyKind, CharacterController, CharacterMotion, Collider, ColliderShape, RigidBody,
@@ -22,3 +23,4 @@ pub use layers::{LayerMask, PhysicsLayer};
 pub use module::{PhysicsModule, PhysicsRaycast, RaycastHit, RaycastParams, RaycastResult};
 pub use runtime::{PhysicsRuntime, RayHit, StateHash, TickReport};
 pub use settings::PhysicsSettings;
+pub use solids::{StaticSolid, static_solids};

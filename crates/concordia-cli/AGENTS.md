@@ -29,7 +29,7 @@ The `concordia` command: `new` (project skeleton), `headless` (Engine API over s
 - clap documentation.
 
 ## Status
-M0 phase 0.7 complete; M2 phase 2.8 (`concordia replay`); M2 phase 2.4.5 (`concordia new` writes `[anim]`; `studio init` adds `[assets]` and `[anim]` when missing, for the animator).
+M0 phase 0.7 complete; M2 phase 2.8 (`concordia replay`); M2 phase 2.4.5 (`concordia new` writes `[anim]`; `studio init` adds `[assets]` and `[anim]` when missing, for the animator); M2 phase 2.5a (`concordia new` writes `[nav]`; `studio init` adds it when missing, for the level designer).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

@@ -1,0 +1,37 @@
+# recastnavigation (vendored)
+- Upstream: https://github.com/recastnavigation/recastnavigation
+- Version: tag v1.6.0 (commit 6dc1667f580357e8a2154c28b7867bea7e8ad3a7)
+- License: zlib (`License.txt`, copyright 2009 Mikko Mononen).
+- Copied: `Recast/Include`, `Recast/Source`, `Detour/Include`, `Detour/Source` and `License.txt`. DetourCrowd, DetourTileCache, DebugUtils, RecastDemo, Tests and Docs are not vendored (crowds are Concordia's own Terra processors, ADR-0077).
+- Unmodified. Compiled as C++17 with `cc` by `crates/recast-sys` together with Concordia's shim, with `DT_POLYREF64` defined for 64-bit polygon references (M2 phase 2.5a).
+- SHA-256 (path relative to this directory):
+  - `Detour/Include/DetourAlloc.h` 5f617c7f162069c395d7edfc59f0e06a9b6afaf6698de8fd674c80f00056ab71
+  - `Detour/Include/DetourAssert.h` 5c9ba991780904dba813c43d2f21b021b3149c460385c5aedc27a480b61de311
+  - `Detour/Include/DetourCommon.h` 24d69468f73782718855b3691ae348e50437febc7594635b37a940f1c0c8db46
+  - `Detour/Include/DetourMath.h` f8c4e9d51a526ec5c38c01e48a035e50c6acaa1d0dd69ffa66209cb092d4cac7
+  - `Detour/Include/DetourNavMesh.h` 09e9bf590eea65048eb4646f5561023e2894d53cb774a869f175d17e96a735cb
+  - `Detour/Include/DetourNavMeshBuilder.h` 39fde320de4931e85949215ca9395e1027980572afe4962dfbc7d02804131798
+  - `Detour/Include/DetourNavMeshQuery.h` 7fec77b2d0f0ed8d588fb271a01da41943d4cd9b33d0809e761083950e2d625d
+  - `Detour/Include/DetourNode.h` 7c295c61f09dff0de42bdcc873a5d698d687bb2052aca8b293425c0ef0444a9e
+  - `Detour/Include/DetourStatus.h` 7255e33173c4bdb26f4224514d098fdc5c31e19cd80263a4e56475627602ade9
+  - `Detour/Source/DetourAlloc.cpp` ddf4d9857e9e1714daa9dd9b687ac8139085cc602359db0dba4f1dedbedc69c1
+  - `Detour/Source/DetourAssert.cpp` d7e05a59d390b02c3d7b2c3bbdf5c243f11ea36962243600c5acb26cdb80f796
+  - `Detour/Source/DetourCommon.cpp` c28eb2d5fd251e1b2e24a7c03a679ff82684e51a0ce95db3cf457fda60362008
+  - `Detour/Source/DetourNavMesh.cpp` e82c9a13cf01bea8ef0c6bcc50cef41f7604ce7343a70ef04a8bdc48be21a26a
+  - `Detour/Source/DetourNavMeshBuilder.cpp` bbe5adf461cae282291e498db50550eb3a12706e352dd83021165d38950119f3
+  - `Detour/Source/DetourNavMeshQuery.cpp` fb3f040b35633ad01dfec2a18e1dd1433b10ede69780dddf65bd0a016af0183b
+  - `Detour/Source/DetourNode.cpp` 067ffb9a81f7315f2253ff217263acb1c01590d130e01d4de4500308d756132b
+  - `Recast/Include/Recast.h` dea734c3ae3b0f436c7734ea2c911e2f5d9e333243d541204b9181d054cf90d2
+  - `Recast/Include/RecastAlloc.h` df5c71e121903ed6ab38db8efdf7690f7a97e50aa103ab205a85e44c4d90c813
+  - `Recast/Include/RecastAssert.h` 9d1b781803215b276f7e044fa7ff4012fa0b27cdbd2a9d0ad70fe32bb503f285
+  - `Recast/Source/Recast.cpp` 865595763451cde0aad5b99088bfab48d4ea35050fefd67f3d4f95885ba38d66
+  - `Recast/Source/RecastAlloc.cpp` e77600ee0a1f4b36e9e0700480fcfccf8a62e31eb9e16aa7cb8eab5e93511a2e
+  - `Recast/Source/RecastArea.cpp` 6e60b6eaf7b43f22c268315f55489c30c5061f3d4b5a875ff43fb763dfa0cbca
+  - `Recast/Source/RecastAssert.cpp` 25e35567a16d98950aa887c9e361d6f82f56dc6c9486049ace80662bc2d09392
+  - `Recast/Source/RecastContour.cpp` f5ad218147949dccc71885dfd1bc4bf2e303a35571b6da37d3696f8460220a39
+  - `Recast/Source/RecastFilter.cpp` c75ef35233dbd5d7db768f9375e9f648c51c3832c14f97bf47cb3cb4905cc51e
+  - `Recast/Source/RecastLayers.cpp` f01d325fd096feee2971f71f9b03b1d37a6d0a4777bb9d529ce698253b484820
+  - `Recast/Source/RecastMesh.cpp` c1dab1383688cf37398abad47e6897a29e17ae2a00b1d20dc8f95126b1a8725a
+  - `Recast/Source/RecastMeshDetail.cpp` b1fe99540334134a6307ab3c013dcc5c6b5f9ed41309137b7a8635ebcea1ed20
+  - `Recast/Source/RecastRasterization.cpp` d01d16045c0b0c9fca6201b66574ccbcbc31ad071ea2360f36fdb5d12a074f2e
+  - `Recast/Source/RecastRegion.cpp` 430f1a1d91317b1e28020272a8bd48ac2f5c031a5d38f08deafbf53ea0e74e42
