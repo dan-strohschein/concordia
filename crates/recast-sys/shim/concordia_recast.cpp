@@ -465,4 +465,49 @@ int32_t cr_raycast(cr_query* query, const cr_filter* filter, uint64_t start_ref,
     return CR_OK;
 }
 
+int32_t cr_move_along_surface(cr_query* query, const cr_filter* filter, uint64_t start_ref, const float start[3],
+                              const float end[3], float out_point[3], uint64_t* visited, int32_t cap,
+                              int32_t* count) {
+    if (!query || !valid_filter(filter) || !finite3(start) || !finite3(end) || !out_point || !visited || cap <= 0 ||
+        !count)
+        return CR_ERR_INPUT;
+    if (!query->mesh->isValidPolyRef(start_ref)) return CR_ERR_NOT_FOUND;
+    const dtQueryFilter f = make_filter(filter);
+    int n = 0;
+    const dtStatus s = query->query->moveAlongSurface(start_ref, start, end, &f, out_point, visited, &n, cap);
+    if (dtStatusFailed(s)) return query_status(s);
+    *count = n;
+    return CR_OK;
+}
+
+int32_t cr_poly_height(cr_query* query, uint64_t ref, const float pos[3], float* height) {
+    if (!query || !finite3(pos) || !height) return CR_ERR_INPUT;
+    if (!query->mesh->isValidPolyRef(ref)) return CR_ERR_NOT_FOUND;
+    float h = 0.0f;
+    if (dtStatusFailed(query->query->getPolyHeight(ref, pos, &h))) return CR_EMPTY;
+    *height = h;
+    return CR_OK;
+}
+
+int32_t cr_raycast_path(cr_query* query, const cr_filter* filter, uint64_t start_ref, const float start[3],
+                        const float end[3], float* t, float normal[3], uint64_t* path, int32_t cap,
+                        int32_t* count) {
+    if (!query || !valid_filter(filter) || !finite3(start) || !finite3(end) || !t || !normal || !path || cap <= 0 ||
+        !count)
+        return CR_ERR_INPUT;
+    if (!query->mesh->isValidPolyRef(start_ref)) return CR_ERR_NOT_FOUND;
+    const dtQueryFilter f = make_filter(filter);
+    dtRaycastHit hit;
+    std::memset(&hit, 0, sizeof(hit));
+    hit.path = path;
+    hit.maxPath = cap;
+    const dtStatus s = query->query->raycast(start_ref, start, end, &f, 0, &hit, 0);
+    if (dtStatusFailed(s)) return query_status(s);
+    *t = hit.t;
+    rcVcopy(normal, hit.hitNormal);
+    *count = hit.pathCount;
+    return CR_OK;
+}
+
+
 }

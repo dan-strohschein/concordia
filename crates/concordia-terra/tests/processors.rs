@@ -469,3 +469,61 @@ fn time_scale_scales_sim_dt_deterministically() {
         "zero freezes simulated time (hit-stop)"
     );
 }
+
+#[test]
+fn view_queries_filter_with_and_without() {
+    // Six entities with A; the even ones also get B and the first two a Marker tag. A processor
+    // reading all three sees 3 with B, 3 without B, and 2 with the tag.
+    let seen = Arc::new(std::sync::Mutex::new(None));
+    let mut schedule = Schedule::new();
+    let out = seen.clone();
+    schedule.add_processor(
+        processor("filtered", Phase::PostPhysics)
+            .reads::<A>()
+            .reads::<B>()
+            .reads::<common::Marker>()
+            .run(move |view: &mut View<'_>, _: &SystemCtx<'_>| {
+                let mut with_b = Vec::new();
+                let mut without_b = Vec::new();
+                let mut tagged = Vec::new();
+                view.query_filtered::<&A, concordia_terra::With<B>>()
+                    .unwrap()
+                    .for_each(|_, a| with_b.push(a.0));
+                view.query_filtered::<&A, concordia_terra::Without<B>>()
+                    .unwrap()
+                    .for_each(|_, a| without_b.push(a.0));
+                view.query_filtered::<&A, concordia_terra::With<common::Marker>>()
+                    .unwrap()
+                    .for_each(|_, a| tagged.push(a.0));
+                let undeclared = view
+                    .query_filtered::<&A, concordia_terra::Without<Pos>>()
+                    .err()
+                    .map(|e| e.to_string());
+                for v in [&mut with_b, &mut without_b, &mut tagged] {
+                    v.sort_unstable();
+                }
+                *out.lock().unwrap() = Some((with_b, without_b, tagged, undeclared));
+            }),
+    );
+    let mut world = World::new();
+    for (i, id) in (0u32..).zip(common::ids(6)) {
+        world.spawn_with_id(id).unwrap();
+        world.insert(id, A(i)).unwrap();
+        if i % 2 == 0 {
+            world.insert(id, B(0.0)).unwrap();
+        }
+        if i < 2 {
+            world.insert(id, common::Marker).unwrap();
+        }
+    }
+    let mut sim = SimLoop::new(TickRate::HZ_60, schedule, &mut world).unwrap();
+    sim.step(&mut world, &jobs(2), 1);
+    let (with_b, without_b, tagged, undeclared) = seen.lock().unwrap().clone().unwrap();
+    assert_eq!(with_b, vec![0, 2, 4]);
+    assert_eq!(without_b, vec![1, 3, 5]);
+    assert_eq!(tagged, vec![0, 1]);
+    assert!(
+        undeclared.is_some_and(|e| e.contains("Pos")),
+        "a filter on an undeclared component is refused"
+    );
+}

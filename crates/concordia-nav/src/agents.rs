@@ -9,13 +9,14 @@ use concordia_core::id::EntityId;
 use concordia_core::math::Vec3;
 use concordia_physics::{CharacterController, CharacterMotion};
 use concordia_scene::builtin::Transform;
-use concordia_terra::{Phase, Schedule, SystemCtx, View, World, processor};
+use concordia_terra::{Phase, Schedule, SystemCtx, View, Without, World, processor};
 
 use crate::agent::{NavAgent, NavAgentState};
 use crate::components::NavMeshVolume;
+use crate::crowd_agent::CrowdAgent;
 use crate::follow::follow;
 use crate::module::NavMeshes;
-use crate::plan::{Request, Volume, apply, mismatch, plan, volume_for, wants_plan};
+use crate::plan::{Request, Volume, apply, mismatch, place, plan, volume_for, wants_plan};
 
 /// `nav.plan`: plans paths for the agents that need one, longest-waiting first.
 pub const PLAN: &str = "nav.plan";
@@ -62,6 +63,7 @@ pub fn add_agent_processors(schedule: &mut Schedule, config: AgentConfig) {
             .reads::<NavAgent>()
             .reads::<Transform>()
             .reads::<CharacterController>()
+            .reads::<CrowdAgent>()
             .reads::<NavMeshVolume>()
             .writes::<NavAgentState>()
             .reads_resource::<NavMeshes>()
@@ -72,6 +74,7 @@ pub fn add_agent_processors(schedule: &mut Schedule, config: AgentConfig) {
     schedule.add_processor(
         processor(FOLLOW, Phase::PrePhysics)
             .reads::<NavAgent>()
+            .reads::<CrowdAgent>()
             .reads::<Transform>()
             .writes::<NavAgentState>()
             .writes::<CharacterMotion>()
@@ -108,6 +111,17 @@ fn controllers(view: &mut View<'_>) -> BTreeMap<EntityId, (f32, f32)> {
     out
 }
 
+/// Each crowd agent's settings, by entity.
+fn crowd_agents(view: &mut View<'_>) -> BTreeMap<EntityId, CrowdAgent> {
+    let mut out = BTreeMap::new();
+    if let Ok(query) = view.query::<&CrowdAgent>() {
+        query.for_each(|id, c| {
+            out.insert(id, c.clone());
+        });
+    }
+    out
+}
+
 /// Gives new agents a state, marks who needs a plan, and plans the budget's worth.
 fn plan_all(
     view: &mut View<'_>,
@@ -118,12 +132,16 @@ fn plan_all(
     let meshes = view.resource::<NavMeshes>().cloned().unwrap_or_default();
     let volumes = volumes(view);
     let controllers = controllers(view);
+    let crowds = crowd_agents(view);
     give_states(view);
     let mut waiting: Vec<(u64, EntityId)> = Vec::new();
     if let Ok(query) = view.query::<(&NavAgent, &Transform, &mut NavAgentState)>() {
         query.for_each(|id, (agent, t, state)| {
-            if wants_plan(agent, state, t.translation, ctx.tick.0) {
+            let crowd = crowds.contains_key(&id);
+            if wants_plan(agent, state, t.translation, ctx.tick.0, crowd) {
                 waiting.push((state.waiting_since, id));
+            } else if crowd {
+                place(agent, state, t.translation, &volumes, &meshes);
             }
         });
     }
@@ -144,6 +162,7 @@ fn plan_all(
                 target,
                 position: t.translation,
                 controller: controller.is_some(),
+                crowd: crowds.get(&id),
             };
             let planned = plan(&request, &volumes, &meshes);
             if let (Some(c), Some((volume, _))) = (
@@ -207,15 +226,16 @@ fn warn_sizes(id: EntityId, agent: &NavAgent, (radius, height): (f32, f32), volu
     }
 }
 
-/// Walks every agent one tick, in parallel; arrivals are raised as signals.
+/// Walks every agent but crowd agents one tick, in parallel; arrivals are raised as signals.
 fn follow_all(view: &mut View<'_>, ctx: &SystemCtx<'_>) {
     let dt = ctx.dt;
-    if let Ok(query) = view.query::<(
+    if let Ok(query) = view.query_filtered::<(
         &NavAgent,
         &Transform,
         &mut NavAgentState,
         &mut CharacterMotion,
-    )>() {
+    ), Without<CrowdAgent>>()
+    {
         query.par_for_each_deferred(
             ctx.jobs,
             CHUNK,

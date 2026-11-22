@@ -7,6 +7,7 @@ use concordia_scene::builtin::Transform;
 use concordia_terra::World;
 
 use crate::agent::{NavAgentState, NavStatus};
+use crate::crowd_agent::CrowdAgent;
 use crate::navmesh::NavMesh;
 
 /// The color of agents' paths (linear RGBA).
@@ -53,6 +54,7 @@ pub(crate) fn navmesh_geometry<'a>(meshes: impl Iterator<Item = &'a NavMesh>) ->
 }
 
 /// Each walking agent's remaining path: its feet to the next corner, then corner to corner.
+/// Crowd agents are drawn by the crowd's own layer.
 pub(crate) fn path_geometry(world: &World) -> DebugGeometry {
     let mut out = DebugGeometry::default();
     let mut walking = Vec::new();
@@ -61,6 +63,9 @@ pub(crate) fn path_geometry(world: &World) -> DebugGeometry {
         else {
             continue;
         };
+        if world.get::<CrowdAgent>(id).is_some() {
+            continue;
+        }
         let moving = matches!(state.status, NavStatus::Moving | NavStatus::Waiting);
         let next = state.next as usize;
         if moving && next < state.waypoints.len() {

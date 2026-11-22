@@ -7,10 +7,12 @@ Navigation (M2 phase 2.5, ADR-0077): navmeshes built with Recast from the static
 - Components: `NavMeshVolume` (box, agent size, `cell_size`, `cell_height`, `tile_size`, `edge_max_error`), `NavArea` / `NavAreaKind` (`Blocked`, `Cost { cost }`), `NavAreaGrid` (`cell_size`, `rows` of `.` `#` `o`); `register_types`
 - `NavInput::gather(&World, volume)` (settings, triangles, marks, costs in entity order; `key()` for the cache), `NavSettings`
 - `build_tiles(&NavInput, threads)` → `NavMeshData` (`to_bytes`, `from_bytes`: the `CNAV` v1 format)
-- `NavMesh` (`from_data`, `data`, `stats` → `NavStats`, `polygons` → `NavPoly` with islands, `nearest_point` → `NavPoint`, `island_at`, `path` → `NavPath`, `raycast` → `NavRay`)
+- `NavMesh` (`from_data`, `data`, `stats` → `NavStats`, `polygons` → `NavPoly` with islands, `nearest_point` → `NavPoint`, `island_at`, `path` → `NavPath` with its polygon `corridor`, `raycast` → `NavRay`); for the crowd (2.5c.1), with raw `u64` polygon references: `nearest_poly`, `straight_path`, `move_along_surface` → `SurfaceMove`, `poly_height`, `raycast_path` → `SurfaceRay`
+- Shared helpers: `sideways`, `NavAgent::near`, and the fixed 16-step circle table (`CIRCLE_STEPS`, `circle_step`)
 - `NavCache` (`new(Ddc)`, `load_or_build` → `Loaded`), `NavError`
 - `NavModule` (`[nav]`; `with_plans_per_tick`): methods `NavBuild` (`nav.build`) and `NavPathMethod` (`nav.path`) with their params and results; the `NavMeshes` play-world resource (`new`, `get`, `iter`); the `NAVMESH_LAYER` and `NAV_PATHS_LAYER` debug layers
 - Click-to-move (2.5b.2a, ADR-0078): `ClickToMove` and `add_click_processor` (`nav.click`, in `PrePhysics` before `nav.plan`)
+- Crowd agents (2.5c.1): `CrowdAgent` and `CrowdAvoidance` (`validate`): the request that the crowd (`concordia-terra-crowd`) steer this `NavAgent`
 - Agents (2.5b.1): `NavAgent` (gameplay's request; `validate`), `NavAgentState` and `NavStatus` (the engine's, hashed), the signals `NavArrived` and `NavPathFailed` (`NavFailure`); `add_agent_processors(schedule, AgentConfig)` (`nav.plan`, `nav.follow` in `PrePhysics`) and `insert_agent_states` (play start)
 
 ## Invariants
@@ -21,6 +23,7 @@ Navigation (M2 phase 2.5, ADR-0077): navmeshes built with Recast from the static
 - The module memoizes per (world, volume) and key, then reads the DDC; `nav.build` / `nav.path` re-gather every call, so they follow edits. Play worlds get `NavMeshes` at play start (not hashed: derived from hashed state); a volume that fails is logged and left out.
 - Queries borrow pooled Detour query objects (`Mutex<Vec<DtQuery>>`), so a `NavMesh` is `Sync` and gives the same answer on any thread.
 - Agents: `NavAgent` is written only by gameplay and `NavAgentState` only by `nav.plan` / `nav.follow`; an entity's `NavAgent` owns its `CharacterMotion` (nav writes it every tick). Agents need a `CharacterController` and use its rule: the position is `Transform.translation`.
+- **Crowd agents** (a `CrowdAgent` too; 2.5c.1) share `nav.plan`'s queue and budget. They need no controller, keep their polygon corridor in `NavAgentState.corridor` (empty for other agents), never replan for being off their path (the crowd sets `Waiting` when it loses the corridor), are placed on their polygon while idle, and keep it (and the volume) when their target is cleared. `nav.follow` (`Without<CrowdAgent>`) and the `nav_paths` layer skip them.
 - `nav.plan` takes at most `plans_per_tick` agents a tick in `(waiting_since, id)` order (hashed state only), so results never depend on threads; `nav.follow` runs in parallel pieces of 256 agents and raises signals through command buffers. Neither opts into LOD (ADR-0077's update).
 - Distances for corners, arrival, target moves and off-path checks are sideways, with a vertical tolerance of half the agent's height. Replans: a new target (moved past `target_desired_distance`), or off the current segment by more than `path_max_distance`; a failed target is retried only when it moves. `NavPathFailed` is raised once per target; unreachable targets walk to the closest point and arrive with `partial`.
 - The last stretch is slowed to `gap / dt`, so no tick carries an agent past its path's end; a `Waiting` agent walks its old path but never arrives on it.
@@ -45,7 +48,7 @@ Navigation (M2 phase 2.5, ADR-0077): navmeshes built with Recast from the static
 - Recast & Detour documentation and source (zlib) and Mikko Mononen's talks and posts (implementation); Godot's navigation docs and source (MIT) for semantics only (agent radius and height, target and path desired distances, path max distance, region and agent roles; `NavigationAgent3D`); Greg Snook, "Simplified 3D Movement and Pathfinding Using Navigation Meshes", *Game Programming Gems* (2000). No Unreal or other non-open source was consulted.
 
 ## Status
-M2 phase 2.5a (navmesh build, queries, cache, `nav.*`, debug layer); 2.5b.1 (agents, signals, `nav_paths`); 2.5b.2a (click-to-move). Windowed play is 2.5b.2b; crowds (`concordia-terra-crowd`) 2.5c; traffic 2.5d.
+M2 phase 2.5a (navmesh build, queries, cache, `nav.*`, debug layer); 2.5b.1 (agents, signals, `nav_paths`); 2.5b.2a (click-to-move); 2.5b.2b (windowed play, in `concordia-app`); 2.5c.1 (crowd agents' planning; the crowd is `concordia-terra-crowd`). Traffic is 2.5d.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

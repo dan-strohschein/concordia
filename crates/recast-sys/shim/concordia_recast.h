@@ -149,6 +149,22 @@ int32_t cr_straight_path(cr_query* query, const float start[3], const float end[
 int32_t cr_raycast(cr_query* query, const cr_filter* filter, uint64_t start_ref, const float start[3],
                    const float end[3], float* t, float normal[3]);
 
+/* Crowd queries (M2 phase 2.5c.1). */
+
+/* Moves from start (on start_ref) toward end along the surface, sliding along walls. Writes the
+ * reached point (its height is end's) and the visited polygons, start's first (at most cap). */
+int32_t cr_move_along_surface(cr_query* query, const cr_filter* filter, uint64_t start_ref,
+                              const float start[3], const float end[3], float out_point[3],
+                              uint64_t* visited, int32_t cap, int32_t* count);
+
+/* The surface height of polygon `ref` under pos; CR_EMPTY when pos is outside it. */
+int32_t cr_poly_height(cr_query* query, uint64_t ref, const float pos[3], float* height);
+
+/* cr_raycast that also writes the polygons the ray crossed, start's first (at most cap). */
+int32_t cr_raycast_path(cr_query* query, const cr_filter* filter, uint64_t start_ref, const float start[3],
+                        const float end[3], float* t, float normal[3], uint64_t* path, int32_t cap,
+                        int32_t* count);
+
 #ifdef __cplusplus
 }
 #endif

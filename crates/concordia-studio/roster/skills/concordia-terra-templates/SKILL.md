@@ -30,6 +30,24 @@ A template is a text file, `templates/<name>.template.ron`, named by its file st
 4. Try it in the play world: `mcp__concordia__terra_spawn_batch {"template": "mote", "count": 200, "seed": 1, "distribution": {"Disc": {"radius": 10.0}}}`, `mcp__concordia__sim_step {"ticks": 60}`, then `mcp__concordia__terra_stats {"world": "play"}`. Clear with `mcp__concordia__terra_despawn_batch {"with": ["Name"]}` or `mcp__concordia__sim_stop {}`.
 5. Put it in the level: one entity with a `Transform` and a `Spawner` (`mcp__concordia__component_set`, value `{"template": "mote", "count": 200, "seed": 1, "distribution": {"Grid": {"spacing": 2.0}}}`). The scene stores only the spawner; the same seed gives the same crowd every play.
 
+## Crowds that walk the navmesh
+The `Crowd` trait makes each spawned entity a crowd agent: a `NavAgent` (speed, sizes and distances; no target) plus a `CrowdAgent` (the crowd's tuning), steered together with its neighbours. It needs a built navmesh (`concordia-navigation`).
+```ron
+traits: {
+    "Crowd": (
+        agent: (
+            max_speed: 3.5,
+        ),
+        crowd: (
+            separation: true,
+        ),
+    ),
+},
+```
+- Without a `CharacterController` the agents walk the navmesh surface (cheap; fine for thousands). Add a `CharacterController` under `components` for a physics body. Either way every `CharacterController` (the player) is solid to them.
+- Gameplay sends them somewhere by setting `NavAgent.target` (the gameplay programmer's `concordia-nav-agents`); a spawned crowd stands until then.
+- Check it: `mcp__concordia__capture_screenshot {"debug": ["navmesh", "crowd"]}` draws the `crowd` layer (each crowd agent's ring, velocity, corners and neighbour links) over the navmesh.
+
 ## Simulation LOD (crowds far from the player)
 Far entities can tick less often. Add the `Lod` trait to a crowd template, and mark what detail is measured from (the player, or a camera rig in the scene) with the `LodViewer` tag:
 ```ron

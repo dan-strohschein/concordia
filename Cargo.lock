@@ -647,6 +647,7 @@ dependencies = [
  "concordia-scripting",
  "concordia-studio",
  "concordia-terra",
+ "concordia-terra-crowd",
  "concordia-testkit",
  "concordia-tests",
  "futures",
@@ -1193,6 +1194,7 @@ dependencies = [
  "concordia-replay",
  "concordia-scene",
  "concordia-terra",
+ "concordia-terra-crowd",
  "concordia-terra-sim",
  "globset",
  "insta",
@@ -1220,6 +1222,25 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "concordia-terra-crowd"
+version = "0.0.0"
+dependencies = [
+ "concordia-api",
+ "concordia-core",
+ "concordia-input",
+ "concordia-nav",
+ "concordia-physics",
+ "concordia-reflect",
+ "concordia-scene",
+ "concordia-terra",
+ "concordia-terra-sim",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
 ]
 
 [[package]]

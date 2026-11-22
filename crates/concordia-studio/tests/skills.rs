@@ -463,6 +463,41 @@ fn merge(target: &mut serde_json::Value, patch: &serde_json::Value) {
 }
 
 #[test]
+fn terra_templates_skill_crowd_example_is_a_valid_template() {
+    let text = default_roster()
+        .skills
+        .iter()
+        .find(|(n, _)| *n == "concordia-terra-templates")
+        .map(|(_, t)| *t)
+        .unwrap();
+    let block = ron_blocks(text)
+        .into_iter()
+        .find(|b| b.contains("\"Crowd\""))
+        .expect("a Crowd trait example");
+    let doc = format!(
+        "Template(\n    format: 1,\n    description: \"Skill example.\",\n    {block}\n    components: {{}},\n)\n"
+    );
+    let mut registry = concordia_reflect::TypeRegistry::new();
+    concordia_scene::builtin::register(&mut registry).unwrap();
+    concordia_terra_sim::register(&mut registry).unwrap();
+    concordia_nav::register_types(&mut registry).unwrap();
+    concordia_terra_crowd::register_types(&mut registry).unwrap();
+    let doc = concordia_scene::read_template(&doc, &registry)
+        .unwrap_or_else(|e| panic!("the Crowd example: {e}"));
+    let compiled = concordia_terra_sim::Template::from_doc("example", &doc)
+        .unwrap()
+        .compile(&registry)
+        .unwrap_or_else(|e| panic!("the Crowd example: {e}"));
+    assert_eq!(
+        compiled.component_names(),
+        ["CrowdAgent", "NavAgent", "Transform"]
+    );
+    for needle in ["NavAgent.target", "CharacterController", "`crowd`"] {
+        assert!(text.contains(needle), "the skill explains {needle}");
+    }
+}
+
+#[test]
 fn terra_templates_skill_lod_examples_are_real_params_and_a_valid_template() {
     let text = default_roster()
         .skills
@@ -624,28 +659,49 @@ fn nav_agents_skill_examples_are_real_params_and_its_mirror_matches_nav_agent() 
     for needed in ["nav_path", "query_run"] {
         assert!(seen.contains(needed), "the skill shows {needed}: {seen:?}");
     }
-    // The script mirror of NavAgent names every field, in order (wire layouts follow fields).
-    let mirror = text
+    // The script mirrors name every field, in order (wire layouts follow fields).
+    assert_eq!(
+        mirror_fields(text, "NavAgent"),
+        struct_fields::<concordia_nav::NavAgent>(),
+        "the NavAgent mirror in the skill matches NavAgent"
+    );
+    assert_eq!(
+        mirror_fields(text, "CrowdAgent"),
+        struct_fields::<concordia_nav::CrowdAgent>(),
+        "the CrowdAgent mirror in the skill matches CrowdAgent"
+    );
+    assert_eq!(
+        mirror_fields(text, "CrowdAvoidance"),
+        struct_fields::<concordia_nav::CrowdAvoidance>(),
+        "the CrowdAvoidance mirror in the skill matches CrowdAvoidance"
+    );
+    for needle in ["CrowdState", "`crowd`", "CharacterController", "surface"] {
+        assert!(text.contains(needle), "the skill explains {needle}");
+    }
+}
+
+/// The field names of the script mirror `pub struct <name>` in any rust block of `text`.
+fn mirror_fields<'a>(text: &'a str, name: &str) -> Vec<&'a str> {
+    let header = format!("pub struct {name} {{");
+    let block = text
         .split("```rust")
-        .nth(1)
-        .and_then(|r| r.split("```").next())
-        .expect("a rust block");
-    let start = mirror
-        .find("pub struct NavAgent")
-        .expect("the NavAgent mirror");
-    let body = &mirror[start
-        ..mirror[start..]
-            .find('}')
-            .map_or(mirror.len(), |e| start + e)];
-    let fields: Vec<&str> = body
-        .lines()
+        .skip(1)
+        .filter_map(|r| r.split("```").next())
+        .find(|b| b.contains(&header))
+        .unwrap_or_else(|| panic!("a rust block with the {name} mirror"));
+    let start = block.find(&header).unwrap();
+    let body = &block[start..block[start..].find('}').map_or(block.len(), |e| start + e)];
+    body.lines()
         .filter_map(|l| l.trim().strip_prefix("pub "))
         .filter_map(|l| l.split_once(':').map(|(name, _)| name.trim()))
-        .collect();
-    let info = <concordia_nav::NavAgent as concordia_reflect::Reflect>::type_info();
-    let concordia_reflect::Shape::Struct { fields: want, .. } = &info.shape else {
-        panic!("NavAgent is a struct")
+        .collect()
+}
+
+/// The field names of reflected struct `T`, in order.
+fn struct_fields<T: concordia_reflect::Reflect>() -> Vec<&'static str> {
+    let info = T::type_info();
+    let concordia_reflect::Shape::Struct { fields, .. } = &info.shape else {
+        panic!("{} is a struct", info.name)
     };
-    let want: Vec<&str> = want.iter().map(|f| f.name).collect();
-    assert_eq!(fields, want, "the mirror in the skill matches NavAgent");
+    fields.iter().map(|f| f.name).collect()
 }

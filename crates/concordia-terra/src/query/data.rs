@@ -202,3 +202,5 @@ tuple!(1: A a);
 tuple!(2: A a, B b);
 tuple!(3: A a, B b, C c);
 tuple!(4: A a, B b, C c, D d);
+tuple!(5: A a, B b, C c, D d, E e);
+tuple!(6: A a, B b, C c, D d, E e, F f);

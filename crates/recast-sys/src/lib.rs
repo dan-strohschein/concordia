@@ -9,7 +9,7 @@ mod tile;
 
 pub use error::{BuildStage, RecastError};
 pub use navmesh::{DtNavMesh, NavMeshParams, Poly, PolyRef, TileInfo};
-pub use query::{AreaCosts, Corridor, DtQuery, RayResult};
+pub use query::{AreaCosts, Corridor, DtQuery, RayPath, RayResult, SurfaceMove};
 pub use tile::{Area, BoxMark, BuildConfig, TileData, TileInput, build_tile};
 
 /// The vendored recastnavigation release.

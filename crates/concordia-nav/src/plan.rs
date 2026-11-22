@@ -4,6 +4,7 @@ use concordia_core::id::EntityId;
 use concordia_core::math::Vec3;
 
 use crate::agent::{NavAgent, NavAgentState, NavFailure, NavPathFailed, NavStatus};
+use crate::crowd_agent::CrowdAgent;
 use crate::module::NavMeshes;
 use crate::navmesh::NavMesh;
 
@@ -29,6 +30,7 @@ pub(crate) fn wants_plan(
     state: &mut NavAgentState,
     position: Vec3,
     tick: u64,
+    crowd: bool,
 ) -> bool {
     let Some(target) = agent.target else {
         if *state != NavAgentState::default() {
@@ -41,6 +43,8 @@ pub(crate) fn wants_plan(
         .is_some_and(|p| agent.near(p, target, agent.target_desired_distance));
     let needs = match state.status {
         _ if !same => true,
+        // A crowd agent's corridor follows it; the crowd asks for a replan when it loses it.
+        NavStatus::Moving if crowd => false,
         NavStatus::Moving => off_path(state, position) > agent.path_max_distance,
         NavStatus::Idle | NavStatus::Waiting => true,
         NavStatus::Arrived | NavStatus::Failed => false,
@@ -79,6 +83,7 @@ pub(crate) enum Planned {
         volume: EntityId,
         waypoints: Vec<Vec3>,
         partial: bool,
+        corridor: Vec<u64>,
     },
     /// No path.
     Failed { reason: NavFailure, detail: String },
@@ -91,6 +96,8 @@ pub(crate) struct Request<'a> {
     pub target: Vec3,
     pub position: Vec3,
     pub controller: bool,
+    /// The crowd's settings, for a crowd agent (which needs no controller).
+    pub crowd: Option<&'a CrowdAgent>,
 }
 
 /// Plans `request` on the navmesh of its volume.
@@ -102,11 +109,15 @@ pub(crate) fn plan(request: &Request<'_>, volumes: &[Volume], meshes: &NavMeshes
         target,
         position,
         controller,
+        crowd,
     } = *request;
     if let Err(e) = agent.validate(entity) {
         return failed(NavFailure::InvalidAgent, e.to_string());
     }
-    if !controller {
+    if let Some(Err(e)) = crowd.map(|c| c.validate(entity)) {
+        return failed(NavFailure::InvalidAgent, e.to_string());
+    }
+    if !controller && crowd.is_none() {
         let detail = format!("{entity} has a NavAgent but no CharacterController to move");
         return failed(NavFailure::InvalidAgent, detail);
     }
@@ -133,6 +144,10 @@ pub(crate) fn plan(request: &Request<'_>, volumes: &[Volume], meshes: &NavMeshes
             volume: volume.id,
             waypoints: path.waypoints,
             partial: path.partial,
+            corridor: match crowd {
+                Some(_) => path.corridor,
+                None => Vec::new(),
+            },
         },
         Err(e) => failed(NavFailure::NoNavmesh, e.to_string()),
     }
@@ -164,12 +179,14 @@ pub(crate) fn apply(
             volume,
             waypoints,
             partial,
+            corridor,
         } => {
             state.status = NavStatus::Moving;
             state.next = u32::from(waypoints.len() > 1);
             state.waypoints = waypoints;
             state.partial = partial;
             state.volume = Some(volume);
+            state.corridor = corridor;
             None
         }
         Planned::Failed { reason, detail } => {
@@ -178,12 +195,34 @@ pub(crate) fn apply(
             state.next = 0;
             state.partial = false;
             state.volume = None;
+            state.corridor.clear();
             Some(NavPathFailed {
                 target,
                 reason,
                 detail,
             })
         }
+    }
+}
+
+/// Puts a crowd agent without a corridor on its navmesh: its polygon and volume (it can then be
+/// pushed and kept on the navmesh before it walks). Off every navmesh, it stays unplaced.
+pub(crate) fn place(
+    agent: &NavAgent,
+    state: &mut NavAgentState,
+    position: Vec3,
+    volumes: &[Volume],
+    meshes: &NavMeshes,
+) {
+    if !state.corridor.is_empty() {
+        return;
+    }
+    let Some((volume, mesh)) = volume_for(agent, position, volumes, meshes) else {
+        return;
+    };
+    if let Some((poly, _)) = mesh.nearest_poly(position) {
+        state.corridor = vec![poly];
+        state.volume = Some(volume.id);
     }
 }
 

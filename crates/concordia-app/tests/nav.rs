@@ -152,6 +152,39 @@ fn nav_section_adds_the_nav_module() {
 }
 
 #[test]
+fn nav_section_adds_the_crowd_module() {
+    // Crowds are part of navigation: `[nav]` gives the `crowd` layer and steers a crowd agent (it
+    // walks off its spot within a second). The fixture's floor is drawn, so it needs `[assets]`
+    // and `[render]` too.
+    let mut stage = Stage::new("[physics]\n\n[nav]\n\n[assets]\n\n[render]\n");
+    assert!(stage.engine.debug_layers().contains(&"crowd"));
+    fixture_level(&mut stage);
+    let components = json!({
+        "Transform": {"translation": [-6.0, 0.0, -6.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]},
+        "NavAgent": {"target": [-4.0, 0.0, -6.0]},
+        "CrowdAgent": {},
+    });
+    let id = stage.ok(
+        "entity.spawn",
+        json!({"components": components, "actor": ACTOR}),
+    )["id"]
+        .clone();
+    stage.ok("sim.step", json!({"ticks": 60}));
+    let at = stage.ok(
+        "component.get",
+        json!({"entity": id, "component": "Transform", "world": "play"}),
+    )["value"]["translation"][0]
+        .as_f64()
+        .unwrap();
+    assert!(at > -5.5, "the crowd moved it: x = {at}");
+    let without = Stage::new("[physics]\n");
+    assert!(
+        !without.engine.debug_layers().contains(&"crowd"),
+        "no [nav], no crowd"
+    );
+}
+
+#[test]
 fn capture_rejects_unknown_debug_layers() {
     let mut stage = Stage::new("[physics]\n\n[nav]\n\n[assets]\n\n[render]\n");
     let e = stage

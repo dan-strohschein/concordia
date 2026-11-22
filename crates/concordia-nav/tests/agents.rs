@@ -28,8 +28,8 @@ use concordia_core::jobs::JobSystem;
 use concordia_core::math::{Quat, Vec3};
 use concordia_core::time::TickRate;
 use concordia_nav::{
-    AgentConfig, NavAgent, NavAgentState, NavArrived, NavError, NavFailure, NavMeshes,
-    NavPathFailed, NavStatus, add_agent_processors, insert_agent_states,
+    AgentConfig, CrowdAgent, CrowdAvoidance, NavAgent, NavAgentState, NavArrived, NavError,
+    NavFailure, NavMeshes, NavPathFailed, NavStatus, add_agent_processors, insert_agent_states,
 };
 use concordia_physics::{CharacterController, CharacterMotion};
 use concordia_scene::builtin::{Transform, lod_position};
@@ -700,6 +700,260 @@ fn malformed_nav_agents_are_descriptive_errors() {
                     message.contains(&format!("NavAgent.{field}")),
                     "{field}: {message}"
                 );
+            }
+            other => panic!("{field}: {other:?}"),
+        }
+    }
+}
+
+/// A crowd agent: a `NavAgent` plus a `CrowdAgent`, with no controller (a surface agent).
+fn crowd_agent(level: &mut Level, id: &str, at: Vec3, nav: NavAgent) -> EntityId {
+    let id: EntityId = id.parse().unwrap();
+    level.world.spawn_with_id(id).unwrap();
+    let t = Transform {
+        translation: at,
+        ..Transform::default()
+    };
+    level.world.insert(id, t).unwrap();
+    level.world.insert(id, nav).unwrap();
+    level.world.insert(id, CrowdAgent::default()).unwrap();
+    id
+}
+
+/// A plain agent with a controller, under a chosen id.
+fn plain_agent(level: &mut Level, id: &str, at: Vec3, nav: NavAgent) -> EntityId {
+    let id: EntityId = id.parse().unwrap();
+    level.world.spawn_with_id(id).unwrap();
+    let t = Transform {
+        translation: at,
+        ..Transform::default()
+    };
+    level.world.insert(id, t).unwrap();
+    level.world.insert(id, nav).unwrap();
+    let controller = CharacterController {
+        radius: 0.25,
+        ..CharacterController::default()
+    };
+    level.world.insert(id, controller).unwrap();
+    level.world.insert(id, CharacterMotion::default()).unwrap();
+    id
+}
+
+#[test]
+fn crowd_agents_are_planned_with_their_corridor_in_the_shared_budget() {
+    // Five agents wait from tick 0 in one queue, two plans a tick, by id: a, b (crowd) on tick 0,
+    // c, d (crowd) on tick 1, e on tick 2. A block in the middle splits the floor into several
+    // polygons. Crowd agents need no controller and keep their polygon corridor, whose string
+    // pulling gives back their waypoints; plain agents keep none.
+    let mut level = floor();
+    level.block(
+        Vec3::new(0.0, 1.0, 0.0),
+        Vec3::new(0.6, 1.0, 3.0),
+        Quat::IDENTITY,
+    );
+    let to = |z: f32| going(Vec3::new(5.0, 0.0, z), 3.0);
+    let a = plain_agent(&mut level, IDS[0], Vec3::new(-5.0, 0.0, -1.0), to(1.0));
+    let b = crowd_agent(&mut level, IDS[1], Vec3::new(-5.0, 0.0, -0.5), to(0.5));
+    let c = plain_agent(&mut level, IDS[2], Vec3::new(-5.0, 0.0, 0.0), to(0.0));
+    let d = crowd_agent(&mut level, IDS[3], Vec3::new(-5.0, 0.0, 0.5), to(-0.5));
+    let e = plain_agent(&mut level, IDS[4], Vec3::new(-5.0, 0.0, 1.0), to(-1.0));
+    let idle = crowd_agent(
+        &mut level,
+        "018bcfe5-6800-7000-a424-0000000000f0",
+        Vec3::new(4.0, 0.0, 4.0),
+        NavAgent::default(),
+    );
+    let mut rig = Rig::new(level, 2);
+    let mesh = rig
+        .world
+        .resource::<NavMeshes>()
+        .unwrap()
+        .iter()
+        .next()
+        .unwrap()
+        .1
+        .clone();
+    use NavStatus::{Moving, Waiting};
+    let statuses = |rig: &Rig| -> Vec<NavStatus> {
+        [a, b, c, d, e]
+            .iter()
+            .map(|id| rig.state(*id).status)
+            .collect()
+    };
+    rig.step(1);
+    assert_eq!(statuses(&rig), [Moving, Moving, Waiting, Waiting, Waiting]);
+    // An idle crowd agent is placed on the navmesh (its polygon, outside the budget), so it can be
+    // pushed and kept on the navmesh before it ever walks.
+    let placed = rig.state(idle);
+    let under = mesh.nearest_poly(Vec3::new(4.0, 0.0, 4.0)).unwrap().0;
+    assert_eq!(placed.status, NavStatus::Idle);
+    assert_eq!(
+        (placed.corridor.clone(), placed.volume.is_some()),
+        (vec![under], true)
+    );
+    rig.step(1);
+    assert_eq!(statuses(&rig), [Moving, Moving, Moving, Moving, Waiting]);
+    rig.step(1);
+    assert_eq!(statuses(&rig), [Moving; 5]);
+    for id in [a, c, e] {
+        assert!(
+            rig.state(id).corridor.is_empty(),
+            "plain agents keep no corridor"
+        );
+    }
+    for (id, start) in [
+        (b, Vec3::new(-5.0, 0.0, -0.5)),
+        (d, Vec3::new(-5.0, 0.0, 0.5)),
+    ] {
+        let s = rig.state(id);
+        assert!(s.corridor.len() > 1, "around the block: {s:?}");
+        let first = mesh.nearest_poly(start).expect("on the floor").0;
+        let end = *s.waypoints.last().unwrap();
+        let last = mesh.nearest_poly(end).expect("on the floor").0;
+        assert_eq!((s.corridor[0], *s.corridor.last().unwrap()), (first, last));
+        let pulled = mesh
+            .straight_path(s.waypoints[0], end, &s.corridor, 64)
+            .expect("pulls");
+        assert_eq!(pulled, s.waypoints, "the corridor is the path's");
+    }
+
+    // Without a target a crowd agent's state resets and it is placed again on the polygon it
+    // stands on (with its volume), so it can still be pushed and kept on the navmesh; a plain
+    // agent just resets.
+    let kept = rig.state(b).corridor[0];
+    let volume = rig.state(b).volume;
+    rig.agent(b).target = None;
+    rig.agent(a).target = None;
+    rig.step(1);
+    let s = rig.state(b);
+    assert_eq!(
+        (s.status, s.corridor.clone(), s.volume),
+        (NavStatus::Idle, vec![kept], volume)
+    );
+    assert_eq!(rig.state(a), NavAgentState::default());
+}
+
+#[test]
+fn nav_follow_leaves_crowd_agents_to_the_crowd() {
+    // A crowd agent with a controller (a physics agent) is planned but nav.follow never writes
+    // its motion (only the crowd does), and being 2.5 m off its path doesn't replan it: its
+    // corridor follows it instead. A plain agent next to it walks as before.
+    let mut level = floor();
+    let crowd = plain_agent(
+        &mut level,
+        IDS[0],
+        Vec3::new(-5.0, 0.0, 0.0),
+        going(Vec3::new(5.0, 0.0, 0.0), 3.0),
+    );
+    level.world.insert(crowd, CrowdAgent::default()).unwrap();
+    let walker = plain_agent(
+        &mut level,
+        IDS[1],
+        Vec3::new(-5.0, 0.0, 2.0),
+        going(Vec3::new(5.0, 0.0, 2.0), 3.0),
+    );
+    let mut rig = Rig::new(level, 32);
+    rig.step(10);
+    let s = rig.state(crowd);
+    assert_eq!(s.status, NavStatus::Moving, "{s:?}");
+    assert_eq!(
+        rig.world.get::<CharacterMotion>(crowd).unwrap().velocity,
+        Vec3::ZERO,
+        "nav.follow never wrote it"
+    );
+    assert!(close(rig.pos(crowd), Vec3::new(-5.0, 0.0, 0.0), EPS));
+    assert!(
+        close(rig.pos(walker), Vec3::new(-4.5, 0.0, 2.0), EPS),
+        "{}",
+        rig.pos(walker)
+    );
+    rig.teleport(crowd, Vec3::new(-5.0, 0.0, 2.5));
+    rig.step(1);
+    let after = rig.state(crowd);
+    assert_eq!(
+        (after.status, after.waiting_since),
+        (NavStatus::Moving, s.waiting_since)
+    );
+}
+
+#[test]
+fn malformed_crowd_agents_are_descriptive_errors() {
+    let id: EntityId = IDS[0].parse().unwrap();
+    assert!(CrowdAgent::default().validate(id).is_ok());
+    let off = CrowdAgent {
+        avoidance: None,
+        ..CrowdAgent::default()
+    };
+    assert!(off.validate(id).is_ok(), "avoidance can be off");
+    let avoid = |f: fn(&mut CrowdAvoidance)| {
+        let mut a = CrowdAvoidance::default();
+        f(&mut a);
+        CrowdAgent {
+            avoidance: Some(a),
+            ..CrowdAgent::default()
+        }
+    };
+    let cases: Vec<(&str, CrowdAgent)> = vec![
+        (
+            "CrowdAgent.max_acceleration",
+            CrowdAgent {
+                max_acceleration: 0.0,
+                ..CrowdAgent::default()
+            },
+        ),
+        (
+            "CrowdAgent.collision_query_range",
+            CrowdAgent {
+                collision_query_range: f32::NAN,
+                ..CrowdAgent::default()
+            },
+        ),
+        (
+            "CrowdAgent.path_optimization_range",
+            CrowdAgent {
+                path_optimization_range: -1.0,
+                ..CrowdAgent::default()
+            },
+        ),
+        (
+            "CrowdAgent.separation_weight",
+            CrowdAgent {
+                separation_weight: f32::INFINITY,
+                ..CrowdAgent::default()
+            },
+        ),
+        (
+            "CrowdAvoidance.velocity_bias",
+            avoid(|a| a.velocity_bias = 1.5),
+        ),
+        (
+            "CrowdAvoidance.weight_desired",
+            avoid(|a| a.weight_desired = -1.0),
+        ),
+        (
+            "CrowdAvoidance.weight_current",
+            avoid(|a| a.weight_current = f32::NAN),
+        ),
+        (
+            "CrowdAvoidance.weight_side",
+            avoid(|a| a.weight_side = -0.5),
+        ),
+        (
+            "CrowdAvoidance.weight_toi",
+            avoid(|a| a.weight_toi = f32::INFINITY),
+        ),
+        ("CrowdAvoidance.horizon", avoid(|a| a.horizon = 0.0)),
+        ("CrowdAvoidance.divs", avoid(|a| a.divs = 33)),
+        ("CrowdAvoidance.divs", avoid(|a| a.divs = 0)),
+        ("CrowdAvoidance.rings", avoid(|a| a.rings = 5)),
+        ("CrowdAvoidance.depth", avoid(|a| a.depth = 0)),
+        ("CrowdAvoidance.depth", avoid(|a| a.depth = 9)),
+    ];
+    for (field, crowd) in cases {
+        match crowd.validate(id) {
+            Err(NavError::Invalid { entity, message }) => {
+                assert_eq!(entity, id);
+                assert!(message.contains(field), "{field}: {message}");
             }
             other => panic!("{field}: {other:?}"),
         }

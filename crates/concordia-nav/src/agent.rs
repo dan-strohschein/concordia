@@ -81,13 +81,13 @@ impl NavAgent {
     }
 
     /// `a` is within `distance` of `b` sideways and within half the agent's height vertically.
-    pub(crate) fn near(&self, a: Vec3, b: Vec3, distance: f32) -> bool {
+    pub fn near(&self, a: Vec3, b: Vec3, distance: f32) -> bool {
         sideways(a, b) <= distance && (a.y - b.y).abs() <= self.height * 0.5
     }
 }
 
 /// The distance from `a` to `b` on the ground plane.
-pub(crate) fn sideways(a: Vec3, b: Vec3) -> f32 {
+pub fn sideways(a: Vec3, b: Vec3) -> f32 {
     Vec3::new(a.x - b.x, 0.0, a.z - b.z).length()
 }
 
@@ -127,6 +127,9 @@ pub struct NavAgentState {
     pub volume: Option<EntityId>,
     /// The tick it started waiting for a plan (for the budget's order).
     pub waiting_since: u64,
+    /// A crowd agent's polygon corridor: Detour references from its polygon to the end (empty
+    /// for other agents).
+    pub corridor: Vec<u64>,
 }
 
 /// Raised on an agent when it reaches its target, or the closest reachable point; delivered next

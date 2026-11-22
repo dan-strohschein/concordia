@@ -13,7 +13,7 @@ use crate::entity::EntityTable;
 use crate::error::QueryError;
 use crate::lod::{Due, SimLod};
 use crate::processor::{Access, Phase};
-use crate::query::{ElemAccess, Piece, QueryData, ViewCol, ViewColumn, split_chunks};
+use crate::query::{ElemAccess, Piece, QueryData, QueryFilter, ViewCol, ViewColumn, split_chunks};
 use crate::resource::Resource;
 use crate::signal::SignalQueue;
 use crate::storage::column::typed;
@@ -81,8 +81,31 @@ impl<'w> View<'w> {
         Ok(ViewQuery {
             view: self,
             elems,
+            with: Vec::new(),
+            without: Vec::new(),
             marker: std::marker::PhantomData,
         })
+    }
+
+    /// Like [`View::query`], keeping only entities that pass `F` (`With`/`Without` filters over
+    /// declared components).
+    pub fn query_filtered<D: QueryData, F: QueryFilter>(
+        &mut self,
+    ) -> Result<ViewQuery<'_, 'w, D>, QueryError> {
+        let (mut with, mut without) = (Vec::new(), Vec::new());
+        F::names(&mut with, &mut without);
+        if let Some(component) = with
+            .iter()
+            .chain(&without)
+            .copied()
+            .find(|name| !self.access.touches(name))
+        {
+            return Err(QueryError::Undeclared { component });
+        }
+        let mut query = self.query::<D>()?;
+        query.with = with;
+        query.without = without;
+        Ok(query)
     }
 
     pub(crate) fn is_shared(&self, name: &str) -> bool {
@@ -164,6 +187,9 @@ impl<'w> View<'w> {
 pub struct ViewQuery<'v, 'w, D: QueryData> {
     view: &'v mut View<'w>,
     elems: Vec<ElemAccess>,
+    /// Components every match must have, and ones it must lack (`query_filtered`).
+    with: Vec<&'static str>,
+    without: Vec<&'static str>,
     marker: std::marker::PhantomData<fn() -> D>,
 }
 
@@ -321,7 +347,7 @@ impl<'v, D: QueryData> ViewQuery<'v, '_, D> {
     /// the view is LOD-aware.
     fn run(self, chunk: usize) -> Run<'v, D> {
         let mutable = self.elems.iter().any(|e| e.mutable);
-        let elems = self.elems;
+        let (elems, with, without) = (self.elems, self.with, self.without);
         let View {
             archetypes,
             touched,
@@ -334,7 +360,14 @@ impl<'v, D: QueryData> ViewQuery<'v, '_, D> {
         let lod_aware = access.lod;
         let mut visited = Vec::new();
         let mut matched = Vec::new();
-        for arch in archetypes.iter_mut().filter(|a| !a.ids.is_empty()) {
+        let passes = |arch: &ViewArch<'_>| {
+            let has = |name: &&str| arch.columns.iter().any(|(n, _)| n == name);
+            with.iter().all(has) && !without.iter().any(has)
+        };
+        for arch in archetypes
+            .iter_mut()
+            .filter(|a| !a.ids.is_empty() && passes(a))
+        {
             let lod = if lod_aware { sim_lods(arch) } else { None };
             let mut picked: Vec<Option<ViewColumn<'_>>> = (0..elems.len()).map(|_| None).collect();
             for (name, column) in arch.columns.iter_mut() {

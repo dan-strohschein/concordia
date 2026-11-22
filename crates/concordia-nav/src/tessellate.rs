@@ -5,7 +5,7 @@ use concordia_core::math::Vec3;
 use concordia_physics::ColliderShape;
 
 /// Steps around a circle.
-const SEGMENTS: usize = 16;
+pub const SEGMENTS: usize = 16;
 
 /// cos and sin of 2πk/16 for k in 0..4 (the rest follow by symmetry).
 const QUARTER: [(f32, f32); 4] = [
@@ -18,8 +18,8 @@ const QUARTER: [(f32, f32); 4] = [
     (0.382_683_43, 0.923_879_5),
 ];
 
-/// cos and sin of 2πk/16.
-fn unit(k: usize) -> (f32, f32) {
+/// cos and sin of 2πk/16, from a fixed table (no trigonometry).
+pub fn unit(k: usize) -> (f32, f32) {
     let (c, s) = QUARTER[k % 4];
     match (k / 4) % 4 {
         0 => (c, s),
