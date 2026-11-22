@@ -2143,7 +2143,7 @@ Details the refinement left open:
 - `just editor-test` (118 unit, 22 end-to-end).
 
 ### Phase 2.5b.2 refinement (2026-11-22, against the code after 2.5b.1)
-**Status: author decision N4 taken (2026-11-22); my other calls below (say if you disagree). 2.5b.2 is split: 2.5b.2a click-to-move (`m2/2.5b.2a-click-to-move`, done; see its As built), then 2.5b.2b windowed play (next).**
+**Status: author decision N4 taken (2026-11-22); my other calls below (say if you disagree). 2.5b.2 is split: 2.5b.2a click-to-move (`m2/2.5b.2a-click-to-move`, done; see its As built), then 2.5b.2b windowed play (done; see its As built).**
 
 Refined against `main` after #59. **This section wins over the 2.5b refinement's 2.5b.2 row.**
 
@@ -2264,6 +2264,89 @@ Details the refinement left open:
 - `CONCORDIA_REQUIRE_GPU=1` full suite with `--no-fail-fast` (1,471 tests: 1,471 pass, 8 skipped; 14 doc tests);
 - `just gate-tests M1` (4) and `M3S` (13);
 - `just deny` and the editor's, both `Cargo.lock`s, fresh advisory DB (the editor's lock gains `concordia-input` under `concordia-render` and `concordia-nav`; its deny prints the existing "no crate matched" warning);
+- `just editor-schemas` (committed);
+- `just editor-test` (118 unit, 22 end-to-end).
+
+### Phase 2.5b.2b refinement (2026-11-22, against the code after 2.5b.2a)
+**Status: done (see its As built); no new author decisions (N4 and the 2.5b.2 refinement set the shape). Branch `m2/2.5b.2b-windowed-play`. 2.5c (crowds) is next.**
+
+**What exists (checked in code):**
+- `concordia run` opens the scene and draws the *edit* world from the editor camera (`viewport.navigate` → `viewport.present`), only on open and resize. It ignores every input event. `--bench-latency` drives the editor camera.
+- A playing simulation advances itself: `sim.play` sets it playing, and `Engine::poll` (the engine thread's housekeeping) steps it in real time.
+- **The render module already redraws the play viewport after every tick** (`after_sim` → `queue_present`), but always from the editor's orbit camera. `viewport.present` takes only a `View`, and `RenderRequest` already supports a camera entity (or the highest-priority camera) when no view is given.
+- `input.inject` queues device events for the next tick, and `viewport.pointer_ray` converts a pixel to a ray (2.5b.2a).
+- winit sends no key-up when the window loses focus.
+
+**My calls (say if you disagree):**
+- **`concordia run` plays by default.** It opens the main scene, starts `sim.play` at the manifest's rate, and presents the play world from its game camera. `--edit` keeps today's editor view; `--bench-latency` implies it. Closing the window stops the simulation.
+- **`viewport.present` can draw from a scene camera.** `view` becomes optional, and a new `camera` names one. With no `view`, it draws from `camera` or the highest-priority camera, the same choice as `capture.screenshot`; passing both is `InvalidParams`. The render state remembers the choice, so the after-tick redraw uses the same camera. One present at open and one per resize then keep a playing window drawn, with no frame timer.
+- **Window input goes through the Engine API**, as `input.inject` events for the next tick (like any agent), so nothing new crosses the boundary:
+  - Every cursor move is also sent as a `PointerRay`: the cursor in logical pixels, from `viewport.pointer_ray` over the window's logical size (physical size ÷ scale factor) on the play world's camera.
+  - Without a camera, the ray is skipped, with one warning; keys and buttons still flow.
+  - When focus is lost, every held key and button is released, so nothing sticks.
+- **The logic is a library type, `concordia_app::Player`.** It turns `WindowEvent`s into Engine API calls through a call function, so tests drive it with a headless `Engine` and synthetic events. `concordia run` wraps it around its `EngineHandle`. Without `[render]` (or a GPU) it still plays; the window just shows nothing.
+- **Docs:** ADR-0078's consequences gain the as-built note, `concordia-cli`'s and `concordia-app`'s AGENTS.md and the API guide (`viewport.present`) change, and editor schemas are regenerated (`ViewportPresentParams`).
+
+**Tests (first list):**
+- `concordia-render`: `viewport_present_takes_a_view_or_a_scene_camera` (both is `InvalidParams` at `/view`, an unknown camera is an error, and the camera choice is remembered for after-tick redraws: a pure `present_request` test).
+- `concordia-app`, `tests/player.rs`:
+  - `player_starts_play_and_presents_the_game_camera` (the calls made on open and resize);
+  - `window_input_reaches_the_play_world`;
+  - `cursor_moves_become_rays_from_the_drawing_camera` (the centre of a 1920 × 1080 window at scale 2 is the camera's forward ray, hand-computed);
+  - `focus_loss_releases_held_input`;
+  - `clicking_in_the_window_moves_the_hero` (the whole chain);
+  - `edit_mode_keeps_the_editor_view`.
+- `concordia-cli`: `run_plays_by_default_and_edit_keeps_the_editor` (argument parsing), and the existing `#[ignore]`d real-window smoke test, run locally.
+
+### Phase 2.5b.2b As built (2026-11-22, ADR-0078 update)
+**Reconciled with the code as built:** the refinement held. What the code taught:
+- **Redraws follow real-time ticks only.** `after_sim` runs from `Engine::poll`, the path behind `sim.play`; `sim.step` never redraws. A playing window therefore needs no frame timer, and the GPU test drives `sim.play` with `poll`.
+- **`Player` keeps no engine handle.** Each `event` takes the call function, so tests borrow a headless `Engine` and `concordia run` a blocking `EngineHandle` call.
+- **Ordering in a window:** `concordia run` attaches the layer on `Opened`, then the player starts `sim.play` and presents. Without `[render]`, or without a surface, it plays undrawn. Input is injected for the next tick, so a key reaches the simulation at most one tick after it arrives.
+- **An existing problem, not caused here:** the `#[ignore]`d `run_bench_latency_measures_the_engine_window_alone` fails on `main` too, checked by stashing this change. Its frames are queued but never presented on this machine. It is left as found, for a separate look.
+
+**Engine:**
+- `concordia-render`: `viewport.present` takes `view` *or* `camera` (`view` optional; both is `InvalidParams` at `/view`). The render state's `Source` (editor or scene camera) makes the after-tick redraw use the same viewpoint (`Look`, `look_for`).
+- `concordia-app`: `Player` and `ApiCall`.
+- `concordia-cli`: `concordia run` plays by default; `--edit`; `--bench-latency` implies the editor view.
+- Docs: ADR-0078's update; the AGENTS.md of `concordia-app`, `-cli` and `-render`; the API guide's `viewport.present` row; `plans/README.md`. Editor schemas: `MethodViewportPresentParams`.
+
+**Tests (9 new, 1 unit, 1 ignored):**
+- `concordia-render/tests/view.rs`:
+  - `viewport_present_takes_a_view_or_a_scene_camera` (no camera, both, an unknown camera, and three accepted forms reaching the surface check);
+  - `viewport_present_from_a_scene_camera_redraws_after_each_tick` (GPU).
+- `concordia-render` unit test: `redraws_keep_the_last_presented_source`.
+- `concordia-app/tests/player.rs` (6, headless):
+  - `player_starts_play_and_presents_the_game_camera` (the exact calls);
+  - `window_input_reaches_the_play_world`;
+  - `cursor_moves_become_rays_from_the_drawing_camera` (the centre of 1920 × 1080 at scale 2: (0, −0.759257, −0.650791) from (0, 13.924074, 11.934921));
+  - `focus_loss_releases_held_input`;
+  - `clicking_in_the_window_moves_the_hero` ((4, 0.2, −3));
+  - `a_window_without_a_camera_still_plays`.
+- `concordia-cli`: `run_plays_by_default_and_edit_keeps_the_editor` (`--help`), and the `#[ignore]`d `run_plays_the_main_scene_in_its_window` (a real window; run locally, it passed).
+
+**Red run:** against stubs (a `Player` doing nothing, a required `view`, an undocumented `--edit`), every test above failed for the right reason, with two exceptions, both test mistakes fixed deliberately:
+- the GPU redraw test first stepped with `sim.step`, which never redraws;
+- the help test looked for "plays" where the help reads "play its main scene".
+
+**Mutation checks:** 7 mutations, each run against its tests with the restored file given a fresh mtime. All 7 were caught:
+- **The player:** no ray for cursor moves, the logical size ignoring the scale, focus loss releasing nothing, play never starting.
+- **Rendering:** a view and a camera both accepted, redraws always using the editor view.
+- **The CLI:** `concordia run` never playing (caught by the ignored real-window test, run locally).
+
+A first form of the "both accepted" mutation didn't compile, so it was rewritten.
+
+**Studio and budgets:** no role changes, and no MCP tool schema changes (`viewport.present` is editor-only), so every role's numbers are as in 2.5b.2a.
+
+**Not in 2.5b.2b:** UI routing of clicks (2.7); a fixed-timestep input clock from OS event times (`tick_for_time`). Injection for the next tick is enough for play, and replays record the sampled states either way.
+
+**Goldens and snapshots:** none new or changed (collected with `INSTA_FORCE_PASS`: no `.snap.new` appeared). **Editor schemas:** `MethodViewportPresentParams` (`view` optional, `camera`); committed.
+
+**Checklist:** all of these pass:
+- `just lint` and Tauri clippy;
+- `CONCORDIA_REQUIRE_GPU=1` full suite with `--no-fail-fast` (1,481 tests: 1,481 pass, 9 skipped; 14 doc tests);
+- `just gate-tests M1` (4) and `M3S` (13);
+- `just deny` and the editor's, both `Cargo.lock`s, fresh advisory DB (the editor's lock gains `concordia-app`'s `serde_json` and `tracing`; its deny prints the existing "no crate matched" warning);
 - `just editor-schemas` (committed);
 - `just editor-test` (118 unit, 22 end-to-end).
 

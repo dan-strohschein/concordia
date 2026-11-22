@@ -83,6 +83,8 @@ pub(crate) struct RenderState {
     pub(crate) camera: SharedCamera,
     /// The native viewport's last size and world, so navigation can re-present it.
     pub(crate) viewport: Option<(u32, u32, Option<WorldSel>)>,
+    /// What the native viewport is drawn from (the editor camera, or a scene camera).
+    pub(crate) source: Source,
     /// What the editor draws over the viewport (`viewport.overlays`).
     pub(crate) overlays: crate::Overlays,
     /// Where the gizmo is (its entity and world position), shared with `ViewportControl`.
@@ -133,7 +135,7 @@ impl EngineModule for RenderModule {
         else {
             return;
         };
-        let view = state.camera.view();
+        let look = look_for(&state.source, state.camera.view());
         let target = PresentTarget {
             width,
             height,
@@ -142,7 +144,7 @@ impl EngineModule for RenderModule {
             input_time_ms: None,
             tick: play_tick(engine),
         };
-        if let Err(e) = queue_present(engine, view, target) {
+        if let Err(e) = queue_present(engine, look, target) {
             tracing::warn!(target: "concordia::render", error = %e.message, "play viewport redraw failed");
         }
     }
@@ -160,6 +162,7 @@ impl EngineModule for RenderModule {
             next_frame: Arc::default(),
             camera: SharedCamera::default(),
             viewport: None,
+            source: Source::Editor,
             overlays: crate::Overlays::default(),
             anchor: GizmoAnchor::default(),
             gizmo: None,
@@ -696,8 +699,12 @@ pub struct ViewportPresent;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 #[serde(deny_unknown_fields)]
 pub struct ViewportPresentParams {
-    /// The viewpoint.
-    pub view: crate::View,
+    /// The editor's viewpoint; without one, the scene camera `camera` (or the highest-priority one).
+    #[serde(default)]
+    pub view: Option<crate::View>,
+    /// Camera entity to draw from when there is no `view` (default: the highest-priority Camera).
+    #[serde(default)]
+    pub camera: Option<EntityRef>,
     /// Width in physical pixels.
     #[reflect(range(min = 1.0, max = 8192.0))]
     pub width: u32,
@@ -735,7 +742,7 @@ impl Method for ViewportPresent {
         _: &CallCtx,
         p: ViewportPresentParams,
     ) -> Result<ViewportPresentResult, ApiError> {
-        check_view(&p.view)?;
+        let look = present_look(engine, &p)?;
         if !engine.state::<RenderState>().is_some_and(|s| s.surface) {
             return Err(ApiError::new(
                 ApiErrorKind::InvalidRequest,
@@ -751,7 +758,7 @@ impl Method for ViewportPresent {
             input_time_ms: p.input_time_ms,
             tick: None,
         };
-        queue_present(engine, p.view, target)?;
+        queue_present(engine, look, target)?;
         Ok(ViewportPresentResult { presented: true })
     }
 }
@@ -779,7 +786,7 @@ pub(crate) fn redraw_viewport(
     let Some((width, height, world)) = state.viewport.filter(|_| state.surface) else {
         return Ok(());
     };
-    let view = state.camera.view();
+    let look = look_for(&state.source, state.camera.view());
     let target = PresentTarget {
         width,
         height,
@@ -788,7 +795,7 @@ pub(crate) fn redraw_viewport(
         input_time_ms,
         tick: None,
     };
-    queue_present(engine, view, target)
+    queue_present(engine, look, target)
 }
 
 /// The viewport's debug layers (`viewport.overlays`).
@@ -802,15 +809,19 @@ fn viewport_layers(engine: &Engine) -> Vec<String> {
 /// Snapshots the world and queues a frame of `view` on the render thread.
 pub(crate) fn queue_present(
     engine: &mut Engine,
-    view: crate::View,
+    look: Look,
     t: PresentTarget,
 ) -> Result<(), ApiError> {
     refresh_anchor(engine);
     let scene = scene_update(engine, t.world.unwrap_or_default(), t.tick)?;
     let slot = scene.slot;
+    let (camera, view, source) = match look {
+        Look::View(view) => (None, Some(view), Source::Editor),
+        Look::Camera(id) => (id, None, Source::Scene(id)),
+    };
     let request = RenderRequest {
-        camera: None,
-        view: Some(view),
+        camera,
+        view,
         width: t.width,
         height: t.height,
         overlays: engine.state::<RenderState>().map(|s| s.overlays.clone()),
@@ -827,6 +838,7 @@ pub(crate) fn queue_present(
     let (log, id) = queue_record(engine, &t);
     if let Some(state) = engine.state_mut::<RenderState>() {
         state.viewport = Some((t.width, t.height, t.world));
+        state.source = source;
     }
     let frame = ViewportFrame {
         scene,
@@ -992,7 +1004,7 @@ pub fn navigate(engine: &mut Engine, p: &ViewportNavigateParams) -> Result<crate
             input_time_ms: p.input_time_ms,
             tick: None,
         };
-        queue_present(engine, view.clone(), target)?;
+        queue_present(engine, Look::View(view.clone()), target)?;
     }
     Ok(view)
 }
@@ -1195,5 +1207,77 @@ pub(crate) fn refresh_anchor(engine: &mut Engine) {
     });
     if let Ok(mut a) = anchor.lock() {
         *a = at;
+    }
+}
+
+/// What the native viewport is drawn from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Source {
+    /// The editor camera (`viewport.navigate`).
+    Editor,
+    /// A scene camera: this one, or the highest-priority one.
+    Scene(Option<concordia_core::id::EntityId>),
+}
+
+/// One frame's viewpoint.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Look {
+    /// An explicit view (the editor's).
+    View(crate::View),
+    /// A scene camera: this one, or the highest-priority one.
+    Camera(Option<concordia_core::id::EntityId>),
+}
+
+/// The viewpoint a redraw uses: the editor's `view`, or the scene camera last presented.
+pub(crate) fn look_for(source: &Source, editor: crate::View) -> Look {
+    match source {
+        Source::Editor => Look::View(editor),
+        Source::Scene(id) => Look::Camera(*id),
+    }
+}
+
+/// `viewport.present`'s viewpoint: its `view`, else its (checked) scene camera.
+fn present_look(engine: &Engine, p: &ViewportPresentParams) -> Result<Look, ApiError> {
+    match (&p.view, &p.camera) {
+        (Some(_), Some(_)) => Err(ApiError::new(
+            ApiErrorKind::InvalidParams,
+            "pass either view or camera, not both",
+        )
+        .at("/view")),
+        (Some(view), None) => check_view(view).map(|()| Look::View(view.clone())),
+        (None, camera) => {
+            let world = engine.world(p.world.unwrap_or_default())?;
+            let id = camera.as_ref().map(|c| c.resolve(world)).transpose()?;
+            crate::pointer::scene_camera(world, id).map_err(api_error)?;
+            Ok(Look::Camera(id))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn redraws_keep_the_last_presented_source() {
+        let editor = crate::View {
+            eye: concordia_core::math::Vec3::Z,
+            target: concordia_core::math::Vec3::ZERO,
+            projection: crate::Projection::default(),
+        };
+        assert_eq!(
+            look_for(&Source::Editor, editor.clone()),
+            Look::View(editor.clone())
+        );
+        assert_eq!(
+            look_for(&Source::Scene(None), editor.clone()),
+            Look::Camera(None)
+        );
+        let id: concordia_core::id::EntityId =
+            "018bcfe5-6800-7000-a424-0000000000a0".parse().unwrap();
+        assert_eq!(
+            look_for(&Source::Scene(Some(id)), editor),
+            Look::Camera(Some(id))
+        );
     }
 }

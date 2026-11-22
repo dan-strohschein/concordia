@@ -1,5 +1,7 @@
-//! `concordia run`: open the project's window on the main thread and draw its scene into it.
-//! `--bench-latency` measures input-to-photon of the engine alone (no editor, no webview).
+//! `concordia run`: open the project's window on the main thread and play its main scene in it
+//! (window input into the play world, drawn from the game camera; M2 2.5b.2b). `--edit` draws the
+//! edit world from the editor camera instead; `--bench-latency` measures input-to-photon of the
+//! engine alone (no editor, no webview) and implies `--edit`.
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime};
@@ -13,7 +15,8 @@ use serde_json::{Value, json};
 use super::api_failure;
 use crate::Failure;
 
-/// `concordia run` arguments.
+/// `concordia run` arguments: plays the main scene in a window (window input reaches the play
+/// world; it is drawn from the highest-priority camera).
 #[derive(Debug, clap::Args)]
 pub(crate) struct Args {
     /// Project root.
@@ -34,6 +37,9 @@ pub(crate) struct Args {
     /// Open borderless fullscreen (overrides the manifest).
     #[arg(long)]
     fullscreen: bool,
+    /// Show the edit world from the editor camera instead of playing.
+    #[arg(long)]
+    edit: bool,
 }
 
 pub(crate) fn run(args: &Args) -> Result<(), Failure> {
@@ -69,6 +75,7 @@ pub(crate) fn run(args: &Args) -> Result<(), Failure> {
             .as_ref()
             .map(|b| Duration::from_secs_f64(f64::from(b.frames) / b.hz + 6.0))
     });
+    let player = (!args.edit && bench.is_none()).then(|| concordia_app::Player::new(false));
     let mut viewer = Viewer {
         handle,
         session,
@@ -77,6 +84,7 @@ pub(crate) fn run(args: &Args) -> Result<(), Failure> {
         size: (0, 0),
         bench,
         failure: None,
+        player,
     };
     let mut window = project.manifest.window.clone();
     window.fullscreen |= args.fullscreen;
@@ -105,6 +113,8 @@ struct Viewer {
     size: (u32, u32),
     bench: Option<Bench>,
     failure: Option<Failure>,
+    /// Plays the scene (absent with `--edit` or `--bench-latency`).
+    player: Option<concordia_app::Player>,
 }
 
 impl Viewer {
@@ -155,6 +165,10 @@ impl Viewer {
             return Ok(());
         };
         self.attach(view)?;
+        if let Some(player) = &mut self.player {
+            *player = concordia_app::Player::new(true);
+            return Ok(());
+        }
         self.present()?;
         if let Some(bench) = self.bench.clone() {
             let handle = self.handle.clone();
@@ -167,8 +181,44 @@ impl Viewer {
     }
 }
 
+impl Viewer {
+    /// Hands `event` to the player, through the engine handle.
+    fn play(&mut self, event: &WindowEvent) -> Result<(), Failure> {
+        let Some(player) = &mut self.player else {
+            return Ok(());
+        };
+        let (handle, session, runtime) = (&self.handle, self.session, &self.runtime);
+        let mut api =
+            |method: &str, params: Value| runtime.block_on(handle.call(session, method, params));
+        if matches!(event, WindowEvent::Opened { .. }) {
+            eprintln!("concordia run: playing the main scene");
+        }
+        player.event(event, &mut api).map_err(|e| api_failure(&e))
+    }
+}
+
 impl WindowApp for Viewer {
     fn event(&mut self, event: WindowEvent) -> Flow {
+        if self.player.is_some() {
+            let opened = match &event {
+                WindowEvent::Opened {
+                    width,
+                    height,
+                    view,
+                    ..
+                } => self.opened(*width, *height, *view),
+                _ => Ok(()),
+            };
+            let result = opened.and_then(|()| self.play(&event));
+            return match (result, event) {
+                (Err(failure), _) => {
+                    self.failure = Some(failure);
+                    Flow::Exit
+                }
+                (Ok(()), WindowEvent::CloseRequested) => Flow::Exit,
+                (Ok(()), _) => Flow::Continue,
+            };
+        }
         let result = match event {
             WindowEvent::Opened {
                 width,

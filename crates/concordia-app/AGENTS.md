@@ -8,6 +8,7 @@ The composition root: loads a project's `concordia.toml` and builds the engine m
 - `Manifest` and its sections (`[project]`, `[scene]`, `[sim]`, `[journal]`, `[window]`, `[input]`, `[physics]`, `[assets]`, `[scripts]` with `[[scripts.module]]` `kind`/`path`/`source`; the scripts module is added last, 2.6d; `[replay]`, no keys yet, adds the replay module before scripts, 2.8; `[anim]`, no keys yet, adds the animation module after assets, 2.4.1; `[nav]` adds the navigation module after physics, 2.5a; `plans_per_tick`, at least 1, default 32, 2.5b.1)
 - `SharedEngine::attach_or_host[_on]`, `SharedEngine::attach_live`, `HostedEngine`: one engine per project (ADR-0082)
 - `model_importers()`: the glTF and FBX importers, registered by the assets module and by `concordia import` (2.3d)
+- `Player` (`new(draws)`, `event(&WindowEvent, &mut ApiCall)`): windowed play as Engine API calls. It sends `sim.play` and `viewport.present` (the game camera) on open, `input.inject` for input (cursor moves plus their `PointerRay` from `viewport.pointer_ray` over the logical window size), releases held keys and buttons on focus loss, and sends `sim.stop` on close (2.5b.2b, ADR-0078). Tested headless with synthetic events (`tests/player.rs`).
 - `AppError`
 
 ## Invariants

@@ -46,6 +46,10 @@ export type WorldSel = "edit" | "play";
  */
 export interface MethodViewportPresentParams {
   /**
+   * Camera entity to draw from when there is no `view` (default: the highest-priority Camera).
+   */
+  camera?: null | string;
+  /**
    * Height in physical pixels.
    */
   height: number;
@@ -57,7 +61,10 @@ export interface MethodViewportPresentParams {
    * Caller's tag for this view, echoed in `viewport.stats`.
    */
   seq?: null | number;
-  view: View;
+  /**
+   * The editor's viewpoint; without one, the scene camera `camera` (or the highest-priority one).
+   */
+  view?: null | View;
   /**
    * Width in physical pixels.
    */
@@ -68,7 +75,7 @@ export interface MethodViewportPresentParams {
   world?: null | WorldSel;
 }
 /**
- * The viewpoint.
+ * A viewpoint that is not a scene entity: eye, target and projection (up is +Y).
  */
 export interface View {
   /**

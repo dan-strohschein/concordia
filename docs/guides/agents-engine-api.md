@@ -141,7 +141,7 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 | `viewport.pick` | | `{view, x, y, width, height, world?}` → `{entity, distance}` (projects with `[render]`) |
 | `viewport.pointer_ray` | | `{x, y, width, height, camera?, view?, world?}` → `{origin, direction}` (the world ray under a pixel of a camera's image, default the highest-priority camera, or a `view`'s; from the near plane; no GPU needed) |
 | `viewport.drop` | | `{view, x, y, width, height, world?}` → `{position, entity}` (where a dragged-in asset lands: the mesh under the pointer, else the ground plane y = 0) |
-| `viewport.present` | | `{view, width, height, world?, seq?, input_time_ms?}` → `{presented}` (the editor's native viewport only); **editor only, not an MCP tool** |
+| `viewport.present` | | `{view?, camera?, width, height, world?, seq?, input_time_ms?}` → `{presented}` (the native viewport only: from `view`, else from the scene camera `camera` or the highest-priority one; a playing world is redrawn from the same viewpoint after every tick); **editor only, not an MCP tool** |
 | `viewport.navigate` | | `{orbit?, pan?, zoom?, preset?, focus?, toggle_ortho?}` → `{view}` (moves the editor's camera; **editor only, not an MCP tool**) |
 | `viewport.overlays` | | `{selection?, gizmo?: {entity, hovered?}, grid?, skeleton?, debug?, scale?}` → `{overlays}` (what the engine draws over the editor viewport); **editor only, not an MCP tool** |
 | `viewport.gizmo` | yes | `{action: begin\|move\|end\|cancel, entity?, axis?, x?, y?, width?, height?}` → `{translation, axis}` (Move-gizmo drags; a begin without an axis grabs the shown gizmo's handle under the pointer, or misses); **editor only, not an MCP tool** |

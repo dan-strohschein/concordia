@@ -5,6 +5,7 @@
 
 mod error;
 mod manifest;
+mod player;
 mod project;
 mod shared;
 
@@ -14,5 +15,6 @@ pub use manifest::{
     ProjectSection, RenderSection, SceneSection, ScriptModuleKind, ScriptModuleSection,
     ScriptsSection, SimSection, StudioSection,
 };
+pub use player::{ApiCall, Player};
 pub use project::{Project, model_importers};
 pub use shared::{HostedEngine, SharedEngine};

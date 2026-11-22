@@ -786,3 +786,91 @@ fn viewport_drop_lands_on_the_surface_under_the_pointer_else_the_ground() {
         .unwrap_err();
     assert_eq!(err.code(), -32602, "{err:?}");
 }
+
+/// A camera entity looking down −Z from (0, 0, 10).
+fn scene_camera(h: &mut Harness, priority: i32) -> Value {
+    h.ok("entity.spawn", json!({"actor": "agent:test", "components": {
+        "Transform": {"translation": [0.0, 0.0, 10.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]},
+        "Camera": {"priority": priority},
+    }}))["id"]
+        .clone()
+}
+
+#[test]
+fn viewport_present_takes_a_view_or_a_scene_camera() {
+    // Without a surface, params are checked first: a request that gets as far as the surface
+    // check was accepted.
+    let mut h = Harness::new();
+    let size = json!({"width": 64, "height": 48});
+    let with = |extra: Value| {
+        let mut p = size.clone();
+        p.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        p
+    };
+    let none = h.call("viewport.present", size.clone()).unwrap_err();
+    assert_eq!(none.data.kind, "InvalidParams", "no camera yet: {none:?}");
+    assert!(none.message.contains("no Camera"), "{none:?}");
+    let camera = scene_camera(&mut h, 0);
+    let both = h
+        .call(
+            "viewport.present",
+            with(json!({"view": front_view(), "camera": camera})),
+        )
+        .unwrap_err();
+    assert_eq!(both.data.kind, "InvalidParams", "{both:?}");
+    assert_eq!(both.data.pointer.as_deref(), Some("/view"), "{both:?}");
+    let unknown = h
+        .call(
+            "viewport.present",
+            with(json!({"camera": "018bcfe5-6800-7000-a424-0000000000ff"})),
+        )
+        .unwrap_err();
+    assert_eq!(unknown.data.kind, "EntityNotFound", "{unknown:?}");
+    for accepted in [
+        size.clone(),
+        with(json!({"camera": camera})),
+        with(json!({"view": front_view()})),
+    ] {
+        let e = h.call("viewport.present", accepted.clone()).unwrap_err();
+        assert_eq!(e.data.kind, "InvalidRequest", "{accepted}: {e:?}");
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn viewport_present_from_a_scene_camera_redraws_after_each_tick() {
+    let Some(mut h) = Harness::gpu() else { return };
+    h.two_cubes();
+    scene_camera(&mut h, 0);
+    let layer = objc2_quartz_core::CAMetalLayer::new();
+    let target = concordia_rhi::SurfaceTarget::MetalLayer(std::ptr::NonNull::from(&*layer).cast());
+    // SAFETY: the layer outlives the engine (dropped after `h`).
+    unsafe { concordia_render::attach_surface(&mut h.engine, target) }.unwrap();
+    h.ok("sim.step", json!({"ticks": 1}));
+    let presented = h.ok(
+        "viewport.present",
+        json!({"width": 64, "height": 48, "world": "play"}),
+    );
+    assert_eq!(presented["presented"], true, "{presented}");
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let before = h.ok("viewport.stats", json!({"clear": true}))["frames"]
+        .as_array()
+        .unwrap()
+        .len();
+    assert!(before >= 1, "the first frame");
+    // Redraws follow real-time ticks (`sim.play`, advanced by the engine's poll), not `sim.step`.
+    h.ok("sim.play", json!({}));
+    for _ in 0..3 {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        h.engine.poll(std::time::Instant::now());
+    }
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let after = h.ok("viewport.stats", json!({}))["frames"]
+        .as_array()
+        .unwrap()
+        .len();
+    assert!(after >= 1, "ticks redraw the scene camera's view: {after}");
+    drop(h);
+}
