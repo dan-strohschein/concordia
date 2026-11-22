@@ -206,3 +206,61 @@ fn navmesh_debug_layer_draws_a_fixture_level() {
         concordia_testkit::golden::Tolerance::mean(0.01),
     );
 }
+
+/// How many of two fresh agents on a floor plan on the first tick, under `manifest`.
+fn planned_on_first_tick(manifest: &str) -> usize {
+    let mut stage = Stage::new(manifest);
+    stage.spawn(json!({
+        "Transform": {"translation": [0.0, -0.5, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]},
+        "RigidBody": {"kind": "Static"},
+        "Collider": {"shape": {"Box": {"half_extents": [8.1, 0.5, 8.1]}}},
+    }));
+    stage.spawn(json!({
+        "Transform": {"translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]},
+        "NavMeshVolume": {"half_extents": [10.0, 3.0, 10.0]},
+    }));
+    let mut ids = Vec::new();
+    for z in [-2.0, 2.0] {
+        let made = stage.ok(
+            "entity.spawn",
+            json!({"actor": ACTOR, "components": {
+                "Transform": {"translation": [-4.0, 0.0, z], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]},
+                "CharacterController": {},
+                "CharacterMotion": {},
+                "NavAgent": {"target": [4.0, 0.0, z]},
+            }}),
+        );
+        ids.push(made["id"].as_str().unwrap().to_owned());
+    }
+    stage.ok("sim.step", json!({"ticks": 1}));
+    ids.iter()
+        .filter(|id| {
+            let state = stage.ok(
+                "component.get",
+                json!({"entity": id, "component": "NavAgentState", "world": "play"}),
+            );
+            state["value"]["status"] == "Moving"
+        })
+        .count()
+}
+
+#[test]
+fn nav_section_sets_plans_per_tick() {
+    assert_eq!(
+        planned_on_first_tick("[physics]\n\n[nav]\n"),
+        2,
+        "32 by default"
+    );
+    assert_eq!(
+        planned_on_first_tick("[physics]\n\n[nav]\nplans_per_tick = 1\n"),
+        1
+    );
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("concordia.toml"),
+        "[nav]\nplans_per_tick = 0\n",
+    )
+    .unwrap();
+    let e = Project::load(dir.path()).unwrap_err().to_string();
+    assert!(e.contains("plans_per_tick"), "{e}");
+}

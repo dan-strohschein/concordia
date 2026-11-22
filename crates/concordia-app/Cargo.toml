@@ -39,6 +39,7 @@ concordia-scene.workspace = true
 concordia-terra.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
+concordia-tests = { path = "../../tests" }
 
 [lints]
 workspace = true

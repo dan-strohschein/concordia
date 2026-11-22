@@ -21,3 +21,4 @@ A navmesh is built inside a `NavMeshVolume` box from the **static colliders** in
 - The walkable surface sits up to one `cell_height` above the floor: compare positions sideways (x and z), not by height.
 - Walls are kept `agent_radius` away; a corner diagonal to a blocked cell is cut by about one cell, not a full radius.
 - In the play world (`"world": "play"`), queries use the navmeshes built when play started.
+- Characters walk these navmeshes with `NavAgent` (gameplay code; see `concordia-nav-agents`). Add `"nav_paths"` to a screenshot's `debug` to draw each walking agent's remaining path.

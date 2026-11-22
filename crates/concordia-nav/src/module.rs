@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use std::any::Any;
+use std::num::NonZeroU32;
 
 use concordia_api::{
     ApiError, DebugGeometry, Engine, EngineModule, MethodInfo, PlaySetup, WorldSel,
@@ -13,12 +14,15 @@ use concordia_core::id::EntityId;
 use concordia_reflect::{RegistryError, TypeRegistry};
 use concordia_terra::World;
 
+use crate::agents::{AgentConfig, add_agent_processors, insert_agent_states};
 use crate::methods::{NavBuild, NavPathMethod, navmeshes};
 use crate::navmesh::NavMesh;
 use crate::service::{Builder, NavState};
 
 /// The debug layer that draws navmeshes.
 pub const NAVMESH_LAYER: &str = "navmesh";
+/// The debug layer that draws agents' remaining paths.
+pub const NAV_PATHS_LAYER: &str = "nav_paths";
 
 /// The play world's navmeshes by volume, built when play starts (a resource; not hashed, since
 /// it is derived from hashed state).
@@ -26,6 +30,11 @@ pub const NAVMESH_LAYER: &str = "navmesh";
 pub struct NavMeshes(Arc<BTreeMap<EntityId, Arc<NavMesh>>>);
 
 impl NavMeshes {
+    /// Navmeshes by volume id.
+    pub fn new(meshes: impl IntoIterator<Item = (EntityId, Arc<NavMesh>)>) -> Self {
+        Self(Arc::new(meshes.into_iter().collect()))
+    }
+
     /// Volumes with a navmesh.
     pub fn len(&self) -> usize {
         self.0.len()
@@ -49,12 +58,26 @@ impl NavMeshes {
 
 /// Registers navigation components and serves `nav.build` and `nav.path`.
 #[derive(Debug, Clone, Default)]
-pub struct NavModule;
+pub struct NavModule {
+    agents: AgentConfig,
+}
 
 impl NavModule {
     /// The module.
     pub fn new() -> Self {
-        Self
+        Self::default()
+    }
+
+    /// The module with at most `plans_per_tick` agent path plans per tick.
+    pub fn with_plans_per_tick(plans_per_tick: NonZeroU32) -> Self {
+        Self {
+            agents: AgentConfig { plans_per_tick },
+        }
+    }
+
+    /// The agent processors' settings.
+    pub fn agent_config(&self) -> AgentConfig {
+        self.agents
     }
 }
 
@@ -78,8 +101,8 @@ impl EngineModule for NavModule {
         Some(Box::new(NavState::default()))
     }
 
-    /// Builds (or loads) every volume's navmesh as the `NavMeshes` resource; a volume that fails
-    /// is logged and left out, so play still starts.
+    /// Builds (or loads) every volume's navmesh as the `NavMeshes` resource (a volume that fails
+    /// is logged and left out, so play still starts), and adds the agent processors.
     fn start_play_in(&self, engine: &mut Engine, world: &mut World) -> Result<PlaySetup, ApiError> {
         let mut meshes = BTreeMap::new();
         if let Some(state) = engine.state::<NavState>() {
@@ -100,11 +123,14 @@ impl EngineModule for NavModule {
             }
         }
         world.insert_resource(NavMeshes(Arc::new(meshes)));
-        Ok(PlaySetup::default())
+        insert_agent_states(world);
+        let mut setup = PlaySetup::default();
+        add_agent_processors(&mut setup.schedule, self.agents);
+        Ok(setup)
     }
 
     fn debug_layers(&self) -> Vec<&'static str> {
-        vec![NAVMESH_LAYER]
+        vec![NAVMESH_LAYER, NAV_PATHS_LAYER]
     }
 
     fn debug_geometry(
@@ -113,6 +139,10 @@ impl EngineModule for NavModule {
         world: WorldSel,
         layer: &str,
     ) -> Option<DebugGeometry> {
+        if layer == NAV_PATHS_LAYER {
+            let geometry = crate::debug::path_geometry(engine.world(world).ok()?);
+            return (!geometry.lines.is_empty()).then_some(geometry);
+        }
         let meshes = (layer == NAVMESH_LAYER)
             .then(|| navmeshes(engine, world, None).ok())
             .flatten()?;

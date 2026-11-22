@@ -111,8 +111,8 @@ impl Project {
             settings.max_bodies = physics.max_bodies;
             modules.push(Arc::new(PhysicsModule::new(settings)));
         }
-        if self.manifest.nav.is_some() {
-            modules.push(Arc::new(NavModule::new()));
+        if let Some(nav) = &self.manifest.nav {
+            modules.push(Arc::new(NavModule::with_plans_per_tick(nav.plans_per_tick)));
         }
         if self.manifest.assets.is_some() {
             let assets = model_importers()

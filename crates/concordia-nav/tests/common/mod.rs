@@ -1,6 +1,8 @@
 //! Builds fixture levels: static floors and obstacles, a volume and area marks.
 #![allow(dead_code, missing_docs)]
 
+pub mod engine;
+
 use std::num::NonZeroUsize;
 
 use concordia_core::id::{DeterministicIdGen, EntityId};

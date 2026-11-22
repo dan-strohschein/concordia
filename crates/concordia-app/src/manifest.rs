@@ -38,10 +38,21 @@ pub struct Manifest {
     pub nav: Option<NavSection>,
 }
 
-/// `[nav]` (no settings yet; ADR-0077).
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+/// `[nav]` (ADR-0077).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct NavSection {}
+pub struct NavSection {
+    /// Most agent path plans per tick (at least 1; default 32).
+    pub plans_per_tick: std::num::NonZeroU32,
+}
+
+impl Default for NavSection {
+    fn default() -> Self {
+        Self {
+            plans_per_tick: concordia_nav::AgentConfig::default().plans_per_tick,
+        }
+    }
+}
 
 /// `[anim]` (no settings yet; ADR-0074).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

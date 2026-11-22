@@ -1,9 +1,16 @@
-//! The `navmesh` debug layer: polygons filled by island and outlined, lifted off the ground.
+//! The debug layers: `navmesh` (polygons filled by island and outlined) and `nav_paths` (each
+//! walking agent's remaining path), lifted off the ground.
 
 use concordia_api::{DebugGeometry, DebugLine, DebugTriangle};
 use concordia_core::math::Vec3;
+use concordia_scene::builtin::Transform;
+use concordia_terra::World;
 
+use crate::agent::{NavAgentState, NavStatus};
 use crate::navmesh::NavMesh;
+
+/// The color of agents' paths (linear RGBA).
+const PATH: [f32; 4] = [1.0, 0.85, 0.1, 1.0];
 
 /// How far the layer floats above the surface, in meters.
 const LIFT: f32 = 0.02;
@@ -40,6 +47,35 @@ pub(crate) fn navmesh_geometry<'a>(meshes: impl Iterator<Item = &'a NavMesh>) ->
                     color: edge,
                 });
             }
+        }
+    }
+    out
+}
+
+/// Each walking agent's remaining path: its feet to the next corner, then corner to corner.
+pub(crate) fn path_geometry(world: &World) -> DebugGeometry {
+    let mut out = DebugGeometry::default();
+    let mut walking = Vec::new();
+    for id in world.entity_ids_sorted() {
+        let (Some(state), Some(t)) = (world.get::<NavAgentState>(id), world.get::<Transform>(id))
+        else {
+            continue;
+        };
+        let moving = matches!(state.status, NavStatus::Moving | NavStatus::Waiting);
+        let next = state.next as usize;
+        if moving && next < state.waypoints.len() {
+            let mut points = vec![t.translation];
+            points.extend_from_slice(&state.waypoints[next..]);
+            walking.push(points);
+        }
+    }
+    for points in walking {
+        for pair in points.windows(2) {
+            out.lines.push(DebugLine {
+                from: pair[0] + Vec3::Y * LIFT,
+                to: pair[1] + Vec3::Y * LIFT,
+                color: PATH,
+            });
         }
     }
     out

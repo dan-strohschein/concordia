@@ -6,86 +6,17 @@
 //! is walkable to ±9.5 at the surface y = −3 + 16 × 0.2 = 0.2. The 24 m volume is 2 × 2 tiles,
 //! with seams at x = 4 and z = 4.
 
+mod common;
+
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use concordia_api::{ApiErrorKind, Engine, EngineConfig, WorldSel};
-use concordia_core::id::SessionId;
-use concordia_nav::{NavMeshes, NavModule};
-use concordia_physics::{PhysicsModule, PhysicsSettings};
-use serde_json::{Value, json};
-
-struct Rig {
-    _dir: tempfile::TempDir,
-    engine: Engine,
-    session: SessionId,
-}
-
-impl Rig {
-    fn new() -> Self {
-        let dir = tempfile::tempdir().unwrap();
-        let mut config = EngineConfig::new(dir.path());
-        config.deterministic_ids = Some(5);
-        config.threads = NonZeroUsize::new(2).unwrap();
-        config.journal.sync = false;
-        config.modules = vec![
-            Arc::new(PhysicsModule::new(PhysicsSettings::default())),
-            Arc::new(NavModule::new()),
-        ];
-        let mut engine = Engine::new(config).unwrap();
-        let session = engine.open_session();
-        let mut rig = Self {
-            _dir: dir,
-            engine,
-            session,
-        };
-        rig.ok(
-            "session.open",
-            json!({"client": "test", "actor": "agent:test"}),
-        );
-        rig.ok(
-            "scene.new",
-            json!({"path": "scenes/n.scene.ron", "name": "N"}),
-        );
-        rig
-    }
-
-    fn call(&mut self, method: &str, params: Value) -> Result<Value, concordia_api::ApiError> {
-        self.engine.call(self.session, method, params)
-    }
-
-    fn ok(&mut self, method: &str, params: Value) -> Value {
-        self.call(method, params.clone())
-            .unwrap_or_else(|e| panic!("{method} {params}: {e:?}"))
-    }
-
-    fn spawn(&mut self, components: Value) -> String {
-        self.ok("entity.spawn", json!({ "components": components }))["id"]
-            .as_str()
-            .unwrap()
-            .to_owned()
-    }
-
-    fn at(x: f32, y: f32, z: f32) -> Value {
-        json!({"translation": [x, y, z], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]})
-    }
-
-    fn floor(&mut self) -> String {
-        self.spawn(json!({
-            "Transform": Self::at(0.0, -0.5, 0.0),
-            "RigidBody": {"kind": "Static"},
-            "Collider": {"shape": {"Box": {"half_extents": [10.1, 0.5, 10.1]}}},
-        }));
-        self.spawn(json!({
-            "Transform": Self::at(0.0, 0.0, 0.0),
-            "NavMeshVolume": {"half_extents": [12.0, 3.0, 12.0]},
-        }))
-    }
-}
-
-fn near(v: &Value, want: [f64; 3], eps: f64) -> bool {
-    (0..3).all(|i| (v[i].as_f64().unwrap() - want[i]).abs() <= eps)
-}
+use common::engine::{Rig, near};
+use concordia_api::{ApiErrorKind, WorldSel};
+use concordia_core::log::LogRing;
+use concordia_nav::NavMeshes;
+use serde_json::json;
+use tracing_subscriber::layer::SubscriberExt;
 
 #[test]
 fn nav_build_over_api_reports_tiles_polygons_and_islands() {
@@ -210,4 +141,118 @@ fn navmesh_debug_layer_draws_every_polygon() {
         rig.engine.debug_geometry("no-such-layer", WorldSel::edit),
         None
     );
+}
+
+#[test]
+fn nav_agent_moves_in_the_play_world_over_the_api() {
+    // From (−5, 0) to (5.23, 0) at 3 m/s, as in `agents_physics.rs`: the target is set on tick 1,
+    // so the walk starts there and arrives on tick 196.
+    let mut rig = Rig::new();
+    rig.floor();
+    let hero = rig.character(-5.0, 0.0, json!({"max_speed": 3.0}));
+    rig.step(1);
+    assert_eq!(rig.play(&hero, "NavAgentState")["status"], "Idle");
+    rig.ok(
+        "component.patch",
+        json!({"entity": hero, "component": "NavAgent", "world": "play",
+               "patch": {"target": [5.23, 0.0, 0.0]}}),
+    );
+    rig.step(1);
+    let state = rig.play(&hero, "NavAgentState");
+    assert_eq!(state["status"], "Moving", "{state}");
+    assert!(
+        near(&state["waypoints"][1], [5.23, 0.2, 0.0], 1e-3),
+        "{state}"
+    );
+    rig.step(195);
+    assert_eq!(rig.play(&hero, "NavAgentState")["status"], "Arrived");
+    let edit = rig.ok("entity.get", json!({"id": hero}));
+    assert!(
+        edit["components"].get("NavAgentState").is_none(),
+        "play never writes the edit world"
+    );
+}
+
+#[test]
+fn nav_agent_size_mismatch_warns_once() {
+    let ring = Arc::new(LogRing::new(NonZeroUsize::new(1024).unwrap()));
+    // Processors may log from job threads, so the ring is the process's subscriber.
+    tracing::subscriber::set_global_default(tracing_subscriber::registry().with(ring.layer()))
+        .unwrap();
+    let mut rig = Rig::with(2, Some(ring));
+    rig.floor();
+    let wide = rig.character(-5.0, 0.0, json!({"target": [5.0, 0.0, 0.0], "radius": 0.5}));
+    rig.character(-5.0, 3.0, json!({"target": [5.0, 0.0, 3.0]}));
+    rig.step(5);
+    rig.ok(
+        "component.patch",
+        json!({"entity": wide, "component": "NavAgent", "world": "play",
+               "patch": {"target": [5.0, 0.0, -3.0]}}),
+    );
+    rig.step(5);
+    let records = rig.ok("log.tail", json!({"level": "warn", "limit": 1000}))["records"].clone();
+    let count = |phrase: &str| {
+        records
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|r| r["message"].as_str().is_some_and(|m| m.contains(phrase)))
+            .count()
+    };
+    assert_eq!(
+        count("differs from its CharacterController"),
+        1,
+        "{records}"
+    );
+    assert_eq!(count("wider than its navmesh"), 1, "{records}");
+    assert_eq!(
+        rig.play(&wide, "NavAgentState")["status"],
+        "Moving",
+        "it still moves"
+    );
+}
+
+#[test]
+fn nav_paths_debug_layer_draws_remaining_paths() {
+    // A wall across x ∈ [−0.5, 0.5], z ≤ 6 makes the path bend; the layer draws the feet to the
+    // next corner, then each corner to the next: (waypoints − next) lines, lifted 2 cm.
+    let mut rig = Rig::new();
+    assert!(rig.engine.debug_layers().contains(&"nav_paths"));
+    rig.floor();
+    rig.spawn(json!({
+        "Transform": Rig::at(0.0, 1.0, -2.0),
+        "RigidBody": {"kind": "Static"},
+        "Collider": {"shape": {"Box": {"half_extents": [0.5, 1.0, 8.0]}}},
+    }));
+    let hero = rig.character(-6.0, 1.0, json!({"target": [7.0, 0.0, 2.0]}));
+    rig.character(3.0, -8.0, json!({}));
+    assert_eq!(
+        rig.engine.debug_geometry("nav_paths", WorldSel::edit),
+        None,
+        "edit worlds don't walk"
+    );
+    rig.step(1);
+    let state = rig.play(&hero, "NavAgentState");
+    let waypoints = state["waypoints"].as_array().unwrap().clone();
+    let next = state["next"].as_u64().unwrap() as usize;
+    assert!(waypoints.len() > 2, "{state}");
+    let geometry = rig
+        .engine
+        .debug_geometry("nav_paths", WorldSel::play)
+        .expect("drawn");
+    assert_eq!(geometry.lines.len(), waypoints.len() - next, "{geometry:?}");
+    assert!(geometry.triangles.is_empty());
+    let feet = rig.play(&hero, "Transform")["translation"].clone();
+    let first = geometry.lines[0];
+    let lifted = |v: &serde_json::Value| {
+        [
+            v[0].as_f64().unwrap() as f32,
+            v[1].as_f64().unwrap() as f32 + 0.02,
+            v[2].as_f64().unwrap() as f32,
+        ]
+    };
+    assert_eq!(first.from.to_array(), lifted(&feet), "{first:?}");
+    assert_eq!(first.to.to_array(), lifted(&waypoints[next]), "{first:?}");
+    let last = geometry.lines.last().unwrap();
+    assert_eq!(last.to.to_array(), lifted(waypoints.last().unwrap()));
 }
