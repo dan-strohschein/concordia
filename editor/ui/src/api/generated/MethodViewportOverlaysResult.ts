@@ -55,6 +55,10 @@ export interface Overlays {
    * Items: Stable entity id (UUID string).
    */
   selection?: string[];
+  /**
+   * Every posed skeleton's bones, drawn on top (play world only: the edit world has no poses).
+   */
+  skeleton?: boolean;
   view_mode?: ViewMode;
 }
 /**

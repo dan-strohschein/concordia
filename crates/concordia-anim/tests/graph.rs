@@ -64,6 +64,7 @@ fn hold(name: &str, duration: f32, x: f32, arm: Option<f32>) -> ClipData {
         name: name.to_owned(),
         duration,
         frame_rate: None,
+        events: Vec::new(),
         channels,
     }
 }
@@ -74,6 +75,7 @@ fn ramp(name: &str, duration: f32, offset: f32) -> ClipData {
         name: name.to_owned(),
         duration,
         frame_rate: None,
+        events: Vec::new(),
         channels: vec![channel(
             "hip",
             ChannelPath::Translation,

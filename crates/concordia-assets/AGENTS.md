@@ -7,7 +7,7 @@ The asset pipeline: source files with `<file>.import.ron` sidecars holding stabl
 - `AssetDb` (`new`, `register`, `scan`, `import` → `ImportReport`, `load_texture` / `load_mesh` / `load_material` (a layered `Material`), `load_artifact`, `list`, `path_of`, `id_at`, `generation` (bumped whenever an import finds new content, so the renderer re-sends a changed material), `on_files_changed`)
 - `Importer` (trait), `ImportInput`, `ImportOutput`, `Artifact`, `AssetKind`, `SubIds`; `ImageImporter` (`png`, `jpg`, `hdr`) and `ImageSettings`; `MaterialImporter` (`.material.ron` → `Material` through `read_material`: layered text, or M1's flat text as one slab; version 2)
 - `AssetRef` (`"asset:<uuid>[#sub]"`, `"builtin:<kind>/<name>"`), `Builtin` / `BuiltinAsset`
-- Data: `TextureData`, `MeshData`, `AlphaMode`; skins and clips: `SkinData`, `ClipData` (`frame_rate`: FBX's authored rate, `None` for glTF; 2.4.1), `Channel` (`target`, `target_name`: the bone's name, so clips bind to any skeleton; 2.4.1), `ChannelPath`, `Interpolation`
+- Data: `TextureData`, `MeshData`, `AlphaMode`; skins and clips: `SkinData`, `ClipData` (`frame_rate`: FBX's authored rate, `None` for glTF; 2.4.1; `events`: `ClipEvent { time, name }` sorted by time, checked by `validate_events`; 2.4.4), `Channel` (`target`, `target_name`: the bone's name, so clips bind to any skeleton; 2.4.1), `ChannelPath`, `Interpolation`
 - `Skinned { skin }` (component, 2.4.1, ADR-0074): the entity's `MeshRenderer` mesh is deformed by `asset:<id>#skin/<index>`; registered with `MeshRenderer` by `register_types`
 - Prefabs: `AssetDb::load_prefab_doc(&AssetRef, &TypeRegistry)` and `prefab_doc(reference, kind, bytes, registry)`, the one reader of prefab artifacts (`prefab.instantiate`, `concordia-import-model` and `concordia-anim` use it; 2.4.1)
 - Layered materials (ADR-0068): `Material` (named `nodes`, `root`, `alpha_mode`, `double_sided`, `unlit`; registered for `schema.get {"name": "Material"}`), `MaterialNode` (`Slab`, `Vertical`, `Horizontal`, `Coverage`), `Slab`, `Haze`, `Fuzz`, `Subsurface`, `ThinFilm`, `MaterialError` (`field`, `node`), `SURFACE`; `read_material` (layered text, or M1 text migrated to one slab), `read_material_with_format` (also says `MaterialFormat::Layered` or `M1`), `write_material`, `Material::from_slab`, `validate`, `reachable`. Material artifacts (`AssetKind::Material`) hold a `Material`; `builtin:material/default` is M1's white dielectric as one slab. Evaluation is in `concordia-material`.
@@ -50,7 +50,7 @@ The asset pipeline: source files with `<file>.import.ron` sidecars holding stabl
 - M1's flat format is glTF 2.0's metallic-roughness model (Khronos glTF 2.0 specification, §3.9).
 
 ## Status
-M1 phase 1.4; layered material model M2 phase 2.3a; imported and loaded as `Material` since 2.3b; `material.get` / `material.set` and `MaterialData` retired in 2.3c; `Skinned`, clip bone names and frame rates, and `load_prefab_doc` in 2.4.1; the animation graph format and importer in 2.4.3.
+M1 phase 1.4; layered material model M2 phase 2.3a; imported and loaded as `Material` since 2.3b; `material.get` / `material.set` and `MaterialData` retired in 2.3c; `Skinned`, clip bone names and frame rates, and `load_prefab_doc` in 2.4.1; the animation graph format and importer in 2.4.3; `ClipData::events` (`ClipEvent`) and `validate_events` in 2.4.4.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

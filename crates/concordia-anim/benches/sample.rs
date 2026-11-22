@@ -6,18 +6,18 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use concordia_anim::{
-    AnimGraphPlayer, AnimLibrary, AnimPlayer, BoundClip, BoundGraph, Joint, Skeleton,
-    add_processors,
+    AnimGraphPlayer, AnimLibrary, AnimPlayer, BoneAttachment, BoundClip, BoundGraph, Joint,
+    Skeleton, add_processors,
 };
 use concordia_assets::{
-    AdvanceMode, AnimGraph, AnimNode, AssetRef, Channel, ChannelPath, ClipData, FadeCurve,
-    Interpolation, Parameter, Skinned, StateTransition, SwitchMode,
+    AdvanceMode, AnimGraph, AnimNode, AssetRef, Channel, ChannelPath, ClipData, ClipEvent,
+    FadeCurve, Interpolation, Parameter, Skinned, StateTransition, SwitchMode,
 };
 use concordia_core::id::{DeterministicIdGen, EntityId};
 use concordia_core::jobs::JobSystem;
 use concordia_core::math::{Mat4, Quat, Vec3};
 use concordia_core::time::TickRate;
-use concordia_scene::builtin::Transform;
+use concordia_scene::builtin::{Parent, Transform};
 use concordia_terra::{Schedule, SimLoop, World};
 use criterion::{Criterion, criterion_group, criterion_main};
 
@@ -70,6 +70,7 @@ fn clip() -> ClipData {
         name: "bench".into(),
         duration: 1.0,
         frame_rate: Some(30.0),
+        events: Vec::new(),
         channels,
     }
 }
@@ -251,5 +252,62 @@ fn graph(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, sample, tick, graph);
+/// 1,000 clip players whose clip has four events a second, each with an item on its last bone.
+fn events_and_attachments(c: &mut Criterion) {
+    let skin: AssetRef = "asset:018bcfe5-6800-7000-a424-6c55076b137f#skin/0"
+        .parse()
+        .unwrap();
+    let clip_ref: AssetRef = "asset:018bcfe5-6800-7000-a424-6c55076b137f#clip/bench"
+        .parse()
+        .unwrap();
+    let skeleton = skeleton();
+    let mut data = clip();
+    data.events = (0..4)
+        .map(|i| ClipEvent {
+            time: i as f32 * 0.25,
+            name: format!("event{i}"),
+        })
+        .collect();
+    let bound = BoundClip::bind(&data, &skeleton).unwrap();
+    let mut library = AnimLibrary::new();
+    library.insert_clip(clip_ref.clone(), skin.clone(), bound);
+    library.insert_skeleton(skin.clone(), skeleton);
+    let library = Arc::new(library);
+    let mut world = World::new();
+    let mut ids = DeterministicIdGen::new(3);
+    for i in 0..CHARACTERS {
+        let id = world.spawn(&mut ids).unwrap();
+        world.insert(id, Transform::default()).unwrap();
+        world.insert(id, Skinned { skin: skin.clone() }).unwrap();
+        let mut player = AnimPlayer::new(clip_ref.clone());
+        player.time = (i % 60) as f32 / 60.0;
+        world.insert(id, player).unwrap();
+        let item = world.spawn(&mut ids).unwrap();
+        world.insert(item, Parent(id)).unwrap();
+        world.insert(item, Transform::default()).unwrap();
+        world
+            .insert(
+                item,
+                BoneAttachment {
+                    bone: format!("bone{}", BONES - 1),
+                },
+            )
+            .unwrap();
+    }
+    concordia_anim::insert_rest_poses(&library, &mut world);
+    let mut schedule = Schedule::new();
+    add_processors(&mut schedule, library);
+    let mut sim = SimLoop::new(TickRate::HZ_60, schedule, &mut world).unwrap();
+    for threads in [1, 8] {
+        let jobs = JobSystem::new(NonZeroUsize::new(threads).unwrap()).unwrap();
+        c.bench_function(
+            &format!("events_attachments_1000_characters_{threads}_threads"),
+            |b| {
+                b.iter(|| sim.step(&mut world, &jobs, 1));
+            },
+        );
+    }
+}
+
+criterion_group!(benches, sample, tick, graph, events_and_attachments);
 criterion_main!(benches);

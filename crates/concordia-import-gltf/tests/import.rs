@@ -322,3 +322,27 @@ fn surface(m: &concordia_assets::Material) -> &concordia_assets::Slab {
         other => panic!("expected the surface slab, got {other:?}"),
     }
 }
+
+#[test]
+fn gltf_clip_events_come_from_the_import_settings() {
+    let mut p = Project::new();
+    let report = p.sample("Fox", "glTF-Binary", "Fox.glb");
+    let sidecar = p.dir.path().join("Fox/glTF-Binary/Fox.glb.import.ron");
+    let text = std::fs::read_to_string(&sidecar).unwrap();
+    assert!(text.contains("settings: {}"), "{text}");
+    let settings = r#"settings: {"clip_events": {"Walk": [{"time": 0.4, "name": "step"}]}}"#;
+    std::fs::write(&sidecar, text.replace("settings: {}", settings)).unwrap();
+    let again =
+        p.db.import(std::path::Path::new("Fox/glTF-Binary/Fox.glb"))
+            .unwrap();
+    assert_eq!(again.id, report.id);
+    let walk: ClipData =
+        p.db.load(&Project::sub(&again, "clip/Walk"), AssetKind::Clip)
+            .unwrap();
+    assert_eq!(walk.events.len(), 1);
+    assert_eq!(
+        (walk.events[0].time, walk.events[0].name.as_str()),
+        (0.4, "step")
+    );
+    assert_eq!(walk.frame_rate, None, "events stay in seconds");
+}

@@ -885,8 +885,12 @@ impl Renderer {
                     width.get() as f32,
                     height.get() as f32,
                 );
-                let bounds = |m: &AssetRef| self.assets.meshes.get(m).map(|g| g.aabb);
-                crate::overlay::triangles(o, world, &projector, &bounds)
+                let boxes: Vec<_> = skinning
+                    .placements
+                    .iter()
+                    .map(|p| (p.world, p.bounds))
+                    .collect();
+                crate::overlay::triangles(o, world, &projector, &boxes)
             }),
             tonemap: match view_mode.tonemapped() {
                 true => view.camera.tonemap,

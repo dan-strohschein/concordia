@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use concordia_assets::{Channel, ChannelPath, ClipData, Interpolation};
+use concordia_assets::{Channel, ChannelPath, ClipData, ClipEvent, Interpolation, validate_events};
 use concordia_core::math::{Quat, Vec3};
 
 use crate::error::AnimError;
@@ -21,6 +21,10 @@ pub fn validate_clip(clip: &ClipData) -> Result<(), AnimError> {
             ),
         });
     }
+    validate_events(clip).map_err(|reason| AnimError::ClipHeader {
+        clip: clip.name.clone(),
+        reason,
+    })?;
     for (i, channel) in clip.channels.iter().enumerate() {
         check_channel(channel).map_err(|reason| AnimError::Clip {
             clip: clip.name.clone(),
@@ -106,6 +110,8 @@ pub struct BoundClip {
     tracks: Vec<Track>,
     unmatched: Vec<String>,
     skipped: usize,
+    events: Vec<ClipEvent>,
+    frame_rate: Option<f32>,
 }
 
 impl BoundClip {
@@ -133,6 +139,8 @@ impl BoundClip {
             tracks,
             unmatched: unmatched.into_iter().collect(),
             skipped,
+            events: clip.events.clone(),
+            frame_rate: clip.frame_rate.filter(|r| r.is_finite() && *r > 0.0),
         })
     }
 
@@ -149,6 +157,16 @@ impl BoundClip {
     /// Bone names the clip animates that the skeleton lacks (sorted, once each).
     pub fn unmatched(&self) -> &[String] {
         &self.unmatched
+    }
+
+    /// Keys per second as authored (FBX), if known.
+    pub fn frame_rate(&self) -> Option<f32> {
+        self.frame_rate
+    }
+
+    /// The clip's events, sorted by time.
+    pub fn events(&self) -> &[ClipEvent] {
+        &self.events
     }
 
     /// Channels not sampled (morph target weights).

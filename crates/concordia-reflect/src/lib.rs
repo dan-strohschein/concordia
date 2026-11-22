@@ -49,7 +49,7 @@ pub use info::{
     DefaultValue, FieldInfo, Primitive, Range, Shape, TypeInfo, TypeRef, VariantInfo, VariantShape,
 };
 pub use reflect::Reflect;
-pub use registry::{RegistryError, TypeRegistration, TypeRegistry};
+pub use registry::{JsonBuilder, RegistryError, TypeRegistration, TypeRegistry};
 pub use schema::{DRAFT, index_entry, schema_for};
 pub use validate::validate_json;
 pub use value::{DynamicValue, MigrationReport, migrate};

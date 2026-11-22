@@ -28,6 +28,7 @@ concordia-import-fbx.workspace = true
 concordia-import-gltf.workspace = true
 concordia-import-model.workspace = true
 criterion.workspace = true
+insta.workspace = true
 tempfile.workspace = true
 
 [[bench]]

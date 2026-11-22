@@ -28,6 +28,7 @@ concordia-studio.workspace = true
 
 [dev-dependencies]
 base64.workspace = true
+concordia-anim.workspace = true
 concordia-render.workspace = true
 concordia-replay.workspace = true
 serde.workspace = true

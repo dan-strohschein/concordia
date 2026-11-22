@@ -2,11 +2,13 @@
 //! playback. Blends are local-space (lerp, shortest-path slerp, lerp); state machines follow
 //! Godot's switch and advance modes.
 
+use std::cell::RefCell;
 use std::collections::VecDeque;
 
 use concordia_assets::{AdvanceMode, FadeCurve, Parameter, SwitchMode};
 use concordia_core::math::{Quat, Vec3};
 
+use crate::events::{AnimEvent, crossed_events};
 use crate::graph::{BoundGraph, Edge, Machine, Node};
 use crate::graph_player::{AnimGraphPlayer, NodeState};
 use crate::player::advance;
@@ -24,11 +26,26 @@ pub(crate) struct Playback {
     pub(crate) ended: bool,
 }
 
-/// One evaluation's inputs: the graph, the player's parameters and the skeleton.
+/// One clip event crossed this evaluation, before shares are known.
+#[derive(Debug, Clone, Copy)]
+struct Fired {
+    /// How far through its clip's step it was crossed.
+    at: f32,
+    /// The clip node.
+    node: usize,
+    /// Index into the clip's events.
+    event: usize,
+    /// The clip's share of the output pose.
+    weight: f32,
+}
+
+/// One evaluation's inputs (the graph, the player's parameters and the skeleton) and the clip
+/// events it crosses.
 pub(crate) struct Eval<'a> {
     graph: &'a BoundGraph,
     player: &'a AnimGraphPlayer,
     skeleton: &'a Skeleton,
+    fired: RefCell<Vec<Fired>>,
 }
 
 impl<'a> Eval<'a> {
@@ -41,7 +58,67 @@ impl<'a> Eval<'a> {
             graph,
             player,
             skeleton,
+            fired: RefCell::new(Vec::new()),
         }
+    }
+
+    /// The events crossed so far with a share above 0, in firing order: when in the step, then
+    /// node (name order), then the clip's own order.
+    pub(crate) fn events(self) -> Vec<AnimEvent> {
+        let mut fired: Vec<(usize, Fired)> =
+            self.fired.into_inner().into_iter().enumerate().collect();
+        fired.retain(|(_, f)| f.weight > 0.0);
+        fired.sort_by(|(i, a), (j, b)| {
+            a.at.total_cmp(&b.at)
+                .then(a.node.cmp(&b.node))
+                .then(i.cmp(j))
+        });
+        fired
+            .into_iter()
+            .filter_map(|(_, f)| {
+                let Node::Clip {
+                    clip, reference, ..
+                } = &self.graph.nodes[f.node]
+                else {
+                    return None;
+                };
+                let event = clip.events().get(f.event)?;
+                Some(AnimEvent {
+                    name: event.name.clone(),
+                    clip: reference.clone(),
+                    node: Some(self.graph.names[f.node].clone()),
+                    time: event.time,
+                    weight: f.weight,
+                })
+            })
+            .collect()
+    }
+
+    /// Events recorded so far (where a child's begin).
+    fn mark(&self) -> usize {
+        self.fired.borrow().len()
+    }
+
+    /// Multiplies the shares of the events recorded in `range` by `share`.
+    fn scale(&self, range: std::ops::Range<usize>, share: f32) {
+        if let Some(fired) = self.fired.borrow_mut().get_mut(range) {
+            fired.iter_mut().for_each(|f| f.weight *= share);
+        }
+    }
+
+    /// Node `n` evaluated with `share` of its parent's pose.
+    fn shared(
+        &self,
+        n: usize,
+        share: f32,
+        dt: f32,
+        state: &mut [NodeState],
+        out: &mut Pose,
+    ) -> Playback {
+        let from = self.mark();
+        let playback = self.node(n, dt, state, out);
+        self.scale(from..self.mark(), share);
+        playback
     }
 
     /// Advances node `n` by `dt` and writes its pose to `out`.
@@ -53,9 +130,18 @@ impl<'a> Eval<'a> {
         out: &mut Pose,
     ) -> Playback {
         match &self.graph.nodes[n] {
-            Node::Clip { clip, looping } => {
+            Node::Clip { clip, looping, .. } => {
                 let s = &mut state[n];
                 let duration = clip.duration();
+                let crossed = crossed_events(clip.events(), duration, *looping, s.time, dt);
+                self.fired
+                    .borrow_mut()
+                    .extend(crossed.into_iter().map(|c| Fired {
+                        at: c.at,
+                        node: n,
+                        event: c.event,
+                        weight: 1.0,
+                    }));
                 let raw = s.time + dt;
                 s.time = advance(s.time, dt, duration, *looping);
                 let ended = if *looping {
@@ -76,9 +162,11 @@ impl<'a> Eval<'a> {
             }
             Node::Blend2 { a, b, amount, mask } => {
                 let w = self.float(amount).clamp(0.0, 1.0);
-                let pa = self.node(*a, dt, state, out);
+                // A filtered blend leaves its first input driving every bone outside the filter.
+                let share_a = if mask.is_some() { 1.0 } else { 1.0 - w };
+                let pa = self.shared(*a, share_a, dt, state, out);
                 let mut other = Pose::default();
-                let pb = self.node(*b, dt, state, &mut other);
+                let pb = self.shared(*b, w, dt, state, &mut other);
                 out.blend_toward(&other, w, mask.as_deref());
                 if w > 0.5 { pb } else { pa }
             }
@@ -115,7 +203,7 @@ impl<'a> Eval<'a> {
         let mut heaviest = (0, f32::MIN, Playback::default());
         for (i, input) in inputs.iter().enumerate() {
             let mut pose = Pose::default();
-            let playback = self.node(*input, dt, state, &mut pose);
+            let playback = self.shared(*input, w[i], dt, state, &mut pose);
             if w[i] > heaviest.1 {
                 heaviest = (i, w[i], playback);
             }
@@ -144,20 +232,29 @@ impl<'a> Eval<'a> {
             state[n].active = true;
             state[n].time = 0.0;
         }
+        let base_events = self.mark();
         let playback = self.node(*base, dt, state, out);
         if !state[n].active {
             return playback;
         }
         state[n].time += dt.abs();
         let mut overlay = Pose::default();
+        let shot_events = self.mark();
         let shot_playback = self.node(*shot, dt, state, &mut overlay);
+        let w_in = ramp(state[n].time, *fade_in);
+        let w_out = ramp(shot_playback.remaining, *fade_out);
+        let w = shape(*curve, w_in.min(w_out));
+        // Shares are the node's blend this tick (also on the tick the shot ends).
+        self.scale(
+            base_events..shot_events,
+            if mask.is_some() { 1.0 } else { 1.0 - w },
+        );
+        self.scale(shot_events..self.mark(), w);
         if shot_playback.ended {
             state[n].active = false;
             return playback;
         }
-        let w_in = ramp(state[n].time, *fade_in);
-        let w_out = ramp(shot_playback.remaining, *fade_out);
-        out.blend_toward(&overlay, shape(*curve, w_in.min(w_out)), mask.as_deref());
+        out.blend_toward(&overlay, w, mask.as_deref());
         playback
     }
 
@@ -186,15 +283,19 @@ impl<'a> Eval<'a> {
             }
         }
         let current = inputs[state[n].current as usize].0;
+        let destination = self.mark();
         let playback = self.node(current, dt, state, out);
         if let Some(previous) = state[n].previous {
             let previous = inputs[previous as usize].0;
-            self.fade_from(n, previous, *xfade, *curve, dt, state, out);
+            let source = self.mark();
+            let share = self.fade_from(n, previous, *xfade, *curve, dt, state, out);
+            self.scale(destination..source, share);
         }
         playback
     }
 
-    /// Blends `out` (the destination) over the fading-out node, or ends the fade.
+    /// Blends `out` (the destination) over the fading-out node, or ends the fade; returns the
+    /// destination's share (the source's events get the rest).
     #[allow(clippy::too_many_arguments, reason = "one fade step's inputs")]
     fn fade_from(
         &self,
@@ -205,7 +306,7 @@ impl<'a> Eval<'a> {
         dt: f32,
         state: &mut [NodeState],
         out: &mut Pose,
-    ) {
+    ) -> f32 {
         state[n].fade += dt.abs();
         let w = if xfade > 0.0 {
             state[n].fade / xfade
@@ -215,12 +316,14 @@ impl<'a> Eval<'a> {
         if w >= 1.0 {
             state[n].previous = None;
             state[n].via = None;
-            return;
+            return 1.0;
         }
+        let share = shape(curve, w);
         let mut old = Pose::default();
-        self.node(from, dt, state, &mut old);
-        old.blend_toward(out, shape(curve, w), None);
+        self.shared(from, 1.0 - share, dt, state, &mut old);
+        old.blend_toward(out, share, None);
         std::mem::swap(out, &mut old);
+        share
     }
 
     /// Godot's state machine: resolve travel, take at most one transition, play the state.
@@ -237,11 +340,14 @@ impl<'a> Eval<'a> {
             self.take(n, m, e, state);
         }
         let current = m.nodes[state[n].current as usize];
+        let destination = self.mark();
         let playback = self.node(current, dt, state, out);
         if let (Some(previous), Some(via)) = (state[n].previous, state[n].via) {
             let edge = &m.edges[via as usize];
             let from = m.nodes[previous as usize];
-            self.fade_from(n, from, edge.xfade, edge.curve, dt, state, out);
+            let source = self.mark();
+            let share = self.fade_from(n, from, edge.xfade, edge.curve, dt, state, out);
+            self.scale(destination..source, share);
         }
         state[n].ended = playback.ended;
         state[n].position = playback.position;
@@ -327,7 +433,7 @@ impl<'a> Eval<'a> {
 
     /// Every clip under node `n` to `position` seconds.
     fn seek(&self, n: usize, position: f32, state: &mut [NodeState]) {
-        if let Node::Clip { clip, looping } = &self.graph.nodes[n] {
+        if let Node::Clip { clip, looping, .. } = &self.graph.nodes[n] {
             state[n].time = advance(0.0, position, clip.duration(), *looping);
         }
         for child in self.graph.nodes[n].children() {

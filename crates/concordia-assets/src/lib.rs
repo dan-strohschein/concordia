@@ -28,8 +28,8 @@ pub use anim_graph::{
 pub use anim_graph_importer::AnimGraphImporter;
 pub use builtin::{Builtin, BuiltinAsset};
 pub use data::{
-    AlphaMode, CameraData, Channel, ChannelPath, ClipData, Interpolation, LightData, MeshData,
-    MeshRenderer, SkinData, Skinned, TextureData, TextureFormat,
+    AlphaMode, CameraData, Channel, ChannelPath, ClipData, ClipEvent, Interpolation, LightData,
+    MeshData, MeshRenderer, SkinData, Skinned, TextureData, TextureFormat, validate_events,
 };
 pub use db::{AssetDb, AssetInfo, ImportReport, prefab_doc};
 pub use error::AssetError;

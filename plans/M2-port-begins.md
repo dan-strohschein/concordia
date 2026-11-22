@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4.1, 2.4.2 and 2.4.3 (2026-11-21) done; 2.4.4 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4.1, 2.4.2, 2.4.3 and 2.4.4 (2026-11-21) done; 2.4.5 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -1000,7 +1000,7 @@ These passed at once:
 - the Godot `.fbx.import` mapping (M5).
 
 ### Phase 2.4 refinement (2026-11-21)
-**Status: author decisions A1 and A2 taken (2026-11-21); 2.4.1, 2.4.2 and 2.4.3 done; 2.4.4 next.**
+**Status: author decisions A1 and A2 taken (2026-11-21); 2.4.1, 2.4.2, 2.4.3 and 2.4.4 done; 2.4.5 next.**
 
 Refined against the code as built after 2.3d. The old 2.4 text (under *Phases*) is superseded where this section differs.
 
@@ -1433,7 +1433,107 @@ Both `Cargo.lock`s gain `concordia-anim` under `concordia-render`.
 - `just editor-schemas` (changes committed);
 - `just editor-test` (118 unit, 22 end-to-end).
 
-**Not in 2.4.3:** events, attachments, tweens and `anim.*` tools (2.4.4); the Godot features listed above; recording play-world writes in replays (ADR-0075).
+**Not in 2.4.3:** events, attachments, tweens and `anim.*` tools (2.4.4); the Godot features listed above, which the planned M13 (Advanced Godot features, ADR-0017) takes up (its plan is on the `plans/m13-advanced-godot-features` branch, not yet on main); recording play-world writes in replays (ADR-0075).
+
+### Phase 2.4.4 refinement (2026-11-21, against 2.4.3 as built)
+**Status: no author questions; my calls below (say if you disagree). Done (see 2.4.4 As built).**
+
+**What exists (checked in code):** Terra signals (`CommandBuffer::signal`, delivered at the start of the next tick by entity then raise order, hashed while pending, `par_for_each_deferred` gives each fixed chunk its own buffer, applied in chunk order); `World::get_json` / `set_json` (by name, through the registry); `concordia_scene::world_transform`; the render scene cache interpolates each entity's world matrix as TRS and poses bone by bone; `Overlays` (selection boxes from the bind `aabb`, gizmos, grid) drawn as screen-space triangles; `SkinFrame` already computes each draw's posed bounds; module methods through `EngineModule::methods` become MCP tools with generated schemas; import sidecars hold per-importer `settings` that are part of the cache key; artifacts are postcard (not self-describing), so a new `ClipData` field needs importer version bumps.
+
+**Settled without a question (my calls):**
+- **Where events live:** `ClipData::events: Vec<ClipEvent { time, name }>`, in seconds, sorted by time (authored order kept for ties). Neither format carries them in practice (glTF has no standard for clip events; ufbx exposes no markers), so they are authored in the model's import sidecar, Godot's "import settings" analog: `settings: {"clip_events": {"<clip name>": [{"time": 0.25, "name": "step"}]}}`. `concordia-import-model` parses and validates them once for both importers (finite, `0..=duration`, non-empty names, every named clip exists; errors name the clip and event). glTF goes to v4 and FBX to v3. Events then work for `AnimPlayer` and every graph alike, and a clip shared by many graphs carries its events once. `anim.inspect` shows `frame = time × frame_rate` where the clip has a rate (FBX), else none.
+- **Crossing rule** (one pure function, `crossed_events`): a step covers **`[from, to)` forward and `(to, from]` backward**, so an event fires on the tick whose step starts at it or passes it. A clamped clip that reaches its end (or 0, backward) also covers that end. Looping steps are unwrapped (`e + k·duration`), so each crossing fires once, and a step longer than the clip fires once per lap. A zero step (speed 0, time scale 0, a clamped clip at rest) fires nothing. A seek (setting `time`, `Sync`, reset, teleport, a one-shot fire) fires nothing for the jump; the next step starts at the new position, so an event exactly there fires, which is Godot's "a seek fires the key it lands on". This differs from Godot's `(from, to]` only at exact boundaries (one tick earlier there), and needs no hidden "started" state: an event at 0 fires when playback starts and again at each wrap, never twice.
+- **Clips inside graphs (Godot's `AnimationMixer`: every animation with a non-zero blend fires its method keys, unscaled):** a clip node fires when it advances and its share of the output pose is > 0. Shares multiply down the tree: `Blend2` gives `b` the amount and `a` the rest; `BlendN` its normalized weights; a one-shot gives the shot its fade weight and the base the rest; cross-fades (transition nodes and state machines) give the destination the shaped fade and the fading-out source the rest; a **filtered** blend or one-shot leaves its first input at full share (it still drives every bone outside the filter, so footsteps under an upper-body attack keep firing). Weight-0 inputs still advance (2.4.3's sync rule) but don't fire; inactive states and inputs don't advance or fire. The share is in the payload, so gameplay can ignore faint events (Godot users dedupe blended footsteps the same way).
+- **Order within a tick:** per entity, by when in the step the crossing happened (`(crossing − from) / step`, so blended clips interleave chronologically), then node (name order), then the clip's event order. Across entities, Terra's delivery order (entity id).
+- **Signal:** `AnimEvent { name, clip: AssetRef, node: Option<String>, time, weight }`, raised on the skinned entity through each chunk's command buffer in `anim.sample`, delivered at the start of the next tick in entity order (2.0b's rule). It is hashed while pending, like every Terra signal. `World::pending_signals::<S>()` (new, read-only) lets `anim.inspect` show events raised last tick before they are delivered.
+- **`BoneAttachment { bone }` (Godot's `BoneAttachment3D`, which must be a child of its `Skeleton3D`):** on an entity whose `Parent` is the posed (`Pose` + `Skinned`) entity, `anim.attach` (in `FrameEnd`, after `anim.sample`) writes its `Transform` to the bone's transform in the posed entity's space, `inverse(bindMesh) · jointModel`, the same space the renderer draws the skin in (`Skeleton::entity_space`, now shared by palettes, attachments, `anim.inspect` and the overlay). Items are children of the attachment entity, as in Godot, and follow through the ordinary hierarchy, so physics, rendering and `component.get` all see them. A missing bone, a parent without a pose or an unknown skeleton leaves the `Transform` alone, logged once per entity. Rendering interpolates the attachment's world matrix like any transform, so between ticks it can differ slightly from the bone (which is interpolated bone by bone); at tick boundaries they agree.
+- **Tweens:** a `Tweens { tweens: [PropertyTween] }` component on the entity whose field it animates, so a tween dies with its entity. `PropertyTween { component, field (JSON pointer), to, from (captured when the delay ends, unless given), duration, delay, elapsed, transition, ease }`; values are a number or an array of numbers, interpolated element by element (a 4-element field named `rotation` is normalized). Easing is Godot's `Tween` set: transitions linear, sine, quint, quart, quad, expo, elastic, cubic, circ, bounce, back, spring; eases in, out, in_out, out_in (Penner's equations as Godot writes them). It is **simulation state** (hashed), run by `anim.tween`, an exclusive system in `FrameEnd` before `anim.pose` (so a tweened graph parameter is seen the same tick), at the scaled dt: time scale 0 holds every tween. Several tweens on one field all run, in list order, and the last wins (Godot's behavior). A finished tween writes `to` exactly and is removed; the component goes when empty; a tween whose component or field is gone or isn't numeric is dropped, logged. Writes go through a new `JsonComponent` (a registry-free component codec: `TypeRegistration::json_builder` plus `ReflectComponent`), which `World::set_json` now uses too.
+- **Methods:** only `anim.inspect` (play world; pose, every bone's local, model and world transform, the clip player or the graph's node states with state names and effective parameters, the clip's events with frames, and pending events). `anim.set_param` and `anim.travel` are dropped: `component.patch` with `world: "play"` already does both (`{"floats": {"speed": 0.5}}`, `{"travel": {"moves": "idle"}}`), is tested (2.4.3), and is already in every role that steers a game. Each would add about one average tool (≈600 tokens) to the animator's 2.4.5 scope for no new ability (numbers in As built).
+- **Skeleton overlay (D7):** `Overlays::skeleton` (`viewport.overlays`, drawn by `capture.screenshot` with `overlays: true`): every posed skeleton as bone lines from each joint to its parent and a dot per joint, on top of the image (no depth test, like Godot's skeleton gizmo). The edit world has no poses, so it draws none there. `SkinView` gains the skeleton and its entity-space joint matrices. **The selection box now uses posed bounds** (the placements' world and bounds, already computed per frame), closing 2.4.2's open item.
+- **Performance:** `benches/sample.rs` gains 1,000 characters with four events per second and one attachment each, at 1 and 8 threads. **The 43 ms pose-hash follow-up stays open:** events don't need more frequent checkpoints.
+- **No ADR:** nothing changes `docs/design.md` or an ADR's contract. ADR-0074 already says events are Terra signals delivered next tick and items follow bones through `BoneAttachment`; it gains a 2.4.4 consequence (the rules above, importer versions). ADR-0075 already foresaw that `anim.set_param` and `anim.travel` might not be needed.
+
+### Phase 2.4.4 As built (2026-11-21, ADR-0074, ADR-0075)
+**Reconciled with the code as built:** the refinement held. Details it left open:
+- **A one-shot's shares on the tick its shot ends** are the blend it computed that tick (the shot's fade weight; the base the rest, or 1 when filtered), although the output pose is the base alone. A shot ending with `fade_out` 0 keeps its end event; with a fade-out its share there is 0.
+- **Tweens capture `from` in list order**, so a tween that starts in the same tick as an earlier one on the same field sees that write (as in Godot, where tweeners start one after another).
+- **`anim.inspect` on an entity with a skin but no player** reports the rest pose (that is what is drawn).
+- **One model-space pass per posed character per frame:** `Skeleton::entity_space` feeds both the palette (`skin_matrices`) and the overlay's joints.
+- **No ADR:** ADR-0074 gains a 2.4.4 consequence. The 43 ms pose-hash follow-up stays open.
+
+**Engine:**
+- `concordia-assets`: `ClipEvent`, `ClipData::events`, `validate_events`.
+- `concordia-import-model`: `ModelSettings` (`clip_events` from the sidecar). glTF importer version 4, FBX version 3.
+- `concordia-reflect`: `TypeRegistration::json_builder` (`JsonBuilder`). `concordia-terra`: `JsonComponent` (used by `World::set_json`) and `World::pending_signals`.
+- `concordia-anim`:
+  - `crossed_events` / `Crossing` and the `AnimEvent` signal (`events.rs`), raised by `anim.sample` through chunk command buffers;
+  - graph evaluation records crossings and shares (`BoundGraph::evaluate` returns the events);
+  - `BoundClip::{events, frame_rate}`;
+  - `BoneAttachment` and `anim.attach` (`attach.rs`);
+  - `Skeleton::{entity_space, entity_matrix, skin_matrices}`;
+  - `Tweens`, `PropertyTween`, `Transition`, `Ease`, `ease`, `add_tweens` (`anim.tween`, `tween.rs`);
+  - `anim.inspect` (`methods.rs`), served by `AnimModule::methods`.
+- `concordia-render`: `Overlays::skeleton`; `SkinView::{joints, skeleton}`; overlay bones; selection boxes from each draw's placement (posed bounds).
+- Docs: `docs/guides/agents-engine-api.md` (events, attachments, tweens, `anim.inspect`, the overlay flag, the method row), ADR-0074's consequence, the AGENTS.md of `concordia-anim`, `-assets`, `-import-model`, `-import-fbx`, `-import-gltf`, `-terra`, `-reflect` and `-render`, `concordia-anim`'s README and `BASELINE.md`, and `plans/README.md`.
+
+**Tests (24 new):**
+- `concordia-anim/tests/events.rs` (4):
+  - `animation_events_fire_once_per_crossing_including_loops_and_large_steps`: hand-computed crossings and fractions for starts, wraps (landing exactly on one), a 2.5-lap step, clamped ends, backward steps and wraps, zero and NaN steps, and ties in authored order;
+  - `events_arrive_as_signals_next_tick_in_entity_order`: entities spawned out of id order; pending after the raising tick, delivered at the next in entity then crossing order; time scale 0 fires nothing;
+  - `event_payload_names_the_clip_and_its_time` (and pending events change the hash);
+  - `malformed_events_are_descriptive_errors`.
+- `graph_events.rs` (2), dt = 1/8 s:
+  - `events_from_clips_inside_graphs_follow_the_refined_rule`: `Blend2` shares 0.75 / 0.25 and none at weight 0, a filtered blend keeping its base at 1, chronological order across a `BlendN` (1:3), a one-shot's first tick (0.5 / 0.5), a 0.5 s cross-fade (0.25 / 0.75, then 0.5), an inactive state that never fires, and the payload;
+  - `time_scaled_graph_nodes_fire_backward`.
+- `attach.rs`: `bone_attachment_follows_bone_world_transform` (a bind mesh 2 m off the root, a 90° hip: the sword at (−1, 0, −2), the blade at (8.5, 0, −2); a missing bone and a parent without a pose hold; a new pose moves it next tick).
+- `tween.rs` (5): `easing_curves_match_godots_equations` (32 hand-computed values, every curve's ends), `tween_reaches_target_with_easing_and_dies_with_its_entity` (quad-in 0.25, 1, 2.25, 4; delay capture; despawn; normalized rotations; an expo tween landing exactly), `tween_holds_at_time_scale_zero`, `several_tweens_on_one_field_apply_in_order_and_the_last_wins`, `a_tween_whose_field_is_gone_or_not_numeric_is_dropped`.
+- `events_determinism.rs`: `events_and_attachments_are_deterministic_across_thread_counts` (100 characters with clip and graph players, attachments and tweens; hashes at ticks 1, 60 and 300 equal at 1, 3 and 8 threads; over 500 events delivered and every item moved).
+- `inspect_schema.rs`: `anim_inspect_schemas_are_reflect_generated` (insta).
+- Importers: `fbx_clip_events_come_from_the_import_settings`, `bad_clip_events_are_descriptive_import_errors`, `gltf_clip_events_come_from_the_import_settings`.
+- `concordia-render/tests/skinning.rs`: `skeleton_overlay_draws_posed_bones`, `selection_box_follows_the_posed_bounds`.
+- `concordia-app/tests/anim.rs`:
+  - `imported_character_raises_an_event_and_moves_an_attached_item`: an event authored in the sidecar of the moves file, played on the FBX character through `sim.step`; `anim.inspect` shows it in frames (6 at 24 fps) and pending on tick 15 or 16; a test module's `PostPhysics` processor receives it the next tick; a sword attached in the play world sits on its bone's world transform and its blade moves;
+  - `inspected_bones_at_rest_sit_on_the_imported_bone_entities` (all 7, on a moved instance, within 1e-3);
+  - `skeleton_overlay_golden`.
+- `concordia-mcp/tests/anim_tools.rs`: `anim_methods_have_generated_schemas_and_mcp_tools` (and no `anim_set_param` / `anim_travel`), `agent_inspects_a_pose_over_mcp`.
+
+**Red run:**
+- The stubs found no crossings, raised nothing, accepted every event, ignored import settings, moved no attachment, eased linearly, ran no tween, drew no skeleton and boxed the bind mesh, and `anim.inspect` said "not implemented yet". Every test above failed on those, for the right reason, except:
+- **Passed at once:** `anim_methods_have_generated_schemas_and_mcp_tools`, because the method was registered with its stub types (as 2.4.3's schema test); the reviewed snapshot backs it.
+- **Failed on a stub it depends on:** `imported_character_…` first failed on the `anim.inspect` stub. By the time `anim.inspect` worked, events and attachments were done, so its own assertions were never seen red; mutations (pending events, frames, world space) cover them below.
+- **Written after the implementation:** `inspected_bones_at_rest_…`, to check the overlay's bone positions against the imported bone entities; it catches the world-space mutation.
+
+**Changed deliberately (my test mistakes):** `viewport.overlays` takes no `actor`; the world-matrix helper asked `component.get` for a missing `Parent` (an error) and now uses `entity.get`; `query.run` returns `rows`; Godot's expo curves end 0.001 short of 1, so the endpoint check allows that for expo (a finished tween still writes its target exactly); the several-tweens test gives explicit starts. Two found by surviving mutations: the chronological-order case used node names that already sorted chronologically, and the cross-fade was exactly half-way, so swapped shares were invisible.
+
+**Mutation checks:** 41 mutations, each run against its tests with restored files given a fresh mtime; 40 caught, one equivalent:
+- **Crossings:** `(from, to]` instead of `[from, to)`, no unwrapping at wraps, the clamped end not covered, backward treated as forward, laps ignored at ties.
+- **Order and timing:** node before time, no node tie-break, crossings computed from the new time (a tick late), pending signals unsorted.
+- **Graph shares:** weight-0 events kept, a filtered base at 1 − w, cross-fade shares swapped, the shot's share ignored, no events from graphs.
+- **Attachments:** the bind mesh offset ignored, the chain multiplied child first, nothing written.
+- **Easing:** quad-out, elastic period, bounce constant, back in-out's 1.525, expo in-out's halved offsets, elastic in-out's 0.45, spring exponent, out-in as in-out.
+- **Tweens:** finished tweens kept, an empty component kept, unscaled time, the start captured before the delay, the target not exact at the end, broken tweens kept.
+- **Import and validation:** events outside the clip accepted, events unsorted, unknown clips accepted.
+- **Tools and overlay:** frames ignoring the rate, world bones without the bind mesh's inverse, no pending events, the skeleton not drawn, the selection on the bind box.
+- **Equivalent:** removing the explicit zero-step guard in `crossed_events` changed nothing (both helpers already cover an empty range), so the guard was removed.
+- Four mutation patterns first missed after rustfmt reflowed lines, and one (an unscaled `dt` through a method that doesn't exist) didn't build; each was retargeted and re-run.
+
+**Goldens:** one new, `anim/skeleton_overlay_walk` (the FBX character at 0.25 s of Walk with the skeleton overlay and its posed selection box, 320×240), approved by the author before blessing (2026-11-21, on a review page beside `gpu_skinning_walk`). No existing golden changed. **Snapshots:** new `concordia-anim` `inspect_schema__anim_inspect_params` and `__anim_inspect_result`, approved by the author before blessing (2026-11-21); none changed. **Editor schemas:** `viewport.overlays` params and result gain `skeleton`; committed.
+
+**Studio and budgets:** no role gains a tool in 2.4.4 (the animator unlocks in 2.4.5), and `every_enabled_default_role_stays_under_its_tool_budget` passes. Measured served sizes: `anim_inspect` ≈ 2,234 tokens (mostly its output schema); `component_patch` ≈ 531, so `anim_set_param` and `anim_travel` would have cost about 1,060 tokens together for no new ability. 2.4.5's planned animator scope (`anim_inspect`, `asset_import`, `sim_*`, `capture_screenshot`, `component_get` and the task and team tools) comes to roughly 13k, under the 50k budget.
+
+**Perf** (`benches/BASELINE.md`): events and attachments add about 1.3 ms per tick for 1,000 characters at one thread (3.88 against 2.59 ms) and 1.2 ms at eight (1.90 against 0.68 ms); the attachment pass is sequential and the bench's bone is the worst case, 64 parents deep.
+
+**Checklist:** all of these pass:
+- `just lint` and Tauri clippy;
+- `CONCORDIA_REQUIRE_GPU=1 just test` (1,363 tests and the doc tests);
+- `just gate-tests M1` (4) and `M3S` (13; `m3s_live_checker_accepts_a_scripted_session_and_rejects_violations` failed once in seven runs, a Studio checker flake unrelated to animation, and passed on every re-run);
+- `just deny` and the editor's;
+- `just editor-schemas` (changes committed);
+- `just editor-test` (118 unit, 22 end-to-end).
+
+**Open items:** the selection box now uses posed bounds (2.4.2's open item, closed). The Metal repro has no FB number yet. 2.4.3's "Not in 2.4.3" line now points at M13, whose plan is still on its own branch.
+
+**Not in 2.4.4:** the animator role and its skill (2.4.5); recording play-world writes in replays (ADR-0075); events from glTF extras or FBX markers (no standard; authored in the sidecar); tween loops and sequences (Godot's `set_loops`, chained tweeners); drawing the bind skeleton in the edit world.
 
 ### Effort (re-estimated)
 | Phase | Estimate |

@@ -1,6 +1,7 @@
 //! The play processors in `FrameEnd`: `anim.pose` gives new players a rest pose (and graph
 //! players their starting state), and `anim.sample` advances each player by the tick's scaled dt:
-//! graph players evaluate their graph, clip players sample their clip, into the entity's pose.
+//! graph players evaluate their graph, clip players sample their clip, into the entity's pose,
+//! and the clip events they cross are raised as `AnimEvent` signals (2.4.4).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroUsize;
@@ -10,6 +11,7 @@ use concordia_assets::Skinned;
 use concordia_core::id::EntityId;
 use concordia_terra::{Phase, Schedule, SystemCtx, View, World, processor};
 
+use crate::events::{AnimEvent, crossed_events};
 use crate::graph_player::{AnimGraphPlayer, AnimGraphState};
 use crate::library::AnimLibrary;
 use crate::player::{AnimPlayer, advance};
@@ -59,7 +61,7 @@ pub fn insert_rest_poses(library: &AnimLibrary, world: &mut World) {
     }
 }
 
-/// Adds `anim.pose` and then `anim.sample` to `FrameEnd`.
+/// Adds `anim.pose`, `anim.sample` and then `anim.attach` to `FrameEnd`.
 pub fn add_processors(schedule: &mut Schedule, library: Arc<AnimLibrary>) {
     let rest = library.clone();
     schedule.add_processor(
@@ -79,8 +81,12 @@ pub fn add_processors(schedule: &mut Schedule, library: Arc<AnimLibrary>) {
             .writes::<Pose>()
             .reads::<Skinned>()
             .after(POSE)
-            .run(move |view: &mut View<'_>, ctx: &SystemCtx<'_>| sample_all(&library, view, ctx)),
+            .run({
+                let library = library.clone();
+                move |view: &mut View<'_>, ctx: &SystemCtx<'_>| sample_all(&library, view, ctx)
+            }),
     );
+    crate::attach::add_attach(schedule, library);
 }
 
 /// Queues a rest pose for each player that has a known skeleton and no pose yet, and a starting
@@ -139,21 +145,30 @@ fn sample_all(library: &AnimLibrary, view: &mut View<'_>, ctx: &SystemCtx<'_>) {
         &Skinned,
         &mut Pose,
     )>() {
-        query.par_for_each(ctx.jobs, CHUNK, |_, (player, state, skinned, pose)| {
-            evaluate_one(library, dt, player, state, skinned, pose);
-        });
+        query.par_for_each_deferred(
+            ctx.jobs,
+            CHUNK,
+            |commands, id, (player, state, skinned, pose)| {
+                for event in evaluate_one(library, dt, player, state, skinned, pose) {
+                    commands.signal(id, event);
+                }
+            },
+        );
     }
     let graphs = ids_with::<AnimGraphPlayer>(view);
     if let Ok(query) = view.query::<(&mut AnimPlayer, &Skinned, &mut Pose)>() {
-        query.par_for_each(ctx.jobs, CHUNK, |id, (player, skinned, pose)| {
+        query.par_for_each_deferred(ctx.jobs, CHUNK, |commands, id, (player, skinned, pose)| {
             if !graphs.contains(&id) {
-                sample_one(library, dt, player, skinned, pose);
+                for event in sample_one(library, dt, player, skinned, pose) {
+                    commands.signal(id, event);
+                }
             }
         });
     }
 }
 
-/// One graph player: unknown skeletons or graphs hold the pose (reported at play start).
+/// One graph player, returning the events it crossed: unknown skeletons or graphs hold the pose
+/// (reported at play start).
 fn evaluate_one(
     library: &AnimLibrary,
     dt: f32,
@@ -161,38 +176,54 @@ fn evaluate_one(
     state: &mut AnimGraphState,
     skinned: &Skinned,
     pose: &mut Pose,
-) {
+) -> Vec<AnimEvent> {
     let (Some(skeleton), Some(graph)) = (
         library.skeleton(&skinned.skin),
         library.graph(&player.graph, &skinned.skin),
     ) else {
-        return;
+        return Vec::new();
     };
     let evaluated = graph.evaluate(dt, player, state, skeleton, pose);
     debug_assert!(evaluated.is_ok(), "graphs bound to this skeleton");
+    evaluated.unwrap_or_default()
 }
 
-/// One player: unknown skeletons or clips hold the pose (the library reported them at play start).
+/// One player, returning the events it crossed: unknown skeletons or clips hold the pose (the
+/// library reported them at play start).
 fn sample_one(
     library: &AnimLibrary,
     dt: f32,
     player: &mut AnimPlayer,
     skinned: &Skinned,
     pose: &mut Pose,
-) {
+) -> Vec<AnimEvent> {
     let (Some(skeleton), Some(clip)) = (
         library.skeleton(&skinned.skin),
         library.clip(&player.clip, &skinned.skin),
     ) else {
-        return;
+        return Vec::new();
     };
-    player.time = advance(
-        player.time,
-        dt * player.speed,
+    let delta = dt * player.speed;
+    let events = crossed_events(
+        clip.events(),
         clip.duration(),
         player.looping,
-    );
+        player.time,
+        delta,
+    )
+    .into_iter()
+    .filter_map(|c| clip.events().get(c.event))
+    .map(|e| AnimEvent {
+        name: e.name.clone(),
+        clip: player.clip.clone(),
+        node: None,
+        time: e.time,
+        weight: 1.0,
+    })
+    .collect();
+    player.time = advance(player.time, delta, clip.duration(), player.looping);
     skeleton.reset(pose);
     let sampled = clip.sample(player.time, pose);
     debug_assert!(sampled.is_ok(), "the rest pose fits its skeleton");
+    events
 }

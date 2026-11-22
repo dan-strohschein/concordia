@@ -82,6 +82,9 @@ pub struct Overlays {
     /// The ground grid.
     #[serde(default)]
     pub grid: bool,
+    /// Every posed skeleton's bones, drawn on top (play world only: the edit world has no poses).
+    #[serde(default)]
+    pub skeleton: bool,
     /// Image pixels per UI point (the display's scale), so overlays keep their on-screen size.
     #[serde(default)]
     #[reflect(range(min = 0.5, max = 4.0))]
@@ -278,12 +281,13 @@ fn distance_to_segment(p: [f32; 2], a: [f32; 2], b: [f32; 2]) -> f32 {
     (p[0] - (a[0] + ab[0] * t)).hypot(p[1] - (a[1] + ab[1] * t))
 }
 
-/// Overlay triangles (x, y in pixels, then linear r, g, b, a per vertex) for one frame.
+/// Overlay triangles (x, y in pixels, then linear r, g, b, a per vertex) for one frame; `boxes`
+/// holds each draw's world matrix and object-space bounds (posed when skinned), in draw order.
 pub(crate) fn triangles(
     overlays: &Overlays,
     world: &RenderWorld,
     projector: &Projector,
-    bounds: &dyn Fn(&concordia_assets::AssetRef) -> Option<(Vec3, Vec3)>,
+    boxes: &[(Mat4, (Vec3, Vec3))],
 ) -> Vec<f32> {
     let mut out = Vec::new();
     let scale = overlays
@@ -292,21 +296,22 @@ pub(crate) fn triangles(
         .unwrap_or(1.0)
         .clamp(0.5, 4.0);
     let selection_color = linear([1.0, 0.6, 0.1]);
-    for draw in world
-        .draws
-        .iter()
-        .filter(|d| overlays.selection.contains(&d.entity))
-    {
-        if let Some((lo, hi)) = bounds(&draw.mesh) {
+    for (draw, (at, (lo, hi))) in world.draws.iter().zip(boxes) {
+        if overlays.selection.contains(&draw.entity) {
             box_edges(
                 &mut out,
                 projector,
-                &draw.world,
-                lo,
-                hi,
+                at,
+                *lo,
+                *hi,
                 2.0 * scale,
                 selection_color,
             );
+        }
+    }
+    if overlays.skeleton {
+        for skin in &world.skins {
+            skeleton_lines(&mut out, projector, skin, scale);
         }
     }
     if let Some(gizmo) = &overlays.gizmo
@@ -315,6 +320,22 @@ pub(crate) fn triangles(
         gizmo_triangles(&mut out, projector, gizmo, at, scale);
     }
     out
+}
+
+/// A posed skeleton: a line from each joint to its parent and a dot on every joint.
+fn skeleton_lines(out: &mut Vec<f32>, projector: &Projector, skin: &crate::SkinView, scale: f32) {
+    let color = linear([0.35, 0.85, 1.0]);
+    let at = |j: usize| {
+        let m = skin.world * skin.joints[j];
+        projector.project(m.transform_point3(Vec3::ZERO))
+    };
+    for (j, joint) in skin.skeleton.joints().iter().enumerate() {
+        let Some(p) = at(j) else { continue };
+        if let Some(q) = joint.parent.and_then(at) {
+            line(out, q, p, 2.0 * scale, color);
+        }
+        disc(out, p, 3.0 * scale, color);
+    }
 }
 
 /// The gizmo's shapes: arrows with round tips (move) or square tips (scale), or rings (rotate).

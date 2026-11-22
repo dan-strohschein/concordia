@@ -234,6 +234,7 @@ struct Stage {
     _dir: tempfile::TempDir,
     engine: Engine,
     session: concordia_core::id::SessionId,
+    hero: String,
     moves: String,
     /// The instance's skinned entity.
     body: Value,
@@ -241,9 +242,14 @@ struct Stage {
 
 impl Stage {
     fn new() -> Self {
+        Self::with("[assets]\n\n[anim]\n", Vec::new())
+    }
+
+    /// A stage with `manifest` and `extra` modules after the project's.
+    fn with(manifest: &str, extra: Vec<std::sync::Arc<dyn concordia_api::EngineModule>>) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
-        std::fs::write(root.join("concordia.toml"), "[assets]\n\n[anim]\n").unwrap();
+        std::fs::write(root.join("concordia.toml"), manifest).unwrap();
         let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/fbx");
         for (from, to) in [
             ("skinned.fbx", "hero.fbx"),
@@ -254,12 +260,14 @@ impl Stage {
         let project = Project::load(root).unwrap();
         let mut config = EngineConfig::new(root);
         config.modules = project.modules().unwrap();
+        config.modules.extend(extra);
         let mut engine = Engine::new(config).unwrap();
         let session = engine.open_session();
         let mut stage = Self {
             _dir: dir,
             session,
             engine,
+            hero: String::new(),
             moves: String::new(),
             body: Value::Null,
         };
@@ -267,8 +275,9 @@ impl Stage {
             "scene.new",
             json!({"path": "scenes/a.scene.ron", "name": "A", "actor": ACTOR}),
         );
-        let hero = stage.import("hero.fbx");
+        stage.hero = stage.import("hero.fbx");
         stage.moves = stage.import("moves.fbx");
+        let hero = stage.hero.clone();
         stage.body = stage.instance(&hero);
         stage
     }
@@ -439,4 +448,316 @@ fn graph_parameters_set_by_component_patch_take_effect_next_tick() {
         json!({}),
         "the edit world keeps its value"
     );
+}
+
+/// A test-only module: when a body receives an `AnimEvent` named "step", its `Name` gains
+/// " stepped" (gameplay receiving an animation event, as a real game's processor would).
+#[derive(Debug)]
+struct StepListener;
+
+impl concordia_api::EngineModule for StepListener {
+    fn name(&self) -> &'static str {
+        "test-steps"
+    }
+
+    fn start_play(
+        &self,
+        _: &mut concordia_terra::World,
+    ) -> Result<concordia_api::PlaySetup, concordia_api::ApiError> {
+        use concordia_anim::AnimEvent;
+        use concordia_scene::builtin::Name;
+        use concordia_terra::{Phase, SystemCtx, View, processor};
+        let mut setup = concordia_api::PlaySetup::default();
+        setup.schedule.add_processor(
+            processor("test.steps", Phase::PostPhysics)
+                .receives::<AnimEvent>()
+                .writes::<Name>()
+                .run(|view: &mut View<'_>, _: &SystemCtx<'_>| {
+                    let targets: Vec<_> = view
+                        .signals::<AnimEvent>()
+                        .unwrap()
+                        .iter()
+                        .filter(|(_, e)| e.name == "step")
+                        .map(|(id, _)| *id)
+                        .collect();
+                    let names = view.query::<&mut Name>().unwrap();
+                    names.for_each_of(&targets, |_, name| name.0.push_str(" stepped"));
+                }),
+        );
+        Ok(setup)
+    }
+}
+
+/// `id`'s world matrix in the play world, from its `Transform` and its parents'.
+fn play_world_matrix(stage: &mut Stage, id: &Value) -> concordia_core::math::Mat4 {
+    use concordia_core::math::{Mat4, Quat, Vec3};
+    let mut m = Mat4::IDENTITY;
+    let mut at = id.clone();
+    loop {
+        let t = stage.play_get(&at, "Transform");
+        let v = |k: &str| -> Vec<f32> {
+            t[k].as_array()
+                .unwrap()
+                .iter()
+                .map(|x| x.as_f64().unwrap() as f32)
+                .collect()
+        };
+        let (tr, r, s) = (v("translation"), v("rotation"), v("scale"));
+        let local = Mat4::from_scale_rotation_translation(
+            Vec3::from_slice(&s),
+            Quat::from_slice(&r),
+            Vec3::from_slice(&tr),
+        );
+        m = local * m;
+        let got = stage.ok("entity.get", json!({"id": at, "world": "play"}));
+        match got["components"].get("Parent") {
+            Some(parent) => at = parent.clone(),
+            None => return m,
+        }
+    }
+}
+
+#[test]
+fn imported_character_raises_an_event_and_moves_an_attached_item() {
+    let mut stage = Stage::with(
+        "[assets]\n\n[anim]\n",
+        vec![std::sync::Arc::new(StepListener)],
+    );
+    // Author a "step" at 0.25 s of Walk in the moves file's import settings, then re-import.
+    let sidecar = stage._dir.path().join("moves.fbx.import.ron");
+    let text = std::fs::read_to_string(&sidecar).unwrap();
+    let events =
+        r#"settings: {"clip_events": {"Armature|Walk": [{"time": 0.25, "name": "step"}]}}"#;
+    std::fs::write(&sidecar, text.replace("settings: {}", events)).unwrap();
+    assert_eq!(stage.import("moves.fbx"), stage.moves, "same asset");
+    let body = stage.body.clone();
+    let walk = format!("asset:{}#clip/Armature|Walk", stage.moves);
+    stage.ok(
+        "component.set",
+        json!({"entity": body, "component": "AnimPlayer", "value": {"clip": walk}, "actor": ACTOR}),
+    );
+    // A sword attachment on the body (its bone set once the bones are known) holding a blade.
+    let identity = json!({"translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]});
+    let sword = stage.ok(
+        "entity.spawn",
+        json!({"components": {"Transform": identity, "Parent": body}, "actor": ACTOR}),
+    )["id"]
+        .clone();
+    let blade_local = json!({"translation": [0.0, 0.3, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]});
+    let blade = stage.ok(
+        "entity.spawn",
+        json!({"components": {"Transform": blade_local, "Parent": sword}, "actor": ACTOR}),
+    )["id"]
+        .clone();
+    let original_name = stage.play_name_or_edit(&body);
+
+    stage.ok("sim.step", json!({"ticks": 1}));
+    let seen = stage.ok("anim.inspect", json!({"entity": body}));
+    assert_eq!(
+        seen["clip"]["events"],
+        json!([{"name": "step", "time": 0.25, "frame": 6.0}]),
+        "the event, in frames at 24 fps"
+    );
+    let bones = seen["bones"].as_array().unwrap().clone();
+    let (index, bone) = bones
+        .iter()
+        .enumerate()
+        .rfind(|(_, b)| !b["parent"].is_null())
+        .map(|(i, b)| (i, b["name"].as_str().unwrap().to_owned()))
+        .unwrap();
+    stage.ok(
+        "component.set",
+        json!({"entity": sword, "component": "BoneAttachment", "value": {"bone": bone}, "world": "play", "actor": ACTOR}),
+    );
+    let blade_before = play_world_matrix(&mut stage, &blade);
+
+    // Step until the event is raised (pending), then once more until it is delivered.
+    let mut raised_at = None;
+    for tick in 2..=30 {
+        stage.ok("sim.step", json!({"ticks": 1}));
+        let pending = stage.ok("anim.inspect", json!({"entity": body}))["pending_events"].clone();
+        if pending.as_array().is_some_and(|p| !p.is_empty()) {
+            assert_eq!(pending[0]["name"], "step", "{pending}");
+            assert_eq!(pending[0]["clip"], json!(walk));
+            raised_at = Some(tick);
+            break;
+        }
+    }
+    let raised_at = raised_at.expect("the step is raised");
+    assert!(
+        (15..=16).contains(&raised_at),
+        "0.25 s at 60 Hz: tick {raised_at}"
+    );
+    assert_eq!(
+        stage.play_get(&body, "Name"),
+        json!(original_name),
+        "not delivered yet"
+    );
+    stage.ok("sim.step", json!({"ticks": 1}));
+    assert_eq!(
+        stage.play_get(&body, "Name"),
+        json!(format!("{original_name} stepped")),
+        "gameplay received it on the next tick"
+    );
+
+    // The sword sits on its bone: its world matrix is the bone's world transform.
+    let seen = stage.ok("anim.inspect", json!({"entity": body}));
+    let world = &seen["bones"][index]["world"];
+    let at = |v: &Value| -> Vec<f32> {
+        v.as_array()
+            .unwrap()
+            .iter()
+            .map(|x| x.as_f64().unwrap() as f32)
+            .collect()
+    };
+    let sword_world = play_world_matrix(&mut stage, &sword);
+    let (_, _, sword_at) = sword_world.to_scale_rotation_translation();
+    let bone_at = concordia_core::math::Vec3::from_slice(&at(&world["translation"]));
+    assert!(
+        (sword_at - bone_at).abs().max_element() < 1e-4,
+        "{sword_at} vs {bone_at}"
+    );
+    let blade_after = play_world_matrix(&mut stage, &blade);
+    assert_ne!(blade_before, blade_after, "the blade moved with the bone");
+    let edit = stage.ok("entity.get", json!({"id": sword}));
+    assert!(
+        edit["components"].get("BoneAttachment").is_none(),
+        "set in play only"
+    );
+}
+
+impl Stage {
+    /// `id`'s `Name` in the edit world (the play world copies it at the first tick).
+    fn play_name_or_edit(&mut self, id: &Value) -> String {
+        self.ok("component.get", json!({"entity": id, "component": "Name"}))["value"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    }
+}
+
+#[test]
+fn skeleton_overlay_golden() {
+    if let Err(concordia_rhi::RhiError::NoDevice { reason }) = concordia_rhi_metal::new_headless() {
+        assert!(
+            !concordia_testkit::gpu_required(),
+            "CONCORDIA_REQUIRE_GPU=1 but no device: {reason}"
+        );
+        return;
+    }
+    let mut stage = Stage::with("[assets]\n\n[anim]\n\n[render]\n", Vec::new());
+    let body = stage.body.clone();
+    let walk = format!("asset:{}#clip/Armature|Walk", stage.moves);
+    stage.ok(
+        "component.set",
+        json!({"entity": body, "component": "AnimPlayer", "value": {"clip": walk}, "actor": ACTOR}),
+    );
+    let camera = json!({
+        "Transform": {
+            "translation": [2.6, 1.2, 0.8],
+            "rotation": quat_looking([2.6, 1.2, 0.8], [0.0, 1.15, 0.0]),
+            "scale": [1.0, 1.0, 1.0],
+        },
+        "Camera": {"exposure_ev100": 12.0},
+    });
+    stage.ok(
+        "entity.spawn",
+        json!({"components": camera, "actor": ACTOR}),
+    );
+    let sun = json!({
+        "Transform": {
+            "translation": [0.0, 0.0, 0.0],
+            "rotation": quat_looking([0.0, 0.0, 0.0], [-0.5, -1.0, -0.7]),
+            "scale": [1.0, 1.0, 1.0],
+        },
+        "DirectionalLight": {"color": [1.0, 1.0, 1.0], "illuminance_lux": 8000.0},
+    });
+    stage.ok("entity.spawn", json!({"components": sun, "actor": ACTOR}));
+    // Mid-stride (0.25 s), the skeleton drawn over the body and the body selected (posed box).
+    stage.ok("sim.step", json!({"ticks": 15}));
+    let shot = |stage: &mut Stage, overlays: bool| {
+        decode(&stage.ok(
+            "capture.screenshot",
+            json!({"world": "play", "width": 320, "height": 240, "overlays": overlays}),
+        ))
+    };
+    stage.ok(
+        "viewport.overlays",
+        json!({"skeleton": true, "selection": [body]}),
+    );
+    let plain = shot(&mut stage, false);
+    let drawn = shot(&mut stage, true);
+    let changed = plain
+        .pixels()
+        .chunks(4)
+        .zip(drawn.pixels().chunks(4))
+        .filter(|(a, b)| a != b)
+        .count();
+    assert!(
+        changed > 200,
+        "the overlay draws bones and a box ({changed} pixels)"
+    );
+    concordia_testkit::golden::assert_golden(
+        "anim",
+        "skeleton_overlay_walk",
+        &drawn,
+        concordia_testkit::golden::Tolerance::mean(0.01),
+    );
+}
+
+#[test]
+fn inspected_bones_at_rest_sit_on_the_imported_bone_entities() {
+    let mut stage = Stage::new();
+    let body = stage.body.clone();
+    // Move the whole instance so the entity's world matrix matters.
+    let mut root = body.clone();
+    loop {
+        let got = stage.ok("entity.get", json!({"id": root}));
+        match got["components"].get("Parent") {
+            Some(parent) => root = parent.clone(),
+            None => break,
+        }
+    }
+    stage.ok(
+        "component.patch",
+        json!({"entity": root, "component": "Transform", "patch": {"translation": [3.0, 0.0, -2.0]}, "actor": ACTOR}),
+    );
+    stage.ok("sim.step", json!({"ticks": 1}));
+    let seen = stage.ok("anim.inspect", json!({"entity": body}));
+    // Every entity of the scene with a bone's name: its world position is the bone's.
+    let named = stage.ok(
+        "query.run",
+        json!({"with": ["Name", "Transform"], "world": "play"}),
+    );
+    let ids: Vec<Value> = named["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["id"].clone())
+        .collect();
+    let mut matched = 0;
+    for bone in seen["bones"].as_array().unwrap() {
+        let name = bone["name"].clone();
+        for id in &ids {
+            let entity = stage.ok("entity.get", json!({"id": id, "world": "play"}));
+            if entity["components"]["Name"] != name {
+                continue;
+            }
+            let at = play_world_matrix(&mut stage, id)
+                .transform_point3(concordia_core::math::Vec3::ZERO);
+            let want: Vec<f32> = bone["world"]["translation"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|x| x.as_f64().unwrap() as f32)
+                .collect();
+            let want = concordia_core::math::Vec3::from_slice(&want);
+            assert!(
+                (at - want).abs().max_element() < 1e-3,
+                "{name}: {at} vs {want}"
+            );
+            matched += 1;
+        }
+    }
+    assert_eq!(matched, 7, "every bone has its entity");
 }

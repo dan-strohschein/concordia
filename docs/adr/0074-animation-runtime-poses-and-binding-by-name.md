@@ -61,3 +61,10 @@ The author decided the first and the last (M2 plan, decisions A1 and A2, 2026-11
   - The graph's playback is a hashed `AnimGraphState` component beside the player.
   - Parameters set by gameplay in `PostPhysics` take effect the same tick (point 5). An agent's `component.patch` with `world: "play"` (ADR-0075) takes effect on the next tick.
   - See the M2 plan's 2.4.3 As built.
+- **2.4.4 (2026-11-21):** events and attachments follow points 1 and 5, as this ADR planned:
+  - **Clip events** are `ClipData::events` (seconds), authored in a model's import sidecar (`settings.clip_events`, read once for both importers by `concordia-import-model`); glTF goes to importer version 4 and FBX to 3, so every model re-imports once more.
+  - **Firing:** a step covers `[from, to)` forward and `(to, from]` backward; a clamped clip reaching its end covers it; looping steps fire once per lap; zero steps and seeks fire nothing. Inside graphs every clip whose share of the pose is above 0 fires (Godot's `AnimationMixer`), with the share in the payload. Events raise `AnimEvent` signals in `anim.sample`, through each fixed chunk's command buffer, delivered next tick in entity order and hashed while pending.
+  - **`BoneAttachment`:** `anim.attach` (in `FrameEnd`, after `anim.sample`) writes an attachment entity's `Transform` to its bone in the posed entity's space, `inverse(bindMesh) · jointModel`, the space the renderer draws the skin in (`Skeleton::entity_space`). Bone entities are still never written.
+  - **Tweens** (`Tweens`, Godot's transitions and eases) are hashed simulation state, advanced by `anim.tween` in `FrameEnd` before `anim.pose`, at the scaled step.
+  - **`anim.inspect`** is the only new method; `component.patch` with `world: "play"` (ADR-0075) covers what `anim.set_param` and `anim.travel` would have done. The renderer draws posed skeletons as an overlay and selection boxes from posed bounds.
+  - See the M2 plan's 2.4.4 refinement and As built.

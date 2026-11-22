@@ -7,6 +7,7 @@ Format-neutral model import shared by the glTF and FBX importers: stable sub-ass
 - `ModelTree` / `ModelNode` / `MeshPart` and `write_prefab` (→ each node's `EntityId`)
 - `load_prefab` → `PrefabSummary` / `EntitySummary`, and `load_prefab_doc` (the full `PrefabDoc`)
 - `finish_mesh` (bounds, smooth normals, zero UVs, tangents, validation), `generate_tangents` (MikkTSpace, glTF's V-down convention)
+- `ModelSettings` (2.4.4): the sidecar `settings` for models: `from_json` (unknown keys refused), `apply(&mut ClipData)` (events by clip name, sorted by time, ties in authored order, validated), `check_clips` (a named clip the file lacks is an error listing its clips)
 - `unique_names`, `TextureUsage` (`settings()` for `decode_image`), `reduce_influences`, `MAX_INFLUENCES`, `insert_artifact`
 
 ## Invariants
@@ -29,7 +30,7 @@ Format-neutral model import shared by the glTF and FBX importers: stable sub-ass
 - Morten Mikkelsen, MikkTSpace (`bevy_mikktspace`, Zlib/MIT/Apache); Khronos glTF 2.0 specification (UV convention, skins).
 
 ## Status
-M2 phase 2.3d (moved out of `concordia-import-gltf`); `MeshPart::skin` and `Skinned` in 2.4.1; `load_prefab_doc` reads through `AssetDb::load_prefab_doc`.
+M2 phase 2.3d (moved out of `concordia-import-gltf`); `MeshPart::skin` and `Skinned` in 2.4.1; `load_prefab_doc` reads through `AssetDb::load_prefab_doc`; `ModelSettings` (sidecar `clip_events`, validated and sorted, unknown clips refused) in 2.4.4.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

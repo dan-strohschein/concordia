@@ -864,3 +864,102 @@ mod readback {
             .collect()
     }
 }
+
+/// Renders `s` at 64×64 with `overlays`.
+fn render_overlays(s: &mut Scene, r: &mut Renderer, overlays: concordia_render::Overlays) -> Image {
+    let rw = RenderWorld::extract(&s.world);
+    let request = RenderRequest {
+        camera: None,
+        view: None,
+        width: 64,
+        height: 64,
+        overlays: Some(overlays),
+        view_mode: ViewMode::lit,
+    };
+    r.render(&rw, &mut s.assets, &request).unwrap()
+}
+
+/// The skeleton turned 90° about Z at its root, so the tip joint is at (-1, 0, 0); drawn black,
+/// seen by an orthographic camera 5 m tall centred on (0, 0.5).
+fn turned_scene(posed: bool) -> (Scene, EntityId) {
+    let mut s = Scene::new();
+    if posed {
+        s.world.insert_resource(library());
+    }
+    let paint = s.material("paint", common::unlit([0.0, 0.0, 0.0, 1.0]));
+    let arm = s.assets.insert_mesh("arm", column(0.1, 0.0, 2.0));
+    let mut pose = skeleton().rest_pose();
+    pose.bones[0].rotation = Quat::from_rotation_z(std::f32::consts::FRAC_PI_2);
+    let id = spawn(&mut s, Vec3::ZERO, &arm, &paint, Some(skin()), Some(pose));
+    let camera = Camera {
+        projection: Projection::Orthographic {
+            height: 5.0,
+            near: 0.1,
+            far: 20.0,
+        },
+        ..Camera::default()
+    };
+    s.camera(Vec3::new(0.0, 0.5, 5.0), Vec3::new(0.0, 0.5, 0.0), camera);
+    (s, id)
+}
+
+/// World (x, y) on the 64×64 image of `turned_scene` (12.8 pixels per meter).
+fn px(x: f32, y: f32) -> (u32, u32) {
+    ((32.0 + x * 12.8) as u32, (32.0 - (y - 0.5) * 12.8) as u32)
+}
+
+fn lit(p: [u8; 4]) -> bool {
+    p[0] > 40 || p[1] > 40 || p[2] > 40
+}
+
+#[test]
+fn skeleton_overlay_draws_posed_bones() {
+    let Some(mut r) = renderer() else { return };
+    let skeleton_on = concordia_render::Overlays {
+        skeleton: true,
+        ..Default::default()
+    };
+    let (mut s, _) = turned_scene(true);
+    let plain = render_overlays(&mut s, &mut r, Default::default());
+    let image = render_overlays(&mut s, &mut r, skeleton_on.clone());
+    // The bone runs from the root (0, 0) to the posed tip (-1, 0); the bind pose's (0, 1) is dark.
+    let (x, y) = px(-0.5, 0.0);
+    assert!(lit(common::pixel(&image, x, y)), "the posed bone is drawn");
+    assert!(!lit(common::pixel(&plain, x, y)), "only by the overlay");
+    let (x, y) = px(0.0, 0.75);
+    assert!(
+        !lit(common::pixel(&image, x, y)),
+        "not the bind pose's bone"
+    );
+    // Without a pose (no library: the edit world's case) nothing is drawn.
+    let (mut bind, _) = turned_scene(false);
+    let a = render_overlays(&mut bind, &mut r, Default::default());
+    let b = render_overlays(&mut bind, &mut r, skeleton_on);
+    assert_eq!(differing(&a, &b, 0), 0, "no poses, no skeletons");
+}
+
+#[test]
+fn selection_box_follows_the_posed_bounds() {
+    let Some(mut r) = renderer() else { return };
+    let (mut s, id) = turned_scene(true);
+    let selected = concordia_render::Overlays {
+        selection: vec![id],
+        ..Default::default()
+    };
+    let image = render_overlays(&mut s, &mut r, selected);
+    let rows = |from: u32, to: u32| {
+        (from..to)
+            .flat_map(|y| (0..64).map(move |x| (x, y)))
+            .filter(|(x, y)| lit(common::pixel(&image, *x, *y)))
+            .count()
+    };
+    // Posed, the column lies along -X within ±0.1 of y = 0; the bind box would reach y = 2.
+    let (_, above) = px(0.0, 1.0);
+    assert_eq!(
+        rows(0, above),
+        0,
+        "nothing drawn above y = 1 (the bind box's top half)"
+    );
+    let (_, y) = px(0.0, 0.0);
+    assert!(rows(y - 3, y + 4) > 20, "the posed box is drawn along -X");
+}

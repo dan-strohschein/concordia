@@ -50,6 +50,7 @@ type DeserializeFn =
     fn(&mut dyn erased_serde::Deserializer<'_>) -> Result<Box<dyn DynReflect>, erased_serde::Error>;
 
 /// How a registered type builds values.
+#[derive(Clone, Copy)]
 enum Builds {
     /// A Rust type.
     Static {
@@ -58,6 +59,36 @@ enum Builds {
     },
     /// A runtime-described type; values are [`DynamicValue`]s.
     Dynamic,
+}
+
+/// Builds values of one registered type from JSON (see [`TypeRegistration::json_builder`]).
+#[derive(Clone, Copy)]
+pub struct JsonBuilder {
+    info: &'static TypeInfo,
+    builds: Builds,
+}
+
+impl JsonBuilder {
+    /// The type's info.
+    pub fn info(&self) -> &'static TypeInfo {
+        self.info
+    }
+
+    /// Validates `value` against the type's shape, then deserializes it.
+    pub fn from_json(&self, value: Value) -> Result<Box<dyn DynReflect>, ReflectError> {
+        match self.builds {
+            Builds::Static { from_json, .. } => from_json(value),
+            Builds::Dynamic => Ok(Box::new(DynamicValue::from_json(self.info, value)?)),
+        }
+    }
+}
+
+impl std::fmt::Debug for JsonBuilder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("JsonBuilder")
+            .field("type", &self.info.name)
+            .finish()
+    }
 }
 
 /// Everything the engine knows about one registered type.
@@ -144,9 +175,14 @@ impl TypeRegistration {
 
     /// Validates `value` against the type's shape, then deserializes it.
     pub fn from_json(&self, value: Value) -> Result<Box<dyn DynReflect>, ReflectError> {
-        match self.builds {
-            Builds::Static { from_json, .. } => from_json(value),
-            Builds::Dynamic => Ok(Box::new(DynamicValue::from_json(self.info, value)?)),
+        self.json_builder().from_json(value)
+    }
+
+    /// A copyable handle that builds this type's current version from JSON, without the registry.
+    pub fn json_builder(&self) -> JsonBuilder {
+        JsonBuilder {
+            info: self.info,
+            builds: self.builds,
         }
     }
 

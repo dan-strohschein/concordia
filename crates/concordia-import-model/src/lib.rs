@@ -7,6 +7,7 @@
 mod mesh;
 mod names;
 mod prefab;
+mod settings;
 mod skin;
 mod texture;
 
@@ -16,6 +17,7 @@ pub use prefab::{
     EntitySummary, MeshPart, ModelNode, ModelTree, PrefabSummary, load_prefab, load_prefab_doc,
     write_prefab,
 };
+pub use settings::ModelSettings;
 pub use skin::{MAX_INFLUENCES, reduce_influences};
 pub use texture::TextureUsage;
 
