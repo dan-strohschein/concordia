@@ -1,0 +1,12 @@
+Sidecar(
+    id: "01a209fb-29f3-753e-a146-60e505136839",
+    importer: "sound",
+    importer_version: 1,
+    settings: {
+        "gain_db": 0.0,
+        "loop_end": None,
+        "loop_start": 192000,
+        "stream": true,
+    },
+    sub_assets: {},
+)

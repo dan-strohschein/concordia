@@ -38,6 +38,15 @@ pub fn model_importers() -> Vec<Arc<dyn Importer>> {
     vec![Arc::new(GltfImporter), Arc::new(FbxImporter)]
 }
 
+/// Every importer `[assets]` registers beside the built-in ones: models, audio and UI.
+pub fn asset_importers() -> Vec<Arc<dyn Importer>> {
+    model_importers()
+        .into_iter()
+        .chain(concordia_audio::importers())
+        .chain(concordia_ui::importers())
+        .collect()
+}
+
 /// Where the engine runs: decides the audio output for `[audio] backend = "auto"`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Playback {
@@ -143,10 +152,8 @@ impl Project {
             modules.push(Arc::new(CrowdModule::new()));
         }
         if self.manifest.assets.is_some() {
-            let assets = model_importers()
+            let assets = asset_importers()
                 .into_iter()
-                .chain(concordia_audio::importers())
-                .chain(concordia_ui::importers())
                 .fold(AssetsModule::new(&self.root), AssetsModule::with_importer);
             modules.push(Arc::new(assets));
         }

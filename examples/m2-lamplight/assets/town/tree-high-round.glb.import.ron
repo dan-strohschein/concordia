@@ -1,0 +1,11 @@
+Sidecar(
+    id: "01a209fb-2eab-737a-9ca6-a4d809c87919",
+    importer: "gltf",
+    importer_version: 4,
+    settings: {},
+    sub_assets: {
+        "material/colormap": "16950360-14b9-5b0a-b894-a0ee12c54e8f",
+        "mesh/tree-high-round/0": "4e7f955e-cbb4-56fc-aa0d-98d4be864449",
+        "texture/colormap": "0f707985-2536-5e9a-9357-24e8febcd7b4",
+    },
+)

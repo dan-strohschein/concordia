@@ -21,7 +21,7 @@ pub(crate) struct Args {
 pub(crate) fn run(args: &Args) -> Result<(), Failure> {
     let mut db = AssetDb::new(&args.project, Box::new(SystemIdGen))
         .map_err(|e| Failure::usage(e.to_string()))?;
-    for importer in concordia_app::model_importers() {
+    for importer in concordia_app::asset_importers() {
         db.register(importer);
     }
     for path in &args.paths {

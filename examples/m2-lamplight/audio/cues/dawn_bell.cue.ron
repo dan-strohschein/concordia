@@ -1,0 +1,26 @@
+Cue(
+    bus: "SFX",
+    looping: false,
+    max_instances: None,
+    pitch_semitones: (
+        max: -3.0,
+        min: -3.0,
+    ),
+    priority: 255,
+    seed: 112,
+    sounds: [
+        (
+            sound: "asset:01a209fb-2a8c-75a7-8b17-91c2da76c5fd",
+            weight: 1,
+        ),
+        (
+            sound: "asset:01a209fb-2a99-747a-85d1-80ec630f26e6",
+            weight: 1,
+        ),
+    ],
+    spatial: None,
+    volume_db: (
+        max: 0.0,
+        min: -2.0,
+    ),
+)

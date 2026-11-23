@@ -1,0 +1,39 @@
+Sidecar(
+    id: "01a209fb-29ed-76d3-b691-6c465bcdeec7",
+    importer: "gltf",
+    importer_version: 4,
+    settings: {
+        "clip_events": {
+            "Startle": [
+                {
+                    "name": "flinch",
+                    "time": 0.041666666666666664,
+                },
+            ],
+            "Walk": [
+                {
+                    "name": "step_left",
+                    "time": 0.20833333333333334,
+                },
+                {
+                    "name": "step_right",
+                    "time": 0.7083333333333334,
+                },
+            ],
+        },
+    },
+    sub_assets: {
+        "clip/Idle": "6ee9fc76-2a02-5a22-9e2d-d892d52732f9",
+        "clip/Startle": "a6fc76d6-4956-52f2-9033-1bc7a77ebb4c",
+        "clip/Walk": "157de32e-4a2b-55d0-830b-98dd94e18f5e",
+        "material/Boot": "4412ffac-2f95-5380-b60c-41c23aeb1e2d",
+        "material/Cloth": "21be21f7-dbd4-549a-aed6-41111d8148e2",
+        "material/Shirt": "6fc2d13e-e1cf-5e4b-aa90-f33645c58e65",
+        "material/Skin": "300319c6-c0aa-5315-b97a-fd3947a1846d",
+        "mesh/Mannequin/0": "9a923dda-6e49-555f-8013-4dc8785ea049",
+        "mesh/Mannequin/1": "8b01c4ac-5901-54e2-b66b-15a9388b1387",
+        "mesh/Mannequin/2": "14674ac1-22bf-519f-8e0c-947fc2d2c24c",
+        "mesh/Mannequin/3": "aaa71c83-4a75-5203-acef-52005ee2b500",
+        "skin/0": "e5c34560-518f-5223-93ca-b07efc130ef3",
+    },
+)

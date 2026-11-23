@@ -1,0 +1,11 @@
+Sidecar(
+    id: "01a209fb-2dde-7516-81e4-d2fbd66ffbb2",
+    importer: "gltf",
+    importer_version: 4,
+    settings: {},
+    sub_assets: {
+        "material/colormap": "a66cae6f-97ba-5c50-ac17-c978c253cb6e",
+        "mesh/stairs-stone/0": "e6c5d480-8d43-5c4a-83b1-1dbb6335edd4",
+        "texture/colormap": "1dd14133-183e-533e-92bc-f390651b0833",
+    },
+)

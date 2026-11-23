@@ -1,0 +1,34 @@
+Material(
+    alpha_mode: Opaque,
+    double_sided: false,
+    nodes: {
+        "glass": Slab((
+            base_color: (0.95, 0.85, 0.6, 1.0),
+            base_color_texture: None,
+            emissive: (1.0, 0.72, 0.35),
+            emissive_strength: 4.0,
+            emissive_texture: None,
+            fuzz: None,
+            haze: Some((
+                roughness: 0.5,
+                weight: 0.3,
+            )),
+            metallic: 0.0,
+            metallic_roughness_texture: None,
+            normal_scale: 1.0,
+            normal_texture: None,
+            occlusion_strength: 1.0,
+            occlusion_texture: None,
+            roughness: 0.15,
+            specular: 0.5,
+            subsurface: None,
+            thin_film: Some((
+                ior: 1.4,
+                thickness_nm: 380.0,
+            )),
+            transmittance: (0.0, 0.0, 0.0),
+        )),
+    },
+    root: "glass",
+    unlit: false,
+)

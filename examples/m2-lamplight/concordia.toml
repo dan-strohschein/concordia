@@ -1,0 +1,31 @@
+# Concordia project manifest: Lamplight, M2's sample game (examples/m2-lamplight/README.md).
+[project]
+name = "m2-lamplight"
+
+[sim]
+rate_hz = 60
+seed = 1729
+
+[journal]
+sync = true
+
+[window]
+title = "Lamplight"
+width = 1280
+height = 720
+resizable = true
+
+[input]
+map = "input/lamplight.input.ron"
+
+[physics]
+gravity = [0.0, -9.81, 0.0]
+
+[assets]
+
+[anim]
+
+[audio]
+buses = "audio/lamplight.buses.ron"
+
+[ui]

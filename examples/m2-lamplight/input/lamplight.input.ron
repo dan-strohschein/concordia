@@ -1,0 +1,141 @@
+InputMap(
+    actions: {
+        "light": (
+            bindings: [
+                Key(E),
+                Key(F),
+            ],
+            kind: Button,
+        ),
+        "pause": (
+            bindings: [
+                Key(P),
+                Key(Escape),
+            ],
+            kind: Button,
+        ),
+        "ui_accept": (
+            bindings: [
+                Key(Enter),
+                Key(Space),
+            ],
+            kind: Button,
+        ),
+        "ui_cancel": (
+            bindings: [
+                Key(Escape),
+            ],
+            kind: Button,
+        ),
+        "ui_click": (
+            bindings: [
+                MouseButton(Left),
+            ],
+            kind: Button,
+        ),
+        "ui_ctrl": (
+            bindings: [
+                Key(ControlLeft),
+                Key(ControlRight),
+                Key(SuperLeft),
+                Key(SuperRight),
+            ],
+            kind: Button,
+        ),
+        "ui_down": (
+            bindings: [
+                Key(ArrowDown),
+            ],
+            kind: Button,
+        ),
+        "ui_left": (
+            bindings: [
+                Key(ArrowLeft),
+            ],
+            kind: Button,
+        ),
+        "ui_next": (
+            bindings: [
+                Key(Tab),
+            ],
+            kind: Button,
+        ),
+        "ui_page_down": (
+            bindings: [
+                Key(PageDown),
+            ],
+            kind: Button,
+        ),
+        "ui_page_up": (
+            bindings: [
+                Key(PageUp),
+            ],
+            kind: Button,
+        ),
+        "ui_pointer": (
+            bindings: [
+                PointerPosition,
+            ],
+            kind: Axis2d,
+        ),
+        "ui_prev": (
+            bindings: [
+                Chord(
+                    key: Tab,
+                    modifiers: [
+                        Shift,
+                    ],
+                ),
+            ],
+            kind: Button,
+        ),
+        "ui_right": (
+            bindings: [
+                Key(ArrowRight),
+            ],
+            kind: Button,
+        ),
+        "ui_scroll": (
+            bindings: [
+                Scroll,
+            ],
+            kind: Axis2d,
+        ),
+        "ui_shift": (
+            bindings: [
+                Key(ShiftLeft),
+                Key(ShiftRight),
+            ],
+            kind: Button,
+        ),
+        "ui_up": (
+            bindings: [
+                Key(ArrowUp),
+            ],
+            kind: Button,
+        ),
+        "ui_viewport": (
+            bindings: [
+                Viewport,
+            ],
+            kind: Axis2d,
+        ),
+        "walk": (
+            bindings: [
+                KeyAxis2d(
+                    down: S,
+                    left: A,
+                    right: D,
+                    up: W,
+                ),
+                KeyAxis2d(
+                    down: ArrowDown,
+                    left: ArrowLeft,
+                    right: ArrowRight,
+                    up: ArrowUp,
+                ),
+            ],
+            kind: Axis2d,
+        ),
+    },
+)

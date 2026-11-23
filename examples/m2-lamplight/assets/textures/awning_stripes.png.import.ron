@@ -1,0 +1,11 @@
+Sidecar(
+    id: "01a209fb-2ac7-7037-86b7-cb6af196c554",
+    importer: "image",
+    importer_version: 1,
+    settings: {
+        "color_space": "Srgb",
+        "generate_mips": true,
+        "normal_map": false,
+    },
+    sub_assets: {},
+)

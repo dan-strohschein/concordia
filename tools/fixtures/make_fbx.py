@@ -301,12 +301,14 @@ def character_rig():
     return obj
 
 
-def character_mesh(arm):
-    """One box per bone (and a nose on the head), each weighted fully to its bone."""
+def character_mesh(arm, palette=CHARACTER_MATERIALS, extra_parts=()):
+    """One box per bone (and a nose on the head, plus `extra_parts`), each weighted fully to its
+    bone; `palette` maps material names to colours."""
     parts = [(name, head, tail, w, d, mat) for name, _, head, tail, w, d, mat in CHARACTER_BONES]
     parts.append(("head", (0, -0.11, 1.70), (0, -0.16, 1.70), 0.04, 0.04, "Skin"))
+    parts.extend(extra_parts)
     verts, faces, owners, mats = [], [], [], []
-    names = list(CHARACTER_MATERIALS)
+    names = list(palette)
     for bone, head, tail, w, d, mat in parts:
         corners, quads = box(head, tail, w, d)
         base = len(verts)
@@ -316,7 +318,7 @@ def character_mesh(arm):
         mats += [names.index(mat)] * len(quads)
     body = mesh_object("Mannequin", verts, faces)
     for name in names:
-        body.data.materials.append(principled(name, CHARACTER_MATERIALS[name], roughness=0.7))
+        body.data.materials.append(principled(name, palette[name], roughness=0.7))
     for poly, m in zip(body.data.polygons, mats):
         poly.material_index = m
     body.parent = arm
@@ -467,4 +469,5 @@ def main():
     shutil.rmtree(STAGING)
 
 
-main()
+if __name__ == "__main__":
+    main()

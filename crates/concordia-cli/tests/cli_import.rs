@@ -61,3 +61,34 @@ fn import_handles_fbx() {
     );
     assert!(dir.path().join("static_quad.fbx.import.ron").is_file());
 }
+
+#[test]
+fn import_handles_sounds_and_themes() {
+    // The engine imports sounds (`sound`) and themes (`theme`) through `[assets]`; the CLI must
+    // register the same importers (M2 phase 2.10b): a 1 s Ogg tone and a one-class theme.
+    let dir = tempfile::tempdir().unwrap();
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/audio/tone-440.ogg");
+    std::fs::copy(fixture, dir.path().join("tone.ogg")).unwrap();
+    std::fs::write(
+        dir.path().join("hud.theme.ron"),
+        "Theme(classes: {\"label\": (base: (font_size: Some(18.0)))})\n",
+    )
+    .unwrap();
+    let output = run(
+        &[
+            "import",
+            "--project",
+            dir.path().to_str().unwrap(),
+            "tone.ogg",
+            "hud.theme.ron",
+        ],
+        dir.path(),
+    );
+    assert!(output.status.success(), "{}", stderr(&output));
+    let text = stdout(&output);
+    assert!(text.starts_with("tone.ogg asset:"), "{text}");
+    assert!(text.contains("\nhud.theme.ron asset:"), "{text}");
+    assert!(dir.path().join("tone.ogg.import.ron").is_file());
+    assert!(dir.path().join("hud.theme.ron.import.ron").is_file());
+}

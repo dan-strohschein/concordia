@@ -1,0 +1,11 @@
+Sidecar(
+    id: "01a209fb-2f77-77cf-a3af-feecd6abab38",
+    importer: "gltf",
+    importer_version: 4,
+    settings: {},
+    sub_assets: {
+        "material/colormap": "bd1afe63-ad1c-5946-aa3c-0548a390321b",
+        "mesh/wall-window-shutters/0": "4628047e-3d39-5e89-8e58-3f292ecbe3ff",
+        "texture/colormap": "3389899b-11fc-533f-a4ef-d0c9dbdde179",
+    },
+)
