@@ -2,6 +2,9 @@
 [project]
 name = "m2-lamplight"
 
+[scene]
+main = "scenes/town.scene.ron"
+
 [sim]
 rate_hz = 60
 seed = 1729
@@ -29,3 +32,20 @@ gravity = [0.0, -9.81, 0.0]
 buses = "audio/lamplight.buses.ron"
 
 [ui]
+
+[nav]
+
+[render]
+
+[replay]
+
+# Gameplay modules: the rules as WASM, the fog as a native library (hot-reloaded in the gate).
+# `just lamplight-build` builds both into build/.
+[scripts]
+[[scripts.module]]
+kind = "wasm"
+path = "build/lamplight_rules.wasm"
+
+[[scripts.module]]
+kind = "native"
+path = "build/lamplight_fog"

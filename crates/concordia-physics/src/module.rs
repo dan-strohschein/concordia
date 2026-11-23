@@ -14,6 +14,7 @@ use concordia_terra::{Phase, Schedule, SystemCtx, World, register_component, sys
 use serde::{Deserialize, Serialize};
 
 use crate::components::{CharacterController, CharacterMotion, Collider, RigidBody};
+use crate::events::{ContactBegan, ContactEnded};
 use crate::layers::{LayerMask, PhysicsLayer};
 use crate::runtime::PhysicsRuntime;
 use crate::settings::PhysicsSettings;
@@ -64,7 +65,10 @@ impl EngineModule for PhysicsModule {
         register_component::<RigidBody>(registry)?;
         register_component::<Collider>(registry)?;
         register_component::<CharacterController>(registry)?;
-        register_component::<CharacterMotion>(registry)
+        register_component::<CharacterMotion>(registry)?;
+        // Signals, so gameplay modules can receive them by name (2.10c.1).
+        register_component::<ContactBegan>(registry)?;
+        register_component::<ContactEnded>(registry)
     }
 
     fn methods(&self) -> Vec<MethodInfo> {

@@ -5,10 +5,30 @@ game in a small harbour town. You are the lamplighter. Fog wisps drift in from t
 the street lamps before they reach the square, refill your oil from the wagons on the ring road,
 and keep the town's spirit up until the dawn bells.
 
-**Status:** content (2.10b). The scene, templates, scripts and UI arrive in 2.10c, the gate in 2.10d.
+**Status:** the night plays (2.10c.1): the town, the lamplighter, lamps, wisps, the rules and the
+fog. Townsfolk and wagons arrive in 2.10c.2, the menus and HUD in 2.10c.3, the gate in 2.10d.
+
+## Running it
+`just lamplight-build` builds both gameplay modules into `build/` (git-ignored): the rules as
+WASM and the fog as a native library. The night starts when `lamplight.Night`'s `phase` is
+`playing` (the title screen sets it in 2.10c.3); until then nothing moves.
+
+## How it plays (2.10c.1)
+- Walk with WASD or the arrows; press E (or F) beside a dark lamp to light it. The reach's `lit`
+  event lights the nearest unlit lamp within 2 m, for 20 of the can's 100 oil; a lamp burns 60 s.
+- Every 20 s (the first after 5 s) the fog sends six wisps from the harbour toward a ring
+  4–6 m around the fountain. A lit lamp's light scorches each wisp inside it for 30 health a second
+  (a wisp has 40); burn numbers rise as it burns, and it pops at none.
+- A wisp that reaches the square costs one of Town Spirit's 10; the night is lost at 0 and won at
+  dawn (180 s).
 
 ## Layout
-- `concordia.toml`: the project (input, physics, assets, animation, audio and UI).
+- `concordia.toml`: the project (input, physics, navigation, assets, animation, audio, UI,
+  rendering, replay and the two script modules).
+- `scenes/town.scene.ron`: the town, built by `tools/build_town.py` through the Engine API.
+- `templates/`: the wisp and the burn and spirit numbers.
+- `scripts/`: `lamplight-rules` (module `lamplight`, WASM), `lamplight-fog` (module `fog`,
+  native) and `lamplight-types` (the engine types both mirror, and the night's broadcast).
 - `assets/`: every binary file, each recorded in `assets/LICENSE.md` with its source, licence and SHA-256.
   - `town/`: CC0 town models by Kenney (houses, roofs, roads, the market, lamps, carts, dressing), sharing `town/Textures/colormap.png`.
   - `sounds/`: CC0 foley by Kenney (footsteps, bell, glass, wood, creaks, latch, cloth) and our synthesized sounds (`sizzle`, `pop`, `whoosh`, `rumble`, `click`, `chime`).
@@ -21,7 +41,7 @@ and keep the town's spirit up until the dawn bells.
 - `audio/`: `lamplight.buses.ron` (Master → Music, SFX, Ambience, UI) and the cues in `audio/cues/`.
 - `ui/lamplight.theme.ron`: panels, labels, buttons, text fields, the oil and spirit bars, and the burn and spirit numbers.
 - `input/lamplight.input.ron`: `walk` (WASD or the arrows), `light` (E or F), `pause` (P or Escape) and the in-game UI's `ui_*` actions.
-- `tools/`: the generators for our own files (see below).
+- `tools/`: the generators for our own files (see below) and the town builder.
 
 ## Regenerating our own files
 Run from this folder; each script rewrites its files in `assets/`, and
@@ -37,3 +57,7 @@ blender --background --factory-startup --python-exit-code 1 --python tools/make_
 
 After regenerating a model or sound, re-import it so its sidecar stays current:
 `concordia import --project . <file>`.
+
+The town is rebuilt from the repository root with
+`python3 -I examples/m2-lamplight/tools/build_town.py target/debug/concordia` (after
+`just lamplight-build`); it writes a new scene with fresh entity ids.

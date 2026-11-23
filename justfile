@@ -29,7 +29,7 @@ fmt-check:
 lint: fmt-check
     cargo clippy --workspace --all-targets --all-features -- -D warnings
     cargo clippy --manifest-path {{guest}} --target wasm32-wasip2 -- -D warnings
-    cargo clippy -p concordia-script-guest -p conformance-guest -p nav-guest -p audio-guest -p input-guest -p wanderers --target wasm32-wasip2 -- -D warnings
+    cargo clippy -p concordia-script-guest -p conformance-guest -p nav-guest -p audio-guest -p input-guest -p wanderers -p lamplight-rules --target wasm32-wasip2 -- -D warnings
 
 # Build and validate WASM guest fixtures
 wasm:
@@ -55,6 +55,16 @@ wasm:
     wasm-tools validate {{wasm_dir}}/wasm32-wasip2/release/wanderers.wasm
     mkdir -p examples/m2-scripting/build
     cp {{wasm_dir}}/wasm32-wasip2/release/wanderers.wasm examples/m2-scripting/build/wanderers.wasm
+    # Lamplight's rules module (examples/m2-lamplight, 2.10c).
+    cargo build -p lamplight-rules --target wasm32-wasip2 --release --target-dir {{wasm_dir}}
+    wasm-tools validate {{wasm_dir}}/wasm32-wasip2/release/lamplight_rules.wasm
+
+# Build Lamplight's two modules into examples/m2-lamplight/build (after `just wasm` and
+# `just native-fixtures`), where its concordia.toml loads them
+lamplight-build: wasm native-fixtures
+    mkdir -p examples/m2-lamplight/build
+    cp {{wasm_dir}}/wasm32-wasip2/release/lamplight_rules.wasm examples/m2-lamplight/build/lamplight_rules.wasm
+    cp {{native_dir}}/out/lamplight_fog.{{dll_ext}} examples/m2-lamplight/build/lamplight_fog.{{dll_ext}}
 
 # Build native module library fixtures (ADR-0061), in their own target dir so their features
 # never unify into the workspace build
@@ -70,6 +80,8 @@ native-fixtures:
     cp {{native_dir}}/debug/{{dll_prefix}}wanderers.{{dll_ext}} {{native_dir}}/out/wanderers.{{dll_ext}}
     cargo build -p input-guest --features dylib --target-dir {{native_dir}}
     cp {{native_dir}}/debug/{{dll_prefix}}input_guest.{{dll_ext}} {{native_dir}}/out/input_guest.{{dll_ext}}
+    cargo build -p lamplight-fog --features dylib --target-dir {{native_dir}}
+    cp {{native_dir}}/debug/{{dll_prefix}}lamplight_fog.{{dll_ext}} {{native_dir}}/out/lamplight_fog.{{dll_ext}}
     cargo build -p bad-abi-guest --target-dir {{native_dir}}
     cp {{native_dir}}/debug/{{dll_prefix}}bad_abi_guest.{{dll_ext}} {{native_dir}}/out/bad_abi_guest.{{dll_ext}}
 

@@ -2920,6 +2920,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "lamplight-fog"
+version = "0.0.0"
+dependencies = [
+ "concordia-core",
+ "concordia-reflect",
+ "concordia-script-guest",
+ "lamplight-types",
+ "serde",
+]
+
+[[package]]
+name = "lamplight-rules"
+version = "0.0.0"
+dependencies = [
+ "concordia-core",
+ "concordia-reflect",
+ "concordia-script-guest",
+ "lamplight-types",
+ "serde",
+]
+
+[[package]]
+name = "lamplight-types"
+version = "0.0.0"
+dependencies = [
+ "concordia-core",
+ "concordia-reflect",
+ "concordia-script-guest",
+ "serde",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

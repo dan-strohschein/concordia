@@ -7,7 +7,7 @@ Safe, deterministic rigid-body physics for Terra worlds over Jolt (via `jolt-sys
 - Components: `RigidBody` (`BodyKind`), `Collider` (`ColliderShape`, `PhysicsLayer`), `CharacterController`, `CharacterMotion`
 - `PhysicsRuntime` (`new`, `snapshot`, `tick` → `TickReport`, `raycast` → `RayHit`, `state_hash`, `save_state`/`restore_state`, `body_count`)
 - `PhysicsSettings` (gravity, `max_bodies`, `set_collides`), `LayerMask`
-- `ContactBegan` / `ContactEnded { other, sensor }`: Terra signals raised on both entities by the physics step, delivered next tick in entity order (M2 phase 2.0b, ADR-0069)
+- `ContactBegan` / `ContactEnded { other, sensor }`: Terra signals raised on both entities by the physics step, delivered next tick in entity order (M2 phase 2.0b, ADR-0069); registered by the module so gameplay scripts receive them by name (2.10c.1)
 - `PhysicsModule` (EngineModule) and `physics.raycast` (`RaycastParams` / `RaycastResult`)
 - `static_solids(&World)` → `StaticSolid`s (entity, translation, rotation, collider): the static, non-sensor bodies the step accepts, by entity id, using the step's own validation; navigation builds navmeshes from them (M2 2.5a, ADR-0077)
 

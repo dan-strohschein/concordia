@@ -207,7 +207,10 @@ fn licences_are_in_the_deny_allow_list() {
 fn engine_on_copy() -> (tempfile::TempDir, Engine, concordia_core::id::SessionId) {
     let dir = tempfile::tempdir().unwrap();
     copy_example(EXAMPLE, dir.path()).unwrap();
-    let project = Project::load(dir.path()).unwrap();
+    let mut project = Project::load(dir.path()).unwrap();
+    // Content needs only the asset-side modules: no scripts (built separately) and no GPU.
+    project.manifest.scripts = None;
+    project.manifest.render = None;
     let mut config = EngineConfig::new(dir.path());
     config.deterministic_ids = Some(3);
     config.modules = project.modules().unwrap();
