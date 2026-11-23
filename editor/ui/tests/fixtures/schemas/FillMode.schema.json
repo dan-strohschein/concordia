@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "How a progress bar fills (Godot's `TextureProgressBar` fill modes).",
+  "oneOf": [
+    {
+      "const": "LeftToRight",
+      "description": "From the left."
+    },
+    {
+      "const": "RightToLeft",
+      "description": "From the right."
+    },
+    {
+      "const": "TopToBottom",
+      "description": "From the top."
+    },
+    {
+      "const": "BottomToTop",
+      "description": "From the bottom."
+    },
+    {
+      "const": "Clockwise",
+      "description": "Around the center, clockwise from `radial.start_deg`."
+    },
+    {
+      "const": "CounterClockwise",
+      "description": "Around the center, counterclockwise."
+    },
+    {
+      "const": "BilinearH",
+      "description": "Outward from the vertical center line."
+    },
+    {
+      "const": "BilinearV",
+      "description": "Outward from the horizontal center line."
+    },
+    {
+      "const": "ClockwiseAndCounter",
+      "description": "Around the center, both ways from the start."
+    }
+  ],
+  "title": "FillMode",
+  "x-concordia-type": "FillMode"
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Names a `.theme.ron` and a class in it.",
+  "properties": {
+    "class": {
+      "description": "The class name.",
+      "type": "string"
+    },
+    "theme": {
+      "description": "The theme asset.\n\nAsset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+      "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "theme",
+    "class"
+  ],
+  "title": "UiThemed",
+  "type": "object",
+  "x-concordia-category": "UI",
+  "x-concordia-type": "UiThemed"
+}

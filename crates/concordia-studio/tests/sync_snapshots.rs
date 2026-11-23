@@ -23,6 +23,7 @@ fn sync_default_roster_generates_expected_agent_files() {
             "qa-playtester.md",
             "sound-designer.md",
             "tech-artist.md",
+            "ui-ux.md",
             "writer.md"
         ],
         "one file per enabled role"

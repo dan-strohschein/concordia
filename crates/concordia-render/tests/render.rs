@@ -419,6 +419,7 @@ fn invalid_sizes_and_cameras_are_errors() {
                     overlays: None,
                     view_mode: Default::default(),
                     debug: Vec::new(),
+                    ui: Default::default(),
                 },
             )
             .unwrap_err();
@@ -436,6 +437,7 @@ fn invalid_sizes_and_cameras_are_errors() {
                 overlays: None,
                 view_mode: Default::default(),
                 debug: Vec::new(),
+                ui: Default::default(),
             },
         )
         .unwrap_err();
@@ -464,6 +466,7 @@ fn missing_assets_name_the_reference() {
                 overlays: None,
                 view_mode: Default::default(),
                 debug: Vec::new(),
+                ui: Default::default(),
             },
         )
         .unwrap_err();
@@ -624,6 +627,7 @@ fn renderer_presents_frames_to_a_window_surface() {
         overlays: None,
         view_mode: Default::default(),
         debug: Vec::new(),
+        ui: Default::default(),
     };
     let presented = (0..10)
         .filter(|_| r.present(&rw, &mut s.assets, &request, surface).unwrap())
@@ -666,6 +670,7 @@ fn presented_frames_overlap_the_gpu_and_retire_their_memory() {
         overlays: None,
         view_mode: Default::default(),
         debug: Vec::new(),
+        ui: Default::default(),
     };
     assert!(r.present(&rw, &mut s.assets, &request, surface).unwrap());
     assert_eq!(
@@ -731,6 +736,7 @@ fn frames_in_flight_can_be_lowered_for_latency() {
         overlays: None,
         view_mode: Default::default(),
         debug: Vec::new(),
+        ui: Default::default(),
     };
     for _ in 0..10 {
         r.present(&rw, &mut s.assets, &request, surface).unwrap();
@@ -775,6 +781,7 @@ fn off_screen_meshes_are_culled_and_repeated_meshes_draw_as_one_instanced_call()
         overlays: None,
         view_mode: Default::default(),
         debug: Vec::new(),
+        ui: Default::default(),
     };
     let image = r.render(&rw, &mut s.assets, &request).unwrap();
     let stats = r.stats();
@@ -819,6 +826,7 @@ fn warm_frames_reuse_their_gpu_memory_instead_of_allocating() {
         overlays: None,
         view_mode: Default::default(),
         debug: Vec::new(),
+        ui: Default::default(),
     };
     for _ in 0..6 {
         r.present(&rw, &mut s.assets, &request, surface).unwrap();
@@ -862,6 +870,7 @@ fn a_drawable_acquired_ahead_is_used_by_the_next_present() {
         overlays: None,
         view_mode: Default::default(),
         debug: Vec::new(),
+        ui: Default::default(),
     };
     assert!(r.acquire_ahead(surface, 64, 64).unwrap());
     assert!(
@@ -906,6 +915,7 @@ fn overlays_draw_the_selection_and_gizmo_on_top_and_are_off_by_default() {
         overlays: None,
         view_mode: Default::default(),
         debug: Vec::new(),
+        ui: Default::default(),
     };
     let before = r.render(&rw, &mut s.assets, &plain).unwrap();
     let overlays = concordia_render::Overlays {
@@ -973,6 +983,7 @@ fn the_grid_lies_on_the_ground_behind_objects() {
         overlays: None,
         view_mode: Default::default(),
         debug: Vec::new(),
+        ui: Default::default(),
     };
     let grid = RenderRequest {
         overlays: Some(concordia_render::Overlays {

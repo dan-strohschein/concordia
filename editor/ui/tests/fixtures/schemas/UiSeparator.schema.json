@@ -1,0 +1,58 @@
+{
+  "$defs": {
+    "Orientation": {
+      "description": "Which way a separator runs.",
+      "oneOf": [
+        {
+          "const": "Horizontal",
+          "description": "Left to right."
+        },
+        {
+          "const": "Vertical",
+          "description": "Top to bottom."
+        }
+      ],
+      "title": "Orientation",
+      "x-concordia-type": "Orientation"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "color": [
+      0.5,
+      0.5,
+      0.5,
+      1.0
+    ],
+    "orientation": "Horizontal",
+    "thickness": 1.0
+  },
+  "description": "A line across its box, centered.",
+  "properties": {
+    "color": {
+      "description": "Linear RGBA.",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 4,
+      "minItems": 4,
+      "type": "array",
+      "x-concordia-widget": "color"
+    },
+    "orientation": {
+      "$ref": "#/$defs/Orientation",
+      "description": "Its direction."
+    },
+    "thickness": {
+      "description": "Its thickness in logical pixels.",
+      "maximum": 1024.0,
+      "minimum": 0.0,
+      "type": "number"
+    }
+  },
+  "title": "UiSeparator",
+  "type": "object",
+  "x-concordia-category": "UI",
+  "x-concordia-type": "UiSeparator"
+}

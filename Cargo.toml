@@ -36,6 +36,7 @@ concordia-import-gltf = { path = "crates/concordia-import-gltf" }
 concordia-import-model = { path = "crates/concordia-import-model" }
 concordia-input = { path = "crates/concordia-input" }
 concordia-terra = { path = "crates/concordia-terra" }
+concordia-ui = { path = "crates/concordia-ui" }
 concordia-scene = { path = "crates/concordia-scene" }
 concordia-script = { path = "crates/concordia-script" }
 concordia-script-abi = { path = "crates/concordia-script-abi" }
@@ -83,6 +84,9 @@ lewton = "0.10.2"
 rtrb = "0.4.1"
 # Test-only allocation counter for the mix callback (author decision A2): no unsafe in our code.
 allocation-counter = "0.8.1"
+taffy = { version = "0.15.1", default-features = false, features = ["std", "flexbox", "grid", "taffy_tree", "content_size"] }
+parley = { version = "0.13.0", default-features = false, features = ["std"] }
+swash = { version = "0.2.10", default-features = false, features = ["std", "scale", "render"] }
 glam = { version = "0.34", features = ["serde"] }
 ryu = "1"
 rand_chacha = "0.10"

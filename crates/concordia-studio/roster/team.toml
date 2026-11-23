@@ -17,10 +17,6 @@ reason = "mesh generation and the Blender bridge arrive in M3 phase 3.7"
 enabled = false
 reason = "particles and VFX arrive in M2"
 
-[roles.ui-ux]
-enabled = false
-reason = "in-game UI arrives in M2"
-
 [concurrency]
 max_parallel_subagents = 4
 max_spawn_depth = 1
@@ -46,5 +42,5 @@ max_attempts_per_task = 3
 [paths]
 deny = [".env", "**/*.key"]
 # Scenes are shared for now: the level designer lays them out; others (the tech artist, the sound
-# designer and the composer) save what they change in them.
+# designer, the composer and the UI/UX designer) save what they change in them.
 shared = ["assets/blender/**", "assets/models/**/*.import.ron", "scenes/**", "scenes/**/*.scene.ron", "tests/playtests/**"]

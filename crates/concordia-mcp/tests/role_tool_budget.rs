@@ -15,7 +15,7 @@ use serde_json::Value;
 const ROLE_TOOL_BUDGET: usize = 50_000;
 
 /// The roles the default team enables.
-const ENABLED: [&str; 9] = [
+const ENABLED: [&str; 10] = [
     "animator",
     "composer",
     "director",
@@ -24,11 +24,12 @@ const ENABLED: [&str; 9] = [
     "qa-playtester",
     "sound-designer",
     "tech-artist",
+    "ui-ux",
     "writer",
 ];
 
 /// Every module a Studio project can enable, so every role's tools are served.
-const MODULES: &str = "[input]\nmap = \"input/default.input.ron\"\n\n[physics]\n\n[nav]\n\n[assets]\n\n[anim]\n\n[audio]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n";
+const MODULES: &str = "[input]\nmap = \"input/default.input.ron\"\n\n[physics]\n\n[nav]\n\n[assets]\n\n[anim]\n\n[audio]\n\n[ui]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n";
 
 /// The served tool definitions of a project with the default roster, by name.
 async fn served_tools(dir: &tempfile::TempDir) -> BTreeMap<String, Value> {
@@ -198,4 +199,32 @@ async fn sound_designer_and_composer_are_enabled_with_audio_tools_under_budget()
             tools.len()
         );
     }
+}
+
+#[tokio::test]
+async fn ui_ux_is_enabled_with_ui_tools_under_budget() {
+    let dir = tempfile::tempdir().unwrap();
+    let served = served_tools(&dir).await;
+    let catalog = ToolCatalog::from_names(served.keys().cloned());
+    let roles = synced_role_tools(dir.path(), &catalog);
+    let tools = roles
+        .get("ui-ux")
+        .expect("the UI/UX designer is enabled (2.7b.1)");
+    for tool in [
+        "ui_inspect",
+        "capture_screenshot",
+        "entity_spawn",
+        "component_set",
+        "asset_import",
+        "txn_begin",
+    ] {
+        assert!(tools.iter().any(|t| t == tool), "ui-ux: {tool}: {tools:?}");
+    }
+    let size = tokens(tools, &served);
+    println!("ui-ux: {} tools, about {size} tokens", tools.len());
+    assert!(
+        size < ROLE_TOOL_BUDGET,
+        "ui-ux's {} tools take about {size} tokens",
+        tools.len()
+    );
 }

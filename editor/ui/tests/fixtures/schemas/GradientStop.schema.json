@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A gradient stop.",
+  "properties": {
+    "color": {
+      "description": "Linear RGBA.",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 4,
+      "minItems": 4,
+      "type": "array",
+      "x-concordia-widget": "color"
+    },
+    "offset": {
+      "description": "Position, 0..1.",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "type": "number"
+    }
+  },
+  "required": [
+    "offset",
+    "color"
+  ],
+  "title": "GradientStop",
+  "type": "object",
+  "x-concordia-type": "GradientStop"
+}

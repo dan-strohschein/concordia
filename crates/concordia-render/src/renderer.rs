@@ -54,6 +54,8 @@ pub struct RenderRequest {
     pub view_mode: crate::ViewMode,
     /// Debug layers' world-space geometry, drawn over the image under the editor overlays.
     pub debug: Vec<concordia_api::DebugGeometry>,
+    /// The in-game UI, drawn after tonemapping (ADR-0060).
+    pub ui: concordia_api::UiDrawList,
 }
 
 /// A rendered image: sRGB-encoded RGBA8, rows top to bottom.
@@ -82,6 +84,8 @@ pub struct Renderer {
     clusters: ClusterSettings,
     stats: RenderStats,
     assets: GpuAssets,
+    /// The in-game UI's textures (images and glyph atlas pages).
+    ui_textures: crate::ui_pass::UiTextures,
     frames: u64,
     /// Signalled with a frame's number when the GPU finishes a presented frame.
     timeline: Option<concordia_rhi::Timeline>,
@@ -172,6 +176,23 @@ struct FramePlan<'a> {
     grid: Option<(Pipeline, Vec<u8>)>,
     /// The tonemapper (`Linear` for debug views, which show their data as is).
     tonemap: Tonemap,
+    /// The in-game UI's buffers, drawn after tonemapping and before the editor overlays.
+    ui: Option<UiPrepared>,
+}
+
+/// The UI's quads and stops uploaded for one frame.
+#[derive(Debug, Clone, Copy)]
+struct UiPrepared {
+    quads: u32,
+    stops: u32,
+    count: u32,
+}
+
+/// How the tonemap pass draws the UI.
+struct UiDraw {
+    pipeline: Pipeline,
+    push: Vec<u8>,
+    vertices: u32,
 }
 
 /// The size and destination of one frame.
@@ -181,6 +202,7 @@ struct FrameTarget {
     overlays: Option<crate::Overlays>,
     view_mode: crate::ViewMode,
     debug: Vec<concordia_api::DebugGeometry>,
+    ui: concordia_api::UiDrawList,
 }
 
 /// Where a frame ends up.
@@ -304,6 +326,7 @@ impl Renderer {
             clusters: ClusterSettings::default(),
             stats: RenderStats::default(),
             assets: GpuAssets::default(),
+            ui_textures: crate::ui_pass::UiTextures::default(),
             frames: 0,
             timeline: None,
             in_flight: std::collections::VecDeque::new(),
@@ -528,6 +551,7 @@ impl Renderer {
                 overlays: request.overlays.clone(),
                 view_mode: request.view_mode,
                 debug: request.debug.clone(),
+                ui: request.ui.clone(),
             },
             &mut frame,
         );
@@ -618,6 +642,7 @@ impl Renderer {
             overlays,
             view_mode,
             debug,
+            ui,
         } = target;
         let aspect = width.get() as f32 / height.get() as f32;
         let view_m = view_matrix(&view.world);
@@ -730,6 +755,7 @@ impl Renderer {
         )?;
         let inst_buf = frame.keep(up.buffer(device, &instances, "instances")?);
         let mat_buf = frame.keep(up.buffer(device, &material_bytes, "materials")?);
+        let ui = self.ui_prepare(device, &mut up, frame, &ui)?;
         let (uploads, staging) = up.into_commands();
         staging.into_iter().for_each(|b| {
             frame.keep(b);
@@ -911,6 +937,7 @@ impl Renderer {
                 true => view.camera.tonemap,
                 false => Tonemap::Linear,
             },
+            ui,
         };
         let (image, overflow) = self.execute(view, plan, frame)?;
         self.stats.punctual_lights = world.punctual.len();
@@ -1100,6 +1127,7 @@ impl Renderer {
             overlay,
             grid,
             tonemap: tonemap_mode,
+            ui,
         } = plan;
         let job = &job;
         let device = self.device.clone();
@@ -1165,11 +1193,25 @@ impl Renderer {
             true => None,
             false => Some(self.overlay_draw(device, frame, &overlay, format, size)?),
         };
+        let ui = match ui {
+            None => None,
+            Some(u) => Some(UiDraw {
+                pipeline: self.pipelines.ui(device, format)?,
+                push: crate::ui_pass::UiPush {
+                    quads: u.quads,
+                    stops: u.stops,
+                    width: w as f32,
+                    height: h as f32,
+                }
+                .bytes(),
+                vertices: u.count * 6,
+            }),
+        };
         add_tonemap(
             &mut graph,
             targets.hdr,
             out,
-            (tonemap, overlay),
+            (tonemap, ui, overlay),
             tonemap_mode,
             self.device.clone(),
         );
@@ -1252,6 +1294,48 @@ impl Renderer {
             image,
             Overflow::Read(read_overflow(device, overflow_rb, clusters)?),
         ))
+    }
+
+    /// Uploads the UI's textures (cached by key and generation) and this frame's quads and stops.
+    fn ui_prepare(
+        &mut self,
+        device: &dyn Device,
+        up: &mut Uploads,
+        frame: &mut FrameResources,
+        list: &concordia_api::UiDrawList,
+    ) -> Result<Option<UiPrepared>, RenderError> {
+        if list.is_empty() {
+            return Ok(None);
+        }
+        let textures = self
+            .ui_textures
+            .prepare(device, up, list, &mut frame.textures)?;
+        let (quads, mut stops) = crate::ui_pass::encode_ui(list, &textures);
+        if stops.is_empty() {
+            stops = vec![0.0; crate::ui_pass::UI_STOP_FLOATS];
+        }
+        let upload =
+            |renderer: &mut Self, frame: &mut FrameResources, floats: &[f32], label: &str| {
+                let bytes: Vec<u8> = floats.iter().flat_map(|f| f.to_le_bytes()).collect();
+                let buffer = frame.keep(renderer.recycle.buffer(
+                    device,
+                    &BufferDesc {
+                        size: NonZeroU64::new(bytes.len() as u64).unwrap_or(NonZeroU64::MIN),
+                        usage: BufferUsage::STORAGE | BufferUsage::BINDLESS,
+                        memory: MemoryLocation::Upload,
+                        label: label.into(),
+                    },
+                )?);
+                device.write_buffer(buffer, 0, &bytes)?;
+                Ok::<u32, RenderError>(device.buffer_index(buffer)?.0)
+            };
+        let quads_i = upload(self, frame, &quads, "ui quads")?;
+        let stops_i = upload(self, frame, &stops, "ui stops")?;
+        Ok(Some(UiPrepared {
+            quads: quads_i,
+            stops: stops_i,
+            count: list.quads.len() as u32,
+        }))
     }
 
     /// Uploads overlay triangles for this frame and returns how to draw them.
@@ -1342,6 +1426,7 @@ impl Drop for Renderer {
         std::mem::take(&mut self.retired).release(self.device.as_ref(), &mut self.recycle);
         self.recycle.clear(self.device.as_ref());
         self.assets.destroy(self.device.as_ref());
+        self.ui_textures.destroy(self.device.as_ref());
         self.shadow_maps.destroy(self.device.as_ref());
         self.environments.destroy(self.device.as_ref());
         self.surfaces
@@ -1530,7 +1615,7 @@ fn add_tonemap(
     graph: &mut RenderGraph,
     hdr: GraphTexture,
     out: GraphTexture,
-    (pipeline, overlay): (Pipeline, Option<OverlayDraw>),
+    (pipeline, ui, overlay): (Pipeline, Option<UiDraw>, Option<OverlayDraw>),
     tonemap: Tonemap,
     device: Arc<dyn Device>,
 ) {
@@ -1560,6 +1645,15 @@ fn add_tonemap(
                 vertices: 0..3,
                 instances: 0..1,
             });
+            // The in-game UI in the same pass, in display space, under the editor overlays.
+            if let Some(u) = &ui {
+                ctx.commands.push(Command::SetPipeline(u.pipeline));
+                ctx.commands.push(Command::PushConstants(u.push.clone()));
+                ctx.commands.push(Command::Draw {
+                    vertices: 0..u.vertices,
+                    instances: 0..1,
+                });
+            }
             // Editor overlays in the same pass, over the tonemapped image.
             if let Some(o) = &overlay {
                 ctx.commands.push(Command::SetPipeline(o.pipeline));

@@ -13,7 +13,7 @@ pub use error::AppError;
 pub use manifest::{
     AnimSection, AssetsSection, AudioBackendChoice, AudioSection, InputSection, JournalSection,
     Manifest, NavSection, PhysicsSection, ProjectSection, RenderSection, SceneSection,
-    ScriptModuleKind, ScriptModuleSection, ScriptsSection, SimSection, StudioSection,
+    ScriptModuleKind, ScriptModuleSection, ScriptsSection, SimSection, StudioSection, UiSection,
 };
 pub use player::{ApiCall, Player};
 pub use project::{Playback, Project, model_importers};

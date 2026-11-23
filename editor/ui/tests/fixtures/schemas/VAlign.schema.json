@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Vertical text alignment in the box.",
+  "oneOf": [
+    {
+      "const": "Top",
+      "description": "The top."
+    },
+    {
+      "const": "Center",
+      "description": "Centered."
+    },
+    {
+      "const": "Bottom",
+      "description": "The bottom."
+    }
+  ],
+  "title": "VAlign",
+  "x-concordia-type": "VAlign"
+}

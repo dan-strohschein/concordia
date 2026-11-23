@@ -147,6 +147,7 @@ impl Scene {
                     overlays: None,
                     view_mode,
                     debug: Vec::new(),
+                    ui: Default::default(),
                 },
             )
             .expect("render")

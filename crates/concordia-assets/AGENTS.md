@@ -51,7 +51,7 @@ The asset pipeline: source files with `<file>.import.ron` sidecars holding stabl
 - M1's flat format is glTF 2.0's metallic-roughness model (Khronos glTF 2.0 specification, §3.9).
 
 ## Status
-M1 phase 1.4; layered material model M2 phase 2.3a; imported and loaded as `Material` since 2.3b; `material.get` / `material.set` and `MaterialData` retired in 2.3c; `Skinned`, clip bone names and frame rates, and `load_prefab_doc` in 2.4.1; the animation graph format and importer in 2.4.3; `ClipData::events` (`ClipEvent`) and `validate_events` in 2.4.4.
+M1 phase 1.4; layered material model M2 phase 2.3a; imported and loaded as `Material` since 2.3b; `material.get` / `material.set` and `MaterialData` retired in 2.3c; `Skinned`, clip bone names and frame rates, and `load_prefab_doc` in 2.4.1; the animation graph format and importer in 2.4.3; `ClipData::events` (`ClipEvent`) and `validate_events` in 2.4.4. `TextureFormat::R8` and `AssetKind::Font` / `Theme` in 2.7b.1 (the UI's glyph atlas, fonts and themes).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

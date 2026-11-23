@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Horizontal text alignment.",
+  "oneOf": [
+    {
+      "const": "Start",
+      "description": "The start edge."
+    },
+    {
+      "const": "Center",
+      "description": "Centered."
+    },
+    {
+      "const": "End",
+      "description": "The end edge."
+    },
+    {
+      "const": "Justify",
+      "description": "Both edges (the last line starts)."
+    }
+  ],
+  "title": "TextAlign",
+  "x-concordia-type": "TextAlign"
+}

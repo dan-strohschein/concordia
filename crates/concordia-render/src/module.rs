@@ -83,6 +83,8 @@ pub(crate) struct RenderState {
     pub(crate) camera: SharedCamera,
     /// The native viewport's last size and world, so navigation can re-present it.
     pub(crate) viewport: Option<(u32, u32, Option<WorldSel>)>,
+    /// The native viewport's last scale factor (physical per logical pixel).
+    pub(crate) viewport_scale: f32,
     /// What the native viewport is drawn from (the editor camera, or a scene camera).
     pub(crate) source: Source,
     /// What the editor draws over the viewport (`viewport.overlays`).
@@ -136,6 +138,7 @@ impl EngineModule for RenderModule {
             return;
         };
         let look = look_for(&state.source, state.camera.view());
+        let scale = state.viewport_scale;
         let target = PresentTarget {
             width,
             height,
@@ -143,6 +146,7 @@ impl EngineModule for RenderModule {
             seq: None,
             input_time_ms: None,
             tick: play_tick(engine),
+            scale,
         };
         if let Err(e) = queue_present(engine, look, target) {
             tracing::warn!(target: "concordia::render", error = %e.message, "play viewport redraw failed");
@@ -162,6 +166,7 @@ impl EngineModule for RenderModule {
             next_frame: Arc::default(),
             camera: SharedCamera::default(),
             viewport: None,
+            viewport_scale: 1.0,
             source: Source::Editor,
             overlays: crate::Overlays::default(),
             anchor: GizmoAnchor::default(),
@@ -211,6 +216,13 @@ pub struct CaptureScreenshotParams {
     /// Debug layers to draw on top, e.g. ["navmesh"]; an unknown name's error lists the layers.
     #[serde(default)]
     pub debug: Option<Vec<String>>,
+    /// Draw the in-game UI (default true).
+    #[serde(default)]
+    pub ui: Option<bool>,
+    /// The UI's pixels per logical pixel (0.25..=8; default 1).
+    #[serde(default)]
+    #[reflect(range(min = 0.25, max = 8.0))]
+    pub ui_scale: Option<f32>,
 }
 
 fn default_width() -> u32 {
@@ -259,6 +271,32 @@ fn layer_geometry(
         .filter(|n| seen.insert(n.as_str()))
         .filter_map(|n| engine.debug_geometry(n, world))
         .collect()
+}
+
+/// A capture's in-game UI: none when `ui` is false, else every module's at `ui_scale`.
+fn capture_ui(
+    engine: &mut Engine,
+    p: &CaptureScreenshotParams,
+) -> Result<concordia_api::UiDrawList, ApiError> {
+    if p.ui == Some(false) {
+        return Ok(concordia_api::UiDrawList::default());
+    }
+    let scale = p.ui_scale.unwrap_or(1.0);
+    if !(scale.is_finite() && (0.25..=8.0).contains(&scale)) {
+        return Err(ApiError::new(
+            ApiErrorKind::InvalidParams,
+            format!("ui_scale {scale} must be in [0.25, 8]"),
+        )
+        .at("/ui_scale"));
+    }
+    let layers = capture_layers(engine, p);
+    let frame = concordia_api::UiFrame {
+        width: p.width,
+        height: p.height,
+        scale,
+        bounds: layers.iter().any(|l| l == concordia_api::UI_BOUNDS_LAYER),
+    };
+    Ok(engine.ui_draw(p.world.unwrap_or_default(), &frame))
 }
 
 /// A capture's layers: its own `debug`, plus the viewport's when it draws the editor overlays.
@@ -312,6 +350,7 @@ impl Method for CaptureScreenshot {
             &capture_layers(engine, &p),
             p.world.unwrap_or_default(),
         );
+        let ui = capture_ui(engine, &p)?;
         let world = engine.world(p.world.unwrap_or_default())?;
         let camera = p.camera.as_ref().map(|c| c.resolve(world)).transpose()?;
         let sim_tick = world.resource::<SimClock>().map_or(0, |c| c.tick.0);
@@ -323,6 +362,7 @@ impl Method for CaptureScreenshot {
             overlays: capture_overlays(engine, &p),
             view_mode: p.view_mode.unwrap_or_default(),
             debug,
+            ui,
         };
         let scene = scene_update(engine, p.world.unwrap_or_default(), None)?;
         let slot = scene.slot;
@@ -720,6 +760,11 @@ pub struct ViewportPresentParams {
     /// When the input behind this view happened (Unix ms), for input-to-photon latency.
     #[serde(default)]
     pub input_time_ms: Option<f64>,
+    /// Physical pixels per logical pixel (the window's scale factor, 0.25..=8; default 1), so
+    /// the in-game UI draws at the display's density.
+    #[serde(default)]
+    #[reflect(range(min = 0.25, max = 8.0))]
+    pub scale: Option<f32>,
 }
 
 /// `viewport.present` result.
@@ -757,6 +802,7 @@ impl Method for ViewportPresent {
             seq: p.seq,
             input_time_ms: p.input_time_ms,
             tick: None,
+            scale: present_scale(p.scale)?,
         };
         queue_present(engine, look, target)?;
         Ok(ViewportPresentResult { presented: true })
@@ -772,6 +818,8 @@ pub(crate) struct PresentTarget {
     pub(crate) input_time_ms: Option<f64>,
     /// Set for redraws after a simulation tick of this length.
     pub(crate) tick: Option<std::time::Duration>,
+    /// Physical pixels per logical pixel (the window's scale factor), for the UI.
+    pub(crate) scale: f32,
 }
 
 /// Redraws the attached native viewport (if any) at its last size, tagged with an input.
@@ -794,8 +842,22 @@ pub(crate) fn redraw_viewport(
         seq,
         input_time_ms,
         tick: None,
+        scale: state.viewport_scale,
     };
     queue_present(engine, look, target)
+}
+
+/// A present's UI scale: 1 unless given, refused outside 0.25..=8.
+fn present_scale(scale: Option<f32>) -> Result<f32, ApiError> {
+    let scale = scale.unwrap_or(1.0);
+    match scale.is_finite() && (0.25..=8.0).contains(&scale) {
+        true => Ok(scale),
+        false => Err(ApiError::new(
+            ApiErrorKind::InvalidParams,
+            format!("scale {scale} must be in [0.25, 8]"),
+        )
+        .at("/scale")),
+    }
 }
 
 /// The viewport's debug layers (`viewport.overlays`).
@@ -819,6 +881,14 @@ pub(crate) fn queue_present(
         Look::View(view) => (None, Some(view), Source::Editor),
         Look::Camera(id) => (id, None, Source::Scene(id)),
     };
+    let layers = viewport_layers(engine);
+    let ui_frame = concordia_api::UiFrame {
+        width: t.width,
+        height: t.height,
+        scale: t.scale,
+        bounds: layers.iter().any(|l| l == concordia_api::UI_BOUNDS_LAYER),
+    };
+    let ui = engine.ui_draw(t.world.unwrap_or_default(), &ui_frame);
     let request = RenderRequest {
         camera,
         view,
@@ -829,15 +899,13 @@ pub(crate) fn queue_present(
             .state::<RenderState>()
             .map(|s| s.overlays.view_mode)
             .unwrap_or_default(),
-        debug: layer_geometry(
-            engine,
-            &viewport_layers(engine),
-            t.world.unwrap_or_default(),
-        ),
+        debug: layer_geometry(engine, &layers, t.world.unwrap_or_default()),
+        ui,
     };
     let (log, id) = queue_record(engine, &t);
     if let Some(state) = engine.state_mut::<RenderState>() {
         state.viewport = Some((t.width, t.height, t.world));
+        state.viewport_scale = t.scale;
         state.source = source;
     }
     let frame = ViewportFrame {
@@ -1003,6 +1071,7 @@ pub fn navigate(engine: &mut Engine, p: &ViewportNavigateParams) -> Result<crate
             seq: p.seq,
             input_time_ms: p.input_time_ms,
             tick: None,
+            scale: state.viewport_scale,
         };
         queue_present(engine, Look::View(view.clone()), target)?;
     }

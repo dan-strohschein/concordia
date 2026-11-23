@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Which way a separator runs.",
+  "oneOf": [
+    {
+      "const": "Horizontal",
+      "description": "Left to right."
+    },
+    {
+      "const": "Vertical",
+      "description": "Top to bottom."
+    }
+  ],
+  "title": "Orientation",
+  "x-concordia-type": "Orientation"
+}

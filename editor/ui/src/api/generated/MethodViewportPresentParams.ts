@@ -58,6 +58,11 @@ export interface MethodViewportPresentParams {
    */
   input_time_ms?: null | number;
   /**
+   * Physical pixels per logical pixel (the window's scale factor, 0.25..=8; default 1), so
+   * the in-game UI draws at the display's density.
+   */
+  scale?: null | number;
+  /**
    * Caller's tag for this view, echoed in `viewport.stats`.
    */
   seq?: null | number;

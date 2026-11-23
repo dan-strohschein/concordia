@@ -1,0 +1,118 @@
+{
+  "$defs": {
+    "Anchored": {
+      "additionalProperties": false,
+      "default": {
+        "anchors": {
+          "bottom": 0.0,
+          "left": 0.0,
+          "right": 0.0,
+          "top": 0.0
+        },
+        "grow_h": "End",
+        "grow_v": "End",
+        "offsets": {
+          "bottom": 0.0,
+          "left": 0.0,
+          "right": 0.0,
+          "top": 0.0
+        }
+      },
+      "description": "Godot-style anchors: each edge sits at `anchor × parent size + offset`.",
+      "properties": {
+        "anchors": {
+          "$ref": "#/$defs/Edges",
+          "description": "Anchor fractions of the parent (0..1)."
+        },
+        "grow_h": {
+          "$ref": "#/$defs/Grow",
+          "description": "Which side moves when the rect is narrower than the minimum width."
+        },
+        "grow_v": {
+          "$ref": "#/$defs/Grow",
+          "description": "Which side moves when the rect is shorter than the minimum height."
+        },
+        "offsets": {
+          "$ref": "#/$defs/Edges",
+          "description": "Pixel offsets from the anchors."
+        }
+      },
+      "title": "Anchored",
+      "type": "object",
+      "x-concordia-type": "Anchored"
+    },
+    "Edges": {
+      "additionalProperties": false,
+      "default": {
+        "bottom": 0.0,
+        "left": 0.0,
+        "right": 0.0,
+        "top": 0.0
+      },
+      "description": "A value per side.",
+      "properties": {
+        "bottom": {
+          "description": "Bottom.",
+          "type": "number"
+        },
+        "left": {
+          "description": "Left.",
+          "type": "number"
+        },
+        "right": {
+          "description": "Right.",
+          "type": "number"
+        },
+        "top": {
+          "description": "Top.",
+          "type": "number"
+        }
+      },
+      "title": "Edges",
+      "type": "object",
+      "x-concordia-type": "Edges"
+    },
+    "Grow": {
+      "description": "Which way a too-small anchored rect grows.",
+      "oneOf": [
+        {
+          "const": "Begin",
+          "description": "Toward the left or top."
+        },
+        {
+          "const": "End",
+          "description": "Toward the right or bottom."
+        },
+        {
+          "const": "Both",
+          "description": "Both ways, about the center."
+        }
+      ],
+      "title": "Grow",
+      "x-concordia-type": "Grow"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Where a node goes: in its parent's flow, or pinned by anchors.",
+  "oneOf": [
+    {
+      "const": "InFlow",
+      "description": "Laid out by the parent's layout."
+    },
+    {
+      "additionalProperties": false,
+      "description": "Pinned inside the parent by anchors and offsets.",
+      "properties": {
+        "Anchored": {
+          "$ref": "#/$defs/Anchored"
+        }
+      },
+      "required": [
+        "Anchored"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "Position",
+  "x-concordia-type": "Position"
+}

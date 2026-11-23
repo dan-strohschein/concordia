@@ -1,0 +1,436 @@
+{
+  "$defs": {
+    "Background": {
+      "description": "A box's fill.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "One linear RGBA color.",
+          "properties": {
+            "Solid": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 4,
+              "minItems": 4,
+              "type": "array"
+            }
+          },
+          "required": [
+            "Solid"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A linear gradient across the box at `angle_deg` (0: bottom to top, 90: left to right,\nas CSS `linear-gradient`).",
+          "properties": {
+            "Linear": {
+              "additionalProperties": false,
+              "properties": {
+                "angle_deg": {
+                  "description": "Direction in degrees.",
+                  "type": "number"
+                },
+                "stops": {
+                  "description": "2–8 ascending stops.",
+                  "items": {
+                    "$ref": "#/$defs/GradientStop"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "angle_deg",
+                "stops"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Linear"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A radial gradient: offset 1 at `radius` (fractions of the box) from `center`.",
+          "properties": {
+            "Radial": {
+              "additionalProperties": false,
+              "properties": {
+                "center": {
+                  "description": "Center as fractions of the box.",
+                  "items": {
+                    "type": "number"
+                  },
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "type": "array"
+                },
+                "radius": {
+                  "description": "Radii as fractions of the box.",
+                  "items": {
+                    "type": "number"
+                  },
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "type": "array"
+                },
+                "stops": {
+                  "description": "2–8 ascending stops.",
+                  "items": {
+                    "$ref": "#/$defs/GradientStop"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "center",
+                "radius",
+                "stops"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Radial"
+          ],
+          "type": "object"
+        }
+      ],
+      "title": "Background",
+      "x-concordia-type": "Background"
+    },
+    "Border": {
+      "additionalProperties": false,
+      "description": "A border drawn inside the box.",
+      "properties": {
+        "color": {
+          "description": "Linear RGBA.",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 4,
+          "minItems": 4,
+          "type": "array",
+          "x-concordia-widget": "color"
+        },
+        "width": {
+          "description": "Width in logical pixels.",
+          "maximum": 1024.0,
+          "minimum": 0.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "width",
+        "color"
+      ],
+      "title": "Border",
+      "type": "object",
+      "x-concordia-type": "Border"
+    },
+    "Cursor": {
+      "description": "The pointer's look over a widget (a presentation hint).",
+      "oneOf": [
+        {
+          "const": "Arrow",
+          "description": "The arrow."
+        },
+        {
+          "const": "Pointer",
+          "description": "A pointing hand."
+        },
+        {
+          "const": "Text",
+          "description": "A text beam."
+        }
+      ],
+      "title": "Cursor",
+      "x-concordia-type": "Cursor"
+    },
+    "GradientStop": {
+      "additionalProperties": false,
+      "description": "A gradient stop.",
+      "properties": {
+        "color": {
+          "description": "Linear RGBA.",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 4,
+          "minItems": 4,
+          "type": "array",
+          "x-concordia-widget": "color"
+        },
+        "offset": {
+          "description": "Position, 0..1.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "offset",
+        "color"
+      ],
+      "title": "GradientStop",
+      "type": "object",
+      "x-concordia-type": "GradientStop"
+    },
+    "ThemeClass": {
+      "additionalProperties": false,
+      "default": {
+        "base": {
+          "background": null,
+          "border": null,
+          "color": null,
+          "cursor": null,
+          "font": null,
+          "font_size": null,
+          "italic": null,
+          "opacity": null,
+          "radius": null,
+          "weight": null
+        },
+        "disabled": {
+          "background": null,
+          "border": null,
+          "color": null,
+          "cursor": null,
+          "font": null,
+          "font_size": null,
+          "italic": null,
+          "opacity": null,
+          "radius": null,
+          "weight": null
+        },
+        "focused": {
+          "background": null,
+          "border": null,
+          "color": null,
+          "cursor": null,
+          "font": null,
+          "font_size": null,
+          "italic": null,
+          "opacity": null,
+          "radius": null,
+          "weight": null
+        },
+        "hover": {
+          "background": null,
+          "border": null,
+          "color": null,
+          "cursor": null,
+          "font": null,
+          "font_size": null,
+          "italic": null,
+          "opacity": null,
+          "radius": null,
+          "weight": null
+        },
+        "pressed": {
+          "background": null,
+          "border": null,
+          "color": null,
+          "cursor": null,
+          "font": null,
+          "font_size": null,
+          "italic": null,
+          "opacity": null,
+          "radius": null,
+          "weight": null
+        }
+      },
+      "description": "One class: a base style and what each state changes.",
+      "properties": {
+        "base": {
+          "$ref": "#/$defs/UiStyle",
+          "description": "Always applies."
+        },
+        "disabled": {
+          "$ref": "#/$defs/UiStyle",
+          "description": "Disabled."
+        },
+        "focused": {
+          "$ref": "#/$defs/UiStyle",
+          "description": "Focused."
+        },
+        "hover": {
+          "$ref": "#/$defs/UiStyle",
+          "description": "Under the pointer."
+        },
+        "pressed": {
+          "$ref": "#/$defs/UiStyle",
+          "description": "Held down."
+        }
+      },
+      "title": "ThemeClass",
+      "type": "object",
+      "x-concordia-type": "ThemeClass"
+    },
+    "UiStyle": {
+      "additionalProperties": false,
+      "default": {
+        "background": null,
+        "border": null,
+        "color": null,
+        "cursor": null,
+        "font": null,
+        "font_size": null,
+        "italic": null,
+        "opacity": null,
+        "radius": null,
+        "weight": null
+      },
+      "description": "How a widget looks; unset fields come from its theme, then the defaults.",
+      "properties": {
+        "background": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Background"
+            }
+          ],
+          "description": "The box's fill."
+        },
+        "border": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Border"
+            }
+          ],
+          "description": "The border."
+        },
+        "color": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 4,
+              "minItems": 4,
+              "type": "array"
+            }
+          ],
+          "description": "The text color (linear RGBA)."
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/Cursor"
+            }
+          ],
+          "description": "The pointer's look."
+        },
+        "font": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "description": "Asset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+              "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+              "type": "string"
+            }
+          ],
+          "description": "The text font family (a font asset)."
+        },
+        "font_size": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "description": "The text size in logical pixels."
+        },
+        "italic": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "boolean"
+            }
+          ],
+          "description": "Italic text."
+        },
+        "opacity": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "description": "Multiplies this widget's and its children's alpha (0..1)."
+        },
+        "radius": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 4,
+              "minItems": 4,
+              "type": "array"
+            }
+          ],
+          "description": "Corner radii `[top left, top right, bottom right, bottom left]`."
+        },
+        "weight": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "description": "The text weight (100..900; 400 regular, 700 bold)."
+        }
+      },
+      "title": "UiStyle",
+      "type": "object",
+      "x-concordia-category": "UI",
+      "x-concordia-type": "UiStyle"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "classes": {}
+  },
+  "description": "A `.theme.ron` file.",
+  "properties": {
+    "classes": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ThemeClass"
+      },
+      "description": "Class name → class.",
+      "type": "object"
+    }
+  },
+  "title": "Theme",
+  "type": "object",
+  "x-concordia-type": "Theme"
+}

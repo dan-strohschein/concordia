@@ -1,0 +1,134 @@
+{
+  "$defs": {
+    "GradientStop": {
+      "additionalProperties": false,
+      "description": "A gradient stop.",
+      "properties": {
+        "color": {
+          "description": "Linear RGBA.",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 4,
+          "minItems": 4,
+          "type": "array",
+          "x-concordia-widget": "color"
+        },
+        "offset": {
+          "description": "Position, 0..1.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "offset",
+        "color"
+      ],
+      "title": "GradientStop",
+      "type": "object",
+      "x-concordia-type": "GradientStop"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A box's fill.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "One linear RGBA color.",
+      "properties": {
+        "Solid": {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 4,
+          "minItems": 4,
+          "type": "array"
+        }
+      },
+      "required": [
+        "Solid"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "A linear gradient across the box at `angle_deg` (0: bottom to top, 90: left to right,\nas CSS `linear-gradient`).",
+      "properties": {
+        "Linear": {
+          "additionalProperties": false,
+          "properties": {
+            "angle_deg": {
+              "description": "Direction in degrees.",
+              "type": "number"
+            },
+            "stops": {
+              "description": "2–8 ascending stops.",
+              "items": {
+                "$ref": "#/$defs/GradientStop"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "angle_deg",
+            "stops"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "Linear"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "A radial gradient: offset 1 at `radius` (fractions of the box) from `center`.",
+      "properties": {
+        "Radial": {
+          "additionalProperties": false,
+          "properties": {
+            "center": {
+              "description": "Center as fractions of the box.",
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "radius": {
+              "description": "Radii as fractions of the box.",
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "stops": {
+              "description": "2–8 ascending stops.",
+              "items": {
+                "$ref": "#/$defs/GradientStop"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "center",
+            "radius",
+            "stops"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "Radial"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "Background",
+  "x-concordia-type": "Background"
+}

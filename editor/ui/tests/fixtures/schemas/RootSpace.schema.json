@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Where a root draws.",
+  "oneOf": [
+    {
+      "const": "Screen",
+      "description": "Over the screen."
+    },
+    {
+      "additionalProperties": false,
+      "description": "At its entity's position in the world (2.7b.3).",
+      "properties": {
+        "World": {
+          "additionalProperties": false,
+          "properties": {
+            "offset": {
+              "description": "World-space offset from the entity.",
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": "array"
+            },
+            "pixel_size": {
+              "description": "Screen pixels per UI pixel.",
+              "type": "number"
+            }
+          },
+          "required": [
+            "offset",
+            "pixel_size"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "World"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "RootSpace",
+  "x-concordia-type": "RootSpace"
+}

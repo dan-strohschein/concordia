@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Distribution along an axis.",
+  "oneOf": [
+    {
+      "const": "Start",
+      "description": "Packed at the start."
+    },
+    {
+      "const": "End",
+      "description": "Packed at the end."
+    },
+    {
+      "const": "Center",
+      "description": "Centered."
+    },
+    {
+      "const": "SpaceBetween",
+      "description": "Even gaps between, none at the ends."
+    },
+    {
+      "const": "SpaceAround",
+      "description": "Half gaps at the ends."
+    },
+    {
+      "const": "SpaceEvenly",
+      "description": "Equal gaps everywhere."
+    }
+  ],
+  "title": "Justify",
+  "x-concordia-type": "Justify"
+}

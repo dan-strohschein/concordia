@@ -156,7 +156,8 @@ fn player_starts_play_and_presents_the_game_camera() {
     ] {
         player.event(&event, &mut api).unwrap();
     }
-    let present = |w: u32, h: u32| json!({"width": w, "height": h, "world": "play"});
+    // Presents carry the window's scale factor (2 here) so the UI draws at display density.
+    let present = |w: u32, h: u32| json!({"width": w, "height": h, "world": "play", "scale": 2.0});
     assert_eq!(
         calls,
         [

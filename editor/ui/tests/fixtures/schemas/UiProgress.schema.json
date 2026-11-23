@@ -1,0 +1,351 @@
+{
+  "$defs": {
+    "Background": {
+      "description": "A box's fill.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "One linear RGBA color.",
+          "properties": {
+            "Solid": {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 4,
+              "minItems": 4,
+              "type": "array"
+            }
+          },
+          "required": [
+            "Solid"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A linear gradient across the box at `angle_deg` (0: bottom to top, 90: left to right,\nas CSS `linear-gradient`).",
+          "properties": {
+            "Linear": {
+              "additionalProperties": false,
+              "properties": {
+                "angle_deg": {
+                  "description": "Direction in degrees.",
+                  "type": "number"
+                },
+                "stops": {
+                  "description": "2–8 ascending stops.",
+                  "items": {
+                    "$ref": "#/$defs/GradientStop"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "angle_deg",
+                "stops"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Linear"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A radial gradient: offset 1 at `radius` (fractions of the box) from `center`.",
+          "properties": {
+            "Radial": {
+              "additionalProperties": false,
+              "properties": {
+                "center": {
+                  "description": "Center as fractions of the box.",
+                  "items": {
+                    "type": "number"
+                  },
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "type": "array"
+                },
+                "radius": {
+                  "description": "Radii as fractions of the box.",
+                  "items": {
+                    "type": "number"
+                  },
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "type": "array"
+                },
+                "stops": {
+                  "description": "2–8 ascending stops.",
+                  "items": {
+                    "$ref": "#/$defs/GradientStop"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "center",
+                "radius",
+                "stops"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Radial"
+          ],
+          "type": "object"
+        }
+      ],
+      "title": "Background",
+      "x-concordia-type": "Background"
+    },
+    "FillMode": {
+      "description": "How a progress bar fills (Godot's `TextureProgressBar` fill modes).",
+      "oneOf": [
+        {
+          "const": "LeftToRight",
+          "description": "From the left."
+        },
+        {
+          "const": "RightToLeft",
+          "description": "From the right."
+        },
+        {
+          "const": "TopToBottom",
+          "description": "From the top."
+        },
+        {
+          "const": "BottomToTop",
+          "description": "From the bottom."
+        },
+        {
+          "const": "Clockwise",
+          "description": "Around the center, clockwise from `radial.start_deg`."
+        },
+        {
+          "const": "CounterClockwise",
+          "description": "Around the center, counterclockwise."
+        },
+        {
+          "const": "BilinearH",
+          "description": "Outward from the vertical center line."
+        },
+        {
+          "const": "BilinearV",
+          "description": "Outward from the horizontal center line."
+        },
+        {
+          "const": "ClockwiseAndCounter",
+          "description": "Around the center, both ways from the start."
+        }
+      ],
+      "title": "FillMode",
+      "x-concordia-type": "FillMode"
+    },
+    "GradientStop": {
+      "additionalProperties": false,
+      "description": "A gradient stop.",
+      "properties": {
+        "color": {
+          "description": "Linear RGBA.",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 4,
+          "minItems": 4,
+          "type": "array",
+          "x-concordia-widget": "color"
+        },
+        "offset": {
+          "description": "Position, 0..1.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "type": "number"
+        }
+      },
+      "required": [
+        "offset",
+        "color"
+      ],
+      "title": "GradientStop",
+      "type": "object",
+      "x-concordia-type": "GradientStop"
+    },
+    "RadialFill": {
+      "additionalProperties": false,
+      "default": {
+        "center": [
+          0.5,
+          0.5
+        ],
+        "start_deg": 0.0,
+        "sweep_deg": 360.0
+      },
+      "description": "The radial fill's geometry.",
+      "properties": {
+        "center": {
+          "description": "The pivot as fractions of the box.",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        },
+        "start_deg": {
+          "description": "Where the fill starts, in degrees clockwise from up.",
+          "type": "number"
+        },
+        "sweep_deg": {
+          "description": "The full sweep in degrees (0..360].",
+          "type": "number"
+        }
+      },
+      "title": "RadialFill",
+      "type": "object",
+      "x-concordia-type": "RadialFill"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "bar": {
+      "Solid": [
+        0.20000000298023224,
+        0.6000000238418579,
+        0.20000000298023224,
+        1.0
+      ]
+    },
+    "fill": "LeftToRight",
+    "max": 100.0,
+    "min": 0.0,
+    "over": null,
+    "progress": null,
+    "radial": {
+      "center": [
+        0.5,
+        0.5
+      ],
+      "start_deg": 0.0,
+      "sweep_deg": 360.0
+    },
+    "tint": [
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "track": {
+      "Solid": [
+        0.10000000149011612,
+        0.10000000149011612,
+        0.10000000149011612,
+        1.0
+      ]
+    },
+    "under": null,
+    "value": 0.0
+  },
+  "description": "A bar or dial showing `value` between `min` and `max`, drawn from textures or fills.",
+  "properties": {
+    "bar": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/Background"
+        }
+      ],
+      "description": "The filled part (fill mode)."
+    },
+    "fill": {
+      "$ref": "#/$defs/FillMode",
+      "description": "How it fills."
+    },
+    "max": {
+      "description": "The full end.",
+      "type": "number"
+    },
+    "min": {
+      "description": "The empty end.",
+      "type": "number"
+    },
+    "over": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Asset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+          "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+          "type": "string"
+        }
+      ],
+      "description": "Drawn over the fill (texture mode)."
+    },
+    "progress": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Asset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+          "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+          "type": "string"
+        }
+      ],
+      "description": "Revealed by the fill (texture mode)."
+    },
+    "radial": {
+      "$ref": "#/$defs/RadialFill",
+      "description": "The radial modes' geometry."
+    },
+    "tint": {
+      "description": "Multiplies the progress texture or the bar.",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 4,
+      "minItems": 4,
+      "type": "array",
+      "x-concordia-widget": "color"
+    },
+    "track": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/Background"
+        }
+      ],
+      "description": "The empty track (fill mode, when there is no `progress` texture)."
+    },
+    "under": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Asset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+          "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+          "type": "string"
+        }
+      ],
+      "description": "Drawn under the fill (texture mode)."
+    },
+    "value": {
+      "description": "The value.",
+      "type": "number"
+    }
+  },
+  "title": "UiProgress",
+  "type": "object",
+  "x-concordia-category": "UI",
+  "x-concordia-type": "UiProgress"
+}

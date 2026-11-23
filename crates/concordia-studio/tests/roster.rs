@@ -895,6 +895,82 @@ fn sound_designer_wires_and_listens_with_its_tools_and_skill() {
     );
 }
 
+const UI_UX_TOOLS: [&str; 23] = [
+    "asset_import",
+    "asset_list",
+    "capture_screenshot",
+    "component_get",
+    "component_patch",
+    "component_set",
+    "entity_get",
+    "entity_spawn",
+    "query_run",
+    "scene_open",
+    "scene_save",
+    "schema_get",
+    "sim_step",
+    "sim_stop",
+    "studio_answer",
+    "studio_ask",
+    "studio_questions",
+    "task_claim",
+    "task_comment",
+    "task_get",
+    "task_update",
+    "txn_begin",
+    "txn_commit",
+];
+
+#[test]
+fn ui_ux_builds_screens_with_its_tools_and_skill() {
+    let (_dir, roster) = roster();
+    let role = roster
+        .roles()
+        .iter()
+        .find(|r| r.role.as_str() == "ui-ux")
+        .expect("the UI/UX designer is enabled (2.7b.1, D8)");
+    let mut tools: Vec<&str> = role.mcp_tools.iter().map(String::as_str).collect();
+    tools.sort_unstable();
+    let mut want: Vec<&str> = UI_UX_TOOLS.to_vec();
+    want.push("ui_inspect");
+    want.sort_unstable();
+    assert_eq!(tools, want);
+    assert_eq!(
+        role.write,
+        [
+            "ui/**",
+            "assets/ui/**",
+            "assets/fonts/**",
+            "scenes/**/*.scene.ron"
+        ]
+    );
+    assert_eq!(
+        role.skills,
+        [
+            "concordia-task-workflow",
+            "concordia-ui",
+            "concordia-team-comms"
+        ]
+    );
+    for needle in [
+        "mcp__concordia__ui_inspect",
+        "mcp__concordia__capture_screenshot",
+        "UiRoot",
+        "UiNode",
+        "UiText",
+        ".theme.ron",
+        "Anchored",
+        "image generator",
+    ] {
+        assert!(role.body.contains(needle), "the prompt explains {needle}");
+    }
+    assert!(
+        !role.body.contains("Disabled in the default team"),
+        "{}",
+        role.body
+    );
+}
+
 #[test]
 fn composer_brings_finished_music_with_its_tools_and_skill() {
     let (_dir, roster) = roster();

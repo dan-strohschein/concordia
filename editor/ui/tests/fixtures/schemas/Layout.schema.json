@@ -1,0 +1,240 @@
+{
+  "$defs": {
+    "Align": {
+      "description": "Alignment across an axis.",
+      "oneOf": [
+        {
+          "const": "Stretch",
+          "description": "Filling the line."
+        },
+        {
+          "const": "Start",
+          "description": "At the start."
+        },
+        {
+          "const": "End",
+          "description": "At the end."
+        },
+        {
+          "const": "Center",
+          "description": "Centered."
+        }
+      ],
+      "title": "Align",
+      "x-concordia-type": "Align"
+    },
+    "Direction": {
+      "description": "A flex main axis.",
+      "oneOf": [
+        {
+          "const": "Row",
+          "description": "Left to right."
+        },
+        {
+          "const": "Column",
+          "description": "Top to bottom."
+        },
+        {
+          "const": "RowReverse",
+          "description": "Right to left."
+        },
+        {
+          "const": "ColumnReverse",
+          "description": "Bottom to top."
+        }
+      ],
+      "title": "Direction",
+      "x-concordia-type": "Direction"
+    },
+    "Flex": {
+      "additionalProperties": false,
+      "default": {
+        "align_content": "Start",
+        "align_items": "Stretch",
+        "direction": "Row",
+        "justify": "Start",
+        "wrap": false
+      },
+      "description": "Flexbox settings.",
+      "properties": {
+        "align_content": {
+          "$ref": "#/$defs/Justify",
+          "description": "Placement of wrapped lines."
+        },
+        "align_items": {
+          "$ref": "#/$defs/Align",
+          "description": "Placement across it."
+        },
+        "direction": {
+          "$ref": "#/$defs/Direction",
+          "description": "The main axis."
+        },
+        "justify": {
+          "$ref": "#/$defs/Justify",
+          "description": "Placement along the main axis."
+        },
+        "wrap": {
+          "description": "Wrap onto more lines.",
+          "type": "boolean"
+        }
+      },
+      "title": "Flex",
+      "type": "object",
+      "x-concordia-type": "Flex"
+    },
+    "Grid": {
+      "additionalProperties": false,
+      "default": {
+        "align_items": "Stretch",
+        "columns": [],
+        "justify_items": "Stretch",
+        "rows": []
+      },
+      "description": "Grid settings.",
+      "properties": {
+        "align_items": {
+          "$ref": "#/$defs/Align",
+          "description": "Cell alignment across rows."
+        },
+        "columns": {
+          "description": "Column tracks (children fill row by row).",
+          "items": {
+            "$ref": "#/$defs/Track"
+          },
+          "type": "array"
+        },
+        "justify_items": {
+          "$ref": "#/$defs/Align",
+          "description": "Cell alignment across columns."
+        },
+        "rows": {
+          "description": "Row tracks (more rows are added at `Auto`).",
+          "items": {
+            "$ref": "#/$defs/Track"
+          },
+          "type": "array"
+        }
+      },
+      "title": "Grid",
+      "type": "object",
+      "x-concordia-type": "Grid"
+    },
+    "Justify": {
+      "description": "Distribution along an axis.",
+      "oneOf": [
+        {
+          "const": "Start",
+          "description": "Packed at the start."
+        },
+        {
+          "const": "End",
+          "description": "Packed at the end."
+        },
+        {
+          "const": "Center",
+          "description": "Centered."
+        },
+        {
+          "const": "SpaceBetween",
+          "description": "Even gaps between, none at the ends."
+        },
+        {
+          "const": "SpaceAround",
+          "description": "Half gaps at the ends."
+        },
+        {
+          "const": "SpaceEvenly",
+          "description": "Equal gaps everywhere."
+        }
+      ],
+      "title": "Justify",
+      "x-concordia-type": "Justify"
+    },
+    "Track": {
+      "description": "A grid track's size.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Logical pixels.",
+          "properties": {
+            "Px": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "Px"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A share of the free space.",
+          "properties": {
+            "Fr": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "Fr"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Percent of the grid's content box.",
+          "properties": {
+            "Percent": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "Percent"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "Auto",
+          "description": "Fits its content."
+        }
+      ],
+      "title": "Track",
+      "x-concordia-type": "Track"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "How a node lays out its in-flow children.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "CSS Flexbox.",
+      "properties": {
+        "Flex": {
+          "$ref": "#/$defs/Flex"
+        }
+      },
+      "required": [
+        "Flex"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "CSS Grid with explicit tracks.",
+      "properties": {
+        "Grid": {
+          "$ref": "#/$defs/Grid"
+        }
+      },
+      "required": [
+        "Grid"
+      ],
+      "type": "object"
+    },
+    {
+      "const": "Stack",
+      "description": "Children overlap, each filling the content box (like Godot's `PanelContainer`)."
+    }
+  ],
+  "title": "Layout",
+  "x-concordia-type": "Layout"
+}

@@ -14,7 +14,7 @@ async fn studio(dir: &tempfile::TempDir, team_edit: impl Fn(String) -> String) -
     std::fs::write(&team, team_edit(std::fs::read_to_string(&team).unwrap())).unwrap();
     std::fs::write(
         dir.path().join("concordia.toml"),
-        "[input]\nmap = \"input/default.input.ron\"\n\n[physics]\n\n[nav]\n\n[assets]\n\n[anim]\n\n[audio]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n",
+        "[input]\nmap = \"input/default.input.ron\"\n\n[physics]\n\n[nav]\n\n[assets]\n\n[anim]\n\n[audio]\n\n[ui]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n",
     )
     .unwrap();
     // QA injects input, so the project has an input map (2.5b.2a).
@@ -475,4 +475,36 @@ async fn server_holds_the_audio_roles_to_their_paths() {
     // Neither role may reach outside its scope.
     refused(&call(&client, "nav_build", designer(json!({}))).await);
     refused(&call(&client, "audio_inspect", composer(json!({}))).await);
+}
+
+#[tokio::test]
+async fn server_holds_the_ui_designer_to_its_paths() {
+    let dir = tempfile::tempdir().unwrap();
+    let client = studio(&dir, |t| t).await;
+    let font = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../concordia-ui/fonts/NotoSansMono-Regular.ttf");
+    for at in ["assets/fonts/mono.ttf", "assets/sfx/mono.ttf"] {
+        let to = dir.path().join(at);
+        std::fs::create_dir_all(to.parent().unwrap()).unwrap();
+        std::fs::copy(&font, to).unwrap();
+    }
+    let designer = |args: Value| with(args, "ui-ux", "s/13");
+    let ok = |r: &rmcp::model::CallToolResult| assert_ne!(r.is_error, Some(true), "{}", text(r));
+    let refused =
+        |r: &rmcp::model::CallToolResult| assert_eq!(r.is_error, Some(true), "{}", text(r));
+    ok(&call(
+        &client,
+        "asset_import",
+        designer(json!({"path": "assets/fonts/mono.ttf"})),
+    )
+    .await);
+    refused(
+        &call(
+            &client,
+            "asset_import",
+            designer(json!({"path": "assets/sfx/mono.ttf"})),
+        )
+        .await,
+    );
+    ok(&call(&client, "ui_inspect", designer(json!({}))).await);
 }

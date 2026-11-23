@@ -146,6 +146,7 @@ impl Project {
             let assets = model_importers()
                 .into_iter()
                 .chain(concordia_audio::importers())
+                .chain(concordia_ui::importers())
                 .fold(AssetsModule::new(&self.root), AssetsModule::with_importer);
             modules.push(Arc::new(assets));
         }
@@ -154,6 +155,9 @@ impl Project {
         }
         if self.manifest.audio.is_some() {
             modules.push(Arc::new(self.audio_module(playback)?));
+        }
+        if self.manifest.ui.is_some() {
+            modules.push(Arc::new(concordia_ui::UiModule::new()));
         }
         if self.manifest.render.is_some() {
             modules.push(Arc::new(

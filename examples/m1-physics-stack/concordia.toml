@@ -26,4 +26,8 @@ gravity = [0.0, -9.81, 0.0]
 
 [assets]
 
+# In-game UI: its components and ui.inspect (no UI in this example; listed so the editor's
+# generated inspectors cover the UI components).
+[ui]
+
 [render]

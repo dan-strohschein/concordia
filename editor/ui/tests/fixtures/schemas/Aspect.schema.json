@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "How a scaled canvas keeps its shape.",
+  "oneOf": [
+    {
+      "const": "Ignore",
+      "description": "Stretched to fill, non-uniformly."
+    },
+    {
+      "const": "Keep",
+      "description": "Uniform, with bars."
+    },
+    {
+      "const": "KeepWidth",
+      "description": "Uniform; taller viewports show more height."
+    },
+    {
+      "const": "KeepHeight",
+      "description": "Uniform; wider viewports show more width."
+    },
+    {
+      "const": "Expand",
+      "description": "Uniform; every viewport shows more of the canvas, no bars."
+    }
+  ],
+  "title": "Aspect",
+  "x-concordia-type": "Aspect"
+}

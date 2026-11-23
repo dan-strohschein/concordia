@@ -35,6 +35,7 @@ mod patch;
 mod rpc;
 mod templates;
 pub mod transport;
+mod ui_draw;
 
 pub use concordia_terra_sim::Template;
 pub use debug_draw::{DebugGeometry, DebugLine, DebugTriangle};
@@ -50,6 +51,10 @@ pub use method::{
 pub use methods::{EntityRef, WorldSel};
 pub use module::{EngineModule, Fingerprint, PlaySetup};
 pub use patch::merge_patch;
+pub use ui_draw::{
+    UI_BOUNDS_LAYER, UiDrawList, UiFrame, UiMask, UiPaint, UiQuad, UiStop, UiTexture,
+    UiTextureFormat,
+};
 
 /// Engine API protocol version reported by `session.open`.
 pub const PROTOCOL_VERSION: u32 = 1;

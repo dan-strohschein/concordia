@@ -66,6 +66,16 @@ pub trait EngineModule: Send + Sync + fmt::Debug {
         None
     }
 
+    /// The in-game UI `world` draws into `frame` (ADR-0060), or `None` when it draws none.
+    fn ui_draw(
+        &self,
+        _engine: &mut crate::Engine,
+        _world: crate::WorldSel,
+        _frame: &crate::UiFrame,
+    ) -> Option<crate::UiDrawList> {
+        None
+    }
+
     /// [`EngineModule::start_play`] with the engine in view (its registry, templates, seed and
     /// module states, e.g. to load assets); the engine calls this, and by default it calls `start_play`.
     fn start_play_in(

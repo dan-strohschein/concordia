@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "color": null,
+    "font": null,
+    "italic": null,
+    "size": null,
+    "text": "",
+    "underline": false,
+    "weight": null
+  },
+  "description": "A run of text with its own look; unset fields come from the widget's style.",
+  "properties": {
+    "color": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 4,
+          "minItems": 4,
+          "type": "array"
+        }
+      ],
+      "description": "Linear RGBA."
+    },
+    "font": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Asset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+          "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+          "type": "string"
+        }
+      ],
+      "description": "The font family."
+    },
+    "italic": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        }
+      ],
+      "description": "Italic."
+    },
+    "size": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "The size in logical pixels."
+    },
+    "text": {
+      "description": "The text.",
+      "type": "string"
+    },
+    "underline": {
+      "description": "Underlined.",
+      "type": "boolean"
+    },
+    "weight": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "The weight (100..900)."
+    }
+  },
+  "title": "TextRun",
+  "type": "object",
+  "x-concordia-type": "TextRun"
+}
