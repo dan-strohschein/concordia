@@ -25,6 +25,7 @@ concordia-api = { path = "crates/concordia-api" }
 concordia-app = { path = "crates/concordia-app" }
 concordia-anim = { path = "crates/concordia-anim" }
 concordia-assets = { path = "crates/concordia-assets" }
+concordia-audio = { path = "crates/concordia-audio" }
 concordia-mcp = { path = "crates/concordia-mcp" }
 concordia-physics = { path = "crates/concordia-physics" }
 concordia-platform = { path = "crates/concordia-platform" }
@@ -76,6 +77,8 @@ trybuild = "1"
 libm = "0.2.16"
 # Audio (M2 2.7a, ADR-0066): permissive decoders only (no MPL symphonia); rtrb for the lock-free queues.
 hound = "3.5.1"
+# Audio output (2.7a.2): no default features (no JACK); macOS uses coreaudio-rs over objc2, no bindgen.
+cpal = { version = "0.18.2", default-features = false }
 lewton = "0.10.2"
 rtrb = "0.4.1"
 # Test-only allocation counter for the mix callback (author decision A2): no unsafe in our code.

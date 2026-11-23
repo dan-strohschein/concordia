@@ -80,3 +80,50 @@ fn entities_without_transform_have_none() {
     let bare = world.spawn(&mut ids).unwrap();
     assert!(world_transforms(&world).get(bare).is_none());
 }
+
+/// The same composition from lookups (what a processor has: its own Transform and Parent
+/// columns, not the world): the chain above gives (10, 0, −2) and (10, 2, −2); a missing parent
+/// or a cycle stops the walk, as `world_transform` does, and every answer matches it.
+#[test]
+fn world_matrix_with_composes_from_lookups() {
+    use concordia_scene::builtin::{world_matrix_with, world_transform};
+    let (mut world, mut ids) = (World::new(), DeterministicIdGen::new(4));
+    let root = spawn(&mut world, &mut ids, Vec3::new(10.0, 0.0, 0.0), None);
+    world.get_mut::<Transform>(root).unwrap().rotation =
+        Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
+    world.get_mut::<Transform>(root).unwrap().scale = Vec3::splat(2.0);
+    let child = spawn(&mut world, &mut ids, Vec3::new(1.0, 0.0, 0.0), Some(root));
+    let grandchild = spawn(&mut world, &mut ids, Vec3::new(0.0, 1.0, 0.0), Some(child));
+    let ghost: EntityId = "0193a1c2-7e40-7000-8000-00000000dead".parse().unwrap();
+    let orphan = spawn(&mut world, &mut ids, Vec3::X, Some(ghost));
+    let a = spawn(&mut world, &mut ids, Vec3::Y, None);
+    let b = spawn(&mut world, &mut ids, Vec3::Z, Some(a));
+    world.insert(a, Parent(b)).unwrap();
+    let bare = world.spawn(&mut ids).unwrap();
+    let transform = |id| world.get::<Transform>(id).copied();
+    let parent = |id| world.get::<Parent>(id).map(|p| p.0);
+    let at = |id| {
+        world_matrix_with(id, &transform, &parent)
+            .unwrap()
+            .transform_point3(Vec3::ZERO)
+    };
+    assert!(
+        at(child).abs_diff_eq(Vec3::new(10.0, 0.0, -2.0), 1e-5),
+        "{}",
+        at(child)
+    );
+    assert!(
+        at(grandchild).abs_diff_eq(Vec3::new(10.0, 2.0, -2.0), 1e-5),
+        "{}",
+        at(grandchild)
+    );
+    assert!(at(orphan).abs_diff_eq(Vec3::X, 1e-6));
+    for id in [root, child, grandchild, orphan, a, b] {
+        assert_eq!(
+            world_matrix_with(id, &transform, &parent),
+            world_transform(&world, id),
+            "{id}"
+        );
+    }
+    assert_eq!(world_matrix_with(bare, &transform, &parent), None);
+}

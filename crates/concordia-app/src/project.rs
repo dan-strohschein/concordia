@@ -6,6 +6,7 @@ use std::sync::Arc;
 use concordia_anim::AnimModule;
 use concordia_api::EngineModule;
 use concordia_assets::{AssetsModule, Importer};
+use concordia_audio::{AudioModule, AudioSettings, Backend, CpalDevice, read_buses};
 use concordia_core::math::Vec3;
 use concordia_import_fbx::FbxImporter;
 use concordia_import_gltf::GltfImporter;
@@ -19,7 +20,9 @@ use concordia_studio::StudioModule;
 use concordia_terra_crowd::CrowdModule;
 
 use crate::error::AppError;
-use crate::manifest::{Manifest, RenderSection, ScriptModuleKind, ScriptsSection};
+use crate::manifest::{
+    AudioBackendChoice, Manifest, RenderSection, ScriptModuleKind, ScriptsSection,
+};
 
 /// A project root and its parsed manifest.
 #[derive(Debug, Clone)]
@@ -33,6 +36,16 @@ pub struct Project {
 /// The model importers every project registers (glTF, FBX), beside the built-in image and material ones.
 pub fn model_importers() -> Vec<Arc<dyn Importer>> {
     vec![Arc::new(GltfImporter), Arc::new(FbxImporter)]
+}
+
+/// Where the engine runs: decides the audio output for `[audio] backend = "auto"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Playback {
+    /// Headless (MCP, CLI, tests, CI, the editor): audio mixes offline.
+    #[default]
+    Headless,
+    /// `concordia run`: audio plays on the default device.
+    Windowed,
 }
 
 impl Project {
@@ -64,6 +77,14 @@ impl Project {
 
     /// Engine settings for this project: its modules, `[sim]` rate and seed, `[journal]` sync.
     pub fn engine_config(&self) -> Result<concordia_api::EngineConfig, AppError> {
+        self.engine_config_for(Playback::Headless)
+    }
+
+    /// [`Project::engine_config`] for `playback` (`concordia run` passes `Windowed`).
+    pub fn engine_config_for(
+        &self,
+        playback: Playback,
+    ) -> Result<concordia_api::EngineConfig, AppError> {
         let sim = &self.manifest.sim;
         let mut config = concordia_api::EngineConfig::new(&self.root);
         config.sim_rate = concordia_core::time::TickRate::from_hz(sim.rate_hz).map_err(|e| {
@@ -74,7 +95,7 @@ impl Project {
         })?;
         config.sim_seed = sim.seed;
         config.journal.sync = self.manifest.journal.sync;
-        config.modules = self.modules()?;
+        config.modules = self.modules_for(playback)?;
         Ok(config)
     }
 
@@ -102,6 +123,11 @@ impl Project {
 
     /// Engine modules after the core module, in order (only those the manifest configures).
     pub fn modules(&self) -> Result<Vec<Arc<dyn EngineModule>>, AppError> {
+        self.modules_for(Playback::Headless)
+    }
+
+    /// [`Project::modules`] for `playback`.
+    pub fn modules_for(&self, playback: Playback) -> Result<Vec<Arc<dyn EngineModule>>, AppError> {
         let mut modules: Vec<Arc<dyn EngineModule>> = Vec::new();
         if self.manifest.input.map.is_some() {
             modules.push(Arc::new(InputModule::new(self.input_map()?)));
@@ -119,11 +145,15 @@ impl Project {
         if self.manifest.assets.is_some() {
             let assets = model_importers()
                 .into_iter()
+                .chain(concordia_audio::importers())
                 .fold(AssetsModule::new(&self.root), AssetsModule::with_importer);
             modules.push(Arc::new(assets));
         }
         if self.manifest.anim.is_some() {
             modules.push(Arc::new(AnimModule::new()));
+        }
+        if self.manifest.audio.is_some() {
+            modules.push(Arc::new(self.audio_module(playback)?));
         }
         if self.manifest.render.is_some() {
             modules.push(Arc::new(
@@ -142,6 +172,59 @@ impl Project {
             modules.push(Arc::new(ScriptsModule::new(self.scripts_config(scripts))));
         }
         Ok(modules)
+    }
+
+    /// `[audio]`'s settings for `playback` (none without the section): the voice pool, the bus
+    /// layout file (read and validated) and the backend.
+    pub fn audio_settings(&self, playback: Playback) -> Result<Option<AudioSettings>, AppError> {
+        let Some(audio) = &self.manifest.audio else {
+            return Ok(None);
+        };
+        let manifest = self.root.join("concordia.toml");
+        let voices = usize::from(audio.voices);
+        let voices = std::num::NonZeroUsize::new(voices)
+            .filter(|v| v.get() <= concordia_audio::MAX_VOICES)
+            .ok_or_else(|| {
+                manifest_error(
+                    &manifest,
+                    format!("[audio] voices: {voices} must be 1..=256"),
+                )
+            })?;
+        let buses = match &audio.buses {
+            None => concordia_audio::BusLayout::default(),
+            Some(rel) => {
+                inside(rel)
+                    .map_err(|m| manifest_error(&manifest, format!("[audio] buses: {m}")))?;
+                let path = self.root.join(rel);
+                let file_error = |message: String| AppError::File {
+                    path: path.clone(),
+                    message,
+                };
+                let text = std::fs::read_to_string(&path).map_err(|e| file_error(e.to_string()))?;
+                read_buses(&text).map_err(|e| file_error(e.to_string()))?
+            }
+        };
+        let backend = match (audio.backend, playback) {
+            (AudioBackendChoice::None, _) => Backend::None,
+            (AudioBackendChoice::Offline, _) | (AudioBackendChoice::Auto, Playback::Headless) => {
+                Backend::Offline
+            }
+            (AudioBackendChoice::Auto, Playback::Windowed) => {
+                Backend::Device(std::sync::Arc::new(CpalDevice))
+            }
+        };
+        Ok(Some(AudioSettings {
+            voices,
+            buses,
+            backend,
+        }))
+    }
+
+    /// The `audio` module for `playback`.
+    fn audio_module(&self, playback: Playback) -> Result<AudioModule, AppError> {
+        let manifest = self.root.join("concordia.toml");
+        let settings = self.audio_settings(playback)?.unwrap_or_default();
+        AudioModule::new(settings).map_err(|e| manifest_error(&manifest, format!("[audio]: {e}")))
     }
 
     /// `[scripts]` resolved against the project root.

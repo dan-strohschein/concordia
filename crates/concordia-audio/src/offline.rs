@@ -1,6 +1,7 @@
 //! The offline backend: renders exactly the frames each tick covers, sample-exact, with a running
 //! BLAKE3 hash, peak and RMS, and an optional capture.
 
+use std::collections::VecDeque;
 use std::num::NonZeroU32;
 use std::ops::Range;
 
@@ -38,7 +39,9 @@ pub struct OfflineBackend {
     hasher: blake3::Hasher,
     peak: f32,
     sum_sq: f64,
-    capture: Option<Vec<f32>>,
+    capture: Option<VecDeque<f32>>,
+    /// The most samples the capture keeps (none: all).
+    limit: Option<usize>,
 }
 
 impl std::fmt::Debug for OfflineBackend {
@@ -64,6 +67,7 @@ impl OfflineBackend {
             peak: 0.0,
             sum_sq: 0.0,
             capture: None,
+            limit: None,
         })
     }
 
@@ -90,7 +94,11 @@ impl OfflineBackend {
                 self.sum_sq += f64::from(*s) * f64::from(*s);
             }
             if let Some(c) = self.capture.as_mut() {
-                c.extend_from_slice(block);
+                c.extend(block.iter().copied());
+                if let Some(limit) = self.limit {
+                    let extra = c.len().saturating_sub(limit);
+                    c.drain(..extra);
+                }
             }
             self.handle.collect();
             self.frames += n as u64;
@@ -128,14 +136,29 @@ impl OfflineBackend {
 
     /// Starts keeping every rendered sample.
     pub fn start_capture(&mut self) {
-        self.capture = Some(Vec::new());
+        self.capture = Some(VecDeque::new());
+        self.limit = None;
+    }
+
+    /// Captures, keeping only the newest `frames` frames.
+    pub fn keep_last(&mut self, frames: usize) {
+        self.capture = Some(VecDeque::new());
+        self.limit = Some(frames.saturating_mul(2));
+    }
+
+    /// A copy of the samples kept so far (interleaved stereo); keeps them.
+    pub fn captured(&self) -> Vec<f32> {
+        self.capture
+            .as_ref()
+            .map(|c| c.iter().copied().collect())
+            .unwrap_or_default()
     }
 
     /// The samples kept since `start_capture` (interleaved stereo); keeps capturing.
     pub fn take_capture(&mut self) -> Vec<f32> {
         self.capture
             .as_mut()
-            .map(std::mem::take)
+            .map(|c| Vec::from(std::mem::take(c)))
             .unwrap_or_default()
     }
 }

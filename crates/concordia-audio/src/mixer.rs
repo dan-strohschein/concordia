@@ -2,6 +2,7 @@
 //! The engine side holds a `MixerHandle`; commands and retired sounds cross in `rtrb` rings, so
 //! `Mixer::render` never allocates, frees, locks or blocks.
 
+use std::collections::BTreeSet;
 use std::num::{NonZeroU16, NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
@@ -269,6 +270,7 @@ pub struct MixerHandle {
     pub(crate) buses: BusGraph,
     pub(crate) rate: NonZeroU32,
     pub(crate) next: u64,
+    pub(crate) live: BTreeSet<VoiceId>,
 }
 
 impl std::fmt::Debug for MixerHandle {
@@ -317,6 +319,7 @@ impl Mixer {
             buses: config.buses,
             rate: config.rate,
             next: 1,
+            live: BTreeSet::new(),
         };
         Ok((mixer, handle))
     }
@@ -525,6 +528,7 @@ impl MixerHandle {
         self.push(Command::Play {
             voice: Box::new(voice),
         })?;
+        self.live.insert(id);
         self.next += 1;
         Ok(id)
     }
@@ -569,7 +573,19 @@ impl MixerHandle {
 
     /// Drops what the mixer has retired (here, on the engine thread).
     pub fn collect(&mut self) {
-        while self.retired.pop().is_ok() {}
+        while let Ok(Retired::Voice(voice)) = self.retired.pop() {
+            self.live.remove(&voice.id);
+        }
+    }
+
+    /// Whether `voice` still plays (until the mixer retires it and `collect` sees it).
+    pub fn is_live(&self, voice: VoiceId) -> bool {
+        self.live.contains(&voice)
+    }
+
+    /// Every live voice, oldest first.
+    pub fn live(&self) -> impl Iterator<Item = VoiceId> + '_ {
+        self.live.iter().copied()
     }
 
     /// Live streams (for inspection).

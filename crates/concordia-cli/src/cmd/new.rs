@@ -97,6 +97,9 @@ fn manifest(name: &str, features: &Features) -> String {
         text.push_str(
             "\n# Animation: skeletons, clips, .animgraph.ron graphs and events (uses the assets module).\n[anim]\n",
         );
+        text.push_str(
+            "\n# Audio: .cue.ron cues, buses and the mixer (offline headless; the default device in concordia run).\n[audio]\n",
+        );
         text.push_str("\n[render]\n");
         text.push_str(
             "\n# Gameplay modules: add [[scripts.module]] entries (kind = \"wasm\" or \"native\", path).\n[scripts]\n",

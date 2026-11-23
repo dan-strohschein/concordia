@@ -44,8 +44,9 @@ pub(crate) struct Args {
 
 pub(crate) fn run(args: &Args) -> Result<(), Failure> {
     let project = Project::load(&args.project).map_err(|e| Failure::usage(e.to_string()))?;
+    // Sound plays on the default device here; everywhere else it mixes offline (ADR-0066).
     let config = project
-        .engine_config()
+        .engine_config_for(concordia_app::Playback::Windowed)
         .map_err(|e| Failure::usage(e.to_string()))?;
     if !(1.0..=1000.0).contains(&args.bench_hz) || args.bench_frames == 0 {
         return Err(Failure::usage(

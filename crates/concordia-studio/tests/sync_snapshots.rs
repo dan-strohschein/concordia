@@ -16,10 +16,12 @@ fn sync_default_roster_generates_expected_agent_files() {
         names,
         [
             "animator.md",
+            "composer.md",
             "director.md",
             "gameplay-programmer.md",
             "level-designer.md",
             "qa-playtester.md",
+            "sound-designer.md",
             "tech-artist.md",
             "writer.md"
         ],
