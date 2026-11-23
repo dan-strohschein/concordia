@@ -1020,6 +1020,16 @@ fn ui_example(tool: &str, args: &serde_json::Value) -> Vec<String> {
             "UiNinePatch" => serde_json::from_value::<concordia_ui::UiNinePatch>(v).map(|_| ()),
             "UiProgress" => serde_json::from_value::<concordia_ui::UiProgress>(v).map(|_| ()),
             "UiSeparator" => serde_json::from_value::<concordia_ui::UiSeparator>(v).map(|_| ()),
+            "UiButton" => serde_json::from_value::<concordia_ui::UiButton>(v).map(|_| ()),
+            "UiToggle" => serde_json::from_value::<concordia_ui::UiToggle>(v).map(|_| ()),
+            "UiSlider" => serde_json::from_value::<concordia_ui::UiSlider>(v).map(|_| ()),
+            "UiDropdown" => serde_json::from_value::<concordia_ui::UiDropdown>(v).map(|_| ()),
+            "UiTabs" => serde_json::from_value::<concordia_ui::UiTabs>(v).map(|_| ()),
+            "UiScroll" => serde_json::from_value::<concordia_ui::UiScroll>(v).map(|_| ()),
+            "UiTooltip" => serde_json::from_value::<concordia_ui::UiTooltip>(v).map(|_| ()),
+            "UiFocus" => serde_json::from_value::<concordia_ui::UiFocus>(v).map(|_| ()),
+            "UiSounds" => serde_json::from_value::<concordia_ui::UiSounds>(v).map(|_| ()),
+            "UiState" => serde_json::from_value::<concordia_ui::UiState>(v).map(|_| ()),
             "Parent" | "Name" => Ok(()),
             other => panic!("no example check for {other}"),
         };
@@ -1029,6 +1039,14 @@ fn ui_example(tool: &str, args: &serde_json::Value) -> Vec<String> {
     match tool {
         "ui_inspect" => {
             serde_json::from_value::<concordia_ui::UiInspectParams>(args.clone())
+                .unwrap_or_else(|e| panic!("{tool} {args}: {e}"));
+        }
+        "ui_hit_test" => {
+            serde_json::from_value::<concordia_ui::UiHitTestParams>(args.clone())
+                .unwrap_or_else(|e| panic!("{tool} {args}: {e}"));
+        }
+        "input_inject" => {
+            serde_json::from_value::<concordia_input::InputInjectParams>(args.clone())
                 .unwrap_or_else(|e| panic!("{tool} {args}: {e}"));
         }
         "component_set" | "component_patch" if args.get("value").is_some() => {
@@ -1068,7 +1086,18 @@ fn ui_skill_examples_are_real_components_params_and_a_valid_theme() {
         "UiNinePatch",
         "UiProgress",
         "UiSeparator",
+        "UiButton",
+        "UiToggle",
+        "UiSlider",
+        "UiDropdown",
+        "UiTabs",
+        "UiScroll",
+        "UiTooltip",
+        "UiFocus",
+        "UiSounds",
         "ui_inspect",
+        "ui_hit_test",
+        "input_inject",
         "capture_screenshot",
         "entity_spawn",
         "component_set",
@@ -1092,7 +1121,42 @@ fn ui_skill_examples_are_real_components_params_and_a_valid_theme() {
         "ui_bounds",
         "Tweens",
         "image generator",
+        "UiState",
+        "UiPressed",
+        "UiToggled",
+        "UiValueChanged",
+        "UiSelected",
+        "ui_pointer",
+        "pointer",
     ] {
         assert!(text.contains(needle), "the skill explains {needle}");
+    }
+}
+
+/// 2.7b.2: the gameplay programmer wires HUD values and reacts to UI signals; QA clicks through
+/// menus with `ui_hit_test` and `input_inject` and checks `UiState` and the signals.
+#[test]
+fn gameplay_and_qa_skills_cover_the_ui() {
+    let scripting = skill("concordia-scripting");
+    for needle in ["UiProgress", "UiText", "UiPressed", "UiValueChanged"] {
+        assert!(
+            scripting.contains(needle),
+            "concordia-scripting explains {needle}"
+        );
+    }
+    let replay = skill("concordia-record-replay");
+    for needle in [
+        "mcp__concordia__ui_hit_test",
+        "mcp__concordia__input_inject",
+        "UiState",
+        "UiPressed",
+    ] {
+        assert!(
+            replay.contains(needle),
+            "concordia-record-replay explains {needle}"
+        );
+    }
+    for (tool, args) in examples(replay, "") {
+        ui_example(&tool, &args);
     }
 }

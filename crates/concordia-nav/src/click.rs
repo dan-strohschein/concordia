@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 
 use concordia_core::id::EntityId;
 use concordia_core::math::{Ray, Vec3};
-use concordia_input::{ActionStates, ActionValue};
+use concordia_input::{ActionStates, ActionValue, ConsumedActions};
 use concordia_physics::{LayerMask, PhysicsLayer, PhysicsQueries};
 use concordia_reflect::Reflect;
 use concordia_scene::builtin::Transform;
@@ -53,7 +53,7 @@ impl Default for ClickToMove {
 pub const CLICK: &str = "nav.click";
 
 /// Adds `nav.click` to `PrePhysics`, before `nav.plan` (after input sampling, which input's module
-/// registers first).
+/// registers first; the UI orders `ui.interact` before it). Clicks the UI consumed are ignored.
 pub fn add_click_processor(schedule: &mut Schedule) {
     let mut warned: BTreeSet<EntityId> = BTreeSet::new();
     schedule.add_processor(
@@ -63,6 +63,7 @@ pub fn add_click_processor(schedule: &mut Schedule) {
             .reads::<NavMeshVolume>()
             .writes::<NavAgent>()
             .reads_resource::<ActionStates>()
+            .reads_resource::<ConsumedActions>()
             .reads_resource::<PhysicsQueries>()
             .reads_resource::<NavMeshes>()
             .before(PLAN)
@@ -73,6 +74,7 @@ pub fn add_click_processor(schedule: &mut Schedule) {
 /// What a click needs from the world.
 struct Scene {
     states: ActionStates,
+    consumed: ConsumedActions,
     physics: PhysicsQueries,
     meshes: NavMeshes,
     volumes: Vec<Volume>,
@@ -87,8 +89,13 @@ fn click_all(view: &mut View<'_>, warned: &mut BTreeSet<EntityId>) {
         return;
     };
     let meshes = view.resource::<NavMeshes>().cloned().unwrap_or_default();
+    let consumed = view
+        .resource::<ConsumedActions>()
+        .cloned()
+        .unwrap_or_default();
     let scene = Scene {
         states,
+        consumed,
         physics,
         meshes,
         volumes: volumes(view),
@@ -96,7 +103,7 @@ fn click_all(view: &mut View<'_>, warned: &mut BTreeSet<EntityId>) {
     let Ok(query) = view.query::<(&ClickToMove, &Transform, &mut NavAgent)>() else {
         return;
     };
-    query.for_each(|id, (click, t, agent)| match fired_ray(click, &scene.states) {
+    query.for_each(|id, (click, t, agent)| match fired_ray(click, &scene.states, &scene.consumed) {
         Err(problem) => {
             if warned.insert(id) {
                 tracing::warn!(target: "concordia::nav", entity = %id, "ClickToMove on {id} is ignored: {problem}");
@@ -111,12 +118,20 @@ fn click_all(view: &mut View<'_>, warned: &mut BTreeSet<EntityId>) {
     });
 }
 
-/// The pointer ray if the click fired this tick; an error names a bad setting.
-fn fired_ray(click: &ClickToMove, states: &ActionStates) -> Result<Option<Ray>, String> {
+/// The pointer ray if the click fired this tick and the UI didn't take it; an error names a
+/// bad setting.
+fn fired_ray(
+    click: &ClickToMove,
+    states: &ActionStates,
+    consumed: &ConsumedActions,
+) -> Result<Option<Ray>, String> {
     check(click)?;
     let button = states
         .get(&click.click)
         .ok_or_else(|| format!("there is no action {:?}", click.click))?;
+    if states.unconsumed(&click.click, consumed).is_none() {
+        return Ok(None);
+    }
     if !matches!(button.value, ActionValue::Button(_)) {
         return Err(format!("click {:?} must be a Button action", click.click));
     }

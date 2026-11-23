@@ -315,6 +315,25 @@
       "title": "Length",
       "x-concordia-type": "Length"
     },
+    "PointerFilter": {
+      "description": "Whether a node takes the pointer (Godot's `mouse_filter`, for semantics).",
+      "oneOf": [
+        {
+          "const": "Auto",
+          "description": "Interactive widgets and boxes with a background stop it; the rest pass it on."
+        },
+        {
+          "const": "Stop",
+          "description": "Always stops it (the click never reaches the world)."
+        },
+        {
+          "const": "Ignore",
+          "description": "Never stops it."
+        }
+      ],
+      "title": "PointerFilter",
+      "x-concordia-type": "PointerFilter"
+    },
     "Position": {
       "description": "Where a node goes: in its parent's flow, or pinned by anchors.",
       "oneOf": [
@@ -426,6 +445,7 @@
       "right": 0.0,
       "top": 0.0
     },
+    "pointer": "Auto",
     "position": "InFlow",
     "shrink": 1.0,
     "visible": true,
@@ -490,6 +510,10 @@
     "padding": {
       "$ref": "#/$defs/Edges",
       "description": "Space inside the box, around the children."
+    },
+    "pointer": {
+      "$ref": "#/$defs/PointerFilter",
+      "description": "Whether the pointer stops here or passes to what is below."
     },
     "position": {
       "$ref": "#/$defs/Position",

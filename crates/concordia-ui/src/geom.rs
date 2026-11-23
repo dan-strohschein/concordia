@@ -96,4 +96,9 @@ impl Edges {
     pub fn values(&self) -> [f32; 4] {
         [self.left, self.top, self.right, self.bottom]
     }
+
+    /// Top plus bottom.
+    pub fn vertical(&self) -> f32 {
+        self.top + self.bottom
+    }
 }

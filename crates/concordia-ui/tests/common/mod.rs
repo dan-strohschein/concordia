@@ -519,3 +519,9 @@ pub fn summary(list: &concordia_api::UiDrawList) -> String {
     }
     out
 }
+
+pub mod controls;
+pub mod play;
+
+#[allow(unused_imports)]
+pub use controls::controls_fixture;

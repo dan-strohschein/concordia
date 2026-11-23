@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "delay_ticks": 30,
+    "text": ""
+  },
+  "description": "Text shown near the pointer after the widget is hovered for a while.",
+  "properties": {
+    "delay_ticks": {
+      "description": "Ticks of hovering before it shows.",
+      "maximum": 6000.0,
+      "minimum": 0.0,
+      "type": "integer"
+    },
+    "text": {
+      "description": "What it says.",
+      "type": "string"
+    }
+  },
+  "title": "UiTooltip",
+  "type": "object",
+  "x-concordia-category": "UI",
+  "x-concordia-type": "UiTooltip"
+}

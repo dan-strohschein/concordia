@@ -9,6 +9,7 @@ use concordia_terra::{Phase, Schedule, SystemCtx, World, system};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use crate::consumed::ConsumedActions;
 use crate::error::InputError;
 use crate::event::InputEvent;
 use crate::map::InputMap;
@@ -39,6 +40,7 @@ impl EngineModule for InputModule {
     fn start_play(&self, world: &mut World) -> Result<PlaySetup, ApiError> {
         let sampler = InputSampler::new(self.map.clone());
         world.insert_resource(sampler.states().clone());
+        world.insert_resource(ConsumedActions::new(&self.map));
         world.insert_resource(sampler);
         let mut schedule = Schedule::new();
         schedule.add_in(Phase::PrePhysics, system("input.sample", sample_input));
@@ -49,8 +51,11 @@ impl EngineModule for InputModule {
     }
 }
 
-/// Samples queued input for the tick and publishes [`ActionStates`].
+/// Samples queued input for the tick, publishes [`ActionStates`] and clears [`ConsumedActions`].
 fn sample_input(world: &mut World, ctx: &SystemCtx<'_>) {
+    if let Some(consumed) = world.resource_mut::<ConsumedActions>() {
+        consumed.clear();
+    }
     let Some(sampler) = world.resource_mut::<InputSampler>() else {
         return;
     };

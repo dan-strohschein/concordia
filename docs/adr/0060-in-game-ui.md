@@ -1,5 +1,5 @@
 # ADR-0060: In-game UI: retained ECS widgets, taffy plus anchors, parley and swash, one batched pass
-- Status: Accepted (M2 phase 2.7b, 2026-11-22; author decisions U1–U12, P1, P2). 2.7b.1 lands the display widgets, layout, text, themes, the draw-list seam, the `ui` pass and `ui.inspect`. 2.7b.2 adds interaction, focus and scrolling. 2.7b.3 adds text boxes and world-space UI.
+- Status: Accepted (M2 phase 2.7b, 2026-11-22; author decisions U1–U12, P1, P2). 2.7b.1 lands the display widgets, layout, text, themes, the draw-list seam, the `ui` pass and `ui.inspect`. 2.7b.2 (2026-11-23) adds interaction, focus, scrolling, sounds and `ui.hit_test`. 2.7b.3 adds text boxes and world-space UI.
 - Date: 2026-11-22
 - Builds on: ADR-0044 (asset ids and the DDC), ADR-0047 (overlays), ADR-0063 (determinism contract), ADR-0069 (signals), ADR-0072 (replay v0), ADR-0073 (per-role tool budgets), ADR-0074 (tweens), ADR-0075 (play-world writes), ADR-0076 (`#[reflect(presentation)]`), ADR-0078 (pointer rays and click-to-move)
 
@@ -58,6 +58,14 @@ Games need HUDs, floating bars, damage numbers and menus. Agents must be able to
 - `concordia-api` gains a small set of draw types and one module hook.
 - The renderer gains an `R8Unorm` texture mapping. Atlas pages upload whole until the RHI gets region copies.
 - **Later work:** IME, gamepad devices, occluded world UI, live camera views, markup, SDF text, shadows, blur, theme transition times, list virtualization, drag and drop, and the Godot `Control` import (M5).
+
+## 2.7b.2 notes (interaction)
+- **Input is actions only.** `ui.interact` reads `ui_pointer`, `ui_click`, `ui_scroll`, `ui_viewport` and ten key actions from `ActionStates`, so replays record UI sessions with no new track (ADR-0072's rule that raw positions reach the simulation only through actions). The viewport is an action bound to the new `Binding::Viewport`, fed by `InputEvent::Viewport`; the replay format stays version 0, against the refinement's plan of a viewport track and a version bump.
+- **Layout inside the simulation** uses the same `compute_layout` as drawing, with its own fonts and an asset snapshot taken when play starts (themes, their fonts, run and style fonts, measured images that the play world's UI names). An asset first named later measures as missing in the simulation, the same in every run.
+- **Ordering:** `ui.interact` is an exclusive system; Terra's exclusive systems gained `after_if_present` / `before_if_present`, so it runs after `input.sample` and before `nav.click` when those exist, and projects without `[nav]` still plan.
+- **Consumption:** the pointer is consumed over interactive widgets, scroll containers, tooltips, pictures and boxes with a background or border (Godot's `mouse_filter`, as `UiNode.pointer: Auto | Stop | Ignore`), and while a press is held. `ConsumedActions` (in `concordia-input`) hides every pointer-bound action from `ActionStates::unconsumed`; `nav.click` uses it.
+- **State:** `UiState` (hover, press, focus, hover ticks, the highlighted row, a thumb grab, the tooltip point) and widget values are hashed simulation state; `disabled` lives on `UiState` (the only field authors set), not on `UiButton`.
+- **Drawing:** widget parts (toggle boxes, slider tracks, dropdown arrows as a wedge-masked quad, tab titles, scroll bars, focus rings) are computed once by layout (`UiLayout::parts`) and read by both drawing and hit tests; open lists and tooltips draw above every root.
 
 ## Rejected
 - **egui:** immediate mode, styled like a tool, with no stable entities for agents to edit.

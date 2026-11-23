@@ -310,6 +310,34 @@ expression: params_schema(method)
         },
         {
           "additionalProperties": false,
+          "description": "The viewport's size in logical pixels (window open, resize, scale change); it holds\nuntil the next.",
+          "properties": {
+            "Viewport": {
+              "additionalProperties": false,
+              "properties": {
+                "height": {
+                  "description": "Height in logical pixels.",
+                  "type": "number"
+                },
+                "width": {
+                  "description": "Width in logical pixels.",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "width",
+                "height"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Viewport"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
           "description": "Set an action's value directly, bypassing bindings (it holds until set again).",
           "properties": {
             "Action": {
@@ -531,6 +559,18 @@ expression: params_schema(method)
         },
         {
           "const": "ArrowRight"
+        },
+        {
+          "const": "PageUp"
+        },
+        {
+          "const": "PageDown"
+        },
+        {
+          "const": "Home"
+        },
+        {
+          "const": "End"
         },
         {
           "const": "ShiftLeft"

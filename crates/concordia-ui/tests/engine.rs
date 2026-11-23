@@ -91,7 +91,7 @@ fn ui_module_registers_its_method_and_debug_layer() {
         .iter()
         .map(|m| (m.name, m.mutates))
         .collect();
-    assert_eq!(names, [("ui.inspect", false)]);
+    assert_eq!(names, [("ui.inspect", false), ("ui.hit_test", false)]);
     assert_eq!(module.debug_layers(), [UI_BOUNDS_LAYER]);
     assert_eq!(UI_BOUNDS_LAYER, "ui_bounds");
 }

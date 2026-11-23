@@ -1,0 +1,35 @@
+{
+  "$defs": {
+    "ActionOn": {
+      "description": "When a button acts.",
+      "oneOf": [
+        {
+          "const": "Release",
+          "description": "On release over the widget it was pressed on (WAI-ARIA)."
+        },
+        {
+          "const": "Press",
+          "description": "On press."
+        }
+      ],
+      "title": "ActionOn",
+      "x-concordia-type": "ActionOn"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "action_on": "Release"
+  },
+  "description": "A clickable widget; raises `UiPressed`.",
+  "properties": {
+    "action_on": {
+      "$ref": "#/$defs/ActionOn",
+      "description": "When it fires."
+    }
+  },
+  "title": "UiButton",
+  "type": "object",
+  "x-concordia-category": "UI",
+  "x-concordia-type": "UiButton"
+}

@@ -1,0 +1,60 @@
+{
+  "$defs": {
+    "Orientation": {
+      "description": "Which way a separator runs.",
+      "oneOf": [
+        {
+          "const": "Horizontal",
+          "description": "Left to right."
+        },
+        {
+          "const": "Vertical",
+          "description": "Top to bottom."
+        }
+      ],
+      "title": "Orientation",
+      "x-concordia-type": "Orientation"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "max": 1.0,
+    "min": 0.0,
+    "orientation": "Horizontal",
+    "page": 0.10000000149011612,
+    "step": 0.0,
+    "value": 0.0
+  },
+  "description": "A value picked along a track; raises `UiValueChanged`.",
+  "properties": {
+    "max": {
+      "description": "The high end.",
+      "type": "number"
+    },
+    "min": {
+      "description": "The low end.",
+      "type": "number"
+    },
+    "orientation": {
+      "$ref": "#/$defs/Orientation",
+      "description": "Its direction."
+    },
+    "page": {
+      "description": "What Page Up / Page Down move.",
+      "type": "number"
+    },
+    "step": {
+      "description": "Snap step (0: continuous).",
+      "type": "number"
+    },
+    "value": {
+      "description": "The value (clamped to min..max when drawn).",
+      "type": "number"
+    }
+  },
+  "title": "UiSlider",
+  "type": "object",
+  "x-concordia-category": "UI",
+  "x-concordia-type": "UiSlider"
+}

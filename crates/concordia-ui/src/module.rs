@@ -3,9 +3,12 @@
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use concordia_api::{Engine, EngineModule, MethodInfo, UiDrawList, UiFrame, WorldSel};
+use concordia_api::{
+    ApiError, Engine, EngineModule, MethodInfo, PlaySetup, UiDrawList, UiFrame, WorldSel,
+};
 use concordia_assets::AssetDb;
 use concordia_reflect::{RegistryError, TypeRegistry};
+use concordia_terra::World;
 
 use crate::assets::{AssetCache, DbAssets};
 use crate::context::UiContext;
@@ -71,6 +74,19 @@ impl EngineModule for UiModule {
 
     fn methods(&self) -> Vec<MethodInfo> {
         crate::methods::all()
+    }
+
+    /// Snapshots the assets the play world's UI names, and adds `ui.interact`.
+    fn start_play_in(&self, engine: &mut Engine, world: &mut World) -> Result<PlaySetup, ApiError> {
+        let mut cache = AssetCache::default();
+        let mut assets = DbAssets {
+            db: engine.state_mut::<AssetDb>(),
+            cache: &mut cache,
+        };
+        crate::play::preload(world, &mut assets);
+        let mut setup = PlaySetup::default();
+        crate::play::add_interact(&mut setup.schedule, cache);
+        Ok(setup)
     }
 
     fn engine_state(&self) -> Option<Box<dyn std::any::Any + Send>> {

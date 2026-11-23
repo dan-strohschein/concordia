@@ -62,6 +62,8 @@ pub enum Binding {
     Scroll,
     /// The latest world-space pointer ray (Ray).
     PointerRay,
+    /// The viewport's size in logical pixels (Axis2d; zero until the first `Viewport` event).
+    Viewport,
 }
 
 impl Binding {
@@ -71,7 +73,9 @@ impl Binding {
             Self::Key(_) => matches!(kind, Button | Axis1d),
             Self::MouseButton(_) | Self::Chord { .. } => kind == Button,
             Self::KeyAxis { .. } => kind == Axis1d,
-            Self::KeyAxis2d { .. } | Self::PointerPosition | Self::MouseDelta => kind == Axis2d,
+            Self::KeyAxis2d { .. } | Self::PointerPosition | Self::MouseDelta | Self::Viewport => {
+                kind == Axis2d
+            }
             Self::Scroll => matches!(kind, Axis1d | Axis2d),
             Self::PointerRay => kind == ActionKind::Ray,
         }
@@ -138,24 +142,66 @@ impl InputMap {
     }
 
     /// The map new projects start with: `move` (left click) and `pointer_ray` (the pointer as a
-    /// world ray), the actions `ClickToMove` uses by default.
+    /// world ray), the actions `ClickToMove` uses by default, plus the in-game UI's `ui_*`
+    /// actions (pointer, click, scroll, viewport, focus and page keys).
     pub fn starter() -> Self {
-        let action = |kind, binding| ActionDef {
-            kind,
-            bindings: vec![binding],
-        };
+        use ActionKind::{Axis2d, Button, Ray};
+        let key = |k| Binding::Key(k);
+        let actions = [
+            (
+                "move",
+                Button,
+                vec![Binding::MouseButton(MouseButton::Left)],
+            ),
+            ("pointer_ray", Ray, vec![Binding::PointerRay]),
+            ("ui_pointer", Axis2d, vec![Binding::PointerPosition]),
+            (
+                "ui_click",
+                Button,
+                vec![Binding::MouseButton(MouseButton::Left)],
+            ),
+            ("ui_scroll", Axis2d, vec![Binding::Scroll]),
+            ("ui_viewport", Axis2d, vec![Binding::Viewport]),
+            ("ui_up", Button, vec![key(KeyCode::ArrowUp)]),
+            ("ui_down", Button, vec![key(KeyCode::ArrowDown)]),
+            ("ui_left", Button, vec![key(KeyCode::ArrowLeft)]),
+            ("ui_right", Button, vec![key(KeyCode::ArrowRight)]),
+            (
+                "ui_accept",
+                Button,
+                vec![key(KeyCode::Enter), key(KeyCode::Space)],
+            ),
+            ("ui_cancel", Button, vec![key(KeyCode::Escape)]),
+            ("ui_next", Button, vec![key(KeyCode::Tab)]),
+            (
+                "ui_prev",
+                Button,
+                vec![Binding::Chord {
+                    modifiers: vec![Modifier::Shift],
+                    key: KeyCode::Tab,
+                }],
+            ),
+            ("ui_page_up", Button, vec![key(KeyCode::PageUp)]),
+            ("ui_page_down", Button, vec![key(KeyCode::PageDown)]),
+        ];
         Self {
-            actions: BTreeMap::from([
-                (
-                    "move".to_owned(),
-                    action(ActionKind::Button, Binding::MouseButton(MouseButton::Left)),
-                ),
-                (
-                    "pointer_ray".to_owned(),
-                    action(ActionKind::Ray, Binding::PointerRay),
-                ),
-            ]),
+            actions: actions
+                .into_iter()
+                .map(|(name, kind, bindings)| (name.to_owned(), ActionDef { kind, bindings }))
+                .collect(),
         }
+    }
+
+    /// Whether `binding` reads the pointer device (buttons, position, ray, motion, scroll).
+    pub fn is_pointer(binding: &Binding) -> bool {
+        matches!(
+            binding,
+            Binding::MouseButton(_)
+                | Binding::PointerPosition
+                | Binding::PointerRay
+                | Binding::MouseDelta
+                | Binding::Scroll
+        )
     }
 
     /// Action names in id order (sorted).

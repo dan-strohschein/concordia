@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "When a scroll bar shows.",
+  "oneOf": [
+    {
+      "const": "Auto",
+      "description": "When the content overflows that axis."
+    },
+    {
+      "const": "Always",
+      "description": "Always (the axis scrolls)."
+    },
+    {
+      "const": "Never",
+      "description": "Never; the axis doesn't scroll and the content fits it."
+    }
+  ],
+  "title": "ScrollBar",
+  "x-concordia-type": "ScrollBar"
+}

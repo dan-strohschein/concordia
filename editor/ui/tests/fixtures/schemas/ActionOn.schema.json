@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "When a button acts.",
+  "oneOf": [
+    {
+      "const": "Release",
+      "description": "On release over the widget it was pressed on (WAI-ARIA)."
+    },
+    {
+      "const": "Press",
+      "description": "On press."
+    }
+  ],
+  "title": "ActionOn",
+  "x-concordia-type": "ActionOn"
+}

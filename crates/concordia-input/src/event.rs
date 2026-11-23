@@ -52,6 +52,14 @@ pub enum InputEvent {
         /// Vertical scroll.
         dy: f32,
     },
+    /// The viewport's size in logical pixels (window open, resize, scale change); it holds
+    /// until the next.
+    Viewport {
+        /// Width in logical pixels.
+        width: f32,
+        /// Height in logical pixels.
+        height: f32,
+    },
     /// Set an action's value directly, bypassing bindings (it holds until set again).
     Action {
         /// Action name.

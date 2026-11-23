@@ -42,12 +42,33 @@ pub trait System: Send {
     fn name(&self) -> &str;
     /// Runs once per tick.
     fn run(&mut self, world: &mut World, ctx: &SystemCtx<'_>);
+    /// (`after`, `before`) names in the same phase, honored only when scheduled (another
+    /// module's nodes may be absent).
+    fn order_if_present(&self) -> (&[String], &[String]) {
+        (&[], &[])
+    }
 }
 
 /// A system made from a closure; see [`system`].
 pub struct FnSystem<F> {
     name: String,
     f: F,
+    after: Vec<String>,
+    before: Vec<String>,
+}
+
+impl<F> FnSystem<F> {
+    /// Runs after `name` (same phase) when it is scheduled.
+    pub fn after_if_present(mut self, name: &str) -> Self {
+        self.after.push(name.to_owned());
+        self
+    }
+
+    /// Runs before `name` (same phase) when it is scheduled.
+    pub fn before_if_present(mut self, name: &str) -> Self {
+        self.before.push(name.to_owned());
+        self
+    }
 }
 
 /// Wraps a closure as a named exclusive system.
@@ -58,6 +79,8 @@ where
     FnSystem {
         name: name.into(),
         f,
+        after: Vec::new(),
+        before: Vec::new(),
     }
 }
 
@@ -71,6 +94,10 @@ where
 
     fn run(&mut self, world: &mut World, ctx: &SystemCtx<'_>) {
         (self.f)(world, ctx);
+    }
+
+    fn order_if_present(&self) -> (&[String], &[String]) {
+        (&self.after, &self.before)
     }
 }
 
@@ -155,11 +182,14 @@ impl Node {
         matches!(self, Node::Processor(p) if p.decl().is_observer())
     }
 
-    /// (`after`, `before`) constraints.
-    fn order(&self) -> (&[String], &[String]) {
+    /// (`after`, `before`) constraints, and whether their targets must be scheduled.
+    fn order(&self) -> (&[String], &[String], bool) {
         match self {
-            Node::System { .. } => (&[], &[]),
-            Node::Processor(p) => (&p.decl().after, &p.decl().before),
+            Node::System { system, .. } => {
+                let (after, before) = system.order_if_present();
+                (after, before, false)
+            }
+            Node::Processor(p) => (&p.decl().after, &p.decl().before, true),
         }
     }
 }
@@ -428,26 +458,30 @@ impl Schedule {
         Ok(waves)
     }
 
-    /// `(earlier, later)` pairs from before/after constraints within `members`.
+    /// `(earlier, later)` pairs from before/after constraints within `members`; an exclusive
+    /// system's targets that aren't members are skipped, a processor's are an error.
     fn constraint_edges(&self, members: &[usize]) -> Result<Vec<(usize, usize)>, ScheduleError> {
-        let find = |from: usize, name: &str| {
-            members
+        let find = |from: usize, name: &str, required: bool| {
+            let found = members
                 .iter()
                 .copied()
-                .find(|&m| self.nodes[m].name() == name)
-                .ok_or_else(|| ScheduleError::UnknownProcessor {
+                .find(|&m| self.nodes[m].name() == name);
+            match (found, required) {
+                (None, true) => Err(ScheduleError::UnknownProcessor {
                     processor: self.nodes[from].name().to_owned(),
                     target: name.to_owned(),
-                })
+                }),
+                (found, _) => Ok(found),
+            }
         };
         let mut edges = Vec::new();
         for &m in members {
-            let (after, before) = self.nodes[m].order();
+            let (after, before, required) = self.nodes[m].order();
             for name in after {
-                edges.push((find(m, name)?, m));
+                edges.extend(find(m, name, required)?.map(|t| (t, m)));
             }
             for name in before {
-                edges.push((m, find(m, name)?));
+                edges.extend(find(m, name, required)?.map(|t| (m, t)));
             }
         }
         Ok(edges)

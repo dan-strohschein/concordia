@@ -27,6 +27,7 @@ struct Devices {
     ray: Option<ActionValue>,
     motion: Vec2,
     scroll: Vec2,
+    viewport: Vec2,
 }
 
 /// Turns queued events into [`ActionStates`] once per tick; a play-world resource.
@@ -100,6 +101,7 @@ impl InputSampler {
             InputEvent::PointerRay { origin, direction } => {
                 normalized_ray(*origin, *direction).map(|_| ())
             }
+            InputEvent::Viewport { width, height } => check_viewport(*width, *height),
             _ => Ok(()),
         }
     }
@@ -196,6 +198,7 @@ impl InputSampler {
             }
             InputEvent::MouseMotion { dx, dy } => d.motion += Vec2::new(dx, dy),
             InputEvent::Scroll { dx, dy } => d.scroll += Vec2::new(dx, dy),
+            InputEvent::Viewport { width, height } => d.viewport = Vec2::new(width, height),
             InputEvent::Action { action, value } => {
                 let value = ray_value(value).unwrap_or(value);
                 self.forced.insert(action, value);
@@ -255,6 +258,16 @@ fn normalized_ray(origin: Vec3, direction: Vec3) -> Result<ActionValue, InputErr
                 "ray from {origin} along {direction}: both must be finite and the direction non-zero"
             ))
         })
+}
+
+/// A viewport must be finite and positive.
+fn check_viewport(width: f32, height: f32) -> Result<(), InputError> {
+    match [width, height].iter().all(|v| v.is_finite() && *v > 0.0) {
+        true => Ok(()),
+        false => Err(InputError::Pointer(format!(
+            "viewport {width} x {height}: both must be finite and positive"
+        ))),
+    }
 }
 
 /// `value` normalized if it is a ray (other kinds pass through).
@@ -330,6 +343,7 @@ fn axis2d(d: &Devices, binding: &Binding) -> Vec2 {
         Binding::PointerPosition => d.pointer,
         Binding::MouseDelta => d.motion,
         Binding::Scroll => d.scroll,
+        Binding::Viewport => d.viewport,
         _ => Vec2::ZERO,
     }
 }

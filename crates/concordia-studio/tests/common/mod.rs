@@ -87,6 +87,7 @@ pub const PROJECT_TOOLS: &[&str] = &[
     "txn_undo",
     "txn_undo_to",
     "ui_inspect",
+    "ui_hit_test",
     "viewport_pointer_ray",
 ];
 

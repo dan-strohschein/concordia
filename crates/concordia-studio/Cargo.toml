@@ -30,6 +30,7 @@ uuid.workspace = true
 [target.'cfg(unix)'.dependencies]
 
 [dev-dependencies]
+concordia-input.workspace = true
 concordia-anim.workspace = true
 concordia-assets.workspace = true
 concordia-audio.workspace = true

@@ -121,6 +121,14 @@ impl CanvasMap {
             p[1] * self.scale[1] + self.offset[1],
         ]
     }
+
+    /// Maps a viewport point back to UI space.
+    pub fn unapply(&self, p: [f32; 2]) -> [f32; 2] {
+        [
+            (p[0] - self.offset[0]) / self.scale[0],
+            (p[1] - self.offset[1]) / self.scale[1],
+        ]
+    }
 }
 
 /// How `root`'s canvas maps onto a `viewport` (logical pixels).

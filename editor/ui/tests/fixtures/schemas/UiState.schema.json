@@ -1,0 +1,121 @@
+{
+  "$defs": {
+    "Grab": {
+      "additionalProperties": false,
+      "description": "A grabbed scroll thumb: which bar, and how far along the thumb it was grabbed.",
+      "properties": {
+        "at": {
+          "description": "Pixels from the thumb's start.",
+          "type": "number"
+        },
+        "bar": {
+          "$ref": "#/$defs/Orientation",
+          "description": "The bar (`Horizontal` scrolls x)."
+        }
+      },
+      "required": [
+        "bar",
+        "at"
+      ],
+      "title": "Grab",
+      "type": "object",
+      "x-concordia-type": "Grab"
+    },
+    "Orientation": {
+      "description": "Which way a separator runs.",
+      "oneOf": [
+        {
+          "const": "Horizontal",
+          "description": "Left to right."
+        },
+        {
+          "const": "Vertical",
+          "description": "Top to bottom."
+        }
+      ],
+      "title": "Orientation",
+      "x-concordia-type": "Orientation"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "disabled": false,
+    "focused": false,
+    "grab": null,
+    "hover_ticks": 0,
+    "hovered": false,
+    "item": null,
+    "pressed": false,
+    "tip": null
+  },
+  "description": "What the pointer and keyboard are doing to a widget. The engine writes it, except\n`disabled`; it is simulation state (hashed).",
+  "properties": {
+    "disabled": {
+      "description": "Ignores input and draws its theme's `disabled` style (set by you).",
+      "type": "boolean"
+    },
+    "focused": {
+      "description": "It has keyboard focus.",
+      "type": "boolean"
+    },
+    "grab": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/Grab"
+        }
+      ],
+      "description": "A grabbed scroll thumb."
+    },
+    "hover_ticks": {
+      "description": "Ticks it has been hovered (tooltips).",
+      "maximum": 4294967295,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "hovered": {
+      "description": "The pointer is over it.",
+      "type": "boolean"
+    },
+    "item": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        }
+      ],
+      "description": "The highlighted item (open dropdown)."
+    },
+    "pressed": {
+      "description": "Pressed and not yet released.",
+      "type": "boolean"
+    },
+    "tip": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        }
+      ],
+      "description": "Where its tooltip shows (UI space of its root)."
+    }
+  },
+  "title": "UiState",
+  "type": "object",
+  "x-concordia-category": "UI",
+  "x-concordia-type": "UiState"
+}

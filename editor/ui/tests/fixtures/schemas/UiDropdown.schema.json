@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "max_visible": 8,
+    "open": false,
+    "options": [],
+    "selected": null
+  },
+  "description": "A button showing the selected option; opens a list. Raises `UiSelected`.",
+  "properties": {
+    "max_visible": {
+      "description": "Most rows the list shows at once.",
+      "maximum": 64.0,
+      "minimum": 1.0,
+      "type": "integer"
+    },
+    "open": {
+      "description": "Whether the list is showing.",
+      "type": "boolean"
+    },
+    "options": {
+      "description": "The choices.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "selected": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        }
+      ],
+      "description": "The chosen one."
+    }
+  },
+  "title": "UiDropdown",
+  "type": "object",
+  "x-concordia-category": "UI",
+  "x-concordia-type": "UiDropdown"
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "selected": 0,
+    "titles": []
+  },
+  "description": "Pages with a row of titles; the children are the pages and only the selected one is laid out\nand drawn. Raises `UiSelected`.",
+  "properties": {
+    "selected": {
+      "description": "The shown page (clamped to the pages there are).",
+      "maximum": 4294967295,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "titles": {
+      "description": "One title per page.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "title": "UiTabs",
+  "type": "object",
+  "x-concordia-category": "UI",
+  "x-concordia-type": "UiTabs"
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Whether a node takes the pointer (Godot's `mouse_filter`, for semantics).",
+  "oneOf": [
+    {
+      "const": "Auto",
+      "description": "Interactive widgets and boxes with a background stop it; the rest pass it on."
+    },
+    {
+      "const": "Stop",
+      "description": "Always stops it (the click never reaches the world)."
+    },
+    {
+      "const": "Ignore",
+      "description": "Never stops it."
+    }
+  ],
+  "title": "PointerFilter",
+  "x-concordia-type": "PointerFilter"
+}

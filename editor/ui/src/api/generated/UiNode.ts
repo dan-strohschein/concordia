@@ -105,6 +105,10 @@ export type Length4 =
       Percent: number;
     };
 /**
+ * Whether the pointer stops here or passes to what is below.
+ */
+export type PointerFilter = "Auto" | "Stop" | "Ignore";
+/**
  * In flow, or anchored.
  */
 export type Position =
@@ -163,6 +167,7 @@ export interface UiNode {
    */
   order?: number;
   padding?: Edges1;
+  pointer?: PointerFilter;
   position?: Position;
   /**
    * Flex shrink factor.

@@ -81,6 +81,18 @@ export type InputEvent =
       };
     }
   | {
+      Viewport: {
+        /**
+         * Height in logical pixels.
+         */
+        height: number;
+        /**
+         * Width in logical pixels.
+         */
+        width: number;
+      };
+    }
+  | {
       Action: {
         /**
          * Action name.
@@ -156,6 +168,10 @@ export type KeyCode =
   | "ArrowDown"
   | "ArrowLeft"
   | "ArrowRight"
+  | "PageUp"
+  | "PageDown"
+  | "Home"
+  | "End"
   | "ShiftLeft"
   | "ShiftRight"
   | "ControlLeft"

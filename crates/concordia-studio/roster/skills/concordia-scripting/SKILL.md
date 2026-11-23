@@ -39,5 +39,8 @@ pub struct StopCue {
 }
 ```
 
+## Driving the UI
+The UI/UX designer builds screens; your code fills them and reacts to them. Write a HUD value the same way as any component, e.g. set a health bar's `UiProgress.value` or a label's `UiText` runs (`ctx` commands on the widget's entity, mirrored like `PlayCue` below). Controls raise signals on their own entity the tick after they are used: receive `UiPressed` (a button), `UiToggled { on }`, `UiValueChanged { value }` (a slider) and `UiSelected { index }` (a dropdown or tabs); or just read `UiSlider.value` / `UiToggle.on` each tick. Ask the designer which entities they are.
+
 ## Output contract
 In the task comment: the module and processors you changed, the build command, the `script_reload` result (version, migrated types), and the play-world check.

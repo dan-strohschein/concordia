@@ -1,0 +1,68 @@
+{
+  "$defs": {
+    "ToggleLook": {
+      "description": "How a toggle draws.",
+      "oneOf": [
+        {
+          "const": "Checkbox",
+          "description": "A box, filled when on."
+        },
+        {
+          "const": "Switch",
+          "description": "A track with a knob."
+        },
+        {
+          "const": "Button",
+          "description": "The whole widget, in its theme's `pressed` style when on."
+        }
+      ],
+      "title": "ToggleLook",
+      "x-concordia-type": "ToggleLook"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "allow_none": false,
+    "group": null,
+    "label_gap": 6.0,
+    "look": "Checkbox",
+    "on": false
+  },
+  "description": "A checkbox, switch or toggle button; in a `group`, a radio. Raises `UiToggled`.",
+  "properties": {
+    "allow_none": {
+      "description": "In a group, clicking the one that's on turns it off.",
+      "type": "boolean"
+    },
+    "group": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string"
+        }
+      ],
+      "description": "Toggles sharing a group keep at most one on."
+    },
+    "label_gap": {
+      "description": "Pixels between the box and the label.",
+      "maximum": 256.0,
+      "minimum": 0.0,
+      "type": "number"
+    },
+    "look": {
+      "$ref": "#/$defs/ToggleLook",
+      "description": "How it draws."
+    },
+    "on": {
+      "description": "On or off.",
+      "type": "boolean"
+    }
+  },
+  "title": "UiToggle",
+  "type": "object",
+  "x-concordia-category": "UI",
+  "x-concordia-type": "UiToggle"
+}
