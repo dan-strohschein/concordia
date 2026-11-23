@@ -74,6 +74,12 @@ syn = { version = "3", features = ["full"] }
 tempfile = "3"
 trybuild = "1"
 libm = "0.2.16"
+# Audio (M2 2.7a, ADR-0066): permissive decoders only (no MPL symphonia); rtrb for the lock-free queues.
+hound = "3.5.1"
+lewton = "0.10.2"
+rtrb = "0.4.1"
+# Test-only allocation counter for the mix callback (author decision A2): no unsafe in our code.
+allocation-counter = "0.8.1"
 glam = { version = "0.34", features = ["serde"] }
 ryu = "1"
 rand_chacha = "0.10"

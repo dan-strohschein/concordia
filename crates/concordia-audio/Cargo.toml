@@ -1,0 +1,33 @@
+[package]
+name = "concordia-audio"
+description = "Concordia audio: WAV and Ogg Vorbis decoding, an own 48 kHz mixer with buses, voices, streaming and equal-power spatialization, `.cue.ron` cues, and an offline backend that renders bit-identical buffers."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+blake3.workspace = true
+concordia-assets.workspace = true
+concordia-core.workspace = true
+concordia-reflect.workspace = true
+concordia-scene.workspace = true
+concordia-terra.workspace = true
+hound.workspace = true
+lewton.workspace = true
+postcard = { version = "1.1.3", default-features = false, features = ["alloc"] }
+rtrb.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+allocation-counter.workspace = true
+concordia-core.workspace = true
+insta.workspace = true
+tempfile.workspace = true

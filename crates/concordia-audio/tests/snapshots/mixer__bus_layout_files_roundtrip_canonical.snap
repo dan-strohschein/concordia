@@ -1,0 +1,20 @@
+---
+source: crates/concordia-audio/tests/mixer.rs
+expression: text
+---
+BusLayout(
+    buses: [
+        (
+            gain_db: 0.0,
+            mute: false,
+            name: "SFX",
+            send: Some("Master"),
+        ),
+        (
+            gain_db: 0.0,
+            mute: false,
+            name: "Music",
+            send: Some("Master"),
+        ),
+    ],
+)
