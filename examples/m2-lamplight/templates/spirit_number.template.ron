@@ -1,0 +1,29 @@
+Template(
+    format: 1,
+    description: "A blue number rising over the fountain when a wisp takes Town Spirit.",
+    traits: {},
+    components: {
+        "Name": "Spirit Number",
+        "Transform": (
+            translation: (0.0, 0.0, 0.0),
+            rotation: (0.0, 0.0, 0.0, 1.0),
+            scale: (1.0, 1.0, 1.0),
+        ),
+        "UiRoot": (
+            canvas: (120.0, 40.0),
+            space: World(
+                offset: (0.0, 2.2, 0.0),
+                pixel_size: 1.0,
+            ),
+        ),
+        "UiNode": (),
+        "UiThemed": (
+            theme: "asset:01a209fd-1a18-712e-a984-ae0981888298",
+            class: "spirit_number",
+        ),
+        "UiText": (),
+        "lamplight.Number": (
+            ticks_left: 60,
+        ),
+    },
+)

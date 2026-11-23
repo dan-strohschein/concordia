@@ -1,0 +1,139 @@
+//! Lamplight's pure rules (M2 phase 2.10c.1). Values by hand, at 60 ticks per second
+//! (dt = 1/60 s):
+//! - The can holds 100 oil; lighting costs 20, so a full can lights 5 lamps and the sixth fails.
+//! - A lit lamp holds 60 s of oil: after 3,599 ticks it is still lit (oil = 1/60 s), and the
+//!   3,600th tick puts it out (oil clamps to 0).
+//! - Each lit light scorches 30 health per second, 0.5 per tick; a wisp has 40 health, so in one
+//!   light it pops on its 80th tick, and in two lights on its 40th.
+//! - A burn number shows every 30 ticks of burning: 30 × 0.5 = 15 in one light. A wisp that
+//!   pops shows the burn since its last number: popping on tick 80 shows (80 mod 30) × 0.5 = 10;
+//!   on tick 60, nothing (the tick-60 number already showed it).
+//! - Town Spirit starts at 10. The night is lost when spirit reaches 0 (even at dawn) and won
+//!   when the clock reaches the night's length with spirit above 0.
+//! - Walking: the `walk` axis (x right, y up) becomes a velocity on the ground (x, −y on z, since
+//!   up walks north, −Z) at 3.5 m/s; a diagonal (1, 1) is normalized, so each axis is
+//!   3.5 / √2 ≈ 2.4749; `walk_amount` is the speed over 3.5.
+//! - Reach: the nearest unlit lamp within 2 m is lit; a lit lamp is never chosen.
+
+use lamplight_rules::rules::{
+    self, CAN_MAX, LIGHT_COST, Outcome, burn_lamp, burn_number, can_light, nearest_unlit, outcome,
+    pop_number, scorch, walk,
+};
+
+const DT: f32 = 1.0 / 60.0;
+
+#[test]
+fn a_full_can_lights_five_lamps() {
+    let mut can = CAN_MAX;
+    let mut lit = 0;
+    while can_light(can) {
+        can -= LIGHT_COST;
+        lit += 1;
+    }
+    assert_eq!(lit, 5);
+    assert_eq!(can, 0.0);
+}
+
+#[test]
+fn a_lamp_burns_sixty_seconds() {
+    let mut oil = rules::LAMP_SECONDS;
+    for _ in 0..3_599 {
+        oil = burn_lamp(oil, DT);
+    }
+    assert!(oil > 0.0, "still lit after 3,599 ticks: {oil}");
+    oil = burn_lamp(oil, DT);
+    assert!(oil <= 1e-3, "out after the 3,600th tick: {oil}");
+    assert_eq!(burn_lamp(0.0, DT), 0.0, "an empty lamp stays at 0");
+}
+
+#[test]
+fn a_wisp_pops_after_eighty_ticks_in_one_light() {
+    let mut health = rules::WISP_HEALTH;
+    let mut ticks = 0;
+    loop {
+        ticks += 1;
+        let (left, popped) = scorch(health, 1, DT);
+        health = left;
+        if popped {
+            break;
+        }
+        assert!(ticks < 1_000, "never popped");
+    }
+    assert_eq!(ticks, 80);
+
+    let mut health = rules::WISP_HEALTH;
+    let mut ticks = 0;
+    while !scorch(health, 2, DT).1 {
+        health = scorch(health, 2, DT).0;
+        ticks += 1;
+    }
+    assert_eq!(ticks + 1, 40, "two lights burn twice as fast");
+    assert_eq!(scorch(25.0, 0, DT), (25.0, false), "no light, no burn");
+}
+
+#[test]
+fn burn_numbers_show_every_thirty_ticks() {
+    assert_eq!(burn_number(29, 1), None);
+    assert_eq!(burn_number(30, 1), Some(15));
+    assert_eq!(burn_number(60, 2), Some(30));
+    assert_eq!(burn_number(0, 1), None, "not before the first burn");
+}
+
+#[test]
+fn a_popping_wisp_shows_the_burn_since_its_last_number() {
+    assert_eq!(pop_number(80, 1), Some(10));
+    assert_eq!(pop_number(40, 2), Some(10), "ten ticks in two lights");
+    assert_eq!(pop_number(60, 1), None);
+}
+
+#[test]
+fn the_night_is_won_at_dawn_and_lost_without_spirit() {
+    let length = rules::NIGHT_SECONDS;
+    assert_eq!(rules::SPIRIT_START, 10);
+    assert_eq!(outcome(length - 1.0, length, 3), None);
+    assert_eq!(outcome(length, length, 3), Some(Outcome::Won));
+    assert_eq!(outcome(10.0, length, 0), Some(Outcome::Lost));
+    assert_eq!(
+        outcome(length, length, 0),
+        Some(Outcome::Lost),
+        "no spirit at dawn loses"
+    );
+}
+
+#[test]
+fn walking_follows_the_axis_at_walking_speed() {
+    let (v, amount) = walk([0.0, 1.0]);
+    assert_eq!(v, [0.0, 0.0, -3.5], "up walks north (−Z)");
+    assert_eq!(amount, 1.0);
+    let (v, amount) = walk([1.0, 1.0]);
+    assert!(
+        (v[0] - 2.4749).abs() < 1e-3 && (v[2] + 2.4749).abs() < 1e-3,
+        "{v:?}"
+    );
+    assert!((amount - 1.0).abs() < 1e-6);
+    let (v, amount) = walk([0.5, 0.0]);
+    assert_eq!(v, [1.75, 0.0, 0.0], "a half press walks at half speed");
+    assert_eq!(amount, 0.5);
+    assert_eq!(walk([0.0, 0.0]), ([0.0, 0.0, 0.0], 0.0));
+}
+
+#[test]
+fn the_nearest_unlit_lamp_in_reach_is_lit() {
+    let lamps = [
+        ([0.0, 0.0, 0.0], false),
+        ([1.5, 0.0, 0.0], true),
+        ([1.9, 0.0, 0.0], false),
+        ([10.0, 0.0, 0.0], false),
+    ];
+    assert_eq!(
+        nearest_unlit([1.4, 0.0, 0.0], &lamps),
+        Some(2),
+        "lamp 1 is lit"
+    );
+    assert_eq!(nearest_unlit([0.5, 0.0, 0.0], &lamps), Some(0));
+    assert_eq!(
+        nearest_unlit([5.0, 0.0, 0.0], &lamps),
+        None,
+        "nothing in 2 m"
+    );
+}

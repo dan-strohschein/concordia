@@ -45,6 +45,10 @@ name = "repo_hygiene"
 path = "integration/repo_hygiene.rs"
 
 [[test]]
+name = "lamplight_night"
+path = "integration/lamplight_night.rs"
+
+[[test]]
 name = "lamplight_content"
 path = "integration/lamplight_content.rs"
 

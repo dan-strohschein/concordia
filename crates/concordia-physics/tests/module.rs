@@ -232,3 +232,19 @@ fn processors_raycast_through_physics_queries() {
         "the same hit as physics.raycast: {api}"
     );
 }
+
+#[test]
+fn contact_signals_are_registered_for_scripts() {
+    // A gameplay module names engine signals by their registered names (ADR-0062), as it does
+    // `NavArrived`; physics must register `ContactBegan` and `ContactEnded` (found in M2 phase
+    // 2.10c.1: a script receiving them failed with "names unknown type \"ContactBegan\"").
+    let mut rig = Rig::new();
+    for name in ["ContactBegan", "ContactEnded"] {
+        let schema = rig.ok("schema.get", json!({"name": name}));
+        let fields = &schema["schema"]["properties"];
+        assert!(
+            fields["other"].is_object() && fields["sensor"].is_object(),
+            "{schema}"
+        );
+    }
+}

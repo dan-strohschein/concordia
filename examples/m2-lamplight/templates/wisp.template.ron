@@ -1,0 +1,39 @@
+Template(
+    format: 1,
+    description: "A fog wisp: a crowd agent drifting to the square; lamplight burns it.",
+    traits: {},
+    components: {
+        "Name": "Wisp",
+        "Transform": (
+            translation: (0.0, 0.0, 0.0),
+            rotation: (0.0, 0.0, 0.0, 1.0),
+            scale: (1.0, 1.0, 1.0),
+        ),
+        "MeshRenderer": (
+            mesh: "asset:01a209fb-2a52-745d-a920-d1ec7a7f7b99#mesh/Wisp/0",
+            material: "asset:01a209fd-1a18-712e-a984-ae08a67017d8",
+            cast_shadows: false,
+        ),
+        "CharacterController": (),
+        "CharacterMotion": (),
+        "NavAgent": (
+            max_speed: 1.6,
+            radius: 0.35,
+            height: 1.25,
+        ),
+        "CrowdAgent": (),
+        "AudioEmitter": (
+            cue: "asset:01a209fd-1a14-727b-9634-31b22ddb9a63",
+            playing: false,
+            volume_db: 0.0,
+        ),
+        "lamplight.Wisp": (
+            health: 40.0,
+            burn_ticks: 0,
+            pop_cue: "asset:01a209fd-1a13-7442-98e6-e45962cee4b5",
+        ),
+        "fog.Drifter": (
+            target: (0.0, 0.0, 0.0),
+        ),
+    },
+)

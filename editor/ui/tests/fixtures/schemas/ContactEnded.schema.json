@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Signal: this entity stopped touching (or overlapping) `other`.",
+  "properties": {
+    "other": {
+      "description": "The other entity.\n\nStable entity id (UUID string).",
+      "format": "uuid",
+      "type": "string"
+    },
+    "sensor": {
+      "description": "One of them is a sensor.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "other",
+    "sensor"
+  ],
+  "title": "ContactEnded",
+  "type": "object",
+  "x-concordia-category": "Physics",
+  "x-concordia-type": "ContactEnded"
+}

@@ -60,7 +60,9 @@ pub struct ActionState {
     pub value: ActionValue,
 }
 ```
-Sensors (a `Collider` with `is_sensor`) raise `ContactBegan { other, sensor }` and `ContactEnded` on both entities the tick after they touch, and characters count: receive them to notice the player entering a zone.
+Sensors (a `Collider` with `is_sensor`) raise `ContactBegan { other, sensor }` and `ContactEnded` on both entities the tick after they touch, and characters count: receive them to notice the player entering a zone. A processor receives every delivered signal of its types, not only its own entities': keep the rows whose id is in `ctx.ids()`, or use that to pass facts between entities (raise a signal on the entity that should hear it).
+
+When a scene, template or `entity.spawn` gives one of your components, write every field: fields left out are zero or empty, not your `Default`.
 
 ## Driving the UI
 The UI/UX designer builds screens; your code fills them and reacts to them. Write a HUD value the same way as any component, e.g. set a health bar's `UiProgress.value` or a label's `UiText` runs (`ctx` commands on the widget's entity, mirrored like `PlayCue` below). Controls raise signals on their own entity the tick after they are used: receive `UiPressed` (a button), `UiToggled { on }`, `UiValueChanged { value }` (a slider) and `UiSelected { index }` (a dropdown or tabs); or just read `UiSlider.value` / `UiToggle.on` each tick. Ask the designer which entities they are.

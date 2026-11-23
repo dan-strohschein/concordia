@@ -1,0 +1,29 @@
+Template(
+    format: 1,
+    description: "An orange number rising over a burning wisp; it goes after a second.",
+    traits: {},
+    components: {
+        "Name": "Burn Number",
+        "Transform": (
+            translation: (0.0, 0.0, 0.0),
+            rotation: (0.0, 0.0, 0.0, 1.0),
+            scale: (1.0, 1.0, 1.0),
+        ),
+        "UiRoot": (
+            canvas: (120.0, 40.0),
+            space: World(
+                offset: (0.0, 2.2, 0.0),
+                pixel_size: 1.0,
+            ),
+        ),
+        "UiNode": (),
+        "UiThemed": (
+            theme: "asset:01a209fd-1a18-712e-a984-ae0981888298",
+            class: "burn_number",
+        ),
+        "UiText": (),
+        "lamplight.Number": (
+            ticks_left: 60,
+        ),
+    },
+)

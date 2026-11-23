@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2) and 2.5d (2026-11-22) done; phase 2.5 complete; 2.7 split into 2.7a (audio) and 2.7b (UI); 2.7a refined (2.7a.1, 2.7a.2), 2.7a.1 and 2.7a.2 (2026-11-22) done; phase 2.7a complete; 2.7b refined (2.7b.1–2.7b.3, 2026-11-22); 2.7b.1, 2.7b.2 and 2.7b.3 (2026-11-23) done; phase 2.7b complete; 2.10 refined (the sample game "Lamplight", 2.10a–2.10d, 2026-11-23); 2.10a and 2.10b (2026-11-23) done · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2) and 2.5d (2026-11-22) done; phase 2.5 complete; 2.7 split into 2.7a (audio) and 2.7b (UI); 2.7a refined (2.7a.1, 2.7a.2), 2.7a.1 and 2.7a.2 (2026-11-22) done; phase 2.7a complete; 2.7b refined (2.7b.1–2.7b.3, 2026-11-22); 2.7b.1, 2.7b.2 and 2.7b.3 (2026-11-23) done; phase 2.7b complete; 2.10 refined (the sample game "Lamplight", 2.10a–2.10d, 2026-11-23); 2.10a and 2.10b (2026-11-23) done; 2.10c refined (2.10c.1–2.10c.3); 2.10c.1 (2026-11-23) done · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -4388,6 +4388,129 @@ The author records pass or fail per item in the Status:
 - `repo_hygiene`'s private-marker and home-path checks pass over the new files.
 
 **Carry-over:** unchanged from 2.10a.
+
+### Phase 2.10c refinement (2026-11-23, against the code after 2.10b)
+**Status: refined; no author questions (my calls below; say if you disagree).** 2.10c is the largest sub-phase, so it splits into three stacked PRs, as 2.7b did:
+1. **2.10c.1 `m2/2.10-game-core`, the night:**
+   - the town scene: the ground and square, 12 lamps, the lamplighter, the chase camera, the night entity and the navmesh;
+   - templates for the wisp and the burn and spirit numbers;
+   - `lamplight-rules` (WASM): walking, oil, lighting by the `lit` event, lamps burning out, burning wisps in lamplight, the pop, Town Spirit, the clock, win and loss, and the camera;
+   - `lamplight-fog` (native): wisp waves from the harbour, steered to the square.
+2. **2.10c.2 `m2/2.10-game-town`, the town's life:**
+   - townsfolk: a crowd with the idle/walk graph, startled by nearby wisps, fleeing home, far ones ticking at their LOD rate;
+   - oil wagons: vehicles on the ring road's lanes and junctions, braking for the lamplighter;
+   - refills.
+3. **2.10c.3 `m2/2.10-game-ui`, the UI:**
+   - the title menu (name box, night-length spin box, fog dropdown), the HUD, the pause menu with volume sliders per bus, the end screen with the night records, and the world-space numbers;
+   - the engine gap below.
+
+**How the scripts talk** (a script sees only its query's columns, but every processor receiving a signal type sees every delivered signal of that type):
+- Cross-entity facts travel as signals:
+  - the lamplighter's `Kindle { at }` when the `lit` event fires;
+  - a light's `Scorch { amount }` to each entity inside it while lit (only wisps act on it);
+  - the night entity's `NightTick` with the phase, clock and spirit, which the fog and the HUD read;
+  - `SpiritLost` from a wisp reaching the square.
+- Physics layers can't be set from `concordia.toml` (only `PhysicsSettings` in code has the matrix), so lights hear every body that enters them, and the scripts filter by who acts on a signal. No engine change.
+- A lamp is two entities: a solid post, and a light that is a static sphere sensor with a `PointLight`.
+- Wisps are crowd agents (`CharacterController`, `NavAgent`, `CrowdAgent`), which sensors see since 2.10a.
+- Townsfolk fear is a distance check against the wisps' broadcast positions, because colliders don't follow a parent.
+- Far townsfolk read `SimLod` and act only when `due`, using its `elapsed`.
+
+**Gaps found so far (each test-first in its crate; the "stop past about three" rule still holds):**
+- **G1 (2.10c.3): gameplay can't set a bus's volume.** Only the `audio.buses` method changes gains, and scripts call no methods. Fix: a component or signal in `concordia-audio` that sets a bus's gain from gameplay.
+- **G2 (found and fixed in 2.10c.1): physics didn't register its contact signals**, so scripts couldn't receive them (see the 2.10c.1 As built).
+
+**Choices:**
+- Integration tests are named `tests/integration/lamplight_*.rs`, not `m2_lamplight_*`, so `just gate-tests M2` (which selects `binary(/^m2_/)`) runs only the gate.
+- Rule values, derived in the rule tests:
+  - the can holds 100 oil and lighting costs 20;
+  - a lamp burns 60 s on a lighting;
+  - light scorches 30 health per second, and a wisp has 40;
+  - a burn number every 0.5 s of burning;
+  - Town Spirit starts at 10, and each wisp reaching the square takes 1;
+  - the default night is 180 s;
+  - the lamplighter walks at 3.5 m/s and reaches lamps within 2 m.
+
+### Phase 2.10c.1 As built (2026-11-23; no ADR changes)
+**Status: done (branch `m2/2.10-game-core`). The night plays: the town, the lamplighter, lamps, wisps, the rules (WASM) and the fog (native).**
+
+**What landed:**
+- **`examples/m2-lamplight/scenes/town.scene.ron`**, built by `tools/build_town.py` through `concordia headless` (as M1's gate scene was):
+  - 64 cobbled ground tiles over one static ground box;
+  - the fountain and four market stalls on the square;
+  - 12 lamps: eight on a ring of 12 m, four along the harbour street. Each is a solid post (the Kenney lantern at 3×, about 4.7 m), a glass sphere in `lamp_glass`, and a light (a static 6 m sphere sensor with a `PointLight`, dark at dusk);
+  - 14 one- and two-storey houses on three edges, the docks, four trees and the navmesh volume;
+  - the lamplighter: a walker root with the controller, `InputActions` and `lamplight.Lamplighter`, the skinned body under it (anim graph, footstep and reach cues), and the lantern pole on `hand.R`;
+  - the chase camera (with the `AudioListener`), moonlight, the night (with the night theme) and the fog director.
+- **`scripts/lamplight-rules`** (module `lamplight`, WASM): seven processors.
+  - `walk`: input to motion and facing, asks for the Light one-shot, kindles at `Reached`, pays for `Lit`, broadcasts `Where`.
+  - `body`: `Stride` into the graph; the `lit` event becomes `Reached`.
+  - `lamps`: tracks who is inside from the contacts, lights the nearest unlit lamp in reach, burns oil, scorches what is inside.
+  - `wisps`: burns and pops, burn numbers, the sizzle emitter, arrivals cost spirit.
+  - `numbers`, `night` (clock, counts, outcome, dawn cues and the `NightTick` broadcast) and `chase`.
+  - The pure rules are in `rules.rs`.
+- **`scripts/lamplight-fog`** (module `fog`, native): `waves` sends `per_wave × density` wisps every 20 s (the first after 5 s) while played. `steer` gives each wisp its target on a ring 4–6 m around the square.
+- **`scripts/lamplight-types`:** the engine types both modules mirror, and `NightTick`. The two modules share them instead of copying them.
+- **Templates:** `wisp`, `burn_number` and `spirit_number` (world-space UI roots whose offset rises by a tween).
+- **`just lamplight-build`** builds both modules into the example's git-ignored `build/`. `just wasm`, `just native-fixtures` and `just lint`'s WASM clippy learn the two crates.
+- **`concordia-physics` (G2):** the module registers `ContactBegan` and `ContactEnded`, so scripts can receive them by name.
+
+**Found while building (this As built wins):**
+- **G2: scripts couldn't receive contacts.** `lamplight.lamps` failed to load with "names unknown type "ContactBegan"". 2.10a's note that scripts receive contacts by name was wrong: its tests used Rust systems, which never go through the registry. Fixed test-first (`contact_signals_are_registered_for_scripts`).
+- **Script components get zeros, not the guest's `Default`.** A scene or template that leaves out a field gets zero or empty: the first town had a 0-second night and no spirit. Scenes and templates now give every field. The types don't use `#[serde(default)]`, so a missing field is an error, not a silent zero. The scripting skill says so.
+- **The controller and the animated body are different entities.** The prefab's skinned mesh is a child, so the walker sends its body a `Stride`, and the body answers the `lit` event with `Reached`. Townsfolk will follow the same pattern.
+- **Crowd agents and unreachable targets (engine finding, carried over to M7 7.7 with the crowd items).** A wisp aimed at the fountain's centre (inside its collider) planned a partial path ending where it stood and never received `NavArrived`. Crowd arrival needs `at_end`, which that corridor never set. Wisps now aim at reachable ground, a ring 4–6 m out.
+- **Physics layers:** they can't be set from `concordia.toml`, so a light hears every body that enters it, and only wisps act on `Scorch` (see the refinement). No engine change.
+- **Exposure:** a night scene at EV100 6 rendered black. The camera uses EV100 0 with 2 lux of moonlight, and lamps light the rest (2,400 lm each).
+
+**Tests** (expected values derived in each header):
+- **`lamplight-rules` `tests/rules.rs` (8):** five lamps per can, a lamp burns 60 s (out on its 3,600th tick), a wisp pops on its 80th burn tick in one light (40th in two), burn numbers every 30 ticks, the pop number, dawn wins and no spirit loses, walking speed and the diagonal, and the nearest unlit lamp in reach.
+- **`tests/integration/lamplight_night.rs` (11), the scene with both modules through the Engine API:**
+  - walking (1.75 m in 30 ticks, facing −Z, the blend at 1, the camera following);
+  - lighting in reach (oil 80, the lamp lit with about 59.5 s, counted once), and out of reach (dark);
+  - a wisp burning in lamplight (0.5 health left after tick 80, popped by 89, numbers "15", "15" and "10", the lamp forgets it);
+  - a wisp at the square costing spirit, and losing the night with 1 spirit;
+  - a 10 s night won by tick 605;
+  - a lamp burning out;
+  - the fog's first wave (6 wisps at the harbour, aimed at the ring, none on the title screen);
+  - equal hashes for the same night;
+  - an empty can lighting nothing.
+  - Every test that drives the scene ends with no error logs.
+- **`concordia-physics`:** `contact_signals_are_registered_for_scripts`.
+- **Red run:**
+  - the pure rules failed on `todo!()` stubs;
+  - the night tests first failed on the unregistered contact signal (G2), and then on stub processors;
+  - the physics test failed with "no type or method named "ContactBegan"".
+  - Two night tests needed fixing: one read the play world before its first step, and the fog test's ring bounds.
+- **Mutation checks** (all eight mutants failed a test; restored files touched):
+  - scorch ignoring how many lights;
+  - a 20 m reach;
+  - lighting costing no oil;
+  - no loss at 0 spirit;
+  - lamps never burning oil;
+  - fog on the title screen;
+  - lamps keeping popped wisps;
+  - an empty can still lighting.
+- **Called out:** `an_empty_can_lights_nothing` was written after its code (a check-the-checks pass found no test for it). Its mutant fails it.
+
+**Studio and docs:**
+- **No tools or roles changed.** The scripting skill gains two notes: a processor sees every delivered signal of its types, and fields left out are zero.
+- **Docs updated:**
+  - `concordia-physics`'s AGENTS.md and README;
+  - the agent guide's sensors note;
+  - the example's README (running it, how it plays, the layout).
+
+**Checklist (2026-11-23):**
+- `just lint` (with the new crates' WASM clippy) and the Tauri shell's clippy: clean.
+- `just wasm`, `just native-fixtures`, then `cargo nextest run --workspace --no-fail-fast` with `CONCORDIA_REQUIRE_GPU=1`: 1,825 run, 1,825 passed. Doc tests: clean.
+- `just gate-tests M1` (4/4) and `M3S` (13/13).
+- `just deny` and the editor's deny: advisories, bans, licenses and sources ok.
+- `just editor-schemas`: `ContactBegan` and `ContactEnded`, committed. `just editor-test`: lint, 118 unit and 22 end-to-end tests pass.
+- Role budgets unchanged (no tools changed; `role_tool_budget` passes).
+- No new Linux system library, and no new or changed snapshots or goldens.
+- `repo_hygiene`'s private-marker and home-path checks pass over the new files.
+
+**Carry-over:** unchanged from 2.10b, plus the crowd's unreachable-target arrival (above).
 
 ### Effort (re-estimated)
 | Phase | Estimate |

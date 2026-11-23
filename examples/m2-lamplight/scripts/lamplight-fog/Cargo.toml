@@ -1,0 +1,26 @@
+[package]
+name = "lamplight-fog"
+description = "Lamplight's fog (M2's sample game): wisp waves from the harbour, steered to the square."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[features]
+# Export the native module C ABI from the cdylib (ADR-0061); the game loads this module natively.
+dylib = []
+
+[dependencies]
+concordia-core.workspace = true
+concordia-reflect.workspace = true
+concordia-script-guest.workspace = true
+lamplight-types = { path = "../lamplight-types" }
+serde.workspace = true
+
+[lints]
+workspace = true
