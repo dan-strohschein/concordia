@@ -72,3 +72,22 @@ A `NavAgent` with a `CrowdAgent` too is a crowd agent: the crowd steers it with 
       pub depth: u8,
   }
   ```
+
+## Vehicles
+A `Vehicle` drives the level designer's lanes (`concordia-traffic`); vehicles usually come from a template's `Traffic` trait. Gameplay sends one somewhere by setting `Vehicle.destination` to a lane's id (none: it wanders), and hears:
+- `VehicleArrived { destination, position }` when it stops at that lane's end (or in the queue behind vehicles that did);
+- `VehicleRouteFailed { destination }` once when no lanes lead there.
+Its engine state is `VehicleState` (hashed: `lane`, `distance` along it, `speed`, `route`, `status`: `Idle`, `Driving`, `Waiting` at a junction, `Arrived` or `Failed`): `mcp__concordia__query_run {"with": ["Vehicle", "VehicleState"], "select": ["VehicleState"], "world": "play"}`. To set it from a script, mirror `Vehicle` field for field:
+```rust
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "Vehicle", default)]
+pub struct Vehicle {
+    pub max_speed: f32,
+    pub max_acceleration: f32,
+    pub comfortable_braking: f32,
+    pub time_headway: f32,
+    pub min_gap: f32,
+    pub length: f32,
+    pub destination: Option<EntityId>,
+}
+```

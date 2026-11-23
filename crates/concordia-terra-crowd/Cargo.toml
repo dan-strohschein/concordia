@@ -1,6 +1,6 @@
 [package]
 name = "concordia-terra-crowd"
-description = "Concordia crowds: navigation agents steered together as Terra processors (DetourCrowd's steps over Detour queries), with neighbours, separation, collision and integration on the navmesh surface."
+description = "Concordia crowds and traffic: navigation agents steered together as Terra processors (DetourCrowd's steps over Detour queries), and vehicles driving lanes with the Intelligent Driver Model."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

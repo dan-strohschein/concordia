@@ -256,3 +256,115 @@ fn crowd_debug_layer_draws_walls() {
         assert!(drawn, "wall {w} drawn: {geometry:?}");
     }
 }
+
+const CAR: &str = r#"Template(
+    format: 1,
+    description: "A car: drives the lanes.",
+    traits: {
+        "Traffic": (vehicle: (max_speed: 12.0)),
+    },
+    components: {
+        "Name": "Car",
+        "RigidBody": (kind: Kinematic),
+        "Collider": (shape: Box(half_extents: (0.9, 0.7, 2.25))),
+    },
+)
+"#;
+
+/// A straight lane along +x from (−8, 0.7, 0) to (40, 0.7, 0) at 10 m/s.
+fn road(rig: &mut Engined) -> String {
+    rig.spawn(json!({
+        "Transform": Engined::at(0.0, 0.0, 0.0),
+        "Lane": {"points": [[-8.0, 0.7, 0.0], [40.0, 0.7, 0.0]], "speed_limit": 10.0},
+    }))
+}
+
+#[test]
+fn vehicle_template_drives_a_kinematic_body() {
+    // A spawner of one car (the `Traffic` trait plus a kinematic box body) on a straight lane.
+    // The trait adds `Vehicle` (top speed 12) and, at play, a `VehicleState`. Traffic writes the
+    // car's `Transform` in `PrePhysics` and Jolt's kinematic body follows it, so a dynamic crate
+    // sitting in the lane 10 m ahead is shoved forward (crates aren't people: the car doesn't
+    // brake for them).
+    let mut rig = Engined::new(2, Vec::new(), |root| {
+        std::fs::create_dir_all(root.join("templates")).unwrap();
+        std::fs::write(root.join("templates/car.template.ron"), CAR).unwrap();
+    });
+    rig.spawn(json!({
+        "Transform": Engined::at(0.0, -0.5, 0.0),
+        "RigidBody": {"kind": "Static"},
+        "Collider": {"shape": {"Box": {"half_extents": [60.0, 0.5, 10.0]}}},
+    }));
+    road(&mut rig);
+    let crate_box = rig.spawn(json!({
+        "Transform": Engined::at(4.0, 0.5, 0.0),
+        "RigidBody": {"kind": "Dynamic"},
+        "Collider": {"shape": {"Box": {"half_extents": [0.5, 0.5, 0.5]}}},
+    }));
+    rig.spawn(json!({
+        "Transform": Engined::at(-6.0, 0.7, 0.0),
+        "Spawner": {"template": "car", "count": 1, "seed": 1, "distribution": {"Grid": {"spacing": 1.0}}},
+    }));
+    rig.step(1);
+    let rows = rig.ok(
+        "query.run",
+        json!({"with": ["Vehicle", "VehicleState", "Name"], "world": "play"}),
+    )["rows"]
+        .as_array()
+        .unwrap()
+        .clone();
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    let car = rows[0]["id"].as_str().unwrap().to_owned();
+    assert_eq!(rig.play(&car, "Vehicle")["max_speed"], 12.0);
+    rig.step(360);
+    let at = xyz(&rig.play(&car, "Transform")["translation"]);
+    let pushed = xyz(&rig.play(&crate_box, "Transform")["translation"]);
+    assert!(at[0] > 4.0, "the car drove on: {at:?}");
+    assert!(
+        pushed[0] > at[0] + 1.0,
+        "the crate was shoved ahead of it: {pushed:?} vs {at:?}"
+    );
+}
+
+#[test]
+fn lanes_debug_layer_draws_lanes_junctions_and_vehicles() {
+    // One 48 m lane (an arrow every 5 m: 9 of them, 2 lines each; the polyline: 1 line) and a
+    // vehicle on it (its 4.5 × 1.8 m footprint: 4 lines), all lifted 2 cm; a bad lane (one point)
+    // is drawn as a red cross at its point (2 lines). Edit worlds aren't driven, so nothing is
+    // drawn there.
+    let mut rig = rig();
+    assert!(rig.engine.debug_layers().contains(&"lanes"));
+    road(&mut rig);
+    rig.spawn(json!({
+        "Transform": Engined::at(0.0, 0.0, 0.0),
+        "Lane": {"points": [[0.0, 0.7, 20.0]]},
+    }));
+    let car = rig.spawn(json!({
+        "Transform": Engined::at(0.0, 0.7, 0.0),
+        "Vehicle": {},
+    }));
+    assert_eq!(rig.engine.debug_geometry("lanes", WorldSel::edit), None);
+    rig.step(1);
+    let geometry = rig
+        .engine
+        .debug_geometry("lanes", WorldSel::play)
+        .expect("drawn");
+    assert_eq!(geometry.lines.len(), 1 + 18 + 4 + 2, "{geometry:?}");
+    let feet = xyz(&rig.play(&car, "Transform")["translation"]);
+    let corner = [feet[0] + 2.25, feet[1] + 0.02, feet[2] + 0.9];
+    assert!(
+        geometry.lines.iter().any(|l| l
+            .from
+            .to_array()
+            .iter()
+            .zip(corner)
+            .all(|(a, b)| (a - b).abs() < 1e-4)),
+        "a footprint corner at {corner:?}: {geometry:?}"
+    );
+    let red = geometry
+        .lines
+        .iter()
+        .filter(|l| l.color == [1.0, 0.1, 0.1, 1.0])
+        .count();
+    assert_eq!(red, 2, "the bad lane");
+}

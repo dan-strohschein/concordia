@@ -8,7 +8,7 @@ use concordia_studio::{CLAUDE_SKILL_FIELDS, Roster, SkillFile, default_roster, i
 
 /// The eight built-in skills the plan names (3.6), plus team comms (3.6b), animation (M2 2.4.5)
 /// and navigation (M2 2.5a).
-const PLANNED: [&str; 14] = [
+const PLANNED: [&str; 15] = [
     "concordia-add-material",
     "concordia-animation-graphs",
     "concordia-director-planning",
@@ -22,6 +22,7 @@ const PLANNED: [&str; 14] = [
     "concordia-task-workflow",
     "concordia-team-comms",
     "concordia-terra-templates",
+    "concordia-traffic",
     "concordia-write-playtest",
 ];
 
@@ -704,4 +705,122 @@ fn struct_fields<T: concordia_reflect::Reflect>() -> Vec<&'static str> {
         panic!("{} is a struct", info.name)
     };
     fields.iter().map(|f| f.name).collect()
+}
+
+#[test]
+fn traffic_skill_examples_are_real_params_components_and_a_valid_template() {
+    let text = default_roster()
+        .skills
+        .iter()
+        .find(|(n, _)| *n == "concordia-traffic")
+        .map(|(_, t)| *t)
+        .expect("the traffic skill");
+    let mut seen = std::collections::BTreeSet::new();
+    let component = |name: &str, value: &serde_json::Value| -> Result<(), serde_json::Error> {
+        match name {
+            "Lane" => {
+                serde_json::from_value::<concordia_terra_crowd::Lane>(value.clone()).map(|_| ())
+            }
+            "Junction" => {
+                serde_json::from_value::<concordia_terra_crowd::Junction>(value.clone()).map(|_| ())
+            }
+            "Vehicle" => {
+                serde_json::from_value::<concordia_terra_crowd::Vehicle>(value.clone()).map(|_| ())
+            }
+            "Name" | "Transform" => Ok(()),
+            other => panic!("no example check for {other}"),
+        }
+    };
+    for (tool, args) in examples(text, "") {
+        match tool.as_str() {
+            "entity_spawn" => {
+                for (name, value) in args["components"].as_object().expect("components") {
+                    component(name, value).unwrap_or_else(|e| panic!("{name} {value}: {e}"));
+                    seen.insert(name.clone());
+                }
+            }
+            "component_set" => {
+                let name = args["component"].as_str().expect("a component");
+                component(name, &args["value"]).unwrap_or_else(|e| panic!("{args}: {e}"));
+                seen.insert(name.to_owned());
+            }
+            "capture_screenshot" => {
+                let p = serde_json::from_value::<concordia_render::CaptureScreenshotParams>(
+                    args.clone(),
+                )
+                .unwrap_or_else(|e| panic!("{args}: {e}"));
+                assert!(format!("{p:?}").contains("lanes"), "draws the lanes layer");
+            }
+            "query_run" => {
+                assert!(
+                    args["with"].is_array(),
+                    "query_run {args}: `with` is required"
+                );
+                serde_json::from_value::<concordia_api::WorldSel>(args["world"].clone()).unwrap();
+            }
+            _ => continue,
+        }
+        seen.insert(tool);
+    }
+    for needed in [
+        "Lane",
+        "Junction",
+        "entity_spawn",
+        "component_set",
+        "capture_screenshot",
+        "query_run",
+    ] {
+        assert!(seen.contains(needed), "the skill shows {needed}: {seen:?}");
+    }
+    let block = ron_blocks(text)
+        .into_iter()
+        .find(|b| b.contains("\"Traffic\""))
+        .expect("a Traffic trait example");
+    let doc = format!(
+        "Template(\n    format: 1,\n    description: \"Skill example.\",\n    {block}\n    components: {{}},\n)\n"
+    );
+    let mut registry = concordia_reflect::TypeRegistry::new();
+    concordia_scene::builtin::register(&mut registry).unwrap();
+    concordia_terra_sim::register(&mut registry).unwrap();
+    concordia_nav::register_types(&mut registry).unwrap();
+    concordia_terra_crowd::register_types(&mut registry).unwrap();
+    let doc = concordia_scene::read_template(&doc, &registry)
+        .unwrap_or_else(|e| panic!("the Traffic example: {e}"));
+    let compiled = concordia_terra_sim::Template::from_doc("example", &doc)
+        .unwrap()
+        .compile(&registry)
+        .unwrap_or_else(|e| panic!("the Traffic example: {e}"));
+    assert_eq!(compiled.component_names(), ["Transform", "Vehicle"]);
+    for needle in [
+        "priority",
+        "next",
+        "TrafficProblems",
+        "`lanes`",
+        "Kinematic",
+    ] {
+        assert!(text.contains(needle), "the skill explains {needle}");
+    }
+}
+
+#[test]
+fn nav_agents_skill_mirrors_vehicle() {
+    let text = default_roster()
+        .skills
+        .iter()
+        .find(|(n, _)| *n == "concordia-nav-agents")
+        .map(|(_, t)| *t)
+        .expect("the nav agents skill");
+    assert_eq!(
+        mirror_fields(text, "Vehicle"),
+        struct_fields::<concordia_terra_crowd::Vehicle>(),
+        "the Vehicle mirror in the skill matches Vehicle"
+    );
+    for needle in [
+        "VehicleArrived",
+        "VehicleRouteFailed",
+        "VehicleState",
+        "destination",
+    ] {
+        assert!(text.contains(needle), "the skill explains {needle}");
+    }
 }

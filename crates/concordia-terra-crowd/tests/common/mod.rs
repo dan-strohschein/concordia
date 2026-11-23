@@ -20,7 +20,10 @@ use concordia_scene::builtin::{Transform, lod_position};
 use concordia_terra::{
     LodProfile, LodViewer, Phase, Schedule, SimLod, SimLoop, World, WorldHash, lod_system,
 };
-use concordia_terra_crowd::{CrowdState, add_crowd_processors, insert_crowd_states};
+use concordia_terra_crowd::{
+    CrowdState, Junction, Lane, Vehicle, VehicleState, add_crowd_processors,
+    add_traffic_processors, insert_crowd_states, insert_traffic,
+};
 
 /// The walkable surface of a floor whose top is y = 0 (2.5a: a span is at least one cell tall).
 pub const SURFACE: f32 = 0.2;
@@ -128,6 +131,40 @@ impl Level {
         viewer
     }
 
+    /// A lane entity at the origin through `points` (x, z at y = 0) with `speed_limit`.
+    pub fn lane(&mut self, points: &[[f32; 2]], speed_limit: f32) -> EntityId {
+        let id = self.entity(Vec3::ZERO);
+        let lane = Lane {
+            points: points.iter().map(|p| Vec3::new(p[0], 0.0, p[1])).collect(),
+            speed_limit,
+            ..Lane::default()
+        };
+        self.world.insert(id, lane).unwrap();
+        id
+    }
+
+    /// Links lane `from` to the lanes `to`.
+    pub fn link(&mut self, from: EntityId, to: &[EntityId]) {
+        self.world.get_mut::<Lane>(from).unwrap().next = to.to_vec();
+    }
+
+    /// A junction entity of `lanes`.
+    pub fn junction(&mut self, lanes: &[EntityId]) -> EntityId {
+        let id = self.entity(Vec3::ZERO);
+        let junction = Junction {
+            lanes: lanes.to_vec(),
+        };
+        self.world.insert(id, junction).unwrap();
+        id
+    }
+
+    /// A vehicle at `at` (it is placed on the nearest lane).
+    pub fn vehicle(&mut self, at: Vec3, vehicle: Vehicle) -> EntityId {
+        let id = self.entity(at);
+        self.world.insert(id, vehicle).unwrap();
+        id
+    }
+
     pub fn build(&self) -> NavMesh {
         let input = NavInput::gather(&self.world, self.volume.expect("a volume")).expect("gathers");
         let data = build_tiles(&input, NonZeroUsize::new(4).unwrap()).expect("builds");
@@ -153,12 +190,12 @@ pub fn idle() -> NavAgent {
     }
 }
 
-/// Nav's and the crowd's processors on a `SimLoop` at 60 Hz.
+/// Nav's, the crowd's and traffic's processors on a `SimLoop` at 60 Hz (a navmesh only when the
+/// level has a volume).
 pub struct Rig {
     pub world: World,
     sim: SimLoop,
     jobs: JobSystem,
-    pub mesh: Arc<NavMesh>,
 }
 
 impl Rig {
@@ -168,13 +205,15 @@ impl Rig {
 
     /// `extra` is registered first (so a test system in `PrePhysics` runs before the crowd).
     pub fn with(mut level: Level, threads: usize, extra: impl FnOnce(&mut Schedule)) -> Self {
-        let mesh = Arc::new(level.build());
-        let volume = level.volume.expect("a volume");
-        level
-            .world
-            .insert_resource(NavMeshes::new([(volume, mesh.clone())]));
+        if let Some(volume) = level.volume {
+            let mesh = Arc::new(level.build());
+            level
+                .world
+                .insert_resource(NavMeshes::new([(volume, mesh)]));
+        }
         insert_agent_states(&mut level.world);
         insert_crowd_states(&mut level.world);
+        insert_traffic(&mut level.world);
         let mut schedule = Schedule::new();
         extra(&mut schedule);
         add_agent_processors(
@@ -184,13 +223,13 @@ impl Rig {
             },
         );
         add_crowd_processors(&mut schedule);
+        add_traffic_processors(&mut schedule);
         let mut world = level.world;
         let sim = SimLoop::new(TickRate::HZ_60, schedule, &mut world).unwrap();
         Self {
             world,
             sim,
             jobs: JobSystem::new(NonZeroUsize::new(threads).unwrap()).unwrap(),
-            mesh,
         }
     }
 
@@ -219,6 +258,10 @@ impl Rig {
 
     pub fn nav(&self, id: EntityId) -> NavAgentState {
         self.world.get::<NavAgentState>(id).unwrap().clone()
+    }
+
+    pub fn vehicle(&self, id: EntityId) -> VehicleState {
+        self.world.get::<VehicleState>(id).unwrap().clone()
     }
 
     pub fn crowd(&self, id: EntityId) -> CrowdState {

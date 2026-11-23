@@ -51,7 +51,7 @@ pub use error::{EcsError, QueryError, ScheduleError};
 pub use hash::{ParseHashError, StateDigest, WorldHash};
 pub use lod::{
     Due, LOD, LOD_LEVELS, LodPosition, LodProfile, LodStats, LodViewer, SimLod, is_due, lod_phase,
-    lod_stats, lod_system, register_lod,
+    lod_stats, lod_system, register_lod, splitmix64,
 };
 pub use named::{Batch, NamedQuery};
 pub use observer::{Observe, observer};
