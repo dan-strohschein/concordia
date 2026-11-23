@@ -35,3 +35,4 @@ The engine is deterministic per binary and machine: the same inputs from the sam
 - Divergence is located to a checkpoint window and the parts that differ. Finding the exact tick and field is M3 phase 3.1's bisection.
 - Agents get reproducible evidence. QA records and verifies, and programmers resimulate to prove fixes.
 - **Note (M2 phase 2.5b.2a, ADR-0078):** pointer rays (`ActionValue::Ray`) are recorded like any action value, so a click replays without the window size or camera. The format stays version 0.
+- **Note (M2 phase 2.7b.2, ADR-0060):** the in-game UI reads only actions (`ui_pointer`, `ui_click`, `ui_scroll`, `ui_viewport`, the `ui_*` keys). The window's size is input too: `InputEvent::Viewport` feeds the new `Binding::Viewport`, so a resize is recorded like any action value. The format stays version 0.

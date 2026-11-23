@@ -1,0 +1,39 @@
+{
+  "$defs": {
+    "Orientation": {
+      "description": "Which way a separator runs.",
+      "oneOf": [
+        {
+          "const": "Horizontal",
+          "description": "Left to right."
+        },
+        {
+          "const": "Vertical",
+          "description": "Top to bottom."
+        }
+      ],
+      "title": "Orientation",
+      "x-concordia-type": "Orientation"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A grabbed scroll thumb: which bar, and how far along the thumb it was grabbed.",
+  "properties": {
+    "at": {
+      "description": "Pixels from the thumb's start.",
+      "type": "number"
+    },
+    "bar": {
+      "$ref": "#/$defs/Orientation",
+      "description": "The bar (`Horizontal` scrolls x)."
+    }
+  },
+  "required": [
+    "bar",
+    "at"
+  ],
+  "title": "Grab",
+  "type": "object",
+  "x-concordia-type": "Grab"
+}

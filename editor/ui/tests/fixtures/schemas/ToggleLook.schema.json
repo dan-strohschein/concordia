@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "How a toggle draws.",
+  "oneOf": [
+    {
+      "const": "Checkbox",
+      "description": "A box, filled when on."
+    },
+    {
+      "const": "Switch",
+      "description": "A track with a knob."
+    },
+    {
+      "const": "Button",
+      "description": "The whole widget, in its theme's `pressed` style when on."
+    }
+  ],
+  "title": "ToggleLook",
+  "x-concordia-type": "ToggleLook"
+}

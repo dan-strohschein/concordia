@@ -15,7 +15,7 @@ use concordia_api::{ApiError, Engine, EngineConfig, WorldSel};
 use concordia_app::{Player, Project};
 use concordia_core::math::Vec3;
 use concordia_input::{ActionStates, ActionValue, InputEvent, KeyCode, MouseButton};
-use concordia_platform::WindowEvent;
+use concordia_platform::{CursorIcon, WindowEvent};
 use concordia_render::{Projection, View};
 use serde_json::{Value, json};
 
@@ -156,13 +156,17 @@ fn player_starts_play_and_presents_the_game_camera() {
     ] {
         player.event(&event, &mut api).unwrap();
     }
-    // Presents carry the window's scale factor (2 here) so the UI draws at display density.
+    // Presents carry the window's scale factor (2 here) so the UI draws at display density; the
+    // UI hears the size in logical pixels (physical / 2) as `Viewport` input.
     let present = |w: u32, h: u32| json!({"width": w, "height": h, "world": "play", "scale": 2.0});
+    let viewport = |w: f32, h: f32| json!({"events": [{"event": {"Viewport": {"width": w, "height": h}}}], "actor": "human:player"});
     assert_eq!(
         calls,
         [
             ("sim.play".to_owned(), json!({})),
+            ("input.inject".to_owned(), viewport(640.0, 360.0)),
             ("viewport.present".to_owned(), present(1280, 720)),
+            ("input.inject".to_owned(), viewport(400.0, 300.0)),
             ("viewport.present".to_owned(), present(800, 600)),
             ("sim.stop".to_owned(), json!({})),
         ]
@@ -318,4 +322,67 @@ fn a_window_without_a_camera_still_plays() {
     stage.step();
     assert!(stage.action("jump").pressed);
     assert!(!stage.action("pointer_ray").pressed, "no camera, no ray");
+}
+
+/// A scale change re-sends the logical size (800 × 600 physical at scale 1 after 2: 800 × 600).
+/// Each cursor move asks `ui.hit_test` for the hovered widget's cursor; a project without `[ui]`
+/// answers "no such method" once and is never asked again.
+#[test]
+fn scale_changes_resend_the_viewport_and_moves_ask_for_the_cursor() {
+    let mut calls: Vec<(String, Value)> = Vec::new();
+    let mut cursor = "Pointer";
+    let mut player = Player::new(false);
+    let feed = |player: &mut Player,
+                event: WindowEvent,
+                calls: &mut Vec<(String, Value)>,
+                cursor: &str| {
+        let mut api = |method: &str, params: Value| -> Result<Value, ApiError> {
+            calls.push((method.to_owned(), params));
+            match method {
+                "ui.hit_test" if cursor == "none" => Err(ApiError::new(
+                    concordia_api::ApiErrorKind::MethodNotFound,
+                    "no method named \"ui.hit_test\"",
+                )),
+                "ui.hit_test" => Ok(json!({"cursor": cursor})),
+                _ => Ok(json!({"origin": [0.0, 0.0, 0.0], "direction": [0.0, -1.0, 0.0]})),
+            }
+        };
+        player.event(&event, &mut api).unwrap();
+    };
+    feed(&mut player, opened(800, 600, 2.0), &mut calls, cursor);
+    calls.clear();
+    feed(
+        &mut player,
+        WindowEvent::ScaleChanged { scale_factor: 1.0 },
+        &mut calls,
+        cursor,
+    );
+    assert_eq!(
+        calls,
+        [(
+            "input.inject".to_owned(),
+            json!({"events": [{"event": {"Viewport": {"width": 800.0, "height": 600.0}}}], "actor": "human:player"})
+        )]
+    );
+    assert_eq!(player.cursor(), CursorIcon::Arrow);
+    let mv = || input(InputEvent::PointerMove { x: 10.0, y: 20.0 });
+    feed(&mut player, mv(), &mut calls, cursor);
+    assert!(
+        calls.iter().any(
+            |(m, p)| m == "ui.hit_test" && *p == json!({"x": 10.0, "y": 20.0, "world": "play"})
+        )
+    );
+    assert_eq!(player.cursor(), CursorIcon::Pointer);
+    cursor = "Text";
+    feed(&mut player, mv(), &mut calls, cursor);
+    assert_eq!(player.cursor(), CursorIcon::Text);
+    cursor = "none";
+    feed(&mut player, mv(), &mut calls, cursor);
+    assert_eq!(player.cursor(), CursorIcon::Arrow);
+    calls.clear();
+    feed(&mut player, mv(), &mut calls, cursor);
+    assert!(
+        calls.iter().all(|(m, _)| m != "ui.hit_test"),
+        "not asked again"
+    );
 }

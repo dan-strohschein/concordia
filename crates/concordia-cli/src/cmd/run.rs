@@ -9,7 +9,9 @@ use std::time::{Duration, Instant, SystemTime};
 use concordia_api::{Engine, EngineHandle};
 use concordia_app::Project;
 use concordia_core::id::SessionId;
-use concordia_platform::{Flow, NativeView, RunOptions, WindowApp, WindowEvent, run_window};
+use concordia_platform::{
+    CursorIcon, Flow, NativeView, RunOptions, WindowApp, WindowEvent, run_window,
+};
 use serde_json::{Value, json};
 
 use super::api_failure;
@@ -241,6 +243,12 @@ impl WindowApp for Viewer {
                 Flow::Exit
             }
         }
+    }
+
+    fn cursor(&self) -> CursorIcon {
+        self.player
+            .as_ref()
+            .map_or(CursorIcon::Arrow, concordia_app::Player::cursor)
     }
 }
 

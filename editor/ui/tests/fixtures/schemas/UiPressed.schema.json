@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A button fired (signal, next tick).",
+  "title": "UiPressed",
+  "type": "null",
+  "x-concordia-category": "UI",
+  "x-concordia-type": "UiPressed"
+}

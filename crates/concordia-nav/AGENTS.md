@@ -49,7 +49,7 @@ Navigation (M2 phase 2.5, ADR-0077): navmeshes built with Recast from the static
 - Recast & Detour documentation and source (zlib) and Mikko Mononen's talks and posts (implementation); Godot's navigation docs and source (MIT) for semantics only (agent radius and height, target and path desired distances, path max distance, region and agent roles; `NavigationAgent3D`); Greg Snook, "Simplified 3D Movement and Pathfinding Using Navigation Meshes", *Game Programming Gems* (2000). No Unreal or other non-open source was consulted.
 
 ## Status
-M2 phase 2.5a (navmesh build, queries, cache, `nav.*`, debug layer); 2.5b.1 (agents, signals, `nav_paths`); 2.5b.2a (click-to-move); 2.5b.2b (windowed play, in `concordia-app`); 2.5c.1 (crowd agents' planning; the crowd is `concordia-terra-crowd`); 2.5c.2 (the boundary queries, and a query pool sharded by thread). Traffic is 2.5d.
+M2 phase 2.5a (navmesh build, queries, cache, `nav.*`, debug layer); 2.5b.1 (agents, signals, `nav_paths`); 2.5b.2a (click-to-move); 2.5b.2b (windowed play, in `concordia-app`); 2.5c.1 (crowd agents' planning; the crowd is `concordia-terra-crowd`); 2.5c.2 (the boundary queries, and a query pool sharded by thread). Traffic is 2.5d. M2 phase 2.7b.2: `nav.click` reads clicks through `ActionStates::unconsumed`, so a click the in-game UI consumed never moves an agent (tested in `concordia-app`'s `tests/ui_click.rs`).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

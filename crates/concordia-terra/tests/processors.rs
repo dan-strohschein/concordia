@@ -527,3 +527,43 @@ fn view_queries_filter_with_and_without() {
         "a filter on an undeclared component is refused"
     );
 }
+
+/// An exclusive system can order itself around nodes that may not be scheduled (another
+/// module's), and absent names are ignored. Registered: processor "click", then exclusive
+/// "interact" (after_if_present "sample", before_if_present "click" and "ghost"), then exclusive
+/// "sample". Registration order alone would run click, interact, sample; the constraints give
+/// sample → interact → click, and "ghost" (never scheduled) is no error.
+#[test]
+fn exclusive_systems_order_around_present_nodes_and_ignore_absent_ones() {
+    let order = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let log = |name: &'static str| {
+        let order = order.clone();
+        move || order.lock().unwrap().push(name)
+    };
+    let mut schedule = Schedule::new();
+    let click = log("click");
+    schedule.add_processor(
+        processor("click", Phase::PrePhysics)
+            .writes::<A>()
+            .run(move |_: &mut View<'_>, _: &SystemCtx<'_>| click()),
+    );
+    let interact = log("interact");
+    schedule.add_in(
+        Phase::PrePhysics,
+        system("interact", move |_: &mut World, _: &SystemCtx<'_>| {
+            interact()
+        })
+        .after_if_present("sample")
+        .before_if_present("click")
+        .before_if_present("ghost"),
+    );
+    let sample = log("sample");
+    schedule.add_in(
+        Phase::PrePhysics,
+        system("sample", move |_: &mut World, _: &SystemCtx<'_>| sample()),
+    );
+    let mut world = world_with_a_and_b(1);
+    let mut sim = SimLoop::new(TickRate::HZ_60, schedule, &mut world).unwrap();
+    sim.step(&mut world, &jobs(1), 1);
+    assert_eq!(*order.lock().unwrap(), vec!["sample", "interact", "click"]);
+}

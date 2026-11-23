@@ -1,0 +1,71 @@
+{
+  "$defs": {
+    "ScrollBar": {
+      "description": "When a scroll bar shows.",
+      "oneOf": [
+        {
+          "const": "Auto",
+          "description": "When the content overflows that axis."
+        },
+        {
+          "const": "Always",
+          "description": "Always (the axis scrolls)."
+        },
+        {
+          "const": "Never",
+          "description": "Never; the axis doesn't scroll and the content fits it."
+        }
+      ],
+      "title": "ScrollBar",
+      "x-concordia-type": "ScrollBar"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "bar_width": 8.0,
+    "horizontal": "Never",
+    "offset": [
+      0.0,
+      0.0
+    ],
+    "step": 40.0,
+    "vertical": "Auto"
+  },
+  "description": "Clips its children and scrolls them by `offset` (wheel and bar drags).",
+  "properties": {
+    "bar_width": {
+      "description": "Bar thickness in pixels.",
+      "maximum": 64.0,
+      "minimum": 1.0,
+      "type": "number"
+    },
+    "horizontal": {
+      "$ref": "#/$defs/ScrollBar",
+      "description": "The horizontal bar."
+    },
+    "offset": {
+      "description": "How far the content is scrolled, in pixels (clamped to the content).",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "type": "array"
+    },
+    "step": {
+      "description": "Pixels per wheel line.",
+      "maximum": 10000.0,
+      "minimum": 0.001,
+      "type": "number"
+    },
+    "vertical": {
+      "$ref": "#/$defs/ScrollBar",
+      "description": "The vertical bar."
+    }
+  },
+  "title": "UiScroll",
+  "type": "object",
+  "x-concordia-category": "UI",
+  "x-concordia-type": "UiScroll"
+}

@@ -7,6 +7,10 @@ use concordia_core::id::EntityId;
 use concordia_scene::builtin::Parent;
 use concordia_terra::{Component, World};
 
+use crate::controls::{
+    UiButton, UiDropdown, UiFocus, UiScroll, UiSlider, UiSounds, UiState, UiTabs, UiToggle,
+    UiTooltip,
+};
 use crate::error::UiError;
 use crate::node::UiNode;
 use crate::root::UiRoot;
@@ -34,8 +38,61 @@ pub struct UiElement {
     pub progress: Option<UiProgress>,
     /// A separator.
     pub separator: Option<UiSeparator>,
+    /// What input is doing to it.
+    pub state: Option<UiState>,
+    /// A button.
+    pub button: Option<UiButton>,
+    /// A checkbox, switch or toggle button.
+    pub toggle: Option<UiToggle>,
+    /// A slider.
+    pub slider: Option<UiSlider>,
+    /// A dropdown.
+    pub dropdown: Option<UiDropdown>,
+    /// Tabs (its children are the pages).
+    pub tabs: Option<UiTabs>,
+    /// A tooltip.
+    pub tooltip: Option<UiTooltip>,
+    /// A scroll container.
+    pub scroll: Option<UiScroll>,
+    /// Focus order and neighbours.
+    pub focus: Option<UiFocus>,
+    /// Sounds.
+    pub sounds: Option<UiSounds>,
     /// Children in layout order.
     pub children: Vec<UiElement>,
+}
+
+impl UiElement {
+    /// Whether it carries any UI component besides `UiNode`.
+    pub fn has_widget(&self) -> bool {
+        self.style.is_some()
+            || self.themed.is_some()
+            || self.text.is_some()
+            || self.image.is_some()
+            || self.nine.is_some()
+            || self.progress.is_some()
+            || self.separator.is_some()
+            || self.state.is_some()
+            || self.is_interactive()
+            || self.tooltip.is_some()
+            || self.scroll.is_some()
+            || self.focus.is_some()
+            || self.sounds.is_some()
+    }
+
+    /// Whether it takes clicks or keys (button, toggle, slider, dropdown or tabs).
+    pub fn is_interactive(&self) -> bool {
+        self.button.is_some()
+            || self.toggle.is_some()
+            || self.slider.is_some()
+            || self.dropdown.is_some()
+            || self.tabs.is_some()
+    }
+
+    /// Whether it is disabled.
+    pub fn disabled(&self) -> bool {
+        self.state.as_ref().is_some_and(|s| s.disabled)
+    }
 }
 
 /// A root and its tree.
@@ -141,16 +198,19 @@ impl Gather<'_> {
             nine: self.checked(id, UiNinePatch::check),
             progress: self.checked(id, UiProgress::check),
             separator: self.checked(id, UiSeparator::check),
+            state: self.checked(id, UiState::check),
+            button: self.checked(id, UiButton::check),
+            toggle: self.checked(id, UiToggle::check),
+            slider: self.checked(id, UiSlider::check),
+            dropdown: self.checked(id, UiDropdown::check),
+            tabs: self.checked(id, UiTabs::check),
+            tooltip: self.checked(id, UiTooltip::check),
+            scroll: self.checked(id, UiScroll::check),
+            focus: self.checked(id, UiFocus::check),
+            sounds: self.checked(id, UiSounds::check),
             children: Vec::new(),
         };
-        let any = present
-            || element.style.is_some()
-            || element.themed.is_some()
-            || element.text.is_some()
-            || element.image.is_some()
-            || element.nine.is_some()
-            || element.progress.is_some()
-            || element.separator.is_some();
+        let any = present || element.has_widget();
         if (!is_root && !any) || !element.node.visible {
             return None;
         }

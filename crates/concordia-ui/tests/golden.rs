@@ -591,6 +591,69 @@ fn ui_clip() {
 
 /// `capture.screenshot` draws the in-game UI by default; `ui: false` leaves it out, the
 /// `ui_bounds` layer adds outlines, and a `ui_scale` outside 0.25..=8 is refused.
+/// One widget fixture (`common::controls`) on its own root, as a golden.
+fn controls_golden(name: &str, size: [u32; 2], add: fn(&mut Tree, EntityId, [f32; 2])) {
+    let mut t = Tree::new();
+    let r = root(&mut t, size[0] as f32, size[1] as f32);
+    add(&mut t, r, [10.0, 10.0]);
+    golden(name, &mut t, &mut common::controls::assets(), size);
+}
+
+/// Normal, hovered, pressed, disabled and focused buttons (themed per state; the focused one
+/// draws the focus ring).
+#[test]
+fn ui_button_states() {
+    controls_golden(
+        "ui_button_states",
+        [400, 52],
+        common::controls::button_states,
+    );
+}
+
+/// Checkbox, switch and button-look toggles, off and on.
+#[test]
+fn ui_toggle_looks() {
+    controls_golden(
+        "ui_toggle_looks",
+        [320, 120],
+        common::controls::toggle_looks,
+    );
+}
+
+/// Continuous, stepped and vertical sliders.
+#[test]
+fn ui_slider() {
+    controls_golden("ui_slider", [260, 140], common::controls::sliders);
+}
+
+/// An open dropdown with its third option highlighted.
+#[test]
+fn ui_dropdown_open() {
+    controls_golden(
+        "ui_dropdown_open",
+        [220, 180],
+        common::controls::dropdown_open,
+    );
+}
+
+/// Tabs with the second page showing.
+#[test]
+fn ui_tabs() {
+    controls_golden("ui_tabs", [300, 160], common::controls::tabs);
+}
+
+/// A scrolled list clipped to its box, with its bar.
+#[test]
+fn ui_scroll() {
+    controls_golden("ui_scroll", [220, 160], common::controls::scroll);
+}
+
+/// A tooltip shown beside its button.
+#[test]
+fn ui_tooltip() {
+    controls_golden("ui_tooltip", [320, 100], common::controls::tooltip);
+}
+
 #[test]
 fn capture_screenshot_draws_the_ui_unless_asked_not_to() {
     if renderer().is_none() {

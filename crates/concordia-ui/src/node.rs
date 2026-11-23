@@ -227,6 +227,20 @@ pub struct UiNode {
     pub clip: bool,
     /// Draw order among siblings (higher on top).
     pub z: i32,
+    /// Whether the pointer stops here or passes to what is below.
+    pub pointer: PointerFilter,
+}
+
+/// Whether a node takes the pointer (Godot's `mouse_filter`, for semantics).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Reflect)]
+pub enum PointerFilter {
+    /// Interactive widgets and boxes with a background stop it; the rest pass it on.
+    #[default]
+    Auto,
+    /// Always stops it (the click never reaches the world).
+    Stop,
+    /// Never stops it.
+    Ignore,
 }
 
 impl Default for UiNode {
@@ -249,6 +263,7 @@ impl Default for UiNode {
             visible: true,
             clip: false,
             z: 0,
+            pointer: PointerFilter::Auto,
         }
     }
 }

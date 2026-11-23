@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2) and 2.5d (2026-11-22) done; phase 2.5 complete; 2.7 split into 2.7a (audio) and 2.7b (UI); 2.7a refined (2.7a.1, 2.7a.2), 2.7a.1 and 2.7a.2 (2026-11-22) done; phase 2.7a complete; 2.7b refined (2.7b.1–2.7b.3, 2026-11-22); 2.7b.1 (2026-11-23) done · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2) and 2.5d (2026-11-22) done; phase 2.5 complete; 2.7 split into 2.7a (audio) and 2.7b (UI); 2.7a refined (2.7a.1, 2.7a.2), 2.7a.1 and 2.7a.2 (2026-11-22) done; phase 2.7a complete; 2.7b refined (2.7b.1–2.7b.3, 2026-11-22); 2.7b.1 and 2.7b.2 (2026-11-23) done · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -3382,7 +3382,7 @@ They were collected with `INSTA_FORCE_PASS=1 INSTA_UPDATE=new` and shown on an a
 - `just editor-test` (118 unit, 22 end-to-end).
 
 ### Phase 2.7b refinement (2026-11-22, against the code after 2.7a.2)
-**Status: refined; author decisions U1–U12, P1 and P2 taken (2026-11-22); 2.7b.1 done (see its As built). Three sub-phases, three PRs: 2.7b.1 `m2/2.7b-display`, 2.7b.2 `m2/2.7b-interact`, 2.7b.3 `m2/2.7b-text-world`.**
+**Status: refined; author decisions U1–U12, P1 and P2 taken (2026-11-22); 2.7b.1 and 2.7b.2 done (see their As builts). Three sub-phases, three PRs: 2.7b.1 `m2/2.7b-display`, 2.7b.2 `m2/2.7b-interact`, 2.7b.3 `m2/2.7b-text-world`.**
 
 Refined against `main` after #69: the original "Phase 2.7: concordia-audio and concordia-ui" (below), the M2 refinement's phase table (its 2.7 row), the 2.7a refinement, ADR-0063, ADR-0069, ADR-0072, ADR-0073, ADR-0076 and ADR-0078. **This section wins wherever they disagree.** From the original phase:
 - **Out, to M5 (D1):** `control_tree_imports_to_ui_prefab`, the `Control` mapping in `mappings/nodes.ron`, the HUD-scene import to a UI prefab, and routing `canvas_item` gdshaders as UI materials.
@@ -3910,6 +3910,88 @@ Refined against `main` after #69: the original "Phase 2.7: concordia-audio and c
 - physics queries seeing last-step bodies;
 - the crowd's sequential steps at 10k (M7 7.7);
 - `concordia run` with sound (and now UI) not yet exercised by hand (2.10's sample game).
+
+### Phase 2.7b.2 As built (2026-11-23, ADR-0060)
+**Status: done (branch `m2/2.7b-interact`). The interactive half of the in-game UI: the controls, `ui.interact` inside the simulation, focus, scrolling, tooltips, sounds, pointer consumption, `ui.hit_test`, cursor icons, viewport input, and the role and skill updates.**
+
+**What landed:**
+- **`concordia-ui`:**
+  - **Components:** `UiState` (hovered, pressed, focused, `disabled`, hover ticks, the highlighted row, a thumb `Grab`, the tooltip point), `UiButton` (`ActionOn::Release | Press`), `UiToggle` (`Checkbox | Switch | Button`, `group`, `allow_none`, `label_gap`), `UiSlider` (`snap`: min + round((v − min)/step)·step, clamped), `UiDropdown`, `UiTabs`, `UiTooltip`, `UiScroll` (`ScrollBar::Auto | Always | Never`), `UiFocus`, `UiSounds`, and `UiNode.pointer` (`PointerFilter::Auto | Stop | Ignore`). Signals: `UiPressed`, `UiToggled`, `UiValueChanged`, `UiSelected`, `UiFocusChanged`. Each has a `check()` naming its field.
+  - **Parts:** layout records each control's sub-rects once (`UiLayout::parts`: toggle box, slider track and grabber, dropdown face, arrow and open list, tab titles, scroll offset, content and bars; `UiLayout::tips`), from pure geometry in `parts.rs`. Drawing and hit tests both read them. Toggles add their box as left padding, tabs their title row as top padding; only the selected page is laid out. A scroll lays its content out as its own island, unbounded along its scrolling axes and at least its own size, shifted by the clamped offset and clipped.
+  - **State styles:** a node's theme state is the first that holds of disabled, pressed (or an on `Button` toggle), hovered, focused.
+  - **`ui.interact`** (exclusive, `PrePhysics`, `after_if_present("input.sample")`, `before_if_present("nav.click")`): reads the `ui_*` actions (`UiInput::read`), lays the play world out for the `ui_viewport` action's size (else the first root's canvas) with its own fonts and an asset snapshot taken at play start (`preload`), then runs one tick (`interact`): hover and hover ticks, tooltips, press (focuses; dropdowns open and pick on press, tabs select on press, scroll thumbs grab), drags (sliders, thumbs), release (buttons fire and toggles flip over the widget they were pressed on), the wheel (the innermost scroll, `step` per line), and keys (Tab / Shift-Tab order, arrows to an explicit neighbour or the nearest by distance along + 2 × across, Accept, Cancel, Page keys; sliders, tabs and open dropdowns use their own keys). Changed values and `UiState` are written back; signals and `PlayCue` (from `UiSounds`) are raised on the widget. The pointer is consumed over anything that `stops` it, after a press that closed a list, and while a press is held.
+  - **Drawing:** toggle boxes and switches, slider track, fill and grabber, the dropdown face and its arrow (a quad masked to a wedge about its bottom middle; Noto Sans has no arrow glyph), tab titles with the selected one underlined, focus rings (`FOCUS_COLOR`, 2 px outside the box), scroll bars over their root's nodes, and open lists and tooltips above every root.
+  - **`ui.hit_test`** `{x, y, world?, width?, height?}` → node, widget, part, path, point and cursor. `ui.inspect` reports each node's `state`; both default to the play input's viewport.
+- **`concordia-input`:** `InputEvent::Viewport` and `Binding::Viewport` (Axis2d, logical pixels); `ConsumedActions` (which actions read the pointer; `consume_pointer`, cleared by `input.sample`) and `ActionStates::unconsumed`; the starter map gains `ui_pointer`, `ui_click`, `ui_scroll`, `ui_viewport`, `ui_up`, `ui_down`, `ui_left`, `ui_right`, `ui_accept` (Enter, Space), `ui_cancel`, `ui_next` (Tab), `ui_prev` (Shift-Tab), `ui_page_up` and `ui_page_down`; `KeyCode` gains `PageUp`, `PageDown`, `Home` and `End`.
+- **`concordia-terra`:** exclusive systems can order themselves around nodes that may be absent (`FnSystem::after_if_present` / `before_if_present`).
+- **`concordia-nav`:** `nav.click` reads the click through `unconsumed`.
+- **`concordia-platform`:** `CursorIcon` and `WindowApp::cursor`, applied by the runner after every event; the new keys map from winit.
+- **`concordia-app`:** the player sends the window's logical size as `Viewport` input on open, resize and scale change, and asks `ui.hit_test` for the cursor on pointer moves (a project without `[ui]` is asked once). `concordia run`'s viewer shows it.
+- **Studio (D8):** the UI/UX designer gains `ui_hit_test` and `input_inject`; QA gains `ui_hit_test`. `concordia-ui` gains "Controls"; `concordia-scripting` gains "Driving the UI"; `concordia-record-replay` gains "Clicking through menus". Every enabled role's numbers on 2026-11-23:
+
+  | Role | Tools | Tokens |
+  |---|---|---|
+  | level designer | 37 | 23,144 |
+  | QA | 25 | 22,752 |
+  | UI/UX | 26 | 20,916 |
+  | tech artist | 23 | 20,172 |
+  | animator | 22 | 16,890 |
+  | sound designer | 24 | 15,138 |
+  | composer | 20 | 13,054 |
+  | gameplay programmer | 17 | 12,946 |
+  | director | 13 | 12,453 |
+  | writer | 11 | 9,576 |
+
+  All are under 50k.
+- **Docs:** ADR-0060 gains "2.7b.2 notes"; ADR-0072 a note on the viewport; the agent guide documents the controls, input, consumption and `ui.hit_test`.
+
+**Differences from the refinement (this As built wins):**
+- **The viewport is an action, not a new replay track.** `InputEvent::Viewport` feeds `Binding::Viewport`; replays record it like any action value, so the replay format stays version 0 (no bump), following ADR-0072's rule that raw positions reach the simulation only through actions. It carries no scale (hit tests need only logical pixels).
+- **`disabled` lives on `UiState`**, not on `UiButton`: one field for every control, and the only `UiState` field authors set.
+- **`UiState.grab` is a `Grab { bar, at }`**, not a point: it must say which bar was grabbed.
+- **`UiScroll.horizontal` defaults to `Never`** (vertical `Auto`): a scroll whose content may also grow sideways never wraps its text; set `Auto` to allow it.
+- **Ordering:** exclusive systems couldn't declare order, so Terra gained the "if present" constraints; nav doesn't depend on the UI.
+- **Dropdown rows pick on press** (Godot's popup picks on release); a drag-select can come later.
+- **Assets in the simulation** are a snapshot taken when play starts; an asset first named by a widget spawned later measures as missing there, the same in every run (carry-over).
+- **Not built:** wheel scrolling of an open dropdown list, track clicks that page a scroll, theme transition times (as planned), and gamepad focus (later, U10).
+
+**Tests** (expected values derived in each header; anything that passed at once, or was written after its code, is called out below):
+- **`concordia-terra`:** `exclusive_systems_order_around_present_nodes_and_ignore_absent_ones`.
+- **`concordia-input` `tests/ui_input.rs` (6):** the viewport event and binding, its checks, consumption hiding only pointer-bound actions, the starter map's 16 actions, the new keys.
+- **`concordia-platform`:** the new keys and the cursor icons map to winit.
+- **`concordia-ui`:**
+  - `validate`: `interactive_component_rules_name_their_field`, `interactive_component_defaults`;
+  - `controls_layout` (7): state styles, toggle boxes, slider parts, dropdown lists (and flipping above), tabs laying out only the selected page, scroll clamping and clipping, tooltip placement;
+  - `controls_draw` (6): checkbox and switch, slider quads, the masked arrow, the focus ring, draw order (bars over content, lists and tips over everything), and the controls fixture's draw-list snapshot;
+  - `interact` (19): buttons fire on release inside only, drag-off doesn't fire, disabled ignores input, hover and press state, toggles, radio groups, slider drags and keys, dropdowns, tabs, tooltips, wheel and bar drags, Tab order, arrows (explicit and nearest), Accept, sounds, viewport reflow, consumption, `ui.hit_test` and inspect state;
+  - `engine`: the module now lists `ui.hit_test`;
+  - `golden` (7 new): `ui_button_states`, `ui_toggle_looks`, `ui_slider`, `ui_dropdown_open`, `ui_tabs`, `ui_scroll`, `ui_tooltip`.
+- **`concordia-app`:** `ui_click` (a HUD click never moves the hero; one elsewhere does), `ui_replay` (clicks, a drag, the wheel, Tab and a resize replay exactly, at 1 and 8 threads), `player` (viewport input on open, resize and scale change; the cursor from `ui.hit_test`).
+- **`concordia-studio`:** the UI/UX and QA role tests, `gameplay_and_qa_skills_cover_the_ui`, and the `concordia-ui` example test extended to every control and both tools.
+- **Mutation checks** (each mutant failed a test; restored files touched): release firing anywhere, the arrow score's ×2, the radio staying on, pressed beating hover, `ConsumedActions` not cleared, a held press not consuming, the scroll clamp, Terra's "after" edges.
+- **Called out:**
+  - **Passed at once:** `dropdown_row_height_comes_from_the_font` (a check of the header's arithmetic); `click_outside_ui_still_moves` (a regression guard: clicks already moved the hero).
+  - **Written after its code:** `replay_with_clicks_drags_and_resize_is_exact_at_1_and_8_threads` (it passed once its project had `[replay]`).
+  - **Changed on purpose before passing:** the arrow-focus fixture moved D to (100, 150) so the cross weight of 2 decides a move (with the first layout a weight of 1 gave the same answers); `UiState.grab` became a `Grab` in two tests; `ui_module_registers_its_method_and_debug_layer` now lists two methods; the player's call list gained the `Viewport` injections.
+
+**Checklist (2026-11-23):**
+- `just lint` and the Tauri shell's clippy: clean.
+- `just wasm`, `just native-fixtures`, then `cargo nextest run --workspace --no-fail-fast` with `CONCORDIA_REQUIRE_GPU=1`: 1,738 run, 1,726 passed; the 12 failures are the snapshots and goldens awaiting review (below). Doc tests: clean.
+- `just gate-tests M1` (4/4) and `M3S` (13/13, its pending snapshot forced).
+- `just deny` and the editor's deny (fresh advisory DB): advisories, bans, licenses and sources ok.
+- `just editor-schemas`: the controls, `ui.hit_test`, `UiNode.pointer`, the inspect report's `state` and `input.inject`'s `Viewport` and keys, committed.
+- `just editor-test`: lint, 118 unit and 22 end-to-end tests pass.
+- After blessing: ui, input, studio, app, mcp, nav, platform and terra rerun with 602 run and 602 passed; `just gate-tests M1` passes 4/4 and `M3S` 13/13, with nothing forced.
+
+**Snapshots and goldens** (collected with `INSTA_UPDATE=new`; goldens written to `target/golden-candidates/ui/`; shown on the review page; blessed 2026-11-23 after the author approved it, with `assertion_line` stripped):
+- new: the controls draw list and the seven control goldens;
+- changed: `agent_ui-ux`, `agent_qa-playtester`, the `CLAUDE.md` block (Studio and the M3S gate), and the `input.inject` input schema.
+
+**Carry-over:**
+- assets first named by a widget spawned during play measure as missing in the simulation;
+- trackpad pixel scrolling arrives as lines (`Scroll` doesn't say which), so the UI multiplies it by `step`;
+- the ignored `run_bench_latency_measures_the_e…` test; the navmesh layer's re-gather; the editor's deny warning; ADR-0069's chunk components (M7 7.7); physics queries seeing last-step bodies; the crowd's sequential steps at 10k (M7 7.7);
+- `concordia run` with sound and UI not yet exercised by hand (2.10's sample game).
 
 ### Effort (re-estimated)
 | Phase | Estimate |

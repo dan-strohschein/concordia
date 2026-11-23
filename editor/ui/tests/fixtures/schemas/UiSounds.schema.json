@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "change": null,
+    "hover": null,
+    "press": null,
+    "release": null,
+    "toggle": null
+  },
+  "description": "Cues raised on the widget (`PlayCue`, unpositioned) as it is used.",
+  "properties": {
+    "change": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Asset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+          "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+          "type": "string"
+        }
+      ],
+      "description": "A slider, dropdown or tab value changes."
+    },
+    "hover": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Asset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+          "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+          "type": "string"
+        }
+      ],
+      "description": "The pointer arrives."
+    },
+    "press": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Asset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+          "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+          "type": "string"
+        }
+      ],
+      "description": "Pressed."
+    },
+    "release": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Asset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+          "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+          "type": "string"
+        }
+      ],
+      "description": "Released over it (a button fires)."
+    },
+    "toggle": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Asset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
+          "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
+          "type": "string"
+        }
+      ],
+      "description": "A toggle flips."
+    }
+  },
+  "title": "UiSounds",
+  "type": "object",
+  "x-concordia-category": "UI",
+  "x-concordia-type": "UiSounds"
+}

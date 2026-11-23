@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A slider moved (signal).",
+  "properties": {
+    "value": {
+      "description": "The new value.",
+      "type": "number"
+    }
+  },
+  "required": [
+    "value"
+  ],
+  "title": "UiValueChanged",
+  "type": "object",
+  "x-concordia-category": "UI",
+  "x-concordia-type": "UiValueChanged"
+}

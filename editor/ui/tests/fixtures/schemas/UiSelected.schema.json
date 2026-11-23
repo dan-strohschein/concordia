@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A dropdown option or tab was chosen (signal).",
+  "properties": {
+    "index": {
+      "description": "Its index.",
+      "maximum": 4294967295,
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "index"
+  ],
+  "title": "UiSelected",
+  "type": "object",
+  "x-concordia-category": "UI",
+  "x-concordia-type": "UiSelected"
+}

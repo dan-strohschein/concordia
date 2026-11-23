@@ -13,6 +13,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::PhysicalKey;
 use winit::window::{Window, WindowId};
 
+use crate::cursor::{CursorIcon, cursor_to_winit};
 use crate::error::PlatformError;
 use crate::keys::{key_from_winit, mouse_button_from_winit};
 
@@ -97,6 +98,11 @@ pub enum Flow {
 pub trait WindowApp {
     /// Handles one event.
     fn event(&mut self, event: WindowEvent) -> Flow;
+
+    /// The cursor to show (asked after every event).
+    fn cursor(&self) -> CursorIcon {
+        CursorIcon::Arrow
+    }
 }
 
 /// Options for [`run_window`].
@@ -117,6 +123,7 @@ pub fn run_window(
         desc: desc.clone(),
         app,
         window: None,
+        cursor: CursorIcon::Arrow,
         deadline: options.exit_after.map(|d| Instant::now() + d),
         error: None,
     };
@@ -130,6 +137,7 @@ struct Runner<'a> {
     desc: WindowDesc,
     app: &'a mut dyn WindowApp,
     window: Option<Window>,
+    cursor: CursorIcon,
     deadline: Option<Instant>,
     error: Option<PlatformError>,
 }
@@ -138,6 +146,13 @@ impl Runner<'_> {
     fn send(&mut self, event_loop: &ActiveEventLoop, event: WindowEvent) {
         if self.app.event(event) == Flow::Exit {
             event_loop.exit();
+        }
+        let cursor = self.app.cursor();
+        if cursor != self.cursor
+            && let Some(window) = &self.window
+        {
+            window.set_cursor(cursor_to_winit(cursor));
+            self.cursor = cursor;
         }
     }
 

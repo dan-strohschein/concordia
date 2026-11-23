@@ -359,3 +359,151 @@ fn text_progress_root_and_theme_rules_name_their_field() {
     };
     assert_eq!(field(nine.check()), "tint");
 }
+
+/// 2.7b.2's components. Rules: slider values finite, min < max, step in 0..=(max − min), page > 0;
+/// dropdown at most 256 options of at most 256 bytes, `selected` inside them, `max_visible` in
+/// 1..=64; tabs at most 64 titles of at most 256 bytes; a tooltip's text 1..=4096 bytes and its
+/// delay at most 6000 ticks; scroll offsets finite, step in (0, 10000], bar width in 1..=64; a
+/// toggle's group 1..=64 bytes and its label gap in 0..=256; `UiState`'s grab and tip finite.
+#[test]
+fn interactive_component_rules_name_their_field() {
+    for ok in [
+        field(UiButton::default().check()),
+        field(UiToggle::default().check()),
+        field(UiSlider::default().check()),
+        field(UiDropdown::default().check()),
+        field(UiTabs::default().check()),
+        field(UiTooltip::new("Saves the game").check()),
+        field(UiScroll::default().check()),
+        field(UiFocus::default().check()),
+        field(UiSounds::default().check()),
+        field(UiState::default().check()),
+    ] {
+        assert_eq!(ok, "ok");
+    }
+    let slider = |f: fn(&mut UiSlider)| {
+        let mut s = UiSlider::default();
+        f(&mut s);
+        field(s.check())
+    };
+    assert_eq!(slider(|s| s.value = f32::NAN), "value");
+    assert_eq!(slider(|s| s.min = 1.0), "max");
+    assert_eq!(slider(|s| s.step = -0.1), "step");
+    assert_eq!(slider(|s| s.step = 2.0), "step");
+    assert_eq!(slider(|s| s.page = 0.0), "page");
+
+    let dropdown = |options: usize, len: usize, selected: Option<u32>, max_visible: u32| {
+        field(
+            UiDropdown {
+                options: vec!["x".repeat(len); options],
+                selected,
+                max_visible,
+                ..UiDropdown::default()
+            }
+            .check(),
+        )
+    };
+    assert_eq!(dropdown(3, 4, Some(2), 8), "ok");
+    assert_eq!(dropdown(257, 1, None, 8), "options");
+    assert_eq!(dropdown(1, 257, None, 8), "options/0");
+    assert_eq!(dropdown(3, 4, Some(3), 8), "selected");
+    assert_eq!(dropdown(3, 4, None, 0), "max_visible");
+    assert_eq!(dropdown(3, 4, None, 65), "max_visible");
+
+    let tabs = |titles: usize, len: usize| {
+        field(
+            UiTabs {
+                titles: vec!["t".repeat(len); titles],
+                ..UiTabs::default()
+            }
+            .check(),
+        )
+    };
+    assert_eq!(tabs(64, 256), "ok");
+    assert_eq!(tabs(65, 1), "titles");
+    assert_eq!(tabs(1, 257), "titles/0");
+
+    let tip = |text: &str, delay_ticks: u32| {
+        field(
+            UiTooltip {
+                text: text.into(),
+                delay_ticks,
+            }
+            .check(),
+        )
+    };
+    assert_eq!(tip("", 30), "text");
+    assert_eq!(tip(&"a".repeat(4097), 30), "text");
+    assert_eq!(tip("a", 6001), "delay_ticks");
+
+    let scroll = |f: fn(&mut UiScroll)| {
+        let mut s = UiScroll::default();
+        f(&mut s);
+        field(s.check())
+    };
+    assert_eq!(scroll(|s| s.offset = [0.0, f32::INFINITY]), "offset");
+    assert_eq!(scroll(|s| s.step = 0.0), "step");
+    assert_eq!(scroll(|s| s.step = 10001.0), "step");
+    assert_eq!(scroll(|s| s.bar_width = 0.5), "bar_width");
+    assert_eq!(scroll(|s| s.bar_width = 65.0), "bar_width");
+
+    let toggle = |group: Option<&str>, label_gap: f32| {
+        field(
+            UiToggle {
+                group: group.map(str::to_owned),
+                label_gap,
+                ..UiToggle::default()
+            }
+            .check(),
+        )
+    };
+    assert_eq!(toggle(Some("difficulty"), 6.0), "ok");
+    assert_eq!(toggle(Some(""), 6.0), "group");
+    assert_eq!(toggle(Some(&"g".repeat(65)), 6.0), "group");
+    assert_eq!(toggle(None, -1.0), "label_gap");
+    assert_eq!(toggle(None, 257.0), "label_gap");
+
+    let state = |grab: Option<Grab>, tip: Option<[f32; 2]>| {
+        field(
+            UiState {
+                grab,
+                tip,
+                ..UiState::default()
+            }
+            .check(),
+        )
+    };
+    let nan = Grab {
+        bar: Orientation::Vertical,
+        at: f32::NAN,
+    };
+    assert_eq!(state(Some(nan), None), "grab");
+    assert_eq!(state(None, Some([0.0, f32::INFINITY])), "tip");
+}
+
+/// Defaults the refinement fixes (2.7b.2): a button acts on release; a toggle is an unchecked
+/// checkbox 6 px from its label; a slider is horizontal 0..1, continuous, paging by 0.1; a
+/// dropdown shows 8 at most; a tooltip waits 30 ticks; scroll bars are automatic, 8 px wide,
+/// and a wheel line is 40 px; a node lets the pointer decide (`Auto`).
+#[test]
+fn interactive_component_defaults() {
+    assert_eq!(UiButton::default().action_on, ActionOn::Release);
+    let t = UiToggle::default();
+    assert!(!t.on && t.look == ToggleLook::Checkbox && t.group.is_none() && !t.allow_none);
+    assert_eq!(t.label_gap, 6.0);
+    let s = UiSlider::default();
+    assert_eq!(
+        (s.value, s.min, s.max, s.step, s.page, s.orientation),
+        (0.0, 0.0, 1.0, 0.0, 0.1, Orientation::Horizontal)
+    );
+    let d = UiDropdown::default();
+    assert!(d.options.is_empty() && d.selected.is_none() && !d.open);
+    assert_eq!(d.max_visible, 8);
+    assert_eq!(UiTooltip::new("x").delay_ticks, 30);
+    let sc = UiScroll::default();
+    assert_eq!(
+        (sc.horizontal, sc.vertical, sc.step, sc.bar_width),
+        (ScrollBar::Never, ScrollBar::Auto, 40.0, 8.0)
+    );
+    assert_eq!(UiNode::default().pointer, PointerFilter::Auto);
+}

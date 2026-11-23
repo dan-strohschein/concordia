@@ -15,16 +15,21 @@ use taffy::prelude::{
 
 use crate::anchor::anchored_rect;
 use crate::assets::UiAssets;
+use crate::controls::ToggleLook;
 use crate::error::UiError;
 use crate::fonts::UiFonts;
 use crate::geom::Rect;
 use crate::node::{Align, Direction, Justify, Layout, Length, Position, Track, UiNode};
+use crate::parts::{
+    Label, List, Parts, ROW_PAD, Row, SLIDER_SIZE, TAB_PAD_X, TAB_PAD_Y, Tip, clamp_offset,
+    dropdown_arrow, first_row, list_rect, scroll_bars, slider_parts, tip_rect, toggle_knob,
+};
 use crate::root::{CanvasMap, canvas_map};
 use crate::scene::{UiElement, UiScene};
 use crate::style::{ResolvedStyle, UiThemed, WidgetState};
 use crate::text::{TextBlock, shape};
 use crate::theme::{ThemeClass, resolve};
-use crate::widgets::UiText;
+use crate::widgets::{Orientation, UiText};
 
 /// One node's results.
 #[derive(Debug, Clone, PartialEq)]
@@ -67,6 +72,10 @@ pub struct UiLayout {
     pub order: Vec<EntityId>,
     /// The scene's problems plus layout's.
     pub problems: Vec<(EntityId, UiError)>,
+    /// Interactive widgets' parts.
+    pub parts: BTreeMap<EntityId, Parts>,
+    /// Tooltips showing.
+    pub tips: BTreeMap<EntityId, Tip>,
 }
 
 /// No clip: a rect far larger than any canvas.
@@ -96,6 +105,7 @@ pub fn compute_layout(
             assets: &mut *assets,
             out: &mut out,
             root: entity,
+            space: map.size,
             styles: BTreeMap::new(),
             rects: BTreeMap::new(),
         };
@@ -110,7 +120,7 @@ pub fn compute_layout(
 #[derive(Debug, Clone, Copy)]
 enum Leaf {
     Text(EntityId),
-    Image([f32; 2]),
+    Fixed([f32; 2]),
 }
 
 /// A subtree built into taffy: its node, in-flow children and anchored children.
@@ -127,6 +137,7 @@ struct Pass<'a> {
     assets: &'a mut dyn UiAssets,
     out: &'a mut UiLayout,
     root: EntityId,
+    space: [f32; 2],
     styles: BTreeMap<EntityId, ResolvedStyle>,
     rects: BTreeMap<EntityId, Rect>,
 }
@@ -135,12 +146,7 @@ impl Pass<'_> {
     /// Resolves styles top-down (themes, then inheritance).
     fn resolve(&mut self, el: &UiElement, parent: Option<&ResolvedStyle>) {
         let class = el.themed.as_ref().and_then(|t| self.class(el.entity, t));
-        let style = resolve(
-            el.style.as_ref(),
-            class.as_ref(),
-            WidgetState::Normal,
-            parent,
-        );
+        let style = resolve(el.style.as_ref(), class.as_ref(), widget_state(el), parent);
         for child in &el.children {
             self.resolve(child, Some(&style));
         }
@@ -174,35 +180,42 @@ impl Pass<'_> {
             width: AvailableSpace::Definite(rect.w),
             height: AvailableSpace::Definite(rect.h),
         };
-        let (fonts, assets, styles) = (&mut *self.fonts, &mut *self.assets, &self.styles);
-        let elements = collect_texts(&built);
-        let measured =
-            tree.compute_layout_with_measure(built.id, space, |input, _, leaf, style| {
-                compute_leaf_layout(
-                    input,
-                    style,
-                    |_, _| 0.0,
-                    |known, available| {
-                        measure(
-                            leaf.copied(),
-                            known,
-                            available,
-                            fonts,
-                            assets,
-                            styles,
-                            &elements,
-                        )
-                    },
-                )
-            });
-        if measured.is_err() {
-            return;
+        if self.compute(&mut tree, &built, space).is_ok() {
+            self.read(&tree, &built, rect.x, rect.y, true);
         }
-        self.read(&tree, &built, rect.x, rect.y, true);
     }
 
-    /// Records each built node's rect (origin plus its taffy location) and lays out anchored
-    /// children inside it.
+    /// Runs taffy over a built subtree, measuring its leaves.
+    fn compute(
+        &mut self,
+        tree: &mut TaffyTree<Leaf>,
+        built: &Built<'_>,
+        space: Size<AvailableSpace>,
+    ) -> Result<(), taffy::TaffyError> {
+        let (fonts, assets, styles) = (&mut *self.fonts, &mut *self.assets, &self.styles);
+        let elements = collect_texts(built);
+        tree.compute_layout_with_measure(built.id, space, |input, _, leaf, style| {
+            compute_leaf_layout(
+                input,
+                style,
+                |_, _| 0.0,
+                |known, available| {
+                    measure(
+                        leaf.copied(),
+                        known,
+                        available,
+                        fonts,
+                        assets,
+                        styles,
+                        &elements,
+                    )
+                },
+            )
+        })
+    }
+
+    /// Records each built node's rect (origin plus its taffy location), lays out a scroll's
+    /// content and anchored children inside it.
     fn read(&mut self, tree: &TaffyTree<Leaf>, built: &Built<'_>, x: f32, y: f32, root: bool) {
         let Ok(l) = tree.layout(built.id) else {
             return;
@@ -217,6 +230,9 @@ impl Pass<'_> {
         for kid in &built.kids {
             self.read(tree, kid, rect.x, rect.y, false);
         }
+        if built.element.scroll.is_some() {
+            self.scroll_island(built.element, rect);
+        }
         for child in &built.anchored {
             let Position::Anchored(a) = &child.node.position else {
                 continue;
@@ -229,6 +245,73 @@ impl Pass<'_> {
         }
     }
 
+    /// Lays out a scroll's in-flow children unbounded along its scrolling axes, at least as big
+    /// as the scroll, shifted by the clamped offset.
+    fn scroll_island(&mut self, el: &UiElement, rect: Rect) {
+        let Some(scroll) = &el.scroll else {
+            return;
+        };
+        let mut tree: TaffyTree<Leaf> = TaffyTree::new();
+        tree.disable_rounding();
+        let mut style = taffy_style(&el.node, None, None);
+        let extras = self.extras(el);
+        extras.apply(&mut style, &el.node);
+        style.margin = taffy::Rect::zero();
+        let axis = |scrolls: bool, len: f32| match scrolls {
+            true => (Dimension::auto(), AvailableSpace::MaxContent),
+            false => (Dimension::length(len), AvailableSpace::Definite(len)),
+        };
+        let (w, aw) = axis(scroll.scrolls(0), rect.w);
+        let (h, ah) = axis(scroll.scrolls(1), rect.h);
+        style.size = Size {
+            width: w,
+            height: h,
+        };
+        style.min_size = Size {
+            width: LengthPercentageAuto::length(rect.w),
+            height: LengthPercentageAuto::length(rect.h),
+        };
+        style.max_size = Size::auto();
+        let Ok(kids) = self.build_kids(&mut tree, el, false) else {
+            return;
+        };
+        let ids: Vec<NodeId> = kids.0.iter().map(|k| k.id).collect();
+        let Ok(id) = tree.new_with_children(style, &ids) else {
+            return;
+        };
+        let built = Built {
+            id,
+            element: el,
+            kids: kids.0,
+            anchored: Vec::new(),
+        };
+        let space = Size {
+            width: aw,
+            height: ah,
+        };
+        if self.compute(&mut tree, &built, space).is_err() {
+            return;
+        }
+        let Ok(l) = tree.layout(built.id) else {
+            return;
+        };
+        let content = [l.size.width, l.size.height];
+        let offset = clamp_offset(scroll, [rect.w, rect.h], content);
+        for kid in &built.kids {
+            self.read(&tree, kid, rect.x - offset[0], rect.y - offset[1], false);
+        }
+        let (vertical, horizontal) = scroll_bars(scroll, rect, content, offset);
+        self.out.parts.insert(
+            el.entity,
+            Parts::Scroll {
+                offset,
+                content,
+                vertical,
+                horizontal,
+            },
+        );
+    }
+
     fn build<'e>(
         &mut self,
         tree: &mut TaffyTree<Leaf>,
@@ -236,17 +319,9 @@ impl Pass<'_> {
         parent: Option<&Layout>,
         fixed: Option<[f32; 2]>,
     ) -> Result<Built<'e>, taffy::TaffyError> {
-        let style = taffy_style(&el.node, parent, fixed);
-        let mut kids = Vec::new();
-        let mut anchored = Vec::new();
-        for child in &el.children {
-            match child.node.position {
-                Position::Anchored(_) => anchored.push(child),
-                Position::InFlow => {
-                    kids.push(self.build(tree, child, Some(&el.node.layout), None)?)
-                }
-            }
-        }
+        let mut style = taffy_style(&el.node, parent, fixed);
+        self.extras(el).apply(&mut style, &el.node);
+        let (kids, anchored) = self.build_kids(tree, el, el.scroll.is_some())?;
         let id = match (kids.is_empty(), self.leaf(el)) {
             (true, Some(leaf)) => tree.new_leaf_with_context(style, leaf)?,
             _ => {
@@ -262,7 +337,58 @@ impl Pass<'_> {
         })
     }
 
+    /// `el`'s children to lay out: in-flow ones built (none when `skip_flow`, for a scroll whose
+    /// content is its own island) and anchored ones set aside. Tabs keep only the selected page.
+    #[allow(clippy::type_complexity)]
+    fn build_kids<'e>(
+        &mut self,
+        tree: &mut TaffyTree<Leaf>,
+        el: &'e UiElement,
+        skip_flow: bool,
+    ) -> Result<(Vec<Built<'e>>, Vec<&'e UiElement>), taffy::TaffyError> {
+        let page = el.tabs.as_ref().map(|t| {
+            let last = el.children.len().saturating_sub(1);
+            (t.selected as usize).min(last)
+        });
+        let mut kids = Vec::new();
+        let mut anchored = Vec::new();
+        for (i, child) in el.children.iter().enumerate() {
+            if page.is_some_and(|p| p != i) {
+                continue;
+            }
+            match child.node.position {
+                Position::Anchored(_) => anchored.push(child),
+                Position::InFlow if skip_flow => {}
+                Position::InFlow => {
+                    kids.push(self.build(tree, child, Some(&el.node.layout), None)?)
+                }
+            }
+        }
+        Ok((kids, anchored))
+    }
+
     fn leaf(&mut self, el: &UiElement) -> Option<Leaf> {
+        if let Some(slider) = &el.slider {
+            let [w, h] = SLIDER_SIZE;
+            return Some(Leaf::Fixed(match slider.orientation {
+                Orientation::Horizontal => [w, h],
+                Orientation::Vertical => [h, w],
+            }));
+        }
+        if let Some(dropdown) = &el.dropdown {
+            let style = self.styles.get(&el.entity).cloned().unwrap_or_default();
+            let widest = dropdown
+                .options
+                .iter()
+                .map(|o| self.label(o, &style).width)
+                .fold(0.0, f32::max);
+            let gap = style.font_size * 0.5;
+            let arrow = style.font_size * 0.5;
+            return Some(Leaf::Fixed([
+                widest + gap + arrow,
+                self.line_height(&style),
+            ]));
+        }
         if el.text.is_some() {
             return Some(Leaf::Text(el.entity));
         }
@@ -272,7 +398,41 @@ impl Pass<'_> {
             Some([_, _, w, h]) => [w as f32, h as f32],
             None => data.size(),
         };
-        Some(Leaf::Image(size))
+        Some(Leaf::Fixed(size))
+    }
+
+    /// Space a widget adds inside its box: a toggle's box left of the label, the tab row on top.
+    fn extras(&mut self, el: &UiElement) -> Extras {
+        let style = self.styles.get(&el.entity).cloned().unwrap_or_default();
+        let mut extras = Extras::default();
+        if let Some(toggle) = &el.toggle {
+            let size = style.font_size;
+            if let Some(knob) = toggle_knob(toggle.look, Rect::new(0.0, 0.0, 0.0, size), size) {
+                extras.left = knob.w + toggle.label_gap;
+                extras.min_height = size;
+            }
+        }
+        if el.tabs.is_some() {
+            extras.top = self.line_height(&style) + 2.0 * TAB_PAD_Y;
+        }
+        extras
+    }
+
+    /// `text` shaped on one line in `style`.
+    fn label(&mut self, text: &str, style: &ResolvedStyle) -> TextBlock {
+        shape(
+            self.fonts,
+            self.assets,
+            &UiText::plain(text),
+            style,
+            None,
+            None,
+        )
+    }
+
+    /// One line's height in `style`.
+    fn line_height(&mut self, style: &ResolvedStyle) -> f32 {
+        self.label("M", style).height
     }
 
     /// Shapes text at its final size and records every node top-down, clips and opacity
@@ -283,7 +443,14 @@ impl Pass<'_> {
         };
         let style = self.styles.get(&el.entity).cloned().unwrap_or_default();
         let opacity = opacity * style.opacity;
-        let content = rect.inset(&el.node.padding);
+        let extras = self.extras(el);
+        let plain = rect.inset(&el.node.padding);
+        let content = Rect::new(
+            plain.x + extras.left,
+            plain.y + extras.top,
+            (plain.w - extras.left).max(0.0),
+            (plain.h - extras.top).max(0.0),
+        );
         if let Some(text) = &el.text {
             let block = shape(
                 self.fonts,
@@ -295,6 +462,8 @@ impl Pass<'_> {
             );
             self.out.texts.insert(el.entity, block);
         }
+        self.parts(el, rect, plain, &style);
+        self.tip(el, &style);
         self.out.nodes.insert(
             el.entity,
             NodeLayout {
@@ -307,7 +476,7 @@ impl Pass<'_> {
             },
         );
         self.out.order.push(el.entity);
-        let inner = if el.node.clip {
+        let inner = if el.node.clip || el.scroll.is_some() {
             clip.intersect(&rect)
         } else {
             clip
@@ -317,6 +486,147 @@ impl Pass<'_> {
         for child in kids {
             self.finish(child, inner, opacity);
         }
+    }
+
+    /// Records a toggle's, slider's, dropdown's or tabs' parts (scrolls record theirs when laid
+    /// out). `plain` is the content box before a widget's extras.
+    fn parts(&mut self, el: &UiElement, rect: Rect, plain: Rect, style: &ResolvedStyle) {
+        let parts = if let Some(toggle) = &el.toggle {
+            toggle_knob(toggle.look, plain, style.font_size).map(|knob| Parts::Toggle { knob })
+        } else if let Some(slider) = &el.slider {
+            let (track, grabber) = slider_parts(slider, plain);
+            Some(Parts::Slider { track, grabber })
+        } else if let Some(dropdown) = &el.dropdown {
+            Some(self.dropdown(el, dropdown, rect, plain, style))
+        } else if let Some(tabs) = &el.tabs {
+            let h = self.line_height(style) + 2.0 * TAB_PAD_Y;
+            let mut x = plain.x;
+            let tabs = tabs
+                .titles
+                .iter()
+                .map(|title| {
+                    let text = self.label(title, style);
+                    let rect = Rect::new(x, plain.y, text.width + 2.0 * TAB_PAD_X, h);
+                    x += rect.w;
+                    Label { rect, text }
+                })
+                .collect();
+            Some(Parts::Tabs { tabs })
+        } else {
+            None
+        };
+        if let Some(parts) = parts {
+            self.out.parts.insert(el.entity, parts);
+        }
+    }
+
+    fn dropdown(
+        &mut self,
+        el: &UiElement,
+        dropdown: &crate::controls::UiDropdown,
+        rect: Rect,
+        plain: Rect,
+        style: &ResolvedStyle,
+    ) -> Parts {
+        let face = dropdown
+            .selected
+            .and_then(|i| dropdown.options.get(i as usize))
+            .map(|o| self.label(o, style));
+        let arrow = dropdown_arrow(plain, style.font_size);
+        let count = dropdown.options.len() as u32;
+        let list = (dropdown.open && count > 0).then(|| {
+            let row_h = self.line_height(style) + 2.0 * ROW_PAD;
+            let visible = count.min(dropdown.max_visible);
+            let highlight = el
+                .state
+                .as_ref()
+                .and_then(|s| s.item)
+                .or(dropdown.selected)
+                .unwrap_or(0);
+            let highlight = highlight.min(count - 1);
+            let first = first_row(highlight, visible, count);
+            let list = list_rect(rect, visible, row_h, self.space[1]);
+            let rows = (first..first + visible)
+                .enumerate()
+                .map(|(i, index)| Row {
+                    index,
+                    rect: Rect::new(list.x, list.y + i as f32 * row_h, list.w, row_h),
+                    text: self.label(&dropdown.options[index as usize], style),
+                })
+                .collect();
+            List {
+                rect: list,
+                rows,
+                highlight,
+            }
+        });
+        Parts::Dropdown { face, arrow, list }
+    }
+
+    /// Records a tooltip that has waited out its delay.
+    fn tip(&mut self, el: &UiElement, style: &ResolvedStyle) {
+        let (Some(tooltip), Some(state)) = (&el.tooltip, &el.state) else {
+            return;
+        };
+        let Some(at) = state
+            .tip
+            .filter(|_| state.hover_ticks >= tooltip.delay_ticks)
+        else {
+            return;
+        };
+        let text = shape(
+            self.fonts,
+            self.assets,
+            &UiText::plain(tooltip.text.clone()),
+            style,
+            Some(TIP_MAX_WIDTH),
+            None,
+        );
+        let rect = tip_rect(at, [text.width, text.height], self.space);
+        self.out.tips.insert(el.entity, Tip { rect, text });
+    }
+}
+
+/// The widest a tooltip's text wraps at.
+const TIP_MAX_WIDTH: f32 = 320.0;
+
+/// What a widget adds inside its box.
+#[derive(Debug, Clone, Copy, Default)]
+struct Extras {
+    left: f32,
+    top: f32,
+    min_height: f32,
+}
+
+impl Extras {
+    fn apply(&self, s: &mut Style, node: &UiNode) {
+        s.padding.left = LengthPercentage::length(node.padding.left + self.left);
+        s.padding.top = LengthPercentage::length(node.padding.top + self.top);
+        if self.min_height > 0.0 && node.min_height == Length::Auto {
+            s.min_size.height =
+                LengthPercentageAuto::length(self.min_height + node.padding.vertical());
+        }
+    }
+}
+
+/// The theme state a widget draws in: disabled, pressed (or an on `Button` toggle), hovered,
+/// focused, else normal.
+pub fn widget_state(el: &UiElement) -> WidgetState {
+    let s = el.state.clone().unwrap_or_default();
+    let on_button = el
+        .toggle
+        .as_ref()
+        .is_some_and(|t| t.on && t.look == ToggleLook::Button);
+    if s.disabled {
+        WidgetState::Disabled
+    } else if s.pressed || on_button {
+        WidgetState::Pressed
+    } else if s.hovered {
+        WidgetState::Hover
+    } else if s.focused {
+        WidgetState::Focused
+    } else {
+        WidgetState::Normal
     }
 }
 
@@ -345,7 +655,7 @@ fn measure(
 ) -> Size<f32> {
     let natural = match leaf {
         None => [0.0, 0.0],
-        Some(Leaf::Image(size)) => size,
+        Some(Leaf::Fixed(size)) => size,
         Some(Leaf::Text(entity)) => {
             let (Some(text), Some(style)) = (texts.get(&entity), styles.get(&entity)) else {
                 return Size::ZERO;

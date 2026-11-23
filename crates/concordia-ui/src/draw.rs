@@ -22,6 +22,10 @@ use crate::style::ResolvedStyle;
 use crate::text::TextBlock;
 use crate::widgets::{Overflow, UiImage, UiNinePatch, UiProgress, UiText, VAlign};
 
+mod controls;
+
+pub use controls::{FOCUS_COLOR, KNOB_DARK, LIST_BG, TIP_BG};
+
 /// The `ui_bounds` outline color (linear RGBA).
 pub const BOUNDS_COLOR: [f32; 4] = [0.1, 0.9, 1.0, 1.0];
 /// Atlas pages' texture keys have this bit set; images' never do.
@@ -58,9 +62,16 @@ pub fn draw_list(
         {
             if let Some(el) = elements.get(id) {
                 d.node(el, &layout.nodes[id], layout.texts.get(id), &px);
+                let base = Base {
+                    clip: px.clip(layout.nodes[id].clip),
+                    opacity: layout.nodes[id].opacity,
+                };
+                d.controls(el, &layout.nodes[id], layout.parts.get(id), &base, &px);
             }
         }
+        d.bars(layout, root.entity, &px);
     }
+    d.top(layout, frame.scale);
     if frame.bounds {
         d.bounds(layout, frame.scale);
     }
@@ -345,9 +356,19 @@ impl Drawer<'_> {
             let c = base.clip;
             base.clip = [c[0].max(x0), c[1].max(y0), c[2].min(x1), c[3].min(y1)];
         }
+        self.glyphs(block, [content.x, content.y + dy], &base, px);
+        for (r, run) in &block.underlines {
+            let color = block.colors.get(*run as usize).copied().unwrap_or([1.0; 4]);
+            let line = Rect::new(content.x + r[0], content.y + dy + r[1], r[2], r[3]);
+            self.push(px.rect(line), UiPaint::Solid(color), &base);
+        }
+    }
+
+    /// A text block's glyphs with their top left at `origin` (UI space).
+    fn glyphs(&mut self, block: &TextBlock, origin: [f32; 2], base: &Base, px: &Px) {
         let size_scale = px.map.scale[1] * px.scale;
         for g in &block.glyphs {
-            let [x, y] = px.point([content.x + g.x, content.y + dy + g.y]);
+            let [x, y] = px.point([origin[0] + g.x, origin[1] + g.y]);
             let Some(font) = block.fonts.get(g.font as usize) else {
                 continue;
             };
@@ -380,12 +401,7 @@ impl Drawer<'_> {
                 .get(g.run as usize)
                 .copied()
                 .unwrap_or([1.0; 4]);
-            self.push(rect, UiPaint::Glyph { texture, uv, color }, &base);
-        }
-        for (r, run) in &block.underlines {
-            let color = block.colors.get(*run as usize).copied().unwrap_or([1.0; 4]);
-            let line = Rect::new(content.x + r[0], content.y + dy + r[1], r[2], r[3]);
-            self.push(px.rect(line), UiPaint::Solid(color), &base);
+            self.push(rect, UiPaint::Glyph { texture, uv, color }, base);
         }
     }
 

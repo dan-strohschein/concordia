@@ -389,7 +389,7 @@ fn qa_clicks_like_a_player_with_input_inject_and_pointer_rays() {
         .iter()
         .find(|r| r.role.as_str() == "qa-playtester")
         .expect("QA is enabled");
-    for tool in ["input_inject", "viewport_pointer_ray"] {
+    for tool in ["input_inject", "viewport_pointer_ray", "ui_hit_test"] {
         assert!(
             role.mcp_tools.iter().any(|t| t == tool),
             "{tool}: {:?}",
@@ -400,6 +400,7 @@ fn qa_clicks_like_a_player_with_input_inject_and_pointer_rays() {
         "mcp__concordia__viewport_pointer_ray",
         "PointerRay",
         "mcp__concordia__input_inject",
+        "mcp__concordia__ui_hit_test",
     ] {
         assert!(role.body.contains(needle), "the prompt explains {needle}");
     }
@@ -932,7 +933,7 @@ fn ui_ux_builds_screens_with_its_tools_and_skill() {
     let mut tools: Vec<&str> = role.mcp_tools.iter().map(String::as_str).collect();
     tools.sort_unstable();
     let mut want: Vec<&str> = UI_UX_TOOLS.to_vec();
-    want.push("ui_inspect");
+    want.extend(["ui_inspect", "ui_hit_test", "input_inject"]);
     want.sort_unstable();
     assert_eq!(tools, want);
     assert_eq!(
@@ -954,7 +955,12 @@ fn ui_ux_builds_screens_with_its_tools_and_skill() {
     );
     for needle in [
         "mcp__concordia__ui_inspect",
+        "mcp__concordia__ui_hit_test",
+        "mcp__concordia__input_inject",
         "mcp__concordia__capture_screenshot",
+        "UiButton",
+        "UiSlider",
+        "UiState",
         "UiRoot",
         "UiNode",
         "UiText",

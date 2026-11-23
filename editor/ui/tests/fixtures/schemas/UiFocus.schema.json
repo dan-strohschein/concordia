@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "down": null,
+    "left": null,
+    "next": null,
+    "order": null,
+    "prev": null,
+    "right": null,
+    "up": null
+  },
+  "description": "Keyboard focus order and explicit neighbours.",
+  "properties": {
+    "down": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Stable entity id (UUID string).",
+          "format": "uuid",
+          "type": "string"
+        }
+      ],
+      "description": "Down arrow goes here."
+    },
+    "left": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Stable entity id (UUID string).",
+          "format": "uuid",
+          "type": "string"
+        }
+      ],
+      "description": "Left arrow goes here."
+    },
+    "next": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Stable entity id (UUID string).",
+          "format": "uuid",
+          "type": "string"
+        }
+      ],
+      "description": "Tab goes here."
+    },
+    "order": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "maximum": 2147483647,
+          "minimum": -2147483648,
+          "type": "integer"
+        }
+      ],
+      "description": "Tab order (widgets with one come first, ascending; then tree order)."
+    },
+    "prev": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Stable entity id (UUID string).",
+          "format": "uuid",
+          "type": "string"
+        }
+      ],
+      "description": "Shift-Tab goes here."
+    },
+    "right": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Stable entity id (UUID string).",
+          "format": "uuid",
+          "type": "string"
+        }
+      ],
+      "description": "Right arrow goes here."
+    },
+    "up": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "description": "Stable entity id (UUID string).",
+          "format": "uuid",
+          "type": "string"
+        }
+      ],
+      "description": "Up arrow goes here."
+    }
+  },
+  "title": "UiFocus",
+  "type": "object",
+  "x-concordia-category": "UI",
+  "x-concordia-type": "UiFocus"
+}

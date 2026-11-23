@@ -38,3 +38,28 @@ fn winit_keys_and_buttons_map_to_engine_vocabulary() {
     assert_eq!(mouse_button_from_winit(W::Left), Some(MouseButton::Left));
     assert_eq!(mouse_button_from_winit(W::Other(9)), None);
 }
+
+/// The navigation keys the UI's page and (2.7b.3) text-editing actions use.
+#[test]
+fn winit_navigation_keys_map_to_engine_keys() {
+    use winit::keyboard::KeyCode as K;
+    for (winit, engine) in [
+        (K::PageUp, KeyCode::PageUp),
+        (K::PageDown, KeyCode::PageDown),
+        (K::Home, KeyCode::Home),
+        (K::End, KeyCode::End),
+    ] {
+        assert_eq!(key_from_winit(winit), Some(engine), "{winit:?}");
+    }
+}
+
+/// The UI's cursor hints map to winit's cursors.
+#[test]
+fn cursor_icons_map_to_winit() {
+    use concordia_platform::{CursorIcon, cursor_to_winit};
+    use winit::window::CursorIcon as W;
+    assert_eq!(cursor_to_winit(CursorIcon::Arrow), W::Default);
+    assert_eq!(cursor_to_winit(CursorIcon::Pointer), W::Pointer);
+    assert_eq!(cursor_to_winit(CursorIcon::Text), W::Text);
+    assert_eq!(CursorIcon::default(), CursorIcon::Arrow);
+}

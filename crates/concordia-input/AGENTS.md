@@ -38,7 +38,7 @@ Turns device events into per-tick action states deterministically, and serves `i
 - Fixed-step input sampling practice (Glenn Fiedler, "Fix Your Timestep!", gafferongames.com); reverse-Z unprojection (standard projective geometry).
 
 ## Status
-M1 phase 1.1; M2 phase 2.8 (playback for replays); M2 phase 2.5b.2a (the `Ray` kind, `PointerRay`, the starter map).
+M1 phase 1.1; M2 phase 2.8 (playback for replays); M2 phase 2.5b.2a (the `Ray` kind, `PointerRay`, the starter map); M2 phase 2.7b.2 (`InputEvent::Viewport` and `Binding::Viewport`, so the window size replays like any action; `ConsumedActions` with `ActionStates::unconsumed`, cleared by `input.sample`; the starter map gains the UI's `ui_*` actions; `KeyCode` gains `PageUp`, `PageDown`, `Home`, `End`; `tests/ui_input.rs`).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

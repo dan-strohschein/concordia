@@ -3,9 +3,9 @@
 
 use std::collections::BTreeSet;
 
-use concordia_api::ApiError;
+use concordia_api::{ApiError, ApiErrorKind};
 use concordia_input::{InputEvent, KeyCode, MouseButton};
-use concordia_platform::WindowEvent;
+use concordia_platform::{CursorIcon, WindowEvent};
 use serde_json::{Value, json};
 
 /// One Engine API call: a method and its params.
@@ -21,6 +21,8 @@ pub struct Player {
     keys: BTreeSet<KeyCode>,
     buttons: BTreeSet<MouseButton>,
     warned: BTreeSet<&'static str>,
+    cursor: CursorIcon,
+    has_ui: bool,
 }
 
 impl Player {
@@ -33,7 +35,14 @@ impl Player {
             keys: BTreeSet::new(),
             buttons: BTreeSet::new(),
             warned: BTreeSet::new(),
+            cursor: CursorIcon::Arrow,
+            has_ui: true,
         }
+    }
+
+    /// The cursor the widget under the pointer asks for.
+    pub fn cursor(&self) -> CursorIcon {
+        self.cursor
     }
 
     /// Handles one window event through `api`. Drawing and ray failures are warned about once
@@ -49,13 +58,18 @@ impl Player {
                 self.resize(*width, *height);
                 self.rescale(*scale_factor);
                 api("sim.play", json!({}))?;
+                self.viewport(api)?;
                 self.present(api);
             }
             WindowEvent::Resized { width, height } => {
                 self.resize(*width, *height);
+                self.viewport(api)?;
                 self.present(api);
             }
-            WindowEvent::ScaleChanged { scale_factor } => self.rescale(*scale_factor),
+            WindowEvent::ScaleChanged { scale_factor } => {
+                self.rescale(*scale_factor);
+                self.viewport(api)?;
+            }
             WindowEvent::Focused(false) => self.release_all(api)?,
             WindowEvent::Focused(true) => {}
             WindowEvent::CloseRequested => {
@@ -82,6 +96,38 @@ impl Player {
         (at(self.size.0), at(self.size.1))
     }
 
+    /// Tells the simulation (the UI) the window's size in logical pixels.
+    fn viewport(&self, api: &mut ApiCall<'_>) -> Result<(), ApiError> {
+        let at = |physical: u32| (f64::from(physical) / self.scale) as f32;
+        let (width, height) = (at(self.size.0), at(self.size.1));
+        inject(
+            api,
+            vec![json!({"Viewport": {"width": width, "height": height}})],
+        )
+    }
+
+    /// Asks the UI which cursor the widget at (x, y) wants (projects without `[ui]` are asked
+    /// once).
+    fn hover(&mut self, x: f32, y: f32, api: &mut ApiCall<'_>) {
+        if !self.has_ui {
+            return;
+        }
+        match api("ui.hit_test", json!({"x": x, "y": y, "world": "play"})) {
+            Ok(hit) => {
+                self.cursor = match hit["cursor"].as_str() {
+                    Some("Pointer") => CursorIcon::Pointer,
+                    Some("Text") => CursorIcon::Text,
+                    _ => CursorIcon::Arrow,
+                }
+            }
+            Err(e) if e.kind == ApiErrorKind::MethodNotFound => {
+                self.has_ui = false;
+                self.cursor = CursorIcon::Arrow;
+            }
+            Err(e) => self.warn_once("cursor", &e),
+        }
+    }
+
     /// Presents the play world from its game camera (later ticks redraw it by themselves).
     fn present(&mut self, api: &mut ApiCall<'_>) {
         if !self.draws {
@@ -99,10 +145,11 @@ impl Player {
     fn input(&mut self, input: &InputEvent, api: &mut ApiCall<'_>) -> Result<(), ApiError> {
         self.track(input);
         let mut events = vec![serde_json::to_value(input).unwrap_or(Value::Null)];
-        if let InputEvent::PointerMove { x, y } = input
-            && let Some(ray) = self.ray(*x, *y, api)
-        {
-            events.push(ray);
+        if let InputEvent::PointerMove { x, y } = input {
+            if let Some(ray) = self.ray(*x, *y, api) {
+                events.push(ray);
+            }
+            self.hover(*x, *y, api);
         }
         inject(api, events)
     }
