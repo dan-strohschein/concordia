@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2) and 2.5d (2026-11-22) done; phase 2.5 complete · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2) and 2.5d (2026-11-22) done; phase 2.5 complete; 2.7 split into 2.7a (audio) and 2.7b (UI); 2.7a refined (2.7a.1, 2.7a.2), 2.7a.1 (2026-11-22) done · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -68,7 +68,7 @@ The numbers 2.1, 2.2 and 2.9 are retired: they moved to M5, and reusing them wou
 | 7 | **2.4 Animation** | skeletons, clips, GPU skinning, blend and state-machine graphs (`.animgraph.ron`), events, attachments, tweens | old 2.4 (AnimationTree import out) | animator |
 | 8 | **2.4b Terra LOD and representation** | simulation LOD (deterministic inputs only); representation LOD and switching (full, instanced, hidden) | M7 7.4, 7.6 (representation), G8 | |
 | 9 | **2.5 Navigation, crowds and traffic** | recast-sys, navmesh build and queries, agents, Detour crowds as Terra processors, lane-based traffic (rule-based; AI-driven behavior stays M7/M4) | old 2.5 (Godot mapping out), M7 7.7 | |
-| 10 | **2.7 Audio and in-game UI** | audio stack and cues; retained ECS UI, taffy, cosmic-text (ADR-0060) | old 2.7 (Godot import and sound bank out) | sound-designer, composer (synth in M3 3.7), ui-ux |
+| 10 | **2.7 Audio and in-game UI** (2.7a audio, ADR-0066; 2.7b UI, ADR-0060; split by the 2.7a refinement) | audio stack and cues; retained ECS UI, taffy, cosmic-text (ADR-0060) | old 2.7 (Godot import and sound bank out) | sound-designer, composer (synth in M3 3.7), ui-ux |
 | 11 | **2.10 Sample game and gate** | an original sample game (D2), the deterministic gate, an optional live Studio gate | D2 | |
 
 The VFX artist stays disabled: particles are not in M2 (open question, unchanged). M11 (Sparx, ADR-0015) enables it.
@@ -2934,6 +2934,316 @@ They were collected with `INSTA_FORCE_PASS=1 INSTA_UPDATE=new`, reviewed on an a
 - `just editor-schemas` (no change);
 - `just editor-test` (118 unit, 22 end-to-end).
 
+### Phase 2.7a refinement (2026-11-22, against the code after 2.5d)
+**Status: refined; 2.7a.1 done (see its As built); author decisions A1 and A2 taken (2026-11-22). Two sub-phases, two PRs: 2.7a.1 `m2/2.7a-mixer`, 2.7a.2 `m2/2.7a-engine`. The in-game UI half is phase 2.7b, refined at its own start.**
+
+Refined against `main` after #64: the original "Phase 2.7: concordia-audio and concordia-ui" (below), the M2 refinement's phase table (its 2.7 row: "Godot import and sound bank out"), ADR-0063, ADR-0069, ADR-0073, ADR-0074 and ADR-0076, and M3's 3.7 (the synthesizer). **This section wins wherever they disagree.** In particular, from the original phase:
+- **Out, to M5 (D1):** cues "from a Godot-side sound bank resource", `bus_layout_tres_maps_to_audio_bus_config`, the `.import` loop-flag mapping, and the Godot `Control`/HUD import (2.7b's half, moved anyway).
+- **Replaced:** `sound_bank_cue_maps_pitch_and_volume_variation_with_seeded_rng` becomes `cue_variation_is_seeded_and_in_range` over an engine-native `.cue.ron`.
+- **Kept and made exact:** the decoders, mixer, buses, voices, spatialization, both backends, the no-allocation test, streaming, bit-identical offline renders and the world-hash test, with hand-derived values.
+- **Split:** 2.7 becomes 2.7a (audio) and 2.7b (UI, ADR-0060), because the two halves share no code.
+
+**What exists (checked in code):**
+- **No audio anywhere.** The only mention is `Phase::Presentation`'s doc comment ("representation, audio cues"). The test list and `crates/concordia-audio/` layout come from the original phase; `plans/README.md` lists the crate ("mixer, spatial audio, streaming").
+- **The determinism boundary** (ADR-0063 point 4, ADR-0069, ADR-0076):
+  - the world hash covers entity ids, non-presentation components, the clock, the RNG and **pending signals**; resources and chunk components aren't hashed;
+  - presentation components are declared by `#[reflect(presentation)]` (`Representation` is the precedent), `register_presentation` or `writes_presentation`, and `hash_entity` skips them;
+  - a `Presentation` processor may write only presentation components, may not record commands or write resources, and may receive signals; no other phase may touch a presentation component;
+  - **no crate yet runs a `Presentation` processor** (only Terra's tests do). Audio is the first.
+- **Processors own state:** `run` takes `FnMut(&mut View, &SystemCtx) + Send`, so a processor may hold a `Send` handle outside the world (the renderer's thread is the model, `concordia-render/src/thread.rs`).
+- **Signals:** any reflected type; raised by `CommandBuffer::signal` (processors), `World::signal` (exclusive systems) or a script's `Command::Signal`; delivered at the start of the next tick in entity order. Scripts can raise Rust-defined signals already.
+- **Clip events** (2.4.4): `AnimEvent { name, clip, node, time, weight }`, raised in `FrameEnd` by `anim.sample`, delivered next tick; hashed while pending.
+- **Assets:** `Importer` (`name`, `version`, `extensions`, `default_settings`, `import`) registered through `AssetsModule::with_importer`; sidecars `<file>.import.ron`; artifacts by `AssetKind` (no audio kind yet) in the DDC under `import_key` (importer, version, platform, settings, source bytes). Text formats are read with `concordia_scene::read_document` and validated (`.animgraph.ron` is the model).
+- **Modules:** `EngineModule` (`methods`, `start_play_in`, `after_sim`, `debug_layers` / `debug_geometry`); manifest sections switch modules on in `Project::modules`. There is no stop hook: `sim.stop` drops `PlaySetup.state`, so `Drop` is the stop hook. `after_sim` runs on the engine thread after each advance of at least one tick.
+- **Windowed play:** `concordia run` spawns the engine thread and a window loop (`Viewer`, `Player`); the engine thread ticks itself.
+- **Studio:** the sound designer (`assets/sfx/**`, ten tools) and composer (`assets/music/**`) are disabled in `team.toml` ("audio arrives in M2"). `concordia-synthesize-sfx` carries a "not available yet" note naming `gen_run` (M3 3.7). `role_tool_budget.rs` measures served tools against 50k for the enabled roles, using a `MODULES` manifest that must gain `[audio]`.
+- **Dependencies** (probed in a scratch crate against both `deny.toml`s, 2026-11-22): `cpal` 0.18.2 (Apache-2.0; on macOS `coreaudio-rs` 0.14 over `objc2`, so no bindgen or libclang; on Linux `alsa-sys`), `lewton` 0.10.2 (MIT/Apache; `ogg` 0.8 BSD-3-Clause, `tinyvec`, `byteorder`), `hound` 3.5.1 (Apache-2.0), `rtrb` 0.4.1 (MIT/Apache). All pass `licenses`, `bans`, `sources` and `advisories` for the engine and the editor. `assert_no_alloc` is BSD-1-Clause, which isn't allowed, so it is out. `symphonia` (MPL-2.0) stays out.
+
+**Author decisions (2026-11-22):**
+- **A1. Both audio roles are enabled now.** The sound designer imports and wires existing sounds: cues, buses, emitters and clip-event sounds. The composer imports finished music, makes streamed, looping music cues and owns the Music bus. Writing new sounds and scores waits for M3 3.7's synthesizer (`gen_run`).
+- **A2. The allocation counter is a test-only crate**: `allocation-counter` 0.8 (MIT/Apache-2.0) as a dev-dependency, so no new `unsafe` in our code. It is checked against both `deny.toml`s before use.
+
+**My calls (say if you disagree):**
+- **Crates and ADR.** One new crate, **`concordia-audio`**, with `#![forbid(unsafe_code)]`. Its library half (decode, the mixer, buses, voices, spatial math, streaming, cues, backends) depends on `concordia-core` (DDC), `concordia-reflect` and `concordia-assets` (the importers). Its engine half is the `audio` module (`[audio]`): components, the presentation processor and the methods. `concordia-app` adds it. That is one crate, like `concordia-anim`. **ADR-0066 is written now** under its reserved title, widened to the whole design: the stack, the determinism boundary, cues and the threading rule. M2's block (0060–0079) has no free number left, and nothing here needs a second ADR.
+- **The determinism boundary: audio lives outside the world.** Audio state is not stored in presentation components. It is held entirely by the audio processor and the audio thread, as the renderer holds GPU state. That is stronger than `#[reflect(presentation)]`: there is nothing to skip. The rule:
+  - **Hashed (they're gameplay's requests, made by the simulation):**
+    - the `AudioEmitter` and `AudioListener` components;
+    - `AnimEventCues`;
+    - pending `PlayCue` / `StopCue` signals (hashed like every pending signal).
+  - **Not in the world, so never hashed:**
+    - voices and their playheads;
+    - the mixer, bus runtime gains and mutes (`audio.buses`);
+    - the emitter-to-voice map;
+    - cue variation draws;
+    - streams;
+    - preview voices (`audio.play`);
+    - the offline capture.
+  - **The audio processor:** `audio.collect` runs in `Phase::Presentation`. It reads `Transform`, `AudioEmitter`, `AudioListener` and `AnimEventCues`, receives `PlayCue`, `StopCue` and `AnimEvent`, and **writes nothing**. Its only output is commands pushed into a lock-free queue it owns. Terra's planner already rejects a presentation processor that writes simulation state, and that rule stays the guard.
+  - **The proof.** The same run, with the audio processor scheduled and with it left out, gives identical world hashes at every tick, at 1 and 8 threads, across runs and through a replay (`audio_is_presentation_only_and_never_changes_the_world_hash`).
+- **How gameplay plays a sound** (Godot's `AudioStreamPlayer` for semantics only: `playing`, buses by name):
+  - **Looping or long sounds: an `AudioEmitter` component**, written by gameplay, scripts, the editor or agents:
+    - its fields are `cue: AssetRef`, `playing: bool` (default true) and `volume_db: f32` (default 0);
+    - while `playing` is true its cue sounds: a looping cue loops, and a one-shot cue plays once each time `playing` turns true;
+    - turning it false, or despawning the entity, stops the voice with a 5 ms ramp;
+    - position comes from the entity's `Transform` (parents included, as everywhere else).
+  - **One-shots: the `PlayCue { cue: AssetRef, volume_db: f32 }` signal**, aimed at an entity: the sound plays at that entity's position, or unpositioned if it has no `Transform`. `StopCue { cue: Option<AssetRef> }` stops what that entity started (that cue only, or everything).
+    - A **scripted processor** (2.6) raises it like any signal, with `Command::Signal`, in any simulation phase.
+    - A **native processor** uses `CommandBuffer::signal`.
+    - A signal raised on tick *t* sounds on tick *t* + 1, about 17 ms later at 60 Hz. That is below what players notice for effects, and it is the price of keeping audio out of the tick that raised it.
+  - **Clip events (2.4.4): an `AnimEventCues { cues: BTreeMap<String, AssetRef> }` component.** On a character it maps event names to cues: `"footstep"` plays `step.cue.ron` at the character. So an animator's events sound with no code. Events with no entry are ignored.
+  - **Listener:** the lowest-id entity with `AudioListener`. Its `Transform` gives position, right (+x) and forward (−z), so put it on the camera or the player. With none, spatial sounds play centred at full gain, with one warning.
+  - **Replays stay exact.** Everything audio reads is hashed simulation state or delivered signals, so a replay reproduces the same requests on the same ticks. Every random draw comes from the cue's seed, not the world RNG. So a replay renders the same audio offline, and audio can't make one diverge.
+- **The pipeline:**
+  - **Decoding.** The `sound` importer handles `wav` and `ogg`:
+    - `hound` reads WAV: 8/16/24/32-bit integer and 32-bit float, any rate, mono or stereo;
+    - `lewton` reads Vorbis;
+    - both give interleaved `f32`, with integers scaled by 2^(bits−1);
+    - more than 2 channels is an import error naming the file.
+  - **Import settings** (sidecar `settings`, reflected, `deny_unknown_fields`): `stream: Option<bool>` (default: Ogg longer than 10 s streams), `gain_db` (default 0), `loop_start` and `loop_end` (in frames; optional).
+  - **The DDC.** A non-streamed sound is stored decoded as an `AssetKind::Sound` artifact (`SoundData { rate, channels, frames }`, postcard). A streamed one stores its source bytes, decoded while it plays. Re-imports follow the existing key: importer, version, platform, settings and source bytes.
+  - **The mixer runs at 48 kHz, stereo `f32`.** It is a plain struct with `render(&mut self, out: &mut [f32])`, the same code in both backends:
+    - **the command queue:** `rtrb` single-producer, single-consumer rings carry commands in; a second ring carries retired sounds and streams back out;
+    - **no frees on the audio thread:** every `Arc` or `Box` the mixer would drop goes back through that second ring and is dropped on the engine thread.
+  - **Buses.** Each has a name, `gain_db`, `mute` and `send` (its parent).
+    - Master always exists; the default layout is Master, SFX → Master, Music → Master.
+    - A project may name a layout in `[audio] buses = "<path>.buses.ron"`.
+    - Sends must form a tree: a cycle or an unknown parent is a load error naming both buses.
+    - Buses are summed children-first in a fixed order into preallocated buffers.
+    - Gain is 10^(dB/20), and −80 dB or below is silence.
+  - **Voices.** A fixed pool (`[audio] voices`, default 32, 1–256), each playing a sound at a playback rate of `source_rate / 48000 × pitch`. Resampling is linear interpolation.
+    - **Stealing:** when the pool is full, a new voice takes the lowest-priority voice, the oldest first. If every voice outranks it, the new one is dropped and counted.
+    - **Stopping:** a stop is a 5 ms (240-frame) linear ramp.
+  - **Streaming (music).** A streamed voice reads from a preallocated ring of 2 s, filled by a decoder:
+    - live, on an `audio-stream` thread that wakes every 50 ms;
+    - offline, synchronously before each render, so offline renders never depend on timing.
+    - A loop seeks back to `loop_start` by re-opening the reader.
+    - An underrun plays silence and is counted (`audio.inspect`).
+  - **Spatialization** (when the cue has a `spatial` block):
+    - **distance:** inverse distance, clamped: g = min / clamp(d, min, max), with `min_distance` (default 1 m) and `max_distance` (default 50 m);
+    - **pan:** equal power, from the source's sideways position in listener space: p = x / √(x² + z²) ∈ [−1, 1], θ = (p + 1)π/4, L = cos θ, R = sin θ;
+    - **channels:** a stereo source is summed to mono first; a source at the listener is centred; unpositioned voices aren't panned (mono goes to both channels unchanged, stereo plays as is);
+    - positions are refreshed per tick for playing voices.
+  - **Backends:**
+    - **`cpal`:** the default output device. It asks for 48 kHz `f32` and otherwise takes the device's rate and format, then mixes at that rate and converts in the callback.
+    - **`offline`:**
+      - it renders exactly the frames each tick covers: frames [⌊t·48000/rate⌋, ⌊(t+1)·48000/rate⌋), 800 per tick at 60 Hz;
+      - commands apply at their tick's first frame, so renders are sample-exact;
+      - it keeps a running BLAKE3 hash, peak and RMS of everything mixed;
+      - it stores a capture only when `audio.render` or a test asks for one.
+    - **Which backend:** headless engines (`concordia mcp`, tests, CI, replays) always use `offline`; `concordia run` asks for `cpal`. `[audio] backend = "none"` turns mixing off.
+  - **The audio thread.** cpal's callback runs only `Mixer::render` and the conversion. It allocates nothing, frees nothing, takes no lock and makes no system call; it only drains the command ring into preallocated slots.
+  - **A missing or failing audio device** is one `warn!` naming the error. The engine then falls back to `offline`: never an error, and play continues.
+- **Cues: `.cue.ron`, engine-native, canonical text.** A new format in `plans/README.md`'s list; imported by a `cue` importer (`AssetKind::Cue`) like `.animgraph.ron`. Fields:
+  - **`sounds`:** a list of `(sound: AssetRef, weight: u32)` entries, at least one, weights ≥ 1, chosen by weight;
+  - **variation:** `volume_db: (min, max)` and `pitch_semitones: (min, max)`, each in [−24, 24] with min ≤ max; pitch is applied as 2^(s/12);
+  - **routing and limits:** `bus` (a name), `priority: u8`, `looping: bool` and `max_instances` (≥ 1; the oldest instance stops when a new one exceeds it);
+  - **space:** `spatial: Option<(min_distance, max_distance)>`;
+  - **`seed: u64`.**
+  - **The seeded draw:** each play draws from SplitMix64 seeded with `seed ⊕ entity id ⊕ (tick × 2⁸) ⊕ n`, where *n* counts plays from that entity on that tick. The draws are the sound, then the volume, then the pitch, and no clock or thread is involved. So headless renders are bit-identical run to run, at any thread count and through a replay.
+  - Validation errors name the field.
+- **The Engine API and MCP tools** (module `audio`, `[audio]`; five tools). None writes the world, so none needs an actor:
+  - **`audio.play`** `{cue, volume_db?, at?}` → `{voice}`: previews a cue outside the world, so a sound designer can audition it. A voice id is returned.
+  - **`audio.stop`** `{voice?}`: stops one preview, or all of them.
+  - **`audio.buses`** `{set?: [{name, gain_db?, mute?}]}` → each bus's name, send, gain, mute and peak dBFS since the last call. Changes apply at runtime only; the layout file is the saved mix.
+  - **`audio.render`** `{cue?, seconds, path?}` → `{frames, peak_dbfs, rms_dbfs, hash, path}`:
+    - with a cue, it renders that cue alone through the bus layout, offline;
+    - without one, it reports the play world's offline capture so far;
+    - `path` writes a 16-bit WAV under the project (paths checked like `asset.import`).
+    - This is how agents and CI "listen": by numbers and by hash.
+  - **`audio.inspect`** → the backend, active voices (cue, entity, bus, gain, pan, position), the listener, steals and underruns.
+  - The core method list and every role's scope are unchanged except as below. Every role's served-tool numbers are reported in As built, and each must stay under 50k.
+- **Studio roles (D8, A1):**
+  - **Sound designer:**
+    - **enabled**, with paths `assets/sfx/**` and `assets/audio/**` (bus layouts);
+    - **tools:** its task and team tools plus `asset_import`, `asset_list`, `entity_get`, `component_get`, `component_set`, `component_patch`, `query_run`, `sim_step` and the five `audio_*` tools;
+    - **skills:** a new `concordia-sound-design` (import settings, cues, buses, emitters, `PlayCue`, `AnimEventCues`, listening with `audio_render`). Its examples and RON blocks are parsed as the real types.
+    - `concordia-synthesize-sfx` keeps its note, which now names only `gen_run` (M3 3.7).
+  - **Composer:**
+    - **enabled**, with path `assets/music/**`;
+    - **tools:** its task and team tools plus `asset_import`, `asset_list`, `component_get`, `component_patch`, `audio_play`, `audio_stop`, `audio_buses` and `audio_render`;
+    - **skills:** a new `concordia-music` (streamed import, loop points, looping music cues on the Music bus, an emitter that starts the music). Its examples are parsed the same way.
+  - Both get role tests in the animator's pattern, roster and sync snapshots, and the M3S gate snapshots.
+  - **Engineers:** the gameplay programmer's script skill gains a `PlayCue` example.
+- **Editor debug view (D7): an `audio` layer**, all lifted 2 cm and tested by its geometry like `crowd`:
+  - each emitter's `min_distance` and `max_distance` as horizontal circles (24 segments), green while it plays and grey when idle;
+  - the listener's axes;
+  - a line from the listener to each playing spatial voice.
+- **Windowed play.** `concordia run` builds the `cpal` backend, and `Player` needs no change. Sound starts with play and stops on close, because the backend is dropped with `PlaySetup.state`. The engine thread feeds the queue from `audio.collect`; nothing in the window loop touches audio.
+- **Clean room:**
+  - **Specifications:** the RIFF/WAVE format (Microsoft/IBM, 1991) and the Vorbis I specification (Xiph.Org).
+  - **Crate documentation:** `cpal`, `hound`, `lewton` and `rtrb`.
+  - **Standard DSP references:** decibels as 20·log₁₀ of an amplitude ratio; equal-power panning (the cos/sin law, as in Roads, *The Computer Music Tutorial*, 1996); inverse-distance-clamped attenuation (the OpenAL 1.1 specification's model); linear interpolation; and the sample-rate arithmetic above.
+  - **SplitMix64:** Steele, Lea and Flood, 2014; already in Terra.
+  - **Godot (MIT):** `AudioStreamPlayer` and audio-bus documentation, for semantics only.
+  - **Never:** Unreal, Wwise, FMOD or any other non-open source.
+
+**2.7a tests (first list).** The expected values are derived in each test header: 48 kHz, 60 Hz ticks (800 frames each), DC and ramp sources wherever possible so every sample is hand-computable.
+- **2.7a.1 `m2/2.7a-mixer`** (library only, in `concordia-audio`; no engine):
+  - `gain_and_decibels_convert_both_ways`:
+    - 0 dB is a gain of 1;
+    - −6.0206 dB is 0.5, and +6.0206 dB is 2;
+    - −80 dB and below is silence;
+    - 0.5 is −6.0206 dB.
+  - `equal_power_pan_follows_the_cos_sin_law`: p = −1 gives (1, 0); p = 0 gives (0.707107, 0.707107); p = 0.5 gives (0.382683, 0.923880); p = 1 gives (0, 1); L² + R² = 1 throughout.
+  - `distance_attenuation_is_inverse_clamped` (min 1, max 50): a gain of 1 at 0.5 m, 0.5 at 2 m, 0.25 at 4 m, and 0.02 from 50 m on.
+  - `wav_decodes_to_expected_frames`: written in the test with `hound`.
+    - 16-bit samples [0, 16384, −16384, 32767] become [0, 0.5, −0.5, 0.999969];
+    - also 8-, 24- and 32-bit integer, 32-bit float and stereo;
+    - three channels is an error.
+  - `ogg_decodes_to_expected_frames`: `tests/fixtures/audio/tone-440.ogg`, 1 s of a 440 Hz sine at −6.0206 dBFS, mono, 48 kHz, made by `tools/fixtures/make_audio.sh` with `oggenc`. It should give:
+    - 48,000 frames at 48 kHz;
+    - RMS within 0.01 of 0.5/√2 = 0.353553;
+    - 880 ± 2 zero crossings.
+    - Vorbis is lossy, so these are tolerance checks.
+  - `sound_importer_caches_decoded_frames_in_the_ddc`: a second load is a DDC hit; a changed setting re-imports; Ogg over 10 s streams by default.
+  - `cue_files_roundtrip_canonical` (insta) and `cue_validation_names_the_field` (empty `sounds`, weight 0, min > max, pitch out of range, `max_instances` 0).
+  - `cue_variation_is_seeded_and_in_range`: SplitMix64's published first output for seed 0 (0xE220A8397B1DCDAF) fixes the first draw; the same inputs give the same draws; 10,000 draws stay in range; weights 3:1 split within 2%.
+  - `commands_apply_at_their_tick_frame`: tick 3 starts at frame 2,400 (60 Hz), 2,880 (50 Hz) and 1,000 (144 Hz: ⌊3 · 48000 / 144⌋).
+  - `mixer_sums_voices_and_applies_bus_gain_db`: DC 0.25 + DC 0.125 on SFX at −6.0206 dB gives 0.1875 on both channels (unpositioned voices aren't panned: mono goes to both channels unchanged, stereo plays as is).
+  - `bus_routing_sends_sfx_and_music_to_master`: SFX −6.0206, Music −12.0412 and Master +6.0206 dB, DC 0.5 on each, gives 0.5 + 0.25 = 0.75; muting Music gives 0.5; a cycle is an error naming both buses.
+  - `pitch_resamples_by_linear_interpolation`: a ramp of k / 100 at 24 kHz played at 48 kHz gives 0, 0.005, 0.01, …; +12 semitones at 48 kHz gives 0, 0.02, 0.04, ….
+  - `one_shots_end_and_loops_wrap`: a 3-frame one-shot then silence; a loop between frames 1 and 3 wraps exactly.
+  - `stop_ramps_to_silence_in_5_ms`: DC 1 stopped at frame 0 gives 1 − k / 240 over 240 frames, then 0.
+  - `voice_limit_steals_lowest_priority_oldest`: with a limit of 2, A (priority 1) then B (1) then C (2) steals A; D (0) is dropped and counted.
+  - `max_instances_stops_the_oldest`.
+  - `spatial_voice_attenuates_with_distance_and_pans`: listener at the origin facing −z, DC 1 mono, min 1. At (2, 0, 0) it gives L 0, R 0.5; at (0, 0, −4), L = R = 0.25 × 0.707107 = 0.176777; at (−3, 0, 0), L 1/3, R 0.
+  - `streamed_music_does_not_underrun_offline`: the fixture streamed and looped for 30 s, with no underruns. Every frame equals the same file decoded in memory and looped.
+  - `offline_backend_renders_bit_identical_buffers`: 10 s of a script (looping and one-shot cues, seeded variation, moving spatial voices, a stream, steals) rendered twice gives equal BLAKE3 hashes and equal buffers.
+  - `audio_callback_never_allocates`: `allocation-counter` around `Mixer::render` with 32 voices, a stream, steals, stops and 200 queued commands; zero allocations and zero frees.
+- **2.7a.2 `m2/2.7a-engine`** (the `audio` module, `cpal`, tools, Studio):
+  - `emitter_plays_while_playing_and_stops_with_a_ramp` (offline capture; the first non-zero frame is tick *t*'s first frame; despawn stops it too).
+  - `play_cue_signal_plays_once_at_the_next_tick` (a native processor), and `scripted_processor_plays_a_cue` (a WASM fixture guest raising `PlayCue`).
+  - `anim_event_cues_play_on_clip_events` (the fixture character's events).
+  - `listener_is_the_lowest_id_and_missing_listener_centres_sound`.
+  - `audio_is_presentation_only_and_never_changes_the_world_hash`: the old `audio_events_are_presentation_only_and_do_not_change_world_hash`. With and without `audio.collect`, every tick's hash is equal at 1 and 8 threads and run to run, while cues play.
+  - `engine_audio_renders_identically_across_runs_threads_and_replay` (the offline hash at 1 and 8 threads, and after `replay.run`).
+  - `missing_device_warns_and_falls_back_to_offline` (a device opener that fails gives one warning, and play continues).
+  - `buses_file_loads_and_bad_layouts_are_descriptive`.
+  - `audio_methods_have_schemas_and_mcp_tools`, plus an API test for each method (`audio.render` writes a WAV that `hound` reads back with the reported frame count).
+  - `audio_debug_layer_draws_emitters_and_listener` (2 × 24 + 3 + one line per playing voice).
+  - `cpal_device_plays_a_cue` (`#[ignore]`, manual: an audible check on the reference machine; also `concordia run` on a fixture scene).
+  - **Studio:**
+    - `sound_designer_and_composer_are_enabled_with_audio_tools_under_budget`;
+    - the role-scope server tests for their paths;
+    - each new skill's examples test (real params, components and a valid `.cue.ron`);
+    - the planned-skills list;
+    - snapshots.
+
+**Carry-over (noted, not in 2.7a):**
+- the ignored `run_bench_latency_measures_the_engine_window_alone`;
+- the `navmesh` layer's re-gather;
+- the editor's deny warning;
+- ADR-0069's chunk components (M7 7.7);
+- physics queries seeing last-step bodies;
+- the crowd's sequential steps at 10k (M7 7.7).
+
+**Not in 2.7a:** DSP effects (reverb, filters, compression), HRTF, Doppler, occlusion, crossfades between music cues, audio from the UI (2.7b), the sound-catalog export, Godot sound-bank and bus-layout import (M5), and synthesis (M3 3.7).
+
+### Phase 2.7a.1 As built (2026-11-22, ADR-0066)
+**Reconciled with the code as built:** the refinement held (A1 and A2; A1 lands in 2.7a.2). What the code taught:
+- **The importers live in `concordia-audio`.** `concordia-assets` only gains `AssetKind::Sound` and `AssetKind::Cue`. Whoever builds the `AssetDb` registers `SoundImporter` and `CueImporter`; that is the `audio` module, from 2.7a.2. The workspace entry for the crate waits for its first user (2.7a.2), so cargo doesn't warn about an unused workspace dependency.
+- **Lengths are exact through the Vorbis end trim.** lewton decodes the fixture to 48,832 frames. The final page's granule position (48,000) trims the last block, in `OggStream::read_packet`, so loops are seamless and a streamed sound equals its decoded twin.
+- **A positioned stereo source is averaged** ((L + R) / 2), not summed, so centring it doesn't double its level.
+- **Gains are clamped at 0.** f32's cos(π/2) is −2.2 × 10⁻⁸, so a hard-right pan produced a negative gain, which the request check rejected. The spatial test caught it.
+- **`SoundSettings::streams(is_ogg, frames, rate)`** decides streaming as a pure function, so the 10 s rule is tested without an 11 s fixture. Sidecar settings are a JSON-style map (`"gain_db": 0.0`), like every importer's.
+- **The `.buses.ron` reader and writer** (`read_buses` / `write_buses`, validated through `BusGraph`) landed here, so 2.7a.2 only loads the file named by `[audio] buses`.
+- **The mixer's design:**
+  - `Mixer::new` returns the mixer and a `MixerHandle`.
+  - The handle validates requests, opens streams (prefilling their 2 s ring), boxes each voice, and frees retired voices in `collect`.
+  - The mixer drains at most 1,024 commands per render.
+  - `MixerStats` holds atomics: steals, drops, underruns, active voices and per-bus peaks.
+  - A full command queue is `AudioError::QueueFull`, never a block.
+- **Offline streams are refilled before every 1,024-frame block**, not once per render. A 30 s render in one call would otherwise underrun; the mutation check showed it.
+
+**Engine:**
+- New crate `concordia-audio` (`#![forbid(unsafe_code)]`):
+  - `decode` (`decode_wav`, `decode_ogg`, `OggStream`), `sound` (`SoundData`, `Channels`, `Sound`, `SoundBody`, `LoadedSound`, `LoadedBody`);
+  - `import` (`SoundImporter`, `SoundSettings`, `STREAM_AFTER_SECONDS`), `cue` (`Cue`, `CueSound`, `Span`, `DrawKey`, `Draw`, `read_cue`, `write_cue`, `CueImporter`);
+  - `bus` (`BusLayout`, `BusDef`, `BusGraph`, `BusIndex`, `MASTER`, `read_buses`, `write_buses`), `gain`, `spatial` (`Spatial`, `Listener`, `distance_gain`, `equal_power`, `spatial_gains`);
+  - `mixer` (`Mixer`, `MixerConfig`, `MixerHandle`, `PlayRequest`, `VoiceId`, `MixerStats`), `voice`, `stream`, `offline` (`OfflineBackend`, `RenderStats`, `tick_frames`), and `error` (`AudioError`, `CueError`).
+- `concordia-assets`: `AssetKind::Sound` and `AssetKind::Cue`.
+- Workspace dependencies: `hound` 3.5.1, `lewton` 0.10.2, `rtrb` 0.4.1, and the dev-only `allocation-counter` 0.8.1 (A2).
+- Fixtures: `tests/fixtures/audio/tone-440.ogg` and `tools/fixtures/make_audio.sh` (byte-identical run to run).
+- Docs:
+  - ADR-0066 (new);
+  - the AGENTS.md and README of `concordia-audio`, and the AGENTS.md of `concordia-assets`;
+  - `plans/README.md` (the crate, `.cue.ron` and `.buses.ron`, the ADR registry and the index), `tests/fixtures/README.md`, and this plan.
+  - No method, tool or Studio file changed in 2.7a.1, so `docs/guides/agents-engine-api.md` and the skills wait for 2.7a.2.
+
+**Tests (34 new, all in `concordia-audio`):**
+- `tests/math.rs` (5):
+  - `gain_and_decibels_convert_both_ways`;
+  - `equal_power_pan_follows_the_cos_sin_law`;
+  - `distance_attenuation_is_inverse_clamped`;
+  - `spatial_gains_follow_the_listener` (including a turned listener, height and no listener);
+  - `commands_apply_at_their_tick_frame` (2,400, 2,880, 666 and 1,000).
+- `tests/decode.rs` (2): `wav_decodes_to_expected_frames` (8-, 16-, 24- and 32-bit integer, float, stereo, three channels refused) and `ogg_decodes_to_expected_frames` (48,000 frames; RMS 0.353553 ± 0.01; 880 ± 2 crossings).
+- `tests/import.rs` (5):
+  - `sound_importer_caches_decoded_frames_in_the_ddc`;
+  - `short_ogg_decodes_and_stream_setting_keeps_its_bytes`;
+  - `long_ogg_streams_by_default`;
+  - `bad_sources_and_settings_are_import_errors_naming_the_file`;
+  - `cue_importer_reads_and_validates_cue_files`.
+- `tests/cue.rs` (3):
+  - `cue_files_roundtrip_canonical` (insta);
+  - `cue_validation_names_the_field`;
+  - `cue_variation_is_seeded_and_in_range`: SplitMix64's published 0xE220A8397B1DCDAF and its successors give sound 1, −3.410832 dB and a ratio of 0.896357; 3:1 weights give 7,300–7,700 of 10,000.
+- `tests/mixer.rs` (12):
+  - `mixer_sums_voices_and_applies_bus_gain_db` (0.1875) and `bus_routing_sends_sfx_and_music_to_master` (0.75, 0.5 muted);
+  - `bus_layouts_are_validated_by_name` (a cycle, an unknown send, a duplicate, Master with a send, gain; a chain gives 0.25);
+  - `bus_layout_files_roundtrip_canonical` (insta);
+  - `pitch_resamples_by_linear_interpolation` (0, 0.005, 0.01, …; 0, 0.02, 0.04, …) and `one_shots_end_and_loops_wrap`;
+  - `stop_ramps_to_silence_in_5_ms`, `voice_limit_steals_lowest_priority_oldest` (11 → 110, then a drop) and `max_instances_stops_the_oldest`;
+  - `spatial_voice_attenuates_with_distance_and_pans` ((0, 0.5), 0.176777, (1/3, 0), stereo averaged 0.353553);
+  - `bad_requests_are_refused_before_the_queue` and `a_full_queue_is_an_error_not_a_block`.
+- `tests/stream.rs` (3): `streamed_music_does_not_underrun_offline` (30 s looped, bit-equal to the decoded loop, no underruns), `a_one_shot_stream_ends_like_its_decoded_twin` and `stream_loop_points_wrap_like_memory`.
+- `tests/offline.rs` (3): `ticks_render_their_frames_and_commands_land_on_the_tick` (the first sound at sample 4,800), `stats_report_peak_rms_and_hash` and `offline_backend_renders_bit_identical_buffers` (10 s, 600 ticks, with steals).
+- `tests/no_alloc.rs` (1): `audio_callback_never_allocates` (32 voices, a stream, 200 commands; zero allocations, net zero).
+
+**Red run:** against stubs (unit gains, no decoding, empty imports, a mixer rendering silence, a handle accepting everything), all 34 tests failed for the right reason. The exceptions:
+- **Test mistakes, fixed deliberately:**
+  - three import tests first edited the sidecar as `gain_db: 0.0`, but settings are a JSON-style map (`"gain_db": 0.0`), so nothing changed;
+  - the 10 s script first played one-shots every 7 ticks, which never filled the pool of 4, so it never stole; it now plays one every 2 ticks.
+- **A real bug the tests found:** the negative pan gain (above).
+- **Written after the code:** `bus_layout_files_roundtrip_canonical` (the reader and writer reuse `concordia_scene`'s documents). It is checked by the mutations below that break the layout.
+- **Passed immediately:** none of the 34. The two cases added for the mutation survivors (below) passed with the code, and each was shown red by its mutation.
+
+**Mutation checks:** 21 mutations, each run against its test file with the restored file given a fresh mtime. 19 were caught at once. The 2 survivors were fixed with new cases:
+- "the pan uses 3D distance" was missed because no source was raised; (2, 2, 0) now catches it (0.353553, fully right);
+- "tick frames rounded" was missed because 144 Hz's tick 3 is whole; tick 2 ([666, 1000)) now catches it.
+
+The caught ones:
+- **The mix callback:** it allocates; a retired voice is freed on the audio thread.
+- **Stealing:** the newest is stolen; a voice is stolen even when it outranks the request; `max_instances` lets one too many through.
+- **Math:** pan cos/sin swapped; no minimum-distance clamp; the ramp off by one; no interpolation; no stereo downmix.
+- **Buses:** parents summed before children; mute ignored.
+- **Voices:** a one-shot loops.
+- **Decoding:** Ogg not trimmed; WAV scaled by 2^bits.
+- **Streams:** streams refilled only once per render; the stream loop ignoring `loop_start`.
+- **Cues:** the weighted pick off by one; the draw ignoring the tick.
+
+**Studio and budgets:** no tool, tool schema or role changed in 2.7a.1, so every role's served tools are unchanged from 2.5d's numbers (all under 50k). They are measured again in 2.7a.2, when the audio tools land.
+
+**Goldens and snapshots:** two new, `cue__cue_files_roundtrip_canonical` and `mixer__bus_layout_files_roundtrip_canonical`. They were collected with `INSTA_FORCE_PASS=1 INSTA_UPDATE=new` and are shown on an artifact page for the author's review before blessing. No existing snapshot or render golden changed.
+
+**Carry-over:**
+- the ignored `run_bench_latency_measures_the_engine_window_alone`;
+- the `navmesh` layer's re-gather;
+- the editor's deny warning;
+- ADR-0069's chunk components (M7 7.7);
+- physics queries seeing last-step bodies;
+- the crowd's sequential steps at 10k (M7 7.7).
+
+**Checklist:** all of these pass:
+- `just lint` and Tauri clippy;
+- `just wasm`, `just native-fixtures`, then the `CONCORDIA_REQUIRE_GPU=1` full suite with `--no-fail-fast` (1,578 tests: 1,578 pass, 9 skipped; 14 doc tests);
+- `just gate-tests M1` (4) and `M3S` (13);
+- `just deny` and the editor's, both `Cargo.lock`s, fresh advisory DB. The engine's lock gains `hound`, `lewton`, `ogg`, `rtrb` and the dev-only `allocation-counter`; the editor's is unchanged and prints the existing "no crate matched" warning;
+- `just editor-schemas` (no change);
+- `just editor-test` (118 unit, 22 end-to-end).
+
+After blessing, one full re-run saw `m3s_live_checker_rejects_an_edit_by_the_wrong_actor_and_a_missing_review` (the M3S live checker, which drives an MCP server in a temp project) fail once under load. It passed alone five times and in the next full run (1,578 of 1,578); it touches nothing in audio.
+
 ### Effort (re-estimated)
 | Phase | Estimate |
 |---|---|
@@ -3300,6 +3610,7 @@ Phase order is a dependency order, but 2.3–2.8 can run in parallel once 2.1 an
 - **Done criteria:** tests green; editing the sample native module during a running headless session changes behavior after `script.reload` with the world hash continuing from the same state.
 
 ### Phase 2.7: concordia-audio and concordia-ui
+> Split by the 2.7a refinement (2026-11-22): the audio half is "Phase 2.7a refinement" above, which supersedes this text for audio; the UI half is phase 2.7b, refined at its start.
 
 - **Objective:** sound for the slice (cues through buses) and an in-game UI good enough for the HUD, floating bars, damage numbers and simple menus.
 - **Deliverables:** `concordia-audio` (decode, mixer, buses, voices, spatial, `cpal` and `offline` backends, cues from a Godot-side sound bank resource); `concordia-ui` (approach below); world-space text/billboards in `concordia-render`; Godot `Control` mapping in `mappings/nodes.ron`; HUD-scene import to a UI prefab.

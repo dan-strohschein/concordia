@@ -29,6 +29,10 @@ pub enum AssetKind {
     Clip,
     /// `AnimGraph` (M2 phase 2.4.3).
     AnimGraph,
+    /// `concordia_audio::Sound` (M2 phase 2.7a).
+    Sound,
+    /// `concordia_audio::Cue` (M2 phase 2.7a).
+    Cue,
 }
 
 /// One derived artifact.
