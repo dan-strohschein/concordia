@@ -4,23 +4,26 @@
 use concordia_core::math::{Quat, Vec3};
 use concordia_script_guest::math::{atan2f, cosf, sinf};
 use concordia_script_guest::{EntityId, RunCtx};
+use lamplight_types::body::{Body, Stride};
 use lamplight_types::engine::{
     AnimEvent, AnimGraphPlayer, AudioEmitter, CharacterMotion, ContactBegan, ContactEnded, Ease,
     InputActions, NavArrived, PlayCue, PointLight, PropertyTween, Transform, Transition, Tweens,
-    UiText,
+    UiText, VehicleState,
 };
 use lamplight_types::night::{self, NightTick};
 
 use crate::rules::{self, Outcome};
 use crate::{
-    Body, Chase, Kindle, Lamp, Lamplighter, Lit, Night, Number, Popped, Reached, Scorch,
-    SpiritLost, Stride, Where, Wisp,
+    Chase, Kindle, Lamp, Lamplighter, Lit, Night, Number, Popped, Reached, Refill, Scorch,
+    SpiritLost, Wagon, Where, Wisp,
 };
 
 /// The graph parameter the walk blend reads.
 const WALK_AMOUNT: &str = "walk_amount";
 /// The trigger that fires the Light one-shot.
 const LIGHT_NOW: &str = "light_now";
+/// The trigger that fires the Startle one-shot.
+const STARTLE_NOW: &str = "startle_now";
 /// The clip event at the top of the reach.
 const LIT_EVENT: &str = "lit";
 /// How high above a wisp its numbers start, and how far they rise (m).
@@ -65,6 +68,11 @@ pub(crate) fn walk(ctx: &mut RunCtx<'_>) -> Result<(), String> {
             lighters[i].lit += 1;
         }
     }
+    for (id, _) in ctx.signals::<Refill>()? {
+        if let Some(i) = row(&ids, id) {
+            lighters[i].can = rules::CAN_MAX;
+        }
+    }
     let reached: Vec<EntityId> = ctx
         .signals::<Reached>()?
         .into_iter()
@@ -87,6 +95,7 @@ pub(crate) fn walk(ctx: &mut RunCtx<'_>) -> Result<(), String> {
                 &Stride {
                     walk_amount: amount,
                     light,
+                    startle: false,
                 },
             )?;
         }
@@ -94,7 +103,13 @@ pub(crate) fn walk(ctx: &mut RunCtx<'_>) -> Result<(), String> {
         if playing && reached.contains(&ids[i]) && rules::can_light(lighters[i].can) {
             ctx.signal(ids[i], &Kindle { at })?;
         }
-        ctx.signal(ids[i], &Where { at })?;
+        ctx.signal(
+            ids[i],
+            &Where {
+                at,
+                can: lighters[i].can,
+            },
+        )?;
     }
     ctx.write(&lighters)?;
     ctx.write(&transforms)?;
@@ -113,6 +128,9 @@ pub(crate) fn body(ctx: &mut RunCtx<'_>) -> Result<(), String> {
                 .insert(WALK_AMOUNT.into(), stride.walk_amount);
             if stride.light {
                 graphs[i].triggers.push(LIGHT_NOW.into());
+            }
+            if stride.startle {
+                graphs[i].triggers.push(STARTLE_NOW.into());
             }
         }
     }
@@ -297,6 +315,41 @@ pub(crate) fn wisps(ctx: &mut RunCtx<'_>) -> Result<(), String> {
     }
     ctx.write(&wisps)?;
     ctx.write(&sounds)
+}
+
+/// Wagons: refill a lamplighter's can when stopped close by, then wait out a cooldown.
+pub(crate) fn wagons(ctx: &mut RunCtx<'_>) -> Result<(), String> {
+    let ids = ctx.ids().to_vec();
+    let dt = ctx.dt();
+    let playing = night_tick(ctx)?.is_some_and(|(_, t)| t.playing());
+    let lighters = ctx.signals::<Where>()?;
+    let mut wagons: Vec<Wagon> = ctx.read()?;
+    let transforms: Vec<Transform> = ctx.read()?;
+    let states: Vec<VehicleState> = ctx.read()?;
+    for i in 0..ids.len() {
+        wagons[i].cooldown = (wagons[i].cooldown - dt).max(0.0);
+        if !playing {
+            continue;
+        }
+        let here = transforms[i].translation;
+        for (lighter, place) in &lighters {
+            let (dx, dz) = (place.at.x - here.x, place.at.z - here.z);
+            let distance = (dx * dx + dz * dz).sqrt();
+            if rules::can_refill(distance, states[i].speed, wagons[i].cooldown, place.can) {
+                ctx.signal(*lighter, &Refill)?;
+                wagons[i].cooldown = rules::REFILL_COOLDOWN;
+                wagons[i].refills += 1;
+                if !wagons[i].refill_cue.is_empty() {
+                    let cue = PlayCue {
+                        cue: wagons[i].refill_cue.clone(),
+                        volume_db: 0.0,
+                    };
+                    ctx.signal(ids[i], &cue)?;
+                }
+            }
+        }
+    }
+    ctx.write(&wagons)
 }
 
 /// Floating numbers: count down and go.

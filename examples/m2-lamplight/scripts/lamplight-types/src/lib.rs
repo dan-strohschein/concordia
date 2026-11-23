@@ -2,5 +2,6 @@
 //! mirrored field for field (ADR-0062: names resolve against the engine's registry), and the
 //! night's broadcast, which the rules module raises and the fog module hears.
 
+pub mod body;
 pub mod engine;
 pub mod night;

@@ -5,8 +5,8 @@ game in a small harbour town. You are the lamplighter. Fog wisps drift in from t
 the street lamps before they reach the square, refill your oil from the wagons on the ring road,
 and keep the town's spirit up until the dawn bells.
 
-**Status:** the night plays (2.10c.1): the town, the lamplighter, lamps, wisps, the rules and the
-fog. Townsfolk and wagons arrive in 2.10c.2, the menus and HUD in 2.10c.3, the gate in 2.10d.
+**Status:** the night plays (2.10c.1) and the town lives (2.10c.2): the lamplighter, lamps,
+wisps, townsfolk and oil wagons. The menus and HUD arrive in 2.10c.3, the gate in 2.10d.
 
 ## Running it
 `just lamplight-build` builds both gameplay modules into `build/` (git-ignored): the rules as
@@ -22,11 +22,21 @@ WASM and the fog as a native library. The night starts when `lamplight.Night`'s 
 - A wisp that reaches the square costs one of Town Spirit's 10; the night is lost at 0 and won at
   dawn (180 s).
 
+## The town's life (2.10c.2)
+- 40 townsfolk stroll between their front doors and the market stalls (a crowd). A wisp within
+  5 m startles them, and they run home and shelter for 8 s. Far from the lamplighter they update
+  less often: every 2, 4 or 8 ticks past 25, 45 and 70 m.
+- Four oil wagons drive the ring road one way, with a spur to the docks. It splits at x = −5 and
+  merges at x = 5, two junctions. Wagons brake for anyone in the road. Stand in a wagon's way and
+  it slows beside you and fills your can (then waits 5 s before filling again).
+
 ## Layout
 - `concordia.toml`: the project (input, physics, navigation, assets, animation, audio, UI,
   rendering, replay and the two script modules).
 - `scenes/town.scene.ron`: the town, built by `tools/build_town.py` through the Engine API.
 - `templates/`: the wisp and the burn and spirit numbers.
+- The scene also holds the lanes and junctions, the wagons (a cart under each) and the townsfolk
+  (a walker with the body under it, as the lamplighter).
 - `scripts/`: `lamplight-rules` (module `lamplight`, WASM), `lamplight-fog` (module `fog`,
   native) and `lamplight-types` (the engine types both mirror, and the night's broadcast).
 - `assets/`: every binary file, each recorded in `assets/LICENSE.md` with its source, licence and SHA-256.

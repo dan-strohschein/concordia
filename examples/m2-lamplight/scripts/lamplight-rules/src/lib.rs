@@ -12,9 +12,10 @@ use concordia_reflect::Reflect;
 use concordia_script_guest::{
     EntityId, Module, ModuleDesc, Phase, RunCtx, describe_type, export_module, processor,
 };
+use lamplight_types::body::{Body, Stride};
 use lamplight_types::engine::{
     AnimEvent, AnimGraphPlayer, AudioEmitter, CharacterMotion, ContactBegan, ContactEnded,
-    InputActions, NavArrived, PointLight, Transform,
+    InputActions, NavArrived, PointLight, Transform, VehicleState,
 };
 use lamplight_types::night::NightTick;
 use serde::{Deserialize, Serialize};
@@ -40,14 +41,6 @@ impl Default for Lamplighter {
             body: None,
         }
     }
-}
-
-/// An animated body: the skinned entity a walker (its `walker`) moves and animates.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, Reflect)]
-#[reflect(name = "lamplight.Body", default)]
-pub struct Body {
-    /// The entity that walks it.
-    pub walker: Option<EntityId>,
 }
 
 /// A lamp's light (a static sphere sensor with a `PointLight`).
@@ -161,22 +154,34 @@ impl Default for Chase {
     }
 }
 
+/// An oil wagon: refills the lamplighter's can when stopped beside them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "lamplight.Wagon", default)]
+pub struct Wagon {
+    /// Seconds before it refills again.
+    pub cooldown: f32,
+    /// Cans refilled this night.
+    pub refills: u32,
+    /// The cue played at a refill (an asset reference; empty: none).
+    pub refill_cue: String,
+}
+
+impl Default for Wagon {
+    fn default() -> Self {
+        Self {
+            cooldown: 0.0,
+            refills: 0,
+            refill_cue: String::new(),
+        }
+    }
+}
+
 /// A floating number: it despawns when `ticks_left` runs out.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, Reflect)]
 #[reflect(name = "lamplight.Number", default)]
 pub struct Number {
     /// Ticks until it goes.
     pub ticks_left: u32,
-}
-
-/// Signal: how a body should move this tick (from its walker, on the body).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, Reflect)]
-#[reflect(name = "lamplight.Stride", default)]
-pub struct Stride {
-    /// The graph's `walk_amount` (0..1).
-    pub walk_amount: f32,
-    /// Fire the Light one-shot.
-    pub light: bool,
 }
 
 /// Signal: the body's `lit` event fired (on its walker).
@@ -223,12 +228,19 @@ pub struct SpiritLost {
     pub wisp: Option<EntityId>,
 }
 
+/// Signal: a wagon filled this lamplighter's can (on the lamplighter).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "lamplight.Refill", default)]
+pub struct Refill;
+
 /// Signal: where the lamplighter is (on the lamplighter, every tick).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, Reflect)]
 #[reflect(name = "lamplight.Where", default)]
 pub struct Where {
     /// Their feet.
     pub at: Vec3,
+    /// The oil in their can.
+    pub can: f32,
 }
 
 /// The module.
@@ -248,6 +260,7 @@ impl Module for Lamplight {
                 describe_type::<Night>(),
                 describe_type::<Chase>(),
                 describe_type::<Number>(),
+                describe_type::<Wagon>(),
             ],
             signals: vec![
                 describe_type::<Stride>(),
@@ -258,6 +271,7 @@ impl Module for Lamplight {
                 describe_type::<Popped>(),
                 describe_type::<SpiritLost>(),
                 describe_type::<Where>(),
+                describe_type::<Refill>(),
                 describe_type::<NightTick>(),
             ],
             traits: Vec::new(),
@@ -270,6 +284,7 @@ impl Module for Lamplight {
                     .receives::<NightTick>()
                     .receives::<Reached>()
                     .receives::<Lit>()
+                    .receives::<Refill>()
                     .after("input.actions")
                     .build(),
                 processor("lamplight.body", Phase::PrePhysics)
@@ -298,6 +313,13 @@ impl Module for Lamplight {
                     .receives::<NightTick>()
                     .after("lamplight.lamps")
                     .build(),
+                processor("lamplight.wagons", Phase::PostPhysics)
+                    .writes::<Wagon>()
+                    .reads::<Transform>()
+                    .reads::<VehicleState>()
+                    .receives::<Where>()
+                    .receives::<NightTick>()
+                    .build(),
                 processor("lamplight.numbers", Phase::PostPhysics)
                     .writes::<Number>()
                     .build(),
@@ -323,6 +345,7 @@ impl Module for Lamplight {
             "lamplight.lamps" => world::lamps(ctx),
             "lamplight.wisps" => world::wisps(ctx),
             "lamplight.numbers" => world::numbers(ctx),
+            "lamplight.wagons" => world::wagons(ctx),
             "lamplight.night" => world::night(ctx),
             "lamplight.chase" => world::chase(ctx),
             other => Err(format!("unknown processor {other}")),

@@ -419,3 +419,54 @@ pub struct Tweens {
     /// The running tweens.
     pub tweens: Vec<PropertyTween>,
 }
+
+/// The engine's `VehicleStatus`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Reflect)]
+#[reflect(name = "VehicleStatus")]
+pub enum VehicleStatus {
+    /// Not on a lane yet.
+    #[default]
+    Idle,
+    /// Driving.
+    Driving,
+    /// Waiting at a stop line.
+    Waiting,
+    /// At its destination.
+    Arrived,
+    /// Its destination can't be reached.
+    Failed,
+}
+
+/// The engine's `VehicleState` (read only: traffic writes it).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "VehicleState", default)]
+pub struct VehicleState {
+    /// The lane it is on.
+    pub lane: Option<EntityId>,
+    /// How far along the lane (m).
+    pub distance: f32,
+    /// Speed (m/s).
+    pub speed: f32,
+    /// The lanes ahead.
+    pub route: Vec<EntityId>,
+    /// The destination the route was planned for.
+    pub routed_for: Option<EntityId>,
+    /// What it is doing.
+    pub status: VehicleStatus,
+    /// The tick it started waiting.
+    pub waiting_since: u64,
+}
+
+/// The engine's `SimLod` (read only: `terra.lod` writes it).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "SimLod", default)]
+pub struct SimLod {
+    /// 0 (full detail) to 3.
+    pub level: u8,
+    /// LOD-aware processors visit it this tick.
+    pub due: bool,
+    /// Scaled seconds this tick's update covers (0 when not due).
+    pub elapsed: f64,
+    /// Scaled time its simulation has reached.
+    pub last_time: f64,
+}

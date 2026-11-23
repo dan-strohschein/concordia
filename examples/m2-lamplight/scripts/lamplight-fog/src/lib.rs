@@ -2,14 +2,16 @@
 //! hot-reloaded mid-night: while the night is played it sends waves of wisps in from the harbour
 //! and steers each toward the square.
 
+mod people;
+pub mod townsfolk;
 mod waves;
 
 use concordia_core::math::Vec3;
 use concordia_reflect::Reflect;
 use concordia_script_guest::{
-    Module, ModuleDesc, Phase, RunCtx, describe_type, export_module, processor,
+    EntityId, Module, ModuleDesc, Phase, RunCtx, describe_type, export_module, processor,
 };
-use lamplight_types::engine::NavAgent;
+use lamplight_types::engine::{NavAgent, NavArrived, SimLod, Transform};
 use lamplight_types::night::NightTick;
 use serde::{Deserialize, Serialize};
 
@@ -62,6 +64,51 @@ pub struct Drifter {
     pub target: Vec3,
 }
 
+/// A townsperson: strolls between home and the market, and flees home from wisps.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "fog.Townsperson", default)]
+pub struct Townsperson {
+    /// Their front door.
+    pub home: Vec3,
+    /// Their market stall.
+    pub market: Vec3,
+    /// Walking home (else to market).
+    pub homeward: bool,
+    /// Frightened: fleeing, or sheltering until `calm_in` runs out.
+    pub scared: bool,
+    /// Seconds until a frightened townsperson strolls again.
+    pub calm_in: f32,
+    /// Where they stood at their last update.
+    pub last: Vec3,
+    /// Updates they have had (simulation LOD makes far ones update less often).
+    pub updates: u32,
+    /// Their animated body.
+    pub body: Option<EntityId>,
+}
+
+impl Default for Townsperson {
+    fn default() -> Self {
+        Self {
+            home: Vec3::ZERO,
+            market: Vec3::ZERO,
+            homeward: false,
+            scared: false,
+            calm_in: 0.0,
+            last: Vec3::ZERO,
+            updates: 0,
+            body: None,
+        }
+    }
+}
+
+/// Signal: a wisp is at `at` (on the wisp, every tick).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "fog.WispAt", default)]
+pub struct WispAt {
+    /// Where.
+    pub at: Vec3,
+}
+
 /// The module.
 pub struct FogModule;
 
@@ -71,8 +118,12 @@ impl Module for FogModule {
             name: "fog".into(),
             version: 1,
             types: Vec::new(),
-            components: vec![describe_type::<Fog>(), describe_type::<Drifter>()],
-            signals: Vec::new(),
+            components: vec![
+                describe_type::<Fog>(),
+                describe_type::<Drifter>(),
+                describe_type::<Townsperson>(),
+            ],
+            signals: vec![describe_type::<WispAt>()],
             traits: Vec::new(),
             processors: vec![
                 processor("fog.waves", Phase::PrePhysics)
@@ -83,6 +134,19 @@ impl Module for FogModule {
                     .reads::<Drifter>()
                     .writes::<NavAgent>()
                     .build(),
+                processor("fog.watch", Phase::PostPhysics)
+                    .with::<Drifter>()
+                    .reads::<Transform>()
+                    .build(),
+                processor("fog.townsfolk", Phase::PrePhysics)
+                    .writes::<Townsperson>()
+                    .writes::<NavAgent>()
+                    .writes::<Transform>()
+                    .reads::<SimLod>()
+                    .receives::<NavArrived>()
+                    .receives::<WispAt>()
+                    .after("crowd.move")
+                    .build(),
             ],
         }
     }
@@ -91,6 +155,8 @@ impl Module for FogModule {
         match name {
             "fog.waves" => waves::waves(ctx),
             "fog.steer" => waves::steer(ctx),
+            "fog.watch" => people::watch(ctx),
+            "fog.townsfolk" => people::townsfolk(ctx),
             other => Err(format!("unknown processor {other}")),
         }
     }

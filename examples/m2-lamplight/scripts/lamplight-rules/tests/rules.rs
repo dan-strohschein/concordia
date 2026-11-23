@@ -14,10 +14,13 @@
 //!   up walks north, −Z) at 3.5 m/s; a diagonal (1, 1) is normalized, so each axis is
 //!   3.5 / √2 ≈ 2.4749; `walk_amount` is the speed over 3.5.
 //! - Reach: the nearest unlit lamp within 2 m is lit; a lit lamp is never chosen.
+//! - Refill: a wagon refills the can when its centre is within 4.5 m of the lamplighter, it has
+//!   slowed to walking pace (0.5 m/s or less: the IDM creeps up on a standing person rather than
+//!   halting), its 5 s cooldown has run out and the can isn't full.
 
 use lamplight_rules::rules::{
-    self, CAN_MAX, LIGHT_COST, Outcome, burn_lamp, burn_number, can_light, nearest_unlit, outcome,
-    pop_number, scorch, walk,
+    self, CAN_MAX, LIGHT_COST, Outcome, burn_lamp, burn_number, can_light, can_refill,
+    nearest_unlit, outcome, pop_number, scorch, walk,
 };
 
 const DT: f32 = 1.0 / 60.0;
@@ -136,4 +139,15 @@ fn the_nearest_unlit_lamp_in_reach_is_lit() {
         None,
         "nothing in 2 m"
     );
+}
+
+#[test]
+fn a_stopped_wagon_close_by_refills_the_can() {
+    assert!(can_refill(4.0, 0.0, 0.0, 20.0));
+    assert!(can_refill(4.5, 0.5, 0.0, 99.0), "the edges count");
+    assert!(!can_refill(4.6, 0.0, 0.0, 20.0), "too far");
+    assert!(!can_refill(3.0, 0.6, 0.0, 20.0), "still rolling");
+    assert!(!can_refill(3.0, 0.0, 1.0, 20.0), "cooling down");
+    assert!(!can_refill(3.0, 0.0, 0.0, CAN_MAX), "the can is full");
+    assert_eq!(rules::REFILL_COOLDOWN, 5.0);
 }
