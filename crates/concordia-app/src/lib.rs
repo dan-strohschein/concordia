@@ -11,10 +11,10 @@ mod shared;
 
 pub use error::AppError;
 pub use manifest::{
-    AnimSection, AssetsSection, InputSection, JournalSection, Manifest, NavSection, PhysicsSection,
-    ProjectSection, RenderSection, SceneSection, ScriptModuleKind, ScriptModuleSection,
-    ScriptsSection, SimSection, StudioSection,
+    AnimSection, AssetsSection, AudioBackendChoice, AudioSection, InputSection, JournalSection,
+    Manifest, NavSection, PhysicsSection, ProjectSection, RenderSection, SceneSection,
+    ScriptModuleKind, ScriptModuleSection, ScriptsSection, SimSection, StudioSection,
 };
 pub use player::{ApiCall, Player};
-pub use project::{Project, model_importers};
+pub use project::{Playback, Project, model_importers};
 pub use shared::{HostedEngine, SharedEngine};

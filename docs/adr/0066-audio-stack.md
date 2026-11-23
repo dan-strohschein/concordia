@@ -1,5 +1,5 @@
 # ADR-0066: Audio stack: cpal, lewton and hound; an own mixer outside the world; `.cue.ron` cues
-- Status: Accepted (M2 phase 2.7a, 2026-11-22; author decisions A1 and A2). The mixer, decoders, cues and offline backend landed in 2.7a.1; the engine module, `cpal` and the tools follow in 2.7a.2.
+- Status: Accepted (M2 phase 2.7a, 2026-11-22; author decisions A1 and A2). The mixer, decoders, cues and offline backend landed in 2.7a.1; the engine module, `cpal`, the tools and the Studio roles in 2.7a.2 (decision 8).
 - Date: 2026-11-22
 - Builds on: ADR-0044 (asset ids and the DDC), ADR-0063 (determinism contract), ADR-0069 (storage kinds, commands, signals), ADR-0073 (per-role tool budgets), ADR-0076 (the `#[reflect(presentation)]` precedent)
 
@@ -43,6 +43,13 @@ M2's sample game and later ports need sound through buses, spatial cues and stre
    - **`audio.collect`** runs in `Phase::Presentation`. It reads and receives only, writes nothing, and pushes commands into a queue it owns. That is stronger than `#[reflect(presentation)]` (ADR-0076's precedent): there is nothing to skip. Terra's planner already rejects a presentation processor that writes simulation state.
    - **The proof:** the same run with and without `audio.collect` hashes identically at every tick, at 1 and 8 threads and through a replay.
 
+8. **The engine module (2.7a.2).** `[audio]` (`voices`, `buses`, `backend` = `auto` | `offline` | `none`) adds the `audio` module.
+   - **Shared state:** it owns an `AudioShared` (a lock the audio thread never takes) holding the output, the cue library (every imported cue and its sounds, loaded at play start), each voice's cue, entity, bus, gains and position, and the runtime bus settings, which last across plays.
+   - **`audio.collect` (`Phase::Presentation`):** each tick it reads `Transform`, `Parent`, the emitters, the listeners and `AnimEventCues`, and receives `PlayCue`, `StopCue` and (with `[anim]`) `AnimEvent`. It starts and stops voices in entity order with draw keys (entity, tick, n), re-pans positioned voices from world positions composed by `concordia_scene::builtin::world_matrix_with`, and offline renders the tick.
+   - **The listener** is the lowest-id `AudioListener` with a `Transform`; its `gain` scales positioned sounds.
+   - **Methods:** `audio.play`, `audio.stop`, `audio.buses`, `audio.render` and `audio.inspect` (none mutates the world); the `audio` debug layer.
+   - **The device:** `Project::engine_config_for(Playback::Windowed)` (`concordia run`) opens `cpal` on its own thread (its stream isn't `Send` everywhere), with an `audio-stream` thread refilling streams every 50 ms.
+
 ## Alternatives
 - **`symphonia`:** MPL-2.0, which `cargo-deny` rejects in the engine.
 - **`rodio` or `kira`:** each brings its own mixer and timing model. Neither renders sample-exact offline at tick boundaries, nor keeps state out of the audio thread's allocator.
@@ -56,3 +63,4 @@ M2's sample game and later ports need sound through buses, spatial cues and stre
 - Signals raised on tick *t* sound on tick *t* + 1 (about 17 ms at 60 Hz).
 - Studio (A1, 2.7a.2): the sound designer and composer are enabled; the synthesizer (`gen_run`) stays M3 3.7.
 - DSP effects, HRTF, Doppler, occlusion, crossfades and UI sounds are later work.
+- 2.7a.2: `concordia new` writes `[audio]` and `concordia studio init` adds it. The MCP server checks `audio.render`'s `path` against the role's write paths (ADR-0080). The play world's offline capture keeps the newest 30 s.

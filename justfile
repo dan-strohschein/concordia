@@ -29,7 +29,7 @@ fmt-check:
 lint: fmt-check
     cargo clippy --workspace --all-targets --all-features -- -D warnings
     cargo clippy --manifest-path {{guest}} --target wasm32-wasip2 -- -D warnings
-    cargo clippy -p concordia-script-guest -p conformance-guest -p nav-guest -p wanderers --target wasm32-wasip2 -- -D warnings
+    cargo clippy -p concordia-script-guest -p conformance-guest -p nav-guest -p audio-guest -p wanderers --target wasm32-wasip2 -- -D warnings
 
 # Build and validate WASM guest fixtures
 wasm:
@@ -44,6 +44,9 @@ wasm:
     # The nav guest (engine signals and components by name, 2.5b.1).
     cargo build -p nav-guest --target wasm32-wasip2 --release --target-dir {{wasm_dir}}
     wasm-tools validate {{wasm_dir}}/wasm32-wasip2/release/nav_guest.wasm
+    # The audio guest (raises the engine's PlayCue, 2.7a.2).
+    cargo build -p audio-guest --target wasm32-wasip2 --release --target-dir {{wasm_dir}}
+    wasm-tools validate {{wasm_dir}}/wasm32-wasip2/release/audio_guest.wasm
     # The sample module (examples/m2-scripting).
     cargo build -p wanderers --target wasm32-wasip2 --release --target-dir {{wasm_dir}}
     wasm-tools validate {{wasm_dir}}/wasm32-wasip2/release/wanderers.wasm

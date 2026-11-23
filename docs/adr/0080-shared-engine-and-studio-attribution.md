@@ -28,3 +28,4 @@ These are guardrails, not a security boundary. An agent that bypasses hooks gets
 - Parallel roles get `TxnConflict` instead of corrupting each other's transactions.
 - The Studio journal adds a second log format, versioned like the scene journal.
 - M2 2.4.5 refines the server's path check for `asset.import`: importing writes only the file's sidecar (`<path>.import.ron`) and the cache, so a role may import a file it may write or one whose sidecar it may write. The animator adds clip events to models it doesn't own (`assets/models/**/*.import.ron`, shared with the modeler). Other default roles' results are unchanged.
+- M2 2.7a.2 adds `audio.render` to the server's path check: with a `path`, it writes a WAV, so a role may render only into paths it may write (the sound designer under `assets/sfx/**` or `assets/audio/**`, the composer under `assets/music/**`). Without a `path` it writes nothing and is unchecked.

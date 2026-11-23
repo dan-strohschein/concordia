@@ -14,7 +14,7 @@ async fn studio(dir: &tempfile::TempDir, team_edit: impl Fn(String) -> String) -
     std::fs::write(&team, team_edit(std::fs::read_to_string(&team).unwrap())).unwrap();
     std::fs::write(
         dir.path().join("concordia.toml"),
-        "[input]\nmap = \"input/default.input.ron\"\n\n[physics]\n\n[nav]\n\n[assets]\n\n[anim]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n",
+        "[input]\nmap = \"input/default.input.ron\"\n\n[physics]\n\n[nav]\n\n[assets]\n\n[anim]\n\n[audio]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n",
     )
     .unwrap();
     // QA injects input, so the project has an input map (2.5b.2a).
@@ -382,4 +382,97 @@ async fn tech_artist_saves_the_scene_it_assigned_materials_in() {
     )
     .await;
     assert_eq!(elsewhere.is_error, Some(true), "{}", text(&elsewhere));
+}
+
+#[tokio::test]
+async fn server_holds_the_audio_roles_to_their_paths() {
+    let dir = tempfile::tempdir().unwrap();
+    let client = studio(&dir, |t| t).await;
+    let wav = |at: &str| {
+        let spec = hound::WavSpec {
+            channels: 1,
+            sample_rate: 48_000,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let path = dir.path().join(at);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let mut w = hound::WavWriter::create(&path, spec).unwrap();
+        for _ in 0..480 {
+            w.write_sample(8192i16).unwrap();
+        }
+        w.finalize().unwrap();
+    };
+    for at in [
+        "assets/sfx/hit.wav",
+        "assets/music/theme.wav",
+        "content/hit.wav",
+    ] {
+        wav(at);
+    }
+    let designer = |args: Value| with(args, "sound-designer", "s/11");
+    let composer = |args: Value| with(args, "composer", "s/12");
+    let ok = |r: &rmcp::model::CallToolResult| assert_ne!(r.is_error, Some(true), "{}", text(r));
+    let refused =
+        |r: &rmcp::model::CallToolResult| assert_eq!(r.is_error, Some(true), "{}", text(r));
+    ok(&call(
+        &client,
+        "asset_import",
+        designer(json!({"path": "assets/sfx/hit.wav"})),
+    )
+    .await);
+    refused(
+        &call(
+            &client,
+            "asset_import",
+            designer(json!({"path": "assets/music/theme.wav"})),
+        )
+        .await,
+    );
+    refused(
+        &call(
+            &client,
+            "asset_import",
+            designer(json!({"path": "content/hit.wav"})),
+        )
+        .await,
+    );
+    ok(&call(
+        &client,
+        "asset_import",
+        composer(json!({"path": "assets/music/theme.wav"})),
+    )
+    .await);
+    refused(
+        &call(
+            &client,
+            "asset_import",
+            composer(json!({"path": "assets/sfx/hit.wav"})),
+        )
+        .await,
+    );
+    // Listening can write a WAV, so it is held to the same paths.
+    ok(&call(
+        &client,
+        "audio_render",
+        designer(json!({"path": "assets/sfx/checks/play.wav"})),
+    )
+    .await);
+    refused(
+        &call(
+            &client,
+            "audio_render",
+            designer(json!({"path": "assets/music/play.wav"})),
+        )
+        .await,
+    );
+    ok(&call(
+        &client,
+        "audio_buses",
+        composer(json!({"set": [{"name": "Music", "gain_db": -3.0}]})),
+    )
+    .await);
+    // Neither role may reach outside its scope.
+    refused(&call(&client, "nav_build", designer(json!({}))).await);
+    refused(&call(&client, "audio_inspect", composer(json!({}))).await);
 }

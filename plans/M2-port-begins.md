@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2) and 2.5d (2026-11-22) done; phase 2.5 complete; 2.7 split into 2.7a (audio) and 2.7b (UI); 2.7a refined (2.7a.1, 2.7a.2), 2.7a.1 (2026-11-22) done · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2) and 2.5d (2026-11-22) done; phase 2.5 complete; 2.7 split into 2.7a (audio) and 2.7b (UI); 2.7a refined (2.7a.1, 2.7a.2), 2.7a.1 and 2.7a.2 (2026-11-22) done; phase 2.7a complete · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -2935,7 +2935,7 @@ They were collected with `INSTA_FORCE_PASS=1 INSTA_UPDATE=new`, reviewed on an a
 - `just editor-test` (118 unit, 22 end-to-end).
 
 ### Phase 2.7a refinement (2026-11-22, against the code after 2.5d)
-**Status: refined; 2.7a.1 done (see its As built); author decisions A1 and A2 taken (2026-11-22). Two sub-phases, two PRs: 2.7a.1 `m2/2.7a-mixer`, 2.7a.2 `m2/2.7a-engine`. The in-game UI half is phase 2.7b, refined at its own start.**
+**Status: done (see the 2.7a.1 and 2.7a.2 As builts); author decisions A1 and A2 taken (2026-11-22). Two sub-phases, two PRs: 2.7a.1 `m2/2.7a-mixer`, 2.7a.2 `m2/2.7a-engine`. The in-game UI half is phase 2.7b, refined at its own start.**
 
 Refined against `main` after #64: the original "Phase 2.7: concordia-audio and concordia-ui" (below), the M2 refinement's phase table (its 2.7 row: "Godot import and sound bank out"), ADR-0063, ADR-0069, ADR-0073, ADR-0074 and ADR-0076, and M3's 3.7 (the synthesizer). **This section wins wherever they disagree.** In particular, from the original phase:
 - **Out, to M5 (D1):** cues "from a Godot-side sound bank resource", `bus_layout_tres_maps_to_audio_bus_config`, the `.import` loop-flag mapping, and the Godot `Control`/HUD import (2.7b's half, moved anyway).
@@ -3243,6 +3243,141 @@ The caught ones:
 - `just editor-test` (118 unit, 22 end-to-end).
 
 After blessing, one full re-run saw `m3s_live_checker_rejects_an_edit_by_the_wrong_actor_and_a_missing_review` (the M3S live checker, which drives an MCP server in a temp project) fail once under load. It passed alone five times and in the next full run (1,578 of 1,578); it touches nothing in audio.
+
+### Phase 2.7a.2 As built (2026-11-22, ADR-0066 decision 8)
+**Reconciled with the code as built:** the refinement held (A1 enabled both roles). What the code taught:
+- **`AudioListener` has a `gain`** (default 1), which scales positioned sounds. The refinement had it as a marker.
+- **Positions compose parents from the processor's own columns.** A processor can't take the `World`, so `concordia_scene::builtin::world_matrix_with` composes from `Transform` and `Parent` lookups, with `world_transform`'s rules. `world_transform` now delegates to it, so there is one implementation.
+- **Every imported cue loads at play start**, with its sounds, because a `PlayCue` may name any cue. `audio.play` and `audio.render` load others on demand.
+- **Runtime bus settings last across plays.** A test found that play start's fresh offline mixer forgot an `audio.buses` change; play start now re-applies them.
+- **`audio.render` without a cue** reports the play world since play start, and its WAV keeps the newest 30 s (`keep_last`). With a `path` it writes, so the MCP server checks that path against the role's paths, like `asset_import` (ADR-0080).
+- **The device:**
+  - cpal streams aren't `Send` everywhere, so the stream lives on a `concordia-audio-device` thread until its guard drops;
+  - `concordia-audio-stream` refills streams and frees retired voices every 50 ms;
+  - the callback renders in 4,096-frame blocks into preallocated scratch and converts to `f32`, `i16`, `u16` or `i32`.
+- **`Project::engine_config_for(Playback::Windowed)`** is what `concordia run` uses. `audio_settings(playback)` reads and validates `[audio]` (voices 1–256, the bus file, the backend), and `auto` is the device only when windowed.
+- **The library gained** `MixerHandle::{is_live, live}` (voices live until retired and collected) and `OfflineBackend::keep_last`. `write_wav16` writes s × 32768, rounded and clamped.
+- **The emitter rule:**
+  - a one-shot emitter restarts only when `playing` turns true;
+  - `StopCue` stops what signals and clip events started, never an emitter;
+  - two plays from one entity on one tick get different draws, because *n* counts them.
+- **The debug layer** draws emitters whose cue is loaded (after a play, or a method that loaded it), so the edit world shows them once a play has run.
+- **Studio:**
+  - nine enabled roles outnumber Claude Code's eight agent colors, so `every_default_role_has_a_color_and_enabled_roles_differ` now requires distinct exact colors, with every named color used before any repeats. This is a deliberate fix: the old rule can't hold. The sound designer is orange and the composer `#14b8a6`;
+  - both roles save scene files, so `scenes/**/*.scene.ron` joins `[paths] shared`;
+  - `concordia new` writes `[audio]` and `studio init` adds it when missing, as `[anim]` was for the animator.
+- **No new `unsafe`.** cpal's platform code is a dependency, and our callback and threads are safe Rust.
+
+**Engine:**
+- `concordia-audio`:
+  - `components` (`AudioEmitter`, `AudioListener`, `AnimEventCues`, `PlayCue`, `StopCue`, `register_types`, with `Cue` and `BusLayout` for `schema.get`), `library` (`AudioLibrary`), and `core` (`AudioCore`, `AudioShared`, `AudioSettings`, `Backend`, `AudioDevice`, `OpenDevice`, `VoiceInfo`);
+  - `collect` (`Collector`, `audio.collect`), `methods` (`audio.play`, `audio.stop`, `audio.buses`, `audio.render`, `audio.inspect`), `debug` (the `audio` layer), `device` (`CpalDevice`), `module` (`AudioModule`), `wav`, and `importers()`.
+- `concordia-scene`: `world_matrix_with`.
+- `concordia-app`: `[audio]` (`AudioSection`, `AudioBackendChoice`), `Playback`, `engine_config_for`, `modules_for` and `audio_settings`; every project registers the audio importers.
+- `concordia-cli`: `concordia run` is windowed; `concordia new` writes `[audio]` and `studio init` adds it.
+- `concordia-mcp`: `audio.render`'s path check.
+- Workspace: `cpal` 0.18.2 (no default features), and the new `audio-guest` WASM fixture (`just wasm`, `just lint`).
+- Studio:
+  - the sound designer (24 tools) and the composer (20) are enabled;
+  - new skills `concordia-sound-design` and `concordia-music`;
+  - `concordia-synthesize-sfx`'s note names only `gen_run`;
+  - `concordia-scripting` gains "Sound from a script".
+- Docs:
+  - ADR-0066 (decision 8 and its consequences), ADR-0073 (the budgets) and ADR-0080 (the path check);
+  - the AGENTS.md of `concordia-audio`, `-app`, `-cli`, `-mcp`, `-scene` and `-studio`, and the README of `concordia-audio`;
+  - `docs/guides/agents-engine-api.md` (an Audio section and five methods), `plans/README.md` (the crate, the methods, the ADR registry and the index), the `audio-guest` README, and this plan.
+
+**Tests (35 new, 1 manual, 8 extended):**
+- `concordia-audio` (18, plus 1 manual):
+  - **Library:** `the_handle_tracks_live_voices`, `a_bounded_capture_keeps_the_last_frames` and `wav_writer_scales_by_32768_and_clamps`.
+  - **`tests/engine.rs`** (8):
+    - `emitter_plays_while_playing_and_stops_with_a_ramp` (0.5 from frame 0; the ramp at 2,400 and, after gameplay's despawn, at 4,000);
+    - `play_cue_signal_plays_once_at_the_next_tick` (frames 2,400..2,500);
+    - `listener_is_the_lowest_id_and_missing_listener_centres_sound` (0.353553, then right 0.25, then 0.125 at gain 0.5);
+    - `audio_is_presentation_only_and_never_changes_the_world_hash` (30 ticks, with and without `audio.collect`, at 1 and 8 threads);
+    - `engine_audio_renders_identically_across_runs_threads_and_replay`;
+    - `missing_device_warns_and_falls_back_to_offline` (one warning);
+    - `two_plays_on_one_tick_draw_differently`;
+    - `stop_cue_stops_what_the_entity_started`.
+  - **`tests/api.rs`** (7): registration by name; render of a cue (96,000 frames, −6.0206 dBFS, the hash, the WAV) and of the play world, with bad params at their pointers; previews and stops; buses (0.25 at −6.0206 dB, peaks of −12.0412 then −80, mute); inspect; and the debug layer (48 + 3 + 1 lines, radii 1 and 50, grey when idle).
+  - **`tests/device.rs`:** `cpal_device_plays_a_cue` (`#[ignore]`, manual). It ran on the reference machine: a −30 dBFS tone played to its end in real time.
+- `concordia-scene` (1): `world_matrix_with_composes_from_lookups`.
+- `concordia-app/tests/audio.rs` (4):
+  - `anim_event_cues_play_on_clip_events`: Idle's `breathe` at 0.458333 s is crossed in tick 27 and sounds from frame 22,400, then 70,400;
+  - `scripted_processor_plays_a_cue`: the `audio-guest` WASM module chimes on ticks 0, 30 and 60, sounding at 800, 24,800 and 48,800;
+  - `buses_file_loads_and_bad_layouts_are_descriptive`;
+  - `the_backend_follows_the_section_and_the_playback`.
+- `concordia-cli` (1 new, 2 extended): `studio_init_adds_audio_when_missing_for_the_sound_designer`, and `[audio]` in both new-project tests.
+- `concordia-mcp` (4 new, 2 extended):
+  - `audio_methods_have_generated_schemas_and_mcp_tools` (all read-only) and `agent_renders_an_imported_cue_over_mcp`;
+  - `server_holds_the_audio_roles_to_their_paths` and `sound_designer_and_composer_are_enabled_with_audio_tools_under_budget`;
+  - `ENABLED` and the manifests of `every_enabled_default_role_stays_under_its_tool_budget`, `role_scope` and `shared_engine` gain the roles or `[audio]`.
+- `concordia-studio` (7 new, 4 extended):
+  - **roles:** `sound_designer_wires_and_listens_with_its_tools_and_skill` and `composer_brings_finished_music_with_its_tools_and_skill`;
+  - **skills:** `sound_design_skill_examples_are_real_params_components_and_a_valid_cue` and `music_skill_examples_are_real_params_components_and_a_valid_cue` (calls, components, cue and layout parsed as the real types), `synthesize_sfx_waits_only_for_the_synthesizer` and `scripting_skill_mirrors_play_cue_and_stop_cue`;
+  - **hook:** `audio_roles_write_only_their_audio_paths_and_scenes`;
+  - **extended:** the planned skills, the synced agent files, the director's spawnable roles, and the color test (above).
+
+**Red run:** against a skeleton (a processor that did nothing, methods returning `Internal`, an empty debug layer, `[audio]` always offline with defaults, no Studio changes), every new test failed for the right reason. The exceptions:
+- **Passed immediately:**
+  - `audio_methods_are_registered_by_name` (the skeleton already registered them);
+  - `scripted_processor_plays_a_cue` (written after `PlayCue` worked; shown red by its mutation).
+- **Written after the code, each shown red by its mutation:** `stop_cue_stops_what_the_entity_started`, `two_plays_on_one_tick_draw_differently` and `wav_writer_scales_by_32768_and_clamps` (added for mutation survivors).
+- **Test mistakes, fixed deliberately:**
+  - three tests first edited the running game with `entity.spawn` / `entity.despawn` (which act on the edit world) and `component.remove` (no play-world form). They now use play-world `component.set` and a gameplay despawn (`test.Doom`);
+  - two rigs first minted different asset ids, so emitters' `cue` values (hashed) differed. The rig now pins every sidecar;
+  - the clip-event test double-prefixed an asset reference;
+  - the expected scopes weren't sorted as the roster sorts them;
+  - the inspect test's cue count rose when the rig gained a cue;
+  - the color test, which can't hold with nine roles (above).
+- **A real bug the tests found:** runtime bus settings lost at play start.
+
+**Mutation checks:** 25 mutations, each restored file given a fresh mtime. The first run's two "`PlayCue` ignored" mutations didn't apply (rustfmt had reflowed the line), and were rerun and caught. 19 were caught at once. The 4 survivors were fixed with new cases:
+- previews all keyed to tick 0 (no test previewed a varied cue twice);
+- the WAV scaled by 32,767 (0.5 rounds alike either way; 0.75 doesn't);
+- the per-entity draw count never counting;
+- `StopCue` ignored (it had no test).
+
+The caught ones:
+- **Emitters:** restarting every tick, never stopping, and despawned emitters playing on.
+- **Signals and events:** `PlayCue` ignored (engine and script) and `AnimEvent` ignored.
+- **The listener:** the highest id; gain ignored; voices never re-panned; no listener meaning silence.
+- **Buses and the device:** runtime buses lost at play; a device failure becoming an error.
+- **Methods:** `audio.stop` reporting nothing; `audio.render` ignoring `seconds`.
+- **The debug layer:** idle circles green, nothing lifted, radii swapped.
+- **The server:** `audio.render`'s path unchecked.
+- **Scene and app:** parents ignored; windowed playing offline; voices unchecked.
+
+**Studio and budgets** (served definitions, 4 chars a token):
+- sound designer 24 tools ≈15.1k (15,138) and composer 20 ≈13.1k (13,054), both new;
+- unchanged: level designer 37 ≈23.1k (23,078), QA 24 ≈21.5k (21,519), tech artist 23 ≈20.1k (20,106), animator 22 ≈16.8k (16,824), gameplay programmer 17 ≈12.9k (12,946), director 13 ≈12.5k (12,453), writer 11 ≈9.6k (9,576);
+- all under 50k.
+
+**Goldens and snapshots:** six, all from enabling the sound designer and composer:
+- new: Studio's `agent_composer` and `agent_sound-designer`;
+- changed: `agent_director` (it may spawn both) and `sync_generates_expected_claude_md_block`, and the M3S gate's `m3s_agents_and_skills` and `m3s_claude_md_block`.
+
+They were collected with `INSTA_FORCE_PASS=1 INSTA_UPDATE=new` and shown on an artifact page for the author's review before blessing. No render golden changed.
+
+**Manual checks:** the cpal test above. `concordia run` on a scene with sound was not run in this phase (it opens a window); the sample game (2.10) will exercise it.
+
+**Carry-over:**
+- the ignored `run_bench_latency_measures_the_engine_window_alone`;
+- the `navmesh` layer's re-gather;
+- the editor's deny warning;
+- ADR-0069's chunk components (M7 7.7);
+- physics queries seeing last-step bodies;
+- the crowd's sequential steps at 10k (M7 7.7).
+
+**Not in 2.7a.2:** DSP effects, HRTF, Doppler, occlusion, music crossfades, UI sounds (2.7b), Godot sound-bank and bus-layout import (M5), and synthesis (M3 3.7).
+
+**Checklist:** all of these pass:
+- `just lint` (with the new `audio-guest`) and Tauri clippy;
+- `just wasm`, `just native-fixtures`, then the `CONCORDIA_REQUIRE_GPU=1` full suite with `--no-fail-fast` (1,613 tests: 1,613 pass, 10 skipped; 14 doc tests);
+- `just gate-tests M1` (4) and `M3S` (13; its two snapshots pending review, as above);
+- `just deny` and the editor's, both `Cargo.lock`s, fresh advisory DB. Both locks gain `cpal` and its platform crates (`coreaudio-rs` and the `objc2-*` audio crates; `alsa` on Linux), and the editor's also gains `concordia-audio`, `hound`, `lewton`, `ogg` and `rtrb` through `concordia-app`. The editor's prints the existing "no crate matched" warning;
+- `just editor-schemas` (no change: the editor's example project has no `[audio]`);
+- `just editor-test` (118 unit, 22 end-to-end).
 
 ### Effort (re-estimated)
 | Phase | Estimate |

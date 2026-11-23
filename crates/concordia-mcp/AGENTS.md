@@ -19,7 +19,7 @@ The MCP server (`concordia-mcp`, also `concordia mcp`): a thin rmcp adapter that
   - each call's `_studio` stamp (added by the PreToolUse hook) and any `actor` argument are stripped;
   - the role's scope is re-checked with the same `concordia_studio::Policy` the hook uses;
   - each agent key gets its own engine session as `agent:<role>#n`, with slots shared with the hooks in `.concordia/studio/slots.json`;
-  - scene, asset and material writes (`scene_new`, `scene_save`, `asset_import`, `material_set`) are checked against the role's paths; `asset_import` passes if the role may write the file or its sidecar (`<path>.import.ron`, all an import writes; M2 2.4.5);
+  - scene, asset, material and rendered-audio writes (`scene_new`, `scene_save`, `asset_import`, `material_set`, and `audio_render` with a `path`, M2 2.7a.2) are checked against the role's paths; `asset_import` passes if the role may write the file or its sidecar (`<path>.import.ron`, all an import writes; M2 2.4.5);
   - calls without a stamp are read-only;
   - per-task budgets block the task for a human when exceeded.
 - **Shared engine** (ADR-0082): the server never starts a private engine. After the host exits, the failing call returns `EngineExited` and the next call attaches or hosts again (agent sessions are reopened; slots are kept). `--scene` opens only if the engine has no scene open. `deterministic_ids`, `threads` and `log_ring` apply only when this server hosts.

@@ -20,5 +20,24 @@ A gameplay module is a Rust crate under `scripts/<module>/` written with `concor
 5. Load it: `mcp__concordia__script_reload {}` (or `{"module": "<name>"}`). It never builds: it loads what is on disk. Changed component layouts are migrated: in the edit world as one undoable transaction by `script:<module>` (`txn_history` shows it), and in the play world.
 6. Check it: `mcp__concordia__sim_step {"ticks": 60}`, `mcp__concordia__query_run {"with": ["<module>.<Type>"], "world": "play"}`, and `mcp__concordia__log_tail {"level": "info"}` for script log lines and faults (a faulting processor is disabled until the next play session or reload).
 
+## Sound from a script
+Play a cue by raising the engine's `PlayCue` signal on an entity (`ctx.signal(id, &PlayCue { .. })`): it sounds at that entity's position on tick t + 1, and never changes the world hash beyond the signal itself. `StopCue` stops what that entity started. Mirror both field for field (names resolve against the engine's registry; an asset reference travels as its string), and ask the sound designer for the cue id. Clip events need no code: the sound designer maps them with `AnimEventCues`.
+```rust
+/// The engine's `PlayCue`, mirrored.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Reflect)]
+#[reflect(name = "PlayCue", default)]
+pub struct PlayCue {
+    pub cue: String,
+    pub volume_db: f32,
+}
+
+/// The engine's `StopCue`, mirrored (none: everything this entity started).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Reflect)]
+#[reflect(name = "StopCue", default)]
+pub struct StopCue {
+    pub cue: Option<String>,
+}
+```
+
 ## Output contract
 In the task comment: the module and processors you changed, the build command, the `script_reload` result (version, migrated types), and the play-world check.

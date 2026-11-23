@@ -13,11 +13,16 @@ use concordia_core::id::SessionId;
 use concordia_studio::{StudioModule, ToolCatalog};
 use serde_json::{Value, json};
 
-/// Tools a `concordia new` project offers (core + physics, nav, assets, anim, render and Studio).
+/// Tools a `concordia new` project offers (core + physics, nav, assets, anim, audio, render and Studio).
 pub const PROJECT_TOOLS: &[&str] = &[
     "anim_inspect",
     "asset_import",
     "asset_list",
+    "audio_buses",
+    "audio_inspect",
+    "audio_play",
+    "audio_render",
+    "audio_stop",
     "capture_screenshot",
     "component_add",
     "component_get",

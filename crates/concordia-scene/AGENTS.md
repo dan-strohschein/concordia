@@ -8,7 +8,7 @@ The text source of truth: canonical RON scenes and prefabs (ADR-0009) with stabl
 - `read_document::<T>` / `write_document` for other typed RON files (input maps, later materials and sidecars): schema-validated, canonical (sorted fields, root named after the type)
 - `SceneDoc`, `PrefabDoc`, `EntityDoc`, `SceneMeta`, `FORMAT_VERSION`
 - `load_into_world`, `snapshot_world`, `instantiate_prefab` (returns `EditOp`s for `concordia-command`)
-- `builtin::{Name, Transform, Parent, Velocity, register, integrate_velocity, headless_schedule, lod_position}`; `headless_schedule` puts `terra.lod` (from `lod_position`, the world translation) first in `PrePhysics` (2.4b.1, ADR-0076)
+- `builtin::{Name, Transform, Parent, Velocity, register, integrate_velocity, headless_schedule, lod_position}`; `world_transforms` / `world_transform` (from a `World`) and `world_matrix_with` (the same rules from `Transform` and `Parent` lookups, for processors that read only their declared columns; `world_transform` delegates to it; M2 2.7a.2); `headless_schedule` puts `terra.lod` (from `lod_position`, the world translation) first in `PrePhysics` (2.4b.1, ADR-0076)
 - `SceneError`
 
 ## Invariants

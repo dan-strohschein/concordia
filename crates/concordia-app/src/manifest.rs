@@ -33,6 +33,9 @@ pub struct Manifest {
     pub replay: Option<ReplaySection>,
     /// `[anim]`; animation components and play processors exist only if this section exists (needs `[assets]`).
     pub anim: Option<AnimSection>,
+    /// `[audio]`; audio components, `audio.*` and the mixer exist only if this section exists
+    /// (cues load through `[assets]`).
+    pub audio: Option<AudioSection>,
     /// `[nav]`; navigation components and `nav.*` exist only if this section exists (navmeshes are
     /// built from `[physics]` colliders).
     pub nav: Option<NavSection>,
@@ -52,6 +55,41 @@ impl Default for NavSection {
             plans_per_tick: concordia_nav::AgentConfig::default().plans_per_tick,
         }
     }
+}
+
+/// `[audio]` (ADR-0066).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AudioSection {
+    /// The voice pool (1–256; default 32).
+    pub voices: u16,
+    /// A project-relative `.buses.ron` layout (default: Master, SFX and Music).
+    pub buses: Option<String>,
+    /// Where the mix goes.
+    pub backend: AudioBackendChoice,
+}
+
+impl Default for AudioSection {
+    fn default() -> Self {
+        Self {
+            voices: 32,
+            buses: None,
+            backend: AudioBackendChoice::Auto,
+        }
+    }
+}
+
+/// `[audio] backend`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AudioBackendChoice {
+    /// The default device in `concordia run`; offline everywhere else.
+    #[default]
+    Auto,
+    /// Always offline (sample-exact, no device).
+    Offline,
+    /// No mixing.
+    None,
 }
 
 /// `[anim]` (no settings yet; ADR-0074).

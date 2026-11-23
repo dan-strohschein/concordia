@@ -129,13 +129,35 @@ fn local_matrix(t: &Transform) -> concordia_core::math::Mat4 {
 
 /// One entity's world matrix (`None` without a `Transform`); same rules as [`world_transforms`].
 pub fn world_transform(world: &World, id: EntityId) -> Option<concordia_core::math::Mat4> {
-    let t = world.get::<Transform>(id)?;
-    if world.get::<Parent>(id).is_none() {
-        return Some(local_matrix(t));
+    world_matrix_with(id, &|e| world.get::<Transform>(e).copied(), &|e| {
+        world.get::<Parent>(e).map(|p| p.0)
+    })
+}
+
+/// One entity's world matrix from lookups (a processor's `Transform` and `Parent` columns):
+/// the same rules as [`world_transform`]; `None` without a `Transform`.
+pub fn world_matrix_with(
+    id: EntityId,
+    transform: &dyn Fn(EntityId) -> Option<Transform>,
+    parent: &dyn Fn(EntityId) -> Option<EntityId>,
+) -> Option<concordia_core::math::Mat4> {
+    let mut chain = vec![(id, transform(id)?)];
+    let mut seen = std::collections::BTreeSet::from([id]);
+    while let Some(up) = chain.last().and_then(|(e, _)| parent(*e)) {
+        let Some(t) = transform(up) else { break };
+        if !seen.insert(up) {
+            break;
+        }
+        chain.push((up, t));
     }
-    let mut out = WorldTransforms::default();
-    resolve(world, id, &mut out);
-    out.transforms.get(&id).copied()
+    Some(
+        chain
+            .iter()
+            .rev()
+            .fold(concordia_core::math::Mat4::IDENTITY, |base, (_, t)| {
+                base * local_matrix(t)
+            }),
+    )
 }
 
 /// Walks up to the first resolved ancestor (or a root), then composes back down.
