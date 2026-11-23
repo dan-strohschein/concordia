@@ -18,5 +18,5 @@ pub use manifest::{
     ScriptModuleKind, ScriptModuleSection, ScriptsSection, SimSection, StudioSection, UiSection,
 };
 pub use player::{ApiCall, Player};
-pub use project::{Playback, Project, model_importers};
+pub use project::{Playback, Project, asset_importers, model_importers};
 pub use shared::{HostedEngine, SharedEngine};

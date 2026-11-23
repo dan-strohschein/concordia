@@ -1,0 +1,29 @@
+Cue(
+    bus: "SFX",
+    looping: false,
+    max_instances: Some(2),
+    pitch_semitones: (
+        max: 1.0,
+        min: -1.0,
+    ),
+    priority: 140,
+    seed: 107,
+    sounds: [
+        (
+            sound: "asset:01a209fb-2aac-735e-8bac-76d90afc2c78",
+            weight: 1,
+        ),
+        (
+            sound: "asset:01a209fb-2aaf-7571-858b-65d250a4bb78",
+            weight: 1,
+        ),
+    ],
+    spatial: Some((
+        max_distance: 30.0,
+        min_distance: 1.0,
+    )),
+    volume_db: (
+        max: -4.0,
+        min: -6.0,
+    ),
+)

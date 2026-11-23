@@ -1,0 +1,33 @@
+Cue(
+    bus: "Ambience",
+    looping: false,
+    max_instances: Some(4),
+    pitch_semitones: (
+        max: 1.0,
+        min: -2.0,
+    ),
+    priority: 70,
+    seed: 109,
+    sounds: [
+        (
+            sound: "asset:01a209fb-2a66-751f-9a2c-7d88a3688b99",
+            weight: 1,
+        ),
+        (
+            sound: "asset:01a209fb-2a6e-73b2-a843-b73770268ad7",
+            weight: 1,
+        ),
+        (
+            sound: "asset:01a209fb-2a76-7515-9e27-b577b910f29d",
+            weight: 1,
+        ),
+    ],
+    spatial: Some((
+        max_distance: 30.0,
+        min_distance: 2.0,
+    )),
+    volume_db: (
+        max: -10.0,
+        min: -14.0,
+    ),
+)

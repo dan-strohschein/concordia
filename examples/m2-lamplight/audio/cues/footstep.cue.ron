@@ -1,0 +1,41 @@
+Cue(
+    bus: "SFX",
+    looping: false,
+    max_instances: Some(8),
+    pitch_semitones: (
+        max: 1.0,
+        min: -1.0,
+    ),
+    priority: 64,
+    seed: 101,
+    sounds: [
+        (
+            sound: "asset:01a209fb-2a7a-773b-83f6-1372e7ab61be",
+            weight: 1,
+        ),
+        (
+            sound: "asset:01a209fb-2a7c-7200-8115-84435e3e4ec4",
+            weight: 1,
+        ),
+        (
+            sound: "asset:01a209fb-2a7e-717c-a7a4-bb53e272f87a",
+            weight: 1,
+        ),
+        (
+            sound: "asset:01a209fb-2a80-728a-b20b-e8ece0dc89c9",
+            weight: 1,
+        ),
+        (
+            sound: "asset:01a209fb-2a82-74d8-92ea-b6885c9ea4e8",
+            weight: 1,
+        ),
+    ],
+    spatial: Some((
+        max_distance: 25.0,
+        min_distance: 1.0,
+    )),
+    volume_db: (
+        max: -8.0,
+        min: -12.0,
+    ),
+)

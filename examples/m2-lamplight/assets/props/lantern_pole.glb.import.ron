@@ -1,0 +1,12 @@
+Sidecar(
+    id: "01a209fb-2a50-7295-8ea0-f20d64583224",
+    importer: "gltf",
+    importer_version: 4,
+    settings: {},
+    sub_assets: {
+        "material/Brass": "71833a88-bde7-5316-8e70-4cc28513dba2",
+        "material/Wood": "c98786fd-354c-5357-a90d-e948e48c5d09",
+        "mesh/Pole/0": "abc2d51f-02ee-58fe-aa82-ce6b0ef6b8de",
+        "mesh/Pole/1": "35c4e311-2e66-5d17-b94e-56d657b2413b",
+    },
+)

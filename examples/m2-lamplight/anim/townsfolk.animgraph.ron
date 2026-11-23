@@ -1,0 +1,36 @@
+AnimGraph(
+    nodes: {
+        "flinch": OneShot(
+            base: "locomotion",
+            curve: Smooth,
+            fade_in: 0.05,
+            fade_out: 0.15,
+            filter: [],
+            request: "startle_now",
+            shot: "startle",
+        ),
+        "idle": Clip(
+            clip: "asset:01a209fb-29ed-76d3-b691-6c465bcdeec7#clip/Idle",
+            looping: true,
+        ),
+        "locomotion": Blend2(
+            a: "idle",
+            amount: "walk_amount",
+            b: "walk",
+            filter: [],
+        ),
+        "startle": Clip(
+            clip: "asset:01a209fb-29ed-76d3-b691-6c465bcdeec7#clip/Startle",
+            looping: false,
+        ),
+        "walk": Clip(
+            clip: "asset:01a209fb-29ed-76d3-b691-6c465bcdeec7#clip/Walk",
+            looping: true,
+        ),
+    },
+    parameters: {
+        "startle_now": Trigger,
+        "walk_amount": Float(0.0),
+    },
+    root: "flinch",
+)

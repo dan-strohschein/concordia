@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2) and 2.5d (2026-11-22) done; phase 2.5 complete; 2.7 split into 2.7a (audio) and 2.7b (UI); 2.7a refined (2.7a.1, 2.7a.2), 2.7a.1 and 2.7a.2 (2026-11-22) done; phase 2.7a complete; 2.7b refined (2.7b.1–2.7b.3, 2026-11-22); 2.7b.1, 2.7b.2 and 2.7b.3 (2026-11-23) done; phase 2.7b complete; 2.10 refined (the sample game "Lamplight", 2.10a–2.10d, 2026-11-23); 2.10a (2026-11-23) done · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2) and 2.5d (2026-11-22) done; phase 2.5 complete; 2.7 split into 2.7a (audio) and 2.7b (UI); 2.7a refined (2.7a.1, 2.7a.2), 2.7a.1 and 2.7a.2 (2026-11-22) done; phase 2.7a complete; 2.7b refined (2.7b.1–2.7b.3, 2026-11-22); 2.7b.1, 2.7b.2 and 2.7b.3 (2026-11-23) done; phase 2.7b complete; 2.10 refined (the sample game "Lamplight", 2.10a–2.10d, 2026-11-23); 2.10a and 2.10b (2026-11-23) done · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -4325,6 +4325,69 @@ The author records pass or fail per item in the Status:
 - No new or changed snapshots or goldens.
 
 **Carry-over:** unchanged from 2.7b.3, plus the windowed checks that 2.10d's `just play-sample` closes.
+
+### Phase 2.10b As built (2026-11-23)
+**Status: done (branch `m2/2.10-content`). Lamplight's content: the approved CC0 picks, our generators and their outputs, imports with clip events and loop points, five materials, two animation graphs, the bus layout, 15 cues, the theme and the input map, all checked by `tests/integration/lamplight_content.rs`.**
+
+**What landed:**
+- **`examples/m2-lamplight/`** (layout in its `README.md`): `concordia.toml` (input, physics, assets, anim, audio and UI; the scene and scripts arrive in 2.10c). Every binary file lives under `assets/`, recorded in `assets/LICENSE.md` (File | Source | License | SHA-256): 74 rows.
+- **The CC0 picks** the author approved on the review page (2026-11-23), copied unchanged:
+  - 41 models and the shared palette from Kenney's Fantasy Town Kit 2.0;
+  - 19 sounds from Impact Sounds 1.0 and RPG Audio.
+  - Each row names the pack, its URL, the archive's SHA-256 and the file's path inside it.
+- **Generators** in `examples/m2-lamplight/tools/`, each reproducing its files byte for byte on this machine:
+  - `make_textures.py`: the cobble gap mask and the awning stripes. Integer maths, a seeded xorshift and PNGs with stored deflate blocks, so any zlib writes the same bytes.
+  - `make_sounds.py`: six 48 kHz WAVs (`sizzle`, `pop`, `whoosh`, `rumble` (a seamless loop), `click`, `chime`) and the night theme (`music/night.ogg`: a 4 s intro, then a 32 s loop). Samples use only `+` and `*` (a polynomial sine, multiplied decays), so the PCM is the same everywhere; the Ogg also depends on the libvorbis version.
+  - `make_characters.py` (Blender 5.2.1): the lamplighter (Idle, Walk, Light, Startle) and the townsfolk (Idle, Walk, Startle) as glTF. Both reuse the repository's original mannequin from `tools/fixtures/make_fbx.py`, which now guards its `main()` and takes a palette and extra parts (the lamplighter's hat). Its fixtures are unchanged.
+  - `make_props.py` (Blender): the wisp and the lantern pole.
+- **Imports:**
+  - Every binary file and every importable text file has a committed sidecar.
+  - The character sidecars carry clip events: `step_left`/`step_right` on Walk (frames 5 and 17 of 24), `reach` and `lit` on Light (frames 1 and 12 of 30; `lit` at the arm's peak, 0.5 s), `flinch` on Startle.
+  - The night theme streams, with `loop_start` 192000.
+- **Text content** (canonical, written through the engine's own writers):
+  - five materials: wet cobbles (a clear film over stone and puddles mixed by the mask), lamp glass (haze, thin film, emissive), awning cloth (fuzz, striped), the wisp (emissive under coverage, blended) and wagon paint (a clear coat);
+  - two animation graphs (a `Blend2` by `walk_amount`, an upper-body Light one-shot on `light_now`, a Startle one-shot on `startle_now`);
+  - `audio/lamplight.buses.ron` (Master → Music −6 dB, SFX, Ambience −8 dB, UI −4 dB);
+  - 15 cues (footsteps on stone and wood, reach, lamp hatch, lit and flare, refill, wagon rumble (a looping spatial emitter) and creaks, wisp sizzle and pop, dawn bell and chime, UI click, the night theme);
+  - `ui/lamplight.theme.ron` (11 classes);
+  - `input/lamplight.input.ron` (the starter's `ui_*` actions plus `walk`, `light` and `pause`).
+- **`concordia-app` and `concordia-cli`:** `asset_importers()` is the one importer list `[assets]` and `concordia import` both register. Before, the CLI registered only the model importers and couldn't import a sound, cue, font or theme (found while importing this content).
+- **`tests/`:** the new `lamplight_content` binary, and `sha2` (already in the lock through other crates) as a workspace dependency for it.
+
+**Choices made while building (this As built wins over the refinement):**
+- **`walk`, not `move`:** the starter map's `move` is click-to-move (left click), so the lamplighter's keyboard walking is its own `walk` action. `move` and `pointer_ray` are dropped from this map. The gate's scripted play (2.10d) injects `walk` and `light`.
+- **Characters and props are glTF, not FBX.** Blender's glTF exporter writes the same bytes on every run, so the pins hold, and the glTF importer reads clip events just as the FBX one does.
+- **Sounds:** the foley the packs cover (footsteps, bell, glass, wood, creaks) comes from them, and the generators make the rest. The dawn plays the struck bell (`dawn_bell`) with our `chime` (`dawn_chime`).
+- **Generator pins on other machines:** `generated_files_match_their_pins` runs a generator only when its tools are installed, and says so when it skips one. Set `CONCORDIA_REQUIRE_GENERATORS=1` to fail instead. CI has neither Blender nor oggenc, so there only the texture generator runs. `make_sounds.py` needs oggenc for the music, so it skips as a whole there.
+
+**Tests** (expected values derived in each header):
+- **`tests/integration/lamplight_content.rs` (5):**
+  - `every_asset_has_a_licence_row_with_matching_sha256`: no binary outside `assets/`, no file without a row and no row without a file, every hash matches, 61 third-party rows (41 + 1 + 19), and at least one of ours;
+  - `licences_are_in_the_deny_allow_list`: plus, every third-party row names an `https://` source and every generated row names an existing script;
+  - `all_assets_import_without_problems`: on a fresh copy through the engine's `asset.import`; every sidecar is unchanged afterwards, and there are no warn or error logs;
+  - `anim_graphs_and_cues_validate`: graphs, cues, buses, theme, input map and materials read, validate and are canonical; every clip and sound they name is imported; every cue's bus exists;
+  - `generated_files_match_their_pins`.
+- **`concordia-cli`:** `import_handles_sounds_and_themes`.
+- **Red run:** all five content tests failed first on the missing example. The CLI test failed with "no importer for tone.ogg (extension "ogg")".
+- **Mutation checks** (all six mutants failed a test; restored files touched): a changed hash digit, a GPL row, a missing sidecar, a cue on a missing bus, a graph naming a clip that isn't imported, and a texture generator's seed changed.
+- **Called out:** none passed at once, and none was written after its code.
+
+**Studio and docs:**
+- **No tools, roles or skills changed.** Role budgets are unchanged from 2.10a (QA 23,260 tokens is the largest).
+- **Docs:** the example's `README.md` and `assets/LICENSE.md`; the AGENTS.md of `concordia-app` and `concordia-cli` and the CLI's README.
+- **No ADR changes.**
+
+**Checklist (2026-11-23):**
+- `just lint` and the Tauri shell's clippy: clean.
+- `just wasm`, `just native-fixtures`, then `cargo nextest run --workspace --no-fail-fast` with `CONCORDIA_REQUIRE_GPU=1`: 1,805 run, 1,805 passed. Doc tests: clean.
+- `just gate-tests M1` (4/4) and `M3S` (13/13).
+- `just deny` and the editor's deny: advisories, bans, licenses and sources ok.
+- `just editor-schemas`: no changes. `just editor-test`: lint, 118 unit and 22 end-to-end tests pass.
+- No new Linux system library. The generators need Blender and vorbis-tools only to regenerate, never to build or test.
+- No new or changed snapshots or goldens. The author approved the generated content on its review page (2026-11-23), as well as the CC0 picks.
+- `repo_hygiene`'s private-marker and home-path checks pass over the new files.
+
+**Carry-over:** unchanged from 2.10a.
 
 ### Effort (re-estimated)
 | Phase | Estimate |

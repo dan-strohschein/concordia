@@ -1,0 +1,22 @@
+Cue(
+    bus: "Music",
+    looping: true,
+    max_instances: Some(1),
+    pitch_semitones: (
+        max: 0.0,
+        min: 0.0,
+    ),
+    priority: 255,
+    seed: 115,
+    sounds: [
+        (
+            sound: "asset:01a209fb-29f3-753e-a146-60e505136839",
+            weight: 1,
+        ),
+    ],
+    spatial: None,
+    volume_db: (
+        max: 0.0,
+        min: 0.0,
+    ),
+)
