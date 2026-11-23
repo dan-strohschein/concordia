@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "An action's value, shaped by its kind.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "Button state.",
+      "properties": {
+        "Button": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "Button"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "One axis.",
+      "properties": {
+        "Axis1d": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "Axis1d"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Two axes.",
+      "properties": {
+        "Axis2d": {
+          "description": "2D vector as [x, y].",
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "type": "array"
+        }
+      },
+      "required": [
+        "Axis2d"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "A world-space ray (the direction is normalized; zero before any ray arrives).",
+      "properties": {
+        "Ray": {
+          "additionalProperties": false,
+          "properties": {
+            "direction": {
+              "description": "Unit direction.\n\n3D vector as [x, y, z].",
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": "array",
+              "x-concordia-widget": "vec3"
+            },
+            "origin": {
+              "description": "Start point.\n\n3D vector as [x, y, z].",
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 3,
+              "minItems": 3,
+              "type": "array",
+              "x-concordia-widget": "vec3"
+            }
+          },
+          "required": [
+            "origin",
+            "direction"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "Ray"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "ActionValue",
+  "x-concordia-type": "ActionValue"
+}

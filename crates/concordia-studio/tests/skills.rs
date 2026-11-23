@@ -1177,3 +1177,33 @@ fn gameplay_and_qa_skills_cover_the_ui() {
         ui_example(&tool, &args);
     }
 }
+
+/// 2.10a (gap S1): scripts read input through `InputActions`; the skill mirrors it and
+/// `ActionState` field for field, orders the reader after `input.actions`, and says what
+/// consumed input looks like and that sensors see characters.
+#[test]
+fn scripting_skill_reads_input_through_input_actions() {
+    let text = skill("concordia-scripting");
+    assert_eq!(
+        mirror_fields(text, "InputActions"),
+        struct_fields::<concordia_input::InputActions>(),
+        "the InputActions mirror in the skill matches InputActions"
+    );
+    assert_eq!(
+        mirror_fields(text, "ActionState"),
+        struct_fields::<concordia_input::ActionState>(),
+        "the ActionState mirror in the skill matches ActionState"
+    );
+    for needle in [
+        "after(\"input.actions\")",
+        "Phase::PrePhysics",
+        "released",
+        "ContactBegan",
+        "CharacterMotion",
+    ] {
+        assert!(
+            text.contains(needle),
+            "concordia-scripting explains {needle}"
+        );
+    }
+}

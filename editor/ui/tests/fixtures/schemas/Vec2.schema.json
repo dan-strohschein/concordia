@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "2D vector as [x, y].",
+  "items": {
+    "type": "number"
+  },
+  "maxItems": 2,
+  "minItems": 2,
+  "title": "Vec2",
+  "type": "array",
+  "x-concordia-type": "Vec2"
+}

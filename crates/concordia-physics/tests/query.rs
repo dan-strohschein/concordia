@@ -72,3 +72,30 @@ fn ortho_pointer_ray_picks_ground_point() {
     assert_eq!(hit.entity, ground);
     assert!(hit.point.abs_diff_eq(target, 0.01), "{}", hit.point);
 }
+
+/// A character's inner body (2.10a, S2b) is for sensors only: a ray straight down through a
+/// character standing at the origin still hits the floor at y = 0, 10 m below its start, not the
+/// capsule's top. Passes before the fix by design (a guard: characters had no body then).
+#[test]
+fn raycasts_ignore_a_characters_inner_body() {
+    let mut sim = Sim::new();
+    let floor = sim.ground();
+    let id = sim.ball(Vec3::new(5.0, 0.0, 0.0), 0.1);
+    sim.world.remove::<RigidBody>(id).unwrap();
+    sim.world.remove::<Collider>(id).unwrap();
+    sim.world
+        .get_mut::<concordia_scene::builtin::Transform>(id)
+        .unwrap()
+        .translation = Vec3::ZERO;
+    sim.world
+        .insert(id, concordia_physics::CharacterController::default())
+        .unwrap();
+    sim.step(1);
+    let ray = Ray::new(Vec3::new(0.0, 10.0, 0.0), Vec3::NEG_Y).unwrap();
+    let hit = sim
+        .physics
+        .raycast(&ray, 100.0, LayerMask::ALL)
+        .expect("hit");
+    assert_eq!(hit.entity, floor, "{hit:?}");
+    assert!((hit.distance - 10.0).abs() < 0.01, "{hit:?}");
+}

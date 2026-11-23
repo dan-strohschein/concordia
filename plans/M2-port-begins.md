@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2) and 2.5d (2026-11-22) done; phase 2.5 complete; 2.7 split into 2.7a (audio) and 2.7b (UI); 2.7a refined (2.7a.1, 2.7a.2), 2.7a.1 and 2.7a.2 (2026-11-22) done; phase 2.7a complete; 2.7b refined (2.7b.1–2.7b.3, 2026-11-22); 2.7b.1, 2.7b.2 and 2.7b.3 (2026-11-23) done; phase 2.7b complete · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2) and 2.5d (2026-11-22) done; phase 2.5 complete; 2.7 split into 2.7a (audio) and 2.7b (UI); 2.7a refined (2.7a.1, 2.7a.2), 2.7a.1 and 2.7a.2 (2026-11-22) done; phase 2.7a complete; 2.7b refined (2.7b.1–2.7b.3, 2026-11-22); 2.7b.1, 2.7b.2 and 2.7b.3 (2026-11-23) done; phase 2.7b complete; 2.10 refined (the sample game "Lamplight", 2.10a–2.10d, 2026-11-23); 2.10a (2026-11-23) done · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -69,7 +69,7 @@ The numbers 2.1, 2.2 and 2.9 are retired: they moved to M5, and reusing them wou
 | 8 | **2.4b Terra LOD and representation** | simulation LOD (deterministic inputs only); representation LOD and switching (full, instanced, hidden) | M7 7.4, 7.6 (representation), G8 | |
 | 9 | **2.5 Navigation, crowds and traffic** | recast-sys, navmesh build and queries, agents, Detour crowds as Terra processors, lane-based traffic (rule-based; AI-driven behavior stays M7/M4) | old 2.5 (Godot mapping out), M7 7.7 | |
 | 10 | **2.7 Audio and in-game UI** (2.7a audio, ADR-0066; 2.7b UI, ADR-0060; split by the 2.7a refinement) | audio stack and cues; retained ECS UI, taffy plus anchors, parley and swash (ADR-0060; P1 replaced cosmic-text) | old 2.7 (Godot import and sound bank out) | sound-designer, composer (synth in M3 3.7), ui-ux |
-| 11 | **2.10 Sample game and gate** | an original sample game (D2), the deterministic gate, an optional live Studio gate | D2 | |
+| 11 | **2.10 Sample game and gate** (refined 2026-11-23: "Lamplight", 2.10a–2.10d) | an original sample game (D2), the deterministic gate, an optional live Studio gate | D2 | |
 
 The VFX artist stays disabled: particles are not in M2 (open question, unchanged). M11 (Sparx, ADR-0015) enables it.
 
@@ -4075,6 +4075,256 @@ Refined against `main` after #69: the original "Phase 2.7: concordia-audio and c
 - assets first named by a widget spawned during play measure as missing in the simulation; trackpad scrolling arrives as lines;
 - the ignored `run_bench_latency_measures_the_e…` test; the navmesh layer's re-gather; the editor's deny warning; ADR-0069's chunk components (M7 7.7); physics queries seeing last-step bodies; the crowd's sequential steps at 10k (M7 7.7);
 - `concordia run` with sound and UI (typing, the OS clipboard, world UI) not yet exercised by hand (2.10's sample game).
+
+### Phase 2.10 refinement (2026-11-23, against the code after 2.7b.3)
+**Status: refined; author decisions L1 and L2 taken (2026-11-23). Sub-phases 2.10a–2.10d below.** Reconciled with D2, the phase table's 2.10 row and the "2.10" test shape above: the shape holds (scripted headless play through `input.inject`, `sim.step` and `query.run`; replay across thread counts; goldens; zero error logs; every role M2 unlocked uses a tool in the sample), and this section names the game and its tests.
+
+**Author decisions (2026-11-23):**
+- **L1. The game is "Lamplight"** (a night-watch lamplighter game; chosen over a market courier and a garden defence). Traffic and damage numbers are given real jobs: wagons refill the lamplighter's oil, and lamplight burns the fog wisps.
+- **L2. Content comes from our own generators plus CC0 packs**, each third-party file recorded with source, licence and SHA-256.
+
+**What the code taught (checked before writing this):**
+- Scripts see only component batches, signals and commands (`wit/concordia-game/world.wit`), never resources. Player input is the `ActionStates` resource, so **no script can read input today** (gap S1).
+- No `.cue.ron`, `.buses.ron` or `.theme.ron` file exists in the repo, and there are no built-in sounds; the sample's are the first.
+- M2's ADR block (0060–0079) is full (0064 and 0065 stay reserved for M5), so 2.10's decisions are updates to existing ADRs (S1 to ADR-0062; the gate's completion to ADR-0067).
+- `just gate-tests M2` selects `binary(/^m2_/)`; there are no `m2_*` gates yet, and `regression.yml` runs gate tests for M-1, M0, M1 and M3S only.
+
+#### Game design: "Lamplight" (working title; `examples/m2-lamplight`)
+- **Premise and genre:** a small third-person night-watch action game in an original harbour town. It is not an ARPG: there is no loot, no levels, no click-to-move and no isometric camera.
+- **Core loop:**
+  - It's dusk. You are the town's lamplighter, walking with the keyboard (WASD/arrows, a chase camera).
+  - Fog wisps drift in from the harbour edge, a crowd on the navmesh heading for the town square.
+  - Walk to a lamp post and hold **Light**: a reach one-shot animation plays, and its anim event lights the lamp, with a cue and an intensity tween.
+  - Lamps burn oil and go out when empty, and lighting one spends your can's oil.
+  - **Refill from the oil wagons:** wagons circulate on the lanes, and the lanes brake for people. Step into the road in front of one and it stops; touch it to refill. So traffic is part of the loop, not scenery.
+  - **Lamplight burns wisps.** Each lamp has a light-radius sensor. A wisp inside one loses wisp-health every tick, and the losses float above it as orange **world-space damage numbers** that rise and fade with a tween. At 0 the wisp pops, with a cue.
+  - **Townsfolk** wander between homes and market stalls (a crowd with an idle/walk graph). A wisp's fear sensor startles them (a one-shot animation) and they flee home.
+  - A wisp that reaches the square dims the **Town Spirit** meter, shown as a blue "−n" over the fountain.
+- **Win:** dawn bells ring (night length set on the title screen) with Town Spirit above 0.
+- **Lose:** Town Spirit reaches 0, and the fog takes the square.
+- **Scope of the slice:**
+  - one town (harbour edge, square, two streets, a ring road with 2 junctions);
+  - 12 lamps, about 300 townsfolk, up to about 200 wisps, 4 oil wagons;
+  - a title menu, the HUD, a pause menu and an end screen;
+  - no saving: the night-records list lasts for the session.
+- **Originality:** our own premise, characters, town and names. Nothing from the port game: a grep of the private markers against the new files is part of the checklist.
+
+#### Every M2 system, and its job in the sample
+| System | Use |
+|---|---|
+| Terra processors, phases, signals, observers, command buffers | the rules run as scripted processors; sensor contacts arrive as signals; wisps and numbers are spawned and despawned through commands |
+| Templates, traits, spawners | `templates/{lamp,wisp,townsfolk,oil_wagon,burn_number,spirit_number}.template.ron`; spawners place townsfolk (`Disc`) and harbour wisps (`Box`) by seed, and a timer-driven spawn adds new wisp waves |
+| Simulation and representation LOD | distant townsfolk and wisps tick at a LOD rate; far townsfolk switch to instanced, then hidden |
+| Scripting, WASM | `scripts/lamplight-rules` (lamps and oil, the burn, Town Spirit, the game state and HUD values) |
+| Scripting, native | `scripts/lamplight-fog` (wisp waves and steering targets, townsfolk fear) as a hot-reloaded dylib; the gate calls `script_reload` mid-night |
+| Materials (Substrate) | wet cobbles (clear coat over stone: vertical layering); lamp glass (haze and thin film); awning cloth (fuzz); wisps (emissive, with coverage); wagon paint (coat) |
+| Animation | the lamplighter's graph (idle/walk blend by speed; a Light one-shot by trigger); the townsfolk graph (walk blend; a Startle one-shot); events: footsteps (cues) and `lit` (lights the lamp); the lantern pole on the hand bone (attachment); tweens for lamp intensity, wisp fade and the numbers |
+| Navigation, crowds, traffic | a navmesh from static colliders; townsfolk and wisp crowds; lanes, 2 junctions and wagons that yield and brake for people |
+| Replay | the gate records the scripted night and verifies it |
+| Audio | cues (footstep, light, sizzle, pop, wagon rumble on a spatial emitter, the dawn bells, UI clicks); `buses.ron` (Master → Music, SFX, Ambience, UI); a streamed Ogg night theme with loop points |
+| In-game UI | a theme; the HUD (oil and spirit bars, a night clock, lamps lit); the title menu with a **name text box** (OS clipboard paste), a **night-length spin box** and a **fog-density dropdown**; the pause menu with **volume sliders per bus**; the end screen with a **night-records list**; world-space burn and spirit numbers |
+| Physics | the lamplighter's `CharacterController`; sensors on lamps, wisps and wagons; contacts as signals |
+
+#### Content: where it comes from (author: our generators plus CC0 packs)
+- **Generators**, committed under `examples/m2-lamplight/tools/`; their outputs are committed with a `LICENSE.md` row "CC0-1.0, own work, the command that regenerates it":
+  - `make_characters.py` (Blender 5.2, like `tools/fixtures/make_fbx.py`): the lamplighter and townsfolk mannequins, with our own bone names, clips (Idle, Walk, Light, Startle) and clip events in the sidecars;
+  - `make_props.py` (Blender): the wisp and the lantern pole;
+  - `make_sounds.py` (Python stdlib synthesis, then `oggenc`, as in `tools/fixtures/make_audio.sh`): sizzle, pop, the light whoosh, bells, the UI click and the music loop;
+  - `make_textures.py` (Python stdlib PNG writer, seeded): cobble and stripe masks.
+  - Generated files are pinned by SHA-256; a regeneration that differs is a review item, not a silent change.
+- **CC0 packs** for what generators make poorly: town buildings, lamp posts, a wagon and a few foley sounds (footsteps, cart rumble), for example from Kenney's CC0 kits.
+  - Every file is recorded in `assets/LICENSE.md` with its source URL, pack version, licence and SHA-256.
+  - Files are downloaded into an empty scratch directory, checked, and copied in only after the author reviews the picks on the artifact page.
+  - No third-party marks in names.
+  - CC0 is already allowed by deny.toml; anything else is asked first.
+- **Fonts:** the built-in Noto Sans. Spawned labels use built-in fonts, which sidesteps the "assets first named during play measure as missing" carry-over (note kept).
+
+#### Project layout
+```
+examples/m2-lamplight/
+  concordia.toml          # [scene] main, [sim] rate 60 seed, [window], [input] map, [physics], [nav], [anim],
+                          # [audio] buses, [ui], [render], [replay], [[scripts.module]] ×2 (wasm rules, native fog)
+  scenes/town.scene.ron   # town, lamps, lanes, junctions, spawners, camera, HUD and menu roots
+  templates/*.template.ron
+  scripts/lamplight-rules/ (WASM)   scripts/lamplight-fog/ (native dylib)
+  input/lamplight.input.ron   # the starter UI actions + move, light, pause
+  ui/lamplight.theme.ron
+  audio/lamplight.buses.ron  audio/cues/*.cue.ron  audio/*.ogg|wav (+ .import.ron)
+  materials/*.material.ron  anim/*.animgraph.ron  assets/ (models, textures, LICENSE.md)
+  tools/ (generators)  README.md  build/ (git-ignored)
+```
+The `justfile`'s `wasm`, `native-fixtures` and `lint` recipes learn both crates. A new `just play-sample` runs `concordia run --project examples/m2-lamplight`.
+
+#### Engine gaps the sample needs (fixed test-first in 2.10a)
+- **S1. Scripts can't read input.** A `concordia-input` component, `InputActions { watch: Vec<String>, states: BTreeMap<String, ActionState> }`, is filled in `PrePhysics` after sampling by an `input.actions` processor. Consumed actions read as released, so typing a name never moves the lamplighter. Recorded as an update to ADR-0062 (scripts read input through components).
+- **S2. Sensors that move with crowd agents and vehicles.** Kinematic sensor bodies that follow `Transform` must raise `ContactBegan`/`ContactEnded`. Prove it with a test, and fix it if it fails.
+- **S2b (found by the spike, 2026-11-23). Sensors can't see the player.** The character controller is a Jolt `CharacterVirtual` with no inner body (`jolt-sys/shim/concordia_jolt_ext.cpp`, `cj_character_create`), so no sensor ever reports the lamplighter. Fix: give it a kinematic inner body carrying the entity's user id, so sensors report `ContactBegan`/`ContactEnded` naming the character entity; the character still never collides with its own inner body.
+- **Spike notes that shape the content (no engine change):** physics places every collider at its own entity's `Transform` (no hierarchy), so a lamp is two entities (a solid static post and a static light-radius sensor). Jolt never reports sensor–sensor contacts, so wisps are kinematic solid bodies on a `wisp` layer that collides only with the lamp-light and fear sensor layers; townsfolk carry the kinematic fear sensors, and wagons are kinematic sensors (traffic already brakes for people, and a character controller counts as a person). Scripts receive engine signals (`ContactBegan`, `AnimEvent`, `UiPressed`) by registered name.
+- **S3. Anything a 2.10a spike finds** while wiring one lamp, one wisp and one wagon end to end (the spike itself is thrown away). Each gap gets a failing test in its own crate, then a fix, and is listed in the As built. If the list grows past about three, stop and re-plan with the author.
+
+#### Engine API, MCP tools and budgets
+- **No new methods or tools are planned.** The gate uses existing tools.
+- Every As built re-measures all ten enabled roles with `role_tool_budget.rs`. All must stay under 50k (today's largest is QA at 23,260).
+- If S3 adds a tool, it is scoped to the roles that need it, and the numbers are reported.
+
+#### Studio roles and skills
+- **No role is enabled or disabled.** The VFX artist and modeler stay disabled.
+- **`concordia-scripting`** gains "Reading input" (`InputActions`).
+- **A new skill, `concordia-sample-lamplight`:** a guided tour of how the sample is built, for the director and the gameplay programmer.
+- **Stale notes fixed:** `concordia-write-playtest` says `replay_run` is missing, but it exists; its `assert_eval` note stays.
+- Roster and sync snapshots are updated after review.
+
+#### Tests (first list; expected values hand-derived in each test's header)
+- **2.10a:**
+  - `concordia-input`: `input_actions_component_mirrors_watched_actions`, `consumed_actions_read_as_released`, `input_actions_replay_exactly`;
+  - `concordia-physics`: `static_sensor_reports_a_kinematic_body_following_its_transform`, `kinematic_sensor_reports_a_kinematic_body`, `sensors_report_a_character_controller`, `character_never_collides_with_its_own_inner_body`;
+  - a script-guest fixture test `wasm_guest_reads_input_actions` (a native build too).
+- **2.10b (content):**
+  - `every_asset_has_a_licence_row_with_matching_sha256`;
+  - `licences_are_in_the_deny_allow_list`;
+  - `all_assets_import_without_problems`;
+  - `anim_graphs_and_cues_validate`;
+  - `generated_files_match_their_pins`.
+- **2.10c (game; pure rule tests in the script crates, in-process integration under `tests/integration/m2_lamplight_*.rs`):**
+  - the rules: oil burn per second, the light cost, burn damage per tick in light, the pop at 0, spirit loss, dawn win and spirit-0 loss;
+  - the loop: a lamp lit by the reach event, a refill on wagon contact, a wagon braking for the lamplighter, townsfolk startle and flee;
+  - the UI: name entry with the movement keys consumed, the spin box setting the night length, sliders changing bus gain, the records list after a night;
+  - LOD: far townsfolk tick at their rate.
+- **2.10d (gate):** see below.
+- **Mutation checks:** oil burn, burn-in-light, the win/lose thresholds, consumed input, refill on contact and the LOD rate. Restored files are touched for a fresh mtime.
+
+#### The deterministic gate (`tests/gates/m2_lamplight.rs`, over MCP stdio)
+Scripted play uses only `input_inject` (`Text` for the name, UI pointer events for the buttons, `Action` values for `move`/`light` per tick range), `sim_step` and `query_run`.
+- `m2_gate_scripted_night_is_won`:
+  - type "Ada", start, walk and light 4 lamps, stop a wagon and refill, reach dawn;
+  - assert: the state is `Won`, lamps lit ≥ 4, wisps burned > 0, burn numbers spawned, spirit > 0, the records list holds "Ada" (`ui_inspect`).
+- `m2_gate_idle_night_is_lost`: start and do nothing; the state is `Lost` before dawn.
+- `m2_gate_replay_is_exact_across_runs_and_threads`:
+  - record the won night with `replay_record`;
+  - `replay_run` verify in processes started with `--threads 1` and `--threads 8`;
+  - every checkpoint matches, the final hashes are equal, and two fresh runs give equal hashes.
+- `m2_gate_hot_reload_keeps_the_night_running`: `script_reload` on the native module mid-night; the state continues.
+- `m2_gate_goldens`: the title screen with the typed name, mid-night (HUD plus world numbers) and the dawn screen, compared with FLIP against `tests/golden/gates/` on the macOS GPU (skipped on Linux, as in M1).
+- `m2_gate_audio_mix`: `audio_render` of a window holding a known cue plus the music. Snapshot a per-bus peak/RMS digest, and use `audio_inspect` to show cues fired.
+- **Zero error logs:** every gate test ends with `log_tail {"level":"error"}` and expects it to be empty.
+- `m2_gate_every_m2_role_uses_a_tool_in_the_sample`: a table from role to tool, checked two ways: the tool is in the role's synced scope, and the gate's MCP client recorded calling it.
+  - gameplay programmer → `script_reload`
+  - animator → `anim_inspect`
+  - sound designer → `audio_inspect`
+  - composer → `audio_buses`
+  - UI/UX → `ui_inspect`
+  - tech artist → `material_get`
+  - level designer → `terra_stats` / `nav_path`
+  - QA → `replay_run`
+- **Wiring:**
+  - snapshots and goldens are collected with `INSTA_UPDATE=new` and shown on an artifact page before blessing;
+  - the gate binaries join the slow-test filter in `.config/nextest.toml`;
+  - `regression.yml` adds `just gate-tests M2`.
+
+#### Optional live Studio gate (`just gate-live M2`: `tools/gates/m2_live.sh` + `tests/gates/m2_live_check.rs`)
+- **The brief to the director:** add a **Watchtower lamp** at the harbour. It has twice the radius and burns twice the oil, with its own material, its own "lit" cue, a HUD counter, and a `lamplight-rules` change. QA records a replay and approves.
+- **Judged on outcomes only:**
+  - the new template validates and spawns;
+  - in a scripted night with it lit, more wisps burn than in the baseline;
+  - its material and cue load, and the cue fires (`audio_inspect`);
+  - the HUD label exists (`ui_inspect`);
+  - the deterministic gate still passes against the team's copy;
+  - zero error logs;
+  - journal actors are `agent:<role>`;
+  - QA approved the task;
+  - no API keys were in the environment.
+- A non-ignored scripted-twin test exercises the checker, as `m3s_live_check` does.
+
+#### Windowed play (by hand, `just play-sample`), closing the carry-over
+The author records pass or fail per item in the Status:
+- the music loops;
+- footsteps, the light cue and sizzle are heard;
+- the wagon rumble pans as wagons pass;
+- the pause sliders audibly change Music, SFX and Ambience;
+- typing, Backspace and Shift-selection work in the name box;
+- Cmd+V pastes from the OS clipboard, and Cmd+C copies out to another app;
+- the world numbers follow wisps and hide behind the camera;
+- the spin box, dropdown and list work.
+
+#### Sub-phases (one PR each, stacked; check whether each base should be `main`)
+1. **2.10a `m2/2.10-seams`:** S1, S2 and the spike's S3, plus docs (ADR-0062 update, crate AGENTS/README, agent guide, scripting skill).
+2. **2.10b `m2/2.10-content`:** generators, CC0 picks (author reviews them first), imports, materials, anim graphs, cues, buses, theme and input map, plus the content tests.
+3. **2.10c `m2/2.10-game`:** the scene, templates, both script modules, the UI, and the rule and integration tests.
+4. **2.10d `m2/2.10-gate`:** the M2 gate, goldens, the live gate with its twin, `just play-sample`, the CI wiring, the new skill, and the M2 closing docs.
+
+#### The M2 milestone gate, and what closes M2
+- **What runs:** `just gate M2` = `just ci` (lint, wasm, native fixtures, the full suite, deny), then `just gate-tests M2` (`m2_lamplight`, plus `m2_live_check`'s twin test).
+- **M2 is closed when all of these hold:**
+  1. the gate is green in the manual `regression` workflow on `main` (macOS with the GPU, and Linux without goldens), per ADR-0071;
+  2. the author records the windowed checklist;
+  3. the M2 plan is updated: Status "Gate passed (date)", the 2.10 As built, and the carry-overs moved to their owners (M7 7.7, M3);
+  4. `plans/README.md` shows M2 as "Gate passed" in the index, crate table and ADR registry;
+  5. `docs/design.md` and ADR-0067 carry a D2 completion note.
+- The live gate is optional: run on the author's subscription, and recorded if it was run.
+
+#### Carry-overs kept noted
+- world UI takes no input;
+- assets first named during play measure as missing in the UI simulation;
+- trackpad scrolling arrives as lines;
+- the ignored `run_bench_latency` test;
+- the navmesh layer's re-gather;
+- the editor's deny warning;
+- ADR-0069's chunk components (M7 7.7);
+- physics queries seeing last-step bodies;
+- the crowd's sequential steps at 10k (M7 7.7).
+
+### Phase 2.10a As built (2026-11-23; ADR-0062 and ADR-0041 updates)
+**Status: done (branch `m2/2.10-seams`). The two engine seams the sample needs: scripts read input, and sensors see characters.**
+
+**The spike** (reading the code paths a lamp, a wisp and a wagon would use, instead of a throwaway project) found S1 and one wall beyond the plan, S2b. Everything else the game needs is already reachable: scripts receive engine signals by name, write engine components (`CharacterMotion`, `AnimGraphPlayer`, `UiText`), and spawn templates; traffic already treats characters as people. The content notes it produced (one collider per entity at its own `Transform`, no sensor–sensor contacts) are in the refinement above.
+
+**What landed:**
+- **`concordia-input` (S1):**
+  - The `InputActions { watch, states }` component, registered by the input module.
+  - The `input.actions` exclusive system (`ACTIONS`): `PrePhysics`, after `input.sample` and `ui.interact`, before `nav.click` (each when scheduled).
+  - `mirror_action(previous, raw, consumed)`: consumed reads as released with the kind's zero value; edges come from the mirror's own previous state (a consumed press reports `just_released`; one seen again while held reports `just_pressed`; a tap inside a tick keeps both edges).
+- **`jolt-sys` and `concordia-physics` (S2b):**
+  - Characters get Jolt's kinematic inner body (the same capsule, the character's moving layer, `CjCharacterDesc::user`, mapped to the entity), so sensors report `ContactBegan`/`ContactEnded` naming the character.
+  - The shim keeps it for sensors only: `OnContactValidate` rejects every other pair with an inner body, and a `NotInner` body filter makes raycasts and every character's own movement skip inner bodies. Bindings regenerated.
+- **Fixture:** `tests/fixtures/script/input-guest` (`inputg`), built by `just wasm` and `just native-fixtures`, and added to `just lint`'s WASM clippy.
+
+**Found while building (this As built wins):**
+- **Characters blocked each other.** The first inner body made every character collide with the others' inner bodies. The existing `physics_crowd_agents_keep_apart_and_arrive` caught it ("they did meet" failed: the agents never met). The fix is the `NotInner` filter on the character's move, pinned by the new `characters_still_pass_through_each_other`, which failed first (both stopped 0.3 m short) and then passed.
+- **A stale C++ build after mutation checks:** restoring and touching the shim after the last mutant still left the mutated library linked for the next full suite (`raycasts_ignore_a_characters_inner_body` failed there). Touching it again rebuilt `jolt-sys` and the test passed. The memory note on mutation checks now covers C++ shims.
+- **S2a needed no engine change:** static and kinematic sensors already report kinematic bodies that follow their `Transform` (the sensor flag sets Jolt's `mCollideKinematicVsNonDynamic`).
+
+**Tests** (expected values derived in each header; anything that passed at once or was written after its code is called out below):
+- **`concordia-input` `tests/input_actions.rs` (4):** `input_actions_component_mirrors_watched_actions`, `consumed_actions_read_as_released` (with a stand-in `ui.interact` taking the keyboard on chosen ticks), `mirror_action_follows_the_rules`, `input_actions_is_a_registered_component`.
+- **`concordia-replay`:** `input_actions_replay_exactly`.
+- **`concordia-app` `tests/input_guest.rs` (2):** `wasm_guest_reads_input_actions`, `native_guest_reads_input_actions_with_the_same_hash` (1 m in 30 ticks at 2 m/s; one press; equal hashes).
+- **`concordia-physics`:**
+  - `tests/sensors.rs` (6): `static_sensor_reports_a_kinematic_body_following_its_transform`, `kinematic_sensor_reports_a_kinematic_body`, `sensors_report_a_character_controller`, `character_never_collides_with_its_own_inner_body`, `inner_body_reports_no_contacts_with_solid_bodies`, `characters_still_pass_through_each_other`;
+  - `raycasts_ignore_a_characters_inner_body` in `tests/query.rs`.
+- **`concordia-studio`:** `scripting_skill_reads_input_through_input_actions` (the skill's `InputActions` and `ActionState` mirrors match the engine's).
+- **Red run:** the four input tests failed against stubs for the right reasons (the component unregistered, a stub mirror); `sensors_report_a_character_controller` failed with no contacts; `characters_still_pass_through_each_other` failed short; the skill test failed for the missing mirror.
+- **Mutation checks** (all nine mutants failed a test; restored files touched; see the stale-build note): watched-name filtering, consumed ignored, no release edge when consumed, no tap edge, `input.actions` not after `ui.interact`, no inner body, validation accepting every pair, rays seeing inner bodies, and `input.actions` unscheduled (both guest tests fail).
+- **Called out:**
+  - **Passed at once:** `static_sensor_reports_a_kinematic_body_following_its_transform` and `kinematic_sensor_reports_a_kinematic_body` (S2a was already true); `character_never_collides_with_its_own_inner_body` and `raycasts_ignore_a_characters_inner_body` (guards written before the fix, passing by design).
+  - **Written after their code:** `input_actions_replay_exactly`, both guest tests (`input.actions` existed; the unscheduling mutant shows they bite), and `inner_body_reports_no_contacts_with_solid_bodies`.
+  - **Test mistake fixed:** `schema.get` takes `name`, not `type`; sensors float 0.1 m above the floor so a kinematic one never touches it.
+
+**Studio and docs:**
+- **Skill:** `concordia-scripting` gains "Reading input" (`InputActions` and `ActionState` mirrors, `after("input.actions")`, consumed input) and the note that sensors see characters.
+- **No tools changed.** Every enabled role's numbers on 2026-11-23 are unchanged from 2.7b.3: QA 25 tools / 23,260 tokens; level designer 37 / 23,144; UI/UX 26 / 21,424; tech artist 23 / 20,172; animator 22 / 16,890; sound designer 24 / 15,138; composer 20 / 13,054; gameplay programmer 17 / 12,946; director 13 / 12,453; writer 11 / 9,576. All are under 50k.
+- **ADR-0062 update** (input reaches scripts as a component) and **ADR-0041 update** (characters' inner bodies for sensors).
+- **Also updated:** the AGENTS.md of `concordia-input`, `concordia-physics` and `jolt-sys`; the README.md of `concordia-input` and `concordia-physics` (which was empty); the agent guide's "Input and sensors for gameplay"; and `plans/README.md` (crate rows, ADR registry).
+
+**Checklist (2026-11-23):**
+- `just lint` and the Tauri shell's clippy: clean.
+- `just wasm`, `just native-fixtures`, then `cargo nextest run --workspace --no-fail-fast` with `CONCORDIA_REQUIRE_GPU=1`: 1,799 run, 1,799 passed. Doc tests: clean.
+- `just gate-tests M1` (4/4) and `M3S` (13/13).
+- `just deny` and the editor's deny (fresh advisory DB): advisories, bans, licenses and sources ok. The editor's `advisory-not-detected` warning is the known carry-over.
+- `just editor-schemas`: `InputActions`, `ActionState`, `ActionValue` and `Vec2`, committed.
+- `just editor-test`: lint, 118 unit and 22 end-to-end tests pass.
+- No new Linux system library (the shim is C++ already built in CI).
+- No new or changed snapshots or goldens.
+
+**Carry-over:** unchanged from 2.7b.3, plus the windowed checks that 2.10d's `just play-sample` closes.
 
 ### Effort (re-estimated)
 | Phase | Estimate |

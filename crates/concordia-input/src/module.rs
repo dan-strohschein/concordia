@@ -1,14 +1,16 @@
-//! The input engine module: samples input every tick and serves `input.inject` (ADR-0046).
+//! The input engine module: samples input every tick, mirrors watched actions into `InputActions`
+//! and serves `input.inject` (ADR-0046).
 
 use concordia_api::{
     ApiError, ApiErrorKind, CallCtx, Engine, EngineModule, Method, MethodInfo, PlaySetup,
 };
 use concordia_command::Actor;
-use concordia_reflect::Reflect;
-use concordia_terra::{Phase, Schedule, SystemCtx, World, system};
+use concordia_reflect::{Reflect, RegistryError, TypeRegistry};
+use concordia_terra::{Phase, Schedule, SystemCtx, World, register_component, system};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use crate::actions::{InputActions, actions_system};
 use crate::consumed::ConsumedActions;
 use crate::error::InputError;
 use crate::event::InputEvent;
@@ -34,6 +36,10 @@ impl EngineModule for InputModule {
         "input"
     }
 
+    fn register_types(&self, registry: &mut TypeRegistry) -> Result<(), RegistryError> {
+        register_component::<InputActions>(registry)
+    }
+
     fn methods(&self) -> Vec<MethodInfo> {
         vec![MethodInfo::of::<InputInject>()]
     }
@@ -46,6 +52,7 @@ impl EngineModule for InputModule {
         world.insert_resource(sampler);
         let mut schedule = Schedule::new();
         schedule.add_in(Phase::PrePhysics, system("input.sample", sample_input));
+        schedule.add_in(Phase::PrePhysics, actions_system());
         Ok(PlaySetup {
             schedule,
             state: None,

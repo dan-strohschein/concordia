@@ -3,6 +3,7 @@
 //! Raw device events become [`InputEvent`]s queued for a tick; [`InputSampler::sample`] turns them into
 //! per-action [`ActionStates`] once per fixed tick, so headless runs and injected input are deterministic.
 
+mod actions;
 mod consumed;
 mod device;
 mod error;
@@ -14,6 +15,7 @@ mod sampler;
 mod text;
 mod value;
 
+pub use actions::{ACTIONS, InputActions, mirror_action};
 pub use consumed::ConsumedActions;
 pub use device::{KeyCode, Modifier, MouseButton};
 pub use error::InputError;

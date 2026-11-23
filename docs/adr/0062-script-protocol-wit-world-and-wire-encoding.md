@@ -87,3 +87,11 @@ Terra knew only Rust types, keyed by `TypeId`. Its processors reached components
   - Fuel costs about 30% over unguarded WASM; NaN canonicalization costs nothing measurable.
   - The per-row wire path (the host's batch and write-back, and the SDK's serde decoding) dominates both natively and on WASM, at about 0.9 µs per entity natively.
   - A typed fast path for fixed-layout columns is the next optimization; it changes no protocol.
+
+## Update (M2 phase 2.10a, 2026-11-23): input reaches scripts as a component
+- **Problem:** scripts see only component batches, signals and commands, never resources. Player input lives in the `ActionStates` resource, so no script could read it.
+- **Decision:** `concordia-input` adds the `InputActions { watch, states }` component. Its `input.actions` system (in `PrePhysics`, after `input.sample` and `ui.interact`, before `nav.click`, each when scheduled) fills `states` every tick for the watched names. Unknown names are left out.
+- **Consumed input** (the UI holding the pointer or the keyboard) reads as released with the kind's zero value. Edges come from the mirror itself: a consumed action that showed pressed reports `just_released`, and one seen again while held reports `just_pressed`. Typing in a text box therefore never moves a character.
+- **Not changed:** the protocol (no WIT change) and the wire encoding. Scripts mirror `InputActions`, `ActionState` and `ActionValue` field for field, as they mirror other engine types.
+- **Ordering:** a script that moves a character reads it in `PrePhysics` with `after("input.actions")`; any later phase works too.
+- **Alternative rejected:** resource access in the protocol. It would add a second data path, and its access declarations, to both backends, for one resource.

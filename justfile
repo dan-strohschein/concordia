@@ -29,7 +29,7 @@ fmt-check:
 lint: fmt-check
     cargo clippy --workspace --all-targets --all-features -- -D warnings
     cargo clippy --manifest-path {{guest}} --target wasm32-wasip2 -- -D warnings
-    cargo clippy -p concordia-script-guest -p conformance-guest -p nav-guest -p audio-guest -p wanderers --target wasm32-wasip2 -- -D warnings
+    cargo clippy -p concordia-script-guest -p conformance-guest -p nav-guest -p audio-guest -p input-guest -p wanderers --target wasm32-wasip2 -- -D warnings
 
 # Build and validate WASM guest fixtures
 wasm:
@@ -47,6 +47,9 @@ wasm:
     # The audio guest (raises the engine's PlayCue, 2.7a.2).
     cargo build -p audio-guest --target wasm32-wasip2 --release --target-dir {{wasm_dir}}
     wasm-tools validate {{wasm_dir}}/wasm32-wasip2/release/audio_guest.wasm
+    # The input guest (reads InputActions, 2.10a).
+    cargo build -p input-guest --target wasm32-wasip2 --release --target-dir {{wasm_dir}}
+    wasm-tools validate {{wasm_dir}}/wasm32-wasip2/release/input_guest.wasm
     # The sample module (examples/m2-scripting).
     cargo build -p wanderers --target wasm32-wasip2 --release --target-dir {{wasm_dir}}
     wasm-tools validate {{wasm_dir}}/wasm32-wasip2/release/wanderers.wasm
@@ -65,6 +68,8 @@ native-fixtures:
     cp {{native_dir}}/debug/{{dll_prefix}}conformance_guest.{{dll_ext}} {{native_dir}}/out/conformance_guest.{{dll_ext}}
     cargo build -p wanderers --features dylib --target-dir {{native_dir}}
     cp {{native_dir}}/debug/{{dll_prefix}}wanderers.{{dll_ext}} {{native_dir}}/out/wanderers.{{dll_ext}}
+    cargo build -p input-guest --features dylib --target-dir {{native_dir}}
+    cp {{native_dir}}/debug/{{dll_prefix}}input_guest.{{dll_ext}} {{native_dir}}/out/input_guest.{{dll_ext}}
     cargo build -p bad-abi-guest --target-dir {{native_dir}}
     cp {{native_dir}}/debug/{{dll_prefix}}bad_abi_guest.{{dll_ext}} {{native_dir}}/out/bad_abi_guest.{{dll_ext}}
 

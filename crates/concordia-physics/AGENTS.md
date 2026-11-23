@@ -19,6 +19,7 @@ Safe, deterministic rigid-body physics for Terra worlds over Jolt (via `jolt-sys
   - kinematic bodies follow their `Transform`;
   - static bodies are fixed, and changing their transform, body or collider rebuilds them.
 - Bodies are root entities; `Transform.scale` does not scale colliders.
+- Characters (2.10a, ADR-0041 update): each has Jolt's kinematic inner body (its capsule, its moving layer, its own user id mapped to the entity), so sensors report `ContactBegan`/`ContactEnded` naming the character. The shim rejects every other pair with an inner body (`OnContactValidate`), and raycasts and character moves skip inner bodies, so solids, dynamics, rays and other characters see characters as before.
 - `Velocity` is the M0 built-in. Dynamic bodies are overwritten after `integrate_velocity`, so nothing is integrated twice.
 - Invalid bodies are skipped and reported in `TickReport::rejected` (the module logs each once); public APIs never panic.
 - Only `src/jolt.rs` contains `unsafe`; each block has a `// SAFETY:` comment.
@@ -39,7 +40,7 @@ Safe, deterministic rigid-body physics for Terra worlds over Jolt (via `jolt-sys
 - Jolt Physics documentation and samples (MIT); Jorrit Rouwé, "Architecting Jolt Physics for Horizon Forbidden West" (GDC 2022); Glenn Fiedler, "Fix Your Timestep!".
 
 ## Status
-M2 phase 2.5a: `static_solids` for navigation. M2 phase 2.5b.2a: `PhysicsQueries`, a play resource processors raycast through (bodies as of the last step; nothing on tick 0; not hashed). M1 phase 1.7b.
+M2 phase 2.10a: characters' inner bodies for sensors; `tests/sensors.rs` (static and kinematic sensors with moving kinematic bodies and characters; no solid contacts) and `raycasts_ignore_a_characters_inner_body`; characters still pass through each other. M2 phase 2.5a: `static_solids` for navigation. M2 phase 2.5b.2a: `PhysicsQueries`, a play resource processors raycast through (bodies as of the last step; nothing on tick 0; not hashed). M1 phase 1.7b.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

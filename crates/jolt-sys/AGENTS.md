@@ -31,7 +31,7 @@ Raw FFI to Jolt Physics through Concordia's C++ shim (`shim/concordia_jolt_ext.{
 - Jolt Physics (MIT), vendored; Jolt documentation and samples (jrouwe.github.io/JoltPhysics); Jorrit Rouwé, "Architecting Jolt Physics for Horizon Forbidden West" (GDC 2022).
 
 ## Status
-M1 phase 1.7a (world, bodies, events, raycasts, state, characters exposed for 1.7b).
+M1 phase 1.7a (world, bodies, events, raycasts, state, characters exposed for 1.7b). M2 phase 2.10a: `CjCharacterDesc::user`; characters get an inner body for sensors, which the contact listener's `OnContactValidate` keeps away from non-sensors and raycasts and character moves skip (`NotInner`); bindings regenerated.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.
