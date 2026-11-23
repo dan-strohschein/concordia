@@ -21,6 +21,14 @@ pub const WALK_SPEED: f32 = 3.5;
 /// How far the lamplighter reaches to light a lamp (m).
 pub const REACH: f32 = 2.0;
 
+/// How close a wagon's centre must be to refill the can (m).
+pub const REFILL_REACH: f32 = 4.5;
+/// A wagon at or below this speed counts as stopped (m/s): the IDM creeps up on a standing
+/// person rather than halting.
+pub const STOPPED: f32 = 0.5;
+/// Seconds before a wagon refills again.
+pub const REFILL_COOLDOWN: f32 = 5.0;
+
 /// How a night ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
@@ -98,4 +106,10 @@ pub fn nearest_unlit(at: [f32; 3], lamps: &[([f32; 3], bool)]) -> Option<usize> 
         .filter(|(_, (p, lit))| !lit && distance_sq(*p) <= REACH * REACH)
         .min_by(|a, b| distance_sq(a.1.0).total_cmp(&distance_sq(b.1.0)))
         .map(|(i, _)| i)
+}
+
+/// Whether a wagon `distance` away, going `speed`, with `cooldown` seconds left, refills a can
+/// holding `can` oil.
+pub fn can_refill(distance: f32, speed: f32, cooldown: f32, can: f32) -> bool {
+    distance <= REFILL_REACH && speed.abs() <= STOPPED && cooldown <= 0.0 && can < CAN_MAX
 }

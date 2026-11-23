@@ -13,7 +13,11 @@ placed at scale 3 (a 3 m storey; the lantern stands 4.7 m):
   each is a solid post and a light (a static 6 m sensor with a `PointLight`, out at dusk);
 - 14 houses on the north, west and east edges, doors toward the square;
 - the harbour: docks along z = 34..38, where the fog rises (the fog's box, z = 28..32);
-- the lamplighter at (0, 0, 12), with the chase camera, the night, the fog and the navmesh.
+- the lamplighter at (0, 0, 12), with the chase camera, the night, the fog and the navmesh;
+- the ring road (16 m out, one way: east along the south side, then north, west and south),
+  with the harbour spur leaving at x = −5 and rejoining at x = 5: two junctions (a split and a
+  merge); four oil wagons drive it, wandering at junctions;
+- 40 townsfolk, each with a front door and a market stall to stroll between.
 """
 import json
 import math
@@ -163,7 +167,7 @@ class Town:
 
     def lamps(self):
         spots = [(12 * math.cos(math.radians(22.5 + 45 * k)), 0, 12 * math.sin(math.radians(22.5 + 45 * k))) for k in range(8)]
-        spots += [(-5, 0, 18), (5, 0, 18), (-5, 0, 26), (5, 0, 26)]
+        spots += [(-6.5, 0, 19), (6.5, 0, 19), (-6.5, 0, 26), (6.5, 0, 26)]
         return [self.lamp(at, i) for i, at in enumerate(spots)]
 
     def house(self, at, facing, storeys, index):
@@ -184,15 +188,103 @@ class Town:
             self.piece("assets/town/chimney.glb", (0, storeys, 0), None, 1.0, root)
 
     def houses(self):
+        """The houses; returns each front door's step (where its townsfolk live)."""
+        doors = []
         index = 0
         for x in (-15, -9, -3, 3, 9, 15):
             self.house((x, 0, -22), 90 + 180, 2 if index % 2 else 1, index)  # door south (+Z)
+            doors.append((x, 0.0, -19.5))
             index += 1
         for z in (-10, -4, 2, 8):
             self.house((-22, 0, z), 0, 1 if index % 2 else 2, index)  # door east (+X)
+            doors.append((-19.5, 0.0, z))
             index += 1
             self.house((22, 0, z), 180, 2 if index % 2 else 1, index)  # door west (−X)
+            doors.append((19.5, 0.0, z))
             index += 1
+        return doors
+
+    def lane(self, name, points):
+        return self.spawn({
+            "Name": f"Lane {name}",
+            "Transform": transform((0, 0, 0)),
+            "Lane": {"points": [[float(x), 0.0, float(z)] for x, z in points], "speed_limit": 5.0, "width": 3.0, "next": [], "priority": 0},
+        })
+
+    def roads(self):
+        """The ring road and harbour spur; returns the lanes by name."""
+        def arc(cx, cz, start_deg, end_deg, r=3.0, n=4):
+            return [(cx + r * math.cos(math.radians(start_deg + (end_deg - start_deg) * k / n)),
+                     cz + r * math.sin(math.radians(start_deg + (end_deg - start_deg) * k / n))) for k in range(n + 1)]
+        shapes = {
+            "south west": [(-13, 16), (-5, 16)],
+            "south middle west": [(-5, 16), (0, 16)],
+            "turn down": [(-5, 16), (-3, 16.6), (-2, 18), (-2, 19)],
+            "spur down": [(-2, 19), (-2, 25)],
+            "dock": [(-2, 25), (-1.4, 26.4), (0, 27), (1.4, 26.4), (2, 25)],
+            "spur up": [(2, 25), (2, 19)],
+            "south middle east": [(0, 16), (5, 16)],
+            "turn up": [(2, 19), (2, 18), (3, 16.6), (5, 16)],
+            "south east": [(5, 16)] + arc(13, 13, 90, 0),
+            "east": [(16, 13)] + arc(13, -13, 0, -90)[0:],
+            "north": [(13, -16)] + arc(-13, -13, -90, -180),
+            "west": [(-16, -13)] + arc(-13, 13, 180, 90),
+        }
+        lanes = {name: self.lane(name, pts) for name, pts in shapes.items()}
+        nexts = {
+            "south west": ["south middle west", "turn down"],
+            "south middle west": ["south middle east"],
+            "turn down": ["spur down"],
+            "spur down": ["dock"],
+            "dock": ["spur up"],
+            "spur up": ["turn up"],
+            "south middle east": ["south east"],
+            "turn up": ["south east"],
+            "south east": ["east"],
+            "east": ["north"],
+            "north": ["west"],
+            "west": ["south west"],
+        }
+        for name, after in nexts.items():
+            self.e.call("component.patch", {"entity": lanes[name], "component": "Lane", "patch": {"next": [lanes[a] for a in after]}, "actor": ACTOR})
+        self.spawn({"Name": "Junction split", "Transform": transform((-4, 0, 16)), "Junction": {"lanes": [lanes["south middle west"], lanes["turn down"]]}})
+        self.spawn({"Name": "Junction merge", "Transform": transform((4, 0, 16)), "Junction": {"lanes": [lanes["south middle east"], lanes["turn up"]]}})
+        return lanes
+
+    def wagons(self):
+        rumble = asset("audio/cues/wagon_rumble.cue.ron")
+        for i, at in enumerate([(-9, 0, 16), (16, 0, 0), (0, 0, -16), (-16, 0, 0)]):
+            wagon = self.spawn({
+                "Name": f"Wagon {i}",
+                "Transform": transform(at),
+                "Vehicle": {"max_speed": 4.0, "max_acceleration": 1.0, "comfortable_braking": 2.0, "time_headway": 1.5, "min_gap": 1.5, "length": 3.5, "destination": None},
+                "AudioEmitter": {"cue": rumble, "playing": True, "volume_db": 0.0},
+                "lamplight.Wagon": {"cooldown": 0.0, "refills": 0, "refill_cue": asset("audio/cues/refill.cue.ron")},
+            })
+            self.piece("assets/town/cart.glb", (0, 0, 0), None, 2.6, wagon)
+
+    def townsfolk(self, doors, count=40):
+        graph = asset("anim/townsfolk.animgraph.ron")
+        stalls = [(5.5 * math.cos(math.radians(45 + 90 * k)), 0.0, 5.5 * math.sin(math.radians(45 + 90 * k))) for k in range(4)]
+        for i in range(count):
+            door = doors[i % len(doors)]
+            side = (i // len(doors)) * 0.9 - 0.9
+            at = (door[0] + (side if abs(door[2]) > 19 else 0.0), 0.0, door[2] + (side if abs(door[0]) > 19 else 0.0))
+            walker = self.spawn({
+                "Name": f"Townsperson {i}",
+                "Transform": transform(at),
+                "NavAgent": {"max_speed": 1.2, "radius": 0.3, "height": 1.8, "target_desired_distance": 0.6},
+                "CrowdAgent": {},
+                "LodProfile": {"distances": [25.0, 45.0, 70.0], "rates": [2, 4, 8], "hysteresis": 2.0},
+            })
+            made = self.piece("assets/characters/townsfolk.glb", (0, 0, 0), None, 1.0, walker)
+            body = self.skinned(made)
+            self.set(body, "AnimGraphPlayer", {"graph": graph})
+            self.set(body, "lamplight.Body", {"walker": walker})
+            self.set(walker, "fog.Townsperson", {
+                "home": list(at), "market": list(stalls[i % 4]), "homeward": False, "scared": False,
+                "calm_in": 0.0, "last": list(at), "updates": 0, "body": body,
+            })
 
     def harbour(self):
         for i in range(-4, 5):
@@ -280,8 +372,11 @@ def main():
     town.ground()
     town.square()
     town.lamps()
-    town.houses()
+    doors = town.houses()
     town.harbour()
+    town.roads()
+    town.wagons()
+    town.townsfolk(doors)
     town.lamplighter()
     town.camera()
     town.night()

@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2) and 2.5d (2026-11-22) done; phase 2.5 complete; 2.7 split into 2.7a (audio) and 2.7b (UI); 2.7a refined (2.7a.1, 2.7a.2), 2.7a.1 and 2.7a.2 (2026-11-22) done; phase 2.7a complete; 2.7b refined (2.7b.1–2.7b.3, 2026-11-22); 2.7b.1, 2.7b.2 and 2.7b.3 (2026-11-23) done; phase 2.7b complete; 2.10 refined (the sample game "Lamplight", 2.10a–2.10d, 2026-11-23); 2.10a and 2.10b (2026-11-23) done; 2.10c refined (2.10c.1–2.10c.3); 2.10c.1 (2026-11-23) done · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2) and 2.5d (2026-11-22) done; phase 2.5 complete; 2.7 split into 2.7a (audio) and 2.7b (UI); 2.7a refined (2.7a.1, 2.7a.2), 2.7a.1 and 2.7a.2 (2026-11-22) done; phase 2.7a complete; 2.7b refined (2.7b.1–2.7b.3, 2026-11-22); 2.7b.1, 2.7b.2 and 2.7b.3 (2026-11-23) done; phase 2.7b complete; 2.10 refined (the sample game "Lamplight", 2.10a–2.10d, 2026-11-23); 2.10a and 2.10b (2026-11-23) done; 2.10c refined (2.10c.1–2.10c.3); 2.10c.1 and 2.10c.2 (2026-11-23) done · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -4511,6 +4511,71 @@ The author records pass or fail per item in the Status:
 - `repo_hygiene`'s private-marker and home-path checks pass over the new files.
 
 **Carry-over:** unchanged from 2.10b, plus the crowd's unreachable-target arrival (above).
+
+### Phase 2.10c.2 As built (2026-11-23; no ADR changes)
+**Status: done (branch `m2/2.10-game-town`). The town lives: townsfolk stroll, take fright and flee home; oil wagons drive the ring road and refill the can.**
+
+**What landed:**
+- **The scene** (`tools/build_town.py`):
+  - **Roads:**
+    - a one-way ring road 16 m out, four sides with rounded corners;
+    - a harbour spur that splits at x = −5 and merges at x = 5: two junctions, the merge a real conflict;
+    - 12 lanes in all, 5 m/s and 3 m wide.
+  - **Wagons:** four oil wagons (`Vehicle`: 3.5 m long, up to 4 m/s, wandering at junctions), each a Kenney cart under the vehicle, with the rumble on.
+  - **Townsfolk:** 40, each a walker (`NavAgent`, `CrowdAgent`, `LodProfile` at 25, 45 and 70 m every 2, 4 and 8 ticks, `fog.Townsperson`) with the townsfolk body under it. Each has a front door (14 houses) and a stall.
+  - The harbour-street lamps moved to x = ±6.5, clear of the spur.
+- **`lamplight-fog`:**
+  - `fog.watch` broadcasts each wisp's position.
+  - `fog.townsfolk` runs only when `SimLod.due`, with its `elapsed`. Each townsperson faces the way they walk, sends their body a `Stride` (walk blend and startle), takes fright at a wisp within 5 m (home at 3 m/s, startled), shelters 8 s at home, and otherwise strolls between door and stall, turning at each arrival.
+  - Pure rules are in `townsfolk.rs`.
+- **`lamplight-rules`:**
+  - `lamplight.wagons` refills a lamplighter's can from a wagon within 4.5 m, at walking pace or slower, off its 5 s cooldown, while the can isn't full.
+  - `Where` now carries the can's level, and `Refill` fills it.
+- **`lamplight-types`:** the walker–body link (`Body`, `Stride` with a startle flag) moved here from the rules, since the fog's townsfolk use it too. The mirrors gain `VehicleState` and `SimLod`.
+- **`tests/integration/lamplight_world.rs`:** the engine helper both Lamplight test files include. It pages through queries, since the town now has over 1,000 entities.
+
+**Found while building (this As built wins):**
+- **40 townsfolk, not about 300:**
+  - A spawner's template is a single entity, and a skinned body is a prefab hierarchy, so the builder places each townsperson as a walker plus body.
+  - 40 keep the scene at 905 KB.
+  - Scale is M7's (7.7).
+- **Representation (distance switching for drawing) moved to 2.10d.** Far townsfolk simulate less often already. Switching their bodies to instanced, then hidden, is checked with the gate's renders.
+- **Wisps don't use simulation LOD:** burning is counted per tick, and a wisp that skipped ticks would burn unevenly.
+- **"Stopped" means walking pace (0.5 m/s), not 0.2:** the IDM creeps up on a standing person instead of halting. The first refill test found a wagon 3.8 m away still rolling at 0.31 m/s after 10 s. The rule and its test changed together, deliberately.
+- **No refill for a full can:** without it, a wagon stopped beside the lamplighter would refill every 5 s.
+
+**Tests** (expected values derived in each header):
+- **`lamplight-rules`:** `a_stopped_wagon_close_by_refills_the_can` (reach, walking pace, cooldown, full can).
+- **`lamplight-fog` `tests/townsfolk.rs` (2):** fear within 5 m on the ground; the walk blend from distance over time.
+- **`tests/integration/lamplight_town.rs` (5):**
+  - townsfolk strolling to the market (at least 1.5 m closer in 2 s, aimed there, walking);
+  - a wisp 3 m away frightening a townsperson home at 3 m/s;
+  - far townsfolk updating about 10 and 40 times in 80 ticks (levels 3 and 1);
+  - wagons driving the ring without lane problems and never within a wagon's length of each other over 20 s;
+  - a wagon slowing beside the lamplighter in its lane and filling the can (100 oil, one refill).
+- **`lamplight_night`:** its walking test finds the lamplighter's body through `Lamplighter.body`, since townsfolk have bodies too.
+- **Red run:** the pure rules failed on `todo!()` stubs; four town tests failed on stub processors.
+- **Mutation checks** (all five mutants failed a test; restored files touched):
+  - townsfolk never frightened;
+  - townsfolk ignoring their LOD;
+  - wagons refilling a full can (caught by the pure test);
+  - wagons refilling on the move;
+  - a refill filling nothing.
+- **Called out:**
+  - `wagons_drive_the_ring_road_without_meeting` passed at once: it guards 2.5d's traffic on these lanes.
+  - The refill test's speed bound changed with the rule (above).
+
+**Studio and docs:** no tools, roles or skills changed. The example's README gains "The town's life".
+
+**Checklist (2026-11-23):**
+- `just lint` and the Tauri shell's clippy: clean. The first lint run failed: the shared test helper, compiled into both Lamplight test binaries, had helpers one binary doesn't use. The module now allows dead code, with the reason given.
+- `just wasm`, `just native-fixtures`, then `cargo nextest run --workspace --no-fail-fast` with `CONCORDIA_REQUIRE_GPU=1`: 1,833 run, 1,833 passed. Doc tests: clean.
+- `just gate-tests M1` (4/4) and `M3S` (13/13).
+- `just deny` and the editor's deny: advisories, bans, licenses and sources ok.
+- `just editor-schemas`: no changes. `just editor-test`: lint, 118 unit and 22 end-to-end tests pass.
+- Role budgets unchanged. No new Linux system library, and no new or changed snapshots or goldens.
+
+**Carry-over:** unchanged from 2.10c.1, plus representation LOD (to 2.10d).
 
 ### Effort (re-estimated)
 | Phase | Estimate |
