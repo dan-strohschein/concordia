@@ -353,6 +353,7 @@ fn render(
             overlays: None,
             view_mode,
             debug: Vec::new(),
+            ui: Default::default(),
         },
     )
     .expect("render")
@@ -879,6 +880,7 @@ fn render_overlays(s: &mut Scene, r: &mut Renderer, overlays: concordia_render::
         overlays: Some(overlays),
         view_mode: ViewMode::lit,
         debug: Vec::new(),
+        ui: Default::default(),
     };
     r.render(&rw, &mut s.assets, &request).unwrap()
 }

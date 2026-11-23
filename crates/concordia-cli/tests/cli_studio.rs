@@ -326,6 +326,22 @@ fn studio_init_adds_anim_when_missing_for_the_animator() {
 }
 
 #[test]
+fn studio_init_adds_ui_when_missing_for_the_ui_designer() {
+    let dir = tempfile::tempdir().unwrap();
+    // A project made before [ui] existed.
+    let root = new_project(dir.path(), &["--no-studio"]);
+    let manifest_path = root.join("concordia.toml");
+    let manifest = std::fs::read_to_string(&manifest_path).unwrap();
+    assert!(manifest.contains("[ui]\n"), "{manifest}");
+    std::fs::write(&manifest_path, manifest.replace("[ui]\n", "")).unwrap();
+    let output = run(&["studio", "init"], &root);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let manifest = std::fs::read_to_string(&manifest_path).unwrap();
+    assert_eq!(manifest.matches("[ui]").count(), 1, "{manifest}");
+    assert!(root.join(".claude/agents/ui-ux.md").is_file());
+}
+
+#[test]
 fn studio_init_adds_audio_when_missing_for_the_sound_designer() {
     let dir = tempfile::tempdir().unwrap();
     // A project made before [audio] existed.

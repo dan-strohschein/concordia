@@ -8,7 +8,7 @@ use concordia_studio::{CLAUDE_SKILL_FIELDS, Roster, SkillFile, default_roster, i
 
 /// The eight built-in skills the plan names (3.6), plus team comms (3.6b), animation (M2 2.4.5)
 /// navigation (M2 2.5a), and sound design and music (M2 2.7a.2).
-const PLANNED: [&str; 17] = [
+const PLANNED: [&str; 18] = [
     "concordia-add-material",
     "concordia-animation-graphs",
     "concordia-director-planning",
@@ -25,6 +25,7 @@ const PLANNED: [&str; 17] = [
     "concordia-team-comms",
     "concordia-terra-templates",
     "concordia-traffic",
+    "concordia-ui",
     "concordia-write-playtest",
 ];
 
@@ -1000,6 +1001,97 @@ fn scripting_skill_mirrors_play_cue_and_stop_cue() {
         "tick t + 1",
         "AnimEventCues",
         "sound designer",
+    ] {
+        assert!(text.contains(needle), "the skill explains {needle}");
+    }
+}
+
+/// Checks a UI skill example: a UI component's value, or the `ui_inspect` params.
+fn ui_example(tool: &str, args: &serde_json::Value) -> Vec<String> {
+    let component = |name: &str, value: &serde_json::Value| {
+        let v = value.clone();
+        let ok = match name {
+            "UiRoot" => serde_json::from_value::<concordia_ui::UiRoot>(v).map(|_| ()),
+            "UiNode" => serde_json::from_value::<concordia_ui::UiNode>(v).map(|_| ()),
+            "UiStyle" => serde_json::from_value::<concordia_ui::UiStyle>(v).map(|_| ()),
+            "UiThemed" => serde_json::from_value::<concordia_ui::UiThemed>(v).map(|_| ()),
+            "UiText" => serde_json::from_value::<concordia_ui::UiText>(v).map(|_| ()),
+            "UiImage" => serde_json::from_value::<concordia_ui::UiImage>(v).map(|_| ()),
+            "UiNinePatch" => serde_json::from_value::<concordia_ui::UiNinePatch>(v).map(|_| ()),
+            "UiProgress" => serde_json::from_value::<concordia_ui::UiProgress>(v).map(|_| ()),
+            "UiSeparator" => serde_json::from_value::<concordia_ui::UiSeparator>(v).map(|_| ()),
+            "Parent" | "Name" => Ok(()),
+            other => panic!("no example check for {other}"),
+        };
+        ok.unwrap_or_else(|e| panic!("{name} {value}: {e}"));
+    };
+    let mut seen = vec![tool.to_owned()];
+    match tool {
+        "ui_inspect" => {
+            serde_json::from_value::<concordia_ui::UiInspectParams>(args.clone())
+                .unwrap_or_else(|e| panic!("{tool} {args}: {e}"));
+        }
+        "component_set" | "component_patch" if args.get("value").is_some() => {
+            let name = args["component"].as_str().expect("a component");
+            component(name, &args["value"]);
+            seen.push(name.to_owned());
+        }
+        "entity_spawn" => {
+            for (name, value) in args["components"].as_object().expect("components") {
+                component(name, value);
+                seen.push(name.clone());
+            }
+        }
+        _ => {}
+    }
+    seen
+}
+
+#[test]
+fn ui_skill_examples_are_real_components_params_and_a_valid_theme() {
+    let text = skill("concordia-ui");
+    assert!(
+        !text.contains("Not available yet"),
+        "every tool it names exists"
+    );
+    let seen: std::collections::BTreeSet<String> = examples(text, "")
+        .iter()
+        .flat_map(|(tool, args)| ui_example(tool, args))
+        .collect();
+    for needed in [
+        "UiRoot",
+        "UiNode",
+        "UiText",
+        "UiStyle",
+        "UiThemed",
+        "UiImage",
+        "UiNinePatch",
+        "UiProgress",
+        "UiSeparator",
+        "ui_inspect",
+        "capture_screenshot",
+        "entity_spawn",
+        "component_set",
+    ] {
+        assert!(seen.contains(needed), "the skill shows {needed}: {seen:?}");
+    }
+    let blocks = ron_blocks(text);
+    let theme = blocks
+        .iter()
+        .find(|b| b.contains("classes:"))
+        .expect("a .theme.ron example");
+    concordia_ui::read_theme(theme).unwrap_or_else(|e| panic!("{theme}: {e}"));
+    for needle in [
+        "Anchored",
+        "Flex",
+        "Grid",
+        "Stack",
+        "Preset",
+        "canvas",
+        "Keep",
+        "ui_bounds",
+        "Tweens",
+        "image generator",
     ] {
         assert!(text.contains(needle), "the skill explains {needle}");
     }

@@ -179,6 +179,7 @@ fn render_model(model: &str, variant: &str, file: &str) -> Option<Image> {
                 overlays: None,
                 view_mode: Default::default(),
                 debug: Vec::new(),
+                ui: Default::default(),
             },
         )
         .unwrap(),

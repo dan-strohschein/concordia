@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "bottom": 0.0,
+    "left": 0.0,
+    "right": 0.0,
+    "top": 0.0
+  },
+  "description": "A value per side.",
+  "properties": {
+    "bottom": {
+      "description": "Bottom.",
+      "type": "number"
+    },
+    "left": {
+      "description": "Left.",
+      "type": "number"
+    },
+    "right": {
+      "description": "Right.",
+      "type": "number"
+    },
+    "top": {
+      "description": "Top.",
+      "type": "number"
+    }
+  },
+  "title": "Edges",
+  "type": "object",
+  "x-concordia-type": "Edges"
+}

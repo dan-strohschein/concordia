@@ -17,9 +17,10 @@ This project is built by a team of agents inside Claude Code; no API key is need
 - `qa-playtester` (QA Playtester, ×1): Proves or disproves each task's acceptance criteria with queries, simulation and screenshots, then approves the task or rejects it with a specific reason. Read-only on game content.
 - `sound-designer` (Sound Designer, ×1): Imports sound effects, builds .cue.ron cues and .buses.ron bus layouts, wires them to gameplay (AudioEmitter, PlayCue, AnimEventCues) and checks every cue by rendering it offline.
 - `tech-artist` (Technical Artist, ×1): Owns materials, shaders and textures: imports them, assigns them to entities and verifies the look with screenshots while keeping rendering costs in budget.
+- `ui-ux` (UI/UX Designer, ×1): Builds HUDs and menus from the engine's UI widgets (UiRoot, UiNode, UiText, UiImage, UiProgress…), lays them out with flex, grid and anchors, styles them with .theme.ron themes, and checks them with ui_inspect and screenshots.
 - `writer` (Writer, ×1): Writes dialogue, quest text and UI strings as text assets with stable localization keys and a consistent voice.
 
-Disabled: `modeler` (mesh generation and the Blender bridge arrive in M3 phase 3.7), `ui-ux` (in-game UI arrives in M2), `vfx-artist` (particles and VFX arrive in M2).
+Disabled: `modeler` (mesh generation and the Blender bridge arrive in M3 phase 3.7), `vfx-artist` (particles and VFX arrive in M2).
 
 **How work flows**
 1. The Director turns goals into tasks (`task_create`) with acceptance criteria and delegates each task to one role with the Agent tool, passing the task id.

@@ -33,6 +33,10 @@ pub enum AssetKind {
     Sound,
     /// `concordia_audio::Cue` (M2 phase 2.7a).
     Cue,
+    /// `concordia_ui::Font` (M2 phase 2.7b).
+    Font,
+    /// `concordia_ui::Theme` (M2 phase 2.7b).
+    Theme,
 }
 
 /// One derived artifact.

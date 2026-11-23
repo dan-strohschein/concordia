@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Alignment across an axis.",
+  "oneOf": [
+    {
+      "const": "Stretch",
+      "description": "Filling the line."
+    },
+    {
+      "const": "Start",
+      "description": "At the start."
+    },
+    {
+      "const": "End",
+      "description": "At the end."
+    },
+    {
+      "const": "Center",
+      "description": "Centered."
+    }
+  ],
+  "title": "Align",
+  "x-concordia-type": "Align"
+}

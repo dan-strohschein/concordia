@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Whether the canvas scales with the viewport.",
+  "oneOf": [
+    {
+      "const": "Disabled",
+      "description": "UI space is the viewport, at scale 1."
+    },
+    {
+      "const": "Scale",
+      "description": "The canvas scales to the viewport by `aspect`."
+    }
+  ],
+  "title": "Stretch",
+  "x-concordia-type": "Stretch"
+}

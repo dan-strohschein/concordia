@@ -88,7 +88,8 @@ impl Player {
             return;
         }
         let (width, height) = self.size;
-        let params = json!({"width": width, "height": height, "world": "play"});
+        let params =
+            json!({"width": width, "height": height, "world": "play", "scale": self.scale});
         if let Err(e) = api("viewport.present", params) {
             self.warn_once("present", &e);
         }

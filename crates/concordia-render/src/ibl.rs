@@ -62,6 +62,7 @@ impl Equirect {
                 .iter()
                 .map(|p| [p[0], p[1], p[2]].map(srgb_to_linear))
                 .collect(),
+            TextureFormat::R8 => return Err("a one-channel texture can't light a scene".into()),
         };
         Self::new(texture.width as usize, texture.height as usize, pixels)
     }

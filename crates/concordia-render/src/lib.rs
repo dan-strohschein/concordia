@@ -35,6 +35,7 @@ mod stats;
 mod templates;
 mod thread;
 pub mod tonemap;
+mod ui_pass;
 mod view;
 mod view_mode;
 
@@ -75,6 +76,7 @@ pub use stats::{
     ClosureMergeStats, FrameStats, MaterialDowngrade, MergedOperator, RenderStatsGet,
     RenderStatsParams, RenderStatsResult,
 };
+pub use ui_pass::{UI_QUAD_FLOATS, UI_STOP_FLOATS, UiPush, encode_ui};
 pub use view::{Landing, Pick, View, axis_delta, landing, pick, rotate_angle, scale_factor};
 pub use view_mode::ViewMode;
 

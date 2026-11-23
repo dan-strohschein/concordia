@@ -73,6 +73,8 @@ pub(crate) struct Pipelines {
     tonemaps: BTreeMap<u8, Pipeline>,
     overlay: (ShaderSource, ShaderSource),
     overlays: BTreeMap<u8, Pipeline>,
+    ui: (ShaderSource, ShaderSource),
+    uis: BTreeMap<u8, Pipeline>,
     shadow: Pipeline,
     sky: (ShaderSource, ShaderSource),
     skies: BTreeMap<u8, Pipeline>,
@@ -101,6 +103,10 @@ impl Pipelines {
         let overlay = (
             compile("overlay.slang", "overlay_vs", Stage::Vertex)?,
             compile("overlay.slang", "overlay_fs", Stage::Fragment)?,
+        );
+        let ui = (
+            compile("ui.slang", "ui_vs", Stage::Vertex)?,
+            compile("ui.slang", "ui_fs", Stage::Fragment)?,
         );
         let tonemap = (
             compile("tonemap.slang", "fullscreen", Stage::Vertex)?,
@@ -135,6 +141,8 @@ impl Pipelines {
             skies: BTreeMap::new(),
             overlay,
             overlays: BTreeMap::new(),
+            ui,
+            uis: BTreeMap::new(),
             grid,
             grids: BTreeMap::new(),
             variants: BTreeMap::new(),
@@ -187,6 +195,30 @@ impl Pipelines {
             label: format!("overlay {format:?}"),
         })?;
         self.overlays.insert(key, pipeline);
+        Ok(pipeline)
+    }
+
+    /// The in-game UI pipeline writing `format` (premultiplied alpha over the image).
+    pub(crate) fn ui(
+        &mut self,
+        device: &dyn Device,
+        format: Format,
+    ) -> Result<Pipeline, RenderError> {
+        let key = format as u8;
+        if let Some(p) = self.uis.get(&key) {
+            return Ok(*p);
+        }
+        let pipeline = device.create_graphics_pipeline(&GraphicsPipelineDesc {
+            vertex: self.ui.0.clone(),
+            fragment: Some(self.ui.1.clone()),
+            color_formats: vec![format],
+            depth: None,
+            samples: SampleCount::X1,
+            cull: CullMode::None,
+            blend: BlendMode::PremultipliedAlpha,
+            label: format!("ui {format:?}"),
+        })?;
+        self.uis.insert(key, pipeline);
         Ok(pipeline)
     }
 

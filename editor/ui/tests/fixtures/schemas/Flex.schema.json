@@ -1,0 +1,116 @@
+{
+  "$defs": {
+    "Align": {
+      "description": "Alignment across an axis.",
+      "oneOf": [
+        {
+          "const": "Stretch",
+          "description": "Filling the line."
+        },
+        {
+          "const": "Start",
+          "description": "At the start."
+        },
+        {
+          "const": "End",
+          "description": "At the end."
+        },
+        {
+          "const": "Center",
+          "description": "Centered."
+        }
+      ],
+      "title": "Align",
+      "x-concordia-type": "Align"
+    },
+    "Direction": {
+      "description": "A flex main axis.",
+      "oneOf": [
+        {
+          "const": "Row",
+          "description": "Left to right."
+        },
+        {
+          "const": "Column",
+          "description": "Top to bottom."
+        },
+        {
+          "const": "RowReverse",
+          "description": "Right to left."
+        },
+        {
+          "const": "ColumnReverse",
+          "description": "Bottom to top."
+        }
+      ],
+      "title": "Direction",
+      "x-concordia-type": "Direction"
+    },
+    "Justify": {
+      "description": "Distribution along an axis.",
+      "oneOf": [
+        {
+          "const": "Start",
+          "description": "Packed at the start."
+        },
+        {
+          "const": "End",
+          "description": "Packed at the end."
+        },
+        {
+          "const": "Center",
+          "description": "Centered."
+        },
+        {
+          "const": "SpaceBetween",
+          "description": "Even gaps between, none at the ends."
+        },
+        {
+          "const": "SpaceAround",
+          "description": "Half gaps at the ends."
+        },
+        {
+          "const": "SpaceEvenly",
+          "description": "Equal gaps everywhere."
+        }
+      ],
+      "title": "Justify",
+      "x-concordia-type": "Justify"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "align_content": "Start",
+    "align_items": "Stretch",
+    "direction": "Row",
+    "justify": "Start",
+    "wrap": false
+  },
+  "description": "Flexbox settings.",
+  "properties": {
+    "align_content": {
+      "$ref": "#/$defs/Justify",
+      "description": "Placement of wrapped lines."
+    },
+    "align_items": {
+      "$ref": "#/$defs/Align",
+      "description": "Placement across it."
+    },
+    "direction": {
+      "$ref": "#/$defs/Direction",
+      "description": "The main axis."
+    },
+    "justify": {
+      "$ref": "#/$defs/Justify",
+      "description": "Placement along the main axis."
+    },
+    "wrap": {
+      "description": "Wrap onto more lines.",
+      "type": "boolean"
+    }
+  },
+  "title": "Flex",
+  "type": "object",
+  "x-concordia-type": "Flex"
+}

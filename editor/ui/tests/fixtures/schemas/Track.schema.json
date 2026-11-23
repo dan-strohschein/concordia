@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A grid track's size.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "Logical pixels.",
+      "properties": {
+        "Px": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "Px"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "A share of the free space.",
+      "properties": {
+        "Fr": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "Fr"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Percent of the grid's content box.",
+      "properties": {
+        "Percent": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "Percent"
+      ],
+      "type": "object"
+    },
+    {
+      "const": "Auto",
+      "description": "Fits its content."
+    }
+  ],
+  "title": "Track",
+  "x-concordia-type": "Track"
+}

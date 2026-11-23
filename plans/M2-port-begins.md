@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2) and 2.5d (2026-11-22) done; phase 2.5 complete; 2.7 split into 2.7a (audio) and 2.7b (UI); 2.7a refined (2.7a.1, 2.7a.2), 2.7a.1 and 2.7a.2 (2026-11-22) done; phase 2.7a complete · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2) and 2.5d (2026-11-22) done; phase 2.5 complete; 2.7 split into 2.7a (audio) and 2.7b (UI); 2.7a refined (2.7a.1, 2.7a.2), 2.7a.1 and 2.7a.2 (2026-11-22) done; phase 2.7a complete; 2.7b refined (2.7b.1–2.7b.3, 2026-11-22); 2.7b.1 (2026-11-23) done · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -68,7 +68,7 @@ The numbers 2.1, 2.2 and 2.9 are retired: they moved to M5, and reusing them wou
 | 7 | **2.4 Animation** | skeletons, clips, GPU skinning, blend and state-machine graphs (`.animgraph.ron`), events, attachments, tweens | old 2.4 (AnimationTree import out) | animator |
 | 8 | **2.4b Terra LOD and representation** | simulation LOD (deterministic inputs only); representation LOD and switching (full, instanced, hidden) | M7 7.4, 7.6 (representation), G8 | |
 | 9 | **2.5 Navigation, crowds and traffic** | recast-sys, navmesh build and queries, agents, Detour crowds as Terra processors, lane-based traffic (rule-based; AI-driven behavior stays M7/M4) | old 2.5 (Godot mapping out), M7 7.7 | |
-| 10 | **2.7 Audio and in-game UI** (2.7a audio, ADR-0066; 2.7b UI, ADR-0060; split by the 2.7a refinement) | audio stack and cues; retained ECS UI, taffy, cosmic-text (ADR-0060) | old 2.7 (Godot import and sound bank out) | sound-designer, composer (synth in M3 3.7), ui-ux |
+| 10 | **2.7 Audio and in-game UI** (2.7a audio, ADR-0066; 2.7b UI, ADR-0060; split by the 2.7a refinement) | audio stack and cues; retained ECS UI, taffy plus anchors, parley and swash (ADR-0060; P1 replaced cosmic-text) | old 2.7 (Godot import and sound bank out) | sound-designer, composer (synth in M3 3.7), ui-ux |
 | 11 | **2.10 Sample game and gate** | an original sample game (D2), the deterministic gate, an optional live Studio gate | D2 | |
 
 The VFX artist stays disabled: particles are not in M2 (open question, unchanged). M11 (Sparx, ADR-0015) enables it.
@@ -3381,6 +3381,536 @@ They were collected with `INSTA_FORCE_PASS=1 INSTA_UPDATE=new` and shown on an a
 - `just editor-schemas` (no change: the editor's example project has no `[audio]`);
 - `just editor-test` (118 unit, 22 end-to-end).
 
+### Phase 2.7b refinement (2026-11-22, against the code after 2.7a.2)
+**Status: refined; author decisions U1–U12, P1 and P2 taken (2026-11-22); 2.7b.1 done (see its As built). Three sub-phases, three PRs: 2.7b.1 `m2/2.7b-display`, 2.7b.2 `m2/2.7b-interact`, 2.7b.3 `m2/2.7b-text-world`.**
+
+Refined against `main` after #69: the original "Phase 2.7: concordia-audio and concordia-ui" (below), the M2 refinement's phase table (its 2.7 row), the 2.7a refinement, ADR-0063, ADR-0069, ADR-0072, ADR-0073, ADR-0076 and ADR-0078. **This section wins wherever they disagree.** From the original phase:
+- **Out, to M5 (D1):** `control_tree_imports_to_ui_prefab`, the `Control` mapping in `mappings/nodes.ron`, the HUD-scene import to a UI prefab, and routing `canvas_item` gdshaders as UI materials.
+- **Kept and made exact:**
+  - the anchor/offset layout (U7, now);
+  - the box, margin, center, grid and panel containers (now taffy flex and grid, plus `Stack`);
+  - stretch from a base size;
+  - progress fill modes (generalized; nothing game-specific, so no "orbs");
+  - nine-patch;
+  - label shaping, wrapping and alignment;
+  - the pointer taking a click before the world does;
+  - commands with an actor;
+  - the HUD and damage-number goldens, over our own fixtures.
+- **Widened (U1, U3):** from a HUD to a generic widget set like Godot's core. Nothing is game-specific: buttons, toggles (checkbox, switch, radio), sliders, dropdowns, tabs, tooltips, separators, list views, spin boxes, text boxes and two-way scroll containers. Every widget is styled through `UiStyle` and themes.
+- **Changed (P1):** text is **parley** plus **swash**, not cosmic-text (see Dependencies).
+
+**What exists (checked in code):**
+- **No UI anywhere.** There's no `concordia-ui`, no `Ui*` type, no fixture. ADR-0060 is reserved and not yet written. `plans/README.md:111` lists the crate.
+- **Rendering** (`concordia-render`):
+  - **No vertex buffers.** Every shader pulls its data through bindless indices in push constants (`DrawPush`, `renderer.rs:791`).
+  - **Overlays:** screen-space triangles, 6 floats per vertex (`overlay.rs:290`), drawn inside the tonemap pass after the fullscreen triangle (`renderer.rs:1563`) with `BlendMode::PremultipliedAlpha`. No textures, no depth, no scissor.
+  - **The RHI** has no scissor or viewport command (`concordia-rhi/src/command.rs`). `CopyBufferToTexture` copies whole mips, so there are no region updates. `Format::R8Unorm` exists but no asset format maps to it (`gpu.rs:245`).
+  - **Formats:** the offscreen output is `Rgba8UnormSrgb`; the window surface is `Bgra8UnormSrgb`.
+  - **Samplers:** a fixed static set (`LinearClamp`, `LinearRepeat`, `NearestClamp`, `NearestRepeat`).
+  - **Debug layers** come from modules (`EngineModule::debug_layers` / `debug_geometry`). They're gathered on the engine thread (`module.rs:255`) and carried in `RenderRequest.debug`. This is the pattern the UI draw list follows.
+- **Captures** (`capture.screenshot`): 768×432 by default, image pixels, origin top-left, y down. DPI only reaches captures through `Overlays.scale`, and game views get no DPI scale.
+- **Windowed play** (`concordia-platform` window.rs, `concordia-app` player.rs):
+  - winit 0.30; cursor positions are logical pixels; `Player` keeps physical size and scale.
+  - Key repeats, `KeyEvent.text` and `Ime` are dropped. There's no cursor-icon API.
+- **Input** (`concordia-input`):
+  - `InputEvent` has no text or char event, and there's no gamepad support.
+  - `InputSampler` samples into the `ActionStates` resource in `PrePhysics`. `nav.click` reads `ActionStates` directly.
+  - Replay records `ActionStates` diffs only (`concordia-replay/src/record.rs:45`).
+- **Determinism:**
+  - The world hash covers entity ids, non-presentation components, the clock, the RNG and pending signals. Resources aren't hashed.
+  - `#[reflect(presentation)]` (ADR-0076) marks presentation components.
+  - `Presentation` processors may write only those components and get no command buffer. Exclusive systems aren't checked.
+- **Tweens** (2.4.4): `Tweens { tweens: Vec<PropertyTween { component, field (JSON pointer), to, … }> }`. They target any registered component's numeric fields, run as an exclusive system in `FrameEnd`, and are hashed.
+- **Assets:**
+  - `ImageImporter` (png, jpg, hdr) produces `TextureData`.
+  - `AssetKind` has no `Font` or `Theme` kind.
+  - `AssetRef` is either `asset:<uuid>[#sub]` or `builtin:<kind>/<name>`.
+- **Projection:** `world_matrix_with` (`concordia-scene/src/builtin.rs:139`), and `View::project` (`concordia-render/src/view.rs:41`, world → pixels, y down).
+- **Studio:**
+  - `ui-ux` is disabled (`team.toml:20-22`), has 15 tools and no UI skill. Its `color: cyan` equals the tech artist's, so enabling it as is fails `every_default_role_has_a_color_and_enabled_roles_differ`.
+  - `role_tool_budget.rs` measures nine enabled roles; the largest is the level designer at 23,078 tokens.
+  - `just editor-schemas` reads `examples/m1-physics-stack`, which has no `[ui]`.
+- **Dependencies** (probed in scratch crates against both `deny.toml`s with a fresh advisory DB, 2026-11-22):
+  - `taffy` 0.15.1 (MIT): passes.
+  - `cosmic-text` 0.19.0, the latest, even with `default-features = false` and `std` + `swash`: **fails advisories**. Through `fontdb` 0.23 it pulls `ttf-parser` 0.25.1, flagged unmaintained by RUSTSEC-2026-0192, with no safe upgrade.
+  - `parley` 0.13.0 (Apache-2.0/MIT, Linebender) with `default-features = false, features = ["std"]`: passes `licenses`, `bans`, `sources` and `advisories` for the engine and the editor. It brings `fontique` 0.13 (no system fonts without its `system` feature), `harfrust` 0.15 (shaping), `skrifa` / `read-fonts`, and ICU4X 2.x segmenters (Unicode-3.0).
+  - `swash` 0.2.10 (Apache-2.0/MIT): passes.
+  - No `-sys` crate, and nothing needs a Linux system library.
+  - `arboard` 3.7.0: on Linux it uses `x11rb` (pure Rust), so no system library. On Windows it brings `clipboard-win` 5.4.3 and `error-code` 3.4.0 (BSL-1.0), which **fail `licenses`** until BSL-1.0 is allowed (P2).
+
+**Author decisions (2026-11-22):**
+- **U1. All of it in M2, as three sub-phases and three PRs:**
+  - 2.7b.1: display widgets, layout, style, text and the render pass;
+  - 2.7b.2: interaction, focus, scrolling and sounds;
+  - 2.7b.3: text boxes, spin boxes, list views and world-space UI.
+- **U2. Styling:** an inline `UiStyle` on each widget, plus an optional shared `.theme.ron` with variants per state (normal, hover, pressed, disabled, focused), like Godot's Theme. Shadows and blur come later.
+- **U3. Extra widgets:** slider, dropdown, tab container, separator, tooltip, list view and spin box.
+- **U4.** "Texture" means tiled or stretched fills and atlas sub-regions. Live camera views (render to texture) come later.
+- **U5. Rich text:** styled runs (font, size, weight, italic, colour per run). No markup language.
+- **U6. Text boxes:** single- and multi-line, caret, selection, clipboard, maximum length, password masking. No IME.
+- **U7. Anchors now (2.7b.1),** with Godot's documented anchor and offset semantics.
+- **U8. Fonts:** OFL-1.1 is accepted **for font files only**, recorded in ADR-0060 and `licenses/fonts.md`.
+  - We ship Noto Sans v2.015 (Regular, Bold, Italic, BoldItalic) and Noto Sans Mono v2.014 (Regular), unhinted TTFs from the notofonts `latin-greek-cyrillic` releases, about 2.1 MB in all.
+  - `cargo deny` checks crates, not files, so the allow lists don't change for fonts.
+- **U9. One `UiToggle`** covers the checkbox, switch and toggle button (`look`). Toggles that share a `group` are radios.
+- **U10. Keyboard focus** (Tab and Shift-Tab, arrows, Enter and Space) through named input actions. Gamepad devices come later and bind to the same actions.
+- **U11. World-space UI is always drawn on top in M2.** It's sorted far to near and hidden when its anchor is behind the camera or off screen. Depth occlusion comes later.
+- **U12. The OS clipboard** in the windowed player through `arboard`. Headless runs use an in-engine clipboard. Pasted text is recorded as typed input.
+- **P1. parley plus swash for text,** not cosmic-text: it passes deny with no new ignore. ADR-0060 records the change.
+- **P2. BSL-1.0 joins both allow lists** (applied in 2.7b.3 with arboard).
+
+**My calls (say if you disagree):**
+- **Crates and ADR.**
+  - **One new crate, `concordia-ui`**, with `#![forbid(unsafe_code)]` and no GPU code. It holds:
+    - the components and signals;
+    - `.theme.ron`;
+    - layout: taffy plus an anchor pass;
+    - text: parley shaping and swash rasterizing into an atlas packed on the CPU;
+    - the draw-list builder;
+    - interaction and focus (2.7b.2);
+    - the `font` and `theme` importers;
+    - the built-in fonts;
+    - the `[ui]` engine module and the `ui.*` methods.
+  - **`concordia-render` gains the drawing side and doesn't depend on `concordia-ui`.** The draw-list types (`UiDrawList`, `UiQuad`, `UiPaint`, `UiAtlas`) live in `concordia-api` beside `DebugGeometry`. A new module hook, `EngineModule::ui_draw(engine, world, &UiFrame) -> Option<UiDrawList>`, is gathered on the engine thread into `RenderRequest.ui`, exactly as debug layers are. The UI and the renderer meet only at that seam (SOLID; no cycle).
+  - **ADR-0060 is written now** under its reserved title, widened to the whole design:
+    - retained ECS UI, taffy plus anchors, parley and swash;
+    - the determinism boundary;
+    - the draw-list seam;
+    - clipping in the shader;
+    - the font licence rule;
+    - rejected: egui, a webview, a port of Godot's `Control`/`Container` system, and cosmic-text (the advisory).
+  - Two other ADRs get updates: ADR-0072 in 2.7b.2/2.7b.3 (the input frame gains viewport and text, with a format version bump), and ADR-0073's consequences (the ui-ux numbers).
+- **The determinism boundary.**
+  - **Hashed simulation state:**
+    - every UI component;
+    - `UiState { hovered, pressed, focused }` (2.7b.2), hashed because "fire on release over the same widget" needs memory;
+    - every widget value: toggle `on`, slider `value`, the dropdown's `selected`, tab and list selection, scroll `offset`, a text box's `text`, `caret` and `anchor`;
+    - pending UI signals.
+  - **Never hashed (derived or outside the world):**
+    - layout rects;
+    - shaped lines and glyph positions;
+    - the glyph atlas;
+    - draw lists;
+    - the font database;
+    - the OS clipboard;
+    - the cursor icon.
+  - **Layout is a pure function:** `layout(world, assets, viewport) -> UiLayout`, a function of hashed components, the fonts' and images' bytes, and the viewport. The simulation calls it with the *input* viewport for hit tests (2.7b.2). The draw path and `ui.inspect` call the same function with the capture's size. That's one implementation, and simulation and drawing agree whenever the sizes match.
+  - **The viewport is input (2.7b.2):** `InputEvent::Viewport { width, height, scale }`, sent by the player on open, resize and scale change. It's sampled into the per-tick input frame and recorded by replay. A headless run's viewport is each root's base size unless a test injects one.
+  - **Typed text is input (2.7b.3):** `InputEvent::Text(TextInput::Insert(String) | Edit(EditKey))`, with key repeats kept for editing. It's recorded by replay; a paste is an `Insert`.
+  - **How gameplay hears the UI:**
+    - signals on the widget's entity, delivered next tick like every signal: `UiPressed`, `UiToggled { on }`, `UiValueChanged { value }`, `UiSelected { index }`, `UiTextChanged`, `UiTextSubmitted`, `UiFocusChanged { focused }`;
+    - the component values themselves (a processor can just read `UiSlider.value`).
+  - **The click goes to the UI first (2.7b.2):** `ui.interact` is an exclusive system in `PrePhysics`, ordered after `input.sample` and before `nav.click`. When the pointer is over an interactive widget, it marks the pointer actions it used in a new `concordia-input` resource, `ConsumedActions` (cleared by `input.sample`). World readers use `ActionStates::unconsumed(name)`, and `nav.click` switches to it. So the HUD never triggers click-to-move, and `concordia-nav` doesn't depend on `concordia-ui`.
+  - **Mutations:** every UI edit is `entity.*` / `component.*` with an actor. Play-world edits use `world: "play"` (ADR-0075). Interaction runs inside the simulation from recorded input, so the editor has no UI logic of its own.
+  - **The proof:**
+    - 2.7b.1: a scene full of UI hashes the same with the module on and off, at 1 and 8 threads.
+    - 2.7b.2 and 2.7b.3: a replay with clicks, drags, typing and a resize is exact at 1 and 8 threads.
+- **Coordinates.**
+  - UI space is **logical pixels, origin at the root's top left, y down**.
+  - A root's canvas maps UI space to the viewport (stretch, below). Physical pixels are logical × the device scale.
+  - A capture is logical at scale 1 unless `capture.screenshot` gets `ui_scale`.
+  - `UiFrame { width, height, scale }` is what the draw hook receives: the target's pixel size and its pixels per logical pixel.
+- **Layout.**
+  - **Taffy** lays out every node's children by the node's `layout`: `Flex` (CSS Flexbox), `Grid` (CSS Grid, explicit tracks only), or `Stack` (children overlap at the content box, like Godot's `PanelContainer` and `MarginContainer`).
+  - **Then the anchor pass** places `Anchored` children inside their parent's rect, using Godot's `Control` rules:
+    - `left = parent.x + anchor_left × parent.w + offset_left`;
+    - `right = parent.x + anchor_right × parent.w + offset_right`;
+    - and the same for top and bottom;
+    - when the rect is smaller than the node's minimum size, `grow_h` / `grow_v` (`Begin | End | Both`) choose which side moves.
+  - **The 16 Godot layout presets** are constructors (`Anchors::preset(Preset::TopRight, size, margin)`), not stored state.
+  - **Stretch from a base size,** with Godot's `canvas_items` semantics. For base size B and viewport V, and *s* = min(Vw/Bw, Vh/Bh):
+    - `Disabled`: scale 1, and the UI space is V.
+    - `Ignore`: a non-uniform scale (Vw/Bw, Vh/Bh), and the UI space is B.
+    - `Keep`: scale *s*; the UI space is B, centred with bars.
+    - `KeepWidth`: scale *s*. When the viewport is taller than the base's aspect, the UI space is (Bw, Vh/*s*); otherwise it is B with side bars.
+    - `KeepHeight`: the mirror of `KeepWidth`.
+    - `Expand`: scale *s*, and the UI space is (Vw/*s*, Vh/*s*), with no bars.
+    - Integer scaling is later work.
+  - **Intrinsic sizes:**
+    - text measures through parley (a taffy measure function; it wraps at the available width);
+    - images measure at their texture's size (`size: Auto`), the region if one is set.
+- **Text.**
+  - **Fonts:** `UiFonts` is a fontique collection loaded from bytes only: the built-ins plus imported fonts. It never reads system fonts, so every machine shapes identically.
+  - **Families** are named by font asset (`builtin:font/noto-sans`, `builtin:font/noto-sans-mono` or an imported `asset:`). Weight and italic pick a face within the family.
+  - **`UiText`:**
+    - `runs: Vec<TextRun>`; each run has `text`, plus optional `font`, `size`, `weight`, `italic`, `color` and `underline`, inherited from `UiStyle`;
+    - `align: Start | Center | End | Justify` and `valign: Top | Center | Bottom`;
+    - `wrap: None | Word | Anywhere`;
+    - `overflow: Visible | Clip | Ellipsis`;
+    - `line_height` as a multiple of the font's line height;
+    - `max_lines`.
+  - **Shaping and wrapping** are parley's: harfrust shaping, UAX #14 line breaking, bidi.
+  - **The atlas:** swash rasterizes each glyph, keyed by font, glyph id, size in physical pixels and a quarter-pixel subpixel x offset. Glyphs go into an `R8Unorm` atlas with shelf packing, 1,024 × 1,024, growing by pages.
+    - The atlas lives in the `UiShared` state outside the world, so it's presentation.
+    - A page that changed is uploaded whole (no region copy in the RHI).
+  - **Not in M2:** markup, inline images, emoji colour fonts, SDF text (later work, with large world text), and bidi or complex-script tests beyond Latin.
+- **Style and themes.**
+  - **`UiStyle`** (every field optional, so a theme can fill it):
+    - `background`: `Solid(color)`, `Linear { angle_deg, stops }` or `Radial { center, radius, stops }`, with 2–8 `stops` (`offset` in 0..1, ascending, plus a colour);
+    - `border { width, color }`;
+    - `radius: [tl, tr, br, bl]`;
+    - `opacity` in 0..1, multiplying through children;
+    - `padding`;
+    - the text defaults: `font`, `font_size`, `weight`, `italic`, `color`;
+    - `cursor: Arrow | Pointer | Text` (a presentation hint).
+    - Colours are sRGB in the file and linear in the draw list, like `Color` elsewhere.
+  - **`UiThemed { theme: AssetRef, class: String }`:** a `.theme.ron` maps class names to `{ base: UiStyle, hover, pressed, disabled, focused }`. Each field resolves in this order:
+    1. the inline `UiStyle` field;
+    2. the class's style for the current state;
+    3. the class's base;
+    4. the built-in default.
+  - **State changes are instant.** `Tweens` (2.4.4) animate any numeric style field (`opacity`, `radius`, colours as arrays), which a test proves. Theme transition times come later.
+- **Rendering.**
+  - **One `ui` graph pass after `tonemap`:** it loads the output, uses `PremultipliedAlpha`, and has no depth. Order:
+    1. world-space roots (2.7b.3), far to near;
+    2. screen roots by `z`, then tree order;
+    3. the editor and debug overlays, still last.
+  - The pass is recorded only when the draw list isn't empty, so frames without UI are unchanged.
+  - **`ui.slang`** pulls `UiQuad` instances through bindless, with six vertices per instance and no vertex buffers. Per quad, it evaluates:
+    - the rect;
+    - the clip rect;
+    - a rounded-box SDF for radii and the border;
+    - the paint: a solid colour, a linear or radial gradient (stops in a bindless buffer), a texture with UV rect and tint, or the glyph atlas's alpha;
+    - an optional `fill` mask for progress bars (`Linear` cut or `Radial { center, start, sweep, direction }`);
+    - opacity.
+  - **Clipping is per quad in the fragment shader**, through each quad's clip rect. The RHI has no scissor command, and adding one would change the Metal backend; this needs no RHI change and no new `unsafe`.
+  - **Batching:** quads are sorted in draw order and merged into one instanced draw per run of the same paint kind and texture.
+  - **Images** use the existing `GpuAssets` textures. The glyph atlas uses the new `R8Unorm` mapping.
+  - **Tiling and nine-patches** are built on the CPU into exact quads with cut UVs. Exact quads are testable without a GPU, and they work for atlas regions, where a repeat sampler can't.
+  - **D7:** a `ui_bounds` debug layer outlines every node's rect (margin, padding and content in three colours), through `debug_layers` like the navmesh.
+  - **Goldens** cover each feature (below). They render on macOS. On Linux, the draw-list snapshots and every CPU test run, and goldens skip (ADR-0042).
+- **Sound (2.7b.2):** `UiSounds { hover, press, release, toggle, change: Option<AssetRef> }`. `ui.interact` raises `PlayCue` on the widget's entity, so it's unpositioned (a UI entity has no `Transform`). It uses 2.7a as is.
+- **Engine API and MCP:**
+  - **`ui.inspect { entity?, world, width?, height?, scale? }`** (read only). For a root, or every root:
+    - each node's `rect`, `content` rect and `clip`;
+    - its resolved style;
+    - its state (2.7b.2);
+    - its text lines (`text`, baseline, width, height).
+    - Agents check layout with numbers instead of images.
+  - **`ui.hit_test { x, y, world, width?, height? }`** (read only, 2.7b.2): the topmost interactive widget under a point, and the path to it. QA uses it with `input.inject`.
+  - **`capture.screenshot`** gains `ui: bool` (default true) and `ui_scale`. `ui_bounds` is added as a debug layer name.
+  - Every role's tool budget is measured again in each sub-phase and recorded in its As built.
+- **Studio roles:**
+  - **ui-ux is enabled in 2.7b.1** (D8):
+    - it gets a new, unique hex colour;
+    - paths: `ui/**`, `assets/ui/**`, `assets/fonts/**`, `**/*.theme.ron`, `scenes/**/*.scene.ron` (shared);
+    - its tools are its 15, plus `component_get`, `component_patch`, `entity_get`, `schema_get`, `asset_import`, `asset_list`, `ui_inspect` and `capture_screenshot`; 2.7b.2 adds `ui_hit_test` and `input_inject`;
+    - a new skill, `concordia-ui`, covering widgets, themes, anchors versus flex, checking with `ui.inspect`, and goldens with `capture.screenshot`;
+    - **without an image generator** it builds the look from style primitives (gradients, borders, radii, opacity), nine-patches of art it's given, and the built-in fonts, and it asks the director for art it can't make.
+  - **Gameplay programmer (2.7b.2):** wires HUD values, writing `UiProgress.value` and `UiText` runs from processors, and reacts to UI signals. Its skill gains a section.
+  - **QA (2.7b.2):** clicks through menus with `ui_hit_test` and `input_inject`, and checks `UiState` and signals. Its skill gains a section.
+  - **Editor:** inspectors are generated from schemas, so the new components get them for free once `examples/m1-physics-stack` enables `[ui]` (for `just editor-schemas`). No new panel (D7).
+- **Windowed play:**
+  - **2.7b.2:** viewport events on open, resize and scale change, and a cursor-icon API in `concordia-platform` driven by the hovered widget's `cursor`.
+  - **2.7b.3:** text events, and the clipboard bridge in `Player`. A paste reads the OS clipboard and injects `Insert`; a `ClipboardWrite` signal writes it.
+  - **Drawing:** the window draws the UI at the window's scale factor, so text rasterizes at physical size.
+  - **Without a GPU:** layout, text metrics, interaction, hashes, replays, draw-list snapshots and `ui.inspect` all run headless, and on Linux, without one.
+- **The components** (each gets a test of its fields, defaults and validation, a layout or draw test, and a schema snapshot). From the old plan: `UiNode`, `UiStyle`, `UiImage`, `UiText`, `UiProgress`, `UiNinePatch` and `UiButton` are kept under their names. Additions: `UiRoot`, `UiThemed`, `UiSeparator`, `UiState`, `UiToggle`, `UiSlider`, `UiDropdown`, `UiTabs`, `UiTooltip`, `UiScroll`, `UiFocus`, `UiSounds`, `UiTextBox`, `UiSpinBox` and `UiList`. Nothing is dropped or renamed. `UiToggle` merges checkbox, switch and toggle (U9). Layout containers aren't separate components; they're `UiNode.layout` modes.
+
+  **2.7b.1 (display):**
+  - **`UiRoot`** `{ canvas: [f32; 2] = [1280, 720], stretch: Disabled | Scale = Disabled, aspect: Ignore | Keep | KeepWidth | KeepHeight | Expand = Keep, space: Screen | World { offset, pixel_size } = Screen, z: i32 = 0 }`.
+    - Validated: a finite, positive canvas no larger than 16,384, and a positive `pixel_size`.
+    - Its subtree is the entity's `Parent` children (scene hierarchy).
+  - **`UiNode`** `{ width, height: Auto | Px(f32) | Percent(f32) = Auto, min_*, max_*, margin, padding: Edges = 0, gap: [f32; 2] = 0, layout: Flex { direction = Row, wrap = false, justify = Start, align_items = Stretch, align_content = Start } | Grid { columns, rows: Vec<Track> } | Stack = Flex, position: InFlow | Anchored { anchors: [l, t, r, b] = 0, offsets = 0, grow_h, grow_v = End } = InFlow, flex_grow = 0, flex_shrink = 1, visible = true, clip = false, z = 0 }`.
+    - Validated: finite values; `Px` ≥ 0; `Percent` in 0..100; min ≤ max; anchors in 0..1 with left ≤ right and top ≤ bottom; at most 64 grid tracks.
+  - **`UiStyle`:** as above. Validated: 2–8 ascending stops in 0..1; opacity in 0..1; border width ≥ 0; radii ≥ 0; size in 1..1,024.
+  - **`UiThemed`** `{ theme: AssetRef, class: String }`. Validated: a non-empty class. A missing class warns once and falls back to defaults.
+  - **`UiText`:** as above. Validated: total text ≤ 64 KiB; `line_height` in 0.5..4; `max_lines` ≥ 1; run sizes in 1..1,024.
+  - **`UiImage`** `{ image: AssetRef, region: Option<[u32; 4]>, mode: Scale | Tile | Keep | KeepCentered | KeepAspect | KeepAspectCentered | KeepAspectCovered = Scale, tint = white, flip_h, flip_v = false }`.
+    - Godot's `TextureRect` stretch modes, for semantics.
+    - Validated: the region lies inside the texture (checked when drawing; a bad region draws nothing and warns once), and at most 4,096 tiles.
+  - **`UiNinePatch`** `{ image, region, margins: [l, t, r, b] (texture px), axis_h, axis_v: Stretch | Tile | TileFit = Stretch, draw_center = true, tint }`.
+    - Godot's `NinePatchRect` for semantics.
+    - When the rect is smaller than the margins, they shrink by the CSS `border-image` rule *f* = min(1, rect / (margin_a + margin_b)).
+    - Validated: margins fit the region.
+  - **`UiProgress`** `{ value = 0, min = 0, max = 100, fill: LeftToRight | RightToLeft | TopToBottom | BottomToTop | Clockwise | CounterClockwise | BilinearH | BilinearV | ClockwiseAndCounter = LeftToRight, radial: { start_deg = 0, sweep_deg = 360, center = [0.5, 0.5] }, under, progress, over: Option<UiImage-like ImageRef>, under_style, progress_style: Option<UiStyle> }`.
+    - Godot's `TextureProgressBar` and `ProgressBar` for semantics.
+    - The fill fraction is clamp((value − min)/(max − min), 0, 1).
+    - With textures it draws under, then progress through the fill mask, then over. Without textures it draws two styled boxes.
+    - Validated: min < max, all finite, sweep in (0, 360].
+  - **`UiSeparator`** `{ orientation: Horizontal | Vertical = Horizontal, thickness = 1, color }`. It draws a line centred in its rect.
+
+  **2.7b.2 (interaction):**
+  - **`UiState`** `{ hovered, pressed, focused, disabled: bool }`. The engine writes it, except `disabled`. Hashed.
+  - **`UiButton`** `{ disabled = false, action_on: Release | Press = Release }`.
+    - `UiPressed` is raised on release over the same widget it was pressed on (the WAI-ARIA button pattern), or on press when `action_on: Press`.
+  - **`UiToggle`** `{ on = false, look: Checkbox | Switch | Button = Checkbox, group: Option<String>, label_gap = 6 }`.
+    - In a group, turning one on turns the others off. Clicking the one that's on leaves it on (radio), unless the group's `allow_none`.
+    - Raises `UiToggled`.
+  - **`UiSlider`** `{ value = 0, min = 0, max = 1, step = 0 (continuous), orientation = Horizontal, page = 0.1 }`.
+    - Drag or click sets it; arrow keys move one step (or 1 % when continuous); Page keys move `page`.
+    - The value is snapped as min + round((v − min)/step)·step, then clamped.
+    - Raises `UiValueChanged`.
+  - **`UiDropdown`** `{ options: Vec<String>, selected: Option<u32>, open = false, max_visible = 8 }`.
+    - The popup draws as a top-layer list under the widget; clicking outside closes it.
+    - Raises `UiSelected`.
+  - **`UiTabs`** `{ selected = 0, titles: Vec<String> }`. The children are pages; only the selected page is laid out and drawn. Raises `UiSelected`.
+  - **`UiTooltip`** `{ text: String, delay_ticks = 30 }`. It shows after the widget has been hovered for `delay_ticks` (a hashed counter in `UiState`), at the pointer, and kept on screen.
+  - **`UiScroll`** `{ offset: [f32; 2], horizontal, vertical: Auto | Always | Never = Auto, step = 40, bar_width = 8 }`.
+    - The node clips its content, and the offset is clamped to the content extent minus the viewport.
+    - Scrolled by the wheel (logical pixels or lines × `step`) and by dragging its bars.
+  - **`UiFocus`** `{ order: Option<i32>, up, down, left, right, next, prev: Option<EntityId> }`.
+    - Tab goes in `order`, then tree order. Arrows go to the explicit neighbour, else to the nearest widget whose centre lies in that direction (the smallest distance along the direction plus twice the cross distance).
+    - The actions are `ui_up`, `ui_down`, `ui_left`, `ui_right`, `ui_accept`, `ui_cancel`, `ui_next` and `ui_prev`, added to `InputMap::starter`.
+  - **`UiSounds`:** as above.
+
+  **2.7b.3 (text and world):**
+  - **`UiTextBox`** `{ text, placeholder, multiline = false, max_len: Option<u32>, password = false, editable = true, caret = 0, anchor = 0 (byte offsets on char boundaries), wrap = Word }`.
+    - Edit keys: Left, Right, Up, Down, Home and End, with Shift to select; Backspace, Delete, select all, copy, cut, paste; Enter submits (`UiTextSubmitted`), or adds a newline when multi-line.
+    - Raises `UiTextChanged`.
+    - Password masking replaces the glyphs when drawing only. The hashed text stays real, because gameplay reads it.
+  - **`UiSpinBox`** `{ value, min, max, step = 1, decimals = 0 }`: a text box plus two buttons, built as child entities by the module when it is added (so they're in the scene, editable and hashed).
+  - **`UiList`** `{ selected: Vec<u32>, multi = false }`. The children are items; click selects, Ctrl adds and Shift selects a range. Raises `UiSelected`.
+  - **World-space roots** (`UiRoot.space: World { offset, pixel_size }`):
+    - the root's screen position is its entity's world position (`world_matrix_with`, so parents count) plus `offset`, projected through the view (`View::project`);
+    - it's laid out in UI pixels around that point;
+    - it's hidden when behind the eye or entirely off screen (U11);
+    - damage numbers are a world root with a `UiText`, animated by `Tweens` on `offset` and `opacity`;
+    - floating bars are a world root with a `UiProgress`.
+- **Sub-phases:**
+  - **2.7b.1 `m2/2.7b-display`:**
+    - the crate;
+    - the 2.7b.1 components;
+    - themes and the `theme` importer;
+    - fonts and the `font` importer;
+    - layout and stretch;
+    - text;
+    - the draw list and its seam;
+    - the `ui` pass and shader;
+    - `ui.inspect`;
+    - the `ui_bounds` layer;
+    - ui-ux enabled;
+    - ADR-0060.
+  - **2.7b.2 `m2/2.7b-interact`:**
+    - the viewport input and the replay update;
+    - `ConsumedActions`;
+    - interaction, focus and the 2.7b.2 components;
+    - scrolling and clipping by content;
+    - sounds;
+    - `ui.hit_test`;
+    - cursor icons;
+    - the QA and gameplay skill sections.
+  - **2.7b.3 `m2/2.7b-text-world`:**
+    - text input and its replay track;
+    - `UiTextBox`, `UiSpinBox` and `UiList`;
+    - arboard and BSL-1.0;
+    - world-space roots.
+- **Tests first** (expected values derived by hand in each test's header; goldens per feature; insta snapshots of schemas and draw lists).
+
+  **2.7b.1:**
+  - **Layout:**
+    - `flex_row_places_children_with_gap_and_padding`;
+    - `flex_column_justify_and_align`;
+    - `grid_places_cells_in_explicit_tracks`;
+    - `stack_overlaps_children_in_content_box`.
+  - **Anchors and stretch:**
+    - `anchor_presets_and_offsets_match_godot_rules` (all 16 presets on a 400 × 300 parent);
+    - `anchored_child_grows_by_grow_direction`;
+    - `canvas_stretch_for_each_aspect_mode` (a 2:1 base into 16:9 and 4:3 viewports, every mode).
+  - **Text:**
+    - `text_metrics_come_from_the_font_tables` (advance sum = Σ `hmtx` advance × size / `unitsPerEm`; line height from `hhea` ascender − descender + lineGap, read from the font by a test helper);
+    - `text_wraps_at_word_boundaries_and_aligns`;
+    - `styled_runs_change_font_and_color_per_run`;
+    - `text_overflow_ellipsis_truncates_last_line`;
+    - `text_node_measures_intrinsic_size_in_flex`;
+    - `glyph_atlas_packs_and_reuses_glyphs`.
+  - **Paint:**
+    - `progress_fill_fraction_and_quad_for_each_mode`;
+    - `nine_patch_slices_into_nine_quads_with_expected_uvs`;
+    - `nine_patch_margins_shrink_by_border_image_rule`;
+    - `image_modes_produce_expected_quads` (all seven);
+    - `image_tile_cuts_last_row_and_column`;
+    - `separator_draws_centred_line`;
+    - `gradient_stops_and_colors_reach_the_draw_list_linear`.
+  - **Themes:**
+    - `theme_resolves_inline_then_state_then_base_then_default`;
+    - `theme_file_reads_validates_and_imports`.
+  - **Validation and scenes:**
+    - `ui_components_validate_and_reject_bad_input` (one row per rule above, each naming its field);
+    - `ui_scene_round_trips_through_scene_ron`;
+    - `ui_edits_go_through_commands_with_actor`.
+  - **Animation:** `tweens_animate_ui_style_opacity`.
+  - **Determinism:** `ui_never_changes_the_world_hash_at_1_and_8_threads`.
+  - **Fonts:** `font_importer_imports_ttf_into_the_ddc` and `builtin_fonts_resolve_by_name`.
+  - **Draw lists and goldens:**
+    - `draw_list_snapshot_for_the_hud_fixture` (insta; runs on Linux);
+    - `ui_draw_hook_reaches_render_request`;
+    - goldens `ui_hud`, `ui_hud_sequence_{0,1,2}` (a bar value written over three ticks), `ui_gradients_borders_radii`, `ui_nine_patch`, `ui_text_runs`, `ui_progress_modes`, `ui_image_modes` and `ui_clip`.
+  - **Tools and roles:**
+    - `ui_inspect_reports_rects_and_text_lines` and its schema snapshot;
+    - `capture_screenshot_without_ui_omits_it`;
+    - `ui_bounds_layer_outlines_nodes`;
+    - the ui-ux role tests (scope, colour, skill and budget), with every role's numbers.
+
+  **2.7b.2:**
+  - `pointer_over_ui_consumes_click_before_world` (click-to-move from 2.5b.2 doesn't move);
+  - `click_outside_ui_still_moves`;
+  - `button_fires_on_release_inside_only`;
+  - `button_press_then_drag_off_does_not_fire`;
+  - `disabled_button_ignores_input`;
+  - `hover_and_press_state_follow_the_pointer`;
+  - `theme_state_style_follows_ui_state`;
+  - `toggle_flips_and_signals`;
+  - `radio_group_keeps_exactly_one_on`;
+  - `slider_drag_and_keys_snap_to_step`;
+  - `dropdown_opens_selects_and_closes`;
+  - `tabs_lay_out_only_the_selected_page`;
+  - `tooltip_shows_after_delay_ticks`;
+  - `scroll_offset_clamps_to_content` and `scroll_clips_children`;
+  - `wheel_and_bar_drag_scroll`;
+  - `focus_moves_by_tab_order_and_tree_order`;
+  - `focus_moves_by_arrows_to_nearest_or_explicit_neighbour`;
+  - `accept_presses_the_focused_button`;
+  - `ui_sounds_raise_play_cue_on_the_widget`;
+  - `viewport_input_reflows_layout_and_is_replayed`;
+  - `ui_hit_test_returns_topmost_widget_path`;
+  - `replay_with_clicks_drags_and_resize_is_exact_at_1_and_8_threads`;
+  - goldens `ui_button_states`, `ui_toggle_looks`, `ui_slider`, `ui_dropdown_open`, `ui_tabs` and `ui_scroll`.
+
+  **2.7b.3:**
+  - `text_box_inserts_and_edits_at_the_caret`;
+  - `text_box_selection_by_shift_and_select_all`;
+  - `text_box_copy_cut_paste_through_the_clipboard`;
+  - `text_box_enforces_max_len_on_insert_and_paste`;
+  - `text_box_enter_submits_or_breaks_line`;
+  - `password_masks_drawing_only`;
+  - `caret_stays_on_char_boundaries`;
+  - `spin_box_builds_children_and_steps`;
+  - `list_selects_single_ctrl_and_shift_ranges`;
+  - `text_input_is_recorded_and_replayed`;
+  - `replay_with_typing_is_exact_at_1_and_8_threads`;
+  - `world_root_follows_its_parented_entity`;
+  - `world_root_hidden_behind_the_camera_or_off_screen`;
+  - `world_roots_sort_far_to_near`;
+  - goldens `ui_text_box_caret_selection`, `ui_list`, `world_text_damage_number`, `world_floating_bar`;
+  - `arboard_clipboard_round_trips` (`#[ignore]`, manual on a desktop).
+- **Done criteria (whole phase):**
+  - all tests green;
+  - a HUD fixture driven by a component value updates its bar and label in a golden sequence;
+  - a settings-menu fixture (tabs, toggles, slider, dropdown, text box) is driven headless through `input.inject`, and its replay is exact at 1 and 8 threads;
+  - world text follows a moving entity in a golden;
+  - ui-ux is enabled with its skill;
+  - every role is under 50k.
+
+**Not in 2.7b:** IME; gamepad devices; depth-occluded world UI; live camera views in UI; markup; SDF text; shadows and blur; theme transition times; list virtualization; drag and drop; tree views; Godot `Control` import (M5).
+
+### Phase 2.7b.1 As built (2026-11-23, ADR-0060)
+**Status: done (branch `m2/2.7b-display`). The display half of the in-game UI: the components, layout, text, themes, the draw list and its renderer pass, `ui.inspect`, the `ui_bounds` layer, and the UI/UX role.**
+
+**What landed:**
+- **New crate `concordia-ui`** (`#![forbid(unsafe_code)]`, no GPU code; taffy 0.15.1, parley 0.13.0, swash 0.2.10):
+  - **Components:** `UiRoot`, `UiNode`, `UiStyle`, `UiThemed`, `UiText`, `UiImage`, `UiNinePatch`, `UiProgress` and `UiSeparator`, each with a `check()` whose error names its field. Single-field bounds are also schema `range`s, so the API refuses them at the boundary (`ValueInvalid` with the pointer).
+  - **Gathering:** `UiScene::gather` reads every root's `Parent` subtree. Invalid components are dropped with a reported problem, and the node keeps a default `UiNode`. Hidden subtrees are skipped. Siblings are ordered by (`order`, id).
+  - **Layout:** `compute_layout` resolves styles top-down (themes, then inheritance of the text fields). It then lays out each in-flow subtree with taffy, with rounding off; `Stack` is a 1 × 1 grid. Each anchored node is laid out as its own island inside its parent's rect (Godot's anchor, offset and grow rules; the 16 presets as `Anchored::preset`). Finally it shapes text at its final width and records clips, opacity and the draw order (`z`, `order`, id). Roots map their canvas with Godot's `canvas_items` stretch and aspects (`canvas_map`).
+  - **Text:** `UiFonts` is a parley font context with the built-in Noto faces loaded from bytes only; there are no system fonts. `shape` handles styled runs, word, anywhere and no wrapping, alignment (parley's), line height as a multiple of the font's, `max_lines` and a height limit, clip, and ellipsis (the longest prefix that still fits with "…").
+  - **The glyph atlas:** `GlyphAtlas` rasterizes with swash (unhinted, quarter-pixel x offsets) into shelf-packed `R8` pages of 1,024 px. A page's generation is bumped on every write.
+  - **Paint geometry** (pure, in UI space):
+    - the seven `TextureRect` stretch modes, with tiles cut at the edges;
+    - nine-patches with CSS `border-image` shrinking and Stretch, Tile or TileFit (CSS `round`);
+    - the nine progress fill modes; the three radial modes become an angular mask;
+    - separators;
+    - CSS-angle linear and radial gradients.
+  - **`draw_list`** maps UI space to target pixels (the root's map, then the frame's scale), dedupes image textures and adds atlas pages. Nine-patch and region UVs are pulled in half a texel so filtering never samples the neighbouring slice; a golden showed the bleed.
+  - **Importers:** `font` (ttf and otf → `AssetKind::Font`; the family comes from the font's `name` table) and `theme` (`.theme.ron` → `AssetKind::Theme`, validated, errors as `classes/<name>/<state>/<field>`).
+  - **The engine module:** `UiModule` (`[ui]`) registers the types, holds `UiShared` (fonts, atlas, asset cache) as engine state, serves `ui.inspect`, lists the `ui_bounds` layer and answers the draw hook.
+- **`concordia-api`:**
+  - the draw-list types (`UiDrawList`, `UiQuad`, `UiPaint`, `UiMask`, `UiStop`, `UiTexture`, `UiTextureFormat`, `UiFrame`) and `UI_BOUNDS_LAYER`;
+  - the `EngineModule::ui_draw` hook, and `Engine::ui_draw`, which gathers every module's list in module order.
+  - The renderer and the UI never depend on each other.
+- **`concordia-assets`:** `TextureFormat::R8`; `AssetKind::Font` and `Theme`.
+- **`concordia-render`:**
+  - `RenderRequest.ui`.
+  - `ui.slang` pulls quads (40 floats each, `encode_ui`) and stops (8 floats) through bindless. Per quad it draws a rounded-box SDF with antialiasing and a border, a solid, linear, radial, texture or glyph paint, the angular mask, and a clip in the fragment shader; output is premultiplied.
+  - The UI is drawn **inside the tonemap pass**, after the fullscreen triangle and before the editor overlays. There is no separate graph pass (the refinement had one), so no extra render pass and no load.
+  - `UiTextures` caches images and atlas pages by (key, generation); a replaced texture retires with the frame.
+  - `capture.screenshot` gains `ui` (default true) and `ui_scale` (0.25–8). `viewport.present` gains `scale`, which is kept for after-tick and navigation redraws. The `ui_bounds` layer outlines every node.
+- **`concordia-app`:**
+  - `[ui]` adds the module, and every project registers the `font` and `theme` importers.
+  - `Player` passes the window's scale factor to `viewport.present`.
+- **`concordia-cli`:** `concordia new` writes `[ui]`, and `studio init` adds it when it is missing.
+- **Studio (D8):**
+  - The UI/UX designer is enabled: colour `#0ea5e9`; writes `ui/**`, `assets/ui/**`, `assets/fonts/**` and scene files; 24 tools, about 17.3k tokens.
+  - New skill `concordia-ui`. Its example calls, components and theme are parsed as the real types.
+  - Every enabled role's numbers on 2026-11-23:
+
+    | Role | Tools | Tokens |
+    |---|---|---|
+    | level designer | 37 | 23,144 |
+    | QA | 24 | 21,585 |
+    | tech artist | 23 | 20,172 |
+    | UI/UX | 24 | 17,271 |
+    | animator | 22 | 16,890 |
+    | sound designer | 24 | 15,138 |
+    | composer | 20 | 13,054 |
+    | gameplay programmer | 17 | 12,946 |
+    | director | 13 | 12,453 |
+    | writer | 11 | 9,576 |
+
+    `capture_screenshot` grew by about 66 tokens for each role that has it. All are under 50k.
+- **The editor:** `examples/m1-physics-stack` enables `[ui]`, so `just editor-schemas` generates the UI components' schemas and the inspectors follow.
+- **Fonts:** Noto Sans v2.015 (four faces) and Noto Sans Mono v2.014, unhinted. They live in `crates/concordia-ui/fonts/` with `OFL.txt` and a `VENDOR.md` recording the upstream release and each file's SHA-256, and are listed in `third_party/README.md`. Following that convention, the refinement's `licenses/fonts.md` wasn't created.
+
+**Differences from the refinement (this As built wins):**
+- The UI is drawn in the tonemap render pass rather than its own graph pass.
+- Built-in font names use underscores: `builtin:font/noto_sans`, `builtin:font/noto_sans_mono`. Asset names are `[a-z0-9_]`.
+- Colours are linear RGBA with the `color` widget, as materials are. The refinement said sRGB in the file.
+- `ui.inspect` takes `world`, `entity`, `width` and `height`, with no `scale`. The viewport is in logical pixels and defaults to the first root's canvas.
+- The UI goldens live in `concordia-ui`'s tests (suite `ui`, `tests/golden/ui/`), with the renderer as a dev-dependency, so they share the HUD fixture.
+- **Dependencies:** parley pulls two versions of `skrifa` / `read-fonts`, and swash pulls a third. These are duplicate warnings only (`multiple-versions = "warn"`).
+
+**Tests** (expected values derived in each header; anything that passed at once or was written after its code is called out below):
+- **`concordia-ui` (59 tests):**
+  - `validate` (4);
+  - `anchors` (3), `stretch` (2), `theme` (4);
+  - `text` (7): metrics read by a hand-written sfnt reader (`head`, `hhea`, `OS/2`, `cmap` format 4, `hmtx`);
+  - `layout` (8), `paint` (8), `atlas` (2);
+  - `draw` (8), including the HUD fixture's draw-list snapshot;
+  - `engine` (6): the module, an actor on every edit, the scene round trip, `ui.inspect`, tweens on `UiStyle /opacity`, and hashes identical with and without UI drawing at 1 and 8 threads;
+  - `golden` (9): `ui_hud`, `ui_hud_sequence_{0,1,2}` (20/50/90 %), `ui_gradients_borders_radii`, `ui_nine_patch`, `ui_text_runs`, `ui_progress_modes`, `ui_image_modes`, `ui_clip`, plus `capture_screenshot_draws_the_ui_unless_asked_not_to`.
+- **`concordia-render` `tests/ui.rs` (2):** encoding, and the push layout against `ui.slang` for MSL and SPIR-V.
+- **`concordia-app`:**
+  - `tests/ui.rs`: an imported font and a theme reach `ui.inspect`; four Mono "M"s at 20 px are 48 px;
+  - `player`: presents carry the scale.
+- **`concordia-cli`:** `new` writes `[ui]`; `studio init` adds it.
+- **`concordia-studio`:** the ui-ux role and skill tests, the agent file list, and the director's spawn list.
+- **`concordia-mcp`:** `ui_ux_is_enabled_with_ui_tools_under_budget` and `server_holds_the_ui_designer_to_its_paths`.
+- **Called out:**
+  - **Written before their tests, then shown failing on a stub and passing restored (the mutation check):** `UiNode::check`, `UiImage::check`, `UiNinePatch::check` and `half_texel_inset`. The last was fixed after a golden showed the bleed.
+  - **Passed at once:**
+    - `ui_module_registers_its_method_and_debug_layer` (the module was written just before it);
+    - `ui_scene_round_trips_through_scene_ron` (scenes are generic);
+    - `tweens_animate_ui_style_opacity` (2.4.4's tweens already cover any numeric field);
+    - `ui_push_matches_ui_slang` (a layout guard written with its struct);
+    - `ui_ux_is_enabled_with_ui_tools_under_budget` and `server_holds_the_ui_designer_to_its_paths` (written after the role was enabled).
+  - **Wrong expectations, fixed on purpose:**
+    - Noto Sans Mono's `advanceWidthMax` (1,800) isn't its Latin advance (600); the test now reads `M`'s advance through `cmap` and `hmtx`.
+    - A draw-order row; two error kinds (`ValueInvalid` for component values, `InvalidParams` for method params).
+    - The region UV test, after the half-texel inset.
+
+**Checklist (2026-11-23):**
+- `just lint` and the Tauri shell's clippy: clean.
+- `just wasm`, `just native-fixtures`, then `cargo nextest run --workspace --no-fail-fast` with `CONCORDIA_REQUIRE_GPU=1`: 1,682 run, 1,667 passed.
+  - The 15 failures were the snapshots and goldens awaiting review, plus `m1_example_modules_follow_core_in_manifest_order`, since fixed (the example now has `[ui]`).
+  - Doc tests: clean.
+- `just gate-tests M1` and `M3S`: green apart from their pending snapshots (4/4 and 13/13 with snapshots forced).
+- `just deny` and the editor's deny (fresh advisory DB): advisories, bans, licenses and sources ok. Only duplicate-version warnings, and the editor's carried-over "advisory not detected".
+- `just editor-schemas`: generated the UI types plus `ui.inspect`, `capture.screenshot` and `viewport.present` param changes, committed.
+- `just editor-test`: lint, unit and 22 end-to-end tests pass.
+- After the author approved and they were blessed: ui, studio, render, app, mcp and cli rerun with 610 run and 610 passed; `just gate-tests M1` passes 4/4 and `M3S` passes 13/13, with nothing forced.
+
+**Snapshots and goldens** (collected with `INSTA_UPDATE=new`; goldens written to `target/golden-candidates/ui/`; shown on the review page; blessed 2026-11-23 after the author approved it, with `assertion_line` stripped):
+- new: the HUD draw list, `agent_ui-ux` and the ten UI goldens;
+- changed: `agent_director`, the `CLAUDE.md` block, the M3S gate's agents/skills and `CLAUDE.md` block, and the `capture.screenshot` input schema (M1 gate).
+
+**Carry-over (unchanged, still open):**
+- the ignored `run_bench_latency_measures_the_e…` test;
+- the navmesh layer's re-gather;
+- the editor's deny warning;
+- ADR-0069's chunk components (M7 7.7);
+- physics queries seeing last-step bodies;
+- the crowd's sequential steps at 10k (M7 7.7);
+- `concordia run` with sound (and now UI) not yet exercised by hand (2.10's sample game).
+
 ### Effort (re-estimated)
 | Phase | Estimate |
 |---|---|
@@ -3747,7 +4277,7 @@ Phase order is a dependency order, but 2.3–2.8 can run in parallel once 2.1 an
 - **Done criteria:** tests green; editing the sample native module during a running headless session changes behavior after `script.reload` with the world hash continuing from the same state.
 
 ### Phase 2.7: concordia-audio and concordia-ui
-> Split by the 2.7a refinement (2026-11-22): the audio half is "Phase 2.7a refinement" above, which supersedes this text for audio; the UI half is phase 2.7b, refined at its start.
+> Split by the 2.7a refinement (2026-11-22): the audio half is "Phase 2.7a refinement" above, which supersedes this text for audio; the UI half is phase 2.7b, refined in "Phase 2.7b refinement" above (2026-11-22), which supersedes this text for the UI.
 
 - **Objective:** sound for the slice (cues through buses) and an in-game UI good enough for the HUD, floating bars, damage numbers and simple menus.
 - **Deliverables:** `concordia-audio` (decode, mixer, buses, voices, spatial, `cpal` and `offline` backends, cues from a Godot-side sound bank resource); `concordia-ui` (approach below); world-space text/billboards in `concordia-render`; Godot `Control` mapping in `mappings/nodes.ron`; HUD-scene import to a UI prefab.
@@ -3868,7 +4398,7 @@ which runs `cargo nextest run --test m2_port_begins` (`tests/gates/m2_port_begin
 - ~~Do probe scripts run with Godot's `--script` from outside the project reliably?~~ **Moved to M5** (open question 13).
 - ~~Should the reference port's grid-to-polygon navmesh builder be ported as an alternative nav source?~~ **Moved to M5** (open question 14); 2.5 builds navmeshes with Recast only.
 - ~~Does M0 already provide typed ECS events and timers, or does M2 add them?~~ **Answered by 2.0 and 2.0b:** M2 added them (timers in 2.0, ADR-0063; typed signals and observers in 2.0b, ADR-0069).
-- Is `cosmic-text` the right text stack for the shipped game UI, or is a smaller atlas-only rasterizer enough for M2? (Open; settled at 2.7's refinement with ADR-0060.)
+- Is `cosmic-text` the right text stack for the shipped game UI, or is a smaller atlas-only rasterizer enough for M2? (Settled at the 2.7b refinement, P1: parley and swash; cosmic-text 0.19 fails `cargo deny` through `ttf-parser`, RUSTSEC-2026-0192. ADR-0060.)
 
 ## ADRs to write
 - ADR-0067: M2 refinement: engine breadth on Terra's Mass core, Substrate-style materials, Godot mappings to M5, sample-game gate (written).
@@ -3881,7 +4411,7 @@ which runs `cargo nextest run --test m2_port_begins` (`tests/gates/m2_port_begin
 
 M2 draws from the 0060–0079 block (`plans/README.md`).
 
-- ADR-0060: In-game UI approach (retained-mode ECS UI, taffy + Godot anchor mode, cosmic-text).
+- ADR-0060: In-game UI approach (retained-mode ECS UI, taffy + Godot anchor mode, parley + swash; written in 2.7b.1).
 - ADR-0061: Tier-1 native hot-reload ABI (`concordia-script-native`, C-ABI vtable, no statics, reflect migration).
 - ADR-0062: WIT `concordia:game/gameplay` world shape and wire encoding (batch, columnar, deterministic config).
 - ADR-0063: Gameplay determinism contract (Sim vs Presentation sets, animation in Sim, `SimClock` time scale, WASM NaN canonicalization and fuel).

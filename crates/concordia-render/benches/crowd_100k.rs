@@ -50,6 +50,7 @@ fn main() {
             overlays: None,
             view_mode: Default::default(),
             debug: Vec::new(),
+            ui: Default::default(),
         };
         renderer.render(&rw, &mut assets, &request).expect("render");
         let frame = median(11, || {

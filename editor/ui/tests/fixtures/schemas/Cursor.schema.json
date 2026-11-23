@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The pointer's look over a widget (a presentation hint).",
+  "oneOf": [
+    {
+      "const": "Arrow",
+      "description": "The arrow."
+    },
+    {
+      "const": "Pointer",
+      "description": "A pointing hand."
+    },
+    {
+      "const": "Text",
+      "description": "A text beam."
+    }
+  ],
+  "title": "Cursor",
+  "x-concordia-type": "Cursor"
+}

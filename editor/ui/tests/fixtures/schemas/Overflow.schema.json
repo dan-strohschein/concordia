@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What text past the box does.",
+  "oneOf": [
+    {
+      "const": "Visible",
+      "description": "Drawn anyway."
+    },
+    {
+      "const": "Clip",
+      "description": "Cut at the box."
+    },
+    {
+      "const": "Ellipsis",
+      "description": "The last line that fits ends with \"…\"."
+    }
+  ],
+  "title": "Overflow",
+  "x-concordia-type": "Overflow"
+}

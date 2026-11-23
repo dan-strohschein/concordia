@@ -42,7 +42,7 @@ The MCP server (`concordia-mcp`, also `concordia mcp`): a thin rmcp adapter that
 - Model Context Protocol specification (2025-11-25 and 2026-07-28); `rmcp` 3.11 documentation and source.
 
 ## Status
-M0 phase 0.7 complete; M3 phases 3.5 (Studio) and 3.5b (shared engine); M2 phase 2.8 (project `[sim]` settings reach the engine).
+M0 phase 0.7 complete; M3 phases 3.5 (Studio) and 3.5b (shared engine); M2 phase 2.8 (project `[sim]` settings reach the engine). M2 phase 2.7b.1: the role tests' manifests gain `[ui]`; `ui_ux_is_enabled_with_ui_tools_under_budget` and `server_holds_the_ui_designer_to_its_paths`.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

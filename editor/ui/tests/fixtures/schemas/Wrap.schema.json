@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Where lines may break.",
+  "oneOf": [
+    {
+      "const": "None",
+      "description": "Only at newlines."
+    },
+    {
+      "const": "Word",
+      "description": "At word boundaries (UAX #14)."
+    },
+    {
+      "const": "Anywhere",
+      "description": "Anywhere, when a word doesn't fit."
+    }
+  ],
+  "title": "Wrap",
+  "x-concordia-type": "Wrap"
+}

@@ -15,6 +15,8 @@ pub enum TextureFormat {
     Rgba8Linear,
     /// 16-bit float RGBA (HDR).
     Rgba16Float,
+    /// One 8-bit linear channel (coverage masks, e.g. glyph atlases).
+    R8,
 }
 
 impl TextureFormat {
@@ -23,6 +25,7 @@ impl TextureFormat {
         match self {
             Self::Rgba8Srgb | Self::Rgba8Linear => 4,
             Self::Rgba16Float => 8,
+            Self::R8 => 1,
         }
     }
 }

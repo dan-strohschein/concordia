@@ -166,6 +166,7 @@ fn environment_with_a_missing_map_names_it() {
                 overlays: None,
                 view_mode: Default::default(),
                 debug: Vec::new(),
+                ui: Default::default(),
             },
         )
         .unwrap_err();
@@ -201,6 +202,7 @@ fn the_viewport_does_not_wait_for_an_environment_to_prefilter() {
         overlays: None,
         view_mode: Default::default(),
         debug: Vec::new(),
+        ui: Default::default(),
     };
     r.present(&rw, &mut s.assets, &request, surface).unwrap();
     assert!(

@@ -189,6 +189,18 @@ impl Engine {
         module.debug_geometry(self, world, layer)
     }
 
+    /// Every module's in-game UI for `world`, in module order (empty when none draws).
+    pub fn ui_draw(&mut self, world: WorldSel, frame: &crate::UiFrame) -> crate::UiDrawList {
+        let modules = self.modules.clone();
+        let mut list = crate::UiDrawList::default();
+        for module in modules {
+            if let Some(part) = module.ui_draw(self, world, frame) {
+                list.append(part);
+            }
+        }
+        list
+    }
+
     /// The type registry.
     pub fn registry(&self) -> &TypeRegistry {
         &self.registry

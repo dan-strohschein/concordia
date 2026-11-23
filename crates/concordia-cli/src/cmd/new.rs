@@ -100,6 +100,9 @@ fn manifest(name: &str, features: &Features) -> String {
         text.push_str(
             "\n# Audio: .cue.ron cues, buses and the mixer (offline headless; the default device in concordia run).\n[audio]\n",
         );
+        text.push_str(
+            "\n# In-game UI: UiRoot trees, .theme.ron themes and fonts, ui.inspect (drawn by the render module).\n[ui]\n",
+        );
         text.push_str("\n[render]\n");
         text.push_str(
             "\n# Gameplay modules: add [[scripts.module]] entries (kind = \"wasm\" or \"native\", path).\n[scripts]\n",

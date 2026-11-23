@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A length along one axis.",
+  "oneOf": [
+    {
+      "const": "Auto",
+      "description": "From the content or the layout."
+    },
+    {
+      "additionalProperties": false,
+      "description": "Logical pixels (≥ 0).",
+      "properties": {
+        "Px": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "Px"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "Percent of the parent's content box (0..100).",
+      "properties": {
+        "Percent": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "Percent"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "Length",
+  "x-concordia-type": "Length"
+}

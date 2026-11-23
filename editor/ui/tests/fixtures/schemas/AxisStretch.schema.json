@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "How a nine-patch's edges and center fill their spans.",
+  "oneOf": [
+    {
+      "const": "Stretch",
+      "description": "Stretched."
+    },
+    {
+      "const": "Tile",
+      "description": "Repeated, the last tile cut."
+    },
+    {
+      "const": "TileFit",
+      "description": "Repeated a whole number of times, scaled to fit."
+    }
+  ],
+  "title": "AxisStretch",
+  "x-concordia-type": "AxisStretch"
+}

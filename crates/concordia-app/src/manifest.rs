@@ -39,7 +39,15 @@ pub struct Manifest {
     /// `[nav]`; navigation components and `nav.*` exist only if this section exists (navmeshes are
     /// built from `[physics]` colliders).
     pub nav: Option<NavSection>,
+    /// `[ui]`; UI components, `ui.inspect` and the UI pass exist only if this section exists
+    /// (images, fonts and themes load through `[assets]`).
+    pub ui: Option<UiSection>,
 }
+
+/// `[ui]` (no settings yet; ADR-0060).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct UiSection {}
 
 /// `[nav]` (ADR-0077).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

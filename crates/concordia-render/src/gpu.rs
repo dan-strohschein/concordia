@@ -247,6 +247,7 @@ pub(crate) fn format_of(format: TextureFormat) -> Format {
         TextureFormat::Rgba8Srgb => Format::Rgba8UnormSrgb,
         TextureFormat::Rgba8Linear => Format::Rgba8Unorm,
         TextureFormat::Rgba16Float => Format::Rgba16Float,
+        TextureFormat::R8 => Format::R8Unorm,
     }
 }
 

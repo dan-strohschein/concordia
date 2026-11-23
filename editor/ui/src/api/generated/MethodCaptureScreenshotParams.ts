@@ -89,6 +89,14 @@ export interface MethodCaptureScreenshotParams {
    */
   skeleton?: null | boolean;
   /**
+   * Draw the in-game UI (default true).
+   */
+  ui?: null | boolean;
+  /**
+   * The UI's pixels per logical pixel (0.25..=8; default 1).
+   */
+  ui_scale?: null | number;
+  /**
    * Render from this viewpoint instead of a camera entity (the editor's view).
    */
   view?: null | View;

@@ -1,0 +1,136 @@
+{
+  "$defs": {
+    "Aspect": {
+      "description": "How a scaled canvas keeps its shape.",
+      "oneOf": [
+        {
+          "const": "Ignore",
+          "description": "Stretched to fill, non-uniformly."
+        },
+        {
+          "const": "Keep",
+          "description": "Uniform, with bars."
+        },
+        {
+          "const": "KeepWidth",
+          "description": "Uniform; taller viewports show more height."
+        },
+        {
+          "const": "KeepHeight",
+          "description": "Uniform; wider viewports show more width."
+        },
+        {
+          "const": "Expand",
+          "description": "Uniform; every viewport shows more of the canvas, no bars."
+        }
+      ],
+      "title": "Aspect",
+      "x-concordia-type": "Aspect"
+    },
+    "RootSpace": {
+      "description": "Where a root draws.",
+      "oneOf": [
+        {
+          "const": "Screen",
+          "description": "Over the screen."
+        },
+        {
+          "additionalProperties": false,
+          "description": "At its entity's position in the world (2.7b.3).",
+          "properties": {
+            "World": {
+              "additionalProperties": false,
+              "properties": {
+                "offset": {
+                  "description": "World-space offset from the entity.",
+                  "items": {
+                    "type": "number"
+                  },
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "type": "array"
+                },
+                "pixel_size": {
+                  "description": "Screen pixels per UI pixel.",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "offset",
+                "pixel_size"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "World"
+          ],
+          "type": "object"
+        }
+      ],
+      "title": "RootSpace",
+      "x-concordia-type": "RootSpace"
+    },
+    "Stretch": {
+      "description": "Whether the canvas scales with the viewport.",
+      "oneOf": [
+        {
+          "const": "Disabled",
+          "description": "UI space is the viewport, at scale 1."
+        },
+        {
+          "const": "Scale",
+          "description": "The canvas scales to the viewport by `aspect`."
+        }
+      ],
+      "title": "Stretch",
+      "x-concordia-type": "Stretch"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "aspect": "Keep",
+    "canvas": [
+      1280.0,
+      720.0
+    ],
+    "space": "Screen",
+    "stretch": "Disabled",
+    "z": 0
+  },
+  "description": "The top of a UI tree: its children are the entity's `Parent` children.",
+  "properties": {
+    "aspect": {
+      "$ref": "#/$defs/Aspect",
+      "description": "How a scaled canvas keeps its shape."
+    },
+    "canvas": {
+      "description": "The base canvas size in logical pixels.",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "type": "array"
+    },
+    "space": {
+      "$ref": "#/$defs/RootSpace",
+      "description": "Screen or world."
+    },
+    "stretch": {
+      "$ref": "#/$defs/Stretch",
+      "description": "Whether the canvas scales."
+    },
+    "z": {
+      "description": "Draw order among roots (higher on top).",
+      "maximum": 2147483647,
+      "minimum": -2147483648,
+      "type": "integer"
+    }
+  },
+  "title": "UiRoot",
+  "type": "object",
+  "x-concordia-category": "UI",
+  "x-concordia-type": "UiRoot"
+}

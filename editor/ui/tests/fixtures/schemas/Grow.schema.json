@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Which way a too-small anchored rect grows.",
+  "oneOf": [
+    {
+      "const": "Begin",
+      "description": "Toward the left or top."
+    },
+    {
+      "const": "End",
+      "description": "Toward the right or bottom."
+    },
+    {
+      "const": "Both",
+      "description": "Both ways, about the center."
+    }
+  ],
+  "title": "Grow",
+  "x-concordia-type": "Grow"
+}

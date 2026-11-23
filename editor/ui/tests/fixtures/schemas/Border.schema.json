@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A border drawn inside the box.",
+  "properties": {
+    "color": {
+      "description": "Linear RGBA.",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 4,
+      "minItems": 4,
+      "type": "array",
+      "x-concordia-widget": "color"
+    },
+    "width": {
+      "description": "Width in logical pixels.",
+      "maximum": 1024.0,
+      "minimum": 0.0,
+      "type": "number"
+    }
+  },
+  "required": [
+    "width",
+    "color"
+  ],
+  "title": "Border",
+  "type": "object",
+  "x-concordia-type": "Border"
+}

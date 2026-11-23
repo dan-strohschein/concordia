@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "How an image fills its box (Godot's `TextureRect` stretch modes).",
+  "oneOf": [
+    {
+      "const": "Scale",
+      "description": "Stretched to the box."
+    },
+    {
+      "const": "Tile",
+      "description": "Repeated from the top left at its own size."
+    },
+    {
+      "const": "Keep",
+      "description": "Its own size at the top left."
+    },
+    {
+      "const": "KeepCentered",
+      "description": "Its own size, centered."
+    },
+    {
+      "const": "KeepAspect",
+      "description": "Scaled to fit inside, at the top left."
+    },
+    {
+      "const": "KeepAspectCentered",
+      "description": "Scaled to fit inside, centered."
+    },
+    {
+      "const": "KeepAspectCovered",
+      "description": "Scaled to cover the box, centered and cropped."
+    }
+  ],
+  "title": "ImageMode",
+  "x-concordia-type": "ImageMode"
+}

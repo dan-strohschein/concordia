@@ -1,0 +1,40 @@
+[package]
+name = "concordia-ui"
+description = "Concordia in-game UI (the `[ui]` engine module): retained ECS widgets, taffy layout with Godot-style anchors, parley text with a swash glyph atlas, themes, and the draw list the renderer's UI pass draws."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+include = ["src/**", "fonts/**", "Cargo.toml", "README.md", "AGENTS.md"]
+
+[lints]
+workspace = true
+
+[dependencies]
+blake3.workspace = true
+concordia-api.workspace = true
+concordia-assets.workspace = true
+concordia-core.workspace = true
+concordia-reflect.workspace = true
+concordia-scene.workspace = true
+concordia-terra.workspace = true
+parley.workspace = true
+postcard = { version = "1.1.3", default-features = false, features = ["alloc"] }
+serde.workspace = true
+serde_json.workspace = true
+swash.workspace = true
+taffy.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+concordia-anim.workspace = true
+concordia-render.workspace = true
+concordia-rhi.workspace = true
+concordia-rhi-metal.workspace = true
+concordia-shaders.workspace = true
+concordia-testkit.workspace = true
+insta.workspace = true
+tempfile.workspace = true

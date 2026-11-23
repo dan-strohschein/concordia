@@ -11,3 +11,9 @@ Downloaded (not vendored) toolchains, pinned with SHA-256:
 | Tool | Pin | License |
 |---|---|---|
 | Slang (`slangc`) | `tools/slang/slang.toml` (v2026.22), fetched by `just slang-fetch` | Apache-2.0 WITH LLVM-exception |
+
+Bundled fonts (files, not code; OFL-1.1 is accepted for font files only, ADR-0060 U8). They live with the crate that embeds them, beside their license and a VENDOR.md:
+
+| Directory | Upstream | Version | License |
+|---|---|---|---|
+| `crates/concordia-ui/fonts/` | notofonts/latin-greek-cyrillic (Noto Sans, Noto Sans Mono; unhinted TTF) | NotoSans-v2.015, NotoSansMono-v2.014 | SIL OFL 1.1 |
