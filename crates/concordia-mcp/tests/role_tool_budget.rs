@@ -15,18 +15,20 @@ use serde_json::Value;
 const ROLE_TOOL_BUDGET: usize = 50_000;
 
 /// The roles the default team enables.
-const ENABLED: [&str; 7] = [
+const ENABLED: [&str; 9] = [
     "animator",
+    "composer",
     "director",
     "gameplay-programmer",
     "level-designer",
     "qa-playtester",
+    "sound-designer",
     "tech-artist",
     "writer",
 ];
 
 /// Every module a Studio project can enable, so every role's tools are served.
-const MODULES: &str = "[input]\nmap = \"input/default.input.ron\"\n\n[physics]\n\n[nav]\n\n[assets]\n\n[anim]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n";
+const MODULES: &str = "[input]\nmap = \"input/default.input.ron\"\n\n[physics]\n\n[nav]\n\n[assets]\n\n[anim]\n\n[audio]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n";
 
 /// The served tool definitions of a project with the default roster, by name.
 async fn served_tools(dir: &tempfile::TempDir) -> BTreeMap<String, Value> {
@@ -151,4 +153,49 @@ async fn animator_is_enabled_with_anim_tools_under_budget() {
         "the animator's {} tools take about {size} tokens",
         animator.len()
     );
+}
+
+#[tokio::test]
+async fn sound_designer_and_composer_are_enabled_with_audio_tools_under_budget() {
+    let dir = tempfile::tempdir().unwrap();
+    let served = served_tools(&dir).await;
+    let catalog = ToolCatalog::from_names(served.keys().cloned());
+    let roles = synced_role_tools(dir.path(), &catalog);
+    for (role, needed) in [
+        (
+            "sound-designer",
+            &[
+                "audio_play",
+                "audio_render",
+                "audio_buses",
+                "audio_inspect",
+                "component_set",
+                "asset_import",
+            ][..],
+        ),
+        (
+            "composer",
+            &[
+                "audio_play",
+                "audio_render",
+                "audio_buses",
+                "component_set",
+                "asset_import",
+            ][..],
+        ),
+    ] {
+        let tools = roles
+            .get(role)
+            .unwrap_or_else(|| panic!("{role} is enabled (A1)"));
+        for tool in needed {
+            assert!(tools.iter().any(|t| t == tool), "{role}: {tool}: {tools:?}");
+        }
+        let size = tokens(tools, &served);
+        println!("{role}: {} tools, about {size} tokens", tools.len());
+        assert!(
+            size < ROLE_TOOL_BUDGET,
+            "{role}'s {} tools take about {size} tokens",
+            tools.len()
+        );
+    }
 }

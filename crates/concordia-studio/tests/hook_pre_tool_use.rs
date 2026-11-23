@@ -242,3 +242,46 @@ fn animator_writes_only_anim_files_and_model_sidecars() {
         assert_eq!(verdict(denied), "deny", "{denied}");
     }
 }
+
+#[test]
+fn audio_roles_write_only_their_audio_paths_and_scenes() {
+    let dir = project();
+    let verdict = |role: &str, path: &str| {
+        let input = pre(
+            Some(role),
+            "Write",
+            json!({"file_path": dir.path().join(path), "content": "x"}),
+        );
+        decision(&run(dir.path(), PreToolUse, &input)).0
+    };
+    for allowed in [
+        "assets/sfx/hit.wav",
+        "assets/sfx/hit.cue.ron",
+        "assets/audio/main.buses.ron",
+        "scenes/arena.scene.ron",
+    ] {
+        assert_eq!(verdict("sound-designer", allowed), "allow", "{allowed}");
+    }
+    for denied in [
+        "assets/music/theme.ogg",
+        "concordia.toml",
+        "scripts/game/src/lib.rs",
+        "assets/anim/hero.animgraph.ron",
+    ] {
+        assert_eq!(verdict("sound-designer", denied), "deny", "{denied}");
+    }
+    for allowed in [
+        "assets/music/theme.ogg",
+        "assets/music/theme.cue.ron",
+        "scenes/arena.scene.ron",
+    ] {
+        assert_eq!(verdict("composer", allowed), "allow", "{allowed}");
+    }
+    for denied in [
+        "assets/sfx/hit.wav",
+        "assets/audio/main.buses.ron",
+        "concordia.toml",
+    ] {
+        assert_eq!(verdict("composer", denied), "deny", "{denied}");
+    }
+}

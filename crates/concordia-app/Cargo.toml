@@ -23,6 +23,7 @@ concordia-render.workspace = true
 concordia-rhi-metal.workspace = true
 concordia-scripting.workspace = true
 concordia-anim.workspace = true
+concordia-audio.workspace = true
 concordia-replay.workspace = true
 concordia-studio.workspace = true
 serde.workspace = true
@@ -34,6 +35,7 @@ toml.workspace = true
 
 [dev-dependencies]
 base64.workspace = true
+hound.workspace = true
 futures.workspace = true
 concordia-rhi.workspace = true
 concordia-testkit.workspace = true

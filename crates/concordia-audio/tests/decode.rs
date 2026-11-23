@@ -122,3 +122,24 @@ fn ogg_decodes_to_expected_frames() {
         Err(AudioError::Decode { format: "ogg", .. })
     ));
 }
+
+/// Written after `write_wav16` (moved out of `audio.render`): 16-bit PCM is s × 32768, rounded
+/// and clamped: [0.75, −1, 1, 0.5, −0.25] → [24576, −32768, 32767 (clamped from 32768), 16384,
+/// −8192], two channels at 48 kHz.
+#[test]
+fn wav_writer_scales_by_32768_and_clamps() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("out/x.wav");
+    concordia_audio::write_wav16(&path, &[0.75, -1.0, 1.0, 0.5, -0.25, 0.0]).unwrap();
+    let wav = hound::WavReader::open(&path).unwrap();
+    assert_eq!(
+        (
+            wav.spec().channels,
+            wav.spec().sample_rate,
+            wav.spec().bits_per_sample
+        ),
+        (2, 48_000, 16)
+    );
+    let samples: Vec<i16> = wav.into_samples::<i16>().map(Result::unwrap).collect();
+    assert_eq!(samples, [24576, -32768, 32767, 16384, -8192, 0]);
+}

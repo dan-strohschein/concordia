@@ -1,0 +1,20 @@
+[package]
+name = "audio-guest"
+description = "A test module that plays a cue by raising the engine's PlayCue signal (M2 2.7a.2)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+concordia-reflect.workspace = true
+concordia-script-guest.workspace = true
+serde.workspace = true
+
+[lints]
+workspace = true

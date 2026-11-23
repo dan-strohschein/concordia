@@ -7,17 +7,19 @@ use std::path::Path;
 use concordia_studio::{CLAUDE_SKILL_FIELDS, Roster, SkillFile, default_roster, init};
 
 /// The eight built-in skills the plan names (3.6), plus team comms (3.6b), animation (M2 2.4.5)
-/// and navigation (M2 2.5a).
-const PLANNED: [&str; 15] = [
+/// navigation (M2 2.5a), and sound design and music (M2 2.7a.2).
+const PLANNED: [&str; 17] = [
     "concordia-add-material",
     "concordia-animation-graphs",
     "concordia-director-planning",
     "concordia-fix-bug-with-replay",
     "concordia-generate-mesh-blender",
+    "concordia-music",
     "concordia-nav-agents",
     "concordia-navigation",
     "concordia-record-replay",
     "concordia-scripting",
+    "concordia-sound-design",
     "concordia-synthesize-sfx",
     "concordia-task-workflow",
     "concordia-team-comms",
@@ -820,6 +822,184 @@ fn nav_agents_skill_mirrors_vehicle() {
         "VehicleRouteFailed",
         "VehicleState",
         "destination",
+    ] {
+        assert!(text.contains(needle), "the skill explains {needle}");
+    }
+}
+
+fn skill(name: &str) -> &'static str {
+    default_roster()
+        .skills
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(_, t)| *t)
+        .unwrap_or_else(|| panic!("the {name} skill"))
+}
+
+/// Checks an audio skill's example: the call's params, or the component it sets or spawns.
+fn audio_example(tool: &str, args: &serde_json::Value) -> Vec<String> {
+    let component = |name: &str, value: &serde_json::Value| {
+        let ok = match name {
+            "AudioEmitter" => {
+                serde_json::from_value::<concordia_audio::AudioEmitter>(value.clone()).map(|_| ())
+            }
+            "AudioListener" => {
+                serde_json::from_value::<concordia_audio::AudioListener>(value.clone()).map(|_| ())
+            }
+            "AnimEventCues" => {
+                serde_json::from_value::<concordia_audio::AnimEventCues>(value.clone()).map(|_| ())
+            }
+            "Name" | "Transform" => Ok(()),
+            other => panic!("no example check for {other}"),
+        };
+        ok.unwrap_or_else(|e| panic!("{name} {value}: {e}"));
+    };
+    let params =
+        |r: Result<(), serde_json::Error>| r.unwrap_or_else(|e| panic!("{tool} {args}: {e}"));
+    let mut seen = vec![tool.to_owned()];
+    match tool {
+        "audio_play" => params(
+            serde_json::from_value::<concordia_audio::AudioPlayParams>(args.clone()).map(|_| ()),
+        ),
+        "audio_stop" => params(
+            serde_json::from_value::<concordia_audio::AudioStopParams>(args.clone()).map(|_| ()),
+        ),
+        "audio_buses" => params(
+            serde_json::from_value::<concordia_audio::AudioBusesParams>(args.clone()).map(|_| ()),
+        ),
+        "audio_render" => params(
+            serde_json::from_value::<concordia_audio::AudioRenderParams>(args.clone()).map(|_| ()),
+        ),
+        "audio_inspect" => params(
+            serde_json::from_value::<concordia_audio::AudioInspectParams>(args.clone()).map(|_| ()),
+        ),
+        "component_set" => {
+            let name = args["component"].as_str().expect("a component");
+            component(name, &args["value"]);
+            seen.push(name.to_owned());
+        }
+        "entity_spawn" => {
+            for (name, value) in args["components"].as_object().expect("components") {
+                component(name, value);
+                seen.push(name.clone());
+            }
+        }
+        _ => {}
+    }
+    seen
+}
+
+#[test]
+fn sound_design_skill_examples_are_real_params_components_and_a_valid_cue() {
+    let text = skill("concordia-sound-design");
+    assert!(
+        !text.contains("Not available yet"),
+        "every tool it names exists"
+    );
+    let seen: std::collections::BTreeSet<String> = examples(text, "")
+        .iter()
+        .flat_map(|(tool, args)| audio_example(tool, args))
+        .collect();
+    for needed in [
+        "AudioEmitter",
+        "AnimEventCues",
+        "AudioListener",
+        "audio_play",
+        "audio_render",
+        "audio_buses",
+        "audio_inspect",
+        "component_set",
+    ] {
+        assert!(seen.contains(needed), "the skill shows {needed}: {seen:?}");
+    }
+    let blocks = ron_blocks(text);
+    let cue = blocks
+        .iter()
+        .find(|b| b.contains("sounds:"))
+        .expect("a .cue.ron example");
+    concordia_audio::read_cue(cue).unwrap_or_else(|e| panic!("{cue}: {e}"));
+    let buses = blocks
+        .iter()
+        .find(|b| b.contains("buses:"))
+        .expect("a .buses.ron example");
+    concordia_audio::read_buses(buses).unwrap_or_else(|e| panic!("{buses}: {e}"));
+    for needle in [
+        "PlayCue",
+        "StopCue",
+        "\"gain_db\"",
+        "loop_start",
+        "max_instances",
+        "spatial",
+    ] {
+        assert!(text.contains(needle), "the skill explains {needle}");
+    }
+}
+
+#[test]
+fn music_skill_examples_are_real_params_components_and_a_valid_cue() {
+    let text = skill("concordia-music");
+    assert!(
+        !text.contains("Not available yet"),
+        "every tool it names exists"
+    );
+    let seen: std::collections::BTreeSet<String> = examples(text, "")
+        .iter()
+        .flat_map(|(tool, args)| audio_example(tool, args))
+        .collect();
+    for needed in [
+        "AudioEmitter",
+        "audio_render",
+        "audio_buses",
+        "component_set",
+    ] {
+        assert!(seen.contains(needed), "the skill shows {needed}: {seen:?}");
+    }
+    let cue = ron_blocks(text)
+        .into_iter()
+        .find(|b| b.contains("sounds:"))
+        .expect("a music cue");
+    let cue = concordia_audio::read_cue(cue).unwrap_or_else(|e| panic!("{cue}: {e}"));
+    assert!(cue.looping && cue.bus == "Music", "{cue:?}");
+    for needle in ["\"stream\"", "loop_start", "loop_end", "Music", "gen_run"] {
+        assert!(text.contains(needle), "the skill explains {needle}");
+    }
+}
+
+#[test]
+fn synthesize_sfx_waits_only_for_the_synthesizer() {
+    let text = skill("concordia-synthesize-sfx");
+    let note = text
+        .lines()
+        .find(|l| l.contains("Not available yet"))
+        .expect("its note stays");
+    assert!(
+        note.contains("gen_run") && note.contains("phase 3.7"),
+        "{note}"
+    );
+    assert!(
+        !note.contains("engine audio"),
+        "engine audio has landed: {note}"
+    );
+}
+
+#[test]
+fn scripting_skill_mirrors_play_cue_and_stop_cue() {
+    let text = skill("concordia-scripting");
+    assert_eq!(
+        mirror_fields(text, "PlayCue"),
+        struct_fields::<concordia_audio::PlayCue>(),
+        "the PlayCue mirror in the skill matches PlayCue"
+    );
+    assert_eq!(
+        mirror_fields(text, "StopCue"),
+        struct_fields::<concordia_audio::StopCue>(),
+        "the StopCue mirror in the skill matches StopCue"
+    );
+    for needle in [
+        "ctx.signal",
+        "tick t + 1",
+        "AnimEventCues",
+        "sound designer",
     ] {
         assert!(text.contains(needle), "the skill explains {needle}");
     }

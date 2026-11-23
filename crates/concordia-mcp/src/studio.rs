@@ -116,7 +116,7 @@ impl StudioGate {
         Ok(policy)
     }
 
-    /// Scene, asset and material writes must land inside the role's paths.
+    /// Scene, asset, material and rendered-audio writes must land inside the role's paths.
     async fn check_paths(
         &self,
         engine: &dyn EngineLink,
@@ -128,7 +128,10 @@ impl StudioGate {
     ) -> Result<(), ApiError> {
         let given = args.get("path").and_then(Value::as_str).map(str::to_owned);
         let path = match (method.name, given) {
-            ("scene.new" | "scene.save" | "asset.import" | "material.set", Some(path)) => path,
+            (
+                "scene.new" | "scene.save" | "asset.import" | "material.set" | "audio.render",
+                Some(path),
+            ) => path,
             ("scene.save", None) => match engine.call(base, "scene.info", json!({})).await {
                 Ok(info) => info["path"].as_str().unwrap_or_default().to_owned(),
                 Err(_) => return Ok(()),

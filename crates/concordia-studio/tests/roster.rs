@@ -299,19 +299,29 @@ fn every_default_role_has_a_color_and_enabled_roles_differ() {
     for role in role_files() {
         assert!(role.spec.color.is_some(), "{} has no color", role.spec.role);
     }
+    // Claude Code has 8 agent colors and M2 2.7a.2 enables a ninth role, so the generated files
+    // may repeat a name once all 8 are used; the exact colors (the editor's) always differ.
     let (_dir, roster) = roster();
-    let mut colors: Vec<&str> = roster
+    let mut exact: Vec<String> = roster
+        .roles()
+        .iter()
+        .map(|r| r.color.as_ref().map_or(String::new(), |c| c.display_hex()))
+        .collect();
+    exact.sort_unstable();
+    let count = exact.len();
+    exact.dedup();
+    assert_eq!(exact.len(), count, "enabled roles share a color: {exact:?}");
+    let mut named: Vec<&str> = roster
         .roles()
         .iter()
         .map(|r| r.color.as_ref().map_or("", |c| c.agent_color()))
         .collect();
-    colors.sort_unstable();
-    let count = colors.len();
-    colors.dedup();
+    named.sort_unstable();
+    named.dedup();
     assert_eq!(
-        colors.len(),
-        count,
-        "enabled roles share a color: {colors:?}"
+        named.len(),
+        count.min(8),
+        "every agent color is used before any repeats: {named:?}"
     );
 }
 
@@ -789,4 +799,132 @@ fn scenes_are_shared_by_the_level_designer_and_the_tech_artist() {
             found.write
         );
     }
+}
+
+/// The sound designer's scope (M2 2.7a.2, A1): import, wire emitters into scenes, listen, and
+/// the team tools.
+const SOUND_DESIGNER_TOOLS: [&str; 24] = [
+    "asset_import",
+    "asset_list",
+    "audio_buses",
+    "audio_inspect",
+    "audio_play",
+    "audio_render",
+    "audio_stop",
+    "component_get",
+    "component_patch",
+    "component_set",
+    "entity_get",
+    "log_tail",
+    "query_run",
+    "scene_save",
+    "schema_get",
+    "sim_step",
+    "sim_stop",
+    "studio_answer",
+    "studio_ask",
+    "studio_questions",
+    "task_claim",
+    "task_comment",
+    "task_get",
+    "task_update",
+];
+
+/// The composer's scope (M2 2.7a.2, A1): import music, place a music emitter, listen.
+const COMPOSER_TOOLS: [&str; 20] = [
+    "asset_import",
+    "asset_list",
+    "audio_buses",
+    "audio_play",
+    "audio_render",
+    "audio_stop",
+    "component_get",
+    "component_patch",
+    "component_set",
+    "query_run",
+    "scene_save",
+    "sim_step",
+    "sim_stop",
+    "studio_answer",
+    "studio_ask",
+    "studio_questions",
+    "task_claim",
+    "task_comment",
+    "task_get",
+    "task_update",
+];
+
+#[test]
+fn sound_designer_wires_and_listens_with_its_tools_and_skill() {
+    let (_dir, roster) = roster();
+    let role = roster
+        .roles()
+        .iter()
+        .find(|r| r.role.as_str() == "sound-designer")
+        .expect("the sound designer is enabled (A1)");
+    assert_eq!(role.mcp_tools, SOUND_DESIGNER_TOOLS);
+    assert_eq!(
+        role.write,
+        ["assets/sfx/**", "assets/audio/**", "scenes/**/*.scene.ron"]
+    );
+    assert_eq!(
+        role.skills,
+        [
+            "concordia-task-workflow",
+            "concordia-sound-design",
+            "concordia-synthesize-sfx",
+            "concordia-team-comms"
+        ]
+    );
+    for needle in [
+        "mcp__concordia__audio_render",
+        "mcp__concordia__audio_play",
+        "AudioEmitter",
+        "PlayCue",
+        "AnimEventCues",
+        ".cue.ron",
+        ".buses.ron",
+        "phase 3.7",
+    ] {
+        assert!(role.body.contains(needle), "the prompt explains {needle}");
+    }
+    assert!(
+        !role.body.contains("Disabled in the default team"),
+        "{}",
+        role.body
+    );
+}
+
+#[test]
+fn composer_brings_finished_music_with_its_tools_and_skill() {
+    let (_dir, roster) = roster();
+    let role = roster
+        .roles()
+        .iter()
+        .find(|r| r.role.as_str() == "composer")
+        .expect("the composer is enabled (A1)");
+    assert_eq!(role.mcp_tools, COMPOSER_TOOLS);
+    assert_eq!(role.write, ["assets/music/**", "scenes/**/*.scene.ron"]);
+    assert_eq!(
+        role.skills,
+        [
+            "concordia-task-workflow",
+            "concordia-music",
+            "concordia-team-comms"
+        ]
+    );
+    for needle in [
+        "mcp__concordia__audio_render",
+        "Music",
+        "loop_start",
+        "\"stream\"",
+        "phase 3.7",
+    ] {
+        assert!(role.body.contains(needle), "the prompt explains {needle}");
+    }
+    assert!(
+        !role.body.contains("Disabled in the default team"),
+        "{}",
+        role.body
+    );
 }

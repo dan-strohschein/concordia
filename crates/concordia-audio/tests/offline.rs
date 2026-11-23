@@ -170,3 +170,22 @@ fn offline_backend_renders_bit_identical_buffers() {
             .all(|(a, b)| a.to_bits() == b.to_bits())
     );
 }
+
+/// `keep_last(n)` bounds the capture to the newest n frames: with 100, after rendering 250
+/// frames of a ramp k / 1000 (mono, so both channels), it holds frames 150..250.
+#[test]
+fn a_bounded_capture_keeps_the_last_frames() {
+    let (mut b, g) = backend(4);
+    b.keep_last(100);
+    let ramp: Vec<f32> = (0..1000).map(|k| k as f32 / 1000.0).collect();
+    b.handle()
+        .play(PlayRequest::new(
+            mono(48_000, ramp),
+            g.index(MASTER).unwrap(),
+        ))
+        .unwrap();
+    b.render_frames(250);
+    let kept = b.take_capture();
+    assert_eq!(kept.len(), 200);
+    assert_eq!((kept[0], kept[198]), (0.15, 0.249));
+}

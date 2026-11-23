@@ -337,3 +337,38 @@ fn bus_layout_files_roundtrip_canonical() {
         Err(AudioError::Parse(_))
     ));
 }
+
+/// The handle knows which voices still play: a voice is live from `play` until the mixer retires
+/// it (ended, stopped after its ramp, stolen or dropped) and `collect` frees it. A 3-frame
+/// one-shot is live after 2 frames and gone after 4; a dropped request is never live.
+#[test]
+fn the_handle_tracks_live_voices() {
+    let g = layout(0.0, 0.0, 0.0);
+    let (mut m, mut h) = mixer(g.clone(), 1);
+    let short = h
+        .play(on(&g, MASTER, mono(48_000, vec![0.1, 0.2, 0.3])))
+        .unwrap();
+    assert!(h.is_live(short));
+    render(&mut m, 2);
+    h.collect();
+    assert!(h.is_live(short));
+    render(&mut m, 2);
+    h.collect();
+    assert!(!h.is_live(short));
+    let kept = h
+        .play(PlayRequest {
+            priority: 9,
+            ..on(&g, MASTER, dc(1.0, 4800))
+        })
+        .unwrap();
+    let dropped = h
+        .play(PlayRequest {
+            priority: 1,
+            ..on(&g, MASTER, dc(1.0, 4800))
+        })
+        .unwrap();
+    render(&mut m, 1);
+    h.collect();
+    assert!(h.is_live(kept) && !h.is_live(dropped));
+    assert_eq!(h.live().collect::<Vec<_>>(), vec![kept]);
+}
