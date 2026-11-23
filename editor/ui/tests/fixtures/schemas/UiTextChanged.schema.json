@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The text a box changed to (signal).",
+  "properties": {
+    "text": {
+      "description": "The new text.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "text"
+  ],
+  "title": "UiTextChanged",
+  "type": "object",
+  "x-concordia-category": "UI",
+  "x-concordia-type": "UiTextChanged"
+}

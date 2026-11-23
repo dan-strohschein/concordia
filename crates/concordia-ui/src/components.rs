@@ -3,6 +3,8 @@
 use concordia_reflect::{RegistryError, TypeRegistry};
 use concordia_terra::register_component;
 
+use crate::{UiList, UiSpinBox, UiTextBox, UiTextChanged, UiTextSubmitted};
+
 use crate::{
     Theme, UiButton, UiDropdown, UiFocus, UiFocusChanged, UiImage, UiNinePatch, UiNode, UiPressed,
     UiProgress, UiRoot, UiScroll, UiSelected, UiSeparator, UiSlider, UiSounds, UiState, UiStyle,
@@ -35,6 +37,11 @@ pub fn register_types(registry: &mut TypeRegistry) -> Result<(), RegistryError> 
     register_component::<UiValueChanged>(registry)?;
     register_component::<UiSelected>(registry)?;
     register_component::<UiFocusChanged>(registry)?;
+    register_component::<UiTextBox>(registry)?;
+    register_component::<UiSpinBox>(registry)?;
+    register_component::<UiList>(registry)?;
+    register_component::<UiTextChanged>(registry)?;
+    register_component::<UiTextSubmitted>(registry)?;
     registry.register::<Theme>()?;
     Ok(())
 }

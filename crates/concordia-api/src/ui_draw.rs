@@ -17,6 +17,9 @@ pub struct UiFrame {
     pub scale: f32,
     /// Outline every node (the `ui_bounds` debug layer).
     pub bounds: bool,
+    /// The drawing camera's clip-from-world matrix, which places world-space UI (none: world
+    /// roots aren't drawn).
+    pub clip_from_world: Option<concordia_core::math::Mat4>,
 }
 
 impl UiFrame {
@@ -27,6 +30,7 @@ impl UiFrame {
             height,
             scale: 1.0,
             bounds: false,
+            clip_from_world: None,
         }
     }
 

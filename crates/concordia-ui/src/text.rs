@@ -47,6 +47,12 @@ pub struct TextLine {
     pub height: f32,
     /// Its content's width, not counting trailing spaces.
     pub width: f32,
+    /// Its first byte in the source text.
+    pub start: usize,
+    /// One past its last byte.
+    pub end: usize,
+    /// Caret stops: (byte offset, x) at every cluster edge, ascending by byte.
+    pub stops: Vec<(usize, f32)>,
 }
 
 /// A glyph at its pen position (on the baseline).
@@ -181,13 +187,17 @@ fn collect(shaped: &parley::Layout<u32>, joined: &str, runs: &[Run]) -> TextBloc
     for line in shaped.lines() {
         let m = line.metrics();
         let width = m.advance - m.hanging_advance;
+        let range = line.text_range();
         block.lines.push(TextLine {
-            text: joined.get(line.text_range()).unwrap_or_default().to_owned(),
+            text: joined.get(range.clone()).unwrap_or_default().to_owned(),
             x: m.offset,
             top: m.block_min_coord,
             baseline: m.baseline,
             height: m.block_max_coord - m.block_min_coord,
             width,
+            start: range.start,
+            end: range.end,
+            stops: stops(&line, range.clone(), m.offset),
         });
         block.width = block.width.max(width);
         for item in line.items() {
@@ -219,6 +229,71 @@ fn collect(shaped: &parley::Layout<u32>, joined: &str, runs: &[Run]) -> TextBloc
     }
     block.height = shaped.height();
     block
+}
+
+/// A line's caret stops: each cluster's leading edge, then the line's end.
+fn stops(
+    line: &parley::Line<'_, u32>,
+    range: std::ops::Range<usize>,
+    offset: f32,
+) -> Vec<(usize, f32)> {
+    let mut out = Vec::new();
+    let mut end_x = offset;
+    for item in line.items() {
+        let PositionedLayoutItem::GlyphRun(glyph_run) = item else {
+            continue;
+        };
+        let mut x = glyph_run.offset();
+        for cluster in glyph_run.run().visual_clusters() {
+            out.push((cluster.text_range().start, x));
+            x += cluster.advance();
+        }
+        end_x = end_x.max(x);
+    }
+    out.retain(|(b, _)| *b < range.end || range.is_empty());
+    out.push((range.end, end_x));
+    out.sort_by_key(|(b, _)| *b);
+    out.dedup_by_key(|(b, _)| *b);
+    if out.first().is_none_or(|(b, _)| *b > range.start) {
+        out.insert(0, (range.start, offset));
+    }
+    out
+}
+
+/// The x of byte offset `at` (the nearest stop at or before it) and its line's index.
+pub fn caret_x(block: &TextBlock, at: usize) -> Option<(f32, usize)> {
+    let i = block
+        .lines
+        .iter()
+        .position(|l| at < l.end || (at == l.end && !l.text.ends_with('\n')))
+        .or_else(|| block.lines.len().checked_sub(1))?;
+    let line = &block.lines[i];
+    let x = line
+        .stops
+        .iter()
+        .rev()
+        .find(|(b, _)| *b <= at)
+        .or(line.stops.first())
+        .map_or(line.x, |(_, x)| *x);
+    Some((x, i))
+}
+
+/// The byte offset of the stop nearest `p` (block space): the line under y (clamped), then the
+/// closest x.
+pub fn byte_at(block: &TextBlock, p: [f32; 2]) -> usize {
+    let Some(line) = block
+        .lines
+        .iter()
+        .find(|l| p[1] < l.top + l.height)
+        .or(block.lines.last())
+    else {
+        return 0;
+    };
+    line.stops
+        .iter()
+        .filter(|(b, _)| *b < line.end || !line.text.ends_with('\n'))
+        .min_by(|a, b| (a.1 - p[0]).abs().total_cmp(&(b.1 - p[0]).abs()))
+        .map_or(line.start, |(b, _)| *b)
 }
 
 fn font_index(fonts: &mut Vec<FontData>, font: &FontData) -> u32 {

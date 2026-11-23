@@ -375,3 +375,151 @@ pub fn controls_fixture() -> (Tree, MemoryAssets) {
     dropdown_open(&mut t, root, [420.0, 10.0]);
     (t, assets())
 }
+
+fn field(t: &mut Tree, root: EntityId, node: UiNode, b: UiTextBox, state: UiState) -> EntityId {
+    let id = t.child(
+        root,
+        UiNode {
+            padding: Edges::new(8.0, 0.0, 8.0, 0.0),
+            ..node
+        },
+    );
+    put(t, id, b);
+    put(t, id, style(PANEL));
+    put(t, id, state);
+    id
+}
+
+/// Text boxes: focused with a selection, a placeholder, a password and a multi-line one.
+pub fn text_boxes(t: &mut Tree, root: EntityId, [x, y]: [f32; 2]) {
+    let focused = UiState {
+        focused: true,
+        ..UiState::default()
+    };
+    field(
+        t,
+        root,
+        at(x, y, 220.0, 32.0),
+        UiTextBox {
+            text: "Hello, world".into(),
+            anchor: 7,
+            caret: 12,
+            ..UiTextBox::default()
+        },
+        focused.clone(),
+    );
+    field(
+        t,
+        root,
+        at(x, y + 40.0, 220.0, 32.0),
+        UiTextBox {
+            placeholder: "Player name".into(),
+            ..UiTextBox::default()
+        },
+        UiState::default(),
+    );
+    field(
+        t,
+        root,
+        at(x, y + 80.0, 220.0, 32.0),
+        UiTextBox {
+            text: "secret".into(),
+            password: true,
+            ..UiTextBox::default()
+        },
+        UiState::default(),
+    );
+    field(
+        t,
+        root,
+        at(x, y + 120.0, 220.0, 76.0),
+        UiTextBox {
+            text: "Notes wrap at the box's width and keep going on the next line.".into(),
+            multiline: true,
+            caret: 5,
+            anchor: 5,
+            ..UiTextBox::default()
+        },
+        focused,
+    );
+}
+
+/// A spin box at 42.
+pub fn spin_box(t: &mut Tree, root: EntityId, [x, y]: [f32; 2]) {
+    let id = field(
+        t,
+        root,
+        at(x, y, 120.0, 32.0),
+        UiTextBox {
+            text: "42".into(),
+            ..UiTextBox::default()
+        },
+        UiState::default(),
+    );
+    put(
+        t,
+        id,
+        UiSpinBox {
+            value: 42.0,
+            ..UiSpinBox::default()
+        },
+    );
+}
+
+/// A multi-select list of six labelled items, two selected.
+pub fn list(t: &mut Tree, root: EntityId, [x, y]: [f32; 2]) {
+    let id = t.child(
+        root,
+        UiNode {
+            layout: Layout::Flex(Flex {
+                direction: Direction::Column,
+                ..Flex::default()
+            }),
+            padding: Edges::all(4.0),
+            ..at(x, y, 180.0, 180.0)
+        },
+    );
+    put(
+        t,
+        id,
+        UiList {
+            selected: vec![1, 3],
+            multi: true,
+        },
+    );
+    put(t, id, style(PANEL));
+    for name in ["Sword", "Shield", "Potion", "Bow", "Arrows", "Map"] {
+        let item = t.child(
+            id,
+            UiNode {
+                height: Length::Px(28.0),
+                padding: Edges::new(8.0, 0.0, 8.0, 0.0),
+                ..UiNode::default()
+            },
+        );
+        put(
+            t,
+            item,
+            UiText {
+                valign: VAlign::Center,
+                ..UiText::plain(name)
+            },
+        );
+    }
+}
+
+/// A 640 × 360 root of text boxes, a spin box and a list.
+pub fn text_fixture() -> (Tree, MemoryAssets) {
+    let mut t = Tree::new();
+    let root = t.root(
+        UiRoot {
+            canvas: [640.0, 360.0],
+            ..UiRoot::default()
+        },
+        UiNode::default(),
+    );
+    text_boxes(&mut t, root, [10.0, 10.0]);
+    spin_box(&mut t, root, [250.0, 10.0]);
+    list(&mut t, root, [400.0, 10.0]);
+    (t, assets())
+}

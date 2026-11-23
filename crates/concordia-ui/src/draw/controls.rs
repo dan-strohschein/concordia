@@ -8,7 +8,7 @@ use super::{Base, Drawer, Px, unbounded};
 use crate::controls::ToggleLook;
 use crate::geom::Rect;
 use crate::layout::{NodeLayout, UiLayout};
-use crate::parts::{Parts, ROW_PAD, TAB_PAD_X, TAB_PAD_Y, TIP_PAD};
+use crate::parts::{Parts, ROW_PAD, TAB_PAD_X, TAB_PAD_Y, TIP_PAD, TextBoxParts};
 use crate::scene::UiElement;
 
 /// The focus ring's color (linear RGBA).
@@ -57,6 +57,7 @@ impl Drawer<'_> {
                 }
                 self.arrow(*arrow, c, base, px);
             }
+            Some(Parts::TextBox(p)) => self.text_box(p, node, c, base, px),
             Some(Parts::Tabs { tabs }) => {
                 let selected = el.tabs.as_ref().map_or(0, |t| t.selected as usize);
                 let last = el.children.len().saturating_sub(1);
@@ -83,6 +84,46 @@ impl Drawer<'_> {
             quad.border = px.len(RING);
             quad.border_color = FOCUS_COLOR;
             quad.radius = node.style.radius.map(|v| px.len(v + RING));
+        }
+    }
+
+    /// The selection, the (masked) text or placeholder, and the caret, clipped to the content;
+    /// then a spin box's arrows.
+    fn text_box(&mut self, p: &TextBoxParts, node: &NodeLayout, c: [f32; 4], base: &Base, px: &Px) {
+        let [x0, y0, x1, y1] = px.clip(node.content);
+        let mut inner = *base;
+        inner.clip = [
+            base.clip[0].max(x0),
+            base.clip[1].max(y0),
+            base.clip[2].min(x1),
+            base.clip[3].min(y1),
+        ];
+        for r in &p.selection {
+            self.push(
+                px.rect(*r),
+                UiPaint::Solid(alpha(FOCUS_COLOR, 0.35)),
+                &inner,
+            );
+        }
+        let mut text = inner;
+        if p.placeholder {
+            text.opacity *= 0.5;
+        }
+        self.glyphs(&p.text, p.origin, &text, px);
+        if let Some(caret) = p.caret {
+            self.push(px.rect(caret), UiPaint::Solid(c), &inner);
+        }
+        if let Some((up, down)) = p.spin {
+            for (half, pointing_up) in [(up, true), (down, false)] {
+                self.push(px.rect(half), UiPaint::Solid(alpha(c, 0.08)), base);
+                let r = Rect::new(
+                    half.x + (half.w - 8.0) / 2.0,
+                    half.y + (half.h - 4.0) / 2.0,
+                    8.0,
+                    4.0,
+                );
+                self.triangle(r, pointing_up, c, base, px);
+            }
         }
     }
 
@@ -138,23 +179,45 @@ impl Drawer<'_> {
 
     /// A downward triangle: the box masked to a wedge about its bottom middle.
     fn arrow(&mut self, r: Rect, c: [f32; 4], base: &Base, px: &Px) {
+        self.triangle(r, false, c, base, px);
+    }
+
+    /// A triangle filling `r`, pointing up or down: the box masked to a wedge about the middle
+    /// of the edge the point is on.
+    fn triangle(&mut self, r: Rect, up: bool, c: [f32; 4], base: &Base, px: &Px) {
         let half = (r.w / 2.0).atan2(r.h);
-        let center = px.point([r.x + r.w / 2.0, r.y + r.h]);
+        let (y, start) = if up {
+            (r.y, std::f32::consts::PI)
+        } else {
+            (r.y + r.h, 0.0)
+        };
+        let center = px.point([r.x + r.w / 2.0, y]);
         self.push(px.rect(r), UiPaint::Solid(c), base).mask = UiMask::Angular {
             center,
-            start: 0.0,
+            start,
             cw: half,
             ccw: half,
         };
     }
 
-    /// The scroll bars of `root`'s nodes, over their content.
-    pub(super) fn bars(&mut self, layout: &UiLayout, root: concordia_core::id::EntityId, px: &Px) {
+    /// The scroll bars of `root`'s nodes and its lists' selections, over their content.
+    pub(super) fn bars(
+        &mut self,
+        layout: &UiLayout,
+        elements: &std::collections::BTreeMap<concordia_core::id::EntityId, &UiElement>,
+        root: concordia_core::id::EntityId,
+        px: &Px,
+    ) {
         for id in layout
             .order
             .iter()
             .filter(|id| layout.nodes[*id].root == root)
         {
+            if let Some(el) = elements.get(id)
+                && let Some(list) = &el.list
+            {
+                self.selections(layout, el, list, px);
+            }
             let Some(Parts::Scroll {
                 vertical,
                 horizontal,
@@ -176,6 +239,34 @@ impl Drawer<'_> {
                 self.push(px.rect(bar.thumb), UiPaint::Solid(alpha(c, 0.45)), &base)
                     .radius = r;
             }
+        }
+    }
+
+    /// A list's selected items, highlighted over them.
+    fn selections(
+        &mut self,
+        layout: &UiLayout,
+        el: &UiElement,
+        list: &crate::textbox::UiList,
+        px: &Px,
+    ) {
+        for i in &list.selected {
+            let Some(n) = el
+                .children
+                .get(*i as usize)
+                .and_then(|item| layout.nodes.get(&item.entity))
+            else {
+                continue;
+            };
+            let base = Base {
+                clip: px.clip(n.clip),
+                opacity: n.opacity,
+            };
+            self.push(
+                px.rect(n.rect),
+                UiPaint::Solid(alpha(FOCUS_COLOR, 0.3)),
+                &base,
+            );
         }
     }
 

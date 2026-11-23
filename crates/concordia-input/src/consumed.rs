@@ -1,4 +1,5 @@
-//! `ConsumedActions`: input a consumer (the in-game UI) took this tick, so world readers skip it.
+//! `ConsumedActions`: input a consumer (the in-game UI) took this tick (the pointer, or the
+//! keyboard while a text field has focus), so world readers skip it.
 
 use std::collections::BTreeSet;
 
@@ -9,7 +10,9 @@ use crate::value::{ActionState, ActionStates};
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ConsumedActions {
     pointer_actions: BTreeSet<String>,
+    key_actions: BTreeSet<String>,
     pointer: bool,
+    keys: bool,
 }
 
 impl ConsumedActions {
@@ -21,9 +24,17 @@ impl ConsumedActions {
             .filter(|(_, def)| def.bindings.iter().any(InputMap::is_pointer))
             .map(|(name, _)| name.clone())
             .collect();
+        let key_actions = map
+            .actions
+            .iter()
+            .filter(|(_, def)| def.bindings.iter().any(InputMap::is_key))
+            .map(|(name, _)| name.clone())
+            .collect();
         Self {
             pointer_actions,
+            key_actions,
             pointer: false,
+            keys: false,
         }
     }
 
@@ -37,14 +48,26 @@ impl ConsumedActions {
         self.pointer
     }
 
+    /// The keyboard was taken (a focused text field): every key-bound action is hidden.
+    pub fn consume_keys(&mut self) {
+        self.keys = true;
+    }
+
+    /// Whether the keyboard was consumed.
+    pub fn keys_consumed(&self) -> bool {
+        self.keys
+    }
+
     /// Whether `action` is hidden this tick.
     pub fn is_consumed(&self, action: &str) -> bool {
-        self.pointer && self.pointer_actions.contains(action)
+        (self.pointer && self.pointer_actions.contains(action))
+            || (self.keys && self.key_actions.contains(action))
     }
 
     /// Forgets this tick's consumption.
     pub fn clear(&mut self) {
         self.pointer = false;
+        self.keys = false;
     }
 }
 

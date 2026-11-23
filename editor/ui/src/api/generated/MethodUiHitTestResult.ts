@@ -20,6 +20,11 @@ export type HitPart =
     }
   | {
       Track: Orientation;
+    }
+  | "SpinUp"
+  | "SpinDown"
+  | {
+      Item: number;
     };
 /**
  * Which way a separator runs.

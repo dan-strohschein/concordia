@@ -192,3 +192,61 @@ fn replay_with_clicks_drags_and_resize_is_exact_at_1_and_8_threads() {
     assert_eq!(eight, hash, "8 threads");
     assert_eq!(values8, values);
 }
+
+/// Typed text replays exactly (2.7b.3): a session clicks a text box at (10, 220)–(210, 250),
+/// types "hello", Backspace, " wor" and "ld!", then selects the last character with Shift-← and
+/// types "?". Step by step: "hello" → Backspace → "hell" → " wor" → "hell wor" → "ld!" →
+/// "hell world!" → Shift-← selects "!" → "?" replaces it: "hell world?". It replays to the same
+/// hash, and runs the same at 8 threads.
+#[test]
+fn text_input_is_recorded_and_replayed() {
+    let typing = |threads: usize| {
+        let mut stage = Stage::new(threads);
+        let root = stage.spawn(json!({"UiRoot": {"canvas": [400.0, 300.0]}, "UiNode": {}}));
+        let field = stage.spawn(pinned(
+            &root,
+            [10.0, 220.0, 210.0, 250.0],
+            json!({"UiTextBox": {}}),
+        ));
+        stage.ok(
+            "replay.record",
+            json!({"action": "start", "path": PATH, "checkpoint_every": 5}),
+        );
+        let e = |tick: u64, event: Value| json!({"tick": tick, "event": event});
+        let text = |s: &str| json!({"Text": {"Insert": s}});
+        let edit = |k: &str, select: bool| json!({"Text": {"Edit": {"key": k, "select": select}}});
+        let events = json!([
+            e(2, json!({"PointerMove": {"x": 100.0, "y": 235.0}})),
+            e(
+                3,
+                json!({"MouseButton": {"button": "Left", "pressed": true}})
+            ),
+            e(
+                4,
+                json!({"MouseButton": {"button": "Left", "pressed": false}})
+            ),
+            e(6, text("hello")),
+            e(7, edit("Backspace", false)),
+            e(8, text(" wor")),
+            e(9, text("ld!")),
+            e(11, edit("Left", true)),
+            e(12, text("?")),
+        ]);
+        stage.ok("input.inject", json!({ "events": events }));
+        let hash = stage.ok("sim.step", json!({"ticks": 20}))["world_hash"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        stage.ok("replay.record", json!({"action": "stop"}));
+        let typed = stage.play(&field, "UiTextBox")["text"].clone();
+        (stage, hash, typed)
+    };
+    let (mut one, hash, typed) = typing(1);
+    assert_eq!(typed, "hell world?");
+    one.ok("sim.stop", json!({}));
+    let run = one.ok("replay.run", json!({"path": PATH}));
+    assert_eq!(run["ok"], true, "{run}");
+    assert_eq!(run["world_hash"], hash.as_str());
+    let (_, eight, typed8) = typing(8);
+    assert_eq!((eight, typed8), (hash, typed));
+}

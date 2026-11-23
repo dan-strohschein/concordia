@@ -290,13 +290,20 @@ fn capture_ui(
         .at("/ui_scale"));
     }
     let layers = capture_layers(engine, p);
+    let world = p.world.unwrap_or_default();
+    let clip_from_world = {
+        let w = engine.world(world)?;
+        let requested = p.camera.as_ref().map(|c| c.resolve(w)).transpose()?;
+        crate::pointer::ui_camera(w, requested, p.view.as_ref(), p.width, p.height)
+    };
     let frame = concordia_api::UiFrame {
         width: p.width,
         height: p.height,
         scale,
         bounds: layers.iter().any(|l| l == concordia_api::UI_BOUNDS_LAYER),
+        clip_from_world,
     };
-    Ok(engine.ui_draw(p.world.unwrap_or_default(), &frame))
+    Ok(engine.ui_draw(world, &frame))
 }
 
 /// A capture's layers: its own `debug`, plus the viewport's when it draws the editor overlays.
@@ -882,11 +889,16 @@ pub(crate) fn queue_present(
         Look::Camera(id) => (id, None, Source::Scene(id)),
     };
     let layers = viewport_layers(engine);
+    let clip_from_world = engine
+        .world(t.world.unwrap_or_default())
+        .ok()
+        .and_then(|w| crate::pointer::ui_camera(w, camera, view.as_ref(), t.width, t.height));
     let ui_frame = concordia_api::UiFrame {
         width: t.width,
         height: t.height,
         scale: t.scale,
         bounds: layers.iter().any(|l| l == concordia_api::UI_BOUNDS_LAYER),
+        clip_from_world,
     };
     let ui = engine.ui_draw(t.world.unwrap_or_default(), &ui_frame);
     let request = RenderRequest {

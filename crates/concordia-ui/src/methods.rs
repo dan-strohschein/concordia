@@ -25,7 +25,11 @@ use crate::style::ResolvedStyle;
 
 /// Every UI method.
 pub fn all() -> Vec<MethodInfo> {
-    vec![MethodInfo::of::<UiInspect>(), MethodInfo::of::<UiHitTest>()]
+    vec![
+        MethodInfo::of::<UiInspect>(),
+        MethodInfo::of::<UiHitTest>(),
+        MethodInfo::of::<UiClipboardGet>(),
+    ]
 }
 
 /// Lay out a world's UI and report every node's rects, resolved style and text lines (read
@@ -352,5 +356,50 @@ fn report(
                 error: e.to_string(),
             })
             .collect(),
+    }
+}
+
+/// Read the engine clipboard text box copies and cuts wrote (read only). The windowed player
+/// mirrors it to the OS clipboard when `generation` changes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct UiClipboardGet;
+
+/// `ui.clipboard` params.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(default, deny_unknown_fields)]
+pub struct UiClipboardParams {
+    /// Which world (default play).
+    pub world: Option<WorldSel>,
+}
+
+/// `ui.clipboard` result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct UiClipboardResult {
+    /// The text.
+    pub text: String,
+    /// Bumped on every copy or cut (0: never written).
+    pub generation: u64,
+}
+
+impl Method for UiClipboardGet {
+    const NAME: &'static str = "ui.clipboard";
+    const MUTATES: bool = false;
+    type Params = UiClipboardParams;
+    type Result = UiClipboardResult;
+
+    fn call(
+        engine: &mut Engine,
+        _: &CallCtx,
+        p: UiClipboardParams,
+    ) -> Result<UiClipboardResult, ApiError> {
+        let world = engine.world(p.world.unwrap_or(WorldSel::play))?;
+        let clip = world
+            .resource::<crate::textbox::UiClipboard>()
+            .cloned()
+            .unwrap_or_default();
+        Ok(UiClipboardResult {
+            text: clip.text,
+            generation: clip.generation,
+        })
     }
 }

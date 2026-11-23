@@ -8,7 +8,7 @@ use crate::assets::UiAssets;
 use crate::atlas::GlyphAtlas;
 use crate::draw::draw_list;
 use crate::fonts::UiFonts;
-use crate::layout::{UiLayout, compute_layout};
+use crate::layout::{UiLayout, compute_layout, compute_layout_seen};
 use crate::scene::UiScene;
 
 /// Fonts and the glyph atlas (presentation state, kept outside the world).
@@ -50,7 +50,13 @@ impl UiContext {
         assets: &mut dyn UiAssets,
         frame: &UiFrame,
     ) -> UiDrawList {
-        let layout = compute_layout(scene, &mut self.fonts, assets, frame.logical());
+        let layout = compute_layout_seen(
+            scene,
+            &mut self.fonts,
+            assets,
+            frame.logical(),
+            frame.clip_from_world,
+        );
         draw_list(scene, &layout, &mut self.atlas, assets, frame)
     }
 }

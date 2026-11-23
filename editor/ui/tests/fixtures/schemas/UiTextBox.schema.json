@@ -1,0 +1,92 @@
+{
+  "$defs": {
+    "Wrap": {
+      "description": "Where lines may break.",
+      "oneOf": [
+        {
+          "const": "None",
+          "description": "Only at newlines."
+        },
+        {
+          "const": "Word",
+          "description": "At word boundaries (UAX #14)."
+        },
+        {
+          "const": "Anywhere",
+          "description": "Anywhere, when a word doesn't fit."
+        }
+      ],
+      "title": "Wrap",
+      "x-concordia-type": "Wrap"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "anchor": 0,
+    "caret": 0,
+    "editable": true,
+    "max_len": null,
+    "multiline": false,
+    "password": false,
+    "placeholder": "",
+    "text": "",
+    "wrap": "Word"
+  },
+  "description": "An editable text field. The engine moves `caret` and `anchor` (byte offsets; the selection\nlies between them) as you type and click.",
+  "properties": {
+    "anchor": {
+      "description": "The selection's other end, a byte offset (equal to `caret` when nothing is selected).",
+      "maximum": 4294967295,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "caret": {
+      "description": "The caret, a byte offset.",
+      "maximum": 4294967295,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "editable": {
+      "description": "Typing changes it (else it only selects and copies).",
+      "type": "boolean"
+    },
+    "max_len": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        }
+      ],
+      "description": "The most characters it takes."
+    },
+    "multiline": {
+      "description": "Enter breaks lines instead of submitting.",
+      "type": "boolean"
+    },
+    "password": {
+      "description": "Draws a mask for each character (the text itself stays real).",
+      "type": "boolean"
+    },
+    "placeholder": {
+      "description": "Shown, muted, while the text is empty.",
+      "type": "string"
+    },
+    "text": {
+      "description": "The text.",
+      "type": "string"
+    },
+    "wrap": {
+      "$ref": "#/$defs/Wrap",
+      "description": "How a multi-line box wraps."
+    }
+  },
+  "title": "UiTextBox",
+  "type": "object",
+  "x-concordia-category": "UI",
+  "x-concordia-type": "UiTextBox"
+}

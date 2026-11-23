@@ -69,7 +69,7 @@ pub fn draw_list(
                 d.controls(el, &layout.nodes[id], layout.parts.get(id), &base, &px);
             }
         }
-        d.bars(layout, root.entity, &px);
+        d.bars(layout, &elements, root.entity, &px);
     }
     d.top(layout, frame.scale);
     if frame.bounds {

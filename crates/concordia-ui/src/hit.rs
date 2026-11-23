@@ -27,6 +27,12 @@ pub enum HitPart {
     Thumb(Orientation),
     /// A scroll bar's track outside the thumb.
     Track(Orientation),
+    /// A spin box's up arrow.
+    SpinUp,
+    /// A spin box's down arrow.
+    SpinDown,
+    /// A list's item (its index among the list's children).
+    Item(u32),
 }
 
 /// What is under a point.
@@ -175,7 +181,11 @@ pub fn hit_with(index: &Index<'_>, layout: &UiLayout, p: [f32; 2]) -> Option<Hit
             (e.is_interactive() || e.scroll.is_some()) && !e.disabled()
         });
         let part = widget
-            .and_then(|w| tab_under(layout, w, q))
+            .and_then(|w| {
+                tab_under(layout, w, q)
+                    .or_else(|| spin_under(layout, w, q))
+                    .or_else(|| item_under(index, layout, w, q))
+            })
             .unwrap_or(HitPart::Body);
         return Some(hit(index, node.root, id, widget, part, q));
     }
@@ -240,4 +250,34 @@ fn tab_under(layout: &UiLayout, w: EntityId, q: [f32; 2]) -> Option<HitPart> {
     tabs.iter()
         .position(|t| t.rect.contains(q))
         .map(|i| HitPart::Tab(i as u32))
+}
+
+/// The spin arrow of `w` under `q`.
+fn spin_under(layout: &UiLayout, w: EntityId, q: [f32; 2]) -> Option<HitPart> {
+    let Some(Parts::TextBox(p)) = layout.parts.get(&w) else {
+        return None;
+    };
+    let (up, down) = p.spin?;
+    if up.contains(q) {
+        Some(HitPart::SpinUp)
+    } else if down.contains(q) {
+        Some(HitPart::SpinDown)
+    } else {
+        None
+    }
+}
+
+/// The item of list `w` under `q`.
+fn item_under(index: &Index<'_>, layout: &UiLayout, w: EntityId, q: [f32; 2]) -> Option<HitPart> {
+    let el = index.elements.get(&w)?;
+    el.list.as_ref()?;
+    el.children
+        .iter()
+        .position(|c| {
+            layout
+                .nodes
+                .get(&c.entity)
+                .is_some_and(|n| n.rect.contains(q))
+        })
+        .map(|i| HitPart::Item(i as u32))
 }

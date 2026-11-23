@@ -25,6 +25,9 @@ allow = [
   "Zlib",
   "Unicode-3.0",
   "CC0-1.0",
+  # Boost 1.0, a short permissive licence (author decision P2, 2026-11-22): arboard and its
+  # clipboard-win backend, the windowed player's OS clipboard (M2 phase 2.7b.3).
+  "BSL-1.0",
 ]
 # Editor shell only (author decision 2026-11-18): Tauri pulls these MPL-2.0 crates (Servo's CSS
 # parsing, and dirs' option-ext). Used unmodified as dependencies; the engine keeps permissive-only.

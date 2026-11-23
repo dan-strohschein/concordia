@@ -5,6 +5,7 @@ use concordia_reflect::Reflect;
 use serde::{Deserialize, Serialize};
 
 use crate::device::{KeyCode, MouseButton};
+use crate::text::TextInput;
 use crate::value::ActionValue;
 
 /// One input event, from the OS or injected through `input.inject`.
@@ -60,6 +61,8 @@ pub enum InputEvent {
         /// Height in logical pixels.
         height: f32,
     },
+    /// Typed text or an editing command (text fields).
+    Text(TextInput),
     /// Set an action's value directly, bypassing bindings (it holds until set again).
     Action {
         /// Action name.

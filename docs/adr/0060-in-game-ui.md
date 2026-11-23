@@ -1,5 +1,5 @@
 # ADR-0060: In-game UI: retained ECS widgets, taffy plus anchors, parley and swash, one batched pass
-- Status: Accepted (M2 phase 2.7b, 2026-11-22; author decisions U1–U12, P1, P2). 2.7b.1 lands the display widgets, layout, text, themes, the draw-list seam, the `ui` pass and `ui.inspect`. 2.7b.2 (2026-11-23) adds interaction, focus, scrolling, sounds and `ui.hit_test`. 2.7b.3 adds text boxes and world-space UI.
+- Status: Accepted (M2 phase 2.7b, 2026-11-22; author decisions U1–U12, P1, P2). 2.7b.1 lands the display widgets, layout, text, themes, the draw-list seam, the `ui` pass and `ui.inspect`. 2.7b.2 (2026-11-23) adds interaction, focus, scrolling, sounds and `ui.hit_test`. 2.7b.3 (2026-11-23) adds text boxes, spin boxes, lists, typed text, the clipboard and world-space UI.
 - Date: 2026-11-22
 - Builds on: ADR-0044 (asset ids and the DDC), ADR-0047 (overlays), ADR-0063 (determinism contract), ADR-0069 (signals), ADR-0072 (replay v0), ADR-0073 (per-role tool budgets), ADR-0074 (tweens), ADR-0075 (play-world writes), ADR-0076 (`#[reflect(presentation)]`), ADR-0078 (pointer rays and click-to-move)
 
@@ -66,6 +66,13 @@ Games need HUDs, floating bars, damage numbers and menus. Agents must be able to
 - **Consumption:** the pointer is consumed over interactive widgets, scroll containers, tooltips, pictures and boxes with a background or border (Godot's `mouse_filter`, as `UiNode.pointer: Auto | Stop | Ignore`), and while a press is held. `ConsumedActions` (in `concordia-input`) hides every pointer-bound action from `ActionStates::unconsumed`; `nav.click` uses it.
 - **State:** `UiState` (hover, press, focus, hover ticks, the highlighted row, a thumb grab, the tooltip point) and widget values are hashed simulation state; `disabled` lives on `UiState` (the only field authors set), not on `UiButton`.
 - **Drawing:** widget parts (toggle boxes, slider tracks, dropdown arrows as a wedge-masked quad, tab titles, scroll bars, focus rings) are computed once by layout (`UiLayout::parts`) and read by both drawing and hit tests; open lists and tooltips draw above every root.
+
+## 2.7b.3 notes (text and world)
+- **Typed text is input** (`InputEvent::Text(TextInput::Insert | Edit { key, select })`), sampled into the tick's `TypedText` and recorded by replays as an optional `text` list on the tick's input change. Ticks without typing write nothing new, so the format stays version 0 (a file with typing needs this build, which the header's build identity already requires).
+- **Editing** is a pure function over `UiTextBox` and the engine clipboard; Up and Down move by logical lines (no layout needed); caret and selection geometry come from per-line caret stops read from parley's clusters. A focused text box consumes every key-bound action.
+- **The clipboard** is a play-world resource (`UiClipboard`, read by `ui.clipboard`); the windowed player bridges it to the OS through `arboard` (BSL-1.0 allowed, P2) and injects OS pastes as typed text, so replays never read the OS.
+- **A spin box is a text box plus arrow parts on one entity**, not built child entities (the refinement): nothing is spawned behind the author's back, and the text box's editing is reused as is.
+- **World-space roots** are placed with the drawing camera's clip-from-world matrix (`UiFrame::clip_from_world`, filled by the renderer for captures and the window). Without a camera (the simulation, `ui.inspect`, `ui.hit_test`) they are skipped, so they take no input in M2.
 
 ## Rejected
 - **egui:** immediate mode, styled like a tool, with no stable entities for agents to edit.

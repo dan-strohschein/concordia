@@ -91,7 +91,14 @@ fn ui_module_registers_its_method_and_debug_layer() {
         .iter()
         .map(|m| (m.name, m.mutates))
         .collect();
-    assert_eq!(names, [("ui.inspect", false), ("ui.hit_test", false)]);
+    assert_eq!(
+        names,
+        [
+            ("ui.inspect", false),
+            ("ui.hit_test", false),
+            ("ui.clipboard", false)
+        ]
+    );
     assert_eq!(module.debug_layers(), [UI_BOUNDS_LAYER]);
     assert_eq!(UI_BOUNDS_LAYER, "ui_bounds");
 }
@@ -226,6 +233,27 @@ fn tweens_animate_ui_style_opacity() {
         .clone();
     let opacity = style["opacity"].as_f64().unwrap();
     assert!((opacity - 0.5).abs() < 1e-4, "{style}");
+}
+
+/// Damage numbers rise and fade (2.7b.3): `Tweens` animate a world root's `offset` (a field
+/// inside the `World` variant) like any number. Offset y 0 → 2 over 1 s, linear, is 1 after
+/// 30 ticks at 60 Hz.
+#[test]
+fn tweens_animate_a_world_root_offset() {
+    let mut rig = Rig::new(1);
+    let id = rig.spawn(json!({
+        "UiRoot": {"canvas": [80.0, 24.0], "space": {"World": {"offset": [0.0, 0.0, 0.0], "pixel_size": 1.0}}},
+        "UiNode": {},
+        "Tweens": {"tweens": [{"component": "UiRoot", "field": "/space/World/offset/1", "to": [2.0], "duration": 1.0}]},
+    }));
+    rig.ok("sim.step", json!({"ticks": 30}));
+    let root = rig.ok(
+        "component.get",
+        json!({"entity": id, "component": "UiRoot", "world": "play"}),
+    )["value"]
+        .clone();
+    let y = root["space"]["World"]["offset"][1].as_f64().unwrap();
+    assert!((y - 1.0).abs() < 1e-4, "{root}");
 }
 
 /// The UI is presentation: stepping with the UI drawn (and inspected) after every tick gives the

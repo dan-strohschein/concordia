@@ -11,6 +11,7 @@ mod map;
 mod module;
 mod pointer;
 mod sampler;
+mod text;
 mod value;
 
 pub use consumed::ConsumedActions;
@@ -21,4 +22,5 @@ pub use map::{ActionDef, ActionKind, Binding, InputMap};
 pub use module::{InjectedEvent, InputInject, InputInjectParams, InputInjectResult, InputModule};
 pub use pointer::pointer_ray;
 pub use sampler::{InputSampler, tick_for_time};
+pub use text::{EditKey, MAX_INSERT_BYTES, TextInput, TypedText};
 pub use value::{ActionState, ActionStates, ActionValue, InputFrame};

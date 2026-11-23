@@ -6,6 +6,7 @@
 use std::collections::BTreeMap;
 
 use concordia_core::id::EntityId;
+use concordia_core::math::{Mat4, Vec3};
 use taffy::compute_leaf_layout;
 use taffy::prelude::{
     AlignItems, AvailableSpace, Dimension, Display, FlexDirection, FlexWrap, GridTemplateComponent,
@@ -21,15 +22,16 @@ use crate::fonts::UiFonts;
 use crate::geom::Rect;
 use crate::node::{Align, Direction, Justify, Layout, Length, Position, Track, UiNode};
 use crate::parts::{
-    Label, List, Parts, ROW_PAD, Row, SLIDER_SIZE, TAB_PAD_X, TAB_PAD_Y, Tip, clamp_offset,
-    dropdown_arrow, first_row, list_rect, scroll_bars, slider_parts, tip_rect, toggle_knob,
+    CARET_MARGIN, CARET_W, Label, List, Parts, ROW_PAD, Row, SLIDER_SIZE, SPIN_W, TAB_PAD_X,
+    TAB_PAD_Y, TEXT_BOX_SIZE, TextBoxParts, Tip, clamp_offset, dropdown_arrow, first_row,
+    list_rect, scroll_bars, slider_parts, tip_rect, toggle_knob,
 };
-use crate::root::{CanvasMap, canvas_map};
-use crate::scene::{UiElement, UiScene};
+use crate::root::{CanvasMap, RootSpace, canvas_map};
+use crate::scene::{UiElement, UiScene, UiTree};
 use crate::style::{ResolvedStyle, UiThemed, WidgetState};
-use crate::text::{TextBlock, shape};
+use crate::text::{TextBlock, caret_x, shape};
 use crate::theme::{ThemeClass, resolve};
-use crate::widgets::{Orientation, UiText};
+use crate::widgets::{Orientation, UiText, Wrap};
 
 /// One node's results.
 #[derive(Debug, Clone, PartialEq)]
@@ -81,19 +83,30 @@ pub struct UiLayout {
 /// No clip: a rect far larger than any canvas.
 pub const UNBOUNDED: Rect = Rect::new(-1.0e7, -1.0e7, 2.0e7, 2.0e7);
 
-/// Lays out `scene` for a `viewport` in logical pixels.
+/// Lays out `scene` for a `viewport` in logical pixels (screen roots only).
 pub fn compute_layout(
     scene: &UiScene,
     fonts: &mut UiFonts,
     assets: &mut dyn UiAssets,
     viewport: [f32; 2],
 ) -> UiLayout {
+    compute_layout_seen(scene, fonts, assets, viewport, None)
+}
+
+/// Lays out `scene` for a `viewport` seen through `clip_from_world`: world roots first, far to
+/// near (hidden behind the camera, past its far plane or off screen), then screen roots.
+pub fn compute_layout_seen(
+    scene: &UiScene,
+    fonts: &mut UiFonts,
+    assets: &mut dyn UiAssets,
+    viewport: [f32; 2],
+    clip_from_world: Option<Mat4>,
+) -> UiLayout {
     let mut out = UiLayout {
         problems: scene.problems.clone(),
         ..UiLayout::default()
     };
-    for tree in &scene.trees {
-        let map = canvas_map(&tree.root, viewport);
+    for (tree, map) in placed_roots(scene, viewport, clip_from_world) {
         let entity = tree.element.entity;
         out.roots.push(RootLayout {
             entity,
@@ -114,6 +127,71 @@ pub fn compute_layout(
         pass.finish(&tree.element, UNBOUNDED, 1.0);
     }
     out
+}
+
+/// The roots to lay out with their maps: world roots seen by the camera, far to near, then
+/// screen roots in order.
+fn placed_roots(
+    scene: &UiScene,
+    viewport: [f32; 2],
+    clip_from_world: Option<Mat4>,
+) -> Vec<(&UiTree, CanvasMap)> {
+    let mut world: Vec<(f32, &UiTree, CanvasMap)> = scene
+        .trees
+        .iter()
+        .filter_map(|tree| {
+            let RootSpace::World { offset, pixel_size } = tree.root.space else {
+                return None;
+            };
+            let p = tree.position? + Vec3::from(offset);
+            let (center, depth) = project(clip_from_world?, p, viewport)?;
+            let size = tree.root.canvas;
+            let map = CanvasMap {
+                scale: [pixel_size, pixel_size],
+                offset: [
+                    center[0] - size[0] * pixel_size / 2.0,
+                    center[1] - size[1] * pixel_size / 2.0,
+                ],
+                size,
+            };
+            let on_screen = map.offset[0] < viewport[0]
+                && map.offset[1] < viewport[1]
+                && map.offset[0] + size[0] * pixel_size > 0.0
+                && map.offset[1] + size[1] * pixel_size > 0.0;
+            on_screen.then_some((depth, tree, map))
+        })
+        .collect();
+    world.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let screen = scene
+        .trees
+        .iter()
+        .filter(|t| t.root.space == RootSpace::Screen)
+        .map(|t| (t, canvas_map(&t.root, viewport)));
+    world
+        .into_iter()
+        .map(|(_, t, m)| (t, m))
+        .chain(screen)
+        .collect()
+}
+
+/// A world point's viewport position (logical pixels) and depth (0 far .. 1 near, reversed Z),
+/// or `None` behind the eye or outside the depth range.
+fn project(clip_from_world: Mat4, p: Vec3, viewport: [f32; 2]) -> Option<([f32; 2], f32)> {
+    let clip = clip_from_world * p.extend(1.0);
+    if clip.w <= 1e-6 {
+        return None;
+    }
+    let ndc = clip.truncate() / clip.w;
+    if !(0.0..=1.0).contains(&ndc.z) {
+        return None;
+    }
+    Some((
+        [
+            (ndc.x + 1.0) / 2.0 * viewport[0],
+            (1.0 - ndc.y) / 2.0 * viewport[1],
+        ],
+        ndc.z,
+    ))
 }
 
 /// What a taffy leaf measures.
@@ -375,6 +453,13 @@ impl Pass<'_> {
                 Orientation::Vertical => [h, w],
             }));
         }
+        if let Some(b) = &el.text_box {
+            let style = self.styles.get(&el.entity).cloned().unwrap_or_default();
+            let line = self.line_height(&style);
+            let lines = if b.multiline { 4.0 } else { 1.0 };
+            let width = if b.multiline { 240.0 } else { TEXT_BOX_SIZE[0] };
+            return Some(Leaf::Fixed([width, line * lines]));
+        }
         if let Some(dropdown) = &el.dropdown {
             let style = self.styles.get(&el.entity).cloned().unwrap_or_default();
             let widest = dropdown
@@ -415,6 +500,9 @@ impl Pass<'_> {
         if el.tabs.is_some() {
             extras.top = self.line_height(&style) + 2.0 * TAB_PAD_Y;
         }
+        if el.spin.is_some() && el.text_box.is_some() {
+            extras.right = SPIN_W;
+        }
         extras
     }
 
@@ -448,7 +536,7 @@ impl Pass<'_> {
         let content = Rect::new(
             plain.x + extras.left,
             plain.y + extras.top,
-            (plain.w - extras.left).max(0.0),
+            (plain.w - extras.left - extras.right).max(0.0),
             (plain.h - extras.top).max(0.0),
         );
         if let Some(text) = &el.text {
@@ -463,6 +551,10 @@ impl Pass<'_> {
             self.out.texts.insert(el.entity, block);
         }
         self.parts(el, rect, plain, &style);
+        if let Some(b) = &el.text_box {
+            let parts = self.text_box(el, b, content, plain, &style);
+            self.out.parts.insert(el.entity, Parts::TextBox(parts));
+        }
         self.tip(el, &style);
         self.out.nodes.insert(
             el.entity,
@@ -563,6 +655,97 @@ impl Pass<'_> {
         Parts::Dropdown { face, arrow, list }
     }
 
+    /// A text box's drawn text, caret, selection and scroll (and a spin box's arrows).
+    fn text_box(
+        &mut self,
+        el: &UiElement,
+        b: &crate::textbox::UiTextBox,
+        content: Rect,
+        plain: Rect,
+        style: &ResolvedStyle,
+    ) -> TextBoxParts {
+        let placeholder = b.text.is_empty() && !b.placeholder.is_empty();
+        let shown = if placeholder {
+            b.placeholder.clone()
+        } else {
+            b.shown()
+        };
+        let wrap = if b.multiline { b.wrap } else { Wrap::None };
+        let text = UiText {
+            wrap,
+            ..UiText::plain(shown)
+        };
+        let width = b.multiline.then_some(content.w);
+        let block = shape(self.fonts, self.assets, &text, style, width, None);
+        let dy = if b.multiline {
+            0.0
+        } else {
+            (content.h - block.height) / 2.0
+        };
+        let focused = el.state.as_ref().is_some_and(|s| s.focused);
+        let caret_at = |at: usize| caret_x(&block, b.shown_offset(at));
+        let scroll = match (b.multiline, caret_at(b.caret as usize)) {
+            (false, Some((x, _))) if !placeholder => (x + CARET_MARGIN - content.w).max(0.0),
+            _ => 0.0,
+        };
+        let origin = [content.x - scroll, content.y + dy];
+        let caret = (focused && !placeholder || focused && b.text.is_empty())
+            .then(|| {
+                let (x, line) = if placeholder {
+                    (0.0, 0)
+                } else {
+                    caret_at(b.caret as usize)?
+                };
+                let l = block.lines.get(line)?;
+                let h = if placeholder {
+                    block.height.max(l.height)
+                } else {
+                    l.height
+                };
+                Some(Rect::new(origin[0] + x, origin[1] + l.top, CARET_W, h))
+            })
+            .flatten();
+        let sel = b.selection();
+        let (s0, s1) = (b.shown_offset(sel.start), b.shown_offset(sel.end));
+        let selection = if placeholder || sel.is_empty() {
+            Vec::new()
+        } else {
+            block
+                .lines
+                .iter()
+                .filter(|l| s0 < l.end.max(l.start + 1) && s1 > l.start)
+                .map(|l| {
+                    let x_of = |at: usize| {
+                        l.stops
+                            .iter()
+                            .rev()
+                            .find(|(b, _)| *b <= at)
+                            .map_or(l.x, |(_, x)| *x)
+                    };
+                    let (x0, x1) = (x_of(s0.max(l.start)), x_of(s1.min(l.end)));
+                    Rect::new(origin[0] + x0, origin[1] + l.top, x1 - x0, l.height)
+                })
+                .collect()
+        };
+        let spin = el.spin.is_some().then(|| {
+            let x = plain.x + plain.w - SPIN_W;
+            let half = plain.h / 2.0;
+            (
+                Rect::new(x, plain.y, SPIN_W, half),
+                Rect::new(x, plain.y + half, SPIN_W, half),
+            )
+        });
+        TextBoxParts {
+            text: block,
+            origin,
+            placeholder,
+            caret,
+            selection,
+            scroll,
+            spin,
+        }
+    }
+
     /// Records a tooltip that has waited out its delay.
     fn tip(&mut self, el: &UiElement, style: &ResolvedStyle) {
         let (Some(tooltip), Some(state)) = (&el.tooltip, &el.state) else {
@@ -595,6 +778,7 @@ const TIP_MAX_WIDTH: f32 = 320.0;
 struct Extras {
     left: f32,
     top: f32,
+    right: f32,
     min_height: f32,
 }
 
@@ -602,6 +786,7 @@ impl Extras {
     fn apply(&self, s: &mut Style, node: &UiNode) {
         s.padding.left = LengthPercentage::length(node.padding.left + self.left);
         s.padding.top = LengthPercentage::length(node.padding.top + self.top);
+        s.padding.right = LengthPercentage::length(node.padding.right + self.right);
         if self.min_height > 0.0 && node.min_height == Length::Auto {
             s.min_size.height =
                 LengthPercentageAuto::length(self.min_height + node.padding.vertical());

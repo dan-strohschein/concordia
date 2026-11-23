@@ -28,6 +28,7 @@ mod root;
 mod scene;
 mod style;
 mod text;
+mod textbox;
 mod theme;
 mod widgets;
 
@@ -50,12 +51,16 @@ pub use fonts::{Font, FontImporter, FontSource, NoFonts, UiFonts, font_families,
 pub use geom::{Edges, Rect};
 pub use hit::{Hit, HitPart, Index, hit_test, hit_with, stops};
 pub use interact::{
-    CLICK, KEYS, Keys, POINTER, Press, SCROLL, UiInput, VIEWPORT, interact, sim_viewport,
+    CLICK, CTRL, Consumed, KEYS, Keys, POINTER, Press, SCROLL, SHIFT, UiInput, VIEWPORT, interact,
+    sim_viewport,
 };
-pub use layout::{NodeLayout, RootLayout, UiLayout, compute_layout, widget_state};
+pub use layout::{
+    NodeLayout, RootLayout, UiLayout, compute_layout, compute_layout_seen, widget_state,
+};
 pub use methods::{
-    LineReport, NodeReport, ProblemReport, RootReport, UiHitTest, UiHitTestParams, UiHitTestResult,
-    UiInspect, UiInspectParams, UiInspectResult,
+    LineReport, NodeReport, ProblemReport, RootReport, UiClipboardGet, UiClipboardParams,
+    UiClipboardResult, UiHitTest, UiHitTestParams, UiHitTestResult, UiInspect, UiInspectParams,
+    UiInspectResult,
 };
 pub use module::{UI_BOUNDS_LAYER, UiCore, UiModule, UiShared};
 pub use node::{
@@ -66,9 +71,10 @@ pub use paint::{
     Piece, background_paint, image_quads, nine_patch_quads, progress_fill, separator_rect,
 };
 pub use parts::{
-    Bar, GRABBER, Label, List, MIN_THUMB, Parts, ROW_PAD, Row, SLIDER_SIZE, TAB_PAD_X, TAB_PAD_Y,
-    TIP_OFFSET, TIP_PAD, TRACK, Tip, clamp_offset, dropdown_arrow, first_row, list_rect,
-    offset_for_thumb, scroll_bars, slider_parts, slider_value_at, tip_rect, toggle_knob,
+    Bar, CARET_MARGIN, CARET_W, GRABBER, Label, List, MIN_THUMB, Parts, ROW_PAD, Row, SLIDER_SIZE,
+    SPIN_W, TAB_PAD_X, TAB_PAD_Y, TEXT_BOX_SIZE, TIP_OFFSET, TIP_PAD, TRACK, TextBoxParts, Tip,
+    clamp_offset, dropdown_arrow, first_row, list_rect, offset_for_thumb, scroll_bars,
+    slider_parts, slider_value_at, tip_rect, toggle_knob,
 };
 pub use play::{INTERACT, add_interact, preload};
 pub use root::{Aspect, CanvasMap, MAX_CANVAS, RootSpace, Stretch, UiRoot, canvas_map};
@@ -77,7 +83,11 @@ pub use style::{
     Background, Border, Cursor, GradientStop, MAX_FONT_SIZE, MAX_STOPS, MIN_STOPS, MONO,
     ResolvedStyle, SANS, UiStyle, UiThemed, WidgetState,
 };
-pub use text::{ELLIPSIS, PlacedGlyph, TextBlock, TextLine, shape};
+pub use text::{ELLIPSIS, PlacedGlyph, TextBlock, TextLine, byte_at, caret_x, shape};
+pub use textbox::{
+    EditResult, MASK, MAX_BOX_BYTES, MAX_LEN, MAX_SELECTED, UiClipboard, UiList, UiSpinBox,
+    UiTextBox, UiTextChanged, UiTextSubmitted, edit,
+};
 pub use theme::{Theme, ThemeClass, ThemeImporter, read_theme, resolve, write_theme};
 pub use widgets::{
     AxisStretch, FillMode, ImageMode, MAX_TEXT_BYTES, MAX_TILES, Orientation, Overflow, RadialFill,

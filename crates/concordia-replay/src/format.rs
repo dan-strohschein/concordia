@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use concordia_api::Fingerprint;
-use concordia_input::ActionState;
+use concordia_input::{ActionState, TextInput};
 use concordia_reflect::Reflect;
 use serde::{Deserialize, Serialize};
 
@@ -52,7 +52,7 @@ pub struct ReplayHeader {
     pub recorded_by: String,
 }
 
-/// The actions whose state changed on one tick.
+/// The actions whose state changed on one tick, and the text typed on it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 #[serde(deny_unknown_fields)]
 pub struct InputChange {
@@ -60,6 +60,9 @@ pub struct InputChange {
     pub tick: u64,
     /// New states by action name.
     pub actions: BTreeMap<String, ActionState>,
+    /// Text typed on the tick, in order (omitted when none).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub text: Vec<TextInput>,
 }
 
 /// The world's hashes after a tick.

@@ -63,3 +63,52 @@ fn cursor_icons_map_to_winit() {
     assert_eq!(cursor_to_winit(CursorIcon::Text), W::Text);
     assert_eq!(CursorIcon::default(), CursorIcon::Arrow);
 }
+
+/// Key presses become typed text (2.7b.3): editing keys are `Edit` commands (Shift selects),
+/// Ctrl or Cmd with A, C, X or V select all, copy, cut and paste, and other keys insert the
+/// text the OS produced, control characters dropped.
+#[test]
+fn key_presses_become_typed_text() {
+    use concordia_input::{EditKey, TextInput};
+    use concordia_platform::{Modifiers, text_from_key};
+    let none = Modifiers::default();
+    let shift = Modifiers {
+        shift: true,
+        command: false,
+    };
+    let cmd = Modifiers {
+        shift: false,
+        command: true,
+    };
+    let edit = |key, select| Some(TextInput::Edit { key, select });
+    assert_eq!(
+        text_from_key(KeyCode::ArrowLeft, None, none),
+        edit(EditKey::Left, false)
+    );
+    assert_eq!(
+        text_from_key(KeyCode::End, None, shift),
+        edit(EditKey::End, true)
+    );
+    assert_eq!(
+        text_from_key(KeyCode::Backspace, Some("\u{8}"), none),
+        edit(EditKey::Backspace, false)
+    );
+    assert_eq!(
+        text_from_key(KeyCode::Enter, Some("\r"), none),
+        edit(EditKey::Enter, false)
+    );
+    for (key, want) in [
+        (KeyCode::A, EditKey::SelectAll),
+        (KeyCode::C, EditKey::Copy),
+        (KeyCode::X, EditKey::Cut),
+        (KeyCode::V, EditKey::Paste),
+    ] {
+        assert_eq!(text_from_key(key, Some("c"), cmd), edit(want, false));
+    }
+    assert_eq!(
+        text_from_key(KeyCode::A, Some("A"), shift),
+        Some(TextInput::Insert("A".into()))
+    );
+    assert_eq!(text_from_key(KeyCode::Escape, Some("\u{1b}"), none), None);
+    assert_eq!(text_from_key(KeyCode::F1, None, none), None);
+}

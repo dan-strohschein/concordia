@@ -3,12 +3,14 @@
 //! The CLI, the MCP server and the editor all build engines through [`Project`], so the module
 //! list lives in one place (ADR-0046).
 
+mod clipboard;
 mod error;
 mod manifest;
 mod player;
 mod project;
 mod shared;
 
+pub use clipboard::{Clipboard, OsClipboard};
 pub use error::AppError;
 pub use manifest::{
     AnimSection, AssetsSection, AudioBackendChoice, AudioSection, InputSection, JournalSection,

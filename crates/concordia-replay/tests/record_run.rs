@@ -323,3 +323,30 @@ fn replays_record_and_play_back_pointer_rays() {
     assert_eq!(run["world_hash"], recorded_hash.as_str());
     assert_eq!(translations(&rig), recorded);
 }
+
+/// Typed text is recorded on the tick it was typed (2.7b.3) and played back: a replay of a
+/// session that typed "ok" on tick 5 and a Backspace on tick 7 stores both and verifies.
+#[test]
+fn typed_text_is_recorded_and_replayed() {
+    let mut rig = Rig::new();
+    let typed = json!([
+        {"tick": 5, "event": {"Text": {"Insert": "ok"}}},
+        {"tick": 7, "event": {"Text": {"Edit": {"key": "Backspace", "select": false}}}},
+    ]);
+    rig.record(PATH, 10, typed, 20);
+    let replay = read_replay(&rig.file(PATH)).unwrap();
+    let text: Vec<(u64, usize)> = replay
+        .inputs
+        .iter()
+        .filter(|i| !i.text.is_empty())
+        .map(|i| (i.tick, i.text.len()))
+        .collect();
+    assert_eq!(text, [(5, 1), (7, 1)]);
+    let run = rig.ok("replay.run", json!({"path": PATH}));
+    assert_eq!(run["ok"], true, "{run}");
+    let world = rig.engine.world(WorldSel::play).unwrap();
+    assert!(
+        world.resource::<concordia_input::TypedText>().is_some(),
+        "the play world publishes typed text"
+    );
+}
