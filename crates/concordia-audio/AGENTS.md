@@ -28,6 +28,8 @@ Engine audio (M2 phase 2.7a, ADR-0066): WAV (`hound`) and Ogg Vorbis (`lewton`) 
 - **The device:** cpal's stream lives on `concordia-audio-device` (dropped with the guard); its callback renders in 4,096-frame blocks into preallocated scratch and converts (stereo to the first two channels, the average to mono). `concordia-audio-stream` refills streams and frees retired voices every 50 ms while the core lives.
 
 ## How to test
+On Linux, building needs ALSA's headers (`libasound2-dev`, found through `pkg-config`) for cpal's backend; CI installs them in every Linux job that builds the workspace. macOS needs nothing extra.
+
 `cargo nextest run -p concordia-audio`. Every test header derives its expected values by hand, using DC and ramp sources:
 - `tests/math.rs`: dB, pan, distance, listener, tick frames;
 - `tests/decode.rs`: WAV written in the test with `hound`; `tests/fixtures/audio/tone-440.ogg` from `tools/fixtures/make_audio.sh`;

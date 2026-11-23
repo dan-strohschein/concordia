@@ -31,6 +31,8 @@ jobs:
       - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with:
           tool: just,wasm-tools
+      - name: ALSA headers (cpal's Linux backend, M2 2.7a.2)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev
       - name: Lint (rustfmt, clippy)
         run: just lint
       - name: Build WASM fixtures

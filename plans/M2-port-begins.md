@@ -3359,6 +3359,8 @@ The caught ones:
 
 They were collected with `INSTA_FORCE_PASS=1 INSTA_UPDATE=new` and shown on an artifact page for the author's review before blessing. No render golden changed.
 
+**CI follow-up:** the first push failed `lint` and `editor ui` on Linux: cpal's `alsa-sys` needs ALSA's headers, which the Mac runs never build. Every Linux job that builds the workspace (`lint`, `editor ui`, and the regression gate on Ubuntu) now installs `libasound2-dev`.
+
 **Manual checks:** the cpal test above. `concordia run` on a scene with sound was not run in this phase (it opens a window); the sample game (2.10) will exercise it.
 
 **Carry-over:**

@@ -64,3 +64,4 @@ M2's sample game and later ports need sound through buses, spatial cues and stre
 - Studio (A1, 2.7a.2): the sound designer and composer are enabled; the synthesizer (`gen_run`) stays M3 3.7.
 - DSP effects, HRTF, Doppler, occlusion, crossfades and UI sounds are later work.
 - 2.7a.2: `concordia new` writes `[audio]` and `concordia studio init` adds it. The MCP server checks `audio.render`'s `path` against the role's write paths (ADR-0080). The play world's offline capture keeps the newest 30 s.
+- Building on Linux needs ALSA's development headers (`libasound2-dev`, through `pkg-config`) for cpal's `alsa-sys`; the Linux CI jobs that build the workspace install them.
