@@ -357,6 +357,23 @@ Start with [`CONTRIBUTING.md`](CONTRIBUTING.md) and [`AGENTS.md`](AGENTS.md).
 
 Dual-licensed under either of [Apache License 2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT), at your option.
 
+---
+
+## 🏛️ Standing on the shoulders of giants
+
+Concordia is fully inspired by **Unreal**, **Unity** and **Godot**. Their teams showed the world what a
+game engine can be, and shared an enormous amount of what they learned in public talks, papers and
+documentation. We're grateful to every one of them.
+
+**And it's built in a clean room.** We learn from what they've published, never from their code. Not
+one line of Concordia is copied, ported or translated from another engine's source. Every idea is
+rebuilt from scratch, in the open, so the engine is free for everyone to use, forever. See
+[`docs/clean-room.md`](docs/clean-room.md) for the rules we follow.
+
+We also build on outstanding open-source work, including [Jolt Physics](https://github.com/jrouwe/JoltPhysics),
+[Recast & Detour](https://github.com/recastnavigation/recastnavigation),
+[Wasmtime](https://github.com/bytecodealliance/wasmtime), [Slang](https://github.com/shader-slang/slang), [ufbx](https://github.com/ufbx/ufbx) and [Tauri](https://github.com/tauri-apps/tauri). Thank you.
+
 <div align="center">
 
 **Built in the open by humans and AI agents, in concord.** ✦
