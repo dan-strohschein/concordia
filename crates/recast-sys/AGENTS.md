@@ -7,7 +7,7 @@ Vendored Recast and Detour v1.6.0 (zlib) through Concordia's flat C shim (`shim/
 - `build_tile(&BuildConfig, &TileInput)` → `Option<TileData>` (one tile: rasterize, filter, compact, mark, erode, watershed regions, contours, polygons, detail, Detour data); `BuildConfig`, `TileInput`, `BoxMark`, `Area` (`BLOCKED`, `WALKABLE`, `cost(2..=62)`), `TileData` (`from_bytes`, `bytes`)
 - `DtNavMesh` (`new(&NavMeshParams)`, `add_tile`, `tiles` → `TileInfo`, `poly`, `polys` → `Poly`, `links`); `PolyRef`
 - `DtQuery` (`new(Arc<DtNavMesh>, max_nodes)`, `nearest`, `find_path` → `Corridor`, `straight_path`, `raycast` → `RayResult`); `AreaCosts`
-- Crowd queries (2.5c.1): `DtQuery::move_along_surface` → `SurfaceMove` (`moveAlongSurface`: slides along walls; the visited polygons, the start's first), `poly_height` (`getPolyHeight`; `None` outside the polygon, the shim's `CR_EMPTY`), `raycast_path` → `RayPath` (`raycast` with the polygons it crossed)
+- Crowd queries (2.5c.1): `DtQuery::move_along_surface` → `SurfaceMove` (`moveAlongSurface`: slides along walls; the visited polygons, the start's first), `poly_height` (`getPolyHeight`; `None` outside the polygon, the shim's `CR_EMPTY`), `raycast_path` → `RayPath` (`raycast` with the polygons it crossed); boundary queries (2.5c.2): `local_neighbourhood` (`findLocalNeighbourhood`, without parents) and `wall_segments` (`getPolyWallSegments` without segment refs, so walls only, as point pairs)
 - `RecastError` (`Input`, `Alloc`, `Build(BuildStage)`, `AddTile`, `NotFound`, `Query`), `RECAST_VERSION`, `MAX_VERTS_PER_POLY`, `live_allocations()`, `abi_mismatches()`
 
 ## Invariants

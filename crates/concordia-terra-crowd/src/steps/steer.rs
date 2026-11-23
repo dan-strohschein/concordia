@@ -9,7 +9,7 @@ use crate::grid::CrowdGrid;
 use crate::state::CrowdState;
 use crate::steer::{Near, Steering, desired, separate};
 
-/// `crowd.steer`: the desired velocity (and, until avoidance, the chosen one).
+/// `crowd.steer`: the desired velocity.
 pub(crate) fn steer_step(view: &mut View<'_>, ctx: &SystemCtx<'_>) {
     let grid = view.resource::<CrowdGrid>().cloned().unwrap_or_default();
     let Ok(query) = view.query::<(&NavAgent, &CrowdAgent, &NavAgentState, &mut CrowdState)>()
@@ -56,6 +56,5 @@ pub(crate) fn steer_step(view: &mut View<'_>, ctx: &SystemCtx<'_>) {
         };
         state.desired_velocity = velocity;
         state.desired_speed = speed;
-        state.new_velocity = velocity;
     });
 }

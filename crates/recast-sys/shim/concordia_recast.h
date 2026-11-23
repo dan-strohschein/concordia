@@ -165,6 +165,18 @@ int32_t cr_raycast_path(cr_query* query, const cr_filter* filter, uint64_t start
                         const float end[3], float* t, float normal[3], uint64_t* path, int32_t cap,
                         int32_t* count);
 
+/* Boundary queries (M2 phase 2.5c.2). */
+
+/* Polygons around start_ref (its own first) reachable within radius of center without
+ * overlapping each other, at most cap. */
+int32_t cr_local_neighbourhood(cr_query* query, const cr_filter* filter, uint64_t start_ref,
+                               const float center[3], float radius, uint64_t* refs, int32_t cap,
+                               int32_t* count);
+
+/* Polygon ref's walls (edges with no passable neighbour) as xyz pairs, at most cap. */
+int32_t cr_poly_wall_segments(cr_query* query, const cr_filter* filter, uint64_t ref,
+                              float* segments, int32_t cap, int32_t* count);
+
 #ifdef __cplusplus
 }
 #endif

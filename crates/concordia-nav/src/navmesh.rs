@@ -1,5 +1,6 @@
-//! A built navmesh and its queries. Queries borrow a Detour query object from a pool, so a
-//! navmesh can be queried from many threads at once with the same results.
+//! A built navmesh and its queries. Queries borrow a Detour query object from a pool (sharded by
+//! thread, so many threads rarely wait on one lock), so a navmesh can be queried from many threads
+//! at once with the same results: every Detour call resets the object it is given.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -99,8 +100,11 @@ pub struct NavMesh {
     polygons: Vec<NavPoly>,
     index: HashMap<PolyRef, usize>,
     islands: usize,
-    queries: Mutex<Vec<DtQuery>>,
+    queries: [Mutex<Vec<DtQuery>>; SHARDS],
 }
+
+/// Query pools per navmesh; a thread uses the one its id hashes to.
+const SHARDS: usize = 16;
 
 impl NavMesh {
     /// Loads built data into Detour.
@@ -144,7 +148,7 @@ impl NavMesh {
             polygons,
             index,
             islands,
-            queries: Mutex::new(Vec::new()),
+            queries: std::array::from_fn(|_| Mutex::new(Vec::new())),
         })
     }
 
@@ -319,6 +323,32 @@ impl NavMesh {
         })
     }
 
+    /// Up to `max` polygons around `poly` (its own first) within `radius` of `center`
+    /// (`findLocalNeighbourhood`).
+    pub fn local_neighbourhood(
+        &self,
+        poly: u64,
+        center: Vec3,
+        radius: f32,
+        max: usize,
+    ) -> Result<Vec<u64>, NavError> {
+        let poly = poly_ref(poly)?;
+        let found = self.with_query(|q| {
+            Ok(q.local_neighbourhood(&self.costs, poly, center.to_array(), radius, max)?)
+        })?;
+        Ok(found.iter().map(|p| p.0.get()).collect())
+    }
+
+    /// Up to `max` of `poly`'s walls, the edges with no passable neighbour (`getPolyWallSegments`).
+    pub fn wall_segments(&self, poly: u64, max: usize) -> Result<Vec<[Vec3; 2]>, NavError> {
+        let poly = poly_ref(poly)?;
+        let walls = self.with_query(|q| Ok(q.wall_segments(&self.costs, poly, max)?))?;
+        Ok(walls
+            .iter()
+            .map(|[p, q]| [Vec3::from_array(*p), Vec3::from_array(*q)])
+            .collect())
+    }
+
     fn nearest_within(
         &self,
         point: Vec3,
@@ -343,17 +373,26 @@ impl NavMesh {
         &self,
         f: impl FnOnce(&mut DtQuery) -> Result<T, NavError>,
     ) -> Result<T, NavError> {
-        let pooled = self.queries.lock().ok().and_then(|mut q| q.pop());
+        let shard = &self.queries[shard_of(std::thread::current().id())];
+        let pooled = shard.lock().ok().and_then(|mut q| q.pop());
         let mut query = match pooled {
             Some(q) => q,
             None => DtQuery::new(self.mesh.clone(), MAX_NODES)?,
         };
         let out = f(&mut query);
-        if let Ok(mut pool) = self.queries.lock() {
+        if let Ok(mut pool) = shard.lock() {
             pool.push(query);
         }
         out
     }
+}
+
+/// The pool shard of thread `id` (which shard never affects results).
+fn shard_of(id: std::thread::ThreadId) -> usize {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    id.hash(&mut h);
+    (h.finish() as usize) % SHARDS
 }
 
 /// A raw reference as a `PolyRef` (zero is no polygon).

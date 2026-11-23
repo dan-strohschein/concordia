@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c refined (2.5c.1, 2.5c.2) and 2.5c.1 (2026-11-22) done; 2.5c.2 next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2; 2026-11-22) done; 2.5d next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -1834,7 +1834,7 @@ A capture at 100k now takes about 84 ms (160 before). A playing 100k crowd is st
 **Not in 2.4b.2:** hysteresis for representation (E2: only if flicker shows); a columnar, incremental extraction for crowds that move every tick (M7 phase 7.7, with tests and a target); spreading a far character's held pose over its interval in rendering.
 
 ### Phase 2.5 refinement (2026-11-22, against the code after 2.4b.2)
-**Status: author decision N1 taken (2026-11-22); my other calls below (say if you disagree). 2.5a done (see its As built); 2.5b done (2.5b.1, 2.5b.2a, 2.5b.2b); 2.5c refined (N5) and split into 2.5c.1 and 2.5c.2; see the Phase 2.5c refinement.**
+**Status: author decision N1 taken (2026-11-22); my other calls below (say if you disagree). 2.5a done (see its As built); 2.5b done (2.5b.1, 2.5b.2a, 2.5b.2b); 2.5c done (2.5c.1, 2.5c.2; see their As builts); 2.5d next.**
 
 Refined against the code as built. The old Phase 2.5 section, this refinement's *2.5 (added)* tests, M7's 7.7 and 2.4b's As built are the starting point. **This section wins wherever the old Phase 2.5 text disagrees.**
 
@@ -2351,7 +2351,7 @@ A first form of the "both accepted" mutation didn't compile, so it was rewritten
 - `just editor-test` (118 unit, 22 end-to-end).
 
 ### Phase 2.5c refinement (2026-11-22, against the code after 2.5b.2b)
-**Status: author decision N5 taken (2026-11-22); my other calls below (say if you disagree). 2.5c is split: 2.5c.1 crowd core (`m2/2.5c.1-crowd-core`, done; see its As built), then 2.5c.2 avoidance and LOD (`m2/2.5c.2-avoidance-lod`, next).**
+**Status: author decision N5 taken (2026-11-22); my other calls below (say if you disagree). 2.5c is split: 2.5c.1 crowd core (`m2/2.5c.1-crowd-core`, done; see its As built), then 2.5c.2 avoidance and LOD (`m2/2.5c.2-avoidance-lod`, done; see its As built).**
 
 Refined against `main` after #61: the Phase 2.5 refinement (its 2.5c row, N1, "Scheduling (one rule)", "The 10k test lives in M7" and the simulation-LOD bullet), the As builts of 2.5a, 2.5b.1, 2.5b.2a and 2.5b.2b, ADR-0077 (with its 2.5b.1 update), ADR-0078, ADR-0076, ADR-0069, ADR-0063 and M7's 7.7 note. **This section wins wherever they disagree.** The implementation follows DetourCrowd v1.6.0's zlib source (`DetourCrowd.cpp`, `DetourObstacleAvoidance.cpp`, `DetourPathCorridor.cpp`, `DetourLocalBoundary.cpp`, `DetourProximityGrid.cpp`, at the vendored commit `6dc1667f`). It is read, not vendored (N1).
 
@@ -2441,7 +2441,7 @@ Refined against `main` after #61: the Phase 2.5 refinement (its 2.5c row, N1, "S
 | Sub-phase | Content |
 |---|---|
 | **2.5c.1 Crowd core** (`m2/2.5c.1-crowd-core`, done) | the three shim queries; `CrowdAgent`; `NavAgentState.corridor`; `nav.plan` and `nav.follow` changes; `View::query_filtered`; `concordia-terra-crowd` (`CrowdState`, `CrowdGrid`, the corridor helpers, corridor, neighbours, steering and separation, integration, collision, move and arrival, both bodies, `CrowdModule`, the `Crowd` trait, the `crowd` layer); ADR-0077's update; Studio |
-| **2.5c.2 Avoidance and LOD** (`m2/2.5c.2-avoidance-lod`) | the two boundary queries; the local boundary; sampled velocity-obstacle avoidance (fixed tables); the LOD opt-in; the `crowd_10k` bench in `BASELINE.md`; refined again at its start |
+| **2.5c.2 Avoidance and LOD** (`m2/2.5c.2-avoidance-lod`, done) | the two boundary queries; the local boundary; sampled velocity-obstacle avoidance (fixed tables); the LOD opt-in; the `crowd_10k` bench in `BASELINE.md`; refined again at its start |
 
 **2.5c.1 tests (first list).** The expected values are derived in the test headers, using 2.5a's Recast rules and 2.5b.1's rig tick rules (60 Hz, positions moved by velocity × dt). Surface agents need no rig, since the crowd moves them itself.
 - `recast-sys` (`tests/smoke.rs`): `move_along_surface_slides_and_stops_at_edges`, `poly_height_reads_the_surface`, `raycast_path_lists_visited_polygons`, plus the new entry points in `shim_rejects_bad_input`, `ffi_handles_are_released` and `header_hash_and_struct_sizes_match`.
@@ -2563,6 +2563,186 @@ The caught ones:
 - `just editor-schemas` (no change);
 - `just editor-test` (118 unit, 22 end-to-end).
 
+
+### Phase 2.5c.2 refinement (2026-11-22, against the code after 2.5c.1)
+**Status: done (see its As built); no new author decisions (N1 and N5 set the shape). One PR, `m2/2.5c.2-avoidance-lod`. 2.5d (traffic) is next.**
+
+Refined against `main` after #62: the Phase 2.5c refinement (its `crowd.avoid` step, simulation-LOD bullet and 2.5c.2 test list), 2.5c.1's As built, ADR-0076 and ADR-0077 with its 2.5c.1 update. **This section wins wherever they disagree.** The implementation follows `DetourObstacleAvoidance.cpp` and `DetourLocalBoundary.cpp` (v1.6.0, zlib), read, not vendored.
+
+**What exists (checked in code):**
+- `CrowdAgent.avoidance: Option<CrowdAvoidance>` (on by default) is validated, but nothing reads it: `crowd.steer` sets `new_velocity` to the desired velocity.
+- `crowd.corridor` and `crowd.steer` are already declared `.lod()`. Without a `LodViewer` and `LodProfile`s every agent is due every tick, and nothing tests the far case.
+- `CrowdGrid` holds last tick's position, radius, height, velocity and desired velocity of every crowd agent and character, whatever its LOD.
+- The shim has no `findLocalNeighbourhood` or `getPolyWallSegments`.
+- No crate has a crowd bench; `concordia-anim` and `concordia-terra` record criterion benches in `benches/BASELINE.md`.
+
+**My calls (say if you disagree):**
+- **Two shim queries, narrow** (each with a smoke test, the bad-input and release tests, and the header hash):
+  - `cr_local_neighbourhood(query, filter, start_ref, center, radius, refs, cap, count)`: `findLocalNeighbourhood`, without parents.
+  - `cr_poly_wall_segments(query, filter, ref, segments, cap, count)`: `getPolyWallSegments` with no segment refs, so only walls (edges with no passable neighbour) come back, as xyz pairs.
+  - `DtQuery::{local_neighbourhood, wall_segments}`, then `NavMesh::{local_neighbourhood, wall_segments}` with raw `u64` references, as in 2.5c.1.
+- **The local boundary** (`dtLocalBoundary`) lives in `CrowdState`, which is hashed:
+  - `boundary_center: Option<Vec3>` (none: never gathered), and `walls: Vec<Wall>` with `Wall { from, to }`, at most 8.
+  - It is gathered in `crowd.avoid` for walking agents with avoidance, when there is no center yet or the agent has moved more than `collision_query_range / 4` from it (sideways).
+  - Gathering: the polygons around the corridor's first polygon within `collision_query_range` (at most 16); each one's walls (at most 18); those farther than the range are skipped. The nearest 8 are kept by squared distance, inserted the way `addSegment` does (an equal distance goes before; past 8, the farthest drops).
+  - DetourCrowd's `isValid` re-check is left out: navmeshes don't change at runtime (2.5c.1's reasoning for `isValidPolyRef`).
+  - An agent that stops walking keeps its walls. They are drawn, not used.
+- **`crowd.avoid`** (`.lod()`, after `crowd.steer`, before `crowd.integrate`). It reads `NavAgent`, `CrowdAgent`, `NavAgentState`, `NavMeshes` and `CrowdGrid`, and writes `CrowdState` (`new_velocity`, the boundary).
+  - **Without `avoidance`,** or for an agent that wants no speed, `new_velocity` = `desired_velocity`. That is DetourCrowd's result with zero speed too, since only the zero sample fits a zero-speed disc. `crowd.steer` stops writing `new_velocity`.
+  - **Obstacles:**
+    - each neighbour, in neighbour order (nearest first, as 2.5c.1 sorts them), is a circle with its snapshot position, radius, velocity and desired velocity;
+    - characters are circles too, with their `CharacterMotion` velocity and no desired velocity;
+    - each wall that the agent isn't behind (`dtTriArea2D(pos, p, q) ≥ 0`) is a segment.
+    - DetourCrowd reads neighbours' desired velocities from the same tick. Ours come from the snapshot, which is last tick's, so that agents never see each other's half-finished step.
+  - **The search** (`sampleVelocityAdaptive` and `processSample`, rewritten in Rust as pure functions in `avoid.rs`):
+    - The pattern has a sample at zero, then `rings` rings of `divs` samples aligned to the desired direction, each ring rotated by π/divs.
+    - It runs `depth` passes. Each starts from `velocity_bias × desired`, uses a radius of `max_speed × (1 − velocity_bias)` that halves each pass, and skips candidates faster than the desired speed + 0.001.
+    - The penalties for the desired velocity, the current velocity, the side and the time of impact use DetourCrowd's exact formulas, early-outs and `sweepCircleCircle` / `isectRaySeg`.
+    - Ties keep the first candidate (strict `<`), so the order is fixed.
+  - **One deliberate fix:** with an even `divs`, DetourCrowd writes a ring's last sample one slot too far, and samples the slot it skipped, which is stale memory. Ours puts the sample in that slot (DetourCrowd's evident intent). Odd `divs`, the default 7 included, are unaffected.
+  - **No trigonometry at run time:** cos and sin of 2π/n and π/n for n in 1..=32 are a fixed table. `avoidance_pattern_tables_match_std` checks it against `std`, as 2.5a's circle table is.
+  - *Deterministic:* every agent reads only `CrowdGrid` and its own state, and the samples are tried in a fixed order.
+- **Physics agents avoid the same way:** their `new_velocity` goes through integration to `CharacterMotion`.
+- **Simulation LOD, as the 2.5c refinement set it:**
+  - `crowd.corridor`, `crowd.steer` and `crowd.avoid` are `.lod()`, so a far agent re-picks its corners, desired velocity, walls and avoidance velocity only when due, and holds them in between.
+  - Grid, neighbours, integration, collision and movement stay full-rate.
+  - None of the three needs `Due.dt`: each picks a velocity, it doesn't advance time.
+  - **The held corners and desired velocity:** between due ticks the agent keeps steering at the old velocity, while `crowd.move` keeps it on the navmesh at full rate (moved along the surface, its corridor merged) and `crowd.integrate`'s end clamp stops it at its end. It can run past a corner by up to (*r* − 1) × speed / 60 m (0.35 m at rate 8 and 3 m/s), and slides along the wall there until it is due again.
+  - **Arrival stays full-rate** in `crowd.move`.
+  - Feature cuts by level (no avoidance when far) still wait for M7.
+- **The `crowd` layer** also draws each agent's walls (in its own colour). Avoidance samples still wait for a debug hook (later).
+- **The bench `crowd_10k`** (`benches/crowd.rs`, criterion): one tick of 10,000 surface agents walking a 100 × 100 lattice (2.5c.1's 10,000-agent field, planned before timing), measured four ways: avoidance off or on, and all near or with LOD (a viewer at one corner, the `Crowd` template example's profile). Each runs at 1 and 8 threads. The results go in `crates/concordia-terra-crowd/benches/BASELINE.md`, with no pass/fail line. `crowd_of_10k_agents_avoids_overlap` stays in M7 7.7.
+- **Studio:**
+  - `concordia-nav-agents` "Crowds" gains avoidance (what `CrowdAvoidance` does and when to turn it off), the walls and LOD (what far agents hold);
+  - `concordia-navigation` names the walls in the `crowd` layer.
+  - No tool schema changes; every role's numbers are reported in As built.
+- **ADR-0077** gains a 2.5c.2 update.
+
+**2.5c.2 tests.** The expected values are derived in the test headers.
+- `recast-sys` (`tests/smoke.rs`, on 2.5c.1's two-tile plane: polygon `a` covers x −4.25..5 and `b` covers 5..14.25, z ±4.25, linked at the seam x = 5):
+  - `local_neighbourhood_grows_with_its_radius`: from (0, 0.2, 0), radius 4.9 gives [a] (the seam is 5 m away), and radius 6 gives [a, b].
+  - `wall_segments_are_the_unlinked_edges`: `a`'s walls total 9.25 + 8.5 + 9.25 = 27 m, and none lies on the seam.
+  - The new entry points in `shim_rejects_bad_input` and `ffi_handles_are_released`.
+- `concordia-terra-crowd` (unit tests):
+  - `avoidance_pattern_tables_match_std`;
+  - `free_space_keeps_the_desired_velocity` (cruising at the desired velocity d with |d| = max speed, the first ring's first sample is 0.4 d + 0.6 |d| d̂ = d, and nothing beats it);
+  - `sampled_avoidance_matches_hand_computed_penalties` (divs 3, rings 1, depth 1: four samples, with every penalty worked out in the header);
+  - `even_divs_fill_every_ring` (the fix above);
+  - `local_boundary_keeps_the_nearest_eight`.
+- `concordia-terra-crowd/tests/crowd.rs`:
+  - `head_on_agents_pass_without_touching`: two agents head-on on one line. With avoidance they never come within 2r and both arrive. With avoidance off, the same pair touches (collision alone separates them, 2.5c.1).
+  - `avoidance_keeps_agents_off_walls`: an agent walking along a wall meets one head-on. The side rule would send it into the wall, so the wall segments turn it the other way: its candidate never leaves the navmesh (no surface clip).
+  - `far_crowd_agents_steer_less_often_and_still_arrive`: a viewer 200 m away puts an agent at level 3 (rate 8). Its desired velocity changes only on its due ticks, and it arrives within the derived corner-overrun bound of the full-detail run.
+  - `neighbours_read_last_tick_state_whatever_their_lod`: a near agent meets a far one. Its neighbours and avoidance see the far agent's current position every tick, though the far agent steers only when due.
+  - `crowd_agents_avoid_each_other_at_a_thousand_with_lod`: 2.5c.1's 1,000 agents with avoidance and LOD on. Collision's overlap bound still holds (avoidance keeps every speed within the 3 m/s disc), lanes never touch (checked in the test), and everyone arrives.
+  - `crowd_is_deterministic_across_runs_and_threads` also runs with avoidance and LOD on: equal hashes at 1 and 8 threads and run to run, LOD visibly in effect (agents at every level), and a hash that differs from the full-detail run. The plain run keeps its exact 3,840 with `avoidance: None` written into its fixture. In 2.5c.1 avoidance changed nothing, so the default stood for "off".
+  - `crowd_debug_layer_draws_agents_velocities_and_links` gains an agent walking beside an edge, whose walls are drawn.
+- The `crowd_10k` bench, recorded in `BASELINE.md`.
+
+**Carry-over items:** the ignored `run_bench_latency_measures_the_engine_window_alone`, the `navmesh` layer's re-gather, the editor's deny warning, ADR-0069's chunk components (M7 7.7), and physics queries seeing last-step bodies all stand as before.
+
+### Phase 2.5c.2 As built (2026-11-22, ADR-0077 update)
+**Reconciled with the code as built:** the refinement held. What the code taught:
+- **The shared query pool was the bottleneck.** The first `crowd_10k` run took 27 ms a tick at 8 threads against 35 ms at one. Timers in each step showed `crowd.corridor` and `crowd.move` getting *slower* with threads, because every Detour call went through one mutex-guarded pool.
+  - `NavMesh` now shards its pool 16 ways by thread. Results can't change, since every Detour call resets its object.
+  - `crowd.collide`'s per-iteration hash map of candidates became a vector indexed by `CrowdGrid::slot`.
+  - `CrowdGrid` shares its data behind an `Arc`, so each step's clone is cheap.
+  - Together: 12.3 ms at 8 threads.
+- **`facing`** (the walls an agent isn't behind) is its own function with a unit test: in every scene the integration tests use, all walls face the agent, so the filter can't be seen there.
+- **Three tests turn avoidance off** (`avoidance: None`): the 2.5c.1 slide test (B now steers round A instead of pushing it), the shortcut test (the floor's walls bend the walk) and the plain 10,000-agent run, which keeps its exact 3,840. In 2.5c.1 avoidance did nothing, so the default stood for "off" there. These are deliberate fixes, not weakened tests: each tests something other than avoidance, and `avoidance.rs` covers avoidance against controls.
+- **The 10,000-agent test became two:** plain (14.8 s) and with avoidance and LOD (20.8 s), so neither nears the 2-minute guard under suite load.
+
+**Engine:**
+- `recast-sys`: `cr_local_neighbourhood` and `cr_poly_wall_segments`; `DtQuery::{local_neighbourhood, wall_segments}`; the header hash updated.
+- `concordia-nav`: `NavMesh::{local_neighbourhood, wall_segments}`; the query pool sharded by thread.
+- `concordia-terra-crowd`:
+  - `avoid.rs` (`Sampler`, `pattern`, `sample_velocity`, `sweepCircleCircle`, `isectRaySeg`, `dtDistancePtSegSqr2D`, `dtTriArea2D`);
+  - `tables.rs` (the fixed cos/sin table);
+  - `boundary.rs` (`keep_nearest`, `gather`);
+  - `CrowdState.{boundary_center, walls}` with `Wall`;
+  - the `crowd.avoid` step (`AVOID`, `.lod()`), with `crowd.steer` no longer writing `new_velocity`;
+  - walls in the `crowd` layer;
+  - `CrowdGrid::slot`;
+  - `benches/crowd.rs` and `benches/BASELINE.md`.
+- Studio:
+  - `concordia-nav-agents` "Crowds" gains avoidance, far agents and walls;
+  - `concordia-navigation` names the walls.
+- Docs:
+  - ADR-0077's 2.5c.2 update;
+  - the AGENTS.md of `recast-sys`, `concordia-nav`, `concordia-terra-crowd` and `concordia-studio`;
+  - the READMEs of `recast-sys` and `concordia-terra-crowd`;
+  - `docs/guides/agents-engine-api.md`, `plans/README.md` (crates and the ADR registry), and this plan.
+
+**Tests (17 new, 3 extended, 3 with avoidance turned off; 1 fixed outside the crowd):**
+- `recast-sys/tests/smoke.rs` (2 new, 2 extended):
+  - `local_neighbourhood_grows_with_its_radius` ([a] at 4.9 m, [a, b] at 6 m: the seam is 5 m away);
+  - `wall_segments_are_the_unlinked_edges` (27 m of walls, none on the seam);
+  - `shim_rejects_bad_input` and `ffi_handles_are_released` cover the new entry points.
+- `concordia-terra-crowd` unit tests (7):
+  - `avoidance_pattern_tables_match_std`;
+  - `free_space_keeps_the_desired_velocity`;
+  - `sampled_avoidance_matches_hand_computed_penalties`, every penalty worked out in the header: a circle 2 m ahead (c1, 5); 1.5 m ahead (stop); overlapping (8.702381); a second pass (it veers to (0.75, −0.433)); a wall ahead (2.777778, doubled time);
+  - `even_divs_fill_every_ring`;
+  - `segment_helpers_match_detour`;
+  - `local_boundary_keeps_the_nearest_eight` (`addSegment` followed by hand over 11 inserts);
+  - `walls_behind_the_agent_are_skipped`.
+- `concordia-terra-crowd/tests/avoidance.rs` (6):
+  - `head_on_agents_pass_without_touching` (never within 2r; the control with avoidance off touches);
+  - `avoidance_keeps_agents_off_walls` (no surface clips for the agent the side rule sends toward the wall);
+  - `walking_agents_gather_their_walls` (re-gathered on tick 29, at x = −4.087778; only the near edges of a 5.5 m square);
+  - `far_crowd_agents_steer_less_often_and_still_arrive` (desired and chosen velocities change only on due ticks; arrival within the derived 49 ticks of full detail: 197 against 195);
+  - `neighbours_read_last_tick_state_whatever_their_lod` (each lists the other on ticks 98..=163 exactly);
+  - `crowd_agents_avoid_each_other_at_a_thousand_with_lod` (collision's bound for 2 × 3.001 m/s, no agent off its line by 0.55 m, levels 0–2 used, all arrive).
+- `concordia-terra-crowd/tests/crowd.rs`: `crowd_with_avoidance_and_lod_is_deterministic_across_runs_and_threads` (new; every level used, hashes differ from the plain run, at most 3,840 moved). `crowd_is_deterministic_across_runs_and_threads`, the slide test and the shortcut test now turn avoidance off (above).
+- `concordia-terra-crowd/tests/engine.rs`: `crowd_debug_layer_draws_walls` (new); `crowd_debug_layer_draws_agents_velocities_and_links` checks that its walkers have no walls.
+
+**Red run:** against stubs (shim functions returning `CR_ERR_INPUT`, the table's first row zeroed, a sampler and pattern returning zero, a boundary keeping nothing, no `crowd.avoid`, no walls drawn), every test above failed for the right reason. The exceptions:
+- **Passed immediately, because 2.5c.1 had already declared `crowd.corridor` and `crowd.steer` `.lod()`:**
+  - `far_crowd_agents_steer_less_often_and_still_arrive`, `neighbours_read_last_tick_state_whatever_their_lod`, the 1,000-agent LOD test and the 10,000-agent full run.
+  - The first two were then shown red by mutation (below). The last two are regression checks (bounds and hashes), and they pass with avoidance implemented too.
+- **Test mistakes I fixed deliberately:**
+  - the far test counted arrival's zeroing (full-rate, on tick 197) as a held-velocity change;
+  - its header first counted 4 corners where the path has 3 turning points;
+  - the wall test's first derivation re-gathered a tick early (the check reads the grid, last tick's position);
+  - `segment_helpers_match_detour` first had `dtTriArea2D`'s sign backwards.
+  - The last two were caught while deriving, before any run.
+- **Written after the code:**
+  - the far test's tracking of the chosen velocity;
+  - the six strengthenings after the surviving mutations (below).
+
+**Mutation checks:** 20 mutations, each run against its tests with the restored file given a fresh mtime. 14 were caught at once. The 6 that survived, and what now catches each:
+- "overlaps not avoided more": the overlapping-circle case;
+- "depth ignored": the second-pass case;
+- "walls behind kept": `walls_behind_the_agent_are_skipped`;
+- "no range cut": the 5.5 m square in `walking_agents_gather_their_walls`;
+- "`crowd.avoid` every tick": a standing neighbour on the far test's path;
+- "neighbours only when due": the far agent's own neighbour list, checked every tick.
+
+All 20 are caught now. The caught ones:
+- **Shim:** one neighbourhood polygon; walls dropped.
+- **Sampler:** no early out, no side penalty, circles never hit, walls not doubled, rings not turned.
+- **Step:** walls ignored, neighbours ignored, the boundary gathered every tick.
+- **Boundary:** an equal distance goes after.
+- **LOD:** steer every tick; the grid holding only due agents.
+- **Debug:** walls not drawn.
+
+**Studio and budgets** (served definitions, 4 chars a token; no tool or tool schema changed): level designer 37 tools ≈23.1k (23,078), QA 24 ≈21.5k (21,519), tech artist 23 ≈20.1k (20,106), animator 22 ≈16.8k (16,824), gameplay programmer 17 ≈12.9k (12,946), director 13 ≈12.5k (12,453), writer 11 ≈9.6k (9,576), all unchanged and under 50k.
+
+**A flaky test fixed (2.5b.2b's `concordia-app/tests/player.rs`):** `window_input_reaches_the_play_world` failed once in the first full run and passed 203 times alone. The cause: `Player` starts play when the window opens, and a playing engine also advances by wall-clock time on every API call (`Engine::poll`). Under suite load, a gap of more than one tick between the key release and the check let an extra tick clear `just_released`. The tests now pause after opening (`Stage::open`), so only `sim.step` advances. A 50 ms sleep after each fed event makes the old version fail every time and the fixed one pass.
+
+**Carry-over:** `run_bench_latency_measures_the_engine_window_alone` (left noted in 2.5c.1), the `navmesh` layer's re-gather, the editor's deny warning, ADR-0069's chunk components (M7 7.7), and physics queries seeing last-step bodies all stand. New for M7 7.7 (`BASELINE.md`): the crowd's sequential parts (`crowd.grid`'s build, the collision snapshots, `nav.plan`'s scan) are about 4 ms a tick at 10k.
+
+**Not in 2.5c.2:** topology optimization (later); avoidance samples in the debug layer (they wait for a debug-agent hook); feature cuts by LOD level (M7); traffic (2.5d).
+
+**Goldens and snapshots:** none new or changed (collected with `INSTA_FORCE_PASS=1 INSTA_UPDATE=new`: no `.snap.new` appeared). **Editor schemas:** unchanged (`just editor-schemas` gives no diff; the schema project has no `[nav]`).
+
+**Checklist:** all of these pass:
+- `just lint` and Tauri clippy;
+- `just wasm`, `just native-fixtures`, then the `CONCORDIA_REQUIRE_GPU=1` full suite with `--no-fail-fast` (1,523 tests: 1,523 pass, 9 skipped; 14 doc tests);
+- `just gate-tests M1` (4) and `M3S` (13);
+- `just deny` and the editor's, both `Cargo.lock`s, fresh advisory DB (neither lock gains a crate: `criterion` is a dev-dependency already in the workspace lock; the editor's deny prints the existing "no crate matched" warning);
+- `just editor-schemas` (no change);
+- `just editor-test` (118 unit, 22 end-to-end).
 
 ### Effort (re-estimated)
 | Phase | Estimate |

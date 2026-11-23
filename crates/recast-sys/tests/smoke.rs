@@ -196,6 +196,10 @@ fn ffi_handles_are_released() {
         let _ = query
             .raycast_path(&costs, start.0, start.1, [9.0, 0.2, 0.0], 32)
             .expect("ray");
+        let _ = query
+            .local_neighbourhood(&costs, start.0, start.1, 2.0, 16)
+            .expect("neighbourhood");
+        let _ = query.wall_segments(&costs, start.0, 18).expect("walls");
         assert!(
             live_allocations() > before,
             "the navmesh and query are counted"
@@ -359,6 +363,41 @@ fn shim_rejects_bad_input() {
         query.raycast_path(&costs, stale, p, p, 32),
         Err(RecastError::NotFound)
     );
+    assert!(input(
+        query
+            .local_neighbourhood(&costs, poly, nan, 1.0, 16)
+            .unwrap_err()
+    ));
+    for radius in [f32::NAN, -1.0] {
+        assert!(
+            input(
+                query
+                    .local_neighbourhood(&costs, poly, p, radius, 16)
+                    .unwrap_err()
+            ),
+            "radius {radius}"
+        );
+    }
+    assert!(
+        input(
+            query
+                .local_neighbourhood(&costs, poly, p, 1.0, 0)
+                .unwrap_err()
+        ),
+        "no polygon slots"
+    );
+    assert_eq!(
+        query.local_neighbourhood(&costs, stale, p, 1.0, 16),
+        Err(RecastError::NotFound)
+    );
+    assert!(
+        input(query.wall_segments(&costs, poly, 0).unwrap_err()),
+        "no segment slots"
+    );
+    assert_eq!(
+        query.wall_segments(&costs, stale, 18),
+        Err(RecastError::NotFound)
+    );
     let tile = build_tile(&config(), &plane_input()).unwrap().unwrap();
     let mut mesh = DtNavMesh::new(&params()).unwrap();
     mesh.add_tile(&tile).unwrap();
@@ -481,4 +520,48 @@ fn raycast_path_lists_visited_polygons() {
         hit.ray.hit,
         "the same ray as cr_raycast"
     );
+}
+
+// Boundary queries (2.5c.2), on the same two-tile plane: polygon `a` covers x −4.25..5 and `b`
+// covers 5..14.25 (z ±4.25), linked across the seam at x = 5.
+
+#[test]
+fn local_neighbourhood_grows_with_its_radius() {
+    // From (0, 0.2, 0) the seam is 5 m away: a radius of 4.9 m stays in `a`, and 6 m reaches `b`
+    // through the portal (Detour adds a polygon whose shared edge is within the radius).
+    let mut query = DtQuery::new(two_tile_mesh(), 256).expect("query");
+    let costs = AreaCosts::default();
+    let (a, start) = snap(&mut query, [0.0, 0.2, 0.0]);
+    let (b, _) = snap(&mut query, [8.0, 0.2, 0.0]);
+    let near = query
+        .local_neighbourhood(&costs, a, start, 4.9, 16)
+        .expect("query");
+    assert_eq!(near, vec![a]);
+    let far = query
+        .local_neighbourhood(&costs, a, start, 6.0, 16)
+        .expect("query");
+    assert_eq!(far, vec![a, b]);
+    let one = query
+        .local_neighbourhood(&costs, a, start, 6.0, 1)
+        .expect("query");
+    assert_eq!(one, vec![a], "one slot keeps the start");
+}
+
+#[test]
+fn wall_segments_are_the_unlinked_edges() {
+    // `a`'s outline is x −4.25..5 by z ±4.25. Its edges at z = ±4.25 (9.25 m each) and x = −4.25
+    // (8.5 m) are walls, 27 m in all; its seam edge at x = 5 links to `b`, so it isn't one.
+    let mut query = DtQuery::new(two_tile_mesh(), 256).expect("query");
+    let costs = AreaCosts::default();
+    let (a, _) = snap(&mut query, [0.0, 0.2, 0.0]);
+    let walls = query.wall_segments(&costs, a, 18).expect("query");
+    let length: f32 = walls
+        .iter()
+        .map(|[p, q]| ((p[0] - q[0]).powi(2) + (p[2] - q[2]).powi(2)).sqrt())
+        .sum();
+    assert!((length - 27.0).abs() < 1e-3, "{length}: {walls:?}");
+    let on_seam = |s: &[[f32; 3]; 2]| (s[0][0] - 5.0).abs() < 1e-3 && (s[1][0] - 5.0).abs() < 1e-3;
+    assert!(!walls.iter().any(on_seam), "{walls:?}");
+    let first = query.wall_segments(&costs, a, 1).expect("query");
+    assert_eq!(first.len(), 1, "capped: {first:?}");
 }

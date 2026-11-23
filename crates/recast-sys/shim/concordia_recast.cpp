@@ -509,5 +509,32 @@ int32_t cr_raycast_path(cr_query* query, const cr_filter* filter, uint64_t start
     return CR_OK;
 }
 
+int32_t cr_local_neighbourhood(cr_query* query, const cr_filter* filter, uint64_t start_ref,
+                               const float center[3], float radius, uint64_t* refs, int32_t cap,
+                               int32_t* count) {
+    if (!query || !valid_filter(filter) || !finite3(center) || !std::isfinite(radius) || radius < 0.0f ||
+        !refs || cap <= 0 || !count)
+        return CR_ERR_INPUT;
+    if (!query->mesh->isValidPolyRef(start_ref)) return CR_ERR_NOT_FOUND;
+    const dtQueryFilter f = make_filter(filter);
+    int n = 0;
+    const dtStatus s = query->query->findLocalNeighbourhood(start_ref, center, radius, &f, refs, 0, &n, cap);
+    if (dtStatusFailed(s)) return query_status(s);
+    *count = n;
+    return CR_OK;
+}
+
+int32_t cr_poly_wall_segments(cr_query* query, const cr_filter* filter, uint64_t ref,
+                              float* segments, int32_t cap, int32_t* count) {
+    if (!query || !valid_filter(filter) || !segments || cap <= 0 || !count) return CR_ERR_INPUT;
+    if (!query->mesh->isValidPolyRef(ref)) return CR_ERR_NOT_FOUND;
+    const dtQueryFilter f = make_filter(filter);
+    int n = 0;
+    const dtStatus s = query->query->getPolyWallSegments(ref, &f, segments, 0, &n, cap);
+    if (dtStatusFailed(s)) return query_status(s);
+    *count = n;
+    return CR_OK;
+}
+
 
 }

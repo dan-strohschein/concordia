@@ -1,5 +1,5 @@
 # ADR-0077: Navigation: Recast/Detour navmeshes from static colliders, engine-native marks, per-agent crowds
-- Status: Accepted (M2 phase 2.5a, 2026-11-22; author decision N1; updated in 2.5b.1 with N2 and N3, and in 2.5c.1 with N5)
+- Status: Accepted (M2 phase 2.5a, 2026-11-22; author decision N1; updated in 2.5b.1 with N2 and N3, in 2.5c.1 with N5, and in 2.5c.2)
 - Date: 2026-11-22
 - Builds on: ADR-0063 (determinism contract), ADR-0069 (storage kinds), ADR-0072 (replay), ADR-0076 (Terra LOD), ADR-0067 (Godot mappings move to M5)
 
@@ -51,3 +51,19 @@ M2's navigation phase builds navmeshes with Recast, answers path queries with De
 - **The chain** is DetourCrowd's `dtCrowd::update`, split into processors in `PrePhysics` after `nav.plan`, each writing only its own agent: grid, corridor (bodies followed, corners, the visibility shortcut), neighbours (all in range, nearest 6 by (distance², id)), steer (smooth or straight, the end slow-down, separation), integrate (accelerating toward the chosen velocity; a step never passes the end), collide (4 Jacobi iterations over the previous iteration's candidates), and move (surface moves, physics velocities, arrival). Others are read only from snapshots built in id order, so the hash is the same at any thread count.
 - **Shim:** `cr_move_along_surface`, `cr_poly_height` and `cr_raycast_path`, each narrow. The corridor helpers (`dtMergeCorridorStartMoved`, `dtMergeCorridorStartShortcut`, `findCorners`' pruning) are rewritten in Rust. Sliced pathfinding, topology optimization, off-mesh connections and validity checks aren't needed (navmeshes don't change at runtime).
 - **Not yet:** sampled velocity-obstacle avoidance, the local wall boundary and the LOD opt-in are 2.5c.2. The crowd's per-agent processors are declared LOD-aware already, so far agents will choose velocities less often, while the grid, neighbours, integration, collision and movement stay at full rate.
+
+## Update (M2 phase 2.5c.2, 2026-11-22): avoidance and LOD
+- **`crowd.avoid`** (between steer and integrate) is DetourCrowd's `sampleVelocityAdaptive`, rewritten as pure functions:
+  - The obstacles are the agent's neighbours (circles with last tick's snapshot position, velocity and desired velocity; characters included) and the walls it faces (segments).
+  - The penalties, early-outs and pattern follow DetourCrowd exactly, with every candidate tried in a fixed order (ties keep the first).
+  - Cos and sin of 2π/n and π/n come from a fixed table, not run-time trigonometry, so results are the same wherever the arithmetic is IEEE.
+  - With `avoidance: None`, the chosen velocity is the desired one.
+  - **Two deliberate differences from DetourCrowd:**
+    - an even `divs` fills the ring slot DetourCrowd leaves stale;
+    - neighbours' desired velocities are last tick's (DetourCrowd's are the same tick's), so no agent sees another's half-finished step.
+- **The local boundary** (`dtLocalBoundary`) is hashed state: `CrowdState.boundary_center` and at most 8 `walls`.
+  - It is gathered by two new narrow shim queries, `cr_local_neighbourhood` and `cr_poly_wall_segments`, when there is no boundary yet or the agent has moved over a quarter of its query range.
+  - The validity re-check is left out, because navmeshes don't change at runtime.
+- **Simulation LOD:** `crowd.corridor`, `crowd.steer` and `crowd.avoid` are `.lod()`. A far agent re-picks its corners, desired velocity, walls and chosen velocity only when due, and holds them in between. The grid, neighbours, integration, collision, movement and arrival stay full-rate, so far agents still collide, stay on the navmesh and never pass their end.
+- **The query pool is sharded:** `NavMesh` keeps 16 pools of Detour query objects, picked by thread. One shared mutex made the crowd's queries slower at 8 threads than at one. Results can't change, because every Detour call resets its object.
+- **Measured:** `crowd_10k` (one tick of 10,000 surface agents) takes 12.3 ms plain and 12.4 ms with avoidance and LOD at 8 threads (`concordia-terra-crowd/benches/BASELINE.md`). M7 7.7 keeps the 100k target and the perf test.

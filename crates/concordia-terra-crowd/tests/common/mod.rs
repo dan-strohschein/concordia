@@ -16,8 +16,10 @@ use concordia_nav::{
     NavMeshes, NavPathFailed, add_agent_processors, build_tiles, insert_agent_states,
 };
 use concordia_physics::{BodyKind, CharacterController, Collider, ColliderShape, RigidBody};
-use concordia_scene::builtin::Transform;
-use concordia_terra::{Schedule, SimLoop, World, WorldHash};
+use concordia_scene::builtin::{Transform, lod_position};
+use concordia_terra::{
+    LodProfile, LodViewer, Phase, Schedule, SimLod, SimLoop, World, WorldHash, lod_system,
+};
 use concordia_terra_crowd::{CrowdState, add_crowd_processors, insert_crowd_states};
 
 /// The walkable surface of a floor whose top is y = 0 (2.5a: a span is at least one cell tall).
@@ -115,6 +117,17 @@ impl Level {
         id
     }
 
+    /// A `LodViewer` at `at`, and `profile` on each of `agents`.
+    pub fn lod(&mut self, at: Vec3, agents: &[EntityId], profile: LodProfile) -> EntityId {
+        let viewer = self.entity(at);
+        self.world.insert(viewer, LodViewer).unwrap();
+        let _ = self.world.register_shared::<LodProfile>();
+        for &id in agents {
+            self.world.insert(id, profile).unwrap();
+        }
+        viewer
+    }
+
     pub fn build(&self) -> NavMesh {
         let input = NavInput::gather(&self.world, self.volume.expect("a volume")).expect("gathers");
         let data = build_tiles(&input, NonZeroUsize::new(4).unwrap()).expect("builds");
@@ -181,6 +194,17 @@ impl Rig {
         }
     }
 
+    /// Like [`Rig::with`], with `terra.lod` first in `PrePhysics` (as the scene's schedule has it).
+    pub fn with_lod(level: Level, threads: usize) -> Self {
+        Self::with(level, threads, |schedule| {
+            schedule.add_in(Phase::PrePhysics, lod_system(lod_position));
+        })
+    }
+
+    pub fn lod(&self, id: EntityId) -> Option<SimLod> {
+        self.world.get::<SimLod>(id).copied()
+    }
+
     pub fn step(&mut self, ticks: u32) {
         self.sim.step(&mut self.world, &self.jobs, ticks);
     }
@@ -216,6 +240,26 @@ impl Rig {
             .map(|(id, s)| (id, s.clone()))
             .collect()
     }
+}
+
+/// Lane `k`'s pair in the 1,000-agent field: (start, target) for each.
+pub fn lane(k: usize) -> [(Vec3, Vec3); 2] {
+    let (col, row) = ((k % 25) as f32, (k / 25) as f32);
+    let (x, z) = (-96.0 + 8.0 * col, -19.0 + 2.0 * row);
+    let offset = 0.1 + 0.3 * ((k % 7) as f32) / 6.0;
+    [
+        (Vec3::new(x - 3.0, 0.0, z), Vec3::new(x + 3.0, 0.0, z)),
+        (
+            Vec3::new(x + 3.0, 0.0, z + offset),
+            Vec3::new(x - 3.0, 0.0, z + offset),
+        ),
+    ]
+}
+
+/// The steady-state overlap bound of `crowd.rs`'s header for a closing speed of `closing` m/s.
+pub fn overlap_bound(closing: f32) -> f32 {
+    let c = closing / 60.0;
+    0.0081 * c / (1.0 - 0.0081)
 }
 
 pub fn close(a: Vec3, b: Vec3, eps: f32) -> bool {
