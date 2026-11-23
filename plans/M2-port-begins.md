@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2; 2026-11-22) done; 2.5d next · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2) and 2.5d (2026-11-22) done; phase 2.5 complete · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -1834,7 +1834,7 @@ A capture at 100k now takes about 84 ms (160 before). A playing 100k crowd is st
 **Not in 2.4b.2:** hysteresis for representation (E2: only if flicker shows); a columnar, incremental extraction for crowds that move every tick (M7 phase 7.7, with tests and a target); spreading a far character's held pose over its interval in rendering.
 
 ### Phase 2.5 refinement (2026-11-22, against the code after 2.4b.2)
-**Status: author decision N1 taken (2026-11-22); my other calls below (say if you disagree). 2.5a done (see its As built); 2.5b done (2.5b.1, 2.5b.2a, 2.5b.2b); 2.5c done (2.5c.1, 2.5c.2; see their As builts); 2.5d next.**
+**Status: author decision N1 taken (2026-11-22); my other calls below (say if you disagree). 2.5a done (see its As built); 2.5b done (2.5b.1, 2.5b.2a, 2.5b.2b); 2.5c done (2.5c.1, 2.5c.2; see their As builts); 2.5d done (N6, N7; see its As built). Phase 2.5 is complete.**
 
 Refined against the code as built. The old Phase 2.5 section, this refinement's *2.5 (added)* tests, M7's 7.7 and 2.4b's As built are the starting point. **This section wins wherever the old Phase 2.5 text disagrees.**
 
@@ -2741,6 +2741,196 @@ All 20 are caught now. The caught ones:
 - `just wasm`, `just native-fixtures`, then the `CONCORDIA_REQUIRE_GPU=1` full suite with `--no-fail-fast` (1,523 tests: 1,523 pass, 9 skipped; 14 doc tests);
 - `just gate-tests M1` (4) and `M3S` (13);
 - `just deny` and the editor's, both `Cargo.lock`s, fresh advisory DB (neither lock gains a crate: `criterion` is a dev-dependency already in the workspace lock; the editor's deny prints the existing "no crate matched" warning);
+- `just editor-schemas` (no change);
+- `just editor-test` (118 unit, 22 end-to-end).
+
+### Phase 2.5d refinement (2026-11-22, against the code after 2.5c.2)
+**Status: done (see its As built); author decisions N6 and N7 taken (2026-11-22). One PR, `m2/2.5d-traffic`.**
+
+Refined against `main` after #63: the Phase 2.5 refinement (its 2.5d row and test list), the 2.5c refinement and As builts, ADR-0069, ADR-0070, ADR-0076, ADR-0077 and M7's 7.7 note. **This section wins wherever they disagree.**
+
+**What exists (checked in code):**
+- No lanes, vehicles or traffic anywhere.
+- `concordia-terra-crowd` is listed in `plans/README.md` as "crowds and traffic". Its `CrowdGrid` snapshots every crowd agent and `CharacterController` each tick (position, radius, velocity), in id order.
+- Physics has `BodyKind::Kinematic`: the body follows its `Transform` and pushes dynamic bodies, and Jolt characters collide with it.
+- `concordia_scene::builtin::world_transform` gives world matrices, parents included.
+- Templates compose traits; the `Crowd` trait is the model. The `[nav]` section enables `CrowdModule`.
+
+**Author decisions (2026-11-22):**
+- **N6. Lanes are scene entities.** Each lane is an entity with a `Lane` component, and each junction is an entity with a `Junction` component. Roads are therefore saved in `.scene.ron`, undoable, editable over MCP and in the editor, and spawnable from templates, with no new file format or tool.
+- **N7. Cars brake for people.** A vehicle treats any crowd agent or character standing in its lane ahead as a stopped car and brakes for it. Crowd members don't yet steer round vehicles (M7). A vehicle template may add a kinematic body and collider, so physics characters, the player included, bump into cars.
+
+**My calls (say if you disagree):**
+- **Where it lives:** `concordia-terra-crowd`, in a `traffic` module beside the crowd. It reuses `CrowdGrid` for N7's people, which is why it isn't a new crate. Traffic needs no navmesh. `CrowdModule` adds traffic's processors, so `[nav]` turns traffic on too (navigation, crowds and traffic are one section), and there is still no new manifest section. A new **ADR-0079** records the lane graph and the junction rule; it is a new design, not a navmesh decision.
+- **Components** (all reflected and validated like `NavAgent`; gameplay or the level designer writes the first three):
+  - **`Lane`**: `points: Vec<Vec3>` (at least 2, in the entity's space: its world transform's translation and rotation apply, but not its scale, as in physics), `speed_limit` (m/s, default 13.9, i.e. 50 km/h), `width` (default 3.5 m), `next: Vec<EntityId>` (the lanes it leads to) and `priority: u8` (higher goes first at a junction; default 0).
+  - **`Junction`**: `lanes: Vec<EntityId>`, the connector lanes inside it. Two connectors **conflict** when their polylines cross (sideways), or when they lead into the same lane (a merge). Connectors that only share a start don't conflict: their vehicles are queued on the same approach anyway.
+  - **`Vehicle`**: the Intelligent Driver Model's parameters (Treiber, Hennecke and Helbing 2000, with the paper's urban values): `max_speed` (15 m/s), `max_acceleration` *a* (1.0 m/s²), `comfortable_braking` *b* (1.5 m/s²), `time_headway` *T* (1.5 s), `min_gap` *s₀* (2.0 m) and `length` (4.5 m). Also an optional `destination: Option<EntityId>` (a lane). The exponent δ is fixed at 4.
+  - **`VehicleState`** (hashed, written only by `traffic.*`): `lane`, `distance` (m along it), `speed`, `route` (lanes still to drive), `status` (`Idle`, `Driving`, `Waiting` at a junction, `Arrived`, `Failed`), `waiting_since`, and `granted` (the junction that let it in).
+  - **`JunctionState`** (hashed, written only by `traffic.junctions`): the vehicles granted, by id.
+- **The lane graph** is a `TrafficGraph` resource, built at play start from every `Lane` and `Junction`. Built per lane: world-space points, cumulative lengths, and conflicts per junction. It is derived data and not hashed (ADR-0069's rule). Lanes are static during play in M2, as navmeshes are.
+  - **Problems are descriptive and don't stop play:** a dangling `next` or `lanes` reference, fewer than 2 points, a non-finite point, a zero-length lane, and a connector in two junctions. Each is logged once by entity and drawn red in the `lanes` layer. A vehicle on a bad lane stops (`Failed`).
+- **Routing:** with a `destination`, Dijkstra over the lane graph by travel time (length / speed limit), ties broken by lane id, is computed when the destination changes. Unreachable gives `Failed` and a `VehicleRouteFailed { destination }` signal, once per destination, like `NavPathFailed`. Without a destination a vehicle **wanders**. At each lane end it takes `next[h mod n]`, where *h* is SplitMix64 of (vehicle id, lane id): a fixed choice, with no RNG state. A lane with no `next` is a dead end, and the vehicle stops at its end.
+- **The processor chain** (`PrePhysics`, after `crowd.grid`). Each step writes only its own entity and reads others from a snapshot, in fixed 256-row pieces, so the hash is the same at any thread count:
+  1. **`traffic.place`**: puts vehicles without a lane on the nearest lane point to their feet (sideways, ties by lane id), and gives them states.
+  2. **`traffic.snapshot`**: a `TrafficSnapshot` resource, holding every vehicle's lane, distance, speed and length, sorted per lane by distance, then id.
+  3. **`traffic.junctions`** (one junction each). It reads the snapshot and its `JunctionState`, and keeps grants for vehicles still on its connectors. Requests come from vehicles whose next lane is one of its connectors and that are within their braking distance v²/(2b) + *s₀* of the stop line, or already stopped there. They are ordered by (priority descending, `waiting_since`, id), and each is granted greedily if its connector conflicts with no connector that is occupied or already granted.
+  4. **`traffic.drive`** (per vehicle; full rate).
+     - The leader is the nearest of:
+       - the vehicle ahead on its lane and the lanes ahead on its route, within 150 m;
+       - the stop line, as a stopped leader of length 0, when its next lane is an ungranted connector;
+       - the end of a dead end or of its destination lane;
+       - **N7's people**: `CrowdGrid` entries whose feet are within width / 2 + their radius of the lane ahead (sideways, and within half the vehicle's height vertically), as stopped leaders at their projected distance minus their radius.
+     - **IDM:** *a*_IDM = *a* [1 − (v / v₀)⁴ − (s* / s)²], with s* = *s₀* + max(0, vT + vΔv / (2√(ab))) and v₀ = min(`max_speed`, the lane's `speed_limit`). With no leader the last term is zero.
+     - **Treiber's ballistic update:** if v + a·dt < 0, it stops after −v² / (2a); else it moves v·dt + ½a·dt² and v += a·dt.
+     - It moves along its polyline and on into its next lane (routed or wandered), then writes `Transform`: the translation on the lane and a heading from `Quat::from_rotation_arc`, so no trigonometry.
+     - **Signals:** `VehicleArrived { destination }` when it stops at its destination lane's end, through deferred buffers joined in piece order.
+- **Simulation LOD:** nothing opts in. `traffic.drive` is a few dozen operations per vehicle, and a held speed would carry far vehicles into the car ahead. That is the same reasoning as `nav.follow`'s (2.5b.1). Feature cuts by level stay in M7.
+- **The `Vehicle` trait** (ADR-0070): `Vehicle { vehicle: Vehicle }`. It adds `Transform` and `Vehicle` and requires `traffic.drive`. A template adds a mesh, and optionally a kinematic `RigidBody` and `Collider`.
+- **Debug layer `lanes`:**
+  - each lane's polyline, with an arrow every 5 m showing its direction;
+  - connectors coloured by state: free, granted or occupied;
+  - each vehicle's footprint, a box of `length` by 1.8 m along its heading;
+  - links from waiting vehicles to their stop line;
+  - problems in red;
+  - all lifted 2 cm. Tested by its geometry, like `crowd`.
+- **Studio:**
+  - **Level designer:** a new `concordia-traffic` skill covering lanes and junctions as entities, `next`, `priority`, conflicts, reading problems from the log and the `lanes` layer, and the `Vehicle` template. Its example calls and components are parsed as the real types.
+  - **Gameplay programmer:** `concordia-nav-agents` gains a "Vehicles" section (`destination`, `VehicleState`, the two signals, a script mirror of `Vehicle` checked field by field).
+  - No tool schema changes, so the budgets shouldn't move; every role's numbers are reported in As built.
+- **Clean room:** Treiber, Hennecke and Helbing, "Congested traffic states in empirical observations and microscopic simulations" (Phys. Rev. E 62, 2000), and Treiber and Kesting, *Traffic Flow Dynamics* (2013), for the ballistic update. Dijkstra (1959). SplitMix64 (Steele, Lea and Flood, 2014), already in Terra. No Unreal or other non-open source; no traffic engine's code is read.
+
+**2.5d tests (first list).** The expected values are derived in the test headers: 60 Hz, the first step is tick 0, and the IDM's ballistic update by hand.
+- `concordia-nav`'s and Studio's existing tests, unchanged.
+- `concordia-terra-crowd` unit tests:
+  - `idm_acceleration_matches_hand_computed_values` (free road, a leader at equilibrium distance, a stopped leader);
+  - `ballistic_update_stops_without_reversing`;
+  - `routes_take_the_quickest_lanes` (Dijkstra by time, ties by id);
+  - `junction_conflicts_are_crossings_and_merges`;
+  - `junction_grants_follow_priority_then_arrival_then_id`;
+  - `wander_choices_are_fixed_by_ids`.
+- `concordia-terra-crowd/tests/traffic.rs` (a rig without physics):
+  - `vehicle_accelerates_to_the_limit_along_its_lane` (the first ticks exact; the speed approaches min(limit, max); the heading follows a bend);
+  - `vehicles_queue_without_overlap` (a platoon behind a stopped car: every bumper gap stays positive, and each settles within 0.1 m of *s₀*);
+  - `traffic_follows_lanes_and_yields_at_junctions` (the milestone test: a four-way crossing, main road priority 1 and side road 0; conflicting connectors are never occupied at once; side vehicles enter only after the main ones pass; the order of entry is derived);
+  - `vehicles_brake_for_people_in_their_lane` (a crowd agent and a character standing in the lane: the car stops ≥ *s₀* short of each; someone beside the lane, past width / 2 + r, isn't braked for);
+  - `vehicles_reach_their_destination_or_fail_once` (`VehicleArrived`; an unreachable lane gives one `VehicleRouteFailed`);
+  - `lane_problems_are_descriptive_and_stop_only_their_vehicles`;
+  - `traffic_is_deterministic_across_runs_and_threads` (2,000 vehicles wandering a grid of roads, at 1 and 8 threads and run to run, and how many moved).
+- `concordia-terra-crowd/tests/engine.rs`:
+  - `vehicle_template_drives_a_kinematic_body` (the `Vehicle` trait; Jolt's kinematic body follows the lane; a character it meets is pushed, not passed through);
+  - `lanes_debug_layer_draws_lanes_junctions_and_vehicles`.
+- `concordia-studio`: the traffic skill's examples test, and the nav-agents mirror test extended to `Vehicle`.
+
+**Carry-over items:** the ignored `run_bench_latency_measures_the_engine_window_alone`, the `navmesh` layer's re-gather, the editor's deny warning, ADR-0069's chunk components (M7 7.7), physics queries seeing last-step bodies, and the crowd's sequential steps at 10k (M7 7.7) all stand as before.
+
+### Phase 2.5d As built (2026-11-22, ADR-0079)
+**Reconciled with the code as built:** the refinement held (N6, N7). What the code taught:
+- **The trait is `Traffic`** (`"Traffic": (vehicle: (…))`), because the component is already `Vehicle`. `VehicleState` has no `granted` field: grants live only in `JunctionState`.
+- **Junction requests start at twice the IDM's desired gap**, 2 (s₀ + vT + v² / (2√(ab))): about 115 m at 10 m/s, 4 m at rest. The refinement's v² / (2b) + s₀ was shorter than the distance at which the IDM already brakes for a stopped line (about 58 m at 10 m/s), so vehicles would have slowed before they had even asked.
+- **Look-ahead applies to every obstacle.** A dead end 450 m away first slowed a free-road vehicle to 9.963 m/s; the acceleration test caught it.
+- **Arrival also counts the queue.** A vehicle on its destination lane has arrived when it stops at the end, or within s₀ + 0.5 m behind a vehicle that has arrived. Otherwise only the first of a platoon ever arrives. Stopping for a person or a slow car mid-lane isn't arrival.
+- **People count within 2 m vertically** of the lane, since vehicles have no height field.
+- **Problems are also components.** The level designer's scope has no log tool, so each problem entity gets `TrafficProblems { messages }` in the play world at play start, which `query_run` can read.
+- **The heading is a yaw then a pitch.** A mutation showed no test had a slope. Vehicles now turn about y to the ground direction, then pitch about their own x to the slope, so they follow ramps without ever rolling. The special case for facing −z was redundant (glam already turns about +y) and was removed.
+- **`TrafficGraph` and `TrafficSnapshot` share their data behind `Arc`s**, as `CrowdGrid` does, so each step's clone is cheap. Terra's `splitmix64` is now public, for wandering.
+- **The rig** (`tests/common`) makes its navmesh optional and adds traffic's processors. `+z` is a vehicle's forward, as in glTF models.
+
+**Engine:**
+- `concordia-terra`: `splitmix64` exported.
+- `concordia-terra-crowd` (`src/traffic/`):
+  - `Lane`, `Junction`, `Vehicle`, `VehicleState` / `VehicleStatus`, `JunctionState` / `Grant`, `TrafficProblems`, `VehicleArrived` and `VehicleRouteFailed`;
+  - `TrafficGraph` (`LaneInfo::{at, project}`, conflicts, approaches, problems);
+  - the IDM and its ballistic update (`idm.rs`), Dijkstra and wandering (`route.rs`), and grants (`junction.rs`);
+  - `TrafficSnapshot`; driving (`drive.rs`); `traffic.place`, `traffic.snapshot`, `traffic.junctions` and `traffic.drive`, with `insert_traffic` and `add_traffic_processors`;
+  - the `Traffic` trait and the `lanes` layer (`LANES_LAYER`);
+  - `CrowdModule` registers, starts and draws both crowds and traffic.
+- Studio:
+  - the new `concordia-traffic` skill, given to the level designer;
+  - `concordia-nav-agents` gains "Vehicles".
+- Docs:
+  - ADR-0079 (new);
+  - the AGENTS.md of `concordia-terra-crowd` and `concordia-studio`;
+  - the README and `Cargo.toml` description of `concordia-terra-crowd`;
+  - `docs/guides/agents-engine-api.md`, `plans/README.md` (crates and the ADR registry), and this plan.
+
+**Tests (31 new, 1 extended):**
+- `concordia-terra-crowd` unit tests (13):
+  - `idm_acceleration_matches_hand_computed_values` (free road; a leader at 17 m and at the 18.977366 m equilibrium; a stopped leader, −2.912765; pulling away, with s* clamped: 0 and 0.947654);
+  - `ballistic_update_stops_without_reversing`;
+  - `lanes_are_placed_measured_and_projected` (a turned, moved L);
+  - `junction_conflicts_are_crossings_and_merges`;
+  - `lane_problems_name_the_entity_and_field`;
+  - `routes_take_the_quickest_lanes` (10 s against 20 s; a tie goes to the lower id);
+  - `wander_choices_are_fixed_by_ids`;
+  - `junction_grants_follow_priority_then_arrival_then_id`;
+  - `grants_hold_until_the_rear_leaves_the_connector`;
+  - and the four from before the phase.
+- `concordia-terra-crowd/tests/traffic.rs` (8):
+  - `vehicle_accelerates_to_the_limit_along_its_lane` (x = 5 + 0.5 / 3600 and 5 + 2 / 3600; t(v) = 5 (atanh r + atan r) gives 10 m/s by 60 s);
+  - `vehicle_heading_follows_a_bend_and_a_slope_without_rolling`;
+  - `vehicles_queue_without_overlap` (five cars stop with positive gaps, each settling within 0.1 m of 2 m);
+  - `traffic_follows_lanes_and_yields_at_junctions` (the milestone test):
+    - at tick 0 the main road is granted and the side road waits;
+    - footprints never overlap, and the two crossing connectors are never granted together;
+    - the side road enters only after the first main car clears;
+    - everyone arrives;
+  - `vehicles_brake_for_people_in_their_lane` (a character and a crowd agent: stops ≥ 2 m short; someone 2.5 m off the line isn't braked for);
+  - `vehicles_reach_their_destination_or_fail_once`;
+  - `lane_problems_are_descriptive_and_stop_only_their_vehicles`;
+  - `traffic_is_deterministic_across_runs_and_threads` (2,000 wandering vehicles in a 10 × 10 town, at 1 and 8 threads and run to run).
+- `concordia-terra-crowd/tests/engine.rs` (2):
+  - `vehicle_template_drives_a_kinematic_body` (a templated car's kinematic body shoves a crate in its lane);
+  - `lanes_debug_layer_draws_lanes_junctions_and_vehicles` (1 + 18 + 4 + 2 lines).
+- `concordia-studio` (2 new, 1 extended): `traffic_skill_examples_are_real_params_components_and_a_valid_template`, `nav_agents_skill_mirrors_vehicle`, and `the_default_roster_ships_the_planned_skills` (with `concordia-traffic`).
+
+**Red run:** against stubs (the IDM, routes, grants and wander returning nothing, an empty graph, traffic processors doing nothing, no module wiring, no skill), every test above failed for the right reason. The exceptions:
+- **`TrafficProblems` (added mid-phase) and the Studio mirror test** were red by not compiling, before their types and skill section existed.
+- **Test mistakes I fixed deliberately:**
+  - the acceleration header first used a time-constant argument; it now uses the exact free-road integral;
+  - the destination test first parked the unreachable car on the same lane as the routed one, which correctly stopped behind it, so it now has its own lane;
+  - the junction test's first "box" check tripped on a stopped car whose front sits under a centimetre past its line (the IDM's discrete approach to rest), so it now checks real footprint overlap;
+  - the engine test first named a `Point` distribution that doesn't exist;
+  - the skill's template example was first indented inside a list, where the examples parser doesn't look.
+- **Passed immediately, written with the code:** the slope half of the heading test, then shown red by the two heading mutations.
+
+**Mutation checks:** 22 mutations, each run against its tests with the restored file given a fresh mtime. 17 were caught at once. Of the 5 that survived:
+- "s* may go negative" was missed because the pulling-away case had v = 0; a 5 m/s case now catches it.
+- "waiting time ignored" was missed because no request was decided by waiting time; a two-request case now catches it.
+- "grants dropped on entry" was missed because nothing tested the rear rule; `grants_hold_until_the_rear_leaves_the_connector` now catches it.
+- "heading rolls at −z" exposed a redundant special case, which was removed.
+- "heading not flattened" exposed that no lane was sloped; the ramp leg now catches it and the new "no pitch" mutation.
+
+The caught ones:
+- **IDM:** no free-road term; reversing.
+- **Graph:** merges not conflicting; shared starts conflicting.
+- **Grants:** conflicts ignored.
+- **Routes and wandering:** the last tie winning; always taking the first lane.
+- **Driving:** no look-ahead limit, stop lines ignored, queues never arriving, the heading not flattened, no pitch.
+- **People:** never in the lane; everyone in the lane.
+- **Steps:**
+  - vehicles never placed, and requests from any distance;
+  - the route failure unsignalled;
+  - the heading not written;
+  - problems not put on entities.
+
+**Studio and budgets** (served definitions, 4 chars a token; no tool or tool schema changed): level designer 37 tools ≈23.1k (23,078), QA 24 ≈21.5k (21,519), tech artist 23 ≈20.1k (20,106), animator 22 ≈16.8k (16,824), gameplay programmer 17 ≈12.9k (12,946), director 13 ≈12.5k (12,453), writer 11 ≈9.6k (9,576), all unchanged and under 50k.
+
+**Goldens and snapshots:** four changed, all from the level designer gaining `concordia-traffic` and "road traffic" in its description:
+- Studio's `agent_level-designer` and `sync_generates_expected_claude_md_block`;
+- the M3S gate's `m3s_agents_and_skills` and `m3s_claude_md_block`.
+
+They were collected with `INSTA_FORCE_PASS=1 INSTA_UPDATE=new`, reviewed on an artifact page, and blessed by the author with `assertion_line` stripped. No render golden changed. **Editor schemas:** unchanged.
+
+**Carry-over:** the ignored `run_bench_latency_measures_the_engine_window_alone`, the `navmesh` layer's re-gather, the editor's deny warning, ADR-0069's chunk components (M7 7.7), physics queries seeing last-step bodies, and the crowd's sequential steps at 10k (M7 7.7) all stand.
+
+**Not in 2.5d:** lane changes, traffic lights, gap acceptance, people stepping aside for cars (M7), lanes edited during play, and traffic at M7's scale.
+
+**Checklist:** all of these pass:
+- `just lint` and Tauri clippy;
+- `just wasm`, `just native-fixtures`, then the `CONCORDIA_REQUIRE_GPU=1` full suite with `--no-fail-fast` (1,544 tests: 1,544 pass, 9 skipped; 14 doc tests);
+- `just gate-tests M1` (4) and `M3S` (13);
+- `just deny` and the editor's, both `Cargo.lock`s, fresh advisory DB (neither lock gains a crate; the editor's prints the existing "no crate matched" warning);
 - `just editor-schemas` (no change);
 - `just editor-test` (118 unit, 22 end-to-end).
 

@@ -49,5 +49,7 @@ expression: outline(&root)
   name: concordia-team-comms
 .claude/skills/concordia-terra-templates/SKILL.md
   name: concordia-terra-templates
+.claude/skills/concordia-traffic/SKILL.md
+  name: concordia-traffic
 .claude/skills/concordia-write-playtest/SKILL.md
   name: concordia-write-playtest
