@@ -165,7 +165,7 @@ fn starter_map_has_the_ui_actions() {
     ] {
         assert_eq!(kind(name), want, "{name}");
     }
-    assert_eq!(map.actions.len(), 16);
+    assert_eq!(map.actions.len(), 18);
     let bindings = |n: &str| map.action(n).unwrap().bindings.clone();
     assert_eq!(bindings("ui_viewport"), vec![Binding::Viewport]);
     assert_eq!(

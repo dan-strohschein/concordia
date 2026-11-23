@@ -183,6 +183,21 @@ impl InputMap {
             ),
             ("ui_page_up", Button, vec![key(KeyCode::PageUp)]),
             ("ui_page_down", Button, vec![key(KeyCode::PageDown)]),
+            (
+                "ui_shift",
+                Button,
+                vec![key(KeyCode::ShiftLeft), key(KeyCode::ShiftRight)],
+            ),
+            (
+                "ui_ctrl",
+                Button,
+                vec![
+                    key(KeyCode::ControlLeft),
+                    key(KeyCode::ControlRight),
+                    key(KeyCode::SuperLeft),
+                    key(KeyCode::SuperRight),
+                ],
+            ),
         ];
         Self {
             actions: actions
@@ -190,6 +205,17 @@ impl InputMap {
                 .map(|(name, kind, bindings)| (name.to_owned(), ActionDef { kind, bindings }))
                 .collect(),
         }
+    }
+
+    /// Whether `binding` reads the keyboard.
+    pub fn is_key(binding: &Binding) -> bool {
+        matches!(
+            binding,
+            Binding::Key(_)
+                | Binding::Chord { .. }
+                | Binding::KeyAxis { .. }
+                | Binding::KeyAxis2d { .. }
+        )
     }
 
     /// Whether `binding` reads the pointer device (buttons, position, ray, motion, scroll).

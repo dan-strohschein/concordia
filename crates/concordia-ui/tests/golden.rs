@@ -47,7 +47,15 @@ fn golden(name: &str, t: &mut Tree, assets: &mut MemoryAssets, size: [u32; 2]) {
         ..Camera::default()
     };
     t.world.insert(camera, cam).unwrap();
-    let ui = UiContext::default().draw(&t.world, assets, &UiFrame::new(size[0], size[1]));
+    let frame = UiFrame {
+        clip_from_world: concordia_render::scene_camera(&t.world, None)
+            .ok()
+            .and_then(|c| {
+                concordia_render::clip_from_world(&c, size[0] as f32 / size[1] as f32).ok()
+            }),
+        ..UiFrame::new(size[0], size[1])
+    };
+    let ui = UiContext::default().draw(&t.world, assets, &frame);
     let request = RenderRequest {
         camera: None,
         view: None,
@@ -654,6 +662,115 @@ fn ui_tooltip() {
     controls_golden("ui_tooltip", [320, 100], common::controls::tooltip);
 }
 
+/// Text boxes: focused with a selection and caret, a placeholder, a password, multi-line.
+#[test]
+fn ui_text_boxes() {
+    controls_golden("ui_text_boxes", [240, 216], common::controls::text_boxes);
+}
+
+/// A spin box with its arrows.
+#[test]
+fn ui_spin_box() {
+    controls_golden("ui_spin_box", [140, 52], common::controls::spin_box);
+}
+
+/// A multi-select list with two items selected.
+#[test]
+fn ui_list() {
+    controls_golden("ui_list", [200, 200], common::controls::list);
+}
+
+/// World-space UI (2.7b.3): a damage number 1 m above an enemy 6 m ahead, and a floating health
+/// bar 0.8 m above another 4 m ahead, below and to the right, seen by the camera at the origin
+/// looking down −z.
+#[test]
+fn ui_world_damage_number() {
+    use concordia_core::math::Vec3;
+    use concordia_scene::builtin::Parent;
+    let mut t = Tree::new();
+    let enemy = |t: &mut Tree, p: [f32; 3]| {
+        let id = t.world.spawn(&mut t.ids).unwrap();
+        t.world
+            .insert(
+                id,
+                Transform {
+                    translation: Vec3::from(p),
+                    ..Transform::default()
+                },
+            )
+            .unwrap();
+        id
+    };
+    let world_root = |t: &mut Tree, parent: EntityId, canvas: [f32; 2], y: f32| {
+        let id = t.world.spawn(&mut t.ids).unwrap();
+        t.world.insert(id, Transform::default()).unwrap();
+        t.world.insert(id, Parent(parent)).unwrap();
+        t.world
+            .insert(
+                id,
+                UiRoot {
+                    canvas,
+                    space: RootSpace::World {
+                        offset: [0.0, y, 0.0],
+                        pixel_size: 1.0,
+                    },
+                    ..UiRoot::default()
+                },
+            )
+            .unwrap();
+        t.world
+            .insert(
+                id,
+                UiNode {
+                    layout: Layout::Stack,
+                    ..UiNode::default()
+                },
+            )
+            .unwrap();
+        id
+    };
+    let far = enemy(&mut t, [0.0, 0.0, -6.0]);
+    let number = world_root(&mut t, far, [120.0, 40.0], 1.0);
+    let label = t.child(number, UiNode::default());
+    t.world
+        .insert(
+            label,
+            UiText {
+                runs: vec![TextRun {
+                    text: "-42".into(),
+                    size: Some(30.0),
+                    weight: Some(700.0),
+                    color: Some(ORANGE),
+                    ..TextRun::default()
+                }],
+                align: TextAlign::Center,
+                valign: VAlign::Center,
+                ..UiText::default()
+            },
+        )
+        .unwrap();
+    let near = enemy(&mut t, [1.8, -1.5, -4.0]);
+    let bar_root = world_root(&mut t, near, [80.0, 10.0], 0.8);
+    let bar = t.child(bar_root, UiNode::default());
+    t.world
+        .insert(
+            bar,
+            UiProgress {
+                value: 65.0,
+                track: Some(Background::Solid([0.05, 0.05, 0.05, 0.9])),
+                bar: Some(Background::Solid(RED)),
+                ..UiProgress::default()
+            },
+        )
+        .unwrap();
+    golden(
+        "ui_world_damage_number",
+        &mut t,
+        &mut MemoryAssets::default(),
+        [320, 180],
+    );
+}
+
 #[test]
 fn capture_screenshot_draws_the_ui_unless_asked_not_to() {
     if renderer().is_none() {
@@ -705,4 +822,70 @@ fn capture_screenshot_draws_the_ui_unless_asked_not_to() {
     let err = shot(serde_json::json!({"ui_scale": 9.0})).unwrap_err();
     assert_eq!(err.data.kind, "InvalidParams", "{err:?}");
     assert_eq!(err.data.pointer.as_deref(), Some("/ui_scale"));
+}
+
+/// `capture.screenshot` places world-space UI with the capture's camera (2.7b.3): a world root
+/// 5 m in front of the camera draws (the image differs from `"ui": false`); turned around, the
+/// camera sees it behind and draws none (the image equals `"ui": false`).
+#[test]
+fn capture_screenshot_places_world_ui_with_its_camera() {
+    if renderer().is_none() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = concordia_api::EngineConfig::new(dir.path());
+    config.deterministic_ids = Some(9);
+    config.modules = vec![
+        Arc::new(UiModule::new()),
+        Arc::new(concordia_render::RenderModule::new(Arc::new(
+            concordia_rhi_metal::new_headless,
+        ))),
+    ];
+    let mut engine = concordia_api::Engine::new(config).unwrap();
+    let s = engine.open_session();
+    let mut call = |method: &str, params: serde_json::Value| engine.call(s, method, params);
+    let actor = "agent:test";
+    call(
+        "scene.new",
+        serde_json::json!({"path": "scenes/w.scene.ron", "name": "W", "actor": actor}),
+    )
+    .unwrap();
+    let camera = call("entity.spawn", serde_json::json!({"actor": actor, "components": {"Transform": {"translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]}, "Camera": {}}})).unwrap()["id"].clone();
+    let root = call("entity.spawn", serde_json::json!({"actor": actor, "components": {
+        "Transform": {"translation": [0.0, 0.0, -5.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]},
+        "UiRoot": {"canvas": [32.0, 32.0], "space": {"World": {"offset": [0.0, 0.0, 0.0], "pixel_size": 1.0}}},
+        "UiNode": {"layout": "Stack"},
+    }})).unwrap();
+    call(
+        "entity.spawn",
+        serde_json::json!({"actor": actor, "components": {
+            "Parent": root["id"],
+            "UiNode": {},
+            "UiStyle": {"background": {"Solid": [1.0, 0.0, 0.0, 1.0]}},
+        }}),
+    )
+    .unwrap();
+    let shot = |call: &mut dyn FnMut(
+        &str,
+        serde_json::Value,
+    ) -> Result<serde_json::Value, concordia_api::ApiError>,
+                ui: bool| {
+        call(
+            "capture.screenshot",
+            serde_json::json!({"width": 64, "height": 64, "ui": ui}),
+        )
+        .unwrap()["image"]["data_base64"]
+            .clone()
+    };
+    assert_ne!(
+        shot(&mut call, true),
+        shot(&mut call, false),
+        "the world root is drawn"
+    );
+    call("component.patch", serde_json::json!({"actor": actor, "entity": camera, "component": "Transform", "patch": {"rotation": [0.0, 1.0, 0.0, 0.0]}})).unwrap();
+    assert_eq!(
+        shot(&mut call, true),
+        shot(&mut call, false),
+        "behind the camera, nothing is drawn"
+    );
 }

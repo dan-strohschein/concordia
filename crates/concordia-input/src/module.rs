@@ -14,6 +14,7 @@ use crate::error::InputError;
 use crate::event::InputEvent;
 use crate::map::InputMap;
 use crate::sampler::InputSampler;
+use crate::text::TypedText;
 
 /// Adds input sampling to every play world and the `input.inject` method.
 #[derive(Debug, Clone, Default)]
@@ -41,6 +42,7 @@ impl EngineModule for InputModule {
         let sampler = InputSampler::new(self.map.clone());
         world.insert_resource(sampler.states().clone());
         world.insert_resource(ConsumedActions::new(&self.map));
+        world.insert_resource(TypedText::default());
         world.insert_resource(sampler);
         let mut schedule = Schedule::new();
         schedule.add_in(Phase::PrePhysics, system("input.sample", sample_input));
@@ -60,7 +62,9 @@ fn sample_input(world: &mut World, ctx: &SystemCtx<'_>) {
         return;
     };
     let states = sampler.sample(ctx.tick.0).clone();
+    let typed = TypedText(sampler.typed().to_vec());
     world.insert_resource(states);
+    world.insert_resource(typed);
 }
 
 /// Queue input for the play world (keys, mouse, pointer, scroll, or action values) at a tick; creates a paused play world if none exists. Never changes the scene.

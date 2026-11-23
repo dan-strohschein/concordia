@@ -96,6 +96,65 @@ expression: params_schema(method)
       "title": "ActionValue",
       "x-concordia-type": "ActionValue"
     },
+    "EditKey": {
+      "description": "An editing command.",
+      "oneOf": [
+        {
+          "const": "Left",
+          "description": "One character back."
+        },
+        {
+          "const": "Right",
+          "description": "One character on."
+        },
+        {
+          "const": "Up",
+          "description": "The line above."
+        },
+        {
+          "const": "Down",
+          "description": "The line below."
+        },
+        {
+          "const": "Home",
+          "description": "The line's start."
+        },
+        {
+          "const": "End",
+          "description": "The line's end."
+        },
+        {
+          "const": "Backspace",
+          "description": "Delete back."
+        },
+        {
+          "const": "Delete",
+          "description": "Delete on."
+        },
+        {
+          "const": "SelectAll",
+          "description": "Select everything."
+        },
+        {
+          "const": "Copy",
+          "description": "Copy the selection to the clipboard."
+        },
+        {
+          "const": "Cut",
+          "description": "Cut the selection to the clipboard."
+        },
+        {
+          "const": "Paste",
+          "description": "Insert the clipboard."
+        },
+        {
+          "const": "Enter",
+          "description": "Submit, or a new line when multi-line."
+        }
+      ],
+      "title": "EditKey",
+      "x-concordia-type": "EditKey"
+    },
     "InjectedEvent": {
       "additionalProperties": false,
       "description": "One event and the tick it applies at.",
@@ -333,6 +392,19 @@ expression: params_schema(method)
           },
           "required": [
             "Viewport"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Typed text or an editing command (text fields).",
+          "properties": {
+            "Text": {
+              "$ref": "#/$defs/TextInput"
+            }
+          },
+          "required": [
+            "Text"
           ],
           "type": "object"
         },
@@ -626,6 +698,54 @@ expression: params_schema(method)
       ],
       "title": "MouseButton",
       "x-concordia-type": "MouseButton"
+    },
+    "TextInput": {
+      "description": "One piece of typed input.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Text to insert (typed characters or a paste).",
+          "properties": {
+            "Insert": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "Insert"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "An editing command; `select` extends the selection (Shift).",
+          "properties": {
+            "Edit": {
+              "additionalProperties": false,
+              "properties": {
+                "key": {
+                  "$ref": "#/$defs/EditKey",
+                  "description": "The command."
+                },
+                "select": {
+                  "description": "Extend the selection instead of moving it.",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "key",
+                "select"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Edit"
+          ],
+          "type": "object"
+        }
+      ],
+      "title": "TextInput",
+      "x-concordia-type": "TextInput"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",

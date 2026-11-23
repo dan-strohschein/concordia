@@ -62,6 +62,7 @@ fn sample() -> Replay {
                     ),
                     ("select".to_owned(), state(true, ActionValue::Button(true))),
                 ]),
+                text: Vec::new(),
             },
             InputChange {
                 tick: 11,
@@ -69,6 +70,7 @@ fn sample() -> Replay {
                     "select".to_owned(),
                     state(false, ActionValue::Button(false)),
                 )]),
+                text: Vec::new(),
             },
         ],
         checkpoints: vec![checkpoint(0, H1), checkpoint(60, H2), checkpoint(120, H1)],
@@ -130,4 +132,28 @@ fn replay_format_rejects_other_versions_bad_hashes_and_unordered_ticks() {
 
     let err = read_replay("Replay(version: 0)").unwrap_err();
     assert!(matches!(err, ReplayError::Parse(_)), "{err:?}");
+}
+
+/// Typed text (2.7b.3) is stored on its tick, beside or without action changes, and a tick with
+/// none writes no `text` field (so replays without typing are unchanged, still version 0).
+#[test]
+fn typed_text_round_trips_and_is_omitted_when_empty() {
+    use concordia_input::{EditKey, TextInput};
+    let mut replay = sample();
+    replay.inputs.push(InputChange {
+        tick: 12,
+        actions: BTreeMap::new(),
+        text: vec![
+            TextInput::Insert("hi".into()),
+            TextInput::Edit {
+                key: EditKey::Backspace,
+                select: false,
+            },
+        ],
+    });
+    let text = write_replay(&replay).unwrap();
+    assert_eq!(text.matches("text:").count(), 1, "{text}");
+    assert!(text.contains("Insert(\"hi\")"), "{text}");
+    assert_eq!(read_replay(&text).unwrap(), replay);
+    assert!(!write_replay(&sample()).unwrap().contains("text:"));
 }

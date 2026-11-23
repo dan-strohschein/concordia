@@ -3,7 +3,7 @@
 use std::num::NonZeroU32;
 use std::time::{Duration, Instant};
 
-use concordia_input::InputEvent;
+use concordia_input::{InputEvent, TextInput};
 use concordia_reflect::Reflect;
 use serde::{Deserialize, Serialize};
 use winit::application::ApplicationHandler;
@@ -16,6 +16,7 @@ use winit::window::{Window, WindowId};
 use crate::cursor::{CursorIcon, cursor_to_winit};
 use crate::error::PlatformError;
 use crate::keys::{key_from_winit, mouse_button_from_winit};
+use crate::typing::{Modifiers, insert, text_from_key};
 
 /// How to open a window.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
@@ -124,6 +125,7 @@ pub fn run_window(
         app,
         window: None,
         cursor: CursorIcon::Arrow,
+        modifiers: Modifiers::default(),
         deadline: options.exit_after.map(|d| Instant::now() + d),
         error: None,
     };
@@ -138,6 +140,7 @@ struct Runner<'a> {
     app: &'a mut dyn WindowApp,
     window: Option<Window>,
     cursor: CursorIcon,
+    modifiers: Modifiers,
     deadline: Option<Instant>,
     error: Option<PlatformError>,
 }
@@ -208,8 +211,18 @@ impl ApplicationHandler for Runner<'_> {
         _: WindowId,
         event: winit::event::WindowEvent,
     ) {
+        if let winit::event::WindowEvent::ModifiersChanged(m) = &event {
+            let state = m.state();
+            self.modifiers = Modifiers {
+                shift: state.shift_key(),
+                command: state.control_key() || state.super_key(),
+            };
+        }
         if let Some(event) = convert(&event, self.scale()) {
             self.send(event_loop, event);
+        }
+        if let Some(text) = typed(&event, self.modifiers) {
+            self.send(event_loop, WindowEvent::Input(InputEvent::Text(text)));
         }
     }
 
@@ -253,6 +266,25 @@ fn convert(event: &winit::event::WindowEvent, scale: f64) -> Option<WindowEvent>
             scale_factor: *scale_factor,
         }),
         _ => input(event, scale).map(WindowEvent::Input),
+    }
+}
+
+/// A pressed key's typed text (repeats included, so held editing keys repeat).
+fn typed(event: &winit::event::WindowEvent, mods: Modifiers) -> Option<TextInput> {
+    let winit::event::WindowEvent::KeyboardInput { event, .. } = event else {
+        return None;
+    };
+    if event.state != ElementState::Pressed {
+        return None;
+    }
+    let PhysicalKey::Code(code) = event.physical_key else {
+        return None;
+    };
+    let text = event.text.as_deref();
+    match key_from_winit(code) {
+        Some(key) => text_from_key(key, text, mods),
+        None if !mods.command => insert(text?),
+        None => None,
     }
 }
 

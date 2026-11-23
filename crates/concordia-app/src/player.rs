@@ -4,8 +4,10 @@
 use std::collections::BTreeSet;
 
 use concordia_api::{ApiError, ApiErrorKind};
-use concordia_input::{InputEvent, KeyCode, MouseButton};
+use concordia_input::{EditKey, InputEvent, KeyCode, MAX_INSERT_BYTES, MouseButton, TextInput};
 use concordia_platform::{CursorIcon, WindowEvent};
+
+use crate::clipboard::{Clipboard, OsClipboard};
 use serde_json::{Value, json};
 
 /// One Engine API call: a method and its params.
@@ -13,7 +15,6 @@ pub type ApiCall<'a> = dyn FnMut(&str, Value) -> Result<Value, ApiError> + 'a;
 
 /// Plays the scene in a window: starts the simulation, sends input (cursor moves also as world
 /// rays from the drawing camera) and presents the play world from its game camera.
-#[derive(Debug)]
 pub struct Player {
     draws: bool,
     size: (u32, u32),
@@ -23,11 +24,30 @@ pub struct Player {
     warned: BTreeSet<&'static str>,
     cursor: CursorIcon,
     has_ui: bool,
+    clipboard: Box<dyn Clipboard>,
+    copied: u64,
+}
+
+impl std::fmt::Debug for Player {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Player")
+            .field("draws", &self.draws)
+            .field("size", &self.size)
+            .field("scale", &self.scale)
+            .field("cursor", &self.cursor)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Player {
-    /// A player; `draws` says whether a viewport surface is attached to present into.
+    /// A player; `draws` says whether a viewport surface is attached to present into. It uses
+    /// the OS clipboard.
     pub fn new(draws: bool) -> Self {
+        Self::with_clipboard(draws, Box::new(OsClipboard::default()))
+    }
+
+    /// A player with its own clipboard (tests, or no OS clipboard).
+    pub fn with_clipboard(draws: bool, clipboard: Box<dyn Clipboard>) -> Self {
         Self {
             draws,
             size: (1, 1),
@@ -37,6 +57,8 @@ impl Player {
             warned: BTreeSet::new(),
             cursor: CursorIcon::Arrow,
             has_ui: true,
+            clipboard,
+            copied: 0,
         }
     }
 
@@ -75,7 +97,10 @@ impl Player {
             WindowEvent::CloseRequested => {
                 api("sim.stop", json!({}))?;
             }
-            WindowEvent::Input(input) => self.input(input, api)?,
+            WindowEvent::Input(input) => {
+                self.input(input, api)?;
+                self.sync_clipboard(api);
+            }
         }
         Ok(())
     }
@@ -128,6 +153,49 @@ impl Player {
         }
     }
 
+    /// A paste becomes the OS clipboard's text as typed text (the engine's own paste when the
+    /// OS has none).
+    fn paste(&mut self, input: &InputEvent) -> InputEvent {
+        let InputEvent::Text(TextInput::Edit {
+            key: EditKey::Paste,
+            ..
+        }) = input
+        else {
+            return input.clone();
+        };
+        let typed = self.clipboard.get().map(|text| {
+            let kept: String = text
+                .chars()
+                .filter(|c| !c.is_control() || *c == '\n' || *c == '\t')
+                .collect();
+            crate::clipboard::cut(&kept, MAX_INSERT_BYTES).to_owned()
+        });
+        match typed.filter(|t| !t.is_empty()) {
+            Some(text) => InputEvent::Text(TextInput::Insert(text)),
+            None => input.clone(),
+        }
+    }
+
+    /// Writes the UI's latest copy to the OS clipboard (once per `ui.clipboard` generation).
+    fn sync_clipboard(&mut self, api: &mut ApiCall<'_>) {
+        if !self.has_ui {
+            return;
+        }
+        match api("ui.clipboard", json!({})) {
+            Ok(clip) => {
+                let generation = clip["generation"].as_u64().unwrap_or(0);
+                if generation > self.copied {
+                    self.copied = generation;
+                    if let Some(text) = clip["text"].as_str() {
+                        self.clipboard.set(text);
+                    }
+                }
+            }
+            Err(e) if e.kind == ApiErrorKind::MethodNotFound => self.has_ui = false,
+            Err(e) => self.warn_once("clipboard", &e),
+        }
+    }
+
     /// Presents the play world from its game camera (later ticks redraw it by themselves).
     fn present(&mut self, api: &mut ApiCall<'_>) {
         if !self.draws {
@@ -144,6 +212,7 @@ impl Player {
     /// Sends one input event (plus its ray, for a cursor move) for the next tick.
     fn input(&mut self, input: &InputEvent, api: &mut ApiCall<'_>) -> Result<(), ApiError> {
         self.track(input);
+        let input = &self.paste(input);
         let mut events = vec![serde_json::to_value(input).unwrap_or(Value::Null)];
         if let InputEvent::PointerMove { x, y } = input {
             if let Some(ray) = self.ray(*x, *y, api) {

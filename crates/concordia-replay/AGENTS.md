@@ -34,7 +34,7 @@ Records play sessions as input changes plus checkpoint hashes (`.replay.ron` v0)
 - BLAKE3 (the `blake3` crate, Apache-2.0/CC0) for content and state hashes.
 
 ## Status
-M2 phase 2.8 (v0). M3 phase 3.1 extends it.
+M2 phase 2.8 (v0). M3 phase 3.1 extends it. M2 phase 2.7b.3: input changes carry the tick's typed text (`InputChange::text`, omitted when empty, so files without typing are unchanged and the format stays version 0); ticks with only typing are recorded; runs play it back (`play_back_text`).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

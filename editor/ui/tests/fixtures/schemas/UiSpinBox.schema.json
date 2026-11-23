@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "decimals": 0,
+    "max": 100.0,
+    "min": 0.0,
+    "step": 1.0,
+    "value": 0.0
+  },
+  "description": "A number typed or stepped; needs a `UiTextBox` on the same entity, which shows the value.",
+  "properties": {
+    "decimals": {
+      "description": "Digits after the point.",
+      "maximum": 6.0,
+      "minimum": 0.0,
+      "type": "integer"
+    },
+    "max": {
+      "description": "The high end.",
+      "type": "number"
+    },
+    "min": {
+      "description": "The low end.",
+      "type": "number"
+    },
+    "step": {
+      "description": "What the arrows and keys add.",
+      "type": "number"
+    },
+    "value": {
+      "description": "The value.",
+      "type": "number"
+    }
+  },
+  "title": "UiSpinBox",
+  "type": "object",
+  "x-concordia-category": "UI",
+  "x-concordia-type": "UiSpinBox"
+}

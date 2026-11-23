@@ -1030,6 +1030,12 @@ fn ui_example(tool: &str, args: &serde_json::Value) -> Vec<String> {
             "UiFocus" => serde_json::from_value::<concordia_ui::UiFocus>(v).map(|_| ()),
             "UiSounds" => serde_json::from_value::<concordia_ui::UiSounds>(v).map(|_| ()),
             "UiState" => serde_json::from_value::<concordia_ui::UiState>(v).map(|_| ()),
+            "UiTextBox" => serde_json::from_value::<concordia_ui::UiTextBox>(v).map(|_| ()),
+            "UiSpinBox" => serde_json::from_value::<concordia_ui::UiSpinBox>(v).map(|_| ()),
+            "UiList" => serde_json::from_value::<concordia_ui::UiList>(v).map(|_| ()),
+            "Transform" => {
+                serde_json::from_value::<concordia_scene::builtin::Transform>(v).map(|_| ())
+            }
             "Parent" | "Name" => Ok(()),
             other => panic!("no example check for {other}"),
         };
@@ -1095,6 +1101,9 @@ fn ui_skill_examples_are_real_components_params_and_a_valid_theme() {
         "UiTooltip",
         "UiFocus",
         "UiSounds",
+        "UiTextBox",
+        "UiSpinBox",
+        "UiList",
         "ui_inspect",
         "ui_hit_test",
         "input_inject",
@@ -1128,6 +1137,12 @@ fn ui_skill_examples_are_real_components_params_and_a_valid_theme() {
         "UiSelected",
         "ui_pointer",
         "pointer",
+        "UiTextChanged",
+        "UiTextSubmitted",
+        "password",
+        "World",
+        "pixel_size",
+        "clipboard",
     ] {
         assert!(text.contains(needle), "the skill explains {needle}");
     }
@@ -1150,6 +1165,8 @@ fn gameplay_and_qa_skills_cover_the_ui() {
         "mcp__concordia__input_inject",
         "UiState",
         "UiPressed",
+        "Insert",
+        "Edit",
     ] {
         assert!(
             replay.contains(needle),

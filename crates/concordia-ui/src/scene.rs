@@ -4,7 +4,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use concordia_core::id::EntityId;
-use concordia_scene::builtin::Parent;
+use concordia_core::math::Vec3;
+use concordia_scene::builtin::{Parent, world_transform};
 use concordia_terra::{Component, World};
 
 use crate::controls::{
@@ -13,8 +14,9 @@ use crate::controls::{
 };
 use crate::error::UiError;
 use crate::node::UiNode;
-use crate::root::UiRoot;
+use crate::root::{RootSpace, UiRoot};
 use crate::style::{UiStyle, UiThemed};
+use crate::textbox::{UiList, UiSpinBox, UiTextBox};
 use crate::widgets::{UiImage, UiNinePatch, UiProgress, UiSeparator, UiText};
 
 /// One widget and its children.
@@ -58,6 +60,12 @@ pub struct UiElement {
     pub focus: Option<UiFocus>,
     /// Sounds.
     pub sounds: Option<UiSounds>,
+    /// A text box.
+    pub text_box: Option<UiTextBox>,
+    /// A spin box (with the text box).
+    pub spin: Option<UiSpinBox>,
+    /// A list (its children are items).
+    pub list: Option<UiList>,
     /// Children in layout order.
     pub children: Vec<UiElement>,
 }
@@ -80,13 +88,16 @@ impl UiElement {
             || self.sounds.is_some()
     }
 
-    /// Whether it takes clicks or keys (button, toggle, slider, dropdown or tabs).
+    /// Whether it takes clicks or keys (button, toggle, slider, dropdown, tabs, text box or
+    /// list).
     pub fn is_interactive(&self) -> bool {
         self.button.is_some()
             || self.toggle.is_some()
             || self.slider.is_some()
             || self.dropdown.is_some()
             || self.tabs.is_some()
+            || self.text_box.is_some()
+            || self.list.is_some()
     }
 
     /// Whether it is disabled.
@@ -100,6 +111,8 @@ impl UiElement {
 pub struct UiTree {
     /// The root's settings.
     pub root: UiRoot,
+    /// A world-space root's entity position (parents included).
+    pub position: Option<Vec3>,
     /// The root's own element (it spans the UI space).
     pub element: UiElement,
 }
@@ -139,8 +152,15 @@ impl UiScene {
                 continue;
             }
             if let Some(element) = gather.element(id, true) {
+                let position = match root.space {
+                    RootSpace::World { .. } => {
+                        world_transform(world, id).map(|m| m.w_axis.truncate())
+                    }
+                    RootSpace::Screen => None,
+                };
                 trees.push(UiTree {
                     root: *root,
+                    position,
                     element,
                 });
             }
@@ -208,6 +228,9 @@ impl Gather<'_> {
             scroll: self.checked(id, UiScroll::check),
             focus: self.checked(id, UiFocus::check),
             sounds: self.checked(id, UiSounds::check),
+            text_box: self.checked(id, UiTextBox::check),
+            spin: self.checked(id, UiSpinBox::check),
+            list: self.checked(id, UiList::check),
             children: Vec::new(),
         };
         let any = present || element.has_widget();

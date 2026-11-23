@@ -3,7 +3,7 @@
 //! replay sees the same assets), then runs [`interact`] and marks the pointer consumed.
 
 use concordia_assets::AssetRef;
-use concordia_input::{ActionStates, ConsumedActions};
+use concordia_input::{ActionStates, ConsumedActions, TypedText};
 use concordia_terra::{FnSystem, Phase, Schedule, SystemCtx, World, system};
 
 use crate::assets::{AssetCache, DbAssets, UiAssets};
@@ -78,7 +78,11 @@ fn interact_system(
         if !has_roots {
             return;
         }
-        let input = UiInput::read(&states);
+        let mut input = UiInput::read(&states);
+        input.text = world
+            .resource::<TypedText>()
+            .map(|t| t.0.clone())
+            .unwrap_or_default();
         let scene = UiScene::gather(world);
         let mut assets = DbAssets {
             db: None,
@@ -91,8 +95,13 @@ fn interact_system(
             sim_viewport(&scene, &input),
         );
         let consumed = interact(world, &scene, &layout, &input);
-        if consumed && let Some(c) = world.resource_mut::<ConsumedActions>() {
-            c.consume_pointer();
+        if let Some(c) = world.resource_mut::<ConsumedActions>() {
+            if consumed.pointer {
+                c.consume_pointer();
+            }
+            if consumed.keys {
+                c.consume_keys();
+            }
         }
     })
     .after_if_present("input.sample")

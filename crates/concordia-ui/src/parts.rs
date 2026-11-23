@@ -66,6 +66,34 @@ pub struct Bar {
     pub thumb: Rect,
 }
 
+/// The width of a spin box's arrow column.
+pub const SPIN_W: f32 = 20.0;
+/// The caret's width.
+pub const CARET_W: f32 = 1.5;
+/// How far inside a single-line box the caret is kept when scrolling.
+pub const CARET_MARGIN: f32 = 2.0;
+/// A single-line text box's size when `Auto`.
+pub const TEXT_BOX_SIZE: [f32; 2] = [160.0, 0.0];
+
+/// A text box's parts (UI space).
+#[derive(Debug, Clone)]
+pub struct TextBoxParts {
+    /// What it draws: the (masked) text, or the placeholder.
+    pub text: TextBlock,
+    /// Where the text block's origin sits (scroll applied).
+    pub origin: [f32; 2],
+    /// The text is the placeholder.
+    pub placeholder: bool,
+    /// The caret, when focused.
+    pub caret: Option<Rect>,
+    /// The selection, one rect per line.
+    pub selection: Vec<Rect>,
+    /// How far single-line text is scrolled left.
+    pub scroll: f32,
+    /// A spin box's up and down arrows.
+    pub spin: Option<(Rect, Rect)>,
+}
+
 /// A widget's parts.
 #[derive(Debug, Clone)]
 pub enum Parts {
@@ -90,6 +118,8 @@ pub enum Parts {
         /// The list, when open.
         list: Option<List>,
     },
+    /// A text box (and a spin box's arrows).
+    TextBox(TextBoxParts),
     /// Tab titles, left to right.
     Tabs {
         /// One per page.

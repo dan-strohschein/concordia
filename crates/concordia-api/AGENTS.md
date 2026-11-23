@@ -45,7 +45,7 @@ The one Engine API: typed `domain.verb` methods with generated schemas, JSON-RPC
 - OWASP guidance on cross-site WebSocket hijacking (Origin checks, tokens).
 
 ## Status
-M2 phase 2.5a: debug layers. M0 phase 0.6 complete. M1 phase 1.0: engine modules. M2 phase 2.6d: module hooks for scripts; 2.8: fingerprints and play helpers for replays; 2.4.1: `start_play_in` takes `&mut Engine`, `registry_and_state_mut`; 2.4.3: play-world writes through `component.set` / `component.patch` (ADR-0075); 2.4b.1: `terra.stats` reports `lod` (viewers, entities per level, due; ADR-0076). 2.7b.1: the UI draw list (`UiDrawList`, `UiQuad`, `UiPaint`, `UiMask`, `UiStop`, `UiTexture`, `UiFrame`, `UI_BOUNDS_LAYER`), the `EngineModule::ui_draw` hook and `Engine::ui_draw` (every module's list, in module order; ADR-0060).
+M2 phase 2.5a: debug layers. M0 phase 0.6 complete. M1 phase 1.0: engine modules. M2 phase 2.6d: module hooks for scripts; 2.8: fingerprints and play helpers for replays; 2.4.1: `start_play_in` takes `&mut Engine`, `registry_and_state_mut`; 2.4.3: play-world writes through `component.set` / `component.patch` (ADR-0075); 2.4b.1: `terra.stats` reports `lod` (viewers, entities per level, due; ADR-0076). 2.7b.1: the UI draw list (`UiDrawList`, `UiQuad`, `UiPaint`, `UiMask`, `UiStop`, `UiTexture`, `UiFrame`, `UI_BOUNDS_LAYER`), the `EngineModule::ui_draw` hook and `Engine::ui_draw` (every module's list, in module order; ADR-0060). M2 phase 2.7b.3: `UiFrame::clip_from_world` (the drawing camera, for world-space UI).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

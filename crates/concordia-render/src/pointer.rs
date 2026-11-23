@@ -3,7 +3,7 @@
 
 use concordia_api::{ApiError, ApiErrorKind, CallCtx, Engine, EntityRef, Method, WorldSel};
 use concordia_core::id::EntityId;
-use concordia_core::math::{Ray, Vec2, Vec3};
+use concordia_core::math::{Mat4, Ray, Vec2, Vec3};
 use concordia_reflect::Reflect;
 use concordia_scene::builtin::world_transform;
 use concordia_terra::World;
@@ -15,10 +15,30 @@ use crate::{Camera, CameraView, RenderError, View};
 /// The world ray under `cursor` (logical pixels, origin top-left) in a `size` image seen by
 /// `camera`, starting on its near plane.
 pub fn camera_ray(camera: &CameraView, cursor: Vec2, size: Vec2) -> Result<Ray, RenderError> {
-    let aspect = size.x / size.y;
-    let clip_from_world = camera.camera.projection.matrix(aspect)? * view_matrix(&camera.world);
+    let clip_from_world = clip_from_world(camera, size.x / size.y)?;
     concordia_input::pointer_ray(cursor, size, clip_from_world.inverse())
         .map_err(|e| RenderError::InvalidCamera(e.to_string()))
+}
+
+/// `camera`'s clip-from-world matrix for an image of `aspect` (width / height).
+pub fn clip_from_world(camera: &CameraView, aspect: f32) -> Result<Mat4, RenderError> {
+    Ok(camera.camera.projection.matrix(aspect)? * view_matrix(&camera.world))
+}
+
+/// The matrix world-space UI is placed with: `view`'s, else `world`'s camera `requested` or its
+/// highest-priority one (`None` without a camera).
+pub(crate) fn ui_camera(
+    world: &World,
+    requested: Option<EntityId>,
+    view: Option<&View>,
+    width: u32,
+    height: u32,
+) -> Option<Mat4> {
+    let camera = match view {
+        Some(view) => view_camera(view).ok()?,
+        None => scene_camera(world, requested).ok()?,
+    };
+    clip_from_world(&camera, width as f32 / height.max(1) as f32).ok()
 }
 
 /// `world`'s camera `requested`, or its highest-priority one (ties: lowest id), with its world

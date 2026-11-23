@@ -21,6 +21,7 @@ all = { level = "warn", priority = -1 }
 undocumented_unsafe_blocks = "warn"
 
 [workspace.dependencies]
+arboard = { version = "3.7.0", default-features = false }
 concordia-api = { path = "crates/concordia-api" }
 concordia-app = { path = "crates/concordia-app" }
 concordia-anim = { path = "crates/concordia-anim" }

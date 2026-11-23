@@ -10,6 +10,7 @@ use crate::device::{KeyCode, MouseButton};
 use crate::error::InputError;
 use crate::event::InputEvent;
 use crate::map::{ActionDef, ActionKind, Binding, InputMap};
+use crate::text::TextInput;
 use crate::value::{ActionState, ActionStates, ActionValue};
 
 /// The tick an OS event at `since_start` belongs to: events in (N, N+1] tick times apply at tick N+1.
@@ -38,6 +39,7 @@ pub struct InputSampler {
     forced: BTreeMap<String, ActionValue>,
     queue: BTreeMap<u64, Vec<InputEvent>>,
     states: ActionStates,
+    typed: Vec<TextInput>,
     next_tick: u64,
     playback: Option<Playback>,
 }
@@ -46,6 +48,7 @@ pub struct InputSampler {
 #[derive(Debug, Clone, PartialEq)]
 struct Playback {
     changes: BTreeMap<u64, BTreeMap<String, ActionState>>,
+    text: BTreeMap<u64, Vec<TextInput>>,
     until: u64,
 }
 
@@ -65,6 +68,7 @@ impl InputSampler {
             forced: BTreeMap::new(),
             queue: BTreeMap::new(),
             states,
+            typed: Vec::new(),
             next_tick: 0,
             playback: None,
         }
@@ -85,6 +89,11 @@ impl InputSampler {
         &self.states
     }
 
+    /// The text typed on the last sampled tick, in order.
+    pub fn typed(&self) -> &[TextInput] {
+        &self.typed
+    }
+
     /// Checks that `event` could be queued for `tick`, without queuing it.
     pub fn check(&self, tick: u64, event: &InputEvent) -> Result<(), InputError> {
         if tick < self.next_tick {
@@ -102,6 +111,7 @@ impl InputSampler {
                 normalized_ray(*origin, *direction).map(|_| ())
             }
             InputEvent::Viewport { width, height } => check_viewport(*width, *height),
+            InputEvent::Text(text) => text.check(),
             _ => Ok(()),
         }
     }
@@ -124,8 +134,20 @@ impl InputSampler {
         for (action, state) in changes.values().flatten() {
             self.check_action(action, state.value)?;
         }
-        self.playback = Some(Playback { changes, until });
+        self.playback = Some(Playback {
+            changes,
+            text: BTreeMap::new(),
+            until,
+        });
         Ok(())
+    }
+
+    /// Recorded typed text by tick, played back with the action changes (call after
+    /// [`play_back`](Self::play_back)).
+    pub fn play_back_text(&mut self, text: BTreeMap<u64, Vec<TextInput>>) {
+        if let Some(p) = self.playback.as_mut() {
+            p.text = text;
+        }
     }
 
     /// The tick's states from the playback, if `tick` is one it covers.
@@ -135,6 +157,7 @@ impl InputSampler {
         if let Some(changes) = playback.changes.remove(&tick) {
             self.states.actions.extend(changes);
         }
+        self.typed = playback.text.remove(&tick).unwrap_or_default();
         self.next_tick = self.next_tick.max(tick.saturating_add(1));
         Some(&self.states)
     }
@@ -145,6 +168,7 @@ impl InputSampler {
             return &self.states;
         }
         let before: BTreeMap<String, bool> = self.active_now();
+        self.typed.clear();
         let mut rose = BTreeSet::new();
         let mut fell = BTreeSet::new();
         self.devices.motion = Vec2::ZERO;
@@ -188,6 +212,10 @@ impl InputSampler {
     }
 
     fn apply(&mut self, event: InputEvent) {
+        if let InputEvent::Text(text) = event {
+            self.typed.push(text);
+            return;
+        }
         let d = &mut self.devices;
         match event {
             InputEvent::Key { key, pressed } => toggle(&mut d.keys, key, pressed),
@@ -199,6 +227,7 @@ impl InputSampler {
             InputEvent::MouseMotion { dx, dy } => d.motion += Vec2::new(dx, dy),
             InputEvent::Scroll { dx, dy } => d.scroll += Vec2::new(dx, dy),
             InputEvent::Viewport { width, height } => d.viewport = Vec2::new(width, height),
+            InputEvent::Text(_) => {}
             InputEvent::Action { action, value } => {
                 let value = ray_value(value).unwrap_or(value);
                 self.forced.insert(action, value);

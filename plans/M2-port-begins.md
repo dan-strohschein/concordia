@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2) and 2.5d (2026-11-22) done; phase 2.5 complete; 2.7 split into 2.7a (audio) and 2.7b (UI); 2.7a refined (2.7a.1, 2.7a.2), 2.7a.1 and 2.7a.2 (2026-11-22) done; phase 2.7a complete; 2.7b refined (2.7b.1–2.7b.3, 2026-11-22); 2.7b.1 and 2.7b.2 (2026-11-23) done · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2) and 2.5d (2026-11-22) done; phase 2.5 complete; 2.7 split into 2.7a (audio) and 2.7b (UI); 2.7a refined (2.7a.1, 2.7a.2), 2.7a.1 and 2.7a.2 (2026-11-22) done; phase 2.7a complete; 2.7b refined (2.7b.1–2.7b.3, 2026-11-22); 2.7b.1, 2.7b.2 and 2.7b.3 (2026-11-23) done; phase 2.7b complete · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -3382,7 +3382,7 @@ They were collected with `INSTA_FORCE_PASS=1 INSTA_UPDATE=new` and shown on an a
 - `just editor-test` (118 unit, 22 end-to-end).
 
 ### Phase 2.7b refinement (2026-11-22, against the code after 2.7a.2)
-**Status: refined; author decisions U1–U12, P1 and P2 taken (2026-11-22); 2.7b.1 and 2.7b.2 done (see their As builts). Three sub-phases, three PRs: 2.7b.1 `m2/2.7b-display`, 2.7b.2 `m2/2.7b-interact`, 2.7b.3 `m2/2.7b-text-world`.**
+**Status: refined; author decisions U1–U12, P1 and P2 taken (2026-11-22); 2.7b.1, 2.7b.2 and 2.7b.3 done (see their As builts); phase 2.7b complete. Three sub-phases, three PRs: 2.7b.1 `m2/2.7b-display`, 2.7b.2 `m2/2.7b-interact`, 2.7b.3 `m2/2.7b-text-world`.**
 
 Refined against `main` after #69: the original "Phase 2.7: concordia-audio and concordia-ui" (below), the M2 refinement's phase table (its 2.7 row), the 2.7a refinement, ADR-0063, ADR-0069, ADR-0072, ADR-0073, ADR-0076 and ADR-0078. **This section wins wherever they disagree.** From the original phase:
 - **Out, to M5 (D1):** `control_tree_imports_to_ui_prefab`, the `Control` mapping in `mappings/nodes.ron`, the HUD-scene import to a UI prefab, and routing `canvas_item` gdshaders as UI materials.
@@ -3992,6 +3992,89 @@ Refined against `main` after #69: the original "Phase 2.7: concordia-audio and c
 - trackpad pixel scrolling arrives as lines (`Scroll` doesn't say which), so the UI multiplies it by `step`;
 - the ignored `run_bench_latency_measures_the_e…` test; the navmesh layer's re-gather; the editor's deny warning; ADR-0069's chunk components (M7 7.7); physics queries seeing last-step bodies; the crowd's sequential steps at 10k (M7 7.7);
 - `concordia run` with sound and UI not yet exercised by hand (2.10's sample game).
+
+### Phase 2.7b.3 As built (2026-11-23, ADR-0060)
+**Status: done (branch `m2/2.7b-text-world`). Text entry, spin boxes, lists, typed text and its replay, the engine and OS clipboards, and world-space UI. Phase 2.7b is complete.**
+
+**What landed:**
+- **`concordia-input`:** `InputEvent::Text(TextInput)`: `Insert(String)` (1..=4096 bytes, no control characters but newline and tab) or `Edit { key: EditKey, select }` (`Left`, `Right`, `Up`, `Down`, `Home`, `End`, `Backspace`, `Delete`, `SelectAll`, `Copy`, `Cut`, `Paste`, `Enter`). The sampler keeps the tick's text in order (`typed`) and `input.sample` publishes it as `TypedText`; playback feeds recorded text back (`play_back_text`). `ConsumedActions::consume_keys` hides every key-bound action. The starter map gains `ui_shift` and `ui_ctrl` (18 actions).
+- **`concordia-replay`:** each input change gains an optional `text` list; ticks with only typing are recorded; runs play it back.
+- **`concordia-platform`:** key presses also become typed text (`text_from_key`): editing keys and Ctrl/Cmd + A, C, X, V are `Edit` commands (Shift selects; repeats kept so held keys repeat), other keys insert the OS's text (control characters dropped; keys without an engine code still insert).
+- **`concordia-ui`:**
+  - **`UiTextBox`** (single- and multi-line, `placeholder`, `max_len` in characters, `password`, `editable`, `caret` / `anchor` byte offsets on character boundaries, `wrap`) and **`edit`**, a pure function of one typed input and the clipboard: insert over the selection (cut to `max_len`; a single-line box turns newlines to spaces), move and select by character, line start and end, and by logical lines keeping the column; delete; select all; copy and cut (never from a password box); paste; Enter submits or breaks the line. `UiTextChanged {text}` and `UiTextSubmitted {text}`.
+  - **Layout:** text lines carry their byte range and caret stops from parley's clusters (`caret_x`, `byte_at`); `Parts::TextBox` has the drawn text (masked for a password, or the placeholder), caret and selection rects, and a single-line box's scroll that keeps the caret 2 px inside. Single-line text is centered vertically.
+  - **`UiSpinBox`** works with a `UiTextBox` on the same entity: arrows in a 20 px column at the right, ↑ / ↓ when focused, typed numbers committed (clamped, rounded to `decimals`) on Enter or when focus leaves; the text shows the value otherwise.
+  - **`UiList`** (children are items): click selects; in a `multi` list Ctrl toggles and Shift selects the range from the anchor; ↑ / ↓ when focused.
+  - **Interaction:** typed text goes to the focused box; a press puts the caret at the nearest character edge, a drag selects, Shift-click extends; while a text box has focus the keyboard is consumed. Copies and cuts write `UiClipboard` (a play-world resource); `ui.clipboard` reads it.
+  - **Drawing:** selection (`FOCUS_COLOR`, 0.35), the text or placeholder (half opacity) clipped to the content and scrolled, the caret; spin arrows as wedge-masked triangles; list selections highlighted over their items.
+  - **World-space roots:** `compute_layout_seen` places `RootSpace::World` roots by the frame's camera: centered on the projection of the entity's world position (parents included) plus `offset`, at `pixel_size`; hidden behind the camera, past its depth range or entirely off screen; far to near, before screen roots. Without a camera they're skipped.
+- **`concordia-api`:** `UiFrame::clip_from_world`.
+- **`concordia-render`:** `clip_from_world` (shared with `camera_ray`); captures and presents fill the frame's camera from the capture's view or camera, or the window's.
+- **`concordia-app`:** `Clipboard` / `OsClipboard` (arboard 3.7.0 without default features; opened on first use, warned about once if missing). The player turns a paste into the OS clipboard's text (cut to 4096 bytes), or the engine's paste when the OS has none, and after input writes each new `ui.clipboard` generation to the OS once.
+- **Licences:** BSL-1.0 allowed in both deny configs (P2), for arboard and `clipboard-win`. On Linux arboard uses `x11rb` in pure Rust: no system library.
+- **Studio:** `concordia-ui` covers text boxes, spin boxes, lists and world-space roots; `concordia-record-replay` typing. No tools change. Every enabled role's numbers on 2026-11-23:
+
+  | Role | Tools | Tokens |
+  |---|---|---|
+  | QA | 25 | 23,260 |
+  | level designer | 37 | 23,144 |
+  | UI/UX | 26 | 21,424 |
+  | tech artist | 23 | 20,172 |
+  | animator | 22 | 16,890 |
+  | sound designer | 24 | 15,138 |
+  | composer | 20 | 13,054 |
+  | gameplay programmer | 17 | 12,946 |
+  | director | 13 | 12,453 |
+  | writer | 11 | 9,576 |
+
+  `input_inject`'s schema grew with `Text`, so QA and UI/UX grew about 500 tokens. All are under 50k.
+- **Docs:** ADR-0060 "2.7b.3 notes", an ADR-0072 note on typed text, and the agent guide's text entry, world-space UI and `ui.clipboard`.
+
+**Differences from the refinement (this As built wins):**
+- **No replay version bump.** Typed text is an optional per-tick field that's omitted when empty, so files without typing are byte-identical and stay version 0.
+- **A spin box is a text box plus arrow parts on one entity**, not child entities the module builds: nothing is spawned behind the author's back.
+- **Up and Down move by logical lines** (newlines), not wrapped lines.
+- **World roots take no input in M2** and `ui.inspect` / `ui.hit_test` don't report them: neither the simulation nor those methods have a camera.
+- **Not built:** IME (as decided, U6), double-click word selection, a blinking caret (no clock in drawing), and scrolling inside a multi-line box (put it in a `UiScroll`).
+
+**Tests** (expected values derived in each header; anything that passed at once or was written after its code is called out below):
+- **`concordia-input` `tests/text_input.rs` (6):** typed text on its tick in order, its checks, playback, consumed keys, the modifier actions, serialization.
+- **`concordia-replay`:** `typed_text_round_trips_and_is_omitted_when_empty`, `typed_text_is_recorded_and_replayed`.
+- **`concordia-platform`:** `key_presses_become_typed_text`.
+- **`concordia-ui`:**
+  - `text_edit` (10): inserting and editing at the caret, char boundaries, Shift selection and select all, the clipboard, `max_len`, Enter, Up and Down, read-only boxes, and the validation and defaults of the three components;
+  - `text_widgets` (10): caret and selection rects, placeholder, scrolling, password masking, spin arrows; typing and keyboard consumption, clicks and drags, copy and paste, spin boxes, lists;
+  - `text_draw` (5): selection, text and caret order and clipping, placeholder opacity, spin triangles, list highlights, and the text fixture's draw-list snapshot;
+  - `world_ui` (4): a parented root follows its entity, offset and pixel size, hiding, far-to-near order;
+  - `engine`: `tweens_animate_a_world_root_offset`, and the module lists `ui.clipboard`;
+  - `golden` (4 new): `ui_text_boxes`, `ui_spin_box`, `ui_list`, `ui_world_damage_number`, plus `capture_screenshot_places_world_ui_with_its_camera`.
+- **`concordia-app`:** `paste_reads_the_os_clipboard_and_copies_reach_it`; `text_input_is_recorded_and_replayed`.
+- **`concordia-studio`:** the UI and replay skill tests extended to the new components and typed text.
+- **Mutation checks** (ten of eleven mutants failed a test; restored files touched): `max_len`, password copying, char-boundary steps, Shift ranges, spin clamping, the far-to-near sort, text playback, recording text-only ticks, key consumption, the capture's camera. **Survived (equivalent):** weakening the behind-the-camera `w` check; a point behind the eye also falls outside the depth range (or divides to infinity), so the depth check hides it the same way.
+- **Called out:**
+  - **Passed at once:** `tweens_animate_a_world_root_offset` (2.4.4's tweens already reach fields inside enum variants).
+  - **Written after their code:** `capture_screenshot_places_world_ui_with_its_camera` and `text_input_is_recorded_and_replayed`.
+  - **Changed on purpose:** the starter map's action count in `starter_map_has_the_ui_actions` (16 → 18); `ui_module_registers_its_method_and_debug_layer` lists `ui.clipboard`; a weak world-UI test that only checked a JSON path was replaced by the engine tween test; the damage-number golden's fixture (its roots stack their children, so the label centres and the bar has width).
+
+**Checklist (2026-11-23):**
+- `just lint` and the Tauri shell's clippy: clean.
+- `just wasm`, `just native-fixtures`, then `cargo nextest run --workspace --no-fail-fast` with `CONCORDIA_REQUIRE_GPU=1`: 1,784 run, 1,778 passed; the 6 failures are the snapshots and goldens awaiting review (below). Doc tests: clean.
+- `just gate-tests M1` (4/4) and `M3S` (13/13).
+- `just deny` and the editor's deny (fresh advisory DB): advisories, bans, licenses and sources ok (BSL-1.0 now allowed).
+- `just editor-schemas`: the text widgets, `ui.clipboard`, `InputEvent::Text` and the frame changes, committed.
+- `just editor-test`: lint, 118 unit and 22 end-to-end tests pass.
+- No new Linux system library (arboard's X11 backend is pure Rust).
+- After blessing: ui, input, replay, app, platform, render, studio and mcp rerun with 718 run and 718 passed; `just gate-tests M1` passes 4/4 and `M3S` 13/13, with nothing forced.
+
+**Snapshots and goldens** (collected with `INSTA_UPDATE=new`; goldens written to `target/golden-candidates/ui/`; shown on the review page; blessed 2026-11-23 after the author approved it, with `assertion_line` stripped):
+- new: the text fixture's draw list and the four goldens;
+- changed: the `input.inject` input schema.
+
+**Carry-over:**
+- world roots take no input, and the query methods don't report them;
+- assets first named by a widget spawned during play measure as missing in the simulation; trackpad scrolling arrives as lines;
+- the ignored `run_bench_latency_measures_the_e…` test; the navmesh layer's re-gather; the editor's deny warning; ADR-0069's chunk components (M7 7.7); physics queries seeing last-step bodies; the crowd's sequential steps at 10k (M7 7.7);
+- `concordia run` with sound and UI (typing, the OS clipboard, world UI) not yet exercised by hand (2.10's sample game).
 
 ### Effort (re-estimated)
 | Phase | Estimate |

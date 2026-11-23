@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use concordia_input::ActionStates;
+use concordia_input::{ActionStates, TypedText};
 use concordia_terra::{EcsError, SimClock, World};
 
 use crate::format::{Checkpoint, FORMAT_VERSION, InputChange, Replay, ReplayHeader};
@@ -46,10 +46,15 @@ impl Recording {
         let tick = tick_of(world);
         if let (Some(last), Some(now)) = (&self.last, world.resource::<ActionStates>()) {
             let actions = now.changed_since(last);
-            if !actions.is_empty() {
+            let text = world
+                .resource::<TypedText>()
+                .map(|t| t.0.clone())
+                .unwrap_or_default();
+            if !actions.is_empty() || !text.is_empty() {
                 self.inputs.push(InputChange {
                     tick: tick.saturating_sub(1),
                     actions,
+                    text,
                 });
             }
             self.last = Some(now.clone());

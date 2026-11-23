@@ -66,7 +66,7 @@ pub use overlay::{
 pub use pipelines::shader_dir;
 pub use pointer::{
     ViewportPointerRay, ViewportPointerRayParams, ViewportPointerRayResult, camera_ray,
-    scene_camera,
+    clip_from_world, scene_camera,
 };
 pub use renderer::{FrameCallbacks, Image, MAX_SIZE, RenderRequest, RenderStats, Renderer};
 pub use representation::Representation;

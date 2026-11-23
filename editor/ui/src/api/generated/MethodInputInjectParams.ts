@@ -93,6 +93,9 @@ export type InputEvent =
       };
     }
   | {
+      Text: TextInput;
+    }
+  | {
       Action: {
         /**
          * Action name.
@@ -184,6 +187,39 @@ export type KeyCode =
  * The button.
  */
 export type MouseButton = "Left" | "Right" | "Middle" | "Back" | "Forward";
+/**
+ * One piece of typed input.
+ */
+export type TextInput =
+  | {
+      Insert: string;
+    }
+  | {
+      Edit: {
+        key: EditKey;
+        /**
+         * Extend the selection instead of moving it.
+         */
+        select: boolean;
+      };
+    };
+/**
+ * The command.
+ */
+export type EditKey =
+  | "Left"
+  | "Right"
+  | "Up"
+  | "Down"
+  | "Home"
+  | "End"
+  | "Backspace"
+  | "Delete"
+  | "SelectAll"
+  | "Copy"
+  | "Cut"
+  | "Paste"
+  | "Enter";
 /**
  * New value (must match the action's kind).
  */

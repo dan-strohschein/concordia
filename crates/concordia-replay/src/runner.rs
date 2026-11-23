@@ -35,9 +35,16 @@ pub(crate) fn prepare(engine: &mut Engine, replay: &Replay) -> Result<Vec<Mismat
         .iter()
         .map(|i| (i.tick, i.actions.clone()))
         .collect();
+    let text: BTreeMap<u64, _> = replay
+        .inputs
+        .iter()
+        .filter(|i| !i.text.is_empty())
+        .map(|i| (i.tick, i.text.clone()))
+        .collect();
     let played = match world.resource_mut::<InputSampler>() {
         Some(sampler) => sampler
             .play_back(changes, replay.ticks)
+            .map(|()| sampler.play_back_text(text))
             .map_err(|e| e.to_string()),
         None => Err("this project has no [input] map".to_owned()),
     };

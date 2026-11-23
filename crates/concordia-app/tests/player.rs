@@ -386,3 +386,99 @@ fn scale_changes_resend_the_viewport_and_moves_ask_for_the_cursor() {
         "not asked again"
     );
 }
+
+/// A clipboard that records what it was given.
+#[derive(Default, Clone)]
+struct FakeClipboard(std::sync::Arc<std::sync::Mutex<(Option<String>, Vec<String>)>>);
+
+impl concordia_app::Clipboard for FakeClipboard {
+    fn get(&mut self) -> Option<String> {
+        self.0.lock().unwrap().0.clone()
+    }
+
+    fn set(&mut self, text: &str) {
+        self.0.lock().unwrap().1.push(text.to_owned());
+    }
+}
+
+/// The OS clipboard (2.7b.3): a paste injects the OS clipboard's text as typed text (cut to
+/// 4096 bytes on a character boundary), or the engine's paste when the OS has none; after
+/// input, the player reads `ui.clipboard` and writes a new generation to the OS clipboard
+/// once.
+#[test]
+fn paste_reads_the_os_clipboard_and_copies_reach_it() {
+    use concordia_input::{EditKey, TextInput};
+    let fake = FakeClipboard::default();
+    fake.0.lock().unwrap().0 = Some("from os".into());
+    let mut player = Player::with_clipboard(false, Box::new(fake.clone()));
+    let mut calls: Vec<(String, Value)> = Vec::new();
+    let mut generation = 1;
+    let paste = || {
+        input(InputEvent::Text(TextInput::Edit {
+            key: EditKey::Paste,
+            select: false,
+        }))
+    };
+    let feed = |player: &mut Player,
+                event: WindowEvent,
+                generation: u64,
+                calls: &mut Vec<(String, Value)>| {
+        let mut api = |method: &str, params: Value| -> Result<Value, ApiError> {
+            calls.push((method.to_owned(), params));
+            match method {
+                "ui.clipboard" => Ok(json!({"text": "copied", "generation": generation})),
+                _ => Ok(json!({})),
+            }
+        };
+        player.event(&event, &mut api).unwrap();
+    };
+    feed(&mut player, paste(), generation, &mut calls);
+    let injected = |calls: &[(String, Value)]| {
+        calls
+            .iter()
+            .filter(|(m, _)| m == "input.inject")
+            .map(|(_, p)| p["events"][0]["event"].clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(injected(&calls), [json!({"Text": {"Insert": "from os"}})]);
+    assert_eq!(
+        fake.0.lock().unwrap().1,
+        ["copied"],
+        "generation 1 reached the OS"
+    );
+    calls.clear();
+    feed(&mut player, paste(), generation, &mut calls);
+    assert_eq!(
+        fake.0.lock().unwrap().1.len(),
+        1,
+        "the same generation is written once"
+    );
+    generation = 2;
+    feed(
+        &mut player,
+        input(InputEvent::Key {
+            key: KeyCode::C,
+            pressed: false,
+        }),
+        generation,
+        &mut calls,
+    );
+    assert_eq!(fake.0.lock().unwrap().1.len(), 2);
+    // A long paste is cut to 4096 bytes on a character boundary (é is 2 bytes).
+    fake.0.lock().unwrap().0 = Some(format!("a{}", "é".repeat(3000)));
+    calls.clear();
+    feed(&mut player, paste(), generation, &mut calls);
+    let text = injected(&calls)[0]["Text"]["Insert"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(text.len(), 4095);
+    // Nothing on the OS clipboard: the engine's own paste goes through.
+    fake.0.lock().unwrap().0 = None;
+    calls.clear();
+    feed(&mut player, paste(), generation, &mut calls);
+    assert_eq!(
+        injected(&calls),
+        [json!({"Text": {"Edit": {"key": "Paste", "select": false}}})]
+    );
+}

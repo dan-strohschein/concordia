@@ -9,6 +9,7 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+arboard.workspace = true
 concordia-api.workspace = true
 concordia-assets.workspace = true
 concordia-import-fbx.workspace = true

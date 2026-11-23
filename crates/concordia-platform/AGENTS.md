@@ -28,7 +28,7 @@ OS integration behind engine-owned types: one winit window reporting `WindowEven
 - winit 0.30 `ApplicationHandler` documentation; notify / notify-debouncer-full documentation.
 
 ## Status
-M1 phase 1.1. M2 phase 2.7b.2: `CursorIcon` (`cursor_to_winit`) and `WindowApp::cursor`, which the runner applies after every event; `PageUp`, `PageDown`, `Home` and `End` map to engine keys.
+M1 phase 1.1. M2 phase 2.7b.2: `CursorIcon` (`cursor_to_winit`) and `WindowApp::cursor`, which the runner applies after every event; `PageUp`, `PageDown`, `Home` and `End` map to engine keys. M2 phase 2.7b.3: key presses also become typed text (`text_from_key`, `Modifiers`, `insert`): editing keys and Ctrl/Cmd shortcuts are `Edit` commands (repeats kept), other keys insert the OS's text; the runner tracks modifiers.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

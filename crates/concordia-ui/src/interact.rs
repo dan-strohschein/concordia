@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use concordia_assets::AssetRef;
 use concordia_audio::PlayCue;
 use concordia_core::id::EntityId;
-use concordia_input::{ActionStates, ActionValue};
+use concordia_input::{ActionStates, ActionValue, TextInput};
 use concordia_terra::{Component, World};
 
 use crate::controls::{
@@ -20,6 +20,9 @@ use crate::hit::{Hit, HitPart, Index, hit_with};
 use crate::layout::UiLayout;
 use crate::parts::{Parts, clamp_offset, offset_for_thumb, slider_value_at};
 use crate::scene::{UiElement, UiScene};
+use crate::textbox::{UiClipboard, UiList, UiSpinBox, UiTextBox, UiTextChanged, UiTextSubmitted};
+
+mod entry;
 use crate::widgets::Orientation;
 
 /// The pointer position action (Axis2d, logical pixels).
@@ -30,6 +33,10 @@ pub const CLICK: &str = "ui_click";
 pub const SCROLL: &str = "ui_scroll";
 /// The viewport action (Axis2d, logical pixels).
 pub const VIEWPORT: &str = "ui_viewport";
+/// Shift held (Button; extends selections).
+pub const SHIFT: &str = "ui_shift";
+/// Ctrl or Cmd held (Button; adds to list selections).
+pub const CTRL: &str = "ui_ctrl";
 /// Focus and widget keys, in [`Keys`] order.
 pub const KEYS: [&str; 10] = [
     "ui_up",
@@ -80,8 +87,8 @@ pub struct Keys {
     pub page_down: bool,
 }
 
-/// What the UI reads from the tick's actions.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+/// What the UI reads from the tick's actions and typed text.
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct UiInput {
     /// The pointer in viewport logical pixels (`None` without a `ui_pointer` action).
     pub pointer: Option<[f32; 2]>,
@@ -93,6 +100,21 @@ pub struct UiInput {
     pub viewport: Option<[f32; 2]>,
     /// Keys.
     pub keys: Keys,
+    /// Shift is held (`ui_shift`).
+    pub shift: bool,
+    /// Ctrl or Cmd is held (`ui_ctrl`).
+    pub ctrl: bool,
+    /// Text typed this tick, in order.
+    pub text: Vec<TextInput>,
+}
+
+/// What a tick of interaction took from gameplay.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Consumed {
+    /// The pointer (over the UI, or a press is held).
+    pub pointer: bool,
+    /// The keyboard (a text box has focus).
+    pub keys: bool,
 }
 
 impl UiInput {
@@ -129,6 +151,9 @@ impl UiInput {
                 page_up: down[8],
                 page_down: down[9],
             },
+            shift: press(SHIFT).pressed,
+            ctrl: press(CTRL).pressed,
+            text: Vec::new(),
         }
     }
 }
@@ -149,6 +174,8 @@ enum Signal {
     Selected(u32),
     Focus(bool),
     Cue(AssetRef),
+    TextChanged(String),
+    Submitted(String),
 }
 
 /// The tick's working copy of widget values and states.
@@ -161,18 +188,31 @@ struct Tick<'s> {
     dropdowns: BTreeMap<EntityId, UiDropdown>,
     tabs: BTreeMap<EntityId, UiTabs>,
     scrolls: BTreeMap<EntityId, UiScroll>,
+    text_boxes: BTreeMap<EntityId, UiTextBox>,
+    spins: BTreeMap<EntityId, UiSpinBox>,
+    lists: BTreeMap<EntityId, UiList>,
+    clipboard: UiClipboard,
+    focused_before: Option<EntityId>,
+    shift: bool,
+    ctrl: bool,
     signals: Vec<(EntityId, Signal)>,
     viewport_point: Option<[f32; 2]>,
 }
 
-/// Runs one tick of interaction over `world`'s UI; returns whether the pointer was consumed.
-pub fn interact(world: &mut World, scene: &UiScene, layout: &UiLayout, input: &UiInput) -> bool {
-    let mut tick = Tick::new(scene, layout, input.pointer);
+/// Runs one tick of interaction over `world`'s UI; returns what it took from gameplay.
+pub fn interact(
+    world: &mut World,
+    scene: &UiScene,
+    layout: &UiLayout,
+    input: &UiInput,
+) -> Consumed {
+    let mut tick = Tick::new(scene, layout, input);
+    tick.clipboard = world.resource::<UiClipboard>().cloned().unwrap_or_default();
     let hit = input.pointer.and_then(|p| hit_with(&tick.index, layout, p));
     tick.hover(hit.as_ref());
-    let mut consumed = hit.is_some();
+    let mut pointer = hit.is_some();
     if input.click.just_pressed {
-        consumed |= tick.press(hit.as_ref());
+        pointer |= tick.press(hit.as_ref());
     }
     if input.click.pressed || input.click.just_pressed {
         tick.drag();
@@ -186,13 +226,20 @@ pub fn interact(world: &mut World, scene: &UiScene, layout: &UiLayout, input: &U
         tick.wheel(hit, input.scroll);
     }
     tick.keys(&input.keys);
-    consumed |= tick.states.values().any(|s| s.pressed);
+    tick.type_text(&input.text);
+    tick.sync_spins();
+    pointer |= tick.states.values().any(|s| s.pressed);
+    let keys = tick.typing();
+    let clipboard = tick.clipboard.clone();
     tick.apply(world);
-    consumed
+    if world.resource::<UiClipboard>() != Some(&clipboard) {
+        world.insert_resource(clipboard);
+    }
+    Consumed { pointer, keys }
 }
 
 impl<'s> Tick<'s> {
-    fn new(scene: &'s UiScene, layout: &'s UiLayout, pointer: Option<[f32; 2]>) -> Self {
+    fn new(scene: &'s UiScene, layout: &'s UiLayout, input: &UiInput) -> Self {
         let index = Index::new(scene);
         let mut tick = Tick {
             index,
@@ -203,8 +250,15 @@ impl<'s> Tick<'s> {
             dropdowns: BTreeMap::new(),
             tabs: BTreeMap::new(),
             scrolls: BTreeMap::new(),
+            text_boxes: BTreeMap::new(),
+            spins: BTreeMap::new(),
+            lists: BTreeMap::new(),
+            clipboard: UiClipboard::default(),
+            focused_before: None,
+            shift: input.shift,
+            ctrl: input.ctrl,
             signals: Vec::new(),
-            viewport_point: pointer,
+            viewport_point: input.pointer,
         };
         let elements: Vec<&UiElement> = tick.index.elements.values().copied().collect();
         for el in elements {
@@ -217,7 +271,11 @@ impl<'s> Tick<'s> {
             copy(&mut tick.dropdowns, id, &el.dropdown);
             copy(&mut tick.tabs, id, &el.tabs);
             copy(&mut tick.scrolls, id, &el.scroll);
+            copy(&mut tick.text_boxes, id, &el.text_box);
+            copy(&mut tick.spins, id, &el.spin);
+            copy(&mut tick.lists, id, &el.list);
         }
+        tick.focused_before = tick.focused();
         tick
     }
 
@@ -309,11 +367,17 @@ impl<'s> Tick<'s> {
             self.focus(Some(w));
         }
         match hit.part {
+            HitPart::SpinUp => self.spin_step(w, 1.0),
+            HitPart::SpinDown => self.spin_step(w, -1.0),
+            HitPart::Item(i) => self.list_click(w, i),
             HitPart::Row(i) => self.pick(w, i),
             HitPart::Tab(i) => self.select_tab(w, i),
             HitPart::Thumb(bar) => self.grab(w, bar, hit.point),
             HitPart::Track(_) => {}
             HitPart::Body => {
+                if self.text_boxes.contains_key(&w) {
+                    self.place_caret(w, hit.point, self.shift);
+                }
                 if let Some(dd) = self.dropdowns.get_mut(&w) {
                     dd.open = !dd.open;
                     let selected = dd.selected;
@@ -349,6 +413,9 @@ impl<'s> Tick<'s> {
             }
             if let Some(grab) = self.states[&id].grab {
                 self.drag_thumb(id, grab, q);
+            }
+            if self.text_boxes.contains_key(&id) {
+                self.place_caret(id, q, true);
             }
         }
     }
@@ -585,6 +652,9 @@ impl<'s> Tick<'s> {
 
     /// Keys the focused widget uses itself; true when it used them.
     fn widget_keys(&mut self, f: EntityId, keys: &Keys) -> bool {
+        if let Some(used) = self.entry_keys(f, keys) {
+            return used;
+        }
         if let Some(dd) = self.dropdowns.get(&f).cloned() {
             return self.dropdown_keys(f, &dd, keys);
         }
@@ -671,6 +741,9 @@ impl<'s> Tick<'s> {
             write(world, *id, &el.dropdown, self.dropdowns.get(id));
             write(world, *id, &el.tabs, self.tabs.get(id));
             write(world, *id, &el.scroll, self.scrolls.get(id));
+            write(world, *id, &el.text_box, self.text_boxes.get(id));
+            write(world, *id, &el.spin, self.spins.get(id));
+            write(world, *id, &el.list, self.lists.get(id));
         }
         for (id, signal) in self.signals {
             match signal {
@@ -679,6 +752,8 @@ impl<'s> Tick<'s> {
                 Signal::Value(value) => world.signal(id, UiValueChanged { value }),
                 Signal::Selected(index) => world.signal(id, UiSelected { index }),
                 Signal::Focus(focused) => world.signal(id, UiFocusChanged { focused }),
+                Signal::TextChanged(text) => world.signal(id, UiTextChanged { text }),
+                Signal::Submitted(text) => world.signal(id, UiTextSubmitted { text }),
                 Signal::Cue(cue) => world.signal(
                     id,
                     PlayCue {
