@@ -27,3 +27,9 @@ Building needs CMake and a C++17 compiler; GitHub's macOS and Ubuntu images incl
 - `rolt`/`joltc-sys` crates: lag Jolt by two minor versions.
 - `oxijolt-sys`: young, and its license metadata disagrees between crates.io and GitHub.
 - Rapier: pure Rust, but it lacks Jolt's maturity in character control and large-scene performance.
+
+## Update (M2 phase 2.10a, 2026-11-23): characters have an inner body for sensors
+- **Problem:** a `CharacterVirtual` is not a body, so sensors never reported characters. A lamp's light or a wagon's refill zone couldn't see the player.
+- **Decision:** each character gets Jolt's kinematic inner body, with the same capsule, on the character's moving layer, carrying a user id that maps to the character's entity. Sensors then raise `ContactBegan` and `ContactEnded` naming the character.
+- **Limits:** the inner body is for sensors only. The shim's contact listener rejects every other pair with it in `OnContactValidate`, and raycasts and every character's movement skip inner bodies with a body filter. So dynamic bodies, floors and rays behave as before, characters still pass through each other (the crowd keeps them apart, as before), and none collides with its own inner body.
+- **Shim changes:** `CjCharacterDesc` gained `user`, and the bindings were regenerated.

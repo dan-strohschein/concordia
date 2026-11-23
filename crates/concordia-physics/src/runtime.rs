@@ -243,7 +243,7 @@ impl PhysicsRuntime {
             if self.characters.contains_key(&entity) {
                 continue;
             }
-            match self.create_character(at, &controller) {
+            match self.create_character(entity, at, &controller) {
                 Some(character) => {
                     self.characters.insert(entity, character);
                 }
@@ -256,7 +256,13 @@ impl PhysicsRuntime {
         rejected
     }
 
-    fn create_character(&mut self, at: Vec3, c: &CharacterController) -> Option<JoltCharacter> {
+    /// A Jolt character whose inner body (seen only by sensors) reports contacts as `entity`.
+    fn create_character(
+        &mut self,
+        entity: EntityId,
+        at: Vec3,
+        c: &CharacterController,
+    ) -> Option<JoltCharacter> {
         let desc = j::CjCharacterDesc {
             height: c.height,
             radius: c.radius,
@@ -264,8 +270,12 @@ impl PhysicsRuntime {
             step_height: c.step_height,
             position: at.to_array(),
             layer: c.layer.index()?,
+            user: self.next_user,
         };
-        self.jolt.character(&desc)
+        let character = self.jolt.character(&desc)?;
+        self.users.insert(self.next_user, entity);
+        self.next_user += 1;
+        Some(character)
     }
 
     fn move_characters(&mut self, world: &World, dt: f32) {

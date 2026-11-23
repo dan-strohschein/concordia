@@ -350,3 +350,42 @@ fn typed_text_is_recorded_and_replayed() {
         "the play world publishes typed text"
     );
 }
+
+/// `InputActions` (2.10a) is hashed play state filled from input, so a replay reproduces it:
+/// over 45 ticks of `steering()` (W from 10, D from 30) a watcher's mirror shows `camera_pan`
+/// pressed with x > 0 and y > 0 at the end, and the replayed world's mirror and hash are the
+/// recording's. Written after `input.actions` (a guard for 2.10a's replay claim).
+#[test]
+fn input_actions_replay_exactly() {
+    let mut rig = Rig::new();
+    let watcher = rig.ok(
+        "entity.spawn",
+        json!({"components": {"InputActions": {"watch": ["camera_pan", "select"]}}}),
+    )["id"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let mirror = |rig: &Rig| {
+        rig.engine
+            .world(WorldSel::play)
+            .unwrap()
+            .get::<concordia_input::InputActions>(watcher)
+            .cloned()
+            .unwrap()
+    };
+    let (_, recorded_hash) = rig.record(PATH, 15, steering(), 45);
+    let recorded = mirror(&rig);
+    let pan = recorded.states["camera_pan"];
+    assert!(pan.pressed, "{recorded:?}");
+    match pan.value {
+        concordia_input::ActionValue::Axis2d(v) => assert!(v.x > 0.0 && v.y > 0.0, "{v}"),
+        other => panic!("{other:?}"),
+    }
+
+    rig.ok("sim.stop", json!({}));
+    let run = rig.ok("replay.run", json!({"path": PATH}));
+    assert_eq!(run["ok"], true, "{run}");
+    assert_eq!(run["world_hash"], recorded_hash.as_str());
+    assert_eq!(mirror(&rig), recorded);
+}

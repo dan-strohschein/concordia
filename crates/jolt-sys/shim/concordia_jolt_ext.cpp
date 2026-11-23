@@ -8,6 +8,7 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <Jolt/Jolt.h>
@@ -17,6 +18,7 @@
 #include <Jolt/Core/Memory.h>
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Body/BodyFilter.h>
 #include <Jolt/Physics/Character/CharacterVirtual.h>
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/ContactListener.h>
@@ -128,6 +130,18 @@ private:
 
 class ContactLog final : public ContactListener {
 public:
+    /// Characters' inner bodies (changed only between steps; read during them).
+    void AddInner(BodyID id) { mInner.insert(id.GetIndexAndSequenceNumber()); }
+    void RemoveInner(BodyID id) { mInner.erase(id.GetIndexAndSequenceNumber()); }
+    bool IsInner(BodyID id) const { return mInner.count(id.GetIndexAndSequenceNumber()) != 0; }
+
+    /// A character's inner body exists for sensors: every other pair with it is rejected.
+    ValidateResult OnContactValidate(const Body& b1, const Body& b2, RVec3Arg, const CollideShapeResult&) override {
+        bool inner_vs_solid = (IsInner(b1.GetID()) && !b2.IsSensor()) || (IsInner(b2.GetID()) && !b1.IsSensor());
+        return inner_vs_solid ? ValidateResult::RejectAllContactsForThisBodyPair
+                              : ValidateResult::AcceptAllContactsForThisBodyPair;
+    }
+
     void OnContactAdded(const Body& b1, const Body& b2, const ContactManifold&, ContactSettings&) override {
         std::lock_guard<std::mutex> lock(mMutex);
         auto key = Key(b1.GetID(), b2.GetID());
@@ -176,6 +190,7 @@ private:
         uint32_t hi = std::max(x.GetIndexAndSequenceNumber(), y.GetIndexAndSequenceNumber());
         return (static_cast<uint64_t>(lo) << 32) | hi;
     }
+    std::unordered_set<uint32_t> mInner;
     std::mutex mMutex;
     std::map<uint64_t, Pair> mPairs;
     std::vector<CjContactEvent> mEvents;
@@ -236,6 +251,16 @@ EMotionType motion(CjMotion m) {
 
 }  // namespace
 
+/// Skips characters' inner bodies in queries (they exist for sensors only).
+class NotInner final : public BodyFilter {
+public:
+    explicit NotInner(const ContactLog& contacts) : mContacts(contacts) {}
+    bool ShouldCollide(const BodyID& id) const override { return !mContacts.IsInner(id); }
+
+private:
+    const ContactLog& mContacts;
+};
+
 struct CjWorld {
     BroadPhaseLayers broad;
     ObjectVsBroad object_vs_broad;
@@ -255,6 +280,7 @@ struct CjWorld {
 
 struct CjCharacter {
     Ref<CharacterVirtual> inner;
+    CjWorld* world;
     uint8_t layer;
     float step_height;
 };
@@ -371,7 +397,8 @@ bool cj_raycast(CjWorld* world, const float origin[3], const float dir_len[3], u
     RRayCast ray{vec3(origin), vec3(dir_len)};
     RayCastResult hit;
     MaskFilter filter(layer_mask);
-    if (!world->system.GetNarrowPhaseQuery().CastRay(ray, hit, {}, filter)) return false;
+    NotInner bodies(world->contacts);
+    if (!world->system.GetNarrowPhaseQuery().CastRay(ray, hit, {}, filter, bodies)) return false;
     BodyLockRead lock(world->system.GetBodyLockInterface(), hit.mBodyID);
     if (!lock.Succeeded()) return false;
     const Body& body = lock.GetBody();
@@ -409,14 +436,22 @@ CjCharacter* cj_character_create(CjWorld* world, const CjCharacterDesc* d) {
     settings->mShape = new RotatedTranslatedShape(Vec3(0, 0.5f * d->height, 0), Quat::sIdentity(), capsule);
     settings->mMaxSlopeAngle = d->max_slope_radians;
     settings->mSupportingVolume = Plane(Vec3::sAxisY(), -d->radius);
+    settings->mInnerBodyShape = settings->mShape;
+    settings->mInnerBodyLayer = object_layer(d->layer, true);
     auto* character = new CjCharacter();
-    character->inner = new CharacterVirtual(settings, vec3(d->position), Quat::sIdentity(), 0, &world->system);
+    character->inner = new CharacterVirtual(settings, vec3(d->position), Quat::sIdentity(), d->user, &world->system);
+    character->world = world;
+    world->contacts.AddInner(character->inner->GetInnerBodyID());
     character->layer = d->layer;
     character->step_height = d->step_height;
     return character;
 }
 
-void cj_character_destroy(CjCharacter* character) { delete character; }
+void cj_character_destroy(CjCharacter* character) {
+    if (character == nullptr) return;
+    character->world->contacts.RemoveInner(character->inner->GetInnerBodyID());
+    delete character;
+}
 
 void cj_character_move(CjWorld* world, CjCharacter* c, const float velocity[3], float dt) {
     if (world == nullptr || c == nullptr || !(dt > 0.0f)) return;
@@ -430,7 +465,8 @@ void cj_character_move(CjWorld* world, CjCharacter* c, const float velocity[3], 
     ObjectLayer layer = object_layer(c->layer, true);
     DefaultBroadPhaseLayerFilter broad(world->object_vs_broad, layer);
     DefaultObjectLayerFilter objects(world->pairs, layer);
-    c->inner->ExtendedUpdate(dt, gravity, settings, broad, objects, {}, {}, world->temp);
+    NotInner bodies(world->contacts);  // characters never collide with each other's inner bodies
+    c->inner->ExtendedUpdate(dt, gravity, settings, broad, objects, bodies, {}, world->temp);
 }
 
 void cj_character_position(const CjCharacter* c, float out[3]) {

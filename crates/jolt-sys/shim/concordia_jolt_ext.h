@@ -96,6 +96,7 @@ typedef struct CjCharacterDesc {
     float step_height;
     float position[3]; /* feet */
     uint8_t layer;
+    uint64_t user; /* user data of its inner body, which only sensors see */
 } CjCharacterDesc;
 
 #define CJ_NO_BODY 0xffffffffu

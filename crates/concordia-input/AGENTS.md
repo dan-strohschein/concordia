@@ -10,6 +10,7 @@ Turns device events into per-tick action states deterministically, and serves `i
 - `KeyCode`, `MouseButton`, `Modifier`
 - `pointer_ray(cursor, viewport, inv_view_proj)`
 - `InputModule` (EngineModule) and the `input.inject` method types
+- `InputActions` (component) and `mirror_action`: the watched actions mirrored for gameplay scripts by the `input.actions` system (`ACTIONS`), 2.10a
 - Replays (2.8, ADR-0072): `ActionStates::changed_since(earlier)` (the actions whose state differs) and `InputSampler::play_back(changes, until)` (recorded states replace sampling for ticks before `until`)
 
 ## Invariants
@@ -20,6 +21,7 @@ Turns device events into per-tick action states deterministically, and serves `i
 - Action names match `[a-z][a-z0-9_]*` (≤ 64); bindings must fit the action kind. Action ids are sorted-name indices.
 - Pointer rays assume reverse-Z, Y-up NDC (Metal); they work for orthographic and perspective cameras.
 - Rays as input (2.5b.2a, ADR-0078): `InputEvent::PointerRay` and `Binding::PointerRay` (only on `Ray` actions); directions are normalized when they arrive, and non-finite or zero rays are refused (`InputError::Pointer`), as events and as action values. A ray action is idle until its first ray, then pressed. The simulation never sees pixels for clicks: the lens is `concordia-render`'s `camera_ray`.
+- `InputActions` (2.10a, ADR-0062 update): `input.actions` runs in `PrePhysics` after `input.sample` and `ui.interact`, before `nav.click` (each when scheduled), and fills each entity's watched states. Unknown names are absent. Consumed actions read as released with the kind's zero value; edges come from the mirror's own previous state (`mirror_action`), so a consumed press reports `just_released` and an action seen again while held reports `just_pressed`. It is hashed play state, so replays reproduce it.
 - `InputMap::starter()` is the map `concordia new` writes: `move` (left click) and `pointer_ray`, `ClickToMove`'s defaults.
 
 ## How to test
@@ -38,7 +40,7 @@ Turns device events into per-tick action states deterministically, and serves `i
 - Fixed-step input sampling practice (Glenn Fiedler, "Fix Your Timestep!", gafferongames.com); reverse-Z unprojection (standard projective geometry).
 
 ## Status
-M1 phase 1.1; M2 phase 2.8 (playback for replays); M2 phase 2.5b.2a (the `Ray` kind, `PointerRay`, the starter map); M2 phase 2.7b.2 (`InputEvent::Viewport` and `Binding::Viewport`, so the window size replays like any action; `ConsumedActions` with `ActionStates::unconsumed`, cleared by `input.sample`; the starter map gains the UI's `ui_*` actions; `KeyCode` gains `PageUp`, `PageDown`, `Home`, `End`; `tests/ui_input.rs`); M2 phase 2.7b.3 (`InputEvent::Text` with `TextInput::{Insert, Edit}` and `EditKey`, checked (1..=4096 bytes, no control characters but newline and tab); `InputSampler::typed` and `play_back_text`; the `TypedText` resource published by `input.sample`; `ConsumedActions::consume_keys`; `ui_shift` and `ui_ctrl` in the starter map; `tests/text_input.rs`).
+M1 phase 1.1; M2 phase 2.8 (playback for replays); M2 phase 2.5b.2a (the `Ray` kind, `PointerRay`, the starter map); M2 phase 2.7b.2 (`InputEvent::Viewport` and `Binding::Viewport`, so the window size replays like any action; `ConsumedActions` with `ActionStates::unconsumed`, cleared by `input.sample`; the starter map gains the UI's `ui_*` actions; `KeyCode` gains `PageUp`, `PageDown`, `Home`, `End`; `tests/ui_input.rs`); M2 phase 2.7b.3 (`InputEvent::Text` with `TextInput::{Insert, Edit}` and `EditKey`, checked (1..=4096 bytes, no control characters but newline and tab); `InputSampler::typed` and `play_back_text`; the `TypedText` resource published by `input.sample`; `ConsumedActions::consume_keys`; `ui_shift` and `ui_ctrl` in the starter map; `tests/text_input.rs`); M2 phase 2.10a (`InputActions` and `input.actions` for scripts, `tests/input_actions.rs`; the module registers its component).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

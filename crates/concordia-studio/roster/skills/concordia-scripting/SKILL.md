@@ -39,6 +39,29 @@ pub struct StopCue {
 }
 ```
 
+## Reading input
+Scripts can't read resources, so input reaches them as a component. Give the player entity `InputActions { watch: ["move", "light"] }` (action names from the project's `.input.ron`); the engine's `input.actions` fills `states` every tick. Read it in `Phase::PrePhysics` with `.after("input.actions")` (or in any later phase) and write `CharacterMotion { velocity }` to walk. While the UI holds the keyboard or pointer (typing in a text box), those actions read as released with a zero value, so typing never moves the player. Mirror the types field for field; `ActionValue` is an enum `Button(bool)`, `Axis1d(f32)`, `Axis2d(Vec2)` or `Ray { origin, direction }`.
+```rust
+/// The engine's `InputActions`, mirrored.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Reflect)]
+#[reflect(name = "InputActions", default)]
+pub struct InputActions {
+    pub watch: Vec<String>,
+    pub states: BTreeMap<String, ActionState>,
+}
+
+/// The engine's `ActionState`, mirrored.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Reflect)]
+#[reflect(name = "ActionState")]
+pub struct ActionState {
+    pub pressed: bool,
+    pub just_pressed: bool,
+    pub just_released: bool,
+    pub value: ActionValue,
+}
+```
+Sensors (a `Collider` with `is_sensor`) raise `ContactBegan { other, sensor }` and `ContactEnded` on both entities the tick after they touch, and characters count: receive them to notice the player entering a zone.
+
 ## Driving the UI
 The UI/UX designer builds screens; your code fills them and reacts to them. Write a HUD value the same way as any component, e.g. set a health bar's `UiProgress.value` or a label's `UiText` runs (`ctx` commands on the widget's entity, mirrored like `PlayCue` below). Controls raise signals on their own entity the tick after they are used: receive `UiPressed` (a button), `UiToggled { on }`, `UiValueChanged { value }` (a slider) and `UiSelected { index }` (a dropdown or tabs); or just read `UiSlider.value` / `UiToggle.on` each tick. Ask the designer which entities they are.
 
