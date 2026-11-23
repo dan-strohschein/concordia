@@ -1,4 +1,5 @@
-//! The `crowd` debug layer: each crowd agent's ring, velocities, corners and neighbour links.
+//! The `crowd` debug layer: each crowd agent's ring, velocities, corners, walls and neighbour
+//! links.
 
 use std::collections::BTreeSet;
 
@@ -20,6 +21,7 @@ const VELOCITY: [f32; 4] = [0.2, 1.0, 0.3, 1.0];
 const DESIRED: [f32; 4] = [1.0, 0.5, 0.1, 1.0];
 const CORNERS: [f32; 4] = [1.0, 0.85, 0.1, 1.0];
 const LINK: [f32; 4] = [0.8, 0.3, 1.0, 1.0];
+const WALL: [f32; 4] = [1.0, 0.2, 0.2, 1.0];
 
 /// Every crowd agent's geometry, by id.
 pub(crate) fn crowd_geometry(world: &World) -> DebugGeometry {
@@ -44,6 +46,9 @@ pub(crate) fn crowd_geometry(world: &World) -> DebugGeometry {
         for &corner in &state.corners {
             line(&mut out, from, corner, CORNERS);
             from = corner;
+        }
+        for w in &state.walls {
+            line(&mut out, w.from, w.to, WALL);
         }
         for &other in &state.neighbours {
             let pair = (id.min(other), id.max(other));

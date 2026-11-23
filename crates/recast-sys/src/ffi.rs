@@ -1,5 +1,5 @@
 //! Hand-written bindings mirroring `shim/concordia_recast.h`.
-// header blake3: 9780e205a9c9edd8162368d67f0d96a8a8e0ea5e7fa14d4340795a2c3ab3166d
+// header blake3: fd52a4c1998fd197c945491fb0776ddf9b96901438d24d77adc8d0361dd422ad
 
 #![allow(non_camel_case_types, missing_docs)]
 
@@ -186,6 +186,24 @@ unsafe extern "C" {
         t: *mut f32,
         normal: *mut f32,
         path: *mut u64,
+        cap: i32,
+        count: *mut i32,
+    ) -> i32;
+    pub fn cr_local_neighbourhood(
+        query: *mut cr_query,
+        filter: *const cr_filter,
+        start_ref: u64,
+        center: *const f32,
+        radius: f32,
+        refs: *mut u64,
+        cap: i32,
+        count: *mut i32,
+    ) -> i32;
+    pub fn cr_poly_wall_segments(
+        query: *mut cr_query,
+        filter: *const cr_filter,
+        r#ref: u64,
+        segments: *mut f32,
         cap: i32,
         count: *mut i32,
     ) -> i32;

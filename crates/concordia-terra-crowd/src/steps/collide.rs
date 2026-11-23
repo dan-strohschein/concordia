@@ -1,7 +1,5 @@
 //! `crowd.collide`: Jacobi collision iterations.
 
-use std::collections::HashMap;
-
 use concordia_core::id::EntityId;
 use concordia_core::math::Vec3;
 use concordia_nav::NavAgent;
@@ -16,10 +14,12 @@ use crate::state::CrowdState;
 pub(crate) fn collide_step(view: &mut View<'_>, ctx: &SystemCtx<'_>) {
     let grid = view.resource::<CrowdGrid>().cloned().unwrap_or_default();
     for _ in 0..ITERATIONS {
-        let mut snapshot: HashMap<EntityId, Vec3> = HashMap::new();
+        let mut snapshot: Vec<Option<Vec3>> = vec![None; grid.entries().len()];
         if let Ok(query) = view.query::<&CrowdState>() {
             query.for_each(|id, s| {
-                snapshot.insert(id, s.candidate);
+                if let Some(slot) = grid.slot(id) {
+                    snapshot[slot] = Some(s.candidate);
+                }
             });
         }
         let Ok(query) = view.query::<(&NavAgent, &mut CrowdState)>() else {
@@ -47,17 +47,18 @@ pub(crate) fn collide_step(view: &mut View<'_>, ctx: &SystemCtx<'_>) {
 /// solid), a physics agent only with other physics crowd agents (Jolt doesn't keep them apart).
 pub(crate) fn contacts(
     grid: &CrowdGrid,
-    snapshot: &HashMap<EntityId, Vec3>,
+    snapshot: &[Option<Vec3>],
     neighbours: &[EntityId],
     physics: bool,
 ) -> Vec<Contact> {
     neighbours
         .iter()
-        .filter_map(|n| grid.get(*n))
-        .filter(|e| !physics || (e.crowd && e.solid))
-        .map(|e| Contact {
+        .filter_map(|n| grid.slot(*n))
+        .map(|slot| (slot, &grid.entries()[slot]))
+        .filter(|(_, e)| !physics || (e.crowd && e.solid))
+        .map(|(slot, e)| Contact {
             id: e.id,
-            position: snapshot.get(&e.id).copied().unwrap_or(e.position),
+            position: snapshot[slot].unwrap_or(e.position),
             radius: e.radius,
             whole: !physics && e.solid,
         })

@@ -198,8 +198,15 @@ fn crowd_debug_layer_draws_agents_velocities_and_links() {
         .debug_geometry("crowd", WorldSel::play)
         .expect("drawn");
     // Rings 3 × 16; the two walkers' velocity, desired velocity and one corner line each (2 × 3);
-    // one link between the walkers (the far one has no neighbours).
+    // one link between the walkers (the far one has no neighbours). The walkers are 4.5 m from
+    // the floor's edges (past the 3.6 m range), so they have no walls.
     assert_eq!(geometry.lines.len(), 48 + 6 + 1, "{geometry:?}");
+    assert!(
+        rig.play(&a, "CrowdState")["walls"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
     assert!(geometry.triangles.is_empty());
     let feet = xyz(&rig.play(&a, "Transform")["translation"]);
     let state = rig.play(&a, "CrowdState");
@@ -213,4 +220,39 @@ fn crowd_debug_layer_draws_agents_velocities_and_links() {
         })
         .unwrap_or_else(|| panic!("a velocity line from the feet: {geometry:?}"));
     assert!((velocity_line.to.z - (feet[2] + v[2] * 0.5)).abs() < 1e-5);
+}
+
+#[test]
+fn crowd_debug_layer_draws_walls() {
+    // A surface agent walking 1 m from the floor's edge at z = 9.5 gathers that edge's pieces
+    // within 3.6 m as walls; the layer draws each one, lifted 2 cm, beside its ring (16), velocity,
+    // desired velocity and corner lines (3).
+    let mut rig = rig();
+    rig.floor();
+    let a = rig.spawn(json!({
+        "Transform": Engined::at(-5.0, 0.0, 8.5),
+        "NavAgent": {"target": [5.0, 0.0, 8.5], "max_speed": 3.0},
+        "CrowdAgent": {},
+    }));
+    rig.step(2);
+    let state = rig.play(&a, "CrowdState");
+    let walls = state["walls"].as_array().unwrap().clone();
+    assert!(!walls.is_empty(), "{state}");
+    let geometry = rig
+        .engine
+        .debug_geometry("crowd", WorldSel::play)
+        .expect("drawn");
+    assert_eq!(geometry.lines.len(), 16 + 3 + walls.len(), "{geometry:?}");
+    for w in &walls {
+        let (from, to) = (xyz(&w["from"]), xyz(&w["to"]));
+        assert!(
+            (from[2] - 9.5).abs() < 1e-3 && (to[2] - 9.5).abs() < 1e-3,
+            "{w}"
+        );
+        let drawn = geometry.lines.iter().any(|l| {
+            l.from.to_array() == [from[0], from[1] + 0.02, from[2]]
+                && l.to.to_array() == [to[0], to[1] + 0.02, to[2]]
+        });
+        assert!(drawn, "wall {w} drawn: {geometry:?}");
+    }
 }

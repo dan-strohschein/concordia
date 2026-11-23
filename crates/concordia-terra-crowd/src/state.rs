@@ -36,4 +36,19 @@ pub struct CrowdState {
     pub at_end: bool,
     /// Neighbours by distance, nearest first (at most 6).
     pub neighbours: Vec<EntityId>,
+    /// Where its walls were gathered (none: not yet).
+    pub boundary_center: Option<Vec3>,
+    /// The nearest walls around it, nearest first (at most 8).
+    pub walls: Vec<Wall>,
+}
+
+/// A navmesh wall near a crowd agent: an edge with no passable neighbour.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Navigation", default)]
+#[serde(default, deny_unknown_fields)]
+pub struct Wall {
+    /// One end.
+    pub from: Vec3,
+    /// The other end.
+    pub to: Vec3,
 }

@@ -83,6 +83,13 @@ impl Stage {
         player.event(&event, &mut api).unwrap();
     }
 
+    /// Opens the window (`Player` starts play), then pauses: a playing engine also advances by
+    /// wall-clock time on every call, so only `step` may move the play world in these tests.
+    fn open(&mut self, player: &mut Player, opened: WindowEvent) {
+        self.feed(player, opened);
+        self.ok("sim.pause", json!({}));
+    }
+
     fn step(&mut self) {
         self.ok("sim.step", json!({"ticks": 1}));
     }
@@ -165,7 +172,7 @@ fn player_starts_play_and_presents_the_game_camera() {
 fn window_input_reaches_the_play_world() {
     let mut stage = Stage::new();
     let mut player = Player::new(false);
-    stage.feed(&mut player, opened(1280, 720, 1.0));
+    stage.open(&mut player, opened(1280, 720, 1.0));
     stage.feed(
         &mut player,
         input(InputEvent::Key {
@@ -192,7 +199,7 @@ fn cursor_moves_become_rays_from_the_drawing_camera() {
     let mut stage = Stage::new();
     stage.camera();
     let mut player = Player::new(false);
-    stage.feed(&mut player, opened(1920, 1080, 2.0));
+    stage.open(&mut player, opened(1920, 1080, 2.0));
     stage.step();
     stage.feed(
         &mut player,
@@ -217,7 +224,7 @@ fn cursor_moves_become_rays_from_the_drawing_camera() {
 fn focus_loss_releases_held_input() {
     let mut stage = Stage::new();
     let mut player = Player::new(false);
-    stage.feed(&mut player, opened(1280, 720, 1.0));
+    stage.open(&mut player, opened(1280, 720, 1.0));
     stage.feed(
         &mut player,
         input(InputEvent::Key {
@@ -263,7 +270,7 @@ fn clicking_in_the_window_moves_the_hero() {
         "ClickToMove": {},
     }));
     let mut player = Player::new(false);
-    stage.feed(&mut player, opened(960, 540, 1.0));
+    stage.open(&mut player, opened(960, 540, 1.0));
     stage.step();
     let [x, y] = camera_view()
         .project(Vec3::new(4.0, 0.0, -3.0), 960.0, 540.0)
@@ -294,7 +301,7 @@ fn a_window_without_a_camera_still_plays() {
     // No camera: the ray is skipped (warned once), and keys still reach the play world.
     let mut stage = Stage::new();
     let mut player = Player::new(false);
-    stage.feed(&mut player, opened(1280, 720, 1.0));
+    stage.open(&mut player, opened(1280, 720, 1.0));
     stage.step();
     stage.feed(
         &mut player,

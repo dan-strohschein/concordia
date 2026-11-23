@@ -19,20 +19,16 @@
 
 mod common;
 
-use common::{Level, Rig, SURFACE, close, deepest_overlap, going, idle, sideways};
+use common::{
+    Level, Rig, SURFACE, close, deepest_overlap, going, idle, lane, overlap_bound, sideways,
+};
 use concordia_core::id::EntityId;
 use concordia_core::math::Vec3;
 use concordia_nav::{CrowdAgent, NavAgent, NavFailure, NavStatus};
 use concordia_scene::builtin::Transform;
-use concordia_terra::{Phase, SystemCtx, World, system};
+use concordia_terra::{LodProfile, Phase, SystemCtx, World, WorldHash, system};
 
 const EPS: f32 = 1e-3;
-
-/// The steady-state overlap bound of the header for a closing speed of `closing` m/s.
-fn overlap_bound(closing: f32) -> f32 {
-    let c = closing / 60.0;
-    0.0081 * c / (1.0 - 0.0081)
-}
 
 #[test]
 fn crowd_agent_walks_to_its_target_and_arrives() {
@@ -139,14 +135,19 @@ fn crowd_agent_slides_along_walls_and_stays_on_the_navmesh() {
     // 0.1 m to A's right toward a target past A (arriving only within 0.05 m), so it keeps
     // pushing: A is driven to the edge, where the navmesh holds its centre at z ≤ 9.75
     // (moveAlongSurface clamps every move), on the surface. The push has a −x part (B is to the
-    // right), so A slides along the edge in −x until B gets past and arrives.
+    // right), so A slides along the edge in −x until B gets past and arrives. B has avoidance
+    // off (it would steer round A instead of pushing it; that is `avoidance.rs`'s subject).
     let mut level = Level::floor(10.0, 10.0);
     let a = level.crowd_agent(Vec3::new(0.0, 0.0, 9.4), idle());
     let b_agent = NavAgent {
         target_desired_distance: 0.05,
         ..going(Vec3::new(0.1, 0.0, 9.65), 3.0)
     };
-    let b = level.crowd_agent(Vec3::new(0.1, 0.0, 7.0), b_agent);
+    let no_avoidance = CrowdAgent {
+        avoidance: None,
+        ..CrowdAgent::default()
+    };
+    let b = level.crowd_agent_with(Vec3::new(0.1, 0.0, 7.0), b_agent, no_avoidance);
     let mut rig = Rig::new(level);
     rig.step(1);
     let mut deepest_z = 0.0f32;
@@ -167,7 +168,8 @@ fn crowd_agent_slides_along_walls_and_stays_on_the_navmesh() {
 }
 
 /// The deepest an agent walking from (−9, 0) to (3, −9) on 8 m tiles strays from the straight
-/// line, and whether it arrived (straight steering, so corners are walked to exactly).
+/// line, and whether it arrived (straight steering, so corners are walked to exactly; avoidance
+/// off, so the floor's walls don't bend the walk).
 fn seam_walk(optimize_visibility: bool) -> (f32, Vec<Vec3>, bool) {
     let mut level = Level::floor(10.0, 10.0);
     let volume = level.volume.unwrap();
@@ -179,6 +181,7 @@ fn seam_walk(optimize_visibility: bool) -> (f32, Vec<Vec3>, bool) {
     let crowd = CrowdAgent {
         anticipate_turns: false,
         optimize_visibility,
+        avoidance: None,
         ..CrowdAgent::default()
     };
     let a = level.crowd_agent_with(
@@ -227,20 +230,6 @@ fn crowd_corridor_shortcuts_visible_corners() {
     let (bent, _, arrived) = seam_walk(false);
     assert!(arrived);
     assert!((bent - 0.2).abs() < 0.02, "walked to the corner: {bent}");
-}
-
-/// Lane `k`'s pair in the 1,000-agent field: (start, target) for each.
-fn lane(k: usize) -> [(Vec3, Vec3); 2] {
-    let (col, row) = ((k % 25) as f32, (k / 25) as f32);
-    let (x, z) = (-96.0 + 8.0 * col, -19.0 + 2.0 * row);
-    let offset = 0.1 + 0.3 * ((k % 7) as f32) / 6.0;
-    [
-        (Vec3::new(x - 3.0, 0.0, z), Vec3::new(x + 3.0, 0.0, z)),
-        (
-            Vec3::new(x + 3.0, 0.0, z + offset),
-            Vec3::new(x - 3.0, 0.0, z + offset),
-        ),
-    ]
 }
 
 #[test]
@@ -383,20 +372,36 @@ fn crowd_path_failures_are_signalled_once_like_nav_agents() {
 }
 
 /// 10,000 agents on a 100 × 100 lattice 1.5 m apart, each walking to the point opposite the
-/// centre: the hashes after ticks 1, 30, 60 and 90, and how many agents moved over 1 m.
-fn ten_thousand(threads: usize) -> (Vec<concordia_terra::WorldHash>, usize) {
+/// centre: the hashes after ticks 1, 30, 60 and 90, how many agents moved over 1 m, and which LOD
+/// levels were used. `full` turns avoidance on and adds a viewer at one corner with the template
+/// example's profile (20, 60, 120 m; rates 2, 4, 8).
+fn ten_thousand(threads: usize, full: bool) -> (Vec<WorldHash>, usize, [bool; 4]) {
     let mut level = Level::floor(80.0, 80.0);
+    let crowd = match full {
+        true => CrowdAgent::default(),
+        false => CrowdAgent {
+            avoidance: None,
+            ..CrowdAgent::default()
+        },
+    };
     let mut agents = Vec::new();
     for i in 0..100 {
         for j in 0..100 {
             let at = Vec3::new(-74.25 + 1.5 * i as f32, 0.0, -74.25 + 1.5 * j as f32);
-            agents.push((
-                level.crowd_agent(at, going(Vec3::new(-at.x, 0.0, -at.z), 3.0)),
-                at,
-            ));
+            let id =
+                level.crowd_agent_with(at, going(Vec3::new(-at.x, 0.0, -at.z), 3.0), crowd.clone());
+            agents.push((id, at));
         }
     }
-    let mut rig = Rig::with(level, threads, |_| {});
+    let mut rig = match full {
+        true => {
+            let ids: Vec<EntityId> = agents.iter().map(|(id, _)| *id).collect();
+            let profile = LodProfile::new([20.0, 60.0, 120.0], [2, 4, 8], 2.0).unwrap();
+            level.lod(Vec3::new(-75.0, 0.0, -75.0), &ids, profile);
+            Rig::with_lod(level, threads)
+        }
+        false => Rig::with(level, threads, |_| {}),
+    };
     let mut hashes = Vec::new();
     for ticks in [1, 29, 30, 30] {
         rig.step(ticks);
@@ -406,21 +411,53 @@ fn ten_thousand(threads: usize) -> (Vec<concordia_terra::WorldHash>, usize) {
         .iter()
         .filter(|(id, at)| sideways(rig.pos(*id), *at) > 1.0)
         .count();
-    (hashes, moved)
+    let mut levels = [false; 4];
+    for (id, _) in &agents {
+        if let Some(l) = rig.lod(*id) {
+            levels[usize::from(l.level)] = true;
+        }
+    }
+    (hashes, moved, levels)
 }
 
 #[test]
 fn crowd_is_deterministic_across_runs_and_threads() {
     // A hash test, not a perf target: the same world at 1 and 8 threads and on a second run.
-    // The rig plans 64 agents a tick, longest-waiting then by id. An agent planned on tick t walks
-    // on ticks t..=89, and passes 1 m on its 31st tick of walking (0.562222 m over 22 ticks, then
+    // Plain (avoidance off, no LOD; in 2.5c.1 avoidance did nothing, so this is that run): the rig
+    // plans 64 agents a tick, longest-waiting then by id. An agent planned on tick t walks on
+    // ticks t..=89, and passes 1 m on its 31st tick of walking (0.562222 m over 22 ticks, then
     // 9 × 0.05 m: 1.0122 m; 30 ticks give 0.9622 m). So exactly the agents planned on ticks
     // 0..=59 have moved over 1 m: 60 × 64 = 3,840 (the lowest ids, the lattice's west side,
     // which walk east unhindered for these 1.5 s).
-    let (one, moved) = ten_thousand(1);
-    let (eight, _) = ten_thousand(8);
-    let (again, _) = ten_thousand(8);
+    let (one, moved, _) = ten_thousand(1, false);
+    let (eight, _, _) = ten_thousand(8, false);
+    let (again, _, _) = ten_thousand(8, false);
     assert_eq!(one, eight, "1 and 8 threads");
     assert_eq!(eight, again, "run to run");
     assert_eq!(moved, 3_840, "the crowd walked as planned");
+}
+
+#[test]
+fn crowd_with_avoidance_and_lod_is_deterministic_across_runs_and_threads() {
+    // The same field with avoidance and LOD on (2.5c.2): the viewer's corner is level 0 and the
+    // far corner, 210 m away, level 3, so every level is used. The hashes match across threads
+    // and runs, and differ from the plain run's from tick 1 on (agents hold their state at
+    // levels 1..=3). Avoidance keeps speeds within the 3 m/s disc (plus 0.001), so no more agents
+    // than the plain run's 3,840 can have walked over 1 m.
+    let (one, moved, levels) = ten_thousand(1, true);
+    let (eight, _, _) = ten_thousand(8, true);
+    let (again, _, _) = ten_thousand(8, true);
+    assert_eq!(one, eight, "1 and 8 threads, avoidance and LOD on");
+    assert_eq!(eight, again, "run to run, avoidance and LOD on");
+    assert_eq!(levels, [true; 4], "every level used");
+    assert!(
+        one.iter()
+            .zip(&ten_thousand(1, false).0)
+            .all(|(a, b)| a != b),
+        "LOD and avoidance change the world"
+    );
+    assert!(
+        moved > 0 && moved <= 3_840,
+        "no faster than planning allows: {moved}"
+    );
 }

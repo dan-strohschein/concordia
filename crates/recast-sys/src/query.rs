@@ -323,6 +323,74 @@ impl DtQuery {
             polys: refs(path, count),
         })
     }
+
+    /// `findLocalNeighbourhood`: up to `max` polygons (1..=65536) around `poly`, its own first,
+    /// reachable within `radius` of `center` without overlapping each other.
+    pub fn local_neighbourhood(
+        &mut self,
+        costs: &AreaCosts,
+        poly: PolyRef,
+        center: [f32; 3],
+        radius: f32,
+        max: usize,
+    ) -> Result<Vec<PolyRef>, RecastError> {
+        finite(&[center])?;
+        if !(radius.is_finite() && radius >= 0.0) {
+            return Err(RecastError::Input(format!(
+                "radius must be finite and ≥ 0, got {radius}"
+            )));
+        }
+        let cap = slots(max, "polygon")?;
+        let mut found = vec![0u64; cap];
+        let mut count = 0i32;
+        let filter = costs.filter();
+        // SAFETY: `found` holds `cap` references; the other pointers are valid during the call.
+        let code = unsafe {
+            ffi::cr_local_neighbourhood(
+                self.ptr.as_ptr(),
+                &filter,
+                raw(poly),
+                center.as_ptr(),
+                radius,
+                found.as_mut_ptr(),
+                cap as i32,
+                &mut count,
+            )
+        };
+        check(code)?;
+        Ok(refs(found, count))
+    }
+
+    /// `getPolyWallSegments`: up to `max` (1..=65536) of `poly`'s walls, the edges with no
+    /// passable neighbour, as point pairs in the polygon's winding order.
+    pub fn wall_segments(
+        &mut self,
+        costs: &AreaCosts,
+        poly: PolyRef,
+        max: usize,
+    ) -> Result<Vec<[[f32; 3]; 2]>, RecastError> {
+        let cap = slots(max, "segment")?;
+        let mut flat = vec![0f32; cap * 6];
+        let mut count = 0i32;
+        let filter = costs.filter();
+        // SAFETY: `flat` holds `cap` segments of six floats; the other pointers are valid.
+        let code = unsafe {
+            ffi::cr_poly_wall_segments(
+                self.ptr.as_ptr(),
+                &filter,
+                raw(poly),
+                flat.as_mut_ptr(),
+                cap as i32,
+                &mut count,
+            )
+        };
+        check(code)?;
+        let n = (count.max(0) as usize).min(cap);
+        Ok(flat.as_chunks::<6>().0[..n]
+            .iter()
+            .map(|s| [[s[0], s[1], s[2]], [s[3], s[4], s[5]]])
+            .collect())
+    }
 }
 
 /// A buffer size in 1..=65536.

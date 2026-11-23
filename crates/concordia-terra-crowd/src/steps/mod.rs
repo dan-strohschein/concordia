@@ -1,5 +1,6 @@
 //! The crowd's steps, one module each, and what they share.
 
+pub(crate) mod avoid;
 pub(crate) mod collide;
 pub(crate) mod corridor;
 pub(crate) mod grid;

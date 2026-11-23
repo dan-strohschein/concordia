@@ -5,6 +5,8 @@
 
 #![forbid(unsafe_code)]
 
+mod avoid;
+mod boundary;
 mod collide;
 mod corridor;
 mod debug;
@@ -15,15 +17,16 @@ mod processors;
 mod state;
 mod steer;
 mod steps;
+mod tables;
 mod traits;
 
 pub use grid::{CrowdGrid, GridEntry};
 pub use module::{CROWD_LAYER, CrowdModule};
 pub use processors::{
-    COLLIDE, CORRIDOR, GRID, INTEGRATE, MOVE, NEIGHBOURS, STEER, add_crowd_processors,
+    AVOID, COLLIDE, CORRIDOR, GRID, INTEGRATE, MOVE, NEIGHBOURS, STEER, add_crowd_processors,
     insert_crowd_states,
 };
-pub use state::CrowdState;
+pub use state::{CrowdState, Wall};
 pub use traits::Crowd;
 
 use concordia_reflect::{RegistryError, TypeRegistry};

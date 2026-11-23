@@ -7,7 +7,7 @@ Navigation (M2 phase 2.5, ADR-0077): navmeshes built with Recast from the static
 - Components: `NavMeshVolume` (box, agent size, `cell_size`, `cell_height`, `tile_size`, `edge_max_error`), `NavArea` / `NavAreaKind` (`Blocked`, `Cost { cost }`), `NavAreaGrid` (`cell_size`, `rows` of `.` `#` `o`); `register_types`
 - `NavInput::gather(&World, volume)` (settings, triangles, marks, costs in entity order; `key()` for the cache), `NavSettings`
 - `build_tiles(&NavInput, threads)` → `NavMeshData` (`to_bytes`, `from_bytes`: the `CNAV` v1 format)
-- `NavMesh` (`from_data`, `data`, `stats` → `NavStats`, `polygons` → `NavPoly` with islands, `nearest_point` → `NavPoint`, `island_at`, `path` → `NavPath` with its polygon `corridor`, `raycast` → `NavRay`); for the crowd (2.5c.1), with raw `u64` polygon references: `nearest_poly`, `straight_path`, `move_along_surface` → `SurfaceMove`, `poly_height`, `raycast_path` → `SurfaceRay`
+- `NavMesh` (`from_data`, `data`, `stats` → `NavStats`, `polygons` → `NavPoly` with islands, `nearest_point` → `NavPoint`, `island_at`, `path` → `NavPath` with its polygon `corridor`, `raycast` → `NavRay`); for the crowd (2.5c.1), with raw `u64` polygon references: `nearest_poly`, `straight_path`, `move_along_surface` → `SurfaceMove`, `poly_height`, `raycast_path` → `SurfaceRay`; and (2.5c.2) `local_neighbourhood` and `wall_segments` for the crowd's local boundary
 - Shared helpers: `sideways`, `NavAgent::near`, and the fixed 16-step circle table (`CIRCLE_STEPS`, `circle_step`)
 - `NavCache` (`new(Ddc)`, `load_or_build` → `Loaded`), `NavError`
 - `NavModule` (`[nav]`; `with_plans_per_tick`): methods `NavBuild` (`nav.build`) and `NavPathMethod` (`nav.path`) with their params and results; the `NavMeshes` play-world resource (`new`, `get`, `iter`); the `NAVMESH_LAYER` and `NAV_PATHS_LAYER` debug layers
@@ -17,6 +17,7 @@ Navigation (M2 phase 2.5, ADR-0077): navmeshes built with Recast from the static
 
 ## Invariants
 - Sources: `concordia_physics::static_solids` (static, non-sensor bodies physics accepts), tessellated from fixed tables (`tessellate.rs`, no trigonometry) at `translation + rotation × (local + offset)`; scale never applies, as in physics. Triangles are kept if they touch the volume.
+- **Queries are pooled per thread shard.** `NavMesh` keeps 16 pools of Detour query objects, picked by hashing the thread id, so the crowd's parallel steps rarely wait on one lock. With one pool, 8 threads were slower than one. Which object serves a call never changes its result, since Detour resets it.
 - Marks: `NavArea`s by entity id, then `NavAreaGrid`s by entity id; upper bounds exclusive (half-open cells); blocked becomes null before erosion (in the shim). Distinct costs get area ids 2..=62 in ascending order; more than 61 is `TooManyCosts`.
 - The input, its key and the built bytes never depend on entity insertion order or thread count: everything is gathered by entity id, tiles build independently and are kept in (z, x) order (`navmesh_build_is_deterministic_byte_identical`).
 - Tiles get the triangles that touch them plus Recast's border, each with its own copy of its vertices, so no tile validates the whole level.
@@ -48,7 +49,7 @@ Navigation (M2 phase 2.5, ADR-0077): navmeshes built with Recast from the static
 - Recast & Detour documentation and source (zlib) and Mikko Mononen's talks and posts (implementation); Godot's navigation docs and source (MIT) for semantics only (agent radius and height, target and path desired distances, path max distance, region and agent roles; `NavigationAgent3D`); Greg Snook, "Simplified 3D Movement and Pathfinding Using Navigation Meshes", *Game Programming Gems* (2000). No Unreal or other non-open source was consulted.
 
 ## Status
-M2 phase 2.5a (navmesh build, queries, cache, `nav.*`, debug layer); 2.5b.1 (agents, signals, `nav_paths`); 2.5b.2a (click-to-move); 2.5b.2b (windowed play, in `concordia-app`); 2.5c.1 (crowd agents' planning; the crowd is `concordia-terra-crowd`). Traffic is 2.5d.
+M2 phase 2.5a (navmesh build, queries, cache, `nav.*`, debug layer); 2.5b.1 (agents, signals, `nav_paths`); 2.5b.2a (click-to-move); 2.5b.2b (windowed play, in `concordia-app`); 2.5c.1 (crowd agents' planning; the crowd is `concordia-terra-crowd`); 2.5c.2 (the boundary queries, and a query pool sharded by thread). Traffic is 2.5d.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

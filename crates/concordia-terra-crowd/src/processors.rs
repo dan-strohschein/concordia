@@ -10,7 +10,7 @@ use concordia_terra::{Phase, Schedule, World, processor};
 
 use crate::grid::CrowdGrid;
 use crate::state::CrowdState;
-use crate::steps::{collide, corridor, grid, integrate, movement, neighbours, steer};
+use crate::steps::{avoid, collide, corridor, grid, integrate, movement, neighbours, steer};
 
 /// `crowd.grid`: snapshots every crowd agent and character into the `CrowdGrid`.
 pub const GRID: &str = "crowd.grid";
@@ -20,6 +20,8 @@ pub const CORRIDOR: &str = "crowd.corridor";
 pub const NEIGHBOURS: &str = "crowd.neighbours";
 /// `crowd.steer`: desired velocities, slowing at the end, with separation (LOD-aware).
 pub const STEER: &str = "crowd.steer";
+/// `crowd.avoid`: the local boundary and sampled velocity obstacles (LOD-aware).
+pub const AVOID: &str = "crowd.avoid";
 /// `crowd.integrate`: velocities toward the chosen one, and candidate positions.
 pub const INTEGRATE: &str = "crowd.integrate";
 /// `crowd.collide`: pushes overlapping agents apart (Jacobi iterations).
@@ -102,12 +104,24 @@ pub fn add_crowd_processors(schedule: &mut Schedule) {
             .run(steer::steer_step),
     );
     schedule.add_processor(
+        processor(AVOID, Phase::PrePhysics)
+            .lod()
+            .reads::<NavAgent>()
+            .reads::<CrowdAgent>()
+            .reads::<NavAgentState>()
+            .writes::<CrowdState>()
+            .reads_resource::<NavMeshes>()
+            .reads_resource::<CrowdGrid>()
+            .after(STEER)
+            .run(avoid::avoid_step),
+    );
+    schedule.add_processor(
         processor(INTEGRATE, Phase::PrePhysics)
             .reads::<CrowdAgent>()
             .reads::<NavAgentState>()
             .writes::<CrowdState>()
             .reads_resource::<CrowdGrid>()
-            .after(STEER)
+            .after(AVOID)
             .run(integrate::integrate_step),
     );
     schedule.add_processor(
