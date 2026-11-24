@@ -1,0 +1,26 @@
+[package]
+name = "concordia-rhi-vulkan"
+description = "Concordia Vulkan backend for concordia-rhi."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# The loader is opened at run time, so the crate builds (and reports NoDevice) without one.
+ash = { version = "0.38.0", default-features = false, features = ["loaded", "debug", "std"] }
+concordia-rhi.workspace = true
+gpu-allocator = { version = "0.28.0", default-features = false, features = ["std", "vulkan"] }
+serde.workspace = true
+
+[dev-dependencies]
+concordia-rhi = { workspace = true, features = ["conformance"] }
+concordia-shaders = { workspace = true, features = ["conformance"] }
+concordia-testkit = { workspace = true, features = ["rhi"] }
+proptest.workspace = true
+serde_json.workspace = true
