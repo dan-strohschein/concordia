@@ -968,6 +968,7 @@ dependencies = [
  "concordia-input",
  "concordia-material",
  "concordia-reflect",
+ "concordia-render-types",
  "concordia-rhi",
  "concordia-scene",
  "concordia-shaders",
@@ -978,6 +979,17 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tracing",
+]
+
+[[package]]
+name = "concordia-render-types"
+version = "0.0.0"
+dependencies = [
+ "concordia-assets",
+ "concordia-core",
+ "concordia-reflect",
+ "serde",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
