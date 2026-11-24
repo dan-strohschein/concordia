@@ -1335,3 +1335,24 @@ fn fix_bug_skill_reblesses_the_replay_before_asserting_the_fix() {
         assert!(prove.contains(needle), "Prove it shows {needle}: {prove}");
     }
 }
+
+/// Found by the M3 live gate's re-run: QA proved a fix with a 90-tick replay of a
+/// `within 600 ticks` assertion, which ends `undecided` on the old build and proves nothing.
+/// Every skill that records evidence says to cover the assertion's whole window.
+#[test]
+fn evidence_replays_cover_the_assertions_whole_window() {
+    for name in [
+        "concordia-record-replay",
+        "concordia-write-playtest",
+        "concordia-fix-bug-with-replay",
+    ] {
+        let rule = skill(name)
+            .lines()
+            .find(|l| l.contains("whole window"))
+            .unwrap_or_else(|| panic!("{name}: say to record the assertion's whole window"));
+        assert!(
+            rule.contains("`undecided`") && rule.contains("600"),
+            "{name}: say why, with the 600-tick example: {rule}"
+        );
+    }
+}

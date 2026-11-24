@@ -556,6 +556,28 @@ fn gameplay_programmer_drives_its_own_bug_replay_with_input_inject() {
     );
 }
 
+/// Found by the M3 live gate's re-run: once the gameplay programmer handed in its own replay,
+/// QA verified it but recorded none. QA's evidence is its own recording, for the whole window.
+#[test]
+fn qa_records_its_own_evidence_for_the_whole_window() {
+    let qa = role_files()
+        .into_iter()
+        .find(|r| r.spec.role.as_str() == "qa-playtester")
+        .unwrap();
+    let rule = qa
+        .body
+        .lines()
+        .find(|l| l.starts_with("- Reproducibility:"))
+        .expect("QA's reproducibility rule");
+    for needle in [
+        "always record your own",
+        "whole window",
+        "not your evidence",
+    ] {
+        assert!(rule.contains(needle), "{needle}: {rule}");
+    }
+}
+
 /// A role's `>` note says what is not there yet; one naming a tool the catalog serves is stale.
 #[test]
 fn role_notes_never_promise_a_tool_that_already_exists() {

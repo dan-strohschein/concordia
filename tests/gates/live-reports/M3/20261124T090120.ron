@@ -1,0 +1,10 @@
+(
+    gate: "M3",
+    date: "2026-11-24",
+    attempt: 1,
+    claude_code: "2.1.330 (Claude Code)",
+    outcome: "pass",
+    num_turns: "8",
+    total_cost_usd: "1.1110806",
+    session_id: "c0baaa60-7a69-4f7a-8b4d-a5ae8785af09",
+)
