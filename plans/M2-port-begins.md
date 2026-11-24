@@ -4653,6 +4653,9 @@ The author records pass or fail per item in the Status:
 
 **Carry-over:** unchanged from 2.10c.2.
 
+**After merging (2026-11-23, PR "wet cobbles"):** in the windowed game the author found the ground "highly reflective, like a polished tile floor". The wet-cobbles material had laid a near-mirror clear coat (roughness 0.08) over the whole street. It is now matte stone (0.85) with puddles only in the gaps: roughness 0.3, mixed at 0.5 by the mask. Low-angle before and after screenshots confirmed it. Vertical layering is still shown by the wagon paint's clear coat. The stones' size (1.25 m, the mask stretched over 10 m tiles) and their missing per-stone variation are left for 2.10d's look pass, alongside the goldens.
+
+
 ### Effort (re-estimated)
 | Phase | Estimate |
 |---|---|

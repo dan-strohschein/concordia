@@ -57,7 +57,7 @@ the night's length and the fog, and press "Light the lamps".
   - `characters/`: the lamplighter (Idle, Walk, Light, Startle) and the townsfolk (Idle, Walk, Startle), with clip events in their sidecars: `step_left` and `step_right` on Walk, `reach` and `lit` on Light, `flinch` on Startle.
   - `props/`: the wisp and the lantern pole.
   - `textures/`: the cobble gap mask and the awning stripes.
-- `materials/`: wet cobbles (a clear film over stone and puddles mixed by the cobble mask), lamp glass (haze and thin film), awning cloth (fuzz, striped), the wisp (emissive with coverage) and wagon paint (a clear coat).
+- `materials/`: wet cobbles (matte stone with rough puddles mixed in the gaps by the cobble mask), lamp glass (haze and thin film), awning cloth (fuzz, striped), the wisp (emissive with coverage) and wagon paint (a clear coat).
 - `anim/`: the two animation graphs (walk blended by `walk_amount`; the Light and Startle one-shots fired by `light_now` and `startle_now`).
 - `audio/`: `lamplight.buses.ron` (Master → Music, SFX, Ambience, UI) and the cues in `audio/cues/`.
 - `ui/lamplight.theme.ron`: panels, labels, buttons, text fields, the oil and spirit bars, and the burn and spirit numbers.
