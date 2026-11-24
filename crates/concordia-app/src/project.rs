@@ -181,6 +181,9 @@ impl Project {
         if let Some(studio) = &self.manifest.studio {
             modules.push(Arc::new(StudioModule::new(&self.root, &studio.dir)));
         }
+        if self.manifest.generators.is_some() {
+            modules.push(Arc::new(concordia_gen::GenModule::new()));
+        }
         if self.manifest.replay.is_some() {
             modules.push(Arc::new(
                 ReplayModule::new().with_factory(Arc::new(other_engine)),

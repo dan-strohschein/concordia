@@ -31,6 +31,9 @@ pub struct Manifest {
     pub scripts: Option<ScriptsSection>,
     /// `[replay]`; `replay.record` and `replay.run` exist only if this section exists.
     pub replay: Option<ReplaySection>,
+    /// `[gen]`: generated content (`gen.list`, `gen.run`; M3 3.7).
+    #[serde(rename = "gen")]
+    pub generators: Option<GenSection>,
     /// `[anim]`; animation components and play processors exist only if this section exists (needs `[assets]`).
     pub anim: Option<AnimSection>,
     /// `[audio]`; audio components, `audio.*` and the mixer exist only if this section exists
@@ -104,6 +107,11 @@ pub enum AudioBackendChoice {
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct AnimSection {}
+
+/// `[gen]` (no settings yet; M3 3.7).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct GenSection {}
 
 /// `[replay]` (no settings yet; ADR-0072).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

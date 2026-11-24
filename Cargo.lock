@@ -712,6 +712,7 @@ dependencies = [
  "concordia-assets",
  "concordia-audio",
  "concordia-core",
+ "concordia-gen",
  "concordia-import-fbx",
  "concordia-import-gltf",
  "concordia-input",
@@ -871,6 +872,25 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "concordia-gen"
+version = "0.0.0"
+dependencies = [
+ "blake3",
+ "concordia-api",
+ "concordia-app",
+ "concordia-assets",
+ "concordia-command",
+ "concordia-core",
+ "concordia-reflect",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

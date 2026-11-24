@@ -12,7 +12,7 @@ The top-level design is in [`../docs/design.md`](../docs/design.md). This folder
 | M0 Headless core | [M0-headless-core.md](M0-headless-core.md) | M-1 | Ready to execute | Gate passed |
 | M1 See it | [M1-see-it.md](M1-see-it.md) | M0 | Ready to execute | Gate passed (2026-11-19) |
 | M2 Engine breadth (was Port begins; ADR-0048) | [M2-port-begins.md](M2-port-begins.md) | M1 | Refined (ADR-0067, approved 2026-11-19) | **Gate passed (2026-11-23)**: the author accepted M2 by playing the sample game Lamplight; the scripted CI gate (2.10d) is deferred to M3 (see the plan's "M2 completion") |
-| M3 Closed loop & Studio v1 | [M3-closed-loop-and-studio.md](M3-closed-loop-and-studio.md) | M2 (Studio phases may start after M0) | Refined after M2 (2026-11-23: R1 two gates, R2 replay stills without restore) | In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b, 3.8 done; Studio checkpoint passed 2026-11-19, deterministic and live; 3.0b and 3.0c carry-overs, 3.1a replay format v1 and 3.1 replay v1 (a–c) and 3.2 assertions (a–b) done; next 3.7 concordia-gen, then 3.9); Studio phases 3.3–3.6, 3.8 run right after M1 (ADR-0049) |
+| M3 Closed loop & Studio v1 | [M3-closed-loop-and-studio.md](M3-closed-loop-and-studio.md) | M2 (Studio phases may start after M0) | Refined after M2 (2026-11-23: R1 two gates, R2 replay stills without restore) | In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b, 3.8 done; Studio checkpoint passed 2026-11-19, deterministic and live; 3.0b and 3.0c carry-overs, 3.1a replay format v1 and 3.1 replay v1 (a–c), 3.2 assertions (a–b) and 3.7a gen core done; next 3.7b, 3.7c, then 3.9); Studio phases 3.3–3.6, 3.8 run right after M1 (ADR-0049) |
 | M4 Unreal-class visuals | [M4-unreal-class-visuals.md](M4-unreal-class-visuals.md) | M1 (render), M2 (graphs) | Needs refinement after M3 | Planned |
 | M5 Bring your game | [M5-bring-your-game.md](M5-bring-your-game.md) | M2 (importer framework) | Needs refinement after M4 | Planned |
 | M6 Evolve (plugins) | [M6-evolve-plugins.md](M6-evolve-plugins.md) | M2 (parallel with M3) | Needs refinement after M2 | Planned |
@@ -112,7 +112,7 @@ examples/             # small sample projects used by tests and docs
 | `concordia-assert` | the playtest assertion language: grammar v1, parser with spans, canonical printer, type checker against reflection with units, Rust builder (ADR-0084); `concordia-replay` evaluates it (`assert.eval`) | M3 (3.2) |
 | `concordia-replay` | the replay engine module (`[replay]`): input log v0 with checkpoint hashes and divergence reports (M2 2.8, ADR-0072); full record/replay and playtest assertions (M3) | M2 (2.8) |
 | `concordia-studio` | Agent Studio: role configs, team, task board, `studio sync` → Claude Code files; the default roster and engine skills live in its `roster/` (a project gets its own editable `studio/`) | M3 |
-| `concordia-gen` | generated-content provider interface (procedural first, opt-in model providers) | M3 |
+| `concordia-gen` | generated content: the provider interface and registry, `[gen]` with `gen.list` / `gen.run` (provenance in sidecars), procedural meshes as GLB (3.7a); sfx, music, textures (3.7b); the Blender bridge and plugin seam (3.7c) | M3 |
 | `concordia-graph` | visual graphs stored as text, compiler to fast code | M4 |
 | `concordia-ai` | runtime AI: behavior trees, utility AI, optional LLM planner plugins | M4 |
 | `concordia-import-unity`, `concordia-import-unreal` | importers targeting the interchange format | M5 |

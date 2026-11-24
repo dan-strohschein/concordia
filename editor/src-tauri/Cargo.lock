@@ -663,6 +663,7 @@ dependencies = [
  "concordia-assets",
  "concordia-audio",
  "concordia-core",
+ "concordia-gen",
  "concordia-import-fbx",
  "concordia-import-gltf",
  "concordia-input",
@@ -793,6 +794,21 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "tokio-tungstenite",
+]
+
+[[package]]
+name = "concordia-gen"
+version = "0.0.0"
+dependencies = [
+ "blake3",
+ "concordia-api",
+ "concordia-assets",
+ "concordia-command",
+ "concordia-reflect",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]

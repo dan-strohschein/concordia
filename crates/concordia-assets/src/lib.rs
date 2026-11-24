@@ -19,6 +19,7 @@ mod material_method;
 mod module;
 mod prefab_method;
 mod reference;
+pub mod shapes;
 mod sidecar;
 
 pub use anim_graph::{
@@ -48,10 +49,10 @@ pub use material_method::{
     MaterialGet, MaterialGetParams, MaterialGetResult, MaterialSet, MaterialSetParams,
     MaterialSetResult,
 };
-pub use module::{AssetImport, AssetList, AssetsModule};
+pub use module::{AssetImport, AssetImportParams, AssetImportResult, AssetList, AssetsModule};
 pub use prefab_method::PrefabInstantiate;
 pub use reference::AssetRef;
-pub use sidecar::Sidecar;
+pub use sidecar::{Provenance, Sidecar};
 
 /// Registers the asset components (`MeshRenderer`, `Skinned`) and the `Material` and `AnimGraph`
 /// types (for `schema.get`).

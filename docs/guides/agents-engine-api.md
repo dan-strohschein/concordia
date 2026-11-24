@@ -33,6 +33,11 @@ The Engine API is how every client (agents, the CLI, the editor, tests) drives t
 - The language (ADR-0084): `within N ticks|Ns`, `always [for …]`, `never [for …]`, `eventually`, `at …`, `after …, <when>`; conditions with `< <= > >= == !=`, `and`, `or`, `not`; `distance(a, b)`, `count(sel)`, `exists(sel)`, `event("Signal")`, fields `name("Crate").Transform.translation.y`, `any(sel).…`, `all(sel).…`; selectors `tag`, `name`, `id`, `with`; units `m`, `s`, `ticks`, `deg`. Parse and type errors (unknown components or fields with suggestions, unit mismatches, a `tag`/`with` field without `any`/`all`) are `InvalidParams` naming the assertion.
 - Each result: `status` (`passed`, `failed`, `undecided`, `error`), `decided_at`, and `witness` (the comparison's left side; a `within` that ran out adds `closest` and `closest_at`). CLI: `concordia assert eval <text> --replay <file> [--json]` (exit 0, 1, 2) and `concordia test playtests`.
 
+## Generated content (M3 3.7, projects with `[gen]` and `[assets]`)
+- `gen.list` lists the providers (`id`, `kind`, `version`, `extensions`, `procedural`, and the JSON Schema of each `request`).
+- `gen.run {"provider": "mesh", "request": {"Cylinder": {"radius": 0.25, "height": 3.0, "segments": 12}}, "seed": 1, "path": "assets/models/pillar.glb", "actor": "agent:modeler"}` writes the file, imports it (its `id` and `sub_assets`, as `asset.import` returns) and records its provenance in the sidecar, so the same request and seed make the same bytes. It needs an actor; Studio holds `path` to the role's write paths.
+- Meshes (`mesh`, `.glb`, meters, +Y up): `Box {size}`, `Sphere {radius, segments, rings}`, `Capsule {radius, height, segments, rings}`, `Cylinder {radius, height, segments}`, `Torus {major, minor, segments, sides}`, `Extrude {profile, depth}` (a polygon in XY along +Z), `Lathe {profile, segments}` ((radius, y) points around Y), `Heightfield {size, cells, amplitude, frequency}` (seeded), `Sdf {shapes: [Sphere {center, radius} | Box {center, half}], smooth, cell}` (surface nets).
+
 ## Tags (M3)
 - `Tags` is a built-in component: a list of words, e.g. `"Tags": ["player", "hero"]`. Playtest assertions select entities with `tag("player")` (M3 3.2).
 

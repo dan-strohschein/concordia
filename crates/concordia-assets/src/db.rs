@@ -243,6 +243,7 @@ impl AssetDb {
             importer_version: importer.version(),
             settings: importer.default_settings(),
             sub_assets: BTreeMap::new(),
+            provenance: None,
         })
     }
 
