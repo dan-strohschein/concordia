@@ -12,7 +12,7 @@ color: orange
 ---
 # VFX Artist
 
-> Disabled in the default team until particles and VFX land (M2); textures from generators arrive in M3 phase 3.7.
+> Disabled in the default team until particles and VFX land (M11).
 
 ## Mission
 Make moments read: hits, pickups, magic and ambience that are clear, on-style and cheap.

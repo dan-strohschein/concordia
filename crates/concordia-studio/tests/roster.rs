@@ -524,6 +524,55 @@ fn qa_playtester_records_and_runs_replays_with_the_replay_skill() {
     );
 }
 
+/// The M3 live gate's follow-up: the gameplay programmer had to ask QA to record its proof,
+/// because it could not inject input. It now drives its own bug replay, and the skill says how.
+#[test]
+fn gameplay_programmer_drives_its_own_bug_replay_with_input_inject() {
+    let (_dir, roster) = roster();
+    let programmer = roster
+        .roles()
+        .iter()
+        .find(|r| r.role.as_str() == "gameplay-programmer")
+        .expect("the gameplay programmer is enabled");
+    assert!(
+        programmer.mcp_tools.iter().any(|t| t == "input_inject"),
+        "{:?}",
+        programmer.mcp_tools
+    );
+    let skill = default_roster()
+        .skills
+        .iter()
+        .find(|(n, _)| *n == "concordia-fix-bug-with-replay")
+        .map(|(_, t)| *t)
+        .unwrap();
+    let reproduce = skill
+        .lines()
+        .find(|l| l.starts_with("1. **Reproduce.**"))
+        .expect("the skill's first step reproduces the bug");
+    assert!(
+        reproduce.contains("mcp__concordia__input_inject")
+            && reproduce.contains("mcp__concordia__sim_step"),
+        "the first step drives the recording itself: {reproduce}"
+    );
+}
+
+/// A role's `>` note says what is not there yet; one naming a tool the catalog serves is stale.
+#[test]
+fn role_notes_never_promise_a_tool_that_already_exists() {
+    let offered: Vec<String> = common::catalog().names().map(str::to_owned).collect();
+    for role in role_files() {
+        for note in role.body.lines().filter(|l| l.starts_with("> ")) {
+            for tool in &offered {
+                assert!(
+                    !note.contains(&format!("`{tool}`")),
+                    "{}: the note names {tool}, which exists: {note}",
+                    role.spec.role
+                );
+            }
+        }
+    }
+}
+
 #[test]
 fn tech_artist_edits_materials_with_the_material_tools_and_skill() {
     let (_dir, roster) = roster();

@@ -1373,9 +1373,15 @@ Every role stays under 50k. If the AST's recursive schema makes `assert_eval` he
 - **The checker passed all six outcomes,** and no keys were in the environment.
 
 **Follow-ups the run surfaced** (none blocks the gate):
-- **The gameplay programmer has `replay_record` but no `input_inject`,** so it can't record the reproduction replay that `concordia-fix-bug-with-replay` asks for. Adding `input_inject` costs about 2k tokens, which is within budget. This is for the next Studio change, with a live re-run.
+- **The gameplay programmer has `replay_record` but no `input_inject`,** so it can't record the reproduction replay that `concordia-fix-bug-with-replay` asks for. **Done (`m3/gp-input-inject`, 2026-11-24):**
+  - the role gains `input_inject` (19 tools, about 16,903 tokens);
+  - the skill's first step drives the recording with `input_inject` and `sim_step`;
+  - the role's stale `assert_eval` note and the VFX artist's stale phase note go;
+  - tests: `gameplay_programmer_drives_its_own_bug_replay_with_input_inject` and `role_notes_never_promise_a_tool_that_already_exists`. Both failed first for the right reason, and a mutation that drops the skill's step fails the first.
+  - The role snapshots and the fixture's roster copy are updated.
 - **QA has no shell,** so it relies on engine evidence, not `cargo test`. That's by design (ADR-0073).
-- **The fixture's door doesn't stop the player.** That's outside the task, and the Director rightly raised it as a question rather than acting.
+- **The fixture's door doesn't stop the player.** That's outside the task, and the Director rightly raised it as a question rather than acting. **Kept as is:** the acceptance is reaching the door, and a blocking door would need physics or a clamp in the fixture's script without testing anything new.
+- **New, found while fixing the first:** `replay.record` and `replay.run` with `update` write files but aren't path-checked (`check_paths` in `concordia-mcp/src/studio.rs`). So any role holding them can write anywhere, including `tests/replays/`, which the design table gives to QA alone; the fix-bug skill records there. Decide in the next Studio change: path-check both, and either give the gameplay programmer a replay folder or `tests/replays/**`.
 
 ## Goal & context
 M3 closes the loop the design promises (principle 3): an agent can **record** a play session, **replay** it deterministically, **find the first frame** where two runs diverge, and **prove** behavior with typed playtest assertions, all from tests, the CLI and MCP. On top of that loop, M3 ships **Agent Studio v1**: a configurable team of specialist agents that runs **inside the user's own Claude Code on a regular subscription, with no API key** (principle 0).
