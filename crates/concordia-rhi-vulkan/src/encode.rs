@@ -467,7 +467,7 @@ impl Recorder<'_> {
                 Some(
                     vk::RenderingAttachmentInfo::default()
                         .image_view(t.mip0)
-                        .image_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
+                        .image_layout(convert::layout(Layout::DepthAttachment))
                         .load_op(load)
                         .store_op(convert::store(d.store))
                         .clear_value(clear),

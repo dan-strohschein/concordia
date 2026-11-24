@@ -14,6 +14,18 @@ pub struct SlangcCompiler {
     toolchain: SlangToolchain,
 }
 
+/// Arguments every compile for `target` adds (part of the cache key). SPIR-V defines
+/// `CONCORDIA_SPIRV` (ADR-0088) and keeps source entry names (Slang otherwise names them `main`).
+pub(crate) fn target_args(target: Target) -> Vec<String> {
+    match target {
+        Target::Msl => Vec::new(),
+        Target::SpirV => vec![
+            format!("-D{SPIRV_DEFINE}=1"),
+            "-fvk-use-entrypoint-name".to_owned(),
+        ],
+    }
+}
+
 impl SlangcCompiler {
     /// A compiler using `toolchain`.
     pub fn new(toolchain: SlangToolchain) -> Self {
@@ -41,9 +53,7 @@ impl SlangcCompiler {
         for (name, value) in &request.defines {
             cmd.arg(format!("-D{name}={value}"));
         }
-        if request.target == Target::SpirV {
-            cmd.arg(format!("-D{SPIRV_DEFINE}=1"));
-        }
+        cmd.args(target_args(request.target));
         cmd
     }
 }

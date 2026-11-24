@@ -82,3 +82,44 @@ fn msl_bindless_layout_is_unchanged() {
         "{msl}"
     );
 }
+
+/// The `OpEntryPoint` names in a module.
+fn entry_names(words: &[u32]) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut i = 5;
+    while i < words.len() {
+        let count = (words[i] >> 16) as usize;
+        if words[i] & 0xffff == 15 {
+            let bytes: Vec<u8> = words[i + 3..i + count]
+                .iter()
+                .flat_map(|w| w.to_le_bytes())
+                .collect();
+            let end = bytes.iter().position(|b| *b == 0).unwrap_or(bytes.len());
+            names.push(String::from_utf8_lossy(&bytes[..end]).into_owned());
+        }
+        i += count.max(1);
+    }
+    names
+}
+
+#[test]
+fn spirv_entry_points_keep_their_source_names() {
+    let compiler = SlangcCompiler::new(SlangToolchain::locate().expect("run `just slang-fetch`"));
+    let request = CompileRequest {
+        path: shader_dir().join("sum.slang"),
+        entry: "sum".into(),
+        stage: Stage::Compute,
+        target: Target::SpirV,
+        defines: BTreeMap::new(),
+        include_dirs: vec![concordia_shaders::builtin_dir()],
+    };
+    let module = compiler.compile(&request).expect("compiles");
+    let ShaderCode::SpirV(words) = &module.code else {
+        panic!("expected SPIR-V")
+    };
+    assert_eq!(
+        entry_names(words),
+        std::slice::from_ref(&module.entry),
+        "the module names its entry as the code does"
+    );
+}

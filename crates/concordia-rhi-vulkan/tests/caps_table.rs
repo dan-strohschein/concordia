@@ -26,7 +26,7 @@ fn lavapipe_meets_m1_with_draw_boundary_timestamps() {
         (caps.max_bindless_textures, caps.max_bindless_buffers),
         (BINDLESS_CAPACITY, BINDLESS_CAPACITY)
     );
-    assert_eq!(caps.feature_sets, ["vulkan1.3"]);
+    assert_eq!(caps.feature_sets, ["VK_EXT_mesh_shader", "VK_KHR_ray_query", "vulkan1.4"]);
     assert!(
         !caps.mesh_shaders && !caps.ray_tracing && !caps.metalfx_temporal,
         "not implemented in 4.1v(a)"
@@ -93,7 +93,7 @@ fn extensions_join_the_feature_sets_sorted() {
     record.extensions = vec!["VK_KHR_ray_query".into(), "VK_EXT_mesh_shader".into()];
     assert_eq!(
         caps_from_record(&record).feature_sets,
-        ["VK_EXT_mesh_shader", "VK_KHR_ray_query", "vulkan1.3"]
+        ["VK_EXT_mesh_shader", "VK_KHR_ray_query", "vulkan1.4"]
     );
 }
 

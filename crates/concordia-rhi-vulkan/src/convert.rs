@@ -107,7 +107,8 @@ pub(crate) fn layout(layout: Layout) -> vk::ImageLayout {
         Layout::Undefined => vk::ImageLayout::UNDEFINED,
         Layout::General => vk::ImageLayout::GENERAL,
         Layout::ColorAttachment => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-        Layout::DepthAttachment => vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
+        // Not DEPTH_ATTACHMENT_OPTIMAL: that needs `separateDepthStencilLayouts`.
+        Layout::DepthAttachment => vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         Layout::ShaderRead => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         Layout::CopySrc => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
         Layout::CopyDst => vk::ImageLayout::TRANSFER_DST_OPTIMAL,

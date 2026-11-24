@@ -37,7 +37,7 @@ The Vulkan implementation of `concordia-rhi` (ADR-0088): `VulkanDevice` over `as
 ## References
 - Khronos *Vulkan 1.3 specification* (synchronization2, dynamic rendering, descriptor indexing, buffer device address, timeline semaphores, timestamp queries; the facing rule in "Basic Polygon Rasterization").
 - The `ash` 0.38 and `gpu-allocator` 0.28 sources and docs (both MIT OR Apache-2.0), read for their APIs.
-- The lavapipe fixture's numbers are approximate, written from general knowledge of Mesa's limits; it is re-recorded on the first Linux run.
+- The lavapipe fixture was recorded on GitHub's ubuntu-24.04 runner by the CI job.
 - No Unreal or other source-available engine code was consulted.
 
 ## Status

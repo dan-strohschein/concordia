@@ -817,6 +817,7 @@ impl Device for VulkanDevice {
 
     fn texture_heap_footprint(&self, desc: &TextureDesc) -> Result<(u64, u64), RhiError> {
         desc.validate()?;
+        self.supports(desc)?;
         let req = resources::requirements(&self.device, desc);
         Ok((req.size, req.alignment))
     }

@@ -1,7 +1,11 @@
 {
-  "device_name": "llvmpipe (LLVM 17.0.6, 256 bits)",
+  "device_name": "llvmpipe (LLVM 20.1.2, 256 bits)",
   "device_type": "cpu",
-  "api_version": [1, 3, 274],
+  "api_version": [
+    1,
+    4,
+    318
+  ],
   "unified_memory": true,
   "features": {
     "dynamic_rendering": true,
@@ -17,7 +21,10 @@
     "shader_int64": true,
     "sampler_anisotropy": true
   },
-  "msaa_sample_counts": [1, 4],
+  "msaa_sample_counts": [
+    1,
+    4
+  ],
   "max_buffer_bytes": 4294967295,
   "max_update_after_bind_sampled_images": 1000000,
   "max_update_after_bind_storage_images": 1000000,
@@ -26,5 +33,8 @@
   "graphics_compute_queue": true,
   "queue_timestamp_valid_bits": 64,
   "timestamp_period_ns": 1.0,
-  "extensions": []
+  "extensions": [
+    "VK_EXT_mesh_shader",
+    "VK_KHR_ray_query"
+  ]
 }
