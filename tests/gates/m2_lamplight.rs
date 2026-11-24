@@ -185,19 +185,32 @@ async fn m2_gate_scripted_night_is_won_and_replays_exactly_at_1_and_8_threads() 
         "all captures or none"
     );
 
-    // Fresh servers at 1 and 8 threads verify the recording tick for tick.
-    for threads in [1, 8] {
-        let replayer = Town::open(dir.path(), threads).await;
-        let run = replayer.ok("replay_run", json!({"path": REPLAY})).await;
-        assert_eq!(run["ok"], true, "{threads} threads: {run}");
-        assert_eq!(
-            run["world_hash"],
-            hash.as_str(),
-            "{threads} threads end on the same hash"
-        );
-        assert_eq!(replayer.errors().await, json!([]));
-        replayer.client.shutdown().await;
+    // Fresh servers at 1 and 8 threads verify the recording tick for tick, side by side, each on
+    // its own copy of the project (one project's servers would share one engine).
+    let copies: Vec<tempfile::TempDir> = (0..2).map(|_| tempfile::tempdir().unwrap()).collect();
+    for copy in &copies {
+        concordia_tests::copy_project(dir.path(), copy.path()).unwrap();
+        let ddc = dir.path().join(".concordia/ddc");
+        if ddc.is_dir() {
+            concordia_tests::copy_project(&ddc, &copy.path().join(".concordia/ddc")).unwrap();
+        }
     }
+    let verify = |threads: usize, root: &std::path::Path| {
+        let (root, hash) = (root.to_path_buf(), hash.clone());
+        async move {
+            let replayer = Town::open(&root, threads).await;
+            let run = replayer.ok("replay_run", json!({"path": REPLAY})).await;
+            assert_eq!(run["ok"], true, "{threads} threads: {run}");
+            assert_eq!(
+                run["world_hash"],
+                hash.as_str(),
+                "{threads} threads end on the same hash"
+            );
+            assert_eq!(replayer.errors().await, json!([]));
+            replayer.client.shutdown().await;
+        }
+    };
+    tokio::join!(verify(1, copies[0].path()), verify(8, copies[1].path()));
 }
 
 #[tokio::test]
