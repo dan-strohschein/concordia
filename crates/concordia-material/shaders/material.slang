@@ -217,3 +217,45 @@ Entry mix_entries(Entry a, Entry b, float t) {
 }
 
 Entry cover(Entry x, float coverage) { return mix_entries(nothing(), x, coverage); }
+
+// ---- A closure from its slab's rows (`rows.rs`): the factors alone; callers multiply in their
+// texture samples, then call `finish_closure`.
+Closure closure_factors(uint4* r, uint features) {
+    Closure c = {};
+    float4 base = asfloat(r[0]);
+    c.base = base.rgb;
+    c.alpha = base.a;
+    c.emissive = asfloat(r[1].xyz);
+    c.metallic = asfloat(r[1].w);
+    c.transmittance = asfloat(r[2].xyz);
+    c.specular = asfloat(r[2].w);
+    c.roughness = asfloat(r[3].x);
+    c.occlusion = 1.0;
+    c.features = features;
+    float4 haze_film = asfloat(r[4]);
+    c.haze_roughness = haze_film.x;
+    c.haze_weight = haze_film.y;
+    c.film_thickness = haze_film.z;
+    c.film_ior = haze_film.w;
+    float4 fuzz = asfloat(r[5]);
+    c.fuzz = fuzz.rgb;
+    c.fuzz_roughness = fuzz.w;
+    c.mfp = asfloat(r[6].xyz);
+    return c;
+}
+
+// The terms that follow from a closure's values, normal `n` and view `v`: F0, the GGX alphas,
+// the diffuse share and albedo, the sheen albedo and (when layered) the transmittance toward v.
+void finish_closure<T : IAlbedoTables>(inout Closure c, T tables, float3 n, float3 v, bool layered) {
+    c.metallic = saturate(c.metallic);
+    c.roughness = saturate(c.roughness);
+    c.n = n;
+    c.nov = abs(dot(c.n, v)) + 1e-5;
+    c.f0 = f0_of(c);
+    c.a = alpha_of(c.roughness);
+    c.haze_a = alpha_of(c.haze_roughness);
+    c.diffuse_weight = 1.0 - specular_energy(tables, c, min(c.nov, 1.0));
+    c.diffuse = c.diffuse_weight * (1.0 - c.metallic) * c.base * (1.0 - c.transmittance) / PI;
+    c.sheen_e = has(c, FEATURE_FUZZ) ? tables.sheen_albedo(c.nov, c.fuzz_roughness) : 0.0;
+    c.tv = layered ? transmittance(tables, c, dot(c.n, v)) : float3(1.0);
+}

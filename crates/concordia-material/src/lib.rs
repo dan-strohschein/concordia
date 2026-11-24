@@ -7,6 +7,7 @@ mod budget;
 pub mod dfg;
 mod film;
 mod program;
+pub mod rows;
 pub mod sampling;
 
 pub use bsdf::{SSS_SCALE, eval_slab, slab_transmittance};
