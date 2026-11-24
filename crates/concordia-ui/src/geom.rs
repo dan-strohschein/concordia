@@ -101,4 +101,9 @@ impl Edges {
     pub fn vertical(&self) -> f32 {
         self.top + self.bottom
     }
+
+    /// Left plus right.
+    pub fn horizontal(&self) -> f32 {
+        self.left + self.right
+    }
 }

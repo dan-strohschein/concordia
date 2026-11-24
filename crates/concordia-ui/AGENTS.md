@@ -22,7 +22,9 @@ The in-game UI (M2 phase 2.7b, ADR-0060): retained widgets as ECS components on 
 - **Presentation only:** layout rects, shaped text, the atlas and draw lists are derived and never stored in a world. Only the components are hashed (`ui_never_changes_the_world_hash_at_1_and_8_threads`). Layout is one pure function of the components, the assets' bytes and the viewport.
 - **Interaction is simulation:** `ui.interact` (exclusive, `PrePhysics`, after `input.sample` and before `nav.click` when present) reads only actions, so replays reproduce it; it lays out with its own `UiFonts` and the asset snapshot from play start (never the presentation cache), for the `ui_viewport` action's size or the first root's canvas. `UiState`, widget values and signals are hashed.
 - **Typing:** typed text (`TypedText`) goes only to the focused, enabled text box; while one has focus `ui.interact` consumes the keyboard (`ConsumedActions::consume_keys`) and the text box swallows arrows, Accept and Page keys (it edits through typed text). Byte offsets always sit on character boundaries; a password box never copies or cuts.
-- **World roots take no input** in M2: the simulation and the query methods have no camera, so they never see them.
+- **World roots take input** when the module has a lens (`UiModule::with_lens`, a `UiLens`): the simulation and the query methods lay them out through it; the app injects the renderer's `world_ui_lens`. Without one (no `[render]`), they are skipped as in M2.
+- **Text sizes its box** (Godot's `Label`): with `Overflow::Visible`, a node's minimum height is its text's height at the box's fixed width, and `Wrap::None` text sets its minimum width (`Pass::text_floor`); `Clip` and `Ellipsis` opt out.
+- **The play asset snapshot** covers the play world's UI components and every template's (`preload`, `preload_templates`).
 - **The pointer:** the topmost node that `stops` it takes it (interactive widgets, scrolls, tooltips, pictures, boxes with a background or border; `PointerFilter` overrides); open lists are above everything and scroll bars above their content. A held press keeps the pointer consumed. A disabled widget is never hovered, pressed or focused.
 - **No system fonts:** fonts load from bytes only (fontique without its `system` feature), so shaping is identical on every machine.
 - **Coordinates:** UI space is logical pixels, origin top left, y down. `viewport = ui × map.scale + map.offset`; target pixels are that times the frame's scale.
@@ -66,7 +68,7 @@ The in-game UI (M2 phase 2.7b, ADR-0060): retained widgets as ECS components on 
 - No Unreal (UMG, Slate), Unity UI or other non-open source was consulted.
 
 ## Status
-M2 phase 2.7b.1 (display widgets, layout, text, themes, the draw list and its renderer pass, `ui.inspect`, the `ui_bounds` layer; the UI/UX role) and 2.7b.2 (controls, `ui.interact`, focus, scrolling, tooltips, sounds, pointer consumption, `ui.hit_test`, cursors). and 2.7b.3 (text boxes, spin boxes, lists, typed text, the clipboard, world-space roots).
+M2 phase 2.7b.1 (display widgets, layout, text, themes, the draw list and its renderer pass, `ui.inspect`, the `ui_bounds` layer; the UI/UX role) and 2.7b.2 (controls, `ui.interact`, focus, scrolling, tooltips, sounds, pointer consumption, `ui.hit_test`, cursors). and 2.7b.3 (text boxes, spin boxes, lists, typed text, the clipboard, world-space roots). M3 phase 3.0c: text sizes its box; world roots take input through an injected lens; the play asset snapshot covers templates.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

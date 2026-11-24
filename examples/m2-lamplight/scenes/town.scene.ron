@@ -24412,10 +24412,10 @@ Scene(
                         grow_h: End,
                         grow_v: End,
                         offsets: (
-                            bottom: 170.0,
+                            bottom: 180.0,
                             left: -200.0,
                             right: 200.0,
-                            top: -170.0,
+                            top: -180.0,
                         ),
                     )),
                     shrink: 1.0,

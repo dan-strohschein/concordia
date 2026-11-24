@@ -7,6 +7,7 @@ use concordia_api::{
     ApiError, Engine, EngineModule, MethodInfo, PlaySetup, UiDrawList, UiFrame, WorldSel,
 };
 use concordia_assets::AssetDb;
+use concordia_core::math::Mat4;
 use concordia_reflect::{RegistryError, TypeRegistry};
 use concordia_terra::World;
 
@@ -25,14 +26,40 @@ pub struct UiCore {
     pub cache: AssetCache,
 }
 
+/// The clip-from-world matrix world roots are seen through in `world` for a viewport in logical
+/// pixels (`None`: no camera, so world roots are skipped). The app injects the renderer's.
+pub type UiLens = Arc<dyn Fn(&World, [f32; 2]) -> Option<Mat4> + Send + Sync>;
+
 /// The shared UI state (also `Engine::state::<UiShared>()`).
-#[derive(Debug, Clone, Default)]
-pub struct UiShared(Arc<Mutex<UiCore>>);
+#[derive(Clone, Default)]
+pub struct UiShared {
+    core: Arc<Mutex<UiCore>>,
+    lens: Option<UiLens>,
+}
+
+impl std::fmt::Debug for UiShared {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UiShared")
+            .field("core", &self.core)
+            .field("lens", &self.lens.is_some())
+            .finish()
+    }
+}
 
 impl UiShared {
     /// Locks the state (a poisoned lock is recovered: the state is a cache).
     pub fn lock(&self) -> MutexGuard<'_, UiCore> {
-        self.0.lock().unwrap_or_else(|p| p.into_inner())
+        self.core.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// The matrix `world`'s world roots are seen through at `viewport`, if there is a lens.
+    pub fn clip_from_world(&self, world: &World, viewport: [f32; 2]) -> Option<Mat4> {
+        self.lens.as_ref().and_then(|lens| lens(world, viewport))
+    }
+
+    /// The lens, for the simulation's layout.
+    pub(crate) fn lens(&self) -> Option<UiLens> {
+        self.lens.clone()
     }
 }
 
@@ -48,10 +75,32 @@ impl UiModule {
         Self::default()
     }
 
+    /// Sees world roots through `lens` in the simulation and the `ui.*` queries (the drawn
+    /// frame keeps the renderer's camera).
+    pub fn with_lens(mut self, lens: UiLens) -> Self {
+        self.shared.lens = Some(lens);
+        self
+    }
+
     /// The shared state.
     pub fn shared(&self) -> &UiShared {
         &self.shared
     }
+}
+
+/// Every template's components as JSON (none if the catalog can't be read; the template
+/// methods report that).
+fn template_components(
+    engine: &Engine,
+) -> Vec<std::collections::BTreeMap<String, serde_json::Value>> {
+    let Ok(catalog) = engine.template_catalog() else {
+        return Vec::new();
+    };
+    catalog
+        .iter()
+        .filter_map(|t| t.compile(engine.registry()).ok())
+        .map(|t| t.components_json())
+        .collect()
 }
 
 /// `world`'s UI scene and the asset database, borrowed together.
@@ -76,16 +125,18 @@ impl EngineModule for UiModule {
         crate::methods::all()
     }
 
-    /// Snapshots the assets the play world's UI names, and adds `ui.interact`.
+    /// Snapshots the assets the play world's UI and the templates name, and adds `ui.interact`.
     fn start_play_in(&self, engine: &mut Engine, world: &mut World) -> Result<PlaySetup, ApiError> {
+        let templates = template_components(engine);
         let mut cache = AssetCache::default();
         let mut assets = DbAssets {
             db: engine.state_mut::<AssetDb>(),
             cache: &mut cache,
         };
         crate::play::preload(world, &mut assets);
+        crate::play::preload_templates(&templates, &mut assets);
         let mut setup = PlaySetup::default();
-        crate::play::add_interact(&mut setup.schedule, cache);
+        crate::play::add_interact(&mut setup.schedule, cache, self.shared.lens());
         Ok(setup)
     }
 

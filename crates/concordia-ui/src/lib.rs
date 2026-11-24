@@ -62,7 +62,7 @@ pub use methods::{
     UiClipboardResult, UiHitTest, UiHitTestParams, UiHitTestResult, UiInspect, UiInspectParams,
     UiInspectResult,
 };
-pub use module::{UI_BOUNDS_LAYER, UiCore, UiModule, UiShared};
+pub use module::{UI_BOUNDS_LAYER, UiCore, UiLens, UiModule, UiShared};
 pub use node::{
     Align, Anchored, Direction, Flex, Grid, Grow, Justify, Layout, Length, MAX_TRACKS,
     PointerFilter, Position, Track, UiNode,
@@ -76,7 +76,7 @@ pub use parts::{
     clamp_offset, dropdown_arrow, first_row, list_rect, offset_for_thumb, scroll_bars,
     slider_parts, slider_value_at, tip_rect, toggle_knob,
 };
-pub use play::{INTERACT, add_interact, preload};
+pub use play::{INTERACT, add_interact, preload, preload_templates};
 pub use root::{Aspect, CanvasMap, MAX_CANVAS, RootSpace, Stretch, UiRoot, canvas_map};
 pub use scene::{UiElement, UiScene, UiTree};
 pub use style::{

@@ -41,6 +41,14 @@ pub(crate) fn ui_camera(
     clip_from_world(&camera, width as f32 / height.max(1) as f32).ok()
 }
 
+/// The matrix world-space UI is seen through in `world`'s simulation and UI queries: its
+/// highest-priority camera at a `viewport` of logical pixels (`None` without a camera). It is
+/// `concordia_ui::UiLens`'s implementation, injected by the app.
+pub fn world_ui_lens(world: &World, viewport: [f32; 2]) -> Option<Mat4> {
+    let camera = scene_camera(world, None).ok()?;
+    clip_from_world(&camera, viewport[0] / viewport[1].max(1.0)).ok()
+}
+
 /// `world`'s camera `requested`, or its highest-priority one (ties: lowest id), with its world
 /// matrix.
 pub fn scene_camera(world: &World, requested: Option<EntityId>) -> Result<CameraView, RenderError> {

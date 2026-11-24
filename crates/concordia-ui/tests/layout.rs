@@ -358,3 +358,86 @@ fn order_visibility_and_problems() {
     // (ids ascending), `first` order 1.
     assert_eq!(l.order, vec![root, second, bad, first]);
 }
+
+/// A box never squeezes its text (M3 3.0c; Godot's `Label`: the minimum size includes the text).
+/// Mono 20 px, u = one glyph's advance, L = one line's height, in a column that aligns at the start:
+/// - a 10 px tall "MMMM" grows to L tall (its width is Auto: 4u);
+/// - "aa bb" in a 2.5u wide box (plus 2 px padding each side) wraps to "aa " and "bb": 2L + 4;
+/// - a 10 px wide "MMMM" with `Wrap::None` grows to 4u wide;
+/// - with `Overflow::Clip` the 10 px box stays 10 px (it opts out);
+/// - a 10 px tall "MMMM" that also has a 5 × 5 child grows to L.
+#[test]
+fn labels_grow_to_fit_their_text() {
+    let m = metrics(&font_bytes("NotoSansMono-Regular.ttf"));
+    let (u, line) = (m.mono_advance(20.0), m.line_height(20.0));
+    let mut t = Tree::new();
+    let root = t.root(
+        screen(400.0, 300.0),
+        UiNode {
+            layout: flex(Direction::Column, Justify::Start, Align::Start),
+            ..UiNode::default()
+        },
+    );
+    let label = |t: &mut Tree, node: UiNode, text: UiText| {
+        let id = t.child(root, node);
+        t.world.insert(id, text).unwrap();
+        t.world
+            .insert(
+                id,
+                UiStyle {
+                    font: Some(MONO.parse().unwrap()),
+                    font_size: Some(20.0),
+                    ..UiStyle::default()
+                },
+            )
+            .unwrap();
+        id
+    };
+    let short = UiNode {
+        height: Length::Px(10.0),
+        ..UiNode::default()
+    };
+    let tall = label(&mut t, short.clone(), UiText::plain("MMMM"));
+    let wrapped = label(
+        &mut t,
+        UiNode {
+            width: Length::Px(2.5 * u + 4.0),
+            height: Length::Px(10.0),
+            padding: Edges::all(2.0),
+            ..UiNode::default()
+        },
+        UiText::plain("aa bb"),
+    );
+    let wide = label(
+        &mut t,
+        UiNode {
+            width: Length::Px(10.0),
+            ..UiNode::default()
+        },
+        UiText {
+            wrap: Wrap::None,
+            ..UiText::plain("MMMM")
+        },
+    );
+    let clipped = label(
+        &mut t,
+        short.clone(),
+        UiText {
+            overflow: Overflow::Clip,
+            ..UiText::plain("MMMM")
+        },
+    );
+    let parent = label(&mut t, short, UiText::plain("MMMM"));
+    t.child(parent, sized(5.0, 5.0));
+    let l = t.layout([400.0, 300.0]);
+    let size = |id: EntityId| {
+        let r = l.nodes[&id].rect;
+        (r.w, r.h)
+    };
+    assert_close(size(tall).0, 4.0 * u);
+    assert_close(size(tall).1, line);
+    assert_close(size(wrapped).1, 2.0 * line + 4.0);
+    assert_close(size(wide).0, 4.0 * u);
+    assert_close(size(clipped).1, 10.0);
+    assert!(size(parent).1 >= line - 1e-3, "{:?}", size(parent));
+}
