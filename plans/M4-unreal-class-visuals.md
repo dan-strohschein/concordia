@@ -1,5 +1,5 @@
 # M4: Unreal-class visuals
-Status: In progress (4.1a, 4.1b1 done; 4.1b2 in review) · Depends on: M1 (render), M2 (scripting host, graphs' WIT API), M3 (replay assertions, Studio) · Detail level: **Refined after M3 (2026-11-24; R1–R5 and D1–D10 approved by the author)** · Estimated effort: 32–45 agent-assisted engineer-weeks (two parallel tracks; see Effort estimate)
+Status: In progress (4.1a, 4.1b1, 4.1b2 done; 4.1b3 in review) · Depends on: M1 (render), M2 (scripting host, graphs' WIT API), M3 (replay assertions, Studio) · Detail level: **Refined after M3 (2026-11-24; R1–R5 and D1–D10 approved by the author)** · Estimated effort: 32–45 agent-assisted engineer-weeks (two parallel tracks; see Effort estimate)
 
 > This plan has full phase breakdowns and test lists. Its numbers (budgets, FLIP tolerances, page sizes, meshlet sizes) are **provisional** and must be recalibrated in the refinement pass after M3, using measurements from the M1–M3 renderer on the reference Mac. Every recalibrated number lands in a text file (`tests/perf/budgets/*.budget.ron`, per-test tolerances), never in code.
 
@@ -180,6 +180,11 @@ Numbers stay as they are because other plans cite them. Each phase gets its own 
 - Bugs found by tests: shadow rays measured from the surface but started off it stopped at an emitter's own plane (75% of area-light samples lost); no test covered `pick_camera`'s tie-break.
 - Plan differences: the furnace uses a large quad seen at two angles (a tessellated sphere's shading normals would blur a 0.5% check); the convergence reference is 16k spp on 8×8 pixels (64k was too slow for every run).
 - Emission was display-referred in the renderer (radiance = emission ÷ exposure), and the tracer matches it. **Author decision (2026-11-24): emissive becomes physical (nits) before 4.8, in 4.1b4**, with an ADR. Existing materials are converted once to look unchanged at their scene camera's exposure; unlit materials stay screen-referred.
+
+**4.1b3** (`m4/4.1b3-pathtrace-gpu`, 2026-11-24):
+- The GPU path tracer (`shaders/pathtrace.slang`, `GpuTracer`): the CPU algorithm step for step over the scene packed into `float4`/`uint4` rows; samples in batches of 16. `Backend::auto` picks the GPU when the tracer builds on a device, else the CPU; `render` dispatches.
+- Shared rather than copied: the material row encoding (`concordia-material::rows`, moved from the renderer); `closure_factors` and `finish_closure` in `material.slang` (the renderer's `load_closure` now wraps its texture samples around them, goldens unchanged); `Target::from(Backend)` in `concordia-shaders`.
+- Tests: every transport test on both backends (furnace, disk light, punctual lights, emission, sky and clear color, convergence, determinism); `gpu_and_cpu_tracers_converge` (statistical); `gpu_and_cpu_agree_on_layered_materials` (noise-free); the CPU fallback without a device. Every test passed on the first GPU run, so ten kernel mutations proved the GPU is exercised; one survivor showed the fixtures had no partly transparent slab, which was added.
 
 ### Effort (re-estimated)
 - The plan's 32–45 weeks, plus **4.1v Vulkan at 6–10**, plus about 1 for D2, D6 and D9: **about 39–56 engineer-weeks**.
