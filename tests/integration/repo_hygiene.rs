@@ -192,6 +192,35 @@ fn golden_tolerances_live_in_text() {
     }
 }
 
+/// Crates that must never pull in the GPU renderer (M4 4.1b, ADR-0101): the shared render types
+/// stay GPU-free, and the path tracer stays independent of the renderer it checks.
+#[test]
+fn gpu_free_crates_keep_their_dependencies() {
+    let rules: [(&str, &[&str]); 1] = [(
+        "concordia-render-types",
+        &[
+            "concordia-render",
+            "concordia-rhi",
+            "concordia-rhi-metal",
+            "concordia-shaders",
+        ],
+    )];
+    for (krate, forbidden) in rules {
+        let manifest = toml_at(&format!("crates/{krate}/Cargo.toml"));
+        let deps: Vec<&String> = ["dependencies", "dev-dependencies", "build-dependencies"]
+            .iter()
+            .filter_map(|k| manifest.get(*k).and_then(|t| t.as_table()))
+            .flat_map(|t| t.keys())
+            .collect();
+        for dep in deps {
+            assert!(
+                !forbidden.contains(&dep.as_str()),
+                "{krate} must not depend on {dep}"
+            );
+        }
+    }
+}
+
 fn assert_contains_all(relative: &str, needles: &[&str]) {
     let text = read_repo_file(relative).to_lowercase();
     for needle in needles {

@@ -7,95 +7,10 @@
 
 use concordia_core::math::camera::rh::proj::directx;
 use concordia_core::math::{Mat3, Mat4, Vec3};
-use concordia_reflect::Reflect;
-use serde::{Deserialize, Serialize};
 
 use crate::{Projection, RenderError, view_matrix};
 
-/// Percentage-closer filter size.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Reflect)]
-pub enum PcfKernel {
-    /// 3×3 texels (tent-filtered).
-    #[default]
-    X3,
-    /// 5×5 texels (softer).
-    X5,
-}
-
-impl PcfKernel {
-    /// Kernel radius in texels.
-    pub fn radius(self) -> u32 {
-        match self {
-            Self::X3 => 1,
-            Self::X5 => 2,
-        }
-    }
-}
-
-/// Shadow settings of a directional light.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
-#[serde(default, deny_unknown_fields)]
-pub struct CascadeSettings {
-    /// Cascades (1..=4).
-    #[reflect(range(min = 1.0, max = 4.0))]
-    pub cascades: u8,
-    /// Shadows end this far from the camera (view distance).
-    #[reflect(range(min = 0.1, max = 10000.0))]
-    pub max_distance: f32,
-    /// Blend between logarithmic (1) and uniform (0) splits.
-    #[reflect(range(min = 0.0, max = 1.0))]
-    pub split_lambda: f32,
-    /// Shadow map size per cascade (texels per side).
-    #[reflect(range(min = 64.0, max = 8192.0))]
-    pub resolution: u32,
-    /// Constant depth bias in world units.
-    #[reflect(range(min = 0.0, max = 1.0))]
-    pub depth_bias: f32,
-    /// Receiver offset along the normal, in shadow texels.
-    #[reflect(range(min = 0.0, max = 10.0))]
-    pub normal_bias: f32,
-    /// Filter.
-    pub pcf: PcfKernel,
-    /// Snap cascades to the texel grid so shadows do not shimmer while the camera moves.
-    pub stabilize: bool,
-}
-
-impl Default for CascadeSettings {
-    fn default() -> Self {
-        Self {
-            cascades: 3,
-            max_distance: 60.0,
-            split_lambda: 0.75,
-            resolution: 2048,
-            depth_bias: 0.02,
-            normal_bias: 1.5,
-            pcf: PcfKernel::X3,
-            stabilize: true,
-        }
-    }
-}
-
-impl CascadeSettings {
-    fn validate(&self) -> Result<(), RenderError> {
-        let bad = |why: &str| {
-            Err(RenderError::InvalidCamera(format!(
-                "shadow settings: {why} ({self:?})"
-            )))
-        };
-        match () {
-            _ if !(1..=4).contains(&self.cascades) => bad("cascades must be 1..=4"),
-            _ if !(64..=8192).contains(&self.resolution) => bad("resolution must be 64..=8192"),
-            _ if !(0.0..=1.0).contains(&self.split_lambda) => bad("split_lambda must be in [0, 1]"),
-            _ if !(self.max_distance > 0.0 && self.max_distance.is_finite()) => {
-                bad("max_distance must be positive")
-            }
-            _ if !(self.depth_bias >= 0.0 && self.normal_bias >= 0.0) => {
-                bad("biases must be non-negative")
-            }
-            _ => Ok(()),
-        }
-    }
-}
+pub use concordia_render_types::{CascadeSettings, PcfKernel};
 
 /// One fitted cascade.
 #[derive(Debug, Clone, PartialEq)]
@@ -136,7 +51,9 @@ pub fn fit_cascades(
     light_dir: Vec3,
     scene: (Vec3, Vec3),
 ) -> Result<Vec<Cascade>, RenderError> {
-    settings.validate()?;
+    settings.validate().map_err(|why| {
+        RenderError::InvalidCamera(format!("shadow settings: {why} ({settings:?})"))
+    })?;
     projection.matrix(aspect)?;
     let (near, far) = match *projection {
         Projection::Perspective { near, far, .. } | Projection::Orthographic { near, far, .. } => {

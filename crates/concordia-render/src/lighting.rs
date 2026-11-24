@@ -17,10 +17,7 @@ pub(crate) struct LightData {
     pub(crate) dropped: usize,
 }
 
-/// Luminous intensity (cd) of `lumens` radiated uniformly (spots are not concentrated by their cone).
-pub fn candela(lumens: f32) -> f32 {
-    lumens / (4.0 * std::f32::consts::PI)
-}
+pub use concordia_render_types::candela;
 
 /// Packs at most `max` punctual lights, in entity order.
 pub(crate) fn punctual_lights(

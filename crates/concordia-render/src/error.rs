@@ -45,3 +45,9 @@ pub enum RenderError {
     #[error("render graph: {0}")]
     Graph(#[from] crate::graph::GraphError),
 }
+
+impl From<concordia_render_types::ProjectionError> for RenderError {
+    fn from(e: concordia_render_types::ProjectionError) -> Self {
+        Self::InvalidCamera(e.0)
+    }
+}

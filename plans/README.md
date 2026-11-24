@@ -95,6 +95,7 @@ examples/             # small sample projects used by tests and docs
 | `concordia-rhi` | RHI traits and types; backends `concordia-rhi-metal` (M1), `concordia-rhi-vulkan` (M1 stretch / M2) | M1 |
 | `concordia-shaders` | Slang compilation, reflection, shader cache | M1 |
 | `concordia-render` | render graph, PBR clustered forward+, materials, cameras, capture; GPU skinning of posed characters (M2 2.4.2) | M1 |
+| `concordia-render-types` | the render vocabulary shared by the renderer and the path tracer: reflected render components, camera math, photometric units, CPU tone mapping; no GPU dependencies (ADR-0101) | M4 (4.1b1) |
 | `concordia-material` | Substrate-style material evaluation: closure programs, the closure budget, the CPU reference BSDF and albedo tables (ADR-0068); the model, `.material.ron` and `material.get/set` live in `concordia-assets` (2.3c); `concordia-render`'s shader mirrors it (2.3b) | M2 (2.3a) |
 | `concordia-assets` | asset database, importers registry, content-addressed derived-data cache (`.concordia/ddc`), hot reload; layered materials (2.3) and animation graphs (`.animgraph.ron`, 2.4.3) as canonical text | M1 |
 | `concordia-import-gltf` | glTF 2.0 importer | M1 |

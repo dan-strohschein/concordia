@@ -12,6 +12,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+concordia-render-types.workspace = true
 base64.workspace = true
 concordia-anim.workspace = true
 concordia-api.workspace = true
