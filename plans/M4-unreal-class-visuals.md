@@ -1,10 +1,10 @@
 # M4: Unreal-class visuals
-Status: Planned · Depends on: M1 (render), M2 (scripting host, graphs' WIT API), M3 (replay assertions, Studio) · Detail level: **Refinement drafted (2026-11-24; R1–R5 decided by the author, D1–D10 recommended, awaiting review)** · Estimated effort: 32–45 agent-assisted engineer-weeks (two parallel tracks; see Effort estimate)
+Status: Planned · Depends on: M1 (render), M2 (scripting host, graphs' WIT API), M3 (replay assertions, Studio) · Detail level: **Refined after M3 (2026-11-24; R1–R5 and D1–D10 approved by the author)** · Estimated effort: 32–45 agent-assisted engineer-weeks (two parallel tracks; see Effort estimate)
 
 > This plan has full phase breakdowns and test lists. Its numbers (budgets, FLIP tolerances, page sizes, meshlet sizes) are **provisional** and must be recalibrated in the refinement pass after M3, using measurements from the M1–M3 renderer on the reference Mac. Every recalibrated number lands in a text file (`tests/perf/budgets/*.budget.ron`, per-test tolerances), never in code.
 
 ## M4 refinement (2026-11-24, against the code after M3)
-This section is a draft for the author's review. **Where it disagrees with the phase text below, this section wins.** The author answered five questions on 2026-11-24 (R1–R5). The rest (D1–D10) are my recommendations; they're marked as such so the author can overrule any of them before 4.1 starts.
+**Approved by the author on 2026-11-24.** Where it disagrees with the phase text below, this section wins.** The author answered five questions on 2026-11-24 (R1–R5). The recommendations D1–D10 were approved with it.
 
 ### Author's decisions (2026-11-24)
 - **R1: the proving ground is a new enemy in Lamplight.** The reference port moved to M5 (ADR-0048, ADR-0067), and M5 depends on M4, so 4.13 can't use a ported enemy.
@@ -78,7 +78,7 @@ This section is a draft for the author's review. **Where it disagrees with the p
 - **Editor:** panels are top-level folders under `editor/ui/src/` (there's no `panels/`). There's no `@xyflow/react`, dagre or elkjs. Playwright has 10 e2e specs.
 - Studio skills are `crates/concordia-studio/roster/skills/concordia-*`.
 
-### Decisions I recommend (D1–D10; open to the author's review)
+### Decisions (D1–D10; recommended, approved 2026-11-24)
 - **D1: numbers come from 4.1's measurements.** 4.1 measures the M1 gate scene and Lamplight per pass on the M3 Pro. The budgets and the canyon gate's 16.6 ms target are then re-derived into `tests/perf/budgets/*.budget.ron`, and the author approves the file in 4.1's review. Until then, every number below stays provisional.
 - **D2: golden tolerances move to text.** Each suite gets a `tests/golden/<suite>/tolerances.ron`; `Tolerance::mean` in code remains only as the default. This happens in 4.1, so M4's reference and regression goldens follow the plan's rule.
 - **D3: the M1 baseline scene is the M1 gate scene**, and `m1-sponza-like` is dropped. The path-traced baseline is blessed on it and on a Lamplight night view.
