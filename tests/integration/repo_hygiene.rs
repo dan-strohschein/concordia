@@ -196,15 +196,18 @@ fn golden_tolerances_live_in_text() {
 /// stay GPU-free, and the path tracer stays independent of the renderer it checks.
 #[test]
 fn gpu_free_crates_keep_their_dependencies() {
-    let rules: [(&str, &[&str]); 1] = [(
-        "concordia-render-types",
-        &[
-            "concordia-render",
-            "concordia-rhi",
-            "concordia-rhi-metal",
-            "concordia-shaders",
-        ],
-    )];
+    let rules: [(&str, &[&str]); 2] = [
+        ("concordia-pathtrace", &["concordia-render"]),
+        (
+            "concordia-render-types",
+            &[
+                "concordia-render",
+                "concordia-rhi",
+                "concordia-rhi-metal",
+                "concordia-shaders",
+            ],
+        ),
+    ];
     for (krate, forbidden) in rules {
         let manifest = toml_at(&format!("crates/{krate}/Cargo.toml"));
         let deps: Vec<&String> = ["dependencies", "dev-dependencies", "build-dependencies"]

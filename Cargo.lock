@@ -1029,6 +1029,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "concordia-pathtrace"
+version = "0.0.0"
+dependencies = [
+ "concordia-core",
+ "proptest",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "concordia-perf"
 version = "0.0.0"
 dependencies = [

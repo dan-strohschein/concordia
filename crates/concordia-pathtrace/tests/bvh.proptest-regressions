@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 76b1cc90fbb28f9179a47e6a28be9fd0b82d8e3a79841c927dad710cdfbcf1e8 # shrinks to triangles = [Triangle { v: [Vec3(0.0, 0.0, 0.0), Vec3(-9.203183, -9.610637, 0.0), Vec3(-6.590011, 0.0, 0.0)] }], rays = [Ray { origin: Vec3(-8.428967, 0.0, -8.988351), dir: Vec3(1.419559, -5.3770456, 7.6158576), t_min: 0.0, t_max: inf }]

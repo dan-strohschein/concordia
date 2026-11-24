@@ -51,6 +51,7 @@ concordia-terra-sim = { path = "crates/concordia-terra-sim" }
 concordia-terra-crowd = { path = "crates/concordia-terra-crowd" }
 concordia-shaders = { path = "crates/concordia-shaders" }
 concordia-studio = { path = "crates/concordia-studio" }
+concordia-pathtrace = { path = "crates/concordia-pathtrace" }
 concordia-perf = { path = "crates/concordia-perf" }
 concordia-reflect = { path = "crates/concordia-reflect" }
 concordia-material = { path = "crates/concordia-material" }
