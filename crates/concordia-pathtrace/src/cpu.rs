@@ -1,10 +1,12 @@
 //! The CPU backend: a unidirectional path tracer with next-event estimation and multiple
 //! importance sampling, one counter-based sample stream per pixel sample, rows in parallel.
 
+use std::borrow::Cow;
 use std::f32::consts::PI;
 
 use concordia_assets::AlphaMode;
-use concordia_core::math::Vec3;
+use concordia_core::math::{Vec2, Vec3};
+use concordia_material::MaterialProgram;
 use concordia_material::sampling::importance_ggx;
 use concordia_render_types::{Projection, distance_window};
 use rayon::prelude::*;
@@ -13,7 +15,7 @@ use crate::PathTraceError;
 use crate::accel::InstanceHit;
 use crate::geometry::Ray;
 use crate::rng::SampleStream;
-use crate::scene::{CameraSetup, Light, Scene, SceneMaterial};
+use crate::scene::{CameraSetup, Light, Scene, SceneMaterial, lobes};
 
 /// How to render.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,6 +150,34 @@ struct Surface {
     material: u32,
     /// Area of the emitting triangle's world copy, for MIS (0 if the hit can't be sampled).
     t: f32,
+    /// Texture coordinates.
+    uv: Vec2,
+}
+
+/// A material at one point: its program and lobes with the point's texels applied.
+struct Shading<'a> {
+    program: Cow<'a, MaterialProgram>,
+    lobes: Cow<'a, [f32]>,
+    /// Emission toward the viewer.
+    emission: Vec3,
+}
+
+impl<'a> Shading<'a> {
+    fn at(scene: &Scene, m: &'a SceneMaterial, uv: Vec2) -> Self {
+        if !m.textured {
+            return Self {
+                program: Cow::Borrowed(&m.program),
+                lobes: Cow::Borrowed(&m.lobes),
+                emission: m.emission,
+            };
+        }
+        let program = m.program.textured(&|r| scene.texel(r, uv));
+        Self {
+            lobes: Cow::Owned(lobes(&program)),
+            emission: program.unlit().emissive,
+            program: Cow::Owned(program),
+        }
+    }
 }
 
 fn surface(scene: &Scene, ray: &Ray, hit: &InstanceHit) -> Surface {
@@ -173,6 +203,7 @@ fn surface(scene: &Scene, ray: &Ray, hit: &InstanceHit) -> Surface {
         ng,
         material: inst.material,
         t: hit.t,
+        uv: scene.uv(placed.mesh, hit.prim, hit.u, hit.w),
     }
 }
 
@@ -195,33 +226,34 @@ fn trace(scene: &Scene, mut ray: Ray, rng: &mut SampleStream, max_bounces: u32) 
         };
         let surf = surface(scene, &ray, &hit);
         let m = &scene.materials[surf.material as usize];
-        if passes_through(m, rng) && passes < MAX_PASSES {
+        let sh = Shading::at(scene, m, surf.uv);
+        if passes_through(m, &sh, rng) && passes < MAX_PASSES {
             passes += 1;
             ray.origin = surf.p + ray.dir * offset(surf.p);
             continue;
         }
         passes = 0;
         if m.unlit {
-            let shown = m.program.unlit();
+            let shown = sh.program.unlit();
             radiance += beta * (shown.color + shown.emissive) / exposure;
             break;
         }
-        if m.emission.max_element() > 0.0 {
+        if sh.emission.max_element() > 0.0 {
             let w = last_pdf.map_or(1.0, |p| power(p, emitter_pdf(scene, &surf, ray.dir)));
-            radiance += beta * m.emission * w;
+            radiance += beta * sh.emission * w;
         }
         if bounce >= max_bounces {
             break;
         }
         let v = -ray.dir;
-        radiance += beta * direct(scene, &surf, m, v, rng);
-        let Some((l, pdf)) = sample_bsdf(m, surf.n, v, rng) else {
+        radiance += beta * direct(scene, &surf, &sh, v, rng);
+        let Some((l, pdf)) = sample_bsdf(&sh, surf.n, v, rng) else {
             break;
         };
         if l.dot(surf.ng) <= 0.0 || pdf <= 0.0 {
             break;
         }
-        let f = m.program.eval(surf.n, v, l).color;
+        let f = sh.program.eval(surf.n, v, l).color;
         if f.max_element() <= 0.0 {
             break;
         }
@@ -246,8 +278,11 @@ fn trace(scene: &Scene, mut ray: Ray, rng: &mut SampleStream, max_bounces: u32) 
 }
 
 /// Whether the path passes through a cut-out (below its cutoff) or blended (by coverage) surface.
-fn passes_through(m: &SceneMaterial, rng: &mut SampleStream) -> bool {
-    let alpha = m.program.unlit().alpha;
+fn passes_through(m: &SceneMaterial, sh: &Shading, rng: &mut SampleStream) -> bool {
+    if m.alpha == AlphaMode::Opaque {
+        return false;
+    }
+    let alpha = sh.program.unlit().alpha;
     match m.alpha {
         AlphaMode::Opaque => false,
         AlphaMode::Mask { cutoff } => alpha < cutoff,
@@ -257,27 +292,21 @@ fn passes_through(m: &SceneMaterial, rng: &mut SampleStream) -> bool {
 
 /// Light arriving directly from the lights, the sky and one emitting triangle (MIS-weighted
 /// against BSDF sampling for the last two).
-fn direct(
-    scene: &Scene,
-    surf: &Surface,
-    m: &SceneMaterial,
-    v: Vec3,
-    rng: &mut SampleStream,
-) -> Vec3 {
+fn direct(scene: &Scene, surf: &Surface, sh: &Shading, v: Vec3, rng: &mut SampleStream) -> Vec3 {
     let mut sum = Vec3::ZERO;
     for light in &scene.lights {
         if let Some((l, dist, irradiance)) = arriving(light, surf.p)
             && l.dot(surf.ng) > 0.0
             && !blocked(scene, surf, l, dist)
         {
-            sum += m.program.eval(surf.n, v, l).color * irradiance;
+            sum += sh.program.eval(surf.n, v, l).color * irradiance;
         }
     }
     if let Some(env) = &scene.environment {
         let e = env.sample(rng.next_f32(), rng.next_f32());
         if e.pdf > 0.0 && e.dir.dot(surf.ng) > 0.0 && !blocked(scene, surf, e.dir, f32::INFINITY) {
-            let f = m.program.eval(surf.n, v, e.dir).color;
-            let w = power(e.pdf, bsdf_pdf(m, surf.n, v, e.dir));
+            let f = sh.program.eval(surf.n, v, e.dir).color;
+            let w = power(e.pdf, bsdf_pdf(sh, surf.n, v, e.dir));
             sum += f * e.radiance / e.pdf * w;
         }
     }
@@ -286,8 +315,8 @@ fn direct(
         && l.dot(surf.ng) > 0.0
         && !blocked(scene, surf, l, dist)
     {
-        let f = m.program.eval(surf.n, v, l).color;
-        let w = power(pdf, bsdf_pdf(m, surf.n, v, l));
+        let f = sh.program.eval(surf.n, v, l).color;
+        let w = power(pdf, bsdf_pdf(sh, surf.n, v, l));
         sum += f * le / pdf * w;
     }
     sum
@@ -378,8 +407,10 @@ fn sample_emitter(
         return None;
     }
     let pdf = d2 / (cos_l * total_emitter_area(scene));
-    let material = scene.instances[e.instance as usize].material;
-    Some((l, d, scene.materials[material as usize].emission, pdf))
+    let m = &scene.materials[scene.instances[e.instance as usize].material as usize];
+    let mesh = scene.accel.instances()[e.instance as usize].mesh;
+    let uv = scene.uv(mesh, e.prim, su * (1.0 - sv), su * sv);
+    Some((l, d, Shading::at(scene, m, uv).emission, pdf))
 }
 
 fn total_emitter_area(scene: &Scene) -> f32 {
@@ -405,33 +436,34 @@ fn emitter_pdf(scene: &Scene, surf: &Surface, dir: Vec3) -> f32 {
 }
 
 /// A direction from the cosine/GGX mixture and its density.
-fn sample_bsdf(m: &SceneMaterial, n: Vec3, v: Vec3, rng: &mut SampleStream) -> Option<(Vec3, f32)> {
+fn sample_bsdf(sh: &Shading, n: Vec3, v: Vec3, rng: &mut SampleStream) -> Option<(Vec3, f32)> {
     let (choice, u, w) = (rng.next_f32(), rng.next_f32(), rng.next_f32());
-    let l = if m.lobes.is_empty() || choice < 0.5 {
+    let lobes = &sh.lobes;
+    let l = if lobes.is_empty() || choice < 0.5 {
         cosine(n, u, w)
     } else {
-        let k = (((choice - 0.5) * 2.0 * m.lobes.len() as f32) as usize).min(m.lobes.len() - 1);
-        let h = importance_ggx((u, w), n, m.lobes[k]);
+        let k = (((choice - 0.5) * 2.0 * lobes.len() as f32) as usize).min(lobes.len() - 1);
+        let h = importance_ggx((u, w), n, lobes[k]);
         let l = 2.0 * v.dot(h) * h - v;
         l.normalize_or_zero()
     };
-    (l != Vec3::ZERO).then(|| (l, bsdf_pdf(m, n, v, l)))
+    (l != Vec3::ZERO).then(|| (l, bsdf_pdf(sh, n, v, l)))
 }
 
 /// The mixture's density for `l`: half cosine, half spread over the slabs' GGX lobes.
-fn bsdf_pdf(m: &SceneMaterial, n: Vec3, v: Vec3, l: Vec3) -> f32 {
+fn bsdf_pdf(sh: &Shading, n: Vec3, v: Vec3, l: Vec3) -> f32 {
     let cos = n.dot(l).max(0.0) / PI;
-    if m.lobes.is_empty() {
+    let lobes = &sh.lobes;
+    if lobes.is_empty() {
         return cos;
     }
     let h = (v + l).normalize_or_zero();
     let (noh, voh) = (n.dot(h).max(0.0), v.dot(h).abs().max(1e-6));
-    let ggx: f32 = m
-        .lobes
+    let ggx: f32 = lobes
         .iter()
         .map(|&a| d_ggx(noh, a) * noh / (4.0 * voh))
         .sum::<f32>()
-        / m.lobes.len() as f32;
+        / lobes.len() as f32;
     0.5 * cos + 0.5 * ggx
 }
 

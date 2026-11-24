@@ -13,6 +13,7 @@ pub mod gpu;
 pub mod module;
 pub mod rng;
 pub mod scene;
+pub mod texture;
 pub mod world;
 
 pub use accel::{Accel, Instance, InstanceHit};
@@ -26,4 +27,5 @@ pub use gpu::GpuTracer;
 pub use module::{CaptureReference, PathTraceModule, Traced, trace};
 pub use rng::SampleStream;
 pub use scene::{Light, MaterialId, MeshId, Scene, SceneBuilder};
+pub use texture::SceneTexture;
 pub use world::{AssetKind, LoadedAssets, View, asset_refs, scene_from_world};
