@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: **Gate passed (2026-11-23): the author accepted M2 by playing Lamplight in a window** (see "M2 completion"). Phases 2.0–2.8 and 2.10a–2.10c done; 2.10d (the scripted CI gate, goldens, the live Studio gate) replaced by that acceptance and deferred · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: **Gate passed (2026-11-23): the author accepted M2 by playing Lamplight in a window** (see "M2 completion"). Phases 2.0–2.8 and 2.10a–2.10c done; 2.10d (the scripted CI gate, goldens, the live Studio gate) replaced by that acceptance and deferred; **the scripted gate landed in M3 phase 3.9a (2026-11-24): `just gate-tests M2`** · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -4695,6 +4695,28 @@ The play session also produced one fix: the wet cobbles looked like a polished f
   - representation LOD for the townsfolk (2.10c.2);
   - the cobbles' stone size and per-stone variation;
   - a visible fog, which is an engine feature: height and distance fog. The author parked this question.
+
+**The deferred gate, delivered (M3 phase 3.9a, 2026-11-24).** `tests/gates/m2_lamplight.rs` plays Lamplight over MCP stdio:
+- **`m2_gate_scripted_night_is_won_and_replays_exactly_at_1_and_8_threads`:**
+  - a 60 s night with four lamps lit, a wagon refill, wisps burned, burn numbers, and Ada in the records;
+  - recorded and verified on fresh servers at 1 and 8 threads, all ending on the same hash;
+  - mid-night and dawn goldens;
+  - a no-clipping mix digest.
+- **`m2_gate_idle_night_is_lost`.**
+- **`m2_gate_hot_reload_keeps_the_night_running`.**
+- **`m2_gate_title_screen_golden`.**
+- **`m2_gate_every_m2_role_uses_a_tool_in_the_sample`.**
+
+`just play-sample`, `regression.yml`'s `just gate-tests M2` and the `concordia-sample-lamplight` skill landed with it.
+
+**What the gate found and fixed:**
+- **The dawn screen's wrapped title overlapped "Night records".** A label stretched by its parent now wraps at its laid-out width, and its fixed height is only a floor.
+- **The won night's mix peaked at +1 dBFS.** Lamplight's SFX bus is now −3 dB.
+
+**Still open:**
+- **The optional live M2 gate:** folded into M3's live gate (3.9c), which drives the same Studio loop.
+- **The look items:** representation LOD for the townsfolk and the cobbles' stone size wait for Lamplight's next look pass.
+- **The windowed by-hand items:** they wait for the author's recheck with `just play-sample`.
 
 ### Effort (re-estimated)
 | Phase | Estimate |

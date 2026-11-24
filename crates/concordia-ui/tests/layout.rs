@@ -441,3 +441,78 @@ fn labels_grow_to_fit_their_text() {
     assert_close(size(clipped).1, 10.0);
     assert!(size(parent).1 >= line - 1e-3, "{:?}", size(parent));
 }
+
+/// A label whose width comes from its parent (a column that stretches it) wraps at that width,
+/// and its fixed height is only a floor: "aa bb" in a 2.5-letter-wide column takes two lines,
+/// so the label is 2 lines tall and the next child starts below it (Lamplight's end screen,
+/// found by the M2 gate's dawn capture). A short text in a taller fixed box keeps the box, and
+/// when the column is too short, an empty sibling gives way before any text is squeezed.
+#[test]
+fn stretched_labels_grow_to_their_wrapped_text() {
+    let m = metrics(&font_bytes("NotoSansMono-Regular.ttf"));
+    let (u, line) = (m.mono_advance(20.0), m.line_height(20.0));
+    let mut t = Tree::new();
+    let screen_root = t.root(
+        screen(400.0, 300.0),
+        UiNode {
+            layout: flex(Direction::Column, Justify::Start, Align::Start),
+            ..UiNode::default()
+        },
+    );
+    let root = t.child(
+        screen_root,
+        UiNode {
+            width: Length::Px(2.5 * u),
+            height: Length::Px(2.0 * line + 70.0),
+            layout: flex(Direction::Column, Justify::Start, Align::Stretch),
+            ..UiNode::default()
+        },
+    );
+    let label = t.child(
+        root,
+        UiNode {
+            height: Length::Px(10.0),
+            ..UiNode::default()
+        },
+    );
+    t.world.insert(label, UiText::plain("aa bb")).unwrap();
+    t.world
+        .insert(
+            label,
+            UiStyle {
+                font: Some(MONO.parse().unwrap()),
+                font_size: Some(20.0),
+                ..UiStyle::default()
+            },
+        )
+        .unwrap();
+    let below = t.child(root, sized(5.0, 5.0));
+    // One short word in a 60 px box: the fixed height is the floor, so it stays 60.
+    let roomy = t.child(
+        root,
+        UiNode {
+            height: Length::Px(60.0),
+            ..UiNode::default()
+        },
+    );
+    t.world.insert(roomy, UiText::plain("a")).unwrap();
+    // The column is too short for everything: the empty filler gives way, the text doesn't.
+    let filler = t.child(
+        root,
+        UiNode {
+            height: Length::Px(200.0),
+            ..UiNode::default()
+        },
+    );
+    let l = t.layout([400.0, 300.0]);
+    assert!(
+        l.nodes[&filler].rect.h < 10.0,
+        "{:?}",
+        l.nodes[&filler].rect
+    );
+    let r = l.nodes[&label].rect;
+    assert_close(r.w, 2.5 * u);
+    assert_close(r.h, 2.0 * line);
+    assert_close(l.nodes[&below].rect.y, r.y + 2.0 * line);
+    assert_close(l.nodes[&roomy].rect.h, 60.0);
+}

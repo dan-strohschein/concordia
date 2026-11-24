@@ -1,7 +1,7 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b, 3.0c, 3.1 (a–c), 3.2 (a–b) and 3.7 (a–c) done) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b, 3.0c, 3.1 (a–c), 3.2 (a–b), 3.7 (a–c) and 3.9a done; M2's scripted gate runs as `just gate-tests M2`) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
@@ -1206,6 +1206,57 @@ Every role stays under 50k. If the AST's recursive schema makes `assert_eval` he
 - the new modeler agent file;
 - the CLAUDE.md block;
 - the M3S gate's agents-and-skills and CLAUDE.md snapshots.
+
+### Phase 3.9a As built (2026-11-24)
+**Status: done (branch `m3/3.9-lamplight-gate`).** M2's deferred scripted gate, `just gate-tests M2`.
+
+**What landed:**
+- **`tests/gates/m2_lamplight.rs`** (5 tests, over MCP stdio with a real `concordia-mcp`; the driver is in `tests/gates/support/lamplight.rs`; expected values derived in the header):
+  - **The won night:**
+    - type "Ada", set a 60 s night, light the two south ring lamps and two harbour lamps (the can drops to 20), and wait on the ring road for a wagon refill (100);
+    - the result: won with 4 lamps, 18 wisps burned, burn numbers seen, and Ada in the records;
+    - recorded from tick 0 and verified on fresh servers at 1 and 8 threads, all ending on the same world hash;
+    - mid-night and dawn goldens, and a mix digest that must not clip.
+  - **The idle night** is lost before dawn, with spirit 0.
+  - **Hot reload:** a mid-night `script_reload` of the native fog keeps the clock exactly 15 s ahead after 900 ticks, and the next wave comes.
+  - **The title-screen golden.**
+  - **Every M2 role's tool:** each is called on the town, and each is in that role's default scope as served to the sample made a Studio project.
+  - Every test ends with no error logs.
+- **`just play-sample`** (it builds the modules, then runs `concordia run` in release); `regression.yml` runs `just gate-tests M2`; the gate binary joins nextest's 10-minute override.
+- **The `concordia-sample-lamplight` skill:** a tour of the sample (not preloaded). `sample_lamplight_tour_names_real_files` checks every path it names.
+
+**Found by the gate and fixed:**
+- **The dawn screen's wrapped heading overlapped "Night records".** 3.0c's text floor used the box's fixed width only, so a label stretched by its column measured one line. Now a wrapping text leaf whose width comes from layout is measured there, and its `Px` height is only a floor (`text_leaf_floor`). In a squeezed column, the text keeps its height.
+  - Test: `stretched_labels_grow_to_their_wrapped_text` (two lines, the floor, the squeeze).
+  - Mutants (all failed): no floor; no measuring; and the explicit minimum kept, which needed the squeeze case.
+- **The won night's mix peaked at +1 dBFS** (six sizzles and six pops at once). Lamplight's SFX bus is now −3 dB (bus layout, the pause slider and `build_town.py`); the gate asserts the peak stays below 0 dBFS.
+
+**Choices (my recommendations, pre-approved):**
+- **No committed Lamplight replay.** The gate records and verifies a fresh one on every platform, at 1 and 8 threads. That's stronger than a file tied to one platform's native fog build.
+- **The optional live M2 gate is folded into 3.9c's live M3 gate,** which drives the same Studio loop.
+- **The look items wait for Lamplight's next look pass,** as M2's completion says: representation LOD for the townsfolk, and the cobbles' stone size.
+- **Goldens** are compared through the chase camera at 1280 × 720 (mean 0.02, p99 0.3), and skipped without a GPU unless `CONCORDIA_REQUIRE_GPU=1`.
+
+**Red runs:**
+- the goldens before they existed;
+- the clipping assertion at +1 dBFS;
+- the stretched-label test (one line where two were needed);
+- the skill test before the skill;
+- the every-role test, against a project without Studio. A project with `[studio]` refuses unstamped mutations, so the scope check lists a Studio copy's tools from a second server.
+
+**Mutation checks:** tech artist without `material_get` (2 failed); the three label mutants above.
+
+**Snapshots and goldens** (blessed under the author's M3 authority; logged on the review page):
+- `m2_lamplight__m2_lamplight_won_night_mix.snap` (new);
+- `tests/golden/gates/m2_lamplight_{title, mid_night, dawn}.png` (new);
+- `m3s_studio_sync__m3s_agents_and_skills.snap` (the new skill).
+
+**Checklist (2026-11-24):**
+- `just lint` and Tauri clippy: clean.
+- The full suite with `CONCORDIA_REQUIRE_GPU=1` and `CONCORDIA_REQUIRE_BLENDER=1`: 1,929 run, all passing after the one snapshot was blessed.
+- Doc tests: clean.
+- `just gate-tests M1` (4), `M2` (5, 315 s) and `M3S` (13).
+- Both deny checks: ok. `just editor-schemas`: no changes. `just editor-test`: 118 unit and 22 end-to-end tests pass.
 
 ## Goal & context
 M3 closes the loop the design promises (principle 3): an agent can **record** a play session, **replay** it deterministically, **find the first frame** where two runs diverge, and **prove** behavior with typed playtest assertions, all from tests, the CLI and MCP. On top of that loop, M3 ships **Agent Studio v1**: a configurable team of specialist agents that runs **inside the user's own Claude Code on a regular subscription, with no API key** (principle 0).

@@ -53,6 +53,8 @@ expression: outline(&root)
   name: concordia-navigation
 .claude/skills/concordia-record-replay/SKILL.md
   name: concordia-record-replay
+.claude/skills/concordia-sample-lamplight/SKILL.md
+  name: concordia-sample-lamplight
 .claude/skills/concordia-scripting/SKILL.md
   name: concordia-scripting
 .claude/skills/concordia-sound-design/SKILL.md

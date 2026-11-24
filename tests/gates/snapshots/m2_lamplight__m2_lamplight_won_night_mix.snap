@@ -1,0 +1,30 @@
+---
+source: tests/gates/m2_lamplight.rs
+expression: mix
+---
+{
+  "buses": [
+    {
+      "name": "Master",
+      "peak_dbfs": -2.0
+    },
+    {
+      "name": "Music",
+      "peak_dbfs": -12.0
+    },
+    {
+      "name": "SFX",
+      "peak_dbfs": -2.0
+    },
+    {
+      "name": "Ambience",
+      "peak_dbfs": -28.0
+    },
+    {
+      "name": "UI",
+      "peak_dbfs": -15.0
+    }
+  ],
+  "peak_dbfs": -2.0,
+  "rms_dbfs": -21.0
+}
