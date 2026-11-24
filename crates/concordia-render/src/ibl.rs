@@ -42,29 +42,11 @@ impl Equirect {
 
     /// Decodes mip 0 of an RGBA16F (HDR) or RGBA8 texture.
     pub fn from_texture(texture: &TextureData) -> Result<Self, String> {
-        let bytes = texture.mips.first().ok_or("texture has no mips")?;
-        let pixels: Vec<[f32; 3]> = match texture.format {
-            TextureFormat::Rgba16Float => bytes
-                .as_chunks::<8>()
-                .0
-                .iter()
-                .map(|p| [0, 2, 4].map(|i| half::f16::from_le_bytes([p[i], p[i + 1]]).to_f32()))
-                .collect(),
-            TextureFormat::Rgba8Linear => bytes
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .map(|p| [p[0], p[1], p[2]].map(|c| c as f32 / 255.0))
-                .collect(),
-            TextureFormat::Rgba8Srgb => bytes
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .map(|p| [p[0], p[1], p[2]].map(srgb_to_linear))
-                .collect(),
-            TextureFormat::R8 => return Err("a one-channel texture can't light a scene".into()),
-        };
-        Self::new(texture.width as usize, texture.height as usize, pixels)
+        Self::new(
+            texture.width as usize,
+            texture.height as usize,
+            texture.linear_rgb()?,
+        )
     }
 
     /// Width.
@@ -133,15 +115,6 @@ impl Equirect {
             height: h,
             pixels,
         }
-    }
-}
-
-fn srgb_to_linear(c: u8) -> f32 {
-    let x = c as f32 / 255.0;
-    if x <= 0.04045 {
-        x / 12.92
-    } else {
-        ((x + 0.055) / 1.055).powf(2.4)
     }
 }
 

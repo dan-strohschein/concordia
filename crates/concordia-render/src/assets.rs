@@ -2,32 +2,10 @@
 
 use std::collections::BTreeMap;
 
-use concordia_assets::{AssetDb, AssetRef, Builtin, BuiltinAsset, Material, MeshData, TextureData};
+use concordia_assets::{AssetRef, Builtin, BuiltinAsset, Material, MeshData, TextureData};
 use concordia_core::id::AssetId;
 
-/// Loads mesh, material and texture data by reference (errors are human-readable).
-pub trait AssetSource {
-    /// A mesh.
-    fn mesh(&mut self, reference: &AssetRef) -> Result<MeshData, String>;
-    /// A material.
-    fn material(&mut self, reference: &AssetRef) -> Result<Material, String>;
-    /// A texture.
-    fn texture(&mut self, reference: &AssetRef) -> Result<TextureData, String>;
-}
-
-impl AssetSource for AssetDb {
-    fn mesh(&mut self, reference: &AssetRef) -> Result<MeshData, String> {
-        self.load_mesh(reference).map_err(|e| e.to_string())
-    }
-
-    fn material(&mut self, reference: &AssetRef) -> Result<Material, String> {
-        self.load_material(reference).map_err(|e| e.to_string())
-    }
-
-    fn texture(&mut self, reference: &AssetRef) -> Result<TextureData, String> {
-        self.load_texture(reference).map_err(|e| e.to_string())
-    }
-}
+pub use concordia_assets::AssetSource;
 
 /// Assets held in memory (tests, procedural content), plus the built-ins.
 #[derive(Debug, Clone, Default)]

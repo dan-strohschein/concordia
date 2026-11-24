@@ -9,7 +9,7 @@ mod shadow_settings;
 pub mod tonemap;
 mod units;
 
-pub use camera::{ProjectionError, view_matrix};
+pub use camera::{ProjectionError, pick_camera, view_matrix};
 pub use components::{
     Camera, DirectionalLight, Environment, Msaa, PointLight, Projection, SpotLight, Tonemap,
 };

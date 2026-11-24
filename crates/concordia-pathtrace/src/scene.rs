@@ -94,6 +94,8 @@ pub struct CameraSetup {
     pub exposure: f32,
     /// Tone mapping.
     pub tonemap: Tonemap,
+    /// What camera rays that miss show when the sky isn't drawn (display-referred, linear).
+    pub clear: Vec3,
 }
 
 /// Per-instance shading data.
@@ -124,6 +126,8 @@ pub struct Scene {
     pub emitter_cdf: Vec<f32>,
     /// The sky, if any.
     pub environment: Option<EnvMap>,
+    /// Whether camera rays that miss see the sky (`Environment::skybox`) or the clear color.
+    pub sky_visible: bool,
     /// The camera.
     pub camera: CameraSetup,
 }
@@ -135,7 +139,7 @@ pub struct SceneBuilder {
     materials: Vec<SceneMaterial>,
     instances: Vec<(Instance, u32)>,
     lights: Vec<Light>,
-    environment: Option<EnvMap>,
+    environment: Option<(EnvMap, bool)>,
     camera: Option<CameraSetup>,
 }
 
@@ -241,9 +245,14 @@ impl SceneBuilder {
         });
     }
 
-    /// The sky.
+    /// The sky, also seen behind everything.
     pub fn environment(&mut self, environment: EnvMap) {
-        self.environment = Some(environment);
+        self.environment_with_background(environment, true);
+    }
+
+    /// The sky; `visible` false lights the scene but shows the camera's clear color behind it.
+    pub fn environment_with_background(&mut self, environment: EnvMap, visible: bool) {
+        self.environment = Some((environment, visible));
     }
 
     /// The camera at `world` (its −Z looks into the scene; scale is ignored).
@@ -254,6 +263,7 @@ impl SceneBuilder {
             projection: camera.projection,
             exposure: camera.exposure(),
             tonemap: camera.tonemap,
+            clear: Vec3::new(camera.clear[0], camera.clear[1], camera.clear[2]),
         });
     }
 
@@ -280,7 +290,8 @@ impl SceneBuilder {
             lights: self.lights,
             emitters,
             emitter_cdf,
-            environment: self.environment,
+            sky_visible: self.environment.as_ref().is_some_and(|(_, v)| *v),
+            environment: self.environment.map(|(e, _)| e),
             camera,
         })
     }

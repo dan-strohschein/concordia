@@ -69,19 +69,18 @@ pub(crate) fn choose_camera<T: std::borrow::Borrow<CameraView>>(
     cameras: impl IntoIterator<Item = T>,
     requested: Option<EntityId>,
 ) -> Result<T, RenderError> {
-    let mut cameras = cameras.into_iter();
-    match requested {
-        Some(id) => cameras
+    let cameras: Vec<T> = cameras.into_iter().collect();
+    let keys = cameras
+        .iter()
+        .map(|c| (c.borrow().entity, c.borrow().camera.priority));
+    let chosen = concordia_render_types::pick_camera(keys, requested);
+    match (chosen, requested) {
+        (Some(id), _) => cameras
+            .into_iter()
             .find(|c| c.borrow().entity == id)
-            .ok_or(RenderError::UnknownCamera(id)),
-        None => cameras
-            .max_by_key(|c| {
-                (
-                    c.borrow().camera.priority,
-                    std::cmp::Reverse(c.borrow().entity),
-                )
-            })
             .ok_or(RenderError::NoCamera),
+        (None, Some(id)) => Err(RenderError::UnknownCamera(id)),
+        (None, None) => Err(RenderError::NoCamera),
     }
 }
 

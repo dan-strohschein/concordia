@@ -1,5 +1,6 @@
 //! Projection and view matrices (right-handed, Y-up NDC, reverse-Z, depth in [0, 1]).
 
+use concordia_core::id::EntityId;
 use concordia_core::math::Mat4;
 use concordia_core::math::camera::rh::proj::directx;
 
@@ -49,4 +50,19 @@ impl Projection {
 pub fn view_matrix(world: &Mat4) -> Mat4 {
     let (_, rotation, translation) = world.to_scale_rotation_translation();
     Mat4::from_rotation_translation(rotation, translation).inverse()
+}
+
+/// The camera a frame uses: `requested` if it is among `cameras` (entity, priority), else, with
+/// no request, the highest priority, ties going to the lowest entity id.
+pub fn pick_camera(
+    cameras: impl IntoIterator<Item = (EntityId, i32)>,
+    requested: Option<EntityId>,
+) -> Option<EntityId> {
+    let mut cameras = cameras.into_iter();
+    match requested {
+        Some(id) => cameras.find(|(e, _)| *e == id).map(|(e, _)| e),
+        None => cameras
+            .max_by_key(|(e, priority)| (*priority, std::cmp::Reverse(*e)))
+            .map(|(e, _)| e),
+    }
 }

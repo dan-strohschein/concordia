@@ -407,3 +407,20 @@ fn pathtrace_is_deterministic_for_fixed_seed() {
         "another seed, another image"
     );
 }
+
+/// Where camera rays miss everything the renderer shows the skybox, or the camera's clear color
+/// when the sky isn't drawn (both display-referred, like the renderer's).
+#[test]
+fn camera_misses_show_the_skybox_or_the_clear_color() {
+    let render = |visible: bool| {
+        let mut b = SceneBuilder::new();
+        let sky = EnvMap::uniform([2.0, 2.0, 2.0], 1.0);
+        b.environment_with_background(sky, visible);
+        let (world, mut camera) = ortho(Vec3::ZERO, Vec3::Y, 1.0);
+        camera.clear = [0.1, 0.2, 0.3, 1.0];
+        b.camera(world, &camera);
+        mean(&render_cpu(&b.build().unwrap(), &settings(2, 1, 1)).unwrap())
+    };
+    close(render(true), Vec3::splat(2.0), "the skybox");
+    close(render(false), Vec3::new(0.1, 0.2, 0.3), "the clear color");
+}

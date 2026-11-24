@@ -16,8 +16,11 @@ concordia-assets.workspace = true
 concordia-core.workspace = true
 concordia-material.workspace = true
 concordia-render-types.workspace = true
+concordia-scene.workspace = true
+concordia-terra.workspace = true
 rayon.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+half = "2.7.1"
 proptest.workspace = true

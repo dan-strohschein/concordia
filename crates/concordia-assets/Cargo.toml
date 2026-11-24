@@ -12,6 +12,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+half = "2.7.1"
 concordia-api.workspace = true
 concordia-command.workspace = true
 concordia-core.workspace = true

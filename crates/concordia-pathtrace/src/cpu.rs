@@ -171,7 +171,9 @@ fn trace(scene: &Scene, mut ray: Ray, rng: &mut SampleStream, max_bounces: u32) 
     let (mut bounce, mut passes) = (0, 0);
     loop {
         let Some(hit) = scene.accel.intersect(&ray) else {
-            if let Some(env) = &scene.environment {
+            if bounce == 0 && last_pdf.is_none() && !scene.sky_visible {
+                radiance += beta * scene.camera.clear / exposure;
+            } else if let Some(env) = &scene.environment {
                 let w = last_pdf.map_or(1.0, |p| power(p, env.pdf(ray.dir)));
                 radiance += beta * env.radiance(ray.dir) * w;
             }

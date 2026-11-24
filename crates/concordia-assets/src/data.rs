@@ -43,6 +43,54 @@ pub struct TextureData {
     pub mips: Vec<Vec<u8>>,
 }
 
+impl TextureData {
+    /// Mip 0 as linear RGB, rows from the top (alpha dropped; sRGB decoded).
+    pub fn linear_rgb(&self) -> Result<Vec<[f32; 3]>, String> {
+        let bytes = self.mips.first().ok_or("texture has no mips")?;
+        let expected = self.width as usize * self.height as usize * self.format.bytes_per_pixel();
+        if bytes.len() != expected {
+            return Err(format!(
+                "{}×{} {:?} needs {expected} bytes, got {}",
+                self.width,
+                self.height,
+                self.format,
+                bytes.len()
+            ));
+        }
+        Ok(match self.format {
+            TextureFormat::Rgba16Float => bytes
+                .as_chunks::<8>()
+                .0
+                .iter()
+                .map(|p| [0, 2, 4].map(|i| half::f16::from_le_bytes([p[i], p[i + 1]]).to_f32()))
+                .collect(),
+            TextureFormat::Rgba8Linear => bytes
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|p| [p[0], p[1], p[2]].map(|c| f32::from(c) / 255.0))
+                .collect(),
+            TextureFormat::Rgba8Srgb => bytes
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|p| [p[0], p[1], p[2]].map(srgb_to_linear))
+                .collect(),
+            TextureFormat::R8 => return Err("a one-channel texture isn't color".into()),
+        })
+    }
+}
+
+/// An 8-bit sRGB-encoded value as linear.
+pub fn srgb_to_linear(c: u8) -> f32 {
+    let x = f32::from(c) / 255.0;
+    if x <= 0.04045 {
+        x / 12.92
+    } else {
+        ((x + 0.055) / 1.055).powf(2.4)
+    }
+}
+
 /// A triangle mesh as de-interleaved streams (pulled from bindless buffers by shaders).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct MeshData {

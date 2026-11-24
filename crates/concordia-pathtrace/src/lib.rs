@@ -10,6 +10,7 @@ mod error;
 pub mod geometry;
 pub mod rng;
 pub mod scene;
+pub mod world;
 
 pub use accel::{Accel, Instance, InstanceHit};
 pub use bvh::Bvh;
@@ -19,3 +20,4 @@ pub use error::PathTraceError;
 pub use geometry::{Hit, Ray, Triangle};
 pub use rng::SampleStream;
 pub use scene::{Light, MaterialId, MeshId, Scene, SceneBuilder};
+pub use world::{View, scene_from_world};
