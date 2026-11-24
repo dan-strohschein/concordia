@@ -25,6 +25,15 @@ pub fn shader_dir() -> PathBuf {
     PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/shaders"))
 }
 
+/// Where render shaders' imports resolve: the shader builtins and `concordia-material`'s
+/// `material.slang` (the shared BSDF).
+pub fn include_dirs() -> Vec<PathBuf> {
+    vec![
+        concordia_shaders::builtin_dir(),
+        concordia_material::shader_dir(),
+    ]
+}
+
 /// Compiles one entry point of a render shader for the device's backend.
 pub(crate) fn compile(
     device: &dyn Device,
@@ -55,7 +64,7 @@ fn compile_with(
         stage,
         target,
         defines,
-        include_dirs: vec![concordia_shaders::builtin_dir()],
+        include_dirs: include_dirs(),
     };
     compiler
         .compile(&request)

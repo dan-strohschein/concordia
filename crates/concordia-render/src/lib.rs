@@ -64,7 +64,7 @@ pub use overlay::{
     GizmoAxis, GizmoHandle, GizmoMode, GizmoOverlay, GizmoRing, Overlays, gizmo_handles, gizmo_hit,
     gizmo_pick, gizmo_rings, ring_hit,
 };
-pub use pipelines::shader_dir;
+pub use pipelines::{include_dirs, shader_dir};
 pub use pointer::{
     ViewportPointerRay, ViewportPointerRayParams, ViewportPointerRayResult, camera_ray,
     clip_from_world, scene_camera, world_ui_lens,

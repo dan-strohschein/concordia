@@ -972,6 +972,7 @@ version = "0.0.0"
 dependencies = [
  "concordia-assets",
  "concordia-core",
+ "concordia-shaders",
  "proptest",
  "thiserror 2.0.21",
 ]
