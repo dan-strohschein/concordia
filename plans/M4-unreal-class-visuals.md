@@ -1,5 +1,5 @@
 # M4: Unreal-class visuals
-Status: In progress (4.1a, 4.1b1, 4.1b2 done; 4.1b3 in review) · Depends on: M1 (render), M2 (scripting host, graphs' WIT API), M3 (replay assertions, Studio) · Detail level: **Refined after M3 (2026-11-24; R1–R5 and D1–D10 approved by the author)** · Estimated effort: 32–45 agent-assisted engineer-weeks (two parallel tracks; see Effort estimate)
+Status: In progress (4.1a, 4.1b1–b3 done; 4.1b4 started) · Depends on: M1 (render), M2 (scripting host, graphs' WIT API), M3 (replay assertions, Studio) · Detail level: **Refined after M3 (2026-11-24; R1–R5 and D1–D10 approved by the author)** · Estimated effort: 32–45 agent-assisted engineer-weeks (two parallel tracks; see Effort estimate)
 
 > This plan has full phase breakdowns and test lists. Its numbers (budgets, FLIP tolerances, page sizes, meshlet sizes) are **provisional** and must be recalibrated in the refinement pass after M3, using measurements from the M1–M3 renderer on the reference Mac. Every recalibrated number lands in a text file (`tests/perf/budgets/*.budget.ron`, per-test tolerances), never in code.
 
@@ -185,6 +185,22 @@ Numbers stay as they are because other plans cite them. Each phase gets its own 
 - The GPU path tracer (`shaders/pathtrace.slang`, `GpuTracer`): the CPU algorithm step for step over the scene packed into `float4`/`uint4` rows; samples in batches of 16. `Backend::auto` picks the GPU when the tracer builds on a device, else the CPU; `render` dispatches.
 - Shared rather than copied: the material row encoding (`concordia-material::rows`, moved from the renderer); `closure_factors` and `finish_closure` in `material.slang` (the renderer's `load_closure` now wraps its texture samples around them, goldens unchanged); `Target::from(Backend)` in `concordia-shaders`.
 - Tests: every transport test on both backends (furnace, disk light, punctual lights, emission, sky and clear color, convergence, determinism); `gpu_and_cpu_tracers_converge` (statistical); `gpu_and_cpu_agree_on_layered_materials` (noise-free); the CPU fallback without a device. Every test passed on the first GPU run, so ten kernel mutations proved the GPU is exercised; one survivor showed the fixtures had no partly transparent slab, which was added.
+
+**4.1b4 plan** (`m4/4.1b4-references`, 2026-11-24; the author's decisions on emissive units, imported emission, the baselines and reference access folded in):
+Steps, each a commit and a push:
+1. **Emissive in nits** (author decision 2026-11-24; ADR-0102):
+   - `Slab::emissive × emissive_strength` becomes luminance in nits (cd/m²) in both renderers; exposure scales it like any light; it lights the world in the path tracer (and in GI later).
+   - Unlit materials stay screen-referred.
+   - Migration: the three emissive materials convert once at their scene camera's EV (factor 1.2 × 2^EV): M1 `emissive_glow` ×39 322 (EV 15), Lamplight `lamp_glass` and `wisp` ×1.2 (EV 0). Render and pathtrace tests that author emission convert the same way. Every golden must stay identical.
+   - Importers (glTF, FBX) (author decision 2026-11-24): imported emission is screen brightness at a reference exposure, `emissive_reference_ev100` in `<file>.import.ron`, defaulting to the project's main scene camera EV (0, with a warning, without one); the importer converts with 1.2 · 2^EV. Imports look as they do today. Tests: `imported_emission_converts_at_the_reference_exposure`, `the_default_reference_is_the_main_cameras_ev`.
+   - Tests first: `emission_is_scaled_by_exposure_like_light` (renderer, both tracers); `converted_materials_look_unchanged` (goldens).
+2. **`capture.reference`** (author decision 2026-11-24: Engine API method from a `PathTraceModule` in `concordia-pathtrace`, enabled with `[render]`; through MCP capped: 64 spp preview by default, at most about a minute of work (a sample budget), scoped to the tech-artist and lighting roles; full quality only through `just bless-reference`): renders a world with the path tracer (`backend: auto|gpu|cpu`, `spp`, `seed`, `max_bounces`, `width`, `height`, camera or view) and returns a PNG tone-mapped like `capture.screenshot` (same tonemap, CPU reference). Tests: it matches `scene_from_world` + `render`; errors name missing cameras and assets; `backend: cpu` works without a GPU.
+3. **`just bless-reference <scene>`** and `tests/golden/m4_reference/<scene>.reference.ron` (inputs: project, scene, view, size, spp, seed, max_bounces; results: backend, git hash, the renderer's FLIP against it = the baseline, the noise FLIP between two seeds). Blessing writes `<scene>.png` and never runs in CI. Tests: the file round-trips canonically; blessing is refused with `CI=true`; a reference whose noise FLIP exceeds a fifth of its suite's tolerance is refused.
+4. **Baselines (D3)** (author decision 2026-11-24): three references at 1280×720: the M1 gate camera, Lamplight's town camera over the square, and a Lamplight street-level view; shown on a review page (references, renderer images, FLIP heat maps, numbers) before they are committed.
+5. **Recalibration (D1):** Lamplight budgets to a 1.5× margin; the plan's provisional canyon table re-derived from 4.1a's per-pass numbers.
+6. **ADRs** 0090, 0101, 0102; docs, As built, checklist.
+
+Out of scope: textures in the tracer (the CPU BSDF is factor-only), skinning, representation LOD.
 
 ### Effort (re-estimated)
 - The plan's 32–45 weeks, plus **4.1v Vulkan at 6–10**, plus about 1 for D2, D6 and D9: **about 39–56 engineer-weeks**.
