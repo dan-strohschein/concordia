@@ -56,3 +56,38 @@ fn fixture_sync_is_idempotent_and_check_clean() {
         String::from_utf8_lossy(&roster.stderr)
     );
 }
+
+/// The fixture's `studio/` is the default roster (one of each role, plus T-0001): every agent
+/// and skill file is the same as `concordia studio init` writes today, so the gate tests the
+/// shipped prompts, not a stale copy.
+#[test]
+fn fixture_studio_is_the_default_roster() {
+    let fresh = tempfile::tempdir().unwrap();
+    concordia_studio::init(fresh.path(), std::path::Path::new("studio")).unwrap();
+    let fixture = m3_fixture::fixture().join("studio");
+    let roster = concordia_studio::default_roster();
+    for (id, text) in roster.roles.iter() {
+        let ours = std::fs::read_to_string(fixture.join(format!("agents/{id}.md"))).unwrap();
+        assert_eq!(
+            &ours, text,
+            "studio/agents/{id}.md differs from the default"
+        );
+    }
+    for (name, text) in roster.skills.iter() {
+        let ours = std::fs::read_to_string(fixture.join(format!("skills/{name}/SKILL.md")))
+            .unwrap_or_else(|_| panic!("studio/skills/{name} is missing"));
+        assert_eq!(
+            &ours, text,
+            "studio/skills/{name}/SKILL.md differs from the default"
+        );
+    }
+    let skills = std::fs::read_dir(fixture.join("skills")).unwrap().count();
+    assert_eq!(skills, roster.skills.len(), "no extra skills");
+    let team = std::fs::read_to_string(fixture.join("team.toml")).unwrap();
+    let default = std::fs::read_to_string(fresh.path().join("studio/team.toml")).unwrap();
+    assert_eq!(
+        team,
+        default.replace("count = 2", "count = 1"),
+        "team.toml is the default, one of each"
+    );
+}

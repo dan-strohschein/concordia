@@ -1287,7 +1287,7 @@ Every role stays under 50k. If the AST's recursive schema makes `assert_eval` he
     - zero divergence at 1 and 8 threads;
     - `ab` bug against fix: tick 1, `Transform`, `player.walk`;
     - the scene is canonical.
-  - **`m3_studio_sync` (2):** snapshots of the synced fixture, plus an idempotent, check-clean sync.
+  - **`m3_studio_sync` (3):** snapshots of the synced fixture; an idempotent, check-clean sync; and `fixture_studio_is_the_default_roster`, so the gate always tests the shipped prompts. It caught the fixture's stale copy of the fix-bug skill.
   - **`m3_studio_loop_scripted` (6):**
     - the director assigns;
     - the gameplay programmer is refused outside its paths, then edits, builds, reloads and checks inside them;
