@@ -109,6 +109,7 @@ pub(crate) fn run(
             actual: actual.world,
             fields,
             fields_note,
+            suspect_system: None,
         });
         break;
     }

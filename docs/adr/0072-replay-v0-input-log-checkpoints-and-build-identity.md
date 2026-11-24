@@ -49,4 +49,8 @@ The engine is deterministic per binary and machine: the same inputs from the sam
   - **Re-blessing:** `resimulate` with `update` rewrites the file on current code.
   - **Offline:** `compare_replays` and `concordia replay diff` compare two files.
   - **Stills are never restored** (R2).
+- **Note (M3 phase 3.1c): `ab` runs.**
+  - **What it does:** `replay.run` `mode: "ab"` with `other` (another project directory) replays the file here and on an engine for `other` in lockstep. The engine comes from an `EngineFactory` the app injects into `ReplayModule`, because the replay crate can't build projects.
+  - **On a divergence:** at the first tick whose hashes differ, both rerun to just before it, then run that tick observed: `Schedule::run_observed`, `SimLoop::step_observed` and `Engine::step_play_observed` call back after each wave and each phase flush. The first label whose hashes differ is `suspect_system`, and the fields are diffed between the two live worlds at that exact tick.
+  - **What stays the same:** normal ticks are unchanged; observation exists only for diagnostics.
 

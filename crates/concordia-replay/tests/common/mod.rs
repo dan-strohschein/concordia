@@ -117,6 +117,9 @@ pub struct Opts {
     pub extra: Vec<Arc<dyn EngineModule>>,
     /// The input map (default: the m1 example's).
     pub map: &'static str,
+    /// Gives the replay module an engine factory for `ab` runs whose engines' steer module
+    /// nudges on this tick (`SystemCtx::tick`): "the other build".
+    pub other_build_nudges_at: Option<u64>,
 }
 
 impl Default for Opts {
@@ -127,6 +130,7 @@ impl Default for Opts {
             ring: None,
             extra: Vec::new(),
             map: MAP,
+            other_build_nudges_at: None,
         }
     }
 }
@@ -144,19 +148,34 @@ impl Rig {
     /// A rig on `dir` (e.g. another rig's project, to replay its files).
     pub fn in_dir(dir: tempfile::TempDir, opts: Opts) -> Self {
         let steer = Arc::new(Steer::default());
-        let mut config = EngineConfig::new(dir.path());
-        config.deterministic_ids = Some(7);
-        config.threads = NonZeroUsize::new(opts.threads).unwrap();
-        config.journal.sync = false;
-        config.sim_seed = opts.seed;
-        config.log_ring = opts.ring;
-        let input: Arc<dyn EngineModule> =
-            Arc::new(InputModule::new(InputMap::parse(opts.map).unwrap()));
-        let mut modules = vec![input, Arc::clone(&steer) as Arc<dyn EngineModule>];
-        modules.extend(opts.extra);
-        modules.push(Arc::new(ReplayModule::new()));
-        config.modules = modules;
-        let mut engine = Engine::new(config).unwrap();
+        let mut replay = ReplayModule::new();
+        if let Some(at) = opts.other_build_nudges_at {
+            let (map, seed) = (opts.map, opts.seed);
+            replay = replay.with_factory(Arc::new(move |dir: &std::path::Path, threads| {
+                let other = Arc::new(Steer::default());
+                other.perturb_at.store(at, Ordering::SeqCst);
+                Ok(engine_for(
+                    dir,
+                    threads,
+                    seed,
+                    None,
+                    map,
+                    other,
+                    Vec::new(),
+                    ReplayModule::new(),
+                ))
+            }));
+        }
+        let mut engine = engine_for(
+            dir.path(),
+            NonZeroUsize::new(opts.threads).unwrap(),
+            opts.seed,
+            opts.ring,
+            opts.map,
+            Arc::clone(&steer),
+            opts.extra,
+            replay,
+        );
         let session = engine.open_session();
         let mut rig = Self {
             dir,
@@ -226,6 +245,32 @@ impl Rig {
     pub fn file(&self, rel: &str) -> String {
         std::fs::read_to_string(self.dir.path().join(rel)).unwrap()
     }
+}
+
+/// An engine on `dir` with input, `steer`, `extra` modules and `replay`.
+#[allow(clippy::too_many_arguments)]
+pub fn engine_for(
+    dir: &std::path::Path,
+    threads: NonZeroUsize,
+    seed: u64,
+    ring: Option<Arc<LogRing>>,
+    map: &str,
+    steer: Arc<Steer>,
+    extra: Vec<Arc<dyn EngineModule>>,
+    replay: ReplayModule,
+) -> Engine {
+    let mut config = EngineConfig::new(dir);
+    config.deterministic_ids = Some(7);
+    config.threads = threads;
+    config.journal.sync = false;
+    config.sim_seed = seed;
+    config.log_ring = ring;
+    let input: Arc<dyn EngineModule> = Arc::new(InputModule::new(InputMap::parse(map).unwrap()));
+    let mut modules = vec![input, steer as Arc<dyn EngineModule>];
+    modules.extend(extra);
+    modules.push(Arc::new(replay));
+    config.modules = modules;
+    Engine::new(config).unwrap()
 }
 
 /// `input.inject` events: hold W (pan up) on ticks 10..50, D on 30..90, and a click at 100.

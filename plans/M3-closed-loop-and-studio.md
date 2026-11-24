@@ -1,7 +1,7 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b, 3.0c, 3.1a and 3.1b done) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b, 3.0c and 3.1 (a–c) done) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
@@ -754,6 +754,81 @@ Every role stays under 50k. If the AST's recursive schema makes `assert_eval` he
 - `just editor-schemas`: no changes. `just editor-test`: 118 unit and 22 end-to-end tests pass.
 - No new Linux library.
 - One snapshot changed and was blessed (snapshot log). 48 GB free.
+
+### Phase 3.1c As built (2026-11-23; ADR-0072 note)
+**Status: done (branch `m3/3.1-ab`).** `ab` runs name the first divergent tick, its fields and the suspect system. Phase 3.1 is complete.
+
+**What landed:**
+- **`concordia-terra`:**
+  - **Observed ticks:** `Schedule::run_observed`, `SimLoop::step_observed` and `Observer`. An observed tick calls back after each wave, labelled with its systems' names, and after each simulation phase's command flush (`"<Phase> commands"`). Normal ticks share the same code path (`SimLoop::tick`) and are unchanged.
+- **`concordia-api`:** `Engine::step_play_observed`.
+- **`concordia-replay`:**
+  - **`EngineFactory`:** `ReplayModule::with_factory`. The module's state is now `ReplayState { pending, factory }`.
+  - **`ab` mode** (`RunMode::ab`, `other`, `ab.rs`):
+    - it loads the replay here and on the other build, then steps both a tick at a time;
+    - at the first tick whose hashes differ, it reloads both, replays to the tick before, and runs that tick observed;
+    - the first label whose hashes differ is `Divergence::suspect_system`;
+    - parts and fields are diffed between the two live worlds at that exact tick (this project's values are `expected`, the other's `actual`).
+- **`concordia-app`:** `[replay]`'s module gets `other_engine`, which builds another project's engine from its own manifest.
+- **`concordia-cli`:** `replay run --mode ab --other <dir>`. A divergence message names the suspect system.
+
+**Found while building (this As built wins):**
+- **Terra's built-in `terra.timers` runs first in `PrePhysics`,** so it is the first label of every observed tick. The test's expected list had missed it, and was corrected.
+
+**Tests** (expected values derived in each header):
+- **`concordia-terra` `tests/digest.rs`:** `observed_ticks_report_each_system_and_phase_flush`.
+- **`concordia-replay` `tests/divergence.rs`:**
+  - `ab_mode_reports_the_first_divergence_and_the_suspect_system`: tick 131, parts and fields at 131 (+0.25), suspect `steer.apply`;
+  - `ab_mode_agrees_with_an_identical_build_and_needs_other_and_a_factory`.
+- **`concordia-app` `tests/replay_ab.rs`:** a copy of a project agrees for 30 ticks through the app's factory.
+- **`concordia-cli`:** the `--mode ab --other` check in `replay_diff_and_update_from_the_cli`.
+
+**Red runs:**
+- The observed tick: no labels.
+- Both `ab` tests: `ab` behaved as verify, and the errors were missing.
+- The app test: "ab needs an engine factory".
+
+**Called out:**
+- **Written after its code:** the CLI `ab` assertion.
+- **Passed for the wrong reason first:** the identical-build half of the agreement test passed while `ab` still ran as verify; its error halves failed.
+
+**Mutation checks** (all failed tests; restored files touched):
+- the suspect never found;
+- the lockstep never differing;
+- the observer never called.
+
+**Studio and docs:**
+- **No new tools:** `replay_run` gains `mode: ab` and `other`.
+- **`concordia-record-replay`:** `ab`; its note now keeps only the `input_inject` caveat.
+- **ADR-0072 note.**
+- **AGENTS.md:** `concordia-terra`, `concordia-api`, `concordia-replay`, `concordia-app` and `concordia-cli`.
+- **README.md:** `concordia-replay`.
+- **The agent guide.**
+
+**Checklist (2026-11-23):**
+- `just lint` (clippy asked for the `Observer` alias) and Tauri clippy: clean.
+- `just wasm`, `just native-fixtures`, and the full suite with `CONCORDIA_REQUIRE_GPU=1`: 1,870 run, all passed.
+- Doc tests: clean.
+- `just gate-tests M1` (4/4) and `M3S` (13/13).
+- Both deny checks: ok.
+- `just editor-schemas`: no changes. `just editor-test`: 118 unit and 22 end-to-end tests pass.
+- No new Linux library, and no snapshots changed. 46 GB free.
+- **Role budgets** (2026-11-23):
+
+  | Role | Tools | Tokens |
+  |---|---|---|
+  | QA | 25 | 23,826 |
+  | level designer | 37 | 23,144 |
+  | UI/UX | 26 | 21,424 |
+  | tech artist | 23 | 20,172 |
+  | animator | 22 | 16,890 |
+  | sound designer | 24 | 15,138 |
+  | gameplay programmer | 17 | 13,512 |
+  | composer | 20 | 13,054 |
+  | director | 13 | 12,453 |
+  | writer | 11 | 9,576 |
+
+  All are under 50k.
 
 ## Goal & context
 M3 closes the loop the design promises (principle 3): an agent can **record** a play session, **replay** it deterministically, **find the first frame** where two runs diverge, and **prove** behavior with typed playtest assertions, all from tests, the CLI and MCP. On top of that loop, M3 ships **Agent Studio v1**: a configurable team of specialist agents that runs **inside the user's own Claude Code on a regular subscription, with no API key** (principle 0).

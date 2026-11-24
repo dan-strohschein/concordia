@@ -82,9 +82,12 @@ struct RecordArgs {
 struct RunArgs {
     /// The replay to run (project-relative).
     path: String,
-    /// verify (default) or resimulate.
+    /// verify (default), resimulate, or ab (with --other).
     #[arg(long, default_value = "verify")]
     mode: String,
+    /// With --mode ab: the other project's directory (another build of the same game).
+    #[arg(long)]
+    other: Option<String>,
     /// Run even if the engine, scene, seed or code differ from the recording.
     #[arg(long)]
     force: bool,
@@ -183,15 +186,20 @@ fn replay(args: &RunArgs) -> Result<(), Failure> {
     let result = cli
         .call(
             "replay.run",
-            json!({"path": args.path, "mode": args.mode, "force": args.force, "update": args.update}),
+            json!({"path": args.path, "mode": args.mode, "force": args.force, "update": args.update, "other": args.other}),
         )
         .map_err(|f| Failure::usage(f.message.replace("\"force\": true", "--force")))?;
     println!("{result}");
     match result["ok"].as_bool() {
         Some(true) => Ok(()),
         _ => Err(Failure::usage(format!(
-            "replay diverged at tick {} in {}",
-            result["divergence"]["tick"], result["divergence"]["parts"]
+            "replay diverged at tick {} in {}{}",
+            result["divergence"]["tick"],
+            result["divergence"]["parts"],
+            result["divergence"]["suspect_system"]
+                .as_str()
+                .map(|s| format!(" (first after {s})"))
+                .unwrap_or_default()
         ))),
     }
 }

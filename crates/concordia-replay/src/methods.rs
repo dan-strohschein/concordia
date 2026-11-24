@@ -72,6 +72,8 @@ pub enum RunMode {
     verify,
     /// Report new checkpoint hashes.
     resimulate,
+    /// Run here and on `other` (another build) in lockstep; report where they first differ.
+    ab,
 }
 
 /// Replay a .replay.ron file headless (faster than real time) on a fresh play world from the open scene and check its checkpoint hashes; the play world stays for queries. Never changes the scene.
@@ -90,6 +92,8 @@ pub struct ReplayRunParams {
     pub force: Option<bool>,
     /// With resimulate: rewrite the file with the new hashes (re-bless on current code).
     pub update: Option<bool>,
+    /// With ab: the other project directory (another build of the same game).
+    pub other: Option<String>,
     /// Who is asking (log only).
     pub actor: Option<Actor>,
 }
@@ -124,6 +128,8 @@ pub struct Divergence {
     pub fields: Vec<FieldDiff>,
     /// Why `fields` is empty although parts differ (no still recorded, or not in the cache).
     pub fields_note: Option<String>,
+    /// With ab: the system (or phase flush) after which the two builds first differ.
+    pub suspect_system: Option<String>,
 }
 
 /// One value that differs.
@@ -216,13 +222,26 @@ impl Method for ReplayRun {
             )
             .at("/update"));
         }
+        let other = match (mode, &p.other) {
+            (RunMode::ab, None) => {
+                return Err(ApiError::new(
+                    ApiErrorKind::InvalidParams,
+                    "ab compares two builds: pass \"other\", the other project's directory",
+                )
+                .at("/other"));
+            }
+            (RunMode::ab, Some(o)) => Some(o.clone()),
+            _ => None,
+        };
         let found = prepare(engine, &replay)?;
         // Re-blessing exists for code or content that changed on purpose, so it accepts them.
         if !found.is_empty() && !p.force.unwrap_or(false) && !update {
             return Err(mismatch_error("the replay was recorded differently", &found)
                 .suggest(["open the scene and build it was recorded with, or pass \"force\": true to run it anyway".to_owned()]));
         }
-        let result = if update {
+        let result = if let Some(other) = other {
+            crate::ab::run_ab(engine, &replay, &other, found)?
+        } else if update {
             rebless(engine, &replay, (&p.path, &file), actor_name(ctx), found)?
         } else {
             run(engine, &replay, mode, found)?

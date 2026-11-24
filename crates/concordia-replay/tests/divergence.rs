@@ -162,3 +162,77 @@ fn compare_replays_names_the_first_differing_tick_and_fields() {
     assert_eq!(diff.fields.len(), 1, "{diff:?}");
     assert_eq!(diff.fields[0].path, "translation/0");
 }
+
+/// `ab` runs the replay here and on `other` (a copy of this project built by the injected
+/// factory, whose steer module nudges at 130) in lockstep: they first differ after tick 131,
+/// exactly; the fields are diffed at that tick (here = expected, other = actual: x is 0.25
+/// larger), and re-running tick 131 observed names the system whose wave first differs,
+/// `steer.apply`.
+#[test]
+fn ab_mode_reports_the_first_divergence_and_the_suspect_system() {
+    let mut rig = Rig::with(common::Opts {
+        other_build_nudges_at: Some(130),
+        ..common::Opts::default()
+    });
+    rig.record(PATH, 10, steering(), 200);
+    let other = tempfile::tempdir().unwrap();
+    concordia_tests::copy_project(rig.dir.path(), other.path()).unwrap();
+    let run = rig.ok(
+        "replay.run",
+        json!({"path": PATH, "mode": "ab", "other": other.path().to_str().unwrap()}),
+    );
+    assert_eq!(run["ok"], false, "{run}");
+    let d = &run["divergence"];
+    assert_eq!(
+        (&d["tick"], &d["last_matching_tick"], &d["parts_tick"]),
+        (&json!(131), &json!(130), &json!(131)),
+        "{run}"
+    );
+    assert_eq!(d["parts"], json!(["Transform"]));
+    assert_eq!(d["suspect_system"], "steer.apply", "{run}");
+    let f = &d["fields"][0];
+    assert_eq!(
+        (&f["component"], &f["path"]),
+        (&json!("Transform"), &json!("translation/0"))
+    );
+    let (want, got) = (
+        f["expected"].as_f64().unwrap(),
+        f["actual"].as_f64().unwrap(),
+    );
+    assert!((got - want - 0.25).abs() < 1e-5, "{f}");
+}
+
+/// Two identical builds agree for the whole replay; `ab` needs `other`, and an engine factory
+/// (the app injects one; a bare module has none).
+#[test]
+fn ab_mode_agrees_with_an_identical_build_and_needs_other_and_a_factory() {
+    let mut rig = Rig::with(common::Opts {
+        other_build_nudges_at: Some(u64::MAX),
+        ..common::Opts::default()
+    });
+    rig.record(PATH, 10, steering(), 120);
+    let other = tempfile::tempdir().unwrap();
+    concordia_tests::copy_project(rig.dir.path(), other.path()).unwrap();
+    let run = rig.ok(
+        "replay.run",
+        json!({"path": PATH, "mode": "ab", "other": other.path().to_str().unwrap()}),
+    );
+    assert_eq!(
+        (&run["ok"], &run["ticks"]),
+        (&json!(true), &json!(120)),
+        "{run}"
+    );
+    let err = rig.err("replay.run", json!({"path": PATH, "mode": "ab"}));
+    assert_eq!(
+        err.kind,
+        concordia_api::ApiErrorKind::InvalidParams,
+        "{err:?}"
+    );
+    let mut bare = Rig::new();
+    bare.record(PATH, 10, steering(), 20);
+    let err = bare.err(
+        "replay.run",
+        json!({"path": PATH, "mode": "ab", "other": other.path().to_str().unwrap()}),
+    );
+    assert!(err.message.contains("factory"), "{err:?}");
+}

@@ -208,6 +208,9 @@ struct Plan {
     observers: Vec<usize>,
 }
 
+/// Called with a label and the world after each wave and phase flush of an observed tick.
+pub type Observer<'a> = &'a mut dyn FnMut(&str, &World);
+
 /// Processors and exclusive systems, by phase.
 #[derive(Default)]
 pub struct Schedule {
@@ -347,6 +350,26 @@ impl Schedule {
 
     /// Runs every phase once; plans first if needed (an invalid schedule then runs nothing).
     pub fn run(&mut self, world: &mut World, ctx: &SystemCtx<'_>) {
+        self.run_inner(world, ctx, None);
+    }
+
+    /// [`Schedule::run`], calling `observe` after each wave (labelled by its systems' names)
+    /// and each simulation phase's command flush (`"<Phase> commands"`).
+    pub fn run_observed(
+        &mut self,
+        world: &mut World,
+        ctx: &SystemCtx<'_>,
+        observe: &mut dyn FnMut(&str, &World),
+    ) {
+        self.run_inner(world, ctx, Some(observe));
+    }
+
+    fn run_inner(
+        &mut self,
+        world: &mut World,
+        ctx: &SystemCtx<'_>,
+        mut observe: Option<Observer<'_>>,
+    ) {
         // `SimLoop::new` reports planning errors; a direct run of a broken schedule does nothing.
         if self.plan.is_none() && self.plan(world).is_err() {
             return;
@@ -358,6 +381,10 @@ impl Schedule {
             let mut buffers = Vec::new();
             for wave in &phase.waves {
                 self.run_wave(world, wave, ctx, &mut buffers);
+                if let Some(observe) = observe.as_deref_mut() {
+                    let names: Vec<&str> = wave.iter().map(|&i| self.nodes[i].name()).collect();
+                    observe(&names.join(", "), world);
+                }
             }
             if phase.phase == Phase::Presentation {
                 continue;
@@ -366,6 +393,11 @@ impl Schedule {
             buffers.sort_by_key(|(node, _)| phase.order.iter().position(|o| o == node));
             flush(world, buffers.into_iter().map(|(_, b)| b), &mut ids);
             self.run_observers(world, &plan.observers, ctx, &mut ids);
+            if let Some(observe) = observe.as_deref_mut()
+                && !phase.waves.is_empty()
+            {
+                observe(&format!("{:?} commands", phase.phase), world);
+            }
         }
         self.plan = Some(plan);
     }

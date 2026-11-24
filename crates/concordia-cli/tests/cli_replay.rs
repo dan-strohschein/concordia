@@ -128,7 +128,8 @@ fn replay_migrate_rewrites_version_0_as_version_1() {
 
 /// `concordia replay diff a b` compares two replays offline (M3 3.1b): a recording against
 /// itself is the same (exit 0); against one where Space is pressed on tick 5 instead of 3, the
-/// first differing input tick, 3, is reported (exit 1). `run --mode resimulate --update` re-blesses a file.
+/// first differing input tick, 3, is reported (exit 1). `run --mode resimulate --update` re-blesses a file,
+/// and `run --mode ab --other <copy>` agrees with a copy of the project (3.1c).
 #[test]
 fn replay_diff_and_update_from_the_cli() {
     let dir = tempfile::tempdir().unwrap();
@@ -192,4 +193,21 @@ fn replay_diff_and_update_from_the_cli() {
         &root,
     );
     assert!(updated.status.success(), "{}", stderr(&updated));
+
+    // ab against a copy of the project (3.1c): the same build agrees.
+    let copy = dir.path().join("copy");
+    concordia_tests::copy_project(&root, &copy).unwrap();
+    let other = copy.to_str().unwrap();
+    let args = [
+        "replay",
+        "run",
+        "tests/replays/a.replay.ron",
+        "--mode",
+        "ab",
+        "--other",
+        other,
+    ];
+    let ab = run(&args, &root);
+    assert!(ab.status.success(), "{}", stderr(&ab));
+    assert_eq!(json(&ab)["ok"], true);
 }

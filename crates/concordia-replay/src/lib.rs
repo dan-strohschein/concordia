@@ -3,6 +3,7 @@
 //! fresh play world and report the first tick that diverges, naming the parts (components,
 //! clock, RNG) that differ.
 
+mod ab;
 mod diff;
 mod error;
 mod format;
@@ -24,4 +25,4 @@ pub use methods::{
     Divergence, FieldDiff, Mismatch, RecordAction, ReplayRecord, ReplayRecordParams,
     ReplayRecordResult, ReplayRun, ReplayRunParams, ReplayRunResult, RunMode, TickHash,
 };
-pub use module::ReplayModule;
+pub use module::{EngineFactory, ReplayModule};

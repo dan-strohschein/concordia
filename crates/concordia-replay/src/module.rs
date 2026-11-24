@@ -22,10 +22,22 @@ impl Pending {
     }
 }
 
+/// Builds an engine for another project directory with `threads` job threads (the app injects
+/// one, so `ab` runs can replay on a second build; the replay crate can't build projects).
+pub type EngineFactory =
+    Arc<dyn Fn(&std::path::Path, std::num::NonZeroUsize) -> Result<Engine, ApiError> + Send + Sync>;
+
+/// The module's engine-lifetime state.
+#[derive(Clone, Default)]
+pub(crate) struct ReplayState {
+    pub(crate) pending: Pending,
+    pub(crate) factory: Option<EngineFactory>,
+}
+
 /// Serves `replay.record` and `replay.run`; enabled by `[replay]` in `concordia.toml`.
 #[derive(Default)]
 pub struct ReplayModule {
-    pending: Pending,
+    state: ReplayState,
 }
 
 impl std::fmt::Debug for ReplayModule {
@@ -39,6 +51,12 @@ impl ReplayModule {
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// Lets `ab` runs build the other engine with `factory`.
+    pub fn with_factory(mut self, factory: EngineFactory) -> Self {
+        self.state.factory = Some(factory);
+        self
+    }
 }
 
 impl EngineModule for ReplayModule {
@@ -51,12 +69,12 @@ impl EngineModule for ReplayModule {
     }
 
     fn engine_state(&self) -> Option<Box<dyn Any + Send>> {
-        Some(Box::new(self.pending.clone()))
+        Some(Box::new(self.state.clone()))
     }
 
     /// A pending recording joins the new play world: an end-of-tick hook fills it.
     fn start_play_in(&self, _: &mut Engine, _: &mut World) -> Result<PlaySetup, ApiError> {
-        let Some(recording) = self.pending.take() else {
+        let Some(recording) = self.state.pending.take() else {
             return Ok(PlaySetup::default());
         };
         let handle = RecordingHandle::new(recording);

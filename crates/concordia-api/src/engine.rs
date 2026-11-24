@@ -323,6 +323,21 @@ impl Engine {
         play.world.state_hash().map_err(internal)
     }
 
+    /// Advances the play world one tick, calling `observe` after each wave of systems and each
+    /// phase's command flush (diagnostics), and returns its hash.
+    pub fn step_play_observed(
+        &mut self,
+        observe: &mut dyn FnMut(&str, &World),
+    ) -> Result<concordia_terra::WorldHash, ApiError> {
+        crate::methods::sim::ensure_play(self, None)?;
+        let Engine { play, jobs, .. } = self;
+        let play = play
+            .as_mut()
+            .ok_or_else(|| ApiError::from_kind(ApiErrorKind::NotPlaying))?;
+        play.sim.step_observed(&mut play.world, jobs, observe);
+        play.world.state_hash().map_err(internal)
+    }
+
     /// The open scene's project-relative path.
     pub fn scene_path(&self) -> Option<&str> {
         self.scene.as_ref().map(|s| s.path.as_str())
