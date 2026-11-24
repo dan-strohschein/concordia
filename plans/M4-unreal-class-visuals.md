@@ -1,7 +1,166 @@
 # M4: Unreal-class visuals
-Status: Planned · Depends on: M1 (render), M2 (scripting host, graphs' WIT API), M3 (replay assertions, Studio) · Detail level: **Needs refinement after M3** · Estimated effort: 32–45 agent-assisted engineer-weeks (two parallel tracks; see Effort estimate)
+Status: Planned · Depends on: M1 (render), M2 (scripting host, graphs' WIT API), M3 (replay assertions, Studio) · Detail level: **Refined after M3 (2026-11-24; R1–R5 and D1–D10 approved by the author)** · Estimated effort: 32–45 agent-assisted engineer-weeks (two parallel tracks; see Effort estimate)
 
 > This plan has full phase breakdowns and test lists. Its numbers (budgets, FLIP tolerances, page sizes, meshlet sizes) are **provisional** and must be recalibrated in the refinement pass after M3, using measurements from the M1–M3 renderer on the reference Mac. Every recalibrated number lands in a text file (`tests/perf/budgets/*.budget.ron`, per-test tolerances), never in code.
+
+## M4 refinement (2026-11-24, against the code after M3)
+**Approved by the author on 2026-11-24.** Where it disagrees with the phase text below, this section wins.** The author answered five questions on 2026-11-24 (R1–R5). The recommendations D1–D10 were approved with it.
+
+### Author's decisions (2026-11-24)
+- **R1: the proving ground is a new enemy in Lamplight.** The reference port moved to M5 (ADR-0048, ADR-0067), and M5 depends on M4, so 4.13 can't use a ported enemy.
+  - 4.13 and `m4_graph_enemy.rs` use an **original Lamplight enemy** whose brain is a graph.
+  - The port's enemy (the `caster` archetype and the translated brain suites) moves to M5.
+- **R2: rendering first.** The order is 4.1 (oracles), then 4.1v, 4.2, 4.3, 4.4, 4.6, 4.7 and 4.8. Track G (4.9–4.12) follows, and 4.13 joins the two.
+- **R3: Vulkan is built in M4,** as the new phase **4.1v**. Every rendering feature from 4.3 on lands on Metal and Vulkan together.
+- **R4: the Vulkan backend's `unsafe` works like Metal's.**
+  - A new crate, `concordia-rhi-vulkan`, uses `ash` (MIT/Apache-2.0).
+  - Its `unsafe` stays inside that crate, with a `// SAFETY:` comment on every block, and tests run under the Khronos validation layers.
+  - This is an approved exception to "no new `unsafe` outside the -sys crates", recorded in the 4.1v ADR.
+- **R5: meshoptimizer is vendored** under `third_party/meshoptimizer` (MIT) behind a new `meshopt-sys` crate, following the `jolt-sys` pattern.
+
+### What exists (checked in code)
+**RHI:**
+- `DeviceCaps` (`concordia-rhi/src/caps.rs:58`) holds backend, bindless, `mesh_shaders`, `ray_tracing`, buffer limits and Metal feature sets. It has no masking, no timestamp, MetalFX or mesh-output fields, and `Requirement` has only `M1`.
+- Metal family probing covers apple6–10, metal3 and metal4 (`rhi-metal/src/probe.rs`). `mesh_shaders` is set from `metal3`. The M3 Pro reports apple6–9, metal3 and metal4.
+- **Timing:** whole-command-buffer GPU time only (`Device::submit_timed`). There are no counter sample buffers.
+- **Indirect:** `DispatchIndirect` exists, but there is no indirect draw, no viewport/scissor command and no texture-to-texture copy.
+- **Mesh pipelines:** `MeshPipelineDesc` exists, but Metal's `create_mesh_pipeline` returns `Unsupported`.
+- There are no acceleration structures or ray queries.
+- Bindless (argument buffers, tier 2) and readback exist.
+- **No Vulkan backend.** `ash` isn't in the lock; only `Backend::Vulkan` and SPIR-V shader sources exist.
+
+**Shaders:** Slang 2026.22 runs as `slangc`, and `Stage` is Compute, Vertex or Fragment only. Both MSL and SPIR-V targets exist.
+
+**Render:**
+- The render graph has shadow, forward, tonemap and readback passes. Cluster culling is recorded outside the graph, and the frame is one command list.
+- CSM: 3 cascades, 2048², 60 m.
+- 4× MSAA. There are no motion vectors, jitter or TAA.
+- Fixed EV100 exposure (no auto- or pre-exposure). Tonemaps: AgX, PBR Neutral and ACES.
+- `render.stats` reports whole-frame `gpu_ms` and counts.
+- Debug views are `ViewMode` values (overdraw, cascades, clusters, LOD); there's no `render.set_debug_view`.
+
+**Assets:**
+- `MeshData::meshlets` is an empty `Vec<u8>` placeholder.
+- The glTF importer's settings are `{}`.
+- The DDC is keyed by importer, version, platform, settings and bytes.
+- meshoptimizer isn't present.
+
+**Goldens:**
+- FLIP (`nv-flip`) with mean and p99 lives in `concordia-testkit/src/golden.rs`.
+- **Tolerances are set in code** (`Tolerance::mean`), not in text.
+- Suites are under `tests/golden/<suite>/`. `CONCORDIA_REQUIRE_GPU` is 1 on macOS CI and 0 on Linux.
+
+**Perf:**
+- There is no harness, budget file or `reference.ron`.
+- What exists: `--bench-latency`, `just editor-bench`, and the criterion benches `many_lights`, `crowd_100k` and `skinned_crowd`.
+- **`examples/m1-sponza-like` doesn't exist;** the examples are `m0-sandbox`, `m1-physics-stack`, `m2-lamplight` and `m2-scripting`.
+- Measured on the M3 Pro, all wall clock or whole frame:
+  - 1,024 lights at 1080p: 2.5–3.2 ms;
+  - 1,000 skinned characters: 6.5 ms;
+  - the M1 gate scene: GPU p50 4.88 ms;
+  - 10k entities: GPU p50 4.36 ms.
+- There's no per-pass data.
+
+**Gen:** the `mesh` provider makes box, sphere, capsule, cylinder, torus, extrude, lathe, heightfield and SDF surface nets (≤ 256 grid points per axis). There are no rock or ruin generators.
+
+**Graphs and AI:**
+- Reflect is a derive for types only (`name`, `category`, `presentation`, `default`, `range`, `widget`); there are no function attributes. `schema_for` gives JSON Schema.
+- The WIT world `concordia:game@0.1.0` has three functions (`log`, `describe`, `run`). It is a batch column protocol (ADR-0062), and effects return as commands.
+- Wasmtime 51: NaN canonicalization and fuel are on, epochs are off, and there's no Pulley.
+- Script instances are stateless: state lives in components and migrates through reflect. A reload may not change the module name, processors, phases or order.
+- `wasm-encoder` and `wit-component` 0.263 are in the lock, but only transitively.
+- `concordia-command` has entity edits only; **there are no undoable file-document edits** (ADR-0016's shared item).
+- There is no AI code: no BT, utility, perception, blackboard or `DecisionTrace`.
+- `NavAgent.target` with `Arrived`/`Failed` gives a MoveTo. `AnimPlayer` exists, but one-shot requests are M13.
+- Lamplight has wisps and townsfolk and no enemies.
+- **Replay v1** (`deny_unknown_fields`) can't carry extra per-tick events. The assertion language's `event(..)` sees signals.
+- `physics.raycast` is single-ray, reachable from native processors, and not from WASM.
+- **Editor:** panels are top-level folders under `editor/ui/src/` (there's no `panels/`). There's no `@xyflow/react`, dagre or elkjs. Playwright has 10 e2e specs.
+- Studio skills are `crates/concordia-studio/roster/skills/concordia-*`.
+
+### Decisions (D1–D10; recommended, approved 2026-11-24)
+- **D1: numbers come from 4.1's measurements.** 4.1 measures the M1 gate scene and Lamplight per pass on the M3 Pro. The budgets and the canyon gate's 16.6 ms target are then re-derived into `tests/perf/budgets/*.budget.ron`, and the author approves the file in 4.1's review. Until then, every number below stays provisional.
+- **D2: golden tolerances move to text.** Each suite gets a `tests/golden/<suite>/tolerances.ron`; `Tolerance::mean` in code remains only as the default. This happens in 4.1, so M4's reference and regression goldens follow the plan's rule.
+- **D3: the M1 baseline scene is the M1 gate scene**, and `m1-sponza-like` is dropped. The path-traced baseline is blessed on it and on a Lamplight night view.
+- **D4: Vulkan testing.**
+  - Linux CI runs the Vulkan backend on **lavapipe** (Mesa's CPU Vulkan, MIT), so Linux renders goldens for the first time.
+  - On the Mac, Vulkan runs through MoltenVK (Apache-2.0) for conformance only. MoltenVK has no mesh shaders, so the compute fallback is what it tests.
+  - Vulkan goldens compare against the same blessed images as Metal, each with its own tolerance in `tolerances.ron`.
+  - Perf is asserted only on Metal (the reference machine).
+  - **A spike checks** whether lavapipe exposes `VK_EXT_mesh_shader` and `VK_KHR_ray_query` in the Mesa that the Ubuntu 24.04 runner ships. If it doesn't, those paths are tested on Linux through the compute fallbacks, and the gap is recorded.
+- **D5: the indirect-draw and per-pass-timing RHI additions land in 4.1** (timing) and 4.3a (indirect draws, viewport/scissor, texture copy), on both backends. M10 and M11 reuse them (ADR-0014, ADR-0015).
+- **D6: graph nodes come from what the engine really exposes.** Sources:
+  - reflected components (get/set);
+  - signals (raise/on);
+  - queries;
+  - a new `#[graph_node(category, pure)]` attribute macro on Rust functions in `concordia-reflect-derive`;
+  - a built-in core;
+  - `concordia-ai` nodes.
+
+  "Every WIT function becomes a node" is dropped: the world has no gameplay functions. `every_wit_gameplay_function_has_a_node` becomes `every_reflected_component_and_signal_has_nodes`.
+- **D7: a graph compiles to a gameplay module,** the same column protocol as scripts (ADR-0062).
+  - An `Event` graph is a processor. Graph variables live in a reflected component (state only in components), so "preserve variables on hot reload" is the existing reflect migration.
+  - Edits that add or remove a processor need a stop and play, as scripts do today; the check says so.
+  - Randomness is the per-processor, per-tick `seed`. The plan's "per-entity RNG" is reworded.
+  - The IR interpreter remains the oracle.
+  - `wasm-encoder` and `wit-component` become direct workspace dependencies at the lock's 0.263.
+- **D8: decisions are signals.**
+  - Brains raise an `ai.Decision` signal (state and choice), so playtest assertions use `event(..)` and replays compare them through world hashes; there's no new trace type.
+  - Replay **v2** adds one field, `external: [(tick, source, payload)]`, in 4.12 for recorded plugin (LLM) outputs. It reads v1 the way v1 reads v0.
+- **D9: 4.10 owns undoable document edits** (`EditOp::Document`, with a byte-exact undo), and ADR-0016's M12 reuses them. `graph.apply` is its first user.
+- **D10: per-backend RHI capability profiles.**
+  - `RhiCaps` replaces `DeviceCaps`, keeping its fields and adding the plan's (timestamp granularity, MetalFX, mesh output limits), plus `masked()`.
+  - The plan's family table (Apple7+ mesh shaders, Apple9+ hardware RT) is checked against `probe.rs`.
+  - Apple10 is tested from a recorded probe fixture, since there's no device to test on.
+
+### Phases, against the code after M3
+Numbers stay as they are because other plans cite them. Each phase gets its own branch `m4/<phase>-…`, PR and As built.
+
+**Track R:**
+- **4.1a** `m4/4.1-caps-timing`: `RhiCaps` and masking; Metal counter sample buffers at encoder boundaries (perf mode gives each timed pass its own encoder); `PassTimer`, `FrameStats` and `render.stats` per pass; `BudgetFile`, `tests/perf/` (runner, `reference.ron`) and `concordia perf run`; golden `tolerances.ron` (D2).
+- **4.1b** `m4/4.1-pathtrace`: `concordia-pathtrace` with its own BVH, `capture.reference` and `just bless-reference`; the furnace, analytic, convergence and determinism tests; the baseline references (D3); the budget recalibration (D1).
+- **4.1v** `m4/4.1v-vulkan-*` (new; ADR-0088):
+  - **(a)** the `ash` device, queues, memory, buffers, textures, samplers, bindless (descriptor indexing), pipelines from Slang SPIR-V, readback and timestamps. The RHI conformance suite passes on lavapipe and MoltenVK.
+  - **(b)** surfaces and the M1 renderer on Vulkan: forward+, CSM, tonemap, the M1 goldens within tolerance; Linux CI with lavapipe and `CONCORDIA_REQUIRE_GPU=1`.
+  - **(c)** the D4 spike, and the editor viewport on Vulkan where it runs.
+- **4.2** `m4/4.2-meshlets`: `meshopt-sys` (R5) and `concordia-cluster`; the glTF importer's `meshlets: auto|true|false` setting; the DDC; `concordia cluster stats`.
+- **4.3a** `m4/4.3-indirect`: indirect draws, viewport/scissor and texture copy on both backends (D5); the GPU scene buffers; the compute and indirect meshlet path.
+- **4.3b** `m4/4.3-mesh-shaders`:
+  - a Slang mesh and amplification spike first;
+  - the mesh-shader path on Metal (Apple7+) and Vulkan (`VK_EXT_mesh_shader`);
+  - motion vectors, including for skinned meshes.
+- **4.4** culling; **4.6** TAA/TAAU and MetalFX (`objc2-metal-fx`, or our own binding if it falls short; MetalFX stays Apple-only); **4.7** VSM (a: directional clipmap and caching, b: local lights, SMRT and the CSM fallback); **4.8** DDGI, with RHI acceleration structures and ray queries on both backends first, and the software BVH fallback. Each is split at review time if it grows past one PR.
+- **4.5** stays out of the gate.
+
+**Track G:**
+- **4.9** graph core (D6);
+- **4.10** compiler, runtime and MCP (D7, D9);
+- **4.11** the graph panel at `editor/ui/src/graph/` (dagre, MIT) and the skills `concordia-author-graph` and `concordia-author-behavior`;
+- **4.12** `concordia-ai` (D8; native processors use `PhysicsQueries` for line of sight, and graphs reach it through a `physics.raycast` node that lowers to a query command);
+- **4.13** the Lamplight enemy (R1). Its design is written in 4.13's refinement and is original to Lamplight. Tests:
+  - `graph_brain_matches_rust_brain_per_tick`: the same enemy written as a graph and as a hand-written Rust module gives identical world hashes on every tick over a replay; this replaces the port-trace test;
+  - the playtest assertions;
+  - a Lamplight night with meshlets, VSM, GI and TAA (goldens and perf).
+
+### The M4 gate, revised
+- `m4_graph_enemy.rs` uses Lamplight (R1).
+- `m4_fallbacks.rs` adds **(c) the Vulkan backend** (lavapipe on Linux CI; MoltenVK locally) within its tolerance of the Metal image, with no validation errors.
+- The perf assertions run on Metal on the reference Mac only. Elsewhere they report `NotReference`, as planned.
+- `regression.yml` gains `just gate-tests M4`.
+
+### ADRs
+- **0088:** the Vulkan backend: `ash`, the `unsafe` exception (R4), lavapipe in CI.
+- **0089:** perf testing on reference hardware.
+- **0090:** quality methodology.
+- **0091:** shadows (VSM default, CSM fallback, placing M10's atlas).
+- **0092:** GI staging.
+- **0093:** the graph compilation target (D7).
+- **0094:** runtime AI and the LLM plugin policy (D8's replay v2).
+- ADR-0100 moves from Proposed to Accepted when 4.3a lands.
+
+### Effort (re-estimated)
+- The plan's 32–45 weeks, plus **4.1v Vulkan at 6–10**, plus about 1 for D2, D6 and D9: **about 39–56 engineer-weeks**.
+- Track R is now about 27–38 weeks on the critical path, with Track G (12–17) after it (R2).
 
 ## Goal & context
 M1 gave us a clustered forward+ PBR renderer with cascaded shadow maps (CSM), a render graph, Slang shaders and golden-image tests. M2 and M3 gave us WASM scripting, the reference port vertical slice, record/replay and playtest assertions, and Agent Studio. M4 adds the parts that make the engine's visuals and authoring look like Unreal's, and it builds them only from public research:
