@@ -60,6 +60,8 @@ pub enum Light {
 /// A material as the tracer uses it.
 #[derive(Debug, Clone)]
 pub struct SceneMaterial {
+    /// The material as authored (the GPU backend encodes it as shader rows).
+    pub source: Material,
     /// The closure program (`concordia-material`).
     pub program: MaterialProgram,
     /// Alpha handling.
@@ -197,6 +199,7 @@ impl SceneBuilder {
             .collect();
         let emission = program.unlit().emissive;
         self.materials.push(SceneMaterial {
+            source: material.clone(),
             program,
             alpha: material.alpha_mode,
             unlit: material.unlit,

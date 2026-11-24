@@ -115,6 +115,16 @@ impl Accel {
     pub fn meshes(&self) -> &[Bvh] {
         &self.meshes
     }
+
+    /// The instance level's tree (over `instances`).
+    pub fn tree(&self) -> &Tree {
+        &self.tree
+    }
+
+    /// World → object, per instance.
+    pub fn inverses(&self) -> &[Mat4] {
+        &self.inverse
+    }
 }
 
 /// The world bounds of object bounds moved by `world` (all eight corners).

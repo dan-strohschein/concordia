@@ -1,12 +1,17 @@
-//! Light transport against independent answers (M4 4.1b2): the white furnace, a disk light's
-//! irradiance, the engine's own point, spot and sun definitions, convergence and determinism.
+//! Light transport against independent answers, on every backend (M4 4.1b2 CPU, 4.1b3 GPU): the
+//! white furnace, a disk light's irradiance, the engine's own point, spot and sun definitions,
+//! convergence and determinism; and the two backends against each other.
+
+mod common;
+
+use common::backends;
 
 use std::f32::consts::PI;
 
 use concordia_assets::{Material, MeshData, Slab};
 use concordia_core::math::{Mat4, Vec3};
 use concordia_material::MaterialProgram;
-use concordia_pathtrace::{EnvMap, HdrImage, SceneBuilder, Settings, render_cpu};
+use concordia_pathtrace::{Backend, EnvMap, HdrImage, SceneBuilder, Settings, render, render_cpu};
 use concordia_render_types::{
     Camera, DirectionalLight, PointLight, Projection, SpotLight, Tonemap, candela, distance_window,
 };
@@ -102,7 +107,7 @@ fn settings(size: u32, spp: u32, max_bounces: u32) -> Settings {
 }
 
 /// A large quad of `slab` in a uniform white sky, seen at cosine `mu`.
-fn furnace(slab: Slab, mu: f32) -> Vec3 {
+fn furnace(backend: &Backend, slab: Slab, mu: f32) -> Vec3 {
     let mut b = SceneBuilder::new();
     let mesh = b.mesh(&quad(1000.0)).unwrap();
     let mat = b.material(&material(slab)).unwrap();
@@ -112,15 +117,26 @@ fn furnace(slab: Slab, mu: f32) -> Vec3 {
     let (world, camera) = ortho(Vec3::ZERO, from, 0.5);
     b.camera(world, &camera);
     let scene = b.build().unwrap();
-    mean(&render_cpu(&scene, &settings(16, 1024, 64)).unwrap())
+    mean(&render(&scene, &settings(16, 1024, 64), backend).unwrap())
 }
 
 #[test]
 fn pathtrace_white_furnace_conserves_energy() {
-    for mu in [0.9, 0.5] {
-        let lambert = furnace(white_lambert(), mu);
+    for (name, backend) in backends() {
+        for mu in [0.9, 0.5] {
+            white_furnace(name, &backend, mu);
+        }
+    }
+}
+
+fn white_furnace(name: &str, backend: &Backend, mu: f32) {
+    {
+        let lambert = furnace(backend, white_lambert(), mu);
         for c in lambert.to_array() {
-            assert!((c - 1.0).abs() <= 0.005, "Lambert at mu {mu}: {lambert}");
+            assert!(
+                (c - 1.0).abs() <= 0.005,
+                "{name}: Lambert at mu {mu}: {lambert}"
+            );
         }
         let rough_metal = Slab {
             metallic: 1.0,
@@ -129,11 +145,11 @@ fn pathtrace_white_furnace_conserves_energy() {
         };
         let [a, b] = concordia_material::dfg::direct_albedo(mu, 0.8);
         let expected = a + b;
-        let got = furnace(rough_metal, mu);
+        let got = furnace(backend, rough_metal, mu);
         for c in got.to_array() {
             assert!(
                 (c - expected).abs() <= 0.03 * expected,
-                "rough GGX at mu {mu}: {got} vs directional albedo {expected}"
+                "{name}: rough GGX at mu {mu}: {got} vs directional albedo {expected}"
             );
         }
     }
@@ -202,14 +218,20 @@ fn pathtrace_matches_analytic_irradiance_from_disk_light() {
     );
     let (world, camera) = ortho(Vec3::ZERO, view(), 0.01);
     b.camera(world, &camera);
-    let got = mean(&render_cpu(&b.build().unwrap(), &settings(4, 4096, 1)).unwrap());
-    for (g, e) in got.to_array().into_iter().zip(expected.to_array()) {
-        assert!((g - e).abs() <= 0.01 * e, "{got} vs quadrature {expected}");
+    let scene = b.build().unwrap();
+    for (name, backend) in backends() {
+        let got = mean(&render(&scene, &settings(4, 4096, 1), &backend).unwrap());
+        for (g, e) in got.to_array().into_iter().zip(expected.to_array()) {
+            assert!(
+                (g - e).abs() <= 0.01 * e,
+                "{name}: {got} vs quadrature {expected}"
+            );
+        }
     }
 }
 
 /// A white plane lit only by what `add` puts in the scene, seen at `target`.
-fn direct_only(target: Vec3, add: impl FnOnce(&mut SceneBuilder)) -> Vec3 {
+fn direct_only(backend: &Backend, target: Vec3, add: impl FnOnce(&mut SceneBuilder)) -> Vec3 {
     let mut b = SceneBuilder::new();
     let ground = b.mesh(&quad(100.0)).unwrap();
     let mat = b.material(&material(white_lambert())).unwrap();
@@ -217,7 +239,7 @@ fn direct_only(target: Vec3, add: impl FnOnce(&mut SceneBuilder)) -> Vec3 {
     add(&mut b);
     let (world, camera) = ortho(target, view(), 0.001);
     b.camera(world, &camera);
-    mean(&render_cpu(&b.build().unwrap(), &settings(2, 4, 1)).unwrap())
+    mean(&render(&b.build().unwrap(), &settings(2, 4, 1), backend).unwrap())
 }
 
 fn close(got: Vec3, want: Vec3, what: &str) {
@@ -231,6 +253,12 @@ fn close(got: Vec3, want: Vec3, what: &str) {
 
 #[test]
 fn punctual_lights_follow_the_engines_definitions() {
+    for (name, backend) in backends() {
+        punctual_lights(name, &backend);
+    }
+}
+
+fn punctual_lights(name: &str, backend: &Backend) {
     let program = MaterialProgram::compile(&material(white_lambert())).unwrap();
     let f = |p: Vec3, l: Vec3| program.eval(Vec3::Y, view(), (l - p).normalize()).color;
 
@@ -240,12 +268,12 @@ fn punctual_lights_follow_the_engines_definitions() {
         range: 10.0,
     };
     let at = Vec3::new(0.0, 2.0, 0.0);
-    let got = direct_only(Vec3::ZERO, |b| b.point_light(at, &light));
+    let got = direct_only(backend, Vec3::ZERO, |b| b.point_light(at, &light));
     let want = f(Vec3::ZERO, at)
         * Vec3::from_array(light.color)
         * candela(800.0)
         * distance_window(4.0, 10.0);
-    close(got, want, "point light");
+    close(got, want, &format!("{name}: point light"));
 
     let spot = SpotLight {
         color: [1.0; 3],
@@ -255,7 +283,7 @@ fn punctual_lights_follow_the_engines_definitions() {
         outer_angle: 0.5,
     };
     let p = Vec3::new(0.8, 0.0, 0.0);
-    let got = direct_only(p, |b| b.spot_light(at, Vec3::NEG_Y, &spot));
+    let got = direct_only(backend, p, |b| b.spot_light(at, Vec3::NEG_Y, &spot));
     let cone = concordia_render_types::SpotCone::new(0.3, 0.5);
     let to = at - p;
     let cos_axis = (-to.normalize()).dot(Vec3::NEG_Y);
@@ -267,7 +295,7 @@ fn punctual_lights_follow_the_engines_definitions() {
         cone.attenuation(cos_axis) > 0.0 && cone.attenuation(cos_axis) < 1.0,
         "inside the penumbra"
     );
-    close(got, want, "spot light");
+    close(got, want, &format!("{name}: spot light"));
 
     let sun = DirectionalLight {
         color: [1.0, 0.9, 0.8],
@@ -275,9 +303,9 @@ fn punctual_lights_follow_the_engines_definitions() {
         shadows: None,
     };
     let travel = Vec3::new(0.0, -1.0, -0.3).normalize();
-    let got = direct_only(Vec3::ZERO, |b| b.sun(travel, &sun));
+    let got = direct_only(backend, Vec3::ZERO, |b| b.sun(travel, &sun));
     let want = program.eval(Vec3::Y, view(), -travel).color * Vec3::from_array(sun.color) * 1000.0;
-    close(got, want, "sun");
+    close(got, want, &format!("{name}: sun"));
 }
 
 #[test]
@@ -296,12 +324,12 @@ fn emissive_surfaces_are_display_referred() {
     let (world, mut camera) = ortho(Vec3::ZERO, Vec3::Y, 1.0);
     camera.exposure_ev100 = 12.0;
     b.camera(world, &camera);
-    let got = mean(&render_cpu(&b.build().unwrap(), &settings(2, 4, 1)).unwrap());
-    close(
-        got,
-        Vec3::new(0.5, 0.25, 0.125),
-        "emission shows as authored at any exposure",
-    );
+    let scene = b.build().unwrap();
+    for (name, backend) in backends() {
+        let got = mean(&render(&scene, &settings(2, 4, 1), &backend).unwrap());
+        let what = format!("{name}: emission shows as authored at any exposure");
+        close(got, Vec3::new(0.5, 0.25, 0.125), &what);
+    }
 }
 
 /// A sphere on a plane under a sky and a sun, 8×8, for the convergence and determinism tests.
@@ -345,82 +373,252 @@ fn rmse(a: &HdrImage, b: &HdrImage) -> f64 {
 #[test]
 fn pathtrace_converges_at_expected_rate() {
     let scene = small_scene();
-    let reference = render_cpu(
-        &scene,
-        &Settings {
-            seed: 1,
-            ..settings(8, 16384, 8)
-        },
-    )
-    .unwrap();
-    let points: Vec<(f64, f64)> = [16, 64, 256, 1024]
-        .into_iter()
-        .map(|spp| {
-            let image = render_cpu(
+    for (name, backend) in backends() {
+        let draw = |seed, spp| {
+            render(
                 &scene,
                 &Settings {
-                    seed: 2,
+                    seed,
                     ..settings(8, spp, 8)
                 },
+                &backend,
             )
-            .unwrap();
-            (f64::from(spp).ln(), rmse(&image, &reference).ln())
-        })
-        .collect();
-    let n = points.len() as f64;
-    let (sx, sy) = points
-        .iter()
-        .fold((0.0, 0.0), |(a, b), (x, y)| (a + x, b + y));
-    let (mx, my) = (sx / n, sy / n);
-    let slope = points.iter().map(|(x, y)| (x - mx) * (y - my)).sum::<f64>()
-        / points.iter().map(|(x, _)| (x - mx).powi(2)).sum::<f64>();
-    assert!(
-        (-0.6..=-0.4).contains(&slope),
-        "log-log slope {slope} (1/√spp is −0.5): {points:?}"
-    );
+            .unwrap()
+        };
+        let reference = draw(1, 16384);
+        let points: Vec<(f64, f64)> = [16, 64, 256, 1024]
+            .into_iter()
+            .map(|spp| (f64::from(spp).ln(), rmse(&draw(2, spp), &reference).ln()))
+            .collect();
+        let n = points.len() as f64;
+        let (sx, sy) = points
+            .iter()
+            .fold((0.0, 0.0), |(a, b), (x, y)| (a + x, b + y));
+        let (mx, my) = (sx / n, sy / n);
+        let slope = points.iter().map(|(x, y)| (x - mx) * (y - my)).sum::<f64>()
+            / points.iter().map(|(x, _)| (x - mx).powi(2)).sum::<f64>();
+        assert!(
+            (-0.6..=-0.4).contains(&slope),
+            "{name}: log-log slope {slope} (1/√spp is −0.5): {points:?}"
+        );
+    }
 }
 
 #[test]
 fn pathtrace_is_deterministic_for_fixed_seed() {
     let scene = small_scene();
-    let run = |seed, threads| {
+    for (name, backend) in backends() {
+        let run = |seed| {
+            render(
+                &scene,
+                &Settings {
+                    seed,
+                    ..settings(8, 16, 8)
+                },
+                &backend,
+            )
+            .unwrap()
+        };
+        let one = run(3);
+        assert_eq!(one.pixels, run(3).pixels, "{name}: same seed, same image");
+        assert_ne!(
+            one.pixels,
+            run(4).pixels,
+            "{name}: another seed, another image"
+        );
+    }
+    let threads = |n| {
         render_cpu(
             &scene,
             &Settings {
-                seed,
-                threads,
+                seed: 3,
+                threads: Some(n),
                 ..settings(8, 16, 8)
             },
         )
         .unwrap()
     };
-    let one = run(3, Some(1));
-    assert_eq!(one.pixels, run(3, Some(1)).pixels, "same seed, same image");
     assert_eq!(
-        one.pixels,
-        run(3, Some(8)).pixels,
-        "identical at 1 and 8 threads"
+        threads(1).pixels,
+        threads(8).pixels,
+        "cpu: identical at 1 and 8 threads"
     );
-    assert_ne!(
-        one.pixels,
-        run(4, Some(8)).pixels,
-        "another seed, another image"
+}
+
+/// The GPU and CPU tracers draw the same picture: they differ from each other no more than two
+/// CPU images with different seeds do, and their means agree to 1%.
+#[test]
+fn gpu_and_cpu_tracers_converge() {
+    let scene = small_scene();
+    let Some((_, gpu)) = backends().into_iter().find(|(n, _)| *n == "gpu") else {
+        return;
+    };
+    let draw = |seed, backend: &Backend| {
+        render(
+            &scene,
+            &Settings {
+                seed,
+                ..settings(8, 4096, 8)
+            },
+            backend,
+        )
+        .unwrap()
+    };
+    let (cpu_a, cpu_b, gpu_a) = (
+        draw(1, &Backend::Cpu),
+        draw(2, &Backend::Cpu),
+        draw(3, &gpu),
     );
+    let noise = rmse(&cpu_a, &cpu_b);
+    let apart = rmse(&gpu_a, &cpu_a);
+    assert!(
+        apart <= 1.5 * noise,
+        "gpu vs cpu rmse {apart} against the noise {noise}"
+    );
+    let (m_gpu, m_cpu) = (mean(&gpu_a), mean(&cpu_a));
+    for (g, c) in m_gpu.to_array().into_iter().zip(m_cpu.to_array()) {
+        assert!((g - c).abs() <= 0.01 * c, "means {m_gpu} vs {m_cpu}");
+    }
+}
+
+/// With no GPU the default backend is the CPU, and it renders.
+#[test]
+fn auto_falls_back_to_the_cpu_without_a_device() {
+    let backend = Backend::auto(None);
+    assert!(matches!(backend, Backend::Cpu), "{backend:?}");
+    let image = render(&small_scene(), &settings(4, 2, 2), &backend).unwrap();
+    assert!(mean(&image).max_element() > 0.0);
 }
 
 /// Where camera rays miss everything the renderer shows the skybox, or the camera's clear color
 /// when the sky isn't drawn (both display-referred, like the renderer's).
 #[test]
 fn camera_misses_show_the_skybox_or_the_clear_color() {
-    let render = |visible: bool| {
+    let scene = |visible: bool| {
         let mut b = SceneBuilder::new();
         let sky = EnvMap::uniform([2.0, 2.0, 2.0], 1.0);
         b.environment_with_background(sky, visible);
         let (world, mut camera) = ortho(Vec3::ZERO, Vec3::Y, 1.0);
         camera.clear = [0.1, 0.2, 0.3, 1.0];
         b.camera(world, &camera);
-        mean(&render_cpu(&b.build().unwrap(), &settings(2, 1, 1)).unwrap())
+        b.build().unwrap()
     };
-    close(render(true), Vec3::splat(2.0), "the skybox");
-    close(render(false), Vec3::new(0.1, 0.2, 0.3), "the clear color");
+    for (name, backend) in backends() {
+        let draw = |s| mean(&render(&s, &settings(2, 1, 1), &backend).unwrap());
+        close(
+            draw(scene(true)),
+            Vec3::splat(2.0),
+            &format!("{name}: the skybox"),
+        );
+        close(
+            draw(scene(false)),
+            Vec3::new(0.1, 0.2, 0.3),
+            &format!("{name}: the clear color"),
+        );
+    }
+}
+
+/// Layered, mixed and covered materials (the GPU's program walker) shade as the CPU's
+/// `MaterialProgram::eval` does: under a sun alone (no noise) the two backends agree.
+#[test]
+fn gpu_and_cpu_agree_on_layered_materials() {
+    use concordia_assets::{AlphaMode, Fuzz, Haze, MaterialNode, ThinFilm};
+    use std::collections::BTreeMap;
+    let Some((_, gpu)) = backends().into_iter().find(|(n, _)| *n == "gpu") else {
+        return;
+    };
+    let slab = |s: Slab| MaterialNode::Slab(s);
+    let paint = Slab {
+        base_color: [0.7, 0.1, 0.05, 1.0],
+        roughness: 0.4,
+        ..Slab::default()
+    };
+    let coat = Slab {
+        base_color: [1.0; 4],
+        roughness: 0.05,
+        transmittance: [0.9, 0.9, 0.9],
+        thin_film: Some(ThinFilm {
+            thickness_nm: 380.0,
+            ior: 1.45,
+        }),
+        ..Slab::default()
+    };
+    let cloth = Slab {
+        fuzz: Some(Fuzz {
+            color: [0.6, 0.6, 0.9],
+            roughness: 0.5,
+        }),
+        haze: Some(Haze {
+            roughness: 0.6,
+            weight: 0.4,
+        }),
+        // Partly transparent: blending covers it by 0.6 (opaque materials ignore slab alpha).
+        base_color: [0.7, 0.1, 0.05, 0.6],
+        ..paint.clone()
+    };
+    let nodes = BTreeMap::from([
+        ("paint".to_owned(), slab(paint)),
+        ("coat".to_owned(), slab(coat)),
+        ("cloth".to_owned(), slab(cloth)),
+        (
+            "coated".to_owned(),
+            MaterialNode::Vertical {
+                top: "coat".into(),
+                bottom: "paint".into(),
+            },
+        ),
+        (
+            "mixed".to_owned(),
+            MaterialNode::Horizontal {
+                a: "coated".into(),
+                b: "cloth".into(),
+                mix: 0.35,
+                mix_texture: None,
+            },
+        ),
+        (
+            "surface".to_owned(),
+            MaterialNode::Coverage {
+                node: "mixed".into(),
+                coverage: 0.8,
+            },
+        ),
+    ]);
+    for alpha_mode in [AlphaMode::Opaque, AlphaMode::Blend] {
+        let layered = Material {
+            nodes: nodes.clone(),
+            root: "surface".into(),
+            alpha_mode,
+            ..Material::default()
+        };
+        let mut b = SceneBuilder::new();
+        let ground = b.mesh(&quad(100.0)).unwrap();
+        let mat = b.material(&layered).unwrap();
+        b.instance(ground, Mat4::IDENTITY, mat);
+        b.sun(
+            Vec3::new(-0.3, -1.0, 0.2).normalize(),
+            &DirectionalLight {
+                illuminance_lux: 10.0,
+                ..DirectionalLight::default()
+            },
+        );
+        let (world, camera) = ortho(Vec3::ZERO, view(), 0.001);
+        b.camera(world, &camera);
+        let scene = b.build().unwrap();
+        let s = Settings {
+            max_bounces: 1,
+            ..settings(2, 1, 1)
+        };
+        let (cpu, gpu_image) = (
+            mean(&render(&scene, &s, &Backend::Cpu).unwrap()),
+            mean(&render(&scene, &s, &gpu).unwrap()),
+        );
+        assert!(cpu.max_element() > 0.0, "{alpha_mode:?}: lit");
+        for (g, c) in gpu_image.to_array().into_iter().zip(cpu.to_array()) {
+            assert!(
+                (g - c).abs() <= 2e-3 * c.max(1e-3),
+                "{alpha_mode:?}: gpu {gpu_image} vs cpu {cpu}"
+            );
+        }
+    }
 }
