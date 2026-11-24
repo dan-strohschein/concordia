@@ -1,5 +1,5 @@
 # concordia-platform
 
-Windowing and file watching for Concordia, wrapping winit and notify behind engine-owned events. Apps can ask the window for a cursor shape (arrow, pointer, text), and key presses also arrive as typed text for text fields.
+Windowing and file watching for Concordia, wrapping winit and notify behind engine-owned events. Apps can ask the window for a cursor shape (arrow, pointer, text), and key presses also arrive as typed text for text fields. Scrolling arrives in lines, whether it comes from a mouse wheel or a trackpad.
 
 See `AGENTS.md` for invariants, tests and references.

@@ -1,6 +1,8 @@
 //! One window on winit's event loop, reporting engine-owned events.
 
 use std::num::NonZeroU32;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use concordia_input::{InputEvent, TextInput};
@@ -8,7 +10,7 @@ use concordia_reflect::Reflect;
 use serde::{Deserialize, Serialize};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{DeviceEvent, DeviceId, ElementState, MouseScrollDelta};
+use winit::event::{DeviceEvent, DeviceId, ElementState};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::PhysicalKey;
 use winit::window::{Window, WindowId};
@@ -16,6 +18,7 @@ use winit::window::{Window, WindowId};
 use crate::cursor::{CursorIcon, cursor_to_winit};
 use crate::error::PlatformError;
 use crate::keys::{key_from_winit, mouse_button_from_winit};
+use crate::scroll::scroll_from_winit;
 use crate::typing::{Modifiers, insert, text_from_key};
 
 /// How to open a window.
@@ -107,11 +110,16 @@ pub trait WindowApp {
 }
 
 /// Options for [`run_window`].
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default)]
 pub struct RunOptions {
     /// Close automatically after this long (smoke tests).
     pub exit_after: Option<Duration>,
+    /// Close once another thread sets this (checked every [`STOP_POLL`]).
+    pub stop: Option<Arc<AtomicBool>>,
 }
+
+/// How often [`RunOptions::stop`] is checked.
+pub const STOP_POLL: Duration = Duration::from_millis(50);
 
 /// Opens the window and runs the event loop until the app exits; must be called on the main thread.
 pub fn run_window(
@@ -127,6 +135,7 @@ pub fn run_window(
         cursor: CursorIcon::Arrow,
         modifiers: Modifiers::default(),
         deadline: options.exit_after.map(|d| Instant::now() + d),
+        stop: options.stop,
         error: None,
     };
     event_loop
@@ -142,6 +151,7 @@ struct Runner<'a> {
     cursor: CursorIcon,
     modifiers: Modifiers,
     deadline: Option<Instant>,
+    stop: Option<Arc<AtomicBool>>,
     error: Option<PlatformError>,
 }
 
@@ -237,9 +247,17 @@ impl ApplicationHandler for Runner<'_> {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        match self.deadline {
-            Some(deadline) if Instant::now() >= deadline => event_loop.exit(),
-            Some(deadline) => event_loop.set_control_flow(ControlFlow::WaitUntil(deadline)),
+        let now = Instant::now();
+        let stopped = self
+            .stop
+            .as_ref()
+            .is_some_and(|s| s.load(Ordering::Acquire));
+        if stopped || self.deadline.is_some_and(|d| now >= d) {
+            return event_loop.exit();
+        }
+        let poll = self.stop.as_ref().map(|_| now + STOP_POLL);
+        match self.deadline.into_iter().chain(poll).min() {
+            Some(until) => event_loop.set_control_flow(ControlFlow::WaitUntil(until)),
             None => event_loop.set_control_flow(ControlFlow::Wait),
         }
     }
@@ -309,16 +327,7 @@ fn input(event: &winit::event::WindowEvent, scale: f64) -> Option<InputEvent> {
                 y: logical.y,
             })
         }
-        W::MouseWheel { delta, .. } => Some(match delta {
-            MouseScrollDelta::LineDelta(dx, dy) => InputEvent::Scroll { dx: *dx, dy: *dy },
-            MouseScrollDelta::PixelDelta(p) => {
-                let logical = p.to_logical::<f32>(scale);
-                InputEvent::Scroll {
-                    dx: logical.x,
-                    dy: logical.y,
-                }
-            }
-        }),
+        W::MouseWheel { delta, .. } => Some(scroll_from_winit(*delta, scale)),
         _ => None,
     }
 }

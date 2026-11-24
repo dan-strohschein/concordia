@@ -43,5 +43,6 @@ pub use methods::{
 };
 pub use module::{NAV_PATHS_LAYER, NAVMESH_LAYER, NavMeshes, NavModule};
 pub use navmesh::{NavMesh, NavPath, NavPoint, NavPoly, NavRay, NavStats, SurfaceMove, SurfaceRay};
+pub use service::gathers;
 pub use settings::NavSettings;
 pub use tessellate::{SEGMENTS as CIRCLE_STEPS, unit as circle_step};

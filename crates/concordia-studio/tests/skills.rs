@@ -116,6 +116,14 @@ fn skills_for_tools_not_built_yet_say_so_and_name_their_phase() {
                 skill.name
             );
         }
+        let needs = note.split("Until then").next().unwrap_or(note);
+        for tool in &offered {
+            assert!(
+                !needs.contains(&format!("`{tool}`")) && !needs.contains(&format!("__{tool}`")),
+                "{}: the note names {tool}, which exists; drop it from the note",
+                skill.name
+            );
+        }
     }
 }
 

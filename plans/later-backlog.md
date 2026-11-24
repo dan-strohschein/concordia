@@ -83,6 +83,8 @@ Rules that still apply to everything here: subscription-first (no item may *requ
 - **Mod packaging** (after M2). WASM components plus content packs, sandboxed by the M2 scripting host; mod manifests as text.
 
 ## 12. Rendering and simulation beyond M4
+- **Replay: restore mid-stream** (author decision R2 in the M3 refinement, 2026-11-23). M3's replays start every run at tick 0 and keep only component stills for diffs. Restoring needs every module that keeps play state outside the world (the Detour crowd's C++ state among them) to save and restore it. Revisit with M7's long sessions, as part of the author's planned full record and replay test system ("a Playwright for games").
+- **Replay: raw device events behind a flag** (ADR-0072; deferred by the M3 refinement). Action-level input survives rebinding, and nothing consumes raw events yet.
 - **Hardware ray tracing and a reference path tracer** (after M4). Ground truth for golden images and GI validation.
 - **Upscaling and frame generation** (after M4). FSR (MIT) in core; MetalFX and DLSS as optional platform plugins.
 - **Terrain, foliage, water, volumetrics** (after M4). Each a separate plan; terrain ties into world partition.

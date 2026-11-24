@@ -6,7 +6,7 @@ user-invocable: false
 ---
 # Writing a playtest
 
-> **Not available yet:** needs `assert_eval` (M3 phase 3.2) and, for scripted input, `replay_run` (M3 phase 3.1). Until then, check criteria with `sim_step` plus `query_run` and record the numbers in your task comment.
+> **Not available yet:** needs `assert_eval` (M3 phase 3.2). For scripted input, record and run a replay with `concordia-record-replay`. Until then, check criteria with `sim_step` plus `query_run` and record the numbers in your task comment.
 
 A playtest is text (`tests/playtests/<name>.playtest.ron`): a scene, optional inputs or a replay, and assertions evaluated at ticks.
 

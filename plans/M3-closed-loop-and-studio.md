@@ -1,7 +1,7 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); refinement approved 2026-11-19) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Needs refinement after M2** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b done) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
@@ -163,6 +163,347 @@ The options differ in how a call's identity reaches `concordia mcp` and how hook
 
 ### Follow-ups found
 - **`main` lacks M1.** PRs #6–#19 were stacked and each merged into its parent branch, so `origin/main` stops at #5 (58 commits behind `m1/gate`). The author asked for a PR `m1/gate` → `main`. Studio branches start from `main` once it holds M1.
+
+## M3 refinement (2026-11-23, against the code after M2)
+**Status: author decided R1 and R2 and approved the refined phases (2026-11-23).** This section covers what is left of M3: 3.1, 3.2, 3.7 and 3.9. It also covers the carry-overs M2 handed over (see the M2 plan's "M2 completion"). Where this section and the phase text below disagree, this section wins.
+
+**Author decisions (2026-11-23):**
+- **R1. Two gates.**
+  - `tests/gates/m2_lamplight.rs` closes M2's deferred scripted gate (`just gate-tests M2`).
+  - M3's gate keeps the small seeded-bug fixture (`tests/fixtures/m3-studio-game`).
+  - M3 closes only when both pass in the `regression` workflow.
+  - A town of more than 1,000 entities would cost live agents many more tokens and make runs vary more.
+- **R2. Stills, no restore.**
+  - Replays get a hash for every tick, plus text snapshots ("stills") of the components at each checkpoint. Stills are kept in the DDC and used only to name the diverging field and both of its values.
+  - Every run starts at tick 0. Restoring a run mid-stream goes to `later-backlog.md` (§12).
+  - The author's note: a full record and replay test system, "a Playwright for games", comes later. v1 must not rule it out.
+
+### What exists (checked in code)
+- **Replay v0** (`crates/concordia-replay`, ADR-0072):
+  - **Header:** `engine` (`concordia_core::version()`, "0.0.0" with no git sha), `scene`, `scene_hash`, `seed`, `rate_hz`, `threads` (for information only), `checkpoint_every`, `modules` (fingerprints) and `recorded_by`. There is no `platform` and no manifest hash.
+  - **Inputs:** stored only when they change, as full `ActionState`s plus `text`.
+  - **Checkpoints:** the world hash and every part hash, taken at tick 0, every 60 ticks and at the last tick.
+  - **Runs:** `verify` stops at the first differing checkpoint and names the differing parts. `resimulate` returns fresh hashes.
+  - **Mismatch:** compares engine, scene, scene hash, seed and modules. It doesn't compare `rate_hz`; the run uses the recorded rate.
+  - **Not there yet:** snapshots, per-tick hashes, field diffs, `ab`, `replay diff` and raw device events. No replay is committed: `tests/replays/` holds only a README, and the done criterion's `m2-level1.replay.ron` was never made.
+- **Hashing** (`concordia-terra/src/hash.rs`):
+  - `state_digest` is the world hash plus one part per component name, and `@entities`, `@clock`, `@rng` and `@signals`.
+  - There are no per-entity sub-hashes, and resources aren't hashed.
+- **No world restore:**
+  - Terra can't serialize a world.
+  - `concordia-scene::snapshot_world` gives a `SceneDoc` of entities and components (no resources, clock, RNG or signals). That is enough for stills.
+  - Physics has `save_state`/`restore_state`. The Detour crowd has nothing like it.
+- **The schedule doesn't expose per-system boundaries publicly**, contrary to the 3.1 text. Waves are private, and command buffers flush once per phase.
+- **API:**
+  - `replay.record {action, path, checkpoint_every, actor}` and `replay.run {path, mode: verify|resimulate, force, actor}`;
+  - `concordia replay record <path> --ticks --inputs events.json`, and `replay run --threads`;
+  - `[replay]` has no fields.
+- **Counts:**
+  - core has 38 methods and 35 MCP tools, and `[replay]` adds 2;
+  - the Studio test catalog `PROJECT_TOOLS` (`concordia-studio/tests/common/mod.rs`) has 73 names;
+  - `ToolCatalog::expand` rejects a role that names a tool which isn't served, so a role can name `assert_eval` or `gen_*` only once that tool lands **and** joins `PROJECT_TOOLS`.
+- **Role budgets** (`concordia-mcp/tests/role_tool_budget.rs`: 50,000 tokens at 4 chars per token; 10 enabled roles), last measured in 2.10a:
+
+  | Role | Tools | Tokens |
+  |---|---|---|
+  | QA | 25 | 23,260 |
+  | level designer | 37 | 23,144 |
+  | UI/UX | 26 | 21,424 |
+  | tech artist | 23 | 20,172 |
+  | animator | 22 | 16,890 |
+  | sound designer | 24 | 15,138 |
+  | composer | 20 | 13,054 |
+  | gameplay programmer | 17 | 12,946 |
+  | director | 13 | 12,453 |
+  | writer | 11 | 9,576 |
+
+  The modeler and VFX artist are disabled. The VFX artist's reason says "arrive in M2", which is stale: Sparx is M11.
+- **Skills:**
+  - `concordia-write-playtest`'s note still names `replay_run`, which has existed since 2.8. The note test requires only that every missing tool is named; it doesn't reject a tool that exists.
+  - `fix-bug-with-replay`, `generate-mesh-blender` and `synthesize-sfx` have real "Not available yet" notes.
+- **Selectors:** there is no tag component, only `Name` (`concordia-scene/src/builtin.rs`).
+- **Building blocks for gen:**
+  - built-in cube, plane and sphere meshes (`concordia-assets/src/builtin.rs`);
+  - no glTF writer (`gltf-json` is already in the lock);
+  - `hound` (but `concordia-audio`'s `write_wav16` is stereo only);
+  - no public compute-bake API (the RHI conformance `util.rs` shows compute plus readback);
+  - `Sidecar` is `deny_unknown_fields` and has no provenance field;
+  - Lamplight's `make_sounds.py` and `make_textures.py` are reference designs for deterministic synthesis and PNGs, and `make_characters.py`'s `export_glb` is the Blender 5.2 glTF export call.
+- **Gates and CI:**
+  - `regression.yml` runs gate tests for M-1, M0, M1 and M3S;
+  - `ci.yml` runs on Linux only;
+  - there is no `just play-sample`;
+  - the slow filter in `.config/nextest.toml` names three gate binaries.
+
+### Where the M2 carry-overs land
+| Carry-over | Cause (from the code) | Lands in |
+|---|---|---|
+| The editor's deny warning | `editor/src-tauri/deny.toml` ignores RUSTSEC-2026-0543 (chrono through rmcp), but the editor's graph has no rmcp | **3.0b** |
+| The navmesh layer's re-gather | `debug_geometry("navmesh")` runs `NavInput::gather` on every edit-world draw (`nav/src/methods.rs`, `service.rs`), about 17 ms each | **3.0b** |
+| Trackpad scrolling arrives as lines | `PixelDelta` becomes `Scroll` in logical pixels, which the UI reads as lines × `step` (`platform/src/window.rs`, `ui/src/interact.rs`) | **3.0b** |
+| The ignored `run_bench_latency` | Metal reports `presentedTime` 0 when a drawable never reaches the screen (`rhi-metal/src/surface.rs`) | **3.0b** (run by hand, then fix or diagnose) |
+| The stale `replay_run` note in `concordia-write-playtest` | the note test doesn't reject tools that exist | **3.0b** |
+| M7's carry-overs not yet in `plans/M7-terra.md` | (docs) | **3.0b** |
+| Text overflows its box | `Overflow::Visible` never reserves height (`ui/src/text.rs`); fixed-`Px` boxes shrink under their text (`shrink: 1.0`); a node with text and children is never measured (`ui/src/layout.rs`). Not HiDPI: measuring and drawing share one logical layout | **3.0c** |
+| World UI takes no input | `compute_layout` passes no `clip_from_world`, so world roots are dropped. The projection is `pub(crate) ui_camera` in `concordia-render/src/pointer.rs` | **3.0c** |
+| Assets first named during play measure as missing | `preload` scans only entities present at play start (`ui/src/play.rs`), and the sim's `DbAssets` has no DB | **3.0c** |
+| Lamplight's scripted gate: won and lost nights, replay at 1 vs 8 threads, a mid-night `script_reload`, goldens, the audio-mix digest, every enabled role using a tool; `just play-sample`; `regression.yml`'s M2 wiring; the `concordia-sample-lamplight` skill; the look items the goldens check (representation LOD, the cobbles) | (deferred by M2's acceptance) | **3.9a** |
+| The optional live M2 gate (`m2_live.sh` plus `m2_live_check` and its twin) | | **3.9a** (the live run only with the author's go-ahead) |
+| The windowed checks not yet confirmed: music loop, footsteps, rumble panning, Shift-selection, clipboard, numbers behind the camera | | the author's recheck after 3.0c and 3.9a |
+
+### Phases, against what M2 built
+**3.0b Housekeeping carry-overs (`m3/3.0b-carry-overs`).**
+- **Stale notes:** the note test also rejects a note naming a tool that exists, and `write-playtest`'s note then names only `assert_eval`.
+- **Trackpad:** the platform converts `PixelDelta` to lines at a nominal `SCROLL_LINE_PX` (20 logical px), so `ui_scroll` stays in lines and the replay format doesn't change.
+- **Navmesh:** the edit-world navmesh is memoized on the world's identity and change tick, so a draw with no edit doesn't gather.
+- **`run_bench_latency`:** run by hand; fix it if the window can be made to present, otherwise record the diagnosis and ask.
+- **Deny:** remove the unused ignore.
+- **Docs:** M7's carry-overs go into its plan.
+
+**3.0c UI carry-overs (`m3/3.0c-ui-fixes`).**
+- **Text sizes its box**, following Godot's `Label`: the minimum size includes the text, wrapped text sets the minimum height, and `Overflow::Clip` opts out. Text leaves get a minimum-size floor, and text on a node with children is measured as an extra leaf.
+- **World roots** are laid out in the sim with a deterministic projection (the pure `ui_camera` maths moves to a crate that both render and UI can use), so `ui.interact`, `ui.hit_test` and `ui.inspect` see them.
+- **Templates:** `preload` also walks the template catalog (`concordia-api/src/templates.rs::catalog`).
+- **Tests:**
+  - `lamplight_text_stays_in_its_boxes` (1280×720, 1512×982 and 800×600; scales 1 and 2);
+  - `labels_grow_to_fit_their_text`;
+  - `world_button_is_pressed_by_a_click_at_its_projected_centre` (equal hashes at 1 and 8 threads);
+  - `template_named_font_measures_like_a_preloaded_one`.
+- **Review:** changed UI goldens go on the review page, then the author rechecks the windowed game.
+
+**3.1 Replay v1** generalizes v0; it doesn't rewrite it.
+- **3.1a `m3/3.1-format`, format version 1:**
+  - **Header:** gains `platform` (e.g. `macos-arm64`) and `manifest_hash`.
+  - **Content identity:** the templates catalog and the input map gain module fingerprints (`EngineModule::fingerprints`), instead of a new content hash.
+  - **Per-tick hashes:** a `hashes` block holds every tick's world hash, the first 16 hex digits per tick, one line per 64 ticks. A 900-tick replay adds about 15 KB, so the first divergent tick is read directly and needs no bisection.
+  - **Checkpoints:** the full part digests stay at checkpoints (`checkpoint_every`, default 60).
+  - **Meta:** `meta: (task: Option<String>)`.
+  - **Versions and migration:** the reader takes v0 and v1, and the writer writes v1. `concordia replay migrate <file>` rewrites a v0 file.
+  - **Mismatch:** `rate_hz`, `platform` and `manifest_hash` join the compared fields.
+  - **Raw device events:** to `later-backlog`. Nothing consumes them, and action-level input survives rebinding.
+  - **Tests:**
+    - `replay_ron_roundtrip_is_byte_identical` (snapshot);
+    - `replay_format_rejects_unknown_major_version`;
+    - `v0_replay_migrates_to_v1_with_the_same_final_hash`;
+    - `prop_input_stream_roundtrips`;
+    - `per_tick_hashes_locate_the_first_divergent_tick_exactly` (a perturbation at tick 417 → 417 with `checkpoint_every` 64);
+    - `platform_rate_or_manifest_change_is_a_mismatch`.
+  - **Already covered by v0 (not repeated):** `input_stream_stores_only_changed_ticks` (`recording_stores_only_ticks_where_input_changed`) and `resimulate_mode_…` (`resimulate_ignores_recorded_checkpoints_and_reports_new_ones`).
+- **3.1b `m3/3.1-divergence`, diffs and `ab`:**
+  - **Stills:**
+    - At each checkpoint the recorder stores the play world's component `SceneDoc` in `.concordia/ddc`, keyed by BLAKE3, and lists the keys in the file.
+    - A missing still gives a report with no values, plus a warning. It can't be regenerated, because only the recording's build can make it.
+  - **Report:** `Divergence { first_tick, last_matching_tick, parts, diff_tick, entities: [{ entity, component, field_path, expected, actual }], suspect_system? }`, diffed against the still at the first checkpoint at or after `first_tick`.
+  - **`ab` mode:**
+    - `replay.run { mode: "ab", other: { project } }` runs the replay's inputs on two engines in lockstep. B is another project directory, e.g. a copy of the pristine fixture.
+    - Both engines come from an injected `EngineFactory`, which the app registers; replay depends only on the trait.
+    - It reports the exact first tick, the field diff at that tick, and `suspect_system`.
+    - `suspect_system` comes from a new Terra seam, `Schedule::run_observed`: one chosen tick runs with a callback after each wave (one system per wave when observed). It's for diagnostics only, and normal ticks are untouched.
+  - **CLI:** `concordia replay diff <a> <b>`, and `replay run --mode resimulate --update` to re-bless a committed replay (never in CI).
+  - **Committed replays:** `tests/replays/m1-physics.replay.ron`, and (in 3.9a) a Lamplight night.
+    - macOS verifies them in `regression.yml`.
+    - Linux resimulates them and checks their outcomes, since a replay names its platform.
+  - **Tests:**
+    - `injected_nondeterminism_is_reported_at_exact_first_tick`;
+    - `divergence_report_names_entity_component_and_field`;
+    - `missing_still_reports_without_values_and_warns`;
+    - `ab_mode_names_suspect_system`;
+    - `ab_mode_reports_first_divergence_between_two_builds`;
+    - `replay_is_identical_at_1_and_8_threads` (v1);
+    - `replay_record_and_run_over_json_rpc_roundtrip`;
+    - the MCP schema snapshot.
+  - **Dropped (R2):** `replay_restores_from_snapshot_mid_stream`, `missing_snapshot_cache_is_regenerated_from_tick_zero` and `bisection_finds_first_divergent_tick_with_sparse_checkpoints`. Per-tick hashes replace bisection.
+  - **Studio:**
+    - `record-replay` and `fix-bug-with-replay` teach `ab` and diffs;
+    - the record-replay skill's 3.1 note goes;
+    - a scripted test drives the skill's steps against the real tools.
+
+**3.2 Assertions.**
+- **3.2a `m3/3.2-assert-lang`, the new crate `concordia-assert`:**
+  - **Why a new crate:** the language is pure and Rust tests use it directly. `concordia-replay` stays the engine module that runs it.
+  - **Contents:**
+    - the AST (deriving `Reflect`);
+    - a hand-written recursive-descent parser with spans;
+    - the type check against the reflection registry (units `m`, `s`, `ticks`, `deg`; "did you mean");
+    - the Rust builder API.
+  - **Tags:** a new built-in `Tags(BTreeSet<String>)` component beside `Name` backs `tag()`.
+  - **Grammar:** v1 as written in 3.2 below.
+  - **Tests:** 3.2's parse and type-check lists.
+- **3.2b `m3/3.2-assert-eval`:**
+  - **Engine:**
+    - the online monitor (early exit when decided);
+    - `.playtest.ron`;
+    - `assert.eval` (source `live | replay | scenario`) as a replay-module method, so `[replay]` serves 3 tools;
+    - MCP `assert_eval`;
+    - `concordia assert eval` and `concordia test playtests`.
+  - **Studio:**
+    - `assert_eval` goes to QA, the gameplay programmer and the level designer, and joins `PROJECT_TOOLS`;
+    - `write-playtest` is preloaded into QA and the level designer;
+    - the assertion notes go;
+    - the director's planning skill asks for `assert` acceptance criteria.
+  - **Tests:** 3.2's evaluation list, with values derived in each header.
+
+**3.7 `concordia-gen`.**
+- **3.7a `m3/3.7-gen-core`:**
+  - **The crate:** `ContentProvider`, the registry and `[gen]`, which joins `Manifest`.
+  - **The `GenModule`:** `gen.list`, and `gen.run`, which mutates, needs an actor, and joins `check_paths` in `concordia-mcp/src/studio.rs`.
+  - **Provenance:** `Sidecar.provenance: Option<Provenance>`, defaulted and skipped when absent, so every existing sidecar still reads and DDC keys are unchanged.
+  - **CLI:** `concordia gen list|run`.
+  - **The mesh provider:** box, sphere, capsule, cylinder, torus, extrude, lathe, heightfield and SDF surface nets. It writes through our own GLB writer over `gltf-json`.
+  - **Plugins:** the opt-in plugin seam, tested with a no-op plugin.
+- **3.7b `m3/3.7-gen-audio-texture`:**
+  - **sfx:** a synth and sfxr-style presets, written as mono WAV (a mono variant of `write_wav16`);
+  - **music:** `.score.ron` to WAV stems with loop points;
+  - **texture:** tileable noise on the CPU, and a Slang compute bake through the RHI with readback (needs the GPU; golden by FLIP).
+- **3.7c `m3/3.7-blender-bridge`:**
+  - **The bridge:** `tools/blender-bridge/bridge.py`, MIT-licensed and run as a separate process (the precedent is `tools/fixtures/make_fbx.py`). A new ADR records the licence boundary.
+  - **Running Blender:** locate it, enforce a minimum version, and time it out.
+  - **Killing it:** a process-group kill through `CommandExt::process_group(0)` and `kill -TERM -<pgid>`, with **no new `unsafe`**.
+  - **Studio:**
+    - `gen_*` goes to the modeler (now enabled), the animator, the tech artist, the sound designer and the composer;
+    - the notes in `generate-mesh-blender`, `synthesize-sfx` and `music` go;
+    - the VFX artist's reason names M11.
+
+**3.9 Gate.**
+- **3.9a `m3/3.9-lamplight-gate`:**
+  - **The gate:** M2's deferred 2.10d (`tests/gates/m2_lamplight.rs`, written as the M2 refinement describes), now using playtests and v1 replays.
+  - **Recipe and CI:** `just play-sample`, plus `regression.yml` running `just gate-tests M2` and `M3`.
+  - **Studio:** the `concordia-sample-lamplight` skill.
+  - **Optional:** the live M2 gate and its twin.
+- **3.9b `m3/3.9-fixture`:**
+  - **The fixture:** `tests/fixtures/m3-studio-game`, with the seeded bug `speed * dt * dt`, its playtest, task T-0001 and `fix.patch`.
+  - **The gates:** `m3_replay_assert.rs`, `m3_studio_sync.rs` and `m3_studio_loop_scripted.rs`.
+  - **The checker:** `tests/src/m3_checker.rs`, shared by the scripted and live gates.
+- **3.9c `m3/3.9-live`:**
+  - **Gate files:** `m3_live_studio.rs`, `tools/gates/m3_live.sh` and `just gate-live M3`.
+  - **The live run:** only with the author's go-ahead. Its report goes to `tests/gates/live-reports/M3/`.
+
+### Engine API, MCP tools and budgets
+| Sub-phase | API change |
+|---|---|
+| 3.0b | none |
+| 3.0c | none (the UI queries also report world roots) |
+| 3.1 | `replay.run` gains `mode: ab`, `other` and `update`; its result gains the field diff and `suspect_system` |
+| 3.2 | `assert.eval` (`[replay]` serves 3 tools) |
+| 3.7 | `gen.list` and `gen.run` (`[gen]` serves 2) |
+
+Core stays at 38 methods and 35 tools.
+
+**Projected role sizes** (estimates; every As built re-measures all enabled roles and reports every number):
+
+| Role | Projected tokens | Why |
+|---|---|---|
+| QA | ≈26.2k | `assert_eval` ≈2.5k; `replay_run` +0.4k |
+| level designer | ≈25.6k | `assert_eval` |
+| tech artist | ≈22.8k | `gen_*` ≈2.6k |
+| UI/UX | 21.4k | unchanged |
+| animator | ≈19.5k | `gen_*` |
+| sound designer | ≈17.7k | `gen_*` |
+| gameplay programmer | ≈15.9k | `assert_eval`; `replay_run` +0.4k |
+| composer | ≈15.7k | `gen_*` |
+| modeler | ≈13k | newly enabled, 14 tools |
+| director | 12.5k | unchanged |
+| writer | 9.6k | unchanged |
+
+Every role stays under 50k. If the AST's recursive schema makes `assert_eval` heavy, the tool takes `text` only and the AST stays reachable through `schema_get`.
+
+### Tests
+- **Expected values are derived by hand in each test's header.** For example, the fixture walks at 5 m/s at 60 Hz toward a door 10 m away:
+  - the seeded bug moves 600 × 5 / 3600 ≈ 0.833 m, so the assertion fails at tick 600 with `min_distance` ≈ 9.17;
+  - the fix reaches 2 m from the door after 8 m, i.e. in 96 ticks, so it passes at tick 96 (±1 by the start tick, fixed in the header).
+- **Mutation checks** cover each sub-phase's key rules. Restored files get a fresh mtime, and C++ shims are touched twice (confirm "Compiling jolt-sys").
+- **Determinism:** identical hashes across runs and at 1 vs 8 threads.
+
+### The M3 gate, and what closes M3
+- **`just gate M3`:** `just ci`, then `just gate-tests M3` (`m3_replay_assert`, `m3_studio_sync` and `m3_studio_loop_scripted`). The live gate is `just gate-live M3`.
+- **M3 is closed when all of these hold:**
+  1. `regression` is green on `main`, running gate tests for M-1, M0, M1, **M2**, M3S and **M3** (macOS with the GPU; Linux without goldens);
+  2. `just gate-live M3` has passed once, with its report committed;
+  3. the author has rechecked the windowed items;
+  4. the Status and As builts are written, along with `plans/README.md`, `design.md`'s milestone note, and the ADRs: replay v1, assertion language v1, the Blender bridge's licence boundary, and the YAML-frontmatter exception (numbers from 0084).
+
+### Effort (re-estimated)
+| Sub-phases | Estimate |
+|---|---|
+| 3.0b and 3.0c | 1 week |
+| 3.1a and 3.1b | 2 weeks |
+| 3.2a and 3.2b | 1.5 weeks |
+| 3.7a, 3.7b and 3.7c | 2 weeks |
+| 3.9a, 3.9b and 3.9c | 2 weeks |
+| **Total** | **about 8.5 weeks** |
+
+### Phase 3.0b As built (2026-11-23; no ADR changes)
+**Status: done (branch `m3/3.0b-carry-overs`).** Five M2 carry-overs are closed, and M7's carry-overs are written into its plan.
+
+**What landed:**
+- **`concordia-studio`:** a "Not available yet" note may no longer name, in its "needs" part, a tool that exists. `concordia-write-playtest`'s note now needs only `assert_eval`, and points to `concordia-record-replay` for scripted input.
+- **`concordia-platform`:**
+  - **Scrolling:** `scroll_from_winit` (with `SCROLL_LINE_PX = 20`) turns a trackpad's `PixelDelta` into lines. `ui_scroll` now means lines from a wheel or a trackpad, and the replay format is unchanged.
+  - **Closing the window:** `RunOptions` gains `stop`, a flag another thread sets, checked every `STOP_POLL` (50 ms). `RunOptions` is no longer `Copy`.
+- **`concordia-nav`:**
+  - **The memo:** each memoized navmesh is stamped with its world's identity and change tick. A request against an unchanged world reuses the navmesh without gathering, so drawing the `navmesh` layer costs nothing between edits.
+  - **The counter:** `concordia_nav::gathers(&Engine)` counts gathers, for diagnostics.
+- **`concordia-cli`: `run --bench-latency`:**
+  - **Warm-up:** it waits up to 30 s (`BENCH_WARM_UP`) for the window's first frame, asking for a frame every 50 ms. It then measures, and waits for the last frames to reach the display.
+  - **Exit:** it closes the window itself through `RunOptions::stop`. The exit timer is only a backstop now.
+- **The editor's `deny.toml`:** the unused chrono ignore (RUSTSEC-2026-0543, for rmcp, which the editor doesn't depend on) is removed.
+- **Plans:**
+  - `plans/M7-terra.md` 7.7 lists M7's five carry-overs;
+  - `later-backlog.md` §12 gains replay restore (R2) and raw device events;
+  - the M2 completion points to where each carry-over lives.
+
+**Found while building (this As built wins):**
+- **`run_bench_latency`'s cause was not presentation.**
+  - 2.5c.1 suspected that Metal reports `presentedTime` 0 for an occluded window. In fact no frame had even been *submitted*: in a debug build the first frame (pipelines and the scene upload) takes about 2 s, longer while other builds run.
+  - The bench waited a fixed 500 ms, sent its 60 frames into the queue behind that first frame, and read the log 0.5 s later.
+  - A frame asked for before the window was ready was dropped, and nothing asked again. So the first fix, waiting without asking for frames, still timed out. The warm-up now keeps asking.
+  - With 600 frames, 400 had already been presented, which pointed to startup rather than the display.
+  - The test stays `#[ignore]`, because it opens a real window. It passed three runs in a row by hand (about 11.5 s each).
+- **The navmesh memo keys on the world's change tick.** Any edit-world change (not only colliders, volumes and areas) re-gathers once, then the input key decides between the memo, the DDC and a build. Narrowing that to nav-relevant changes is possible with `changes_since`, but isn't needed at today's costs.
+
+**Tests** (expected values derived in each header):
+- **`concordia-platform` `tests/scroll.rs` (2):**
+  - `line_scroll_passes_through`: (1.5, −3) lines stay (1.5, −3);
+  - `pixel_scroll_arrives_in_lines`: at scale 2, (−20, 80) physical px is (−10, 40) logical px, which is (−0.5, 2) lines; at scale 1, 30 px is 1.5 lines.
+- **`concordia-nav` `tests/api.rs`:** `navmesh_layer_gathers_once_until_the_edit_world_changes`. It checks:
+  - `nav.build` gathers once;
+  - two draws gather nothing;
+  - lifting the floor 1 m gathers once and draws at y = 0.2 + 1 + 0.02 = 1.22;
+  - one more draw gathers nothing.
+- **`concordia-studio`:** `skills_for_tools_not_built_yet_say_so_and_name_their_phase` (strengthened).
+- **`concordia-cli`:** `run_bench_latency_measures_the_engine_window_alone` (unchanged, run by hand).
+
+**Red runs:**
+- **The strengthened skill test** first caught a mistake in the test itself: it rejected `entity_create` in `generate-mesh-blender`'s "Until then" advice. The check now reads only the note's "needs" part. It then failed on `write-playtest` naming `replay_run`.
+- **`pixel_scroll_arrives_in_lines`** failed with `(−10, 40)`.
+- **The navmesh test** failed with 3 gathers instead of 1. A mistake in the test itself (it read `query.run`'s `entities`, not `rows`) was fixed along the way.
+- **The bench test** failed with 0 frames, then on a missing report: the first warm-up waited without asking for frames, so it never saw one.
+
+**Mutation checks** (each failed a test; restored files touched):
+- the memo never hit (3 gathers, not 1);
+- the stamp ignoring the change tick (the edit didn't re-gather);
+- the pixel conversion without the division (the red run above).
+
+**Called out:**
+- `line_scroll_passes_through` passed at once: it guards the wheel path that was already right.
+- The deny change has no test. Its proof is the editor's `cargo deny`: it prints "advisories ok" and no `advisory-not-detected`.
+- `RunOptions::stop` is exercised only by the by-hand bench test, which opens a window.
+
+**Studio and docs:**
+- **No tools or roles changed.** Role budgets are as in the table above: `role_tool_budget` passes, and QA's 23,260 tokens is still the largest.
+- **AGENTS.md:** `concordia-platform`, `concordia-nav`, `concordia-cli` and `concordia-studio`.
+- **README.md:** `concordia-platform` and `concordia-nav`.
+- **The agent guide's UI input:** `Scroll` is in lines.
+- **`plans/README.md`:** M3's row.
+
+**Checklist (2026-11-23):**
+- `just lint` and the Tauri shell's clippy: clean.
+- `just wasm` and `just native-fixtures`, then `cargo nextest run --workspace --no-fail-fast` with `CONCORDIA_REQUIRE_GPU=1`: 1,844 run, 1,844 passed, 10 skipped. Doc tests: clean.
+- `just gate-tests M1` (4/4) and `M3S` (13/13).
+- `just deny`, and the editor's deny with a fresh advisory DB: advisories, bans, licenses and sources ok, and the `advisory-not-detected` warning is gone.
+- `just editor-schemas`: no changes.
+- `just editor-test`: lint, 118 unit and 22 end-to-end tests pass. On the first run, `activity.spec.ts` timed out after 20 s waiting for its headless engine while the workspace suite ran beside it. It passed on the rerun on its own.
+- No new Linux system library, and no new or changed snapshots or goldens.
 
 ## Goal & context
 M3 closes the loop the design promises (principle 3): an agent can **record** a play session, **replay** it deterministically, **find the first frame** where two runs diverge, and **prove** behavior with typed playtest assertions, all from tests, the CLI and MCP. On top of that loop, M3 ships **Agent Studio v1**: a configurable team of specialist agents that runs **inside the user's own Claude Code on a regular subscription, with no API key** (principle 0).

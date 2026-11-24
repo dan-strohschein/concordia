@@ -4,6 +4,8 @@
 //! engine alone (no editor, no webview) and implies `--edit`.
 
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
 use concordia_api::{Engine, EngineHandle};
@@ -72,12 +74,15 @@ pub(crate) fn run(args: &Args) -> Result<(), Failure> {
         out,
         frames: args.bench_frames,
         hz: args.bench_hz,
+        done: Arc::new(AtomicBool::new(false)),
     });
+    // A backstop only: the bench closes the window itself when it is done.
     let exit_after = args.exit_after_ms.map(Duration::from_millis).or_else(|| {
         bench
             .as_ref()
-            .map(|b| Duration::from_secs_f64(f64::from(b.frames) / b.hz + 6.0))
+            .map(|b| BENCH_WARM_UP + Duration::from_secs_f64(f64::from(b.frames) / b.hz + 6.0))
     });
+    let stop = bench.as_ref().map(|b| b.done.clone());
     let player = (!args.edit && bench.is_none()).then(|| concordia_app::Player::new(false));
     let mut viewer = Viewer {
         handle,
@@ -91,7 +96,7 @@ pub(crate) fn run(args: &Args) -> Result<(), Failure> {
     };
     let mut window = project.manifest.window.clone();
     window.fullscreen |= args.fullscreen;
-    run_window(&window, RunOptions { exit_after }, &mut viewer)
+    run_window(&window, RunOptions { exit_after, stop }, &mut viewer)
         .map_err(|e| Failure::usage(e.to_string()))?;
     viewer.failure.map_or(Ok(()), Err)
 }
@@ -102,7 +107,13 @@ struct Bench {
     out: PathBuf,
     frames: u32,
     hz: f64,
+    /// Set when the bench has finished, which closes the window.
+    done: Arc<AtomicBool>,
 }
+
+/// The longest the bench waits for the window's first frame (pipelines and the scene upload
+/// take seconds in a debug build).
+const BENCH_WARM_UP: Duration = Duration::from_secs(30);
 
 /// Draws the scene into the window (when the project renders) and runs the latency bench.
 struct Viewer {
@@ -175,9 +186,12 @@ impl Viewer {
         self.present()?;
         if let Some(bench) = self.bench.clone() {
             let handle = self.handle.clone();
-            std::thread::spawn(move || match latency_bench(&handle, &bench) {
-                Ok(frames) => eprintln!("concordia run: latency bench wrote {frames} frames"),
-                Err(e) => eprintln!("concordia run: latency bench failed: {e}"),
+            std::thread::spawn(move || {
+                match latency_bench(&handle, &bench) {
+                    Ok(frames) => eprintln!("concordia run: latency bench wrote {frames} frames"),
+                    Err(e) => eprintln!("concordia run: latency bench failed: {e}"),
+                }
+                bench.done.store(true, Ordering::Release);
             });
         }
         Ok(())
@@ -278,7 +292,14 @@ fn latency_bench(handle: &EngineHandle, bench: &Bench) -> Result<usize, String> 
             .block_on(handle.call(session, method, params))
             .map_err(|e| e.message)
     };
-    std::thread::sleep(Duration::from_millis(500));
+    // Until the window is on screen, frames find no drawable and are dropped; keep asking for
+    // one (a still camera) and measure only once the window has shown a frame.
+    wait_for(BENCH_WARM_UP, || {
+        control
+            .navigate(&concordia_render::ViewportNavigateParams::default())
+            .map_err(|e| e.message)?;
+        Ok(submitted(&call("viewport.stats", json!({}))?) > 0)
+    })?;
     call("viewport.stats", json!({"clear": true}))?;
     let period = Duration::from_secs_f64(1.0 / bench.hz);
     let mut next = Instant::now();
@@ -293,13 +314,46 @@ fn latency_bench(handle: &EngineHandle, bench: &Bench) -> Result<usize, String> 
         };
         control.navigate(&params).map_err(|e| e.message)?;
     }
-    std::thread::sleep(Duration::from_millis(500));
+    // Let the last frames reach the display before reading the log.
+    wait_for(Duration::from_secs(5), || {
+        Ok(presented(&call("viewport.stats", json!({}))?) >= bench.frames as usize)
+    })
+    .ok();
     let stats = call("viewport.stats", json!({}))?;
     let frames = stats["frames"].as_array().map_or(0, Vec::len);
     let report = json!({"version": 1, "hz": bench.hz, "frames": stats["frames"]});
     let text = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;
     std::fs::write(&bench.out, text).map_err(|e| e.to_string())?;
     Ok(frames)
+}
+
+/// Polls `done` every 50 ms until it holds, failing after `limit`.
+fn wait_for(limit: Duration, mut done: impl FnMut() -> Result<bool, String>) -> Result<(), String> {
+    let start = Instant::now();
+    while !done()? {
+        if start.elapsed() > limit {
+            return Err(format!("no frame reached the window within {limit:?}"));
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    Ok(())
+}
+
+/// How many logged frames have `field` set.
+fn frames_with(stats: &Value, field: &str) -> usize {
+    stats["frames"]
+        .as_array()
+        .map_or(0, |f| f.iter().filter(|f| !f[field].is_null()).count())
+}
+
+/// How many logged frames were submitted to the GPU.
+fn submitted(stats: &Value) -> usize {
+    frames_with(stats, "submitted_ms")
+}
+
+/// How many logged frames reached the display.
+fn presented(stats: &Value) -> usize {
+    frames_with(stats, "presented_ms")
 }
 
 fn unix_ms() -> f64 {

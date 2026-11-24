@@ -7,10 +7,6 @@ all-features = true
 yanked = "deny"
 ignore = [
   { id = "RUSTSEC-2024-0370", reason = "proc-macro-error unmaintained; build-time macro of gtk-rs 0.18, Tauri's Linux-only GTK stack (not built on macOS)" },
-  # chrono is "unmaintained" (not a vulnerability). It is a required dependency of rmcp
-  # (and of rmcp's schemars). Re-check at every rmcp upgrade and drop this entry as soon
-  # as rmcp no longer needs chrono; fallback is rust-mcp-sdk (ADR-0033).
-  { id = "RUSTSEC-2026-0543", reason = "chrono unmaintained; required by rmcp 3.11 (ADR-0033)" },
 ]
 
 [licenses]
