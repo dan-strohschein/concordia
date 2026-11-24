@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc dc99e4ad80fd62a5c64e9745f9f77d6dcb18e800717f6f0ac92e723e28eac01f # shrinks to temporal = Within(Ticks(1)), pred = Cmp { lhs: Num { value: 0.0, unit: None }, op: Lt, rhs: Num { value: 0.0, unit: None } }
+cc ab335d929fdcfea65c4cbc49efe0602b9d7d1f1cb1c395f459be210d3cf7cbc8 # shrinks to temporal = Within(Ticks(1)), pred = And(Cmp { lhs: Num { value: 0.0, unit: None }, op: Lt, rhs: Num { value: 0.0, unit: None } }, And(Cmp { lhs: Num { value: 0.0, unit: None }, op: Lt, rhs: Num { value: 0.0, unit: None } }, Cmp { lhs: Num { value: 0.0, unit: None }, op: Lt, rhs: Num { value: 0.0, unit: None } }))

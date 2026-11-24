@@ -1,0 +1,23 @@
+[package]
+name = "concordia-assert"
+description = "The playtest assertion language: a typed temporal grammar (within, always, never, eventually, at, after) over entity selectors, distances, counts, events and component fields, with units, a parser with spans, a type checker against the reflection registry and a Rust builder."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+concordia-reflect.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+concordia-scene.workspace = true
+insta.workspace = true
+proptest.workspace = true
+
+[lints]
+workspace = true

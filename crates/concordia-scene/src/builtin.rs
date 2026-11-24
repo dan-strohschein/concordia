@@ -52,9 +52,23 @@ pub struct Velocity {
     pub angular: Vec3,
 }
 
+/// Words that label an entity for selectors (e.g. the playtest assertions' `tag("player")`).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Core", default)]
+#[serde(transparent)]
+pub struct Tags(pub Vec<String>);
+
+impl Tags {
+    /// Whether `tag` is one of them.
+    pub fn has(&self, tag: &str) -> bool {
+        self.0.iter().any(|t| t == tag)
+    }
+}
+
 /// Registers the built-in components.
 pub fn register(registry: &mut TypeRegistry) -> Result<(), RegistryError> {
     register_component::<Name>(registry)?;
+    register_component::<Tags>(registry)?;
     register_component::<Transform>(registry)?;
     register_component::<Parent>(registry)?;
     register_component::<Velocity>(registry)

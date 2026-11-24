@@ -1,0 +1,26 @@
+---
+source: crates/concordia-assert/tests/parse.rs
+expression: assertion
+---
+Assertion {
+    temporal: Within(
+        Ticks(
+            600,
+        ),
+    ),
+    pred: Cmp {
+        lhs: Distance(
+            Tag(
+                "player",
+            ),
+            Tag(
+                "door",
+            ),
+        ),
+        op: Lt,
+        rhs: Num {
+            value: 2.0,
+            unit: M,
+        },
+    },
+}

@@ -37,7 +37,7 @@ The text source of truth: canonical RON scenes and prefabs (ADR-0009) with stabl
 - Ryū float formatting via the `ryu` crate (Ulf Adams, "Ryū: fast float-to-string conversion", PLDI 2018).
 
 ## Status
-M0 phase 0.5 complete. M2 phase 2.4b.1: `lod_position` and `terra.lod` in the core schedule.
+M0 phase 0.5 complete. M2 phase 2.4b.1: `lod_position` and `terra.lod` in the core schedule. M3 phase 3.2a: the built-in `Tags` component (a list of words; `Tags::has`), which the playtest assertions' `tag(…)` selects on.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.
