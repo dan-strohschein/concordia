@@ -1390,6 +1390,7 @@ dependencies = [
  "concordia-core",
  "concordia-rhi",
  "concordia-rhi-metal",
+ "concordia-shaders",
  "concordia-testkit",
  "insta",
  "serde",
@@ -1488,6 +1489,7 @@ name = "concordia-testkit"
 version = "0.0.0"
 dependencies = [
  "concordia-reflect",
+ "concordia-rhi",
  "concordia-scene",
  "image",
  "insta",
