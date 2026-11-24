@@ -1,21 +1,21 @@
 # concordia-replay: agent guide
 
 ## Purpose
-Records play sessions as input changes plus checkpoint hashes (`.replay.ron` v0) and replays them to verify the same world states (ADR-0072). M3 phase 3.1 generalizes it (snapshots, bisection, `ab`).
+Records play sessions as input changes, checkpoint hashes and every tick's hash (`.replay.ron` v1; v0 is read and migrated) and replays them to verify the same world states, naming the exact first divergent tick (ADR-0072). M3 phase 3.1b adds stills, field diffs and `ab`.
 
 ## Public entry points
 - `ReplayModule` (EngineModule, `[replay]`): `replay.record` (`ReplayRecord`, `RecordAction::start|stop`) and `replay.run` (`ReplayRun`, `RunMode::verify|resimulate`, `force`)
-- `Replay`, `ReplayHeader`, `InputChange`, `Checkpoint`, `FORMAT_VERSION` (0), `read_replay`, `write_replay`, `ReplayError`
+- `Replay` (`tick_hash`), `ReplayHeader`, `InputChange`, `Checkpoint`, `FORMAT_VERSION` (1), `VERSION_0`, `TICK_HASH_HEX`, `TICKS_PER_LINE`, `read_replay` (versions 0 and 1), `write_replay` (version 1), `ReplayError`
 - Results: `ReplayRecordResult`, `ReplayRunResult`, `Divergence`, `Mismatch`, `TickHash`
 - Layout: `methods.rs` (API types and dispatch), `recorder.rs` (start/stop), `runner.rs` (prepare/run), `record.rs` (the recording and its tick-end hook), `verify.rs` (header and checkpoint comparisons), `format.rs`
 
 ## Invariants
 - Never touches the edit world or the command journal (ADR-0032); recording and running each start a fresh play world from the open scene, and log `replay recorded` / `replay run` with the actor.
 - Inputs are recorded after binding: per tick, the actions whose `ActionState` changed. Playback goes through `InputSampler::play_back`; this crate never writes `ActionStates`.
-- Recording happens in an end-of-tick hook (after the clock advances), so every checkpoint hash equals what `sim.step` reports at that tick. Checkpoints: tick 0, every `checkpoint_every`, and the last tick.
-- A run refuses a different engine version, scene, scene hash, seed or module fingerprints (`ReplayMismatch`, −32019) unless forced; unknown recorded actions are a mismatch too. A divergence is a result (`ok: false`), not an error.
+- Recording happens in an end-of-tick hook (after the clock advances), so every checkpoint hash equals what `sim.step` reports at that tick. Checkpoints: tick 0, every `checkpoint_every`, and the last tick. Every tick's world hash is kept too (16 hex digits, 64 per line); `verify` steps tick by tick with them and compares parts at the next checkpoint.
+- A run refuses a different engine version, platform, manifest hash, scene, scene hash, seed, tick rate or fingerprints (module code, the input map, the template catalog; `verify::fingerprints`) (`ReplayMismatch`, −32019) unless forced; unknown recorded actions are a mismatch too. A divergence is a result (`ok: false`), not an error.
 - Stopping refuses (and writes nothing) if any module fingerprint changed during the recording.
-- Files are canonical RON (`concordia-scene` document writer); reading checks the version, every hash and tick order.
+- Files are canonical RON (`concordia-scene` document writer); reading checks the version, every hash, the per-tick hash lines and tick order. A version 0 file reads as version 1 without the fields it never recorded, and those are not compared.
 
 ## How to test
 `cargo nextest run -p concordia-replay` (needs `just wasm` for the script tests); the M1 physics replay is `cargo nextest run -p concordia-tests --test replay_m1_physics`.
@@ -34,7 +34,7 @@ Records play sessions as input changes plus checkpoint hashes (`.replay.ron` v0)
 - BLAKE3 (the `blake3` crate, Apache-2.0/CC0) for content and state hashes.
 
 ## Status
-M2 phase 2.8 (v0). M3 phase 3.1 extends it. M2 phase 2.7b.3: input changes carry the tick's typed text (`InputChange::text`, omitted when empty, so files without typing are unchanged and the format stays version 0); ticks with only typing are recorded; runs play it back (`play_back_text`).
+M2 phase 2.8 (v0). M3 phase 3.1a: format version 1 (platform, manifest hash, task, per-tick hashes, content fingerprints; exact first divergent tick; `concordia replay migrate`). M2 phase 2.7b.3: input changes carry the tick's typed text (`InputChange::text`, omitted when empty, so files without typing are unchanged and the format stays version 0); ticks with only typing are recorded; runs play it back (`play_back_text`).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

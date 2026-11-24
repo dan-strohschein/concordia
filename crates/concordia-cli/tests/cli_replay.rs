@@ -1,4 +1,4 @@
-//! `concordia replay record|run` (M2 phase 2.8).
+//! `concordia replay record|run` (M2 phase 2.8) and `migrate` (M3 phase 3.1a).
 
 mod common;
 
@@ -85,4 +85,43 @@ fn replay_record_and_run_a_scripted_scenario_from_the_cli() {
     let forced = json(&forced);
     assert_eq!(forced["divergence"]["tick"], 0, "{forced}");
     assert_eq!(forced["divergence"]["parts"], serde_json::json!(["@rng"]));
+}
+
+/// `concordia replay migrate` rewrites a version 0 file as version 1 in place (the fields v0
+/// never recorded stay out), and the migrated file still verifies; a v1 file is left as it is.
+#[test]
+fn replay_migrate_rewrites_version_0_as_version_1() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = project(dir.path());
+    let recorded = run(&["replay", "record", REPLAY, "--ticks", "60"], &root);
+    assert!(recorded.status.success(), "{}", stderr(&recorded));
+    let file = root.join(REPLAY);
+    let v1 = std::fs::read_to_string(&file).unwrap();
+    let v0 = concordia_tests::replays::as_version_0(&v1);
+    std::fs::write(&file, &v0).unwrap();
+
+    let migrated = run(&["replay", "migrate", REPLAY], &root);
+    assert!(migrated.status.success(), "{}", stderr(&migrated));
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(
+        text.contains("version: 1,") && !text.contains("hashes:"),
+        "{text}"
+    );
+    assert!(
+        stdout(&migrated).contains("rewritten as version 1"),
+        "{}",
+        stdout(&migrated)
+    );
+    let verified = run(&["replay", "run", REPLAY], &root);
+    assert!(verified.status.success(), "{}", stderr(&verified));
+
+    std::fs::write(&file, &v1).unwrap();
+    let again = run(&["replay", "migrate", REPLAY], &root);
+    assert!(again.status.success(), "{}", stderr(&again));
+    assert!(
+        stdout(&again).contains("already version 1"),
+        "{}",
+        stdout(&again)
+    );
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), v1);
 }

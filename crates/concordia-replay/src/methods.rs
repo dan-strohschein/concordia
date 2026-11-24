@@ -41,6 +41,8 @@ pub struct ReplayRecordParams {
     pub checkpoint_every: Option<u32>,
     /// Who is recording (log and replay header).
     pub actor: Option<Actor>,
+    /// With start: the task this replay is evidence for, e.g. T-0001 (kept in its header).
+    pub task: Option<String>,
 }
 
 /// `replay.record` result.
@@ -98,18 +100,20 @@ pub struct Mismatch {
     pub current: String,
 }
 
-/// The first checkpoint that differs from the recording.
+/// Where a run first differs from the recording.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 pub struct Divergence {
-    /// Its tick.
+    /// The first tick that differs (exact with per-tick hashes; else the first differing checkpoint).
     pub tick: u64,
-    /// The checkpoint before it, which matched.
+    /// The last tick (or checkpoint, without per-tick hashes) that matched.
     pub last_matching_tick: Option<u64>,
-    /// Differing parts: components, @entities, @clock, @rng, @signals.
+    /// The checkpoint the parts were compared at: the first at or after `tick`.
+    pub parts_tick: u64,
+    /// Differing parts there: components, @entities, @clock, @rng, @signals.
     pub parts: Vec<String>,
-    /// Recorded world hash.
+    /// Recorded world hash at `parts_tick`.
     pub expected: String,
-    /// Replayed world hash.
+    /// Replayed world hash at `parts_tick`.
     pub actual: String,
 }
 

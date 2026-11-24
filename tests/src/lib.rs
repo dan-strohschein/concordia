@@ -2,6 +2,7 @@
 
 pub mod bins;
 pub mod mcp_client;
+pub mod replays;
 pub mod studio_gate;
 
 use std::path::PathBuf;

@@ -6,7 +6,9 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use concordia_input::{ActionStates, TypedText};
 use concordia_terra::{EcsError, SimClock, World};
 
-use crate::format::{Checkpoint, FORMAT_VERSION, InputChange, Replay, ReplayHeader};
+use crate::format::{
+    Checkpoint, FORMAT_VERSION, InputChange, Replay, ReplayHeader, TICK_HASH_HEX, TICKS_PER_LINE,
+};
 
 /// Input changes and checkpoints of one recording.
 pub(crate) struct Recording {
@@ -18,6 +20,8 @@ pub(crate) struct Recording {
     last: Option<ActionStates>,
     inputs: Vec<InputChange>,
     checkpoints: Vec<Checkpoint>,
+    /// Each tick's world hash prefix, ticks 1, 2, … in order.
+    ticks: Vec<String>,
     error: Option<String>,
 }
 
@@ -31,6 +35,7 @@ impl Recording {
             last: None,
             inputs: Vec::new(),
             checkpoints: Vec::new(),
+            ticks: Vec::new(),
             error: None,
         }
     }
@@ -62,6 +67,22 @@ impl Recording {
         if tick.is_multiple_of(u64::from(self.header.checkpoint_every.max(1))) {
             self.checkpoint(world);
         }
+        self.tick_hash(world, tick);
+    }
+
+    /// Notes `tick`'s world hash (reusing a checkpoint taken on it).
+    fn tick_hash(&mut self, world: &World, tick: u64) {
+        let hash = match self.checkpoints.last().filter(|c| c.tick == tick) {
+            Some(c) => c.world.clone(),
+            None => match world.state_hash() {
+                Ok(h) => h.to_string(),
+                Err(e) => {
+                    self.error.get_or_insert_with(|| format!("tick hash: {e}"));
+                    return;
+                }
+            },
+        };
+        self.ticks.push(hash[..TICK_HASH_HEX].to_owned());
     }
 
     /// Ticks with an input change, and checkpoints taken.
@@ -84,6 +105,11 @@ impl Recording {
             ticks,
             inputs: self.inputs,
             checkpoints: self.checkpoints,
+            hashes: self
+                .ticks
+                .chunks(TICKS_PER_LINE)
+                .map(|c| c.concat())
+                .collect(),
         })
     }
 

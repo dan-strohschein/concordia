@@ -1,4 +1,4 @@
-//! `concordia replay record|run`: replays headless, in process (ADR-0072).
+//! `concordia replay record|run|migrate`: replays headless, in process (ADR-0072).
 
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
@@ -26,6 +26,18 @@ enum ReplayCommand {
     Record(RecordArgs),
     /// Replay a file on its scene and check its checkpoints (exit 1 on a mismatch or divergence).
     Run(RunArgs),
+    /// Rewrite a version 0 replay as version 1, in place.
+    Migrate(MigrateArgs),
+}
+
+/// `concordia replay migrate` arguments.
+#[derive(Debug, clap::Args)]
+struct MigrateArgs {
+    /// The replay to rewrite (project-relative).
+    path: String,
+    /// Project root.
+    #[arg(long, default_value = ".")]
+    project: PathBuf,
 }
 
 /// `concordia replay record` arguments.
@@ -73,6 +85,7 @@ pub(crate) fn run(args: &ReplayArgs) -> Result<(), Failure> {
     match &args.command {
         ReplayCommand::Record(a) => record(a),
         ReplayCommand::Run(a) => replay(a),
+        ReplayCommand::Migrate(a) => migrate(a),
     }
 }
 
@@ -99,6 +112,25 @@ fn record(args: &RecordArgs) -> Result<(), Failure> {
     cli.call("sim.step", json!({ "ticks": args.ticks }))?;
     let stopped = cli.call("replay.record", json!({"action": "stop"}))?;
     println!("{stopped}");
+    Ok(())
+}
+
+/// Reads any supported version and writes version 1 back, unless it already is.
+fn migrate(args: &MigrateArgs) -> Result<(), Failure> {
+    let file = args.project.join(&args.path);
+    let text = std::fs::read_to_string(&file)
+        .map_err(|e| Failure::usage(format!("{}: {e}", file.display())))?;
+    let replay = concordia_replay::read_replay(&text)
+        .map_err(|e| Failure::usage(format!("{}: {e}", args.path)))?;
+    let written = concordia_replay::write_replay(&replay)
+        .map_err(|e| Failure::usage(format!("{}: {e}", args.path)))?;
+    if written == text {
+        println!("{}: already version {}", args.path, replay.version);
+        return Ok(());
+    }
+    std::fs::write(&file, written)
+        .map_err(|e| Failure::usage(format!("{}: {e}", file.display())))?;
+    println!("{}: rewritten as version {}", args.path, replay.version);
     Ok(())
 }
 

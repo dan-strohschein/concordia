@@ -55,7 +55,13 @@ fn recording_stores_only_ticks_where_input_changed() {
         ("scenes/test.scene.ron", 5, 60, 1)
     );
     assert_eq!(header.recorded_by, "agent:qa");
-    assert_eq!(header.modules.len(), 1, "the steer module's fingerprint");
+    // The input map, the steer module's code (module order), then the template catalog (3.1a).
+    let names: Vec<String> = header
+        .modules
+        .iter()
+        .map(|m| format!("{}/{}", m.module, m.name))
+        .collect();
+    assert_eq!(names, ["input/map", "steer/steer", "engine/templates"]);
     let edit = rig
         .engine
         .world(WorldSel::edit)
@@ -94,13 +100,18 @@ fn replay_detects_divergence_and_reports_first_tick_and_component() {
     rig.steer.perturb_at.store(130, Ordering::SeqCst);
     let run = rig.ok("replay.run", json!({"path": PATH}));
     assert_eq!(run["ok"], false, "{run}");
+    // Per-tick hashes (v1) name the exact tick, 131; parts are compared at the next checkpoint.
     let divergence = &run["divergence"];
-    assert_eq!(divergence["tick"], 140, "{run}");
+    assert_eq!(divergence["tick"], 131, "{run}");
     assert_eq!(divergence["last_matching_tick"], 130);
+    assert_eq!(divergence["parts_tick"], 140);
     assert_eq!(divergence["parts"], json!(["Transform"]));
     assert_ne!(divergence["expected"], divergence["actual"]);
     assert_eq!(run["matched"], 14, "ticks 0..=130 matched");
-    assert_eq!(run["ticks"], 140, "verify stops at the divergence");
+    assert_eq!(
+        run["ticks"], 140,
+        "verify stops at the checkpoint after the divergence"
+    );
 }
 
 #[test]
@@ -388,4 +399,145 @@ fn input_actions_replay_exactly() {
     assert_eq!(run["ok"], true, "{run}");
     assert_eq!(run["world_hash"], recorded_hash.as_str());
     assert_eq!(mirror(&rig), recorded);
+}
+
+/// Per-tick hashes find the exact tick with sparse checkpoints (M3 3.1a): checkpoints every 64
+/// ticks over 600, and a nudge on the tick whose `SystemCtx::tick` is 416 changes the hash after
+/// tick 417. Ticks 1..=416 match, the divergence is at 417, and the parts are compared at the
+/// next checkpoint, 448. Checkpoints 0, 64, …, 384 match: 7.
+#[test]
+fn per_tick_hashes_locate_the_first_divergent_tick_exactly() {
+    let mut rig = Rig::new();
+    rig.record(PATH, 64, steering(), 600);
+    rig.steer.perturb_at.store(416, Ordering::SeqCst);
+    let run = rig.ok("replay.run", json!({"path": PATH}));
+    let d = &run["divergence"];
+    assert_eq!(
+        (&d["tick"], &d["last_matching_tick"], &d["parts_tick"]),
+        (&json!(417), &json!(416), &json!(448)),
+        "{run}"
+    );
+    assert_eq!(d["parts"], json!(["Transform"]));
+    assert_eq!(run["matched"], 7);
+}
+
+/// A recording names its platform (`<OS>-<arch>`), the manifest's hash (BLAKE3 of the empty
+/// input here, as the test project has no concordia.toml: af1349b9…3262), its task, and every
+/// tick's hash: 300 ticks fill ⌈300 / 64⌉ = 5 lines, and at each checkpoint tick the per-tick
+/// entry is the checkpoint's world hash cut to 16 digits.
+#[test]
+fn recordings_name_platform_manifest_task_and_every_tick() {
+    let mut rig = Rig::new();
+    rig.ok(
+        "replay.record",
+        json!({"action": "start", "path": PATH, "checkpoint_every": 60, "task": "T-0042"}),
+    );
+    rig.ok("input.inject", json!({ "events": steering() }));
+    rig.ok("sim.step", json!({ "ticks": 300 }));
+    rig.ok("replay.record", json!({"action": "stop"}));
+    let replay = read_replay(&rig.file(PATH)).unwrap();
+    let platform = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
+    assert_eq!(replay.header.platform.as_deref(), Some(platform.as_str()));
+    assert_eq!(
+        replay.header.manifest_hash.as_deref(),
+        Some("af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262")
+    );
+    assert_eq!(replay.header.task.as_deref(), Some("T-0042"));
+    assert_eq!(replay.hashes.len(), 5);
+    for c in replay.checkpoints.iter().filter(|c| c.tick > 0) {
+        assert_eq!(
+            replay.tick_hash(c.tick),
+            Some(&c.world[..16]),
+            "tick {}",
+            c.tick
+        );
+    }
+}
+
+/// A run refuses another platform, tick rate or manifest (M3 3.1a), naming the field.
+#[test]
+fn platform_rate_or_manifest_change_is_a_mismatch() {
+    let mut rig = Rig::new();
+    rig.record(PATH, 60, steering(), 120);
+    let file = rig.dir.path().join(PATH);
+    let text = std::fs::read_to_string(&file).unwrap();
+    let field = |rig: &mut Rig| {
+        let err = rig.err("replay.run", json!({"path": PATH}));
+        assert_eq!(err.kind, ApiErrorKind::ReplayMismatch, "{err:?}");
+        err.data.extra["mismatches"][0]["field"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    let platform = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
+    std::fs::write(&file, text.replace(&platform, "plan9-z80")).unwrap();
+    assert_eq!(field(&mut rig), "platform");
+    std::fs::write(&file, text.replace("rate_hz: 60", "rate_hz: 30")).unwrap();
+    assert_eq!(field(&mut rig), "rate_hz");
+    std::fs::write(&file, &text).unwrap();
+    std::fs::write(rig.dir.path().join("concordia.toml"), "[replay]\n").unwrap();
+    assert_eq!(field(&mut rig), "manifest_hash");
+}
+
+/// Content is part of what a replay ran (M3 3.1a): the input map and the template catalog are
+/// fingerprinted beside the code, so a different map or a new template is a `modules` mismatch
+/// naming `input/map` or `engine/templates`.
+#[test]
+fn input_map_and_template_changes_are_mismatches() {
+    let mut rig = Rig::new();
+    rig.record(PATH, 60, steering(), 60);
+    let replay = read_replay(&rig.file(PATH)).unwrap();
+    let names: Vec<String> = replay
+        .header
+        .modules
+        .iter()
+        .map(|m| format!("{}/{}", m.module, m.name))
+        .collect();
+    assert!(names.contains(&"input/map".to_owned()), "{names:?}");
+    assert!(names.contains(&"engine/templates".to_owned()), "{names:?}");
+
+    std::fs::create_dir_all(rig.dir.path().join("templates")).unwrap();
+    std::fs::write(
+        rig.dir.path().join("templates/rock.template.ron"),
+        "Template(format: 1, description: \"A rock.\", traits: {}, components: {\"Name\": \"Rock\"})\n",
+    )
+    .unwrap();
+    let err = rig.err("replay.run", json!({"path": PATH}));
+    let m = &err.data.extra["mismatches"][0];
+    assert_eq!(m["field"], "modules", "{err:?}");
+    assert!(
+        m["current"].as_str().unwrap().contains("engine/templates"),
+        "{err:?}"
+    );
+    std::fs::remove_dir_all(rig.dir.path().join("templates")).unwrap();
+
+    let mut remapped = Rig::in_dir(
+        rig.dir,
+        Opts {
+            map: RAY_MAP,
+            ..Opts::default()
+        },
+    );
+    let err = remapped.err("replay.run", json!({"path": PATH}));
+    let m = &err.data.extra["mismatches"][0];
+    assert!(
+        m["current"].as_str().unwrap().contains("input/map"),
+        "{err:?}"
+    );
+}
+
+/// A version 0 replay still verifies (M3 3.1a): the recording rewritten as version 0 (no
+/// platform, manifest hash, task or per-tick hashes) runs to the same final hash, comparing
+/// checkpoints only.
+#[test]
+fn a_version_0_replay_verifies_with_the_same_final_hash() {
+    let mut rig = Rig::new();
+    let (_, recorded_hash) = rig.record(PATH, 30, steering(), 120);
+    let file = rig.dir.path().join(PATH);
+    let v0 = concordia_tests::replays::as_version_0(&std::fs::read_to_string(&file).unwrap());
+    std::fs::write(&file, &v0).unwrap();
+    let run = rig.ok("replay.run", json!({"path": PATH}));
+    assert_eq!(run["ok"], true, "{run}");
+    assert_eq!(run["world_hash"], recorded_hash.as_str());
+    assert_eq!(run["matched"], 5, "checkpoints 0, 30, 60, 90 and 120");
 }
