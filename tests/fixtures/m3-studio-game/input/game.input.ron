@@ -1,0 +1,15 @@
+InputMap(
+    actions: {
+        "move": (
+            bindings: [
+                KeyAxis2d(
+                    down: S,
+                    left: A,
+                    right: D,
+                    up: W,
+                ),
+            ],
+            kind: Axis2d,
+        ),
+    },
+)

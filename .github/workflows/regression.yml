@@ -75,6 +75,7 @@ jobs:
           just gate-tests M1
           just gate-tests M2
           just gate-tests M3S
+          just gate-tests M3
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

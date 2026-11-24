@@ -1,0 +1,45 @@
+// Concordia scene, format 1. Canonical form: `concordia fmt` rewrites this file.
+Scene(
+    format: 1,
+    id: "0193a1c2-7e40-7000-8000-000000000300",
+    name: "Walk to the door",
+    entities: [
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-000000000301",
+            components: {
+                "InputActions": (
+                    states: {},
+                    watch: [
+                        "move",
+                    ],
+                ),
+                "Name": "Player",
+                "Tags": [
+                    "player",
+                ],
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.0, 0.0, 0.0),
+                ),
+                "player.Controller": (
+                    speed: 5.5,
+                ),
+            },
+        ),
+        Entity(
+            id: "0193a1c2-7e40-7000-8000-000000000302",
+            components: {
+                "Name": "Door",
+                "Tags": [
+                    "door",
+                ],
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.0, 0.0, 10.0),
+                ),
+            },
+        ),
+    ],
+)

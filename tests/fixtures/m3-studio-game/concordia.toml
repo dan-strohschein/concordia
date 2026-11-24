@@ -1,0 +1,40 @@
+# The M3 gate's fixture game (tests/gates/m3_*.rs): a player who should walk to a door.
+[project]
+name = "m3-studio-game"
+
+[scene]
+main = "scenes/main.scene.ron"
+
+[sim]
+rate_hz = 60
+seed = 7
+
+[input]
+map = "input/game.input.ron"
+
+[replay]
+
+# The player module, loaded straight from its build:
+# cargo build --manifest-path scripts/player_controller/Cargo.toml --release --target wasm32-wasip2
+[scripts]
+[[scripts.module]]
+kind = "wasm"
+path = "scripts/player_controller/target/wasm32-wasip2/release/player_controller.wasm"
+
+[studio]
+
+[gen]
+
+[assets]
+
+[anim]
+
+[audio]
+
+[ui]
+
+[render]
+
+[physics]
+
+[nav]

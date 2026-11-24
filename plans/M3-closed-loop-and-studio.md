@@ -1,7 +1,7 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b, 3.0c, 3.1 (a–c), 3.2 (a–b), 3.7 (a–c) and 3.9a done; M2's scripted gate runs as `just gate-tests M2`) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b, 3.0c, 3.1 (a–c), 3.2 (a–b), 3.7 (a–c), 3.9a and 3.9b done; `just gate-tests M2` and `M3` run the scripted gates; the live gate (3.9c) is next) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
@@ -1257,6 +1257,73 @@ Every role stays under 50k. If the AST's recursive schema makes `assert_eval` he
 - Doc tests: clean.
 - `just gate-tests M1` (4), `M2` (5, 315 s) and `M3S` (13).
 - Both deny checks: ok. `just editor-schemas`: no changes. `just editor-test`: 118 unit and 22 end-to-end tests pass.
+
+### Phase 3.9b As built (2026-11-24)
+**Status: done (branch `m3/3.9-fixture`).** The seeded-bug fixture, M3's deterministic gate (`just gate-tests M3`) and the shared checker.
+
+**What landed:**
+- **`tests/fixtures/m3-studio-game`:**
+  - a player tagged `player` at the origin (`player.Controller { speed: 5.5 }`, `InputActions` watching `move`) and a door tagged `door` at (0, 0, 10);
+  - `move` on WASD;
+  - **the module is loaded straight from Cargo's output** (`scripts/player_controller/target/wasm32-wasip2/release/`), so `cargo build --manifest-path scripts/player_controller/Cargo.toml --release --target wasm32-wasip2`, which the gameplay programmer's shell allowlist permits, is the whole build (it may not run `cp`);
+  - **the `player` WASM module:** `scripts/player_controller/`, a standalone crate with its own lock (pinned to the root lock's versions; checked by `just deny`). Its seeded bug is `step = axis * speed * dt * dt`.
+  - `tests/playtests/walk-to-door.playtest.ron`;
+  - **`studio/`:** from `concordia studio init`, one of each role;
+  - **T-0001** for the gameplay programmer, with the acceptance assertion and the playtest;
+  - `fix.patch`.
+- **`concordia_tests::m3_fixture`:** copies the fixture (pointing its crate at this repository) and builds it per copy, as an agent would. It also applies `fix.patch` and runs the crate's tests.
+- **`concordia_tests::m3_checker`:** the six outcome checks of the plan, shared with 3.9c's live gate. It runs on copies:
+  1. the task flow;
+  2. edits are in scope, the director edits nothing, and no agent changes the scene;
+  3. QA's replay, named in the task, passes on the tree and fails on the pristine fixture (re-blessed there);
+  4. two identical verifies;
+  5. the crate's tests pass, and the fixture's own tests are unchanged;
+  6. the configuration is unchanged.
+- **Gates** (header derivations: the bug crawls 5.5/3600 m a tick, so it fails at 600, 9.0833 m away; the fix moves 5.5/60 m a tick and passes at tick 88, 1.9333 m away):
+  - **`m3_replay_assert` (6):**
+    - the bug fails with its witness;
+    - the fix passes at 88;
+    - QA-style: a replay recorded on the bug, re-blessed on the fix, passes at 88;
+    - zero divergence at 1 and 8 threads;
+    - `ab` bug against fix: tick 1, `Transform`, `player.walk`;
+    - the scene is canonical.
+  - **`m3_studio_sync` (3):** snapshots of the synced fixture; an idempotent, check-clean sync; and `fixture_studio_is_the_default_roster`, so the gate always tests the shipped prompts. It caught the fixture's stale copy of the fix-bug skill.
+  - **`m3_studio_loop_scripted` (6):**
+    - the director assigns;
+    - the gameplay programmer is refused outside its paths, then edits, builds, reloads and checks inside them;
+    - it can't approve or mark done;
+    - QA can't edit scripts;
+    - QA records, asserts and approves;
+    - the whole loop passes `m3_checker`, which rejects an idle copy and an edited team file.
+  - Every call goes through the real hook binary and `concordia mcp`.
+- **`regression.yml`** runs `just gate-tests M3`; the M3 gates join nextest's long-limit override.
+
+**Found and fixed:**
+- **`studio init` didn't add `[render]` or `[physics]`,** so a project made without them failed `studio sync` (`capture_screenshot`, `physics_raycast`). Test: `studio_init_adds_render_and_physics_when_missing`.
+- **`concordia-fix-bug-with-replay` said to resimulate and then assert.** But `assert_eval` refuses a replay recorded on another build. "Prove it" now re-blesses it (`update` and `force`) first. Test: `fix_bug_skill_reblesses_the_replay_before_asserting_the_fix`.
+- **Building copies:** every copy of the crate is its own workspace root, and copied files keep old mtimes, so Cargo reused a stale build across copies. Each version of the sources now gets its own target dir, under a file lock.
+
+**Choices (my recommendations, pre-approved):**
+- **5.5 m/s, not the plan's 5.** At 5 m/s the fix reaches 8 m exactly at tick 96, on the assertion's boundary, where float rounding decides.
+- **No committed fixture replay.** `replays_verify_with_zero_divergence_at_1_and_8_threads` records and verifies a fresh one, so it runs on every platform.
+- **The scripted gameplay agent builds** with `m3_fixture::build` after the hook allows its `cargo build`, which is the same command.
+- **The checker uses Studio journal `file_edit` entries** (written by the PostToolUse hook) as the record of file changes.
+
+**Red runs:**
+- the CLI test, before `[render]` and `[physics]` were added;
+- the skill test, against the old "Prove it";
+- the fixed-build test, which saw the stale shared build;
+- the QA-style test, which hit the refused stale replay;
+- the scripted loop:
+  - assert before `scene_open`;
+  - the approve that the hook already denies;
+  - the checker's engine set up differently from the project's tools (a different manifest hash and seed);
+  - the scene check counting the engine's own migration commit.
+- `fixture_scene_is_canonical` passed at once, since it was written after the scene.
+
+**Mutation checks:** the checker without the task check (2 failed) and without the integrity check (2).
+
+**Snapshots** (blessed under the author's M3 authority; logged on the review page): `m3_studio_sync__m3_fixture_{agents_and_skills, settings_json, mcp_json, claude_md_block}.snap` (new). They match M3S's apart from the level designer's ×1.
 
 ## Goal & context
 M3 closes the loop the design promises (principle 3): an agent can **record** a play session, **replay** it deterministically, **find the first frame** where two runs diverge, and **prove** behavior with typed playtest assertions, all from tests, the CLI and MCP. On top of that loop, M3 ships **Agent Studio v1**: a configurable team of specialist agents that runs **inside the user's own Claude Code on a regular subscription, with no API key** (principle 0).

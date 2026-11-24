@@ -10,29 +10,30 @@ publish.workspace = true
 autotests = false
 
 [dependencies]
+# The M3 gate's shared checker (src/m3_checker.rs) drives an engine and reads the Studio journal.
+concordia-api.workspace = true
+concordia-app.workspace = true
+concordia-core.workspace = true
+concordia-replay.workspace = true
+concordia-studio.workspace = true
 rmcp.workspace = true
 serde_json.workspace = true
+tempfile.workspace = true
 tokio.workspace = true
 toml.workspace = true
 
 [dev-dependencies]
 base64.workspace = true
-concordia-api.workspace = true
-concordia-app.workspace = true
 concordia-assets.workspace = true
 concordia-audio.workspace = true
-concordia-core.workspace = true
 concordia-input.workspace = true
 concordia-mcp.workspace = true
 concordia-reflect.workspace = true
-concordia-replay.workspace = true
 concordia-render.workspace = true
 concordia-scene.workspace = true
-concordia-studio.workspace = true
 concordia-testkit.workspace = true
 concordia-ui.workspace = true
 insta.workspace = true
-tempfile.workspace = true
 regex.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -122,3 +123,15 @@ workspace = true
 [[test]]
 name = "m2_lamplight"
 path = "gates/m2_lamplight.rs"
+
+[[test]]
+name = "m3_replay_assert"
+path = "gates/m3_replay_assert.rs"
+
+[[test]]
+name = "m3_studio_sync"
+path = "gates/m3_studio_sync.rs"
+
+[[test]]
+name = "m3_studio_loop_scripted"
+path = "gates/m3_studio_loop_scripted.rs"

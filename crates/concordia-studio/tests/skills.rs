@@ -1315,3 +1315,23 @@ fn sample_lamplight_tour_names_real_files() {
         assert!(text.contains(needle), "the tour covers {needle}");
     }
 }
+
+/// After a fix, `assert_eval` refuses a replay recorded on the old build (its module differs), so
+/// the fix-bug skill re-blesses the replay on the new build before asserting over it (found by
+/// the M3 gate's QA-style test).
+#[test]
+fn fix_bug_skill_reblesses_the_replay_before_asserting_the_fix() {
+    let text = skill("concordia-fix-bug-with-replay");
+    let prove = text
+        .lines()
+        .find(|l| l.contains("**Prove it.**"))
+        .expect("a Prove it step");
+    for needle in [
+        "\"mode\": \"resimulate\"",
+        "\"update\": true",
+        "\"force\": true",
+        "assert_eval",
+    ] {
+        assert!(prove.contains(needle), "Prove it shows {needle}: {prove}");
+    }
+}

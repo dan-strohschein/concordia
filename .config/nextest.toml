@@ -1,10 +1,11 @@
 [profile.default]
 slow-timeout = { period = "30s", terminate-after = 4 }
 
-# Tests that may compile code themselves (trybuild cases; the M0, M1 and M2 MCP gates when run outside a
-# workspace test build) get a longer limit; everything else keeps the 2-minute hang guard.
+# Tests that may compile code themselves (trybuild cases; the M0 and M1 MCP gates when run outside a
+# workspace test build; the M3 gates, which build the fixture's module) or play long (the M2 gate)
+# get a longer limit; everything else keeps the 2-minute hang guard.
 [[profile.default.overrides]]
-filter = "test(=derive_rejects_unsupported_input) | binary(m0_headless_mcp) | binary(m1_mcp_screenshot) | binary(m1_mcp_coverage) | binary(m2_lamplight)"
+filter = "test(=derive_rejects_unsupported_input) | binary(m0_headless_mcp) | binary(m1_mcp_screenshot) | binary(m1_mcp_coverage) | binary(m2_lamplight) | binary(/^m3_/)"
 slow-timeout = { period = "60s", terminate-after = 10 }
 
 [profile.ci]

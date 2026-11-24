@@ -1,0 +1,6 @@
+Playtest(
+    scene: "scenes/main.scene.ron",
+    max_ticks: 600,
+    inputs: [(tick: Some(0), event: Key(key: W, pressed: true))],
+    assertions: ["within 600 ticks: distance(tag(\"player\"), tag(\"door\")) < 2m"],
+)
