@@ -96,6 +96,17 @@ impl CompiledGraph {
         &self.placements
     }
 
+    /// [`CompiledGraph::execute`], with each pass (after its barriers) in its own timer scope.
+    pub fn execute_timed(
+        &self,
+        graph: &RenderGraph,
+        transients: &BTreeMap<GraphTexture, Texture>,
+        commands: &mut CommandList,
+        timer: &mut crate::perf::PassTimer,
+    ) -> Result<(), GraphError> {
+        self.record(graph, transients, commands, Some(timer))
+    }
+
     /// Records the frame: each pass's barriers, then its commands; then the final barriers.
     /// `transients` maps every transient texture to the RHI texture placed for it (see `placements`).
     pub fn execute(
@@ -104,18 +115,35 @@ impl CompiledGraph {
         transients: &BTreeMap<GraphTexture, Texture>,
         commands: &mut CommandList,
     ) -> Result<(), GraphError> {
+        self.record(graph, transients, commands, None)
+    }
+
+    fn record(
+        &self,
+        graph: &RenderGraph,
+        transients: &BTreeMap<GraphTexture, Texture>,
+        commands: &mut CommandList,
+        mut timer: Option<&mut crate::perf::PassTimer>,
+    ) -> Result<(), GraphError> {
         let textures = self.resolve(graph, transients)?;
         for (pos, &p) in self.order.iter().enumerate() {
             push_barriers(commands, &self.barriers[pos], &textures);
-            if let Some(record) = &graph.passes[p].record {
+            let pass = &graph.passes[p];
+            if let Some(t) = timer.as_deref_mut() {
+                t.begin(commands, &pass.name);
+            }
+            if let Some(record) = &pass.record {
                 record(&mut PassContext {
                     commands,
                     textures: &textures,
                 })
                 .map_err(|error| GraphError::Record {
-                    pass: graph.passes[p].name.clone(),
+                    pass: pass.name.clone(),
                     error,
                 })?;
+            }
+            if let Some(t) = timer.as_deref() {
+                t.end(commands);
             }
         }
         push_barriers(commands, &self.final_barriers, &textures);

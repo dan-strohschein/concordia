@@ -175,7 +175,8 @@ impl Project {
         if self.manifest.render.is_some() {
             modules.push(Arc::new(
                 RenderModule::new(Arc::new(concordia_rhi_metal::new_headless))
-                    .with_closure_budget(self.closure_budget()),
+                    .with_closure_budget(self.closure_budget())
+                    .with_perf_mode(self.manifest.render.as_ref().is_some_and(|r| r.perf_mode)),
             ));
         }
         if let Some(studio) = &self.manifest.studio {

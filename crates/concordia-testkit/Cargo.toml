@@ -12,6 +12,9 @@ publish.workspace = true
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 nv-flip = "0.1.2"
 thiserror.workspace = true
+concordia-reflect.workspace = true
+concordia-scene.workspace = true
+serde.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

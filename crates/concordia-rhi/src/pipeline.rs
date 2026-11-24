@@ -104,7 +104,7 @@ pub struct GraphicsPipelineDesc {
     pub label: String,
 }
 
-/// A mesh-shader pipeline (object + mesh + fragment); needs `DeviceCaps::mesh_shaders`.
+/// A mesh-shader pipeline (object + mesh + fragment); needs `RhiCaps::mesh_shaders`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MeshPipelineDesc {
     /// Object (task) shader.

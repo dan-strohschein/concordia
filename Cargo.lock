@@ -820,6 +820,7 @@ dependencies = [
  "concordia-input",
  "concordia-mcp",
  "concordia-nav",
+ "concordia-perf",
  "concordia-platform",
  "concordia-reflect",
  "concordia-render",
@@ -1027,6 +1028,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "concordia-perf"
+version = "0.0.0"
+dependencies = [
+ "concordia-api",
+ "concordia-app",
+ "concordia-core",
+ "concordia-reflect",
+ "concordia-rhi",
+ "concordia-rhi-metal",
+ "concordia-scene",
+ "concordia-testkit",
+ "insta",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "concordia-physics"
 version = "0.0.0"
 dependencies = [
@@ -1170,7 +1190,10 @@ dependencies = [
  "objc2 0.6.5",
  "objc2-foundation 0.3.2",
  "objc2-metal 0.3.2",
+ "objc2-metal-fx",
  "objc2-quartz-core 0.3.2",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1417,8 +1440,11 @@ dependencies = [
 name = "concordia-testkit"
 version = "0.0.0"
 dependencies = [
+ "concordia-reflect",
+ "concordia-scene",
  "image",
  "nv-flip",
+ "serde",
  "tempfile",
  "thiserror 2.0.21",
 ]
@@ -3721,6 +3747,17 @@ dependencies = [
  "objc2 0.6.5",
  "objc2-core-foundation",
  "objc2-foundation 0.3.2",
+]
+
+[[package]]
+name = "objc2-metal-fx"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2db6f3a9d3b07481d9e5884f592aff6fd3f99e155423d1d1af3977e77a90ea0e"
+dependencies = [
+ "objc2 0.6.5",
+ "objc2-foundation 0.3.2",
+ "objc2-metal 0.3.2",
 ]
 
 [[package]]

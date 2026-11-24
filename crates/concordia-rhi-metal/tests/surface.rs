@@ -216,7 +216,7 @@ fn present_reports_the_gpu_time_of_its_commands() {
     let ms = rx
         .recv_timeout(std::time::Duration::from_secs(5))
         .expect("GPU time reported");
-    let ms = ms.expect("Metal measures command buffers");
+    let ms = ms.total_ms.expect("Metal measures command buffers");
     assert!((0.0..1000.0).contains(&ms), "{ms} ms");
     device.destroy_surface(surface);
 }

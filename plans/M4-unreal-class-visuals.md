@@ -1,5 +1,5 @@
 # M4: Unreal-class visuals
-Status: Planned · Depends on: M1 (render), M2 (scripting host, graphs' WIT API), M3 (replay assertions, Studio) · Detail level: **Refined after M3 (2026-11-24; R1–R5 and D1–D10 approved by the author)** · Estimated effort: 32–45 agent-assisted engineer-weeks (two parallel tracks; see Effort estimate)
+Status: In progress (4.1a done, in review) · Depends on: M1 (render), M2 (scripting host, graphs' WIT API), M3 (replay assertions, Studio) · Detail level: **Refined after M3 (2026-11-24; R1–R5 and D1–D10 approved by the author)** · Estimated effort: 32–45 agent-assisted engineer-weeks (two parallel tracks; see Effort estimate)
 
 > This plan has full phase breakdowns and test lists. Its numbers (budgets, FLIP tolerances, page sizes, meshlet sizes) are **provisional** and must be recalibrated in the refinement pass after M3, using measurements from the M1–M3 renderer on the reference Mac. Every recalibrated number lands in a text file (`tests/perf/budgets/*.budget.ron`, per-test tolerances), never in code.
 
@@ -117,7 +117,7 @@ Status: Planned · Depends on: M1 (render), M2 (scripting host, graphs' WIT API)
 Numbers stay as they are because other plans cite them. Each phase gets its own branch `m4/<phase>-…`, PR and As built.
 
 **Track R:**
-- **4.1a** `m4/4.1-caps-timing`: `RhiCaps` and masking; Metal counter sample buffers at encoder boundaries (perf mode gives each timed pass its own encoder); `PassTimer`, `FrameStats` and `render.stats` per pass; `BudgetFile`, `tests/perf/` (runner, `reference.ron`) and `concordia perf run`; golden `tolerances.ron` (D2).
+- **4.1a** `m4/4.1-caps-timing` (**done**, see *As built* below): `RhiCaps` and masking (and the MetalFX temporal-scaler probe, author decision 2026-11-24; the scaler itself stays in 4.6); Metal counter sample buffers at encoder boundaries (perf mode gives each timed pass its own encoder); `PassTimer`, `FrameStats` and `render.stats` per pass; `BudgetFile`, `tests/perf/` (runner, `reference.ron`) and `concordia perf run`; golden `tolerances.ron` (D2).
 - **4.1b** `m4/4.1-pathtrace`: `concordia-pathtrace` with its own BVH, `capture.reference` and `just bless-reference`; the furnace, analytic, convergence and determinism tests; the baseline references (D3); the budget recalibration (D1).
 - **4.1v** `m4/4.1v-vulkan-*` (new; ADR-0088):
   - **(a)** the `ash` device, queues, memory, buffers, textures, samplers, bindless (descriptor indexing), pipelines from Slang SPIR-V, readback and timestamps. The RHI conformance suite passes on lavapipe and MoltenVK.
@@ -150,13 +150,22 @@ Numbers stay as they are because other plans cite them. Each phase gets its own 
 
 ### ADRs
 - **0088:** the Vulkan backend: `ash`, the `unsafe` exception (R4), lavapipe in CI.
-- **0089:** perf testing on reference hardware.
+- **0089:** perf testing on reference hardware (written, 4.1a).
 - **0090:** quality methodology.
 - **0091:** shadows (VSM default, CSM fallback, placing M10's atlas).
 - **0092:** GI staging.
 - **0093:** the graph compilation target (D7).
 - **0094:** runtime AI and the LLM plugin policy (D8's replay v2).
 - ADR-0100 moves from Proposed to Accepted when 4.3a lands.
+
+### As built
+**4.1a** (`m4/4.1-caps-timing`, 2026-11-24). Author decisions at planning: perf code in a new crate `concordia-perf`; per-pass timing only in perf mode; `objc2-metal-fx` now, for the MetalFX cap.
+- **Caps (D10):** `RhiCaps` replaces `DeviceCaps` with every field kept, plus `object_shaders`, `hw_ray_tracing`, `metalfx_temporal`, `timestamp_granularity` and the mesh output limits. `CapsMask` / `masked()` only remove features, and `new_headless_masked` makes a Metal device that reports and refuses them. The Metal probe is now a `ProbeRecord` (`concordia gpu-probe --record`) and a pure `caps_from_record`. The family table, checked against `probe.rs`: mesh and object shaders with `metal3` (Apple7+, Mac2; 256 vertices / 512 primitives); ray-tracing API from `supportsRaytracing`; hardware RT from Apple9; MetalFX from `MTLFXTemporalScalerDescriptor.supportsDevice`; stage-boundary timestamps. Fixtures: apple9 recorded on the M3 Pro; apple7, apple8 and apple10 hand-written from Apple's tables (no such device to record).
+- **Timing (D5's first half):** RHI timer scopes (`BeginTimer` / `EndTimer`, `GpuTiming`), on Metal through counter sample buffers at encoder boundaries, calibrated against the CPU clock. `PassTimer` wraps every graph pass and `lights.cluster`. Perf mode (`Renderer::set_perf_mode`, `RenderModule::with_perf_mode`, `[render] perf_mode`) gives `render.stats` `pass_timing` and `passes`. Measured overhead: +0.03% to +0.8% (median of 150 adjacent on/off frame pairs; the test's limit is 2%).
+- **Perf harness (ADR-0089):** `concordia-perf` (`BudgetFile`, `ReferenceMachine`, `HostProbe`, `PerfReport`, `Verdict` with `NotReference` winning even before a budget exists, `PerfScene`, the runner); `concordia perf run` and `just perf`; `tests/perf/` with `reference.ron`, scenes `m1-gate` and `lamplight-night` (the town's edit world at night, along a chase-camera path), and budgets.
+- **D1 (M3 Pro, 1280×720, three runs of 300 frames):** M1 gate scene frame median 2.17–2.45 ms (the refinement's 4.88 ms came from another path), `forward` 1.58–1.81, shadow cascades about 0.15 each; Lamplight night frame 1.90–1.96 ms, `forward` 1.67–1.72. Proposed budgets: the worst run × 1.25, rounded up to 0.05 ms; `lights.cluster` median only, because its p95 sometimes reads about 1.5 ms (the first encoder after the frame's uploads waits on them). **The author approves the budget files in 4.1a's review.**
+- **D2:** `tests/golden/<suite>/tolerances.ron` for all six suites, numbers moved unchanged; `Tolerance::mean` is gone and `Tolerance::default()` is the only tolerance in code (`golden_tolerances_live_in_text`).
+- Not in 4.1a: `FrameStats.raster_path` (no meshlet path yet; masking is observed through refused features, perf mode's `unsupported` and unchanged pixels), the path tracer and recalibration (4.1b), and Vulkan timestamps (4.1v).
 
 ### Effort (re-estimated)
 - The plan's 32–45 weeks, plus **4.1v Vulkan at 6–10**, plus about 1 for D2, D6 and D9: **about 39–56 engineer-weeks**.

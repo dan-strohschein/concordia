@@ -49,7 +49,7 @@ fn image_size_mismatch_is_an_error_not_a_panic() {
 fn missing_golden_fails_with_bless_hint() {
     let dir = tempfile::tempdir().unwrap();
     let err = store(&dir, false, false)
-        .check("suite", "new", &gradient(8, 8, 0), Tolerance::default())
+        .check("suite", "new", &gradient(8, 8, 0))
         .unwrap_err();
     assert!(matches!(err, GoldenError::Missing { .. }), "{err}");
     assert!(err.to_string().contains("just bless"), "{err}");
@@ -59,36 +59,24 @@ fn missing_golden_fails_with_bless_hint() {
 fn bless_overwrites_only_when_enabled_and_never_in_ci() {
     let dir = tempfile::tempdir().unwrap();
     let image = gradient(16, 16, 0);
-    let err = store(&dir, true, true)
-        .check("s", "n", &image, Tolerance::default())
-        .unwrap_err();
+    let err = store(&dir, true, true).check("s", "n", &image).unwrap_err();
     assert!(matches!(err, GoldenError::BlessInCi), "{err}");
-    store(&dir, true, false)
-        .check("s", "n", &image, Tolerance::default())
-        .unwrap();
+    store(&dir, true, false).check("s", "n", &image).unwrap();
     assert!(dir.path().join("golden/s/n.png").exists());
     let changed = gradient(16, 16, 9);
-    assert!(
-        store(&dir, false, false)
-            .check("s", "n", &changed, Tolerance::default())
-            .is_err()
-    );
-    store(&dir, true, false)
-        .check("s", "n", &changed, Tolerance::default())
-        .unwrap();
-    store(&dir, false, false)
-        .check("s", "n", &changed, Tolerance::default())
-        .unwrap();
+    assert!(store(&dir, false, false).check("s", "n", &changed).is_err());
+    store(&dir, true, false).check("s", "n", &changed).unwrap();
+    store(&dir, false, false).check("s", "n", &changed).unwrap();
 }
 
 #[test]
 fn failure_writes_actual_expected_and_flip_heatmap() {
     let dir = tempfile::tempdir().unwrap();
     store(&dir, true, false)
-        .check("s", "n", &gradient(32, 32, 0), Tolerance::default())
+        .check("s", "n", &gradient(32, 32, 0))
         .unwrap();
     let err = store(&dir, false, false)
-        .check("s", "n", &gradient(32, 32, 20), Tolerance::default())
+        .check("s", "n", &gradient(32, 32, 20))
         .unwrap_err();
     assert!(matches!(err, GoldenError::Mismatch { .. }), "{err}");
     for kind in ["actual", "expected", "flip"] {
@@ -103,7 +91,7 @@ fn failure_writes_actual_expected_and_flip_heatmap() {
 fn golden_names_are_validated() {
     let dir = tempfile::tempdir().unwrap();
     let err = store(&dir, true, false)
-        .check("../escape", "n", &gradient(4, 4, 0), Tolerance::default())
+        .check("../escape", "n", &gradient(4, 4, 0))
         .unwrap_err();
     assert!(matches!(err, GoldenError::Name(_)), "{err}");
 }
@@ -113,9 +101,7 @@ fn png_bytes_decode_to_the_same_pixels_and_bad_bytes_are_an_error() {
     let image = gradient(8, 4, 3);
     let dir = tempfile::tempdir().unwrap();
     let golden = store(&dir, true, false);
-    golden
-        .check("png", "roundtrip", &image, Tolerance::default())
-        .unwrap();
+    golden.check("png", "roundtrip", &image).unwrap();
     let bytes = std::fs::read(dir.path().join("golden/png/roundtrip.png")).unwrap();
     assert_eq!(RgbaImage::from_png(&bytes).unwrap(), image);
     assert!(matches!(

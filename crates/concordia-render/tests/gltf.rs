@@ -207,7 +207,7 @@ fn bounds(world: &World, db: &mut AssetDb) -> (Vec3, f32) {
 
 fn check(name: &str, model: &str, file: &str) {
     if let Some(image) = render_model(model, "glTF-Binary", file) {
-        golden(&format!("gltf_{name}"), &image, 0.02);
+        golden(&format!("gltf_{name}"), &image);
     }
 }
 
@@ -269,6 +269,6 @@ fn gltf_boombox_golden() {
 #[test]
 fn gltf_flight_helmet_golden() {
     if let Some(image) = render_model("FlightHelmet", "glTF", "FlightHelmet.gltf") {
-        golden("gltf_flight_helmet", &image, 0.02);
+        golden("gltf_flight_helmet", &image);
     }
 }

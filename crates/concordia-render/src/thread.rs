@@ -441,7 +441,7 @@ impl Worker {
         let callbacks = FrameCallbacks {
             presented: Some(presented_callback(log.clone(), id)),
             gpu_time: Some(Box::new(move |ms| {
-                to_log(ms);
+                to_log(ms.clone());
                 to_stats(ms);
             })),
         };

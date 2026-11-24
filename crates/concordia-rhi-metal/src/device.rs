@@ -5,9 +5,9 @@ use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
 use concordia_rhi::{
-    BindlessIndex, Buffer, BufferDesc, BufferUsage, ComputePipelineDesc, Device, DeviceCaps,
-    Format, GraphicsPipelineDesc, Heap, HeapDesc, MemoryLocation, MeshPipelineDesc, Pipeline,
-    Present, RhiError, SampleCount, ShaderSource, Slots, StaticSampler, Submit, Surface,
+    BindlessIndex, Buffer, BufferDesc, BufferUsage, CapsMask, ComputePipelineDesc, Device, Format,
+    GraphicsPipelineDesc, Heap, HeapDesc, MemoryLocation, MeshPipelineDesc, Pipeline, Present,
+    RhiCaps, RhiError, SampleCount, ShaderSource, Slots, StaticSampler, Submit, Surface,
     SurfaceTarget, Texture, TextureDesc, TextureUsage, Timeline,
 };
 use objc2::rc::Retained;
@@ -74,6 +74,8 @@ pub(crate) struct Inner {
     /// Static samplers referenced from the texture table (kept alive here).
     _samplers: Vec<Retained<MtlSampler>>,
     pub(crate) last: Option<Retained<ProtocolObject<dyn MTLCommandBuffer>>>,
+    /// The GPU clock when the device was created (turns timer ticks into time).
+    pub(crate) calibration: crate::timing::Calibration,
 }
 
 // SAFETY: Metal devices, queues and resources are thread-safe objects; all access goes through the Mutex.
@@ -82,7 +84,7 @@ unsafe impl Send for Inner {}
 /// A Metal device implementing the RHI.
 #[derive(Debug)]
 pub struct MetalDevice {
-    caps: DeviceCaps,
+    caps: RhiCaps,
     inner: Mutex<Inner>,
     lost: AtomicBool,
 }
@@ -112,9 +114,11 @@ impl MetalDevice {
                 ));
             }
             let mut inner = self.lock()?;
-            let command_buffer = crate::encode::record(&inner, &submit)?;
+            let timed = self.caps.timestamp_granularity.times_passes() && on_gpu_time.is_some();
+            let recorded = crate::encode::record(&inner, &submit, timed)?;
+            let command_buffer = recorded.cb.clone();
             if let Some(callback) = on_gpu_time {
-                crate::surface::on_gpu_time(&command_buffer, callback);
+                crate::surface::on_gpu_time(&inner, recorded, callback);
             }
             command_buffer.commit();
             inner.last = Some(command_buffer);
@@ -124,8 +128,14 @@ impl MetalDevice {
 
     /// The system default GPU, headless.
     pub fn system_default() -> Result<Self, RhiError> {
+        Self::system_default_masked(&CapsMask::default())
+    }
+
+    /// The system default GPU, headless, with `mask`'s features hidden (testing fallbacks).
+    pub fn system_default_masked(mask: &CapsMask) -> Result<Self, RhiError> {
         let device = probe::default_device()?;
-        let caps = probe::caps(&device);
+        let caps = probe::caps(&device).masked(mask);
+        let calibration = crate::timing::Calibration::sample(&device);
         let queue = device.newCommandQueue().ok_or_else(|| RhiError::NoDevice {
             reason: "could not create a command queue".into(),
         })?;
@@ -144,6 +154,7 @@ impl MetalDevice {
             surfaces: Slots::default(),
             timelines: Slots::default(),
             last: None,
+            calibration,
         };
         Ok(Self {
             caps,
@@ -252,7 +263,7 @@ impl MetalDevice {
 }
 
 impl Device for MetalDevice {
-    fn caps(&self) -> &DeviceCaps {
+    fn caps(&self) -> &RhiCaps {
         &self.caps
     }
 
@@ -649,11 +660,14 @@ impl Device for MetalDevice {
                 wait: &[],
                 signal: present.signal,
             };
-            let recorded = crate::encode::record(&inner, &submit);
+            let timed =
+                self.caps.timestamp_granularity.times_passes() && present.on_gpu_time.is_some();
+            let recorded = crate::encode::record(&inner, &submit, timed);
             inner.textures.remove(texture.index(), texture.generation());
-            let command_buffer = recorded?;
+            let recorded = recorded?;
+            let command_buffer = recorded.cb.clone();
             if let Some(callback) = present.on_gpu_time {
-                crate::surface::on_gpu_time(&command_buffer, callback);
+                crate::surface::on_gpu_time(&inner, recorded, callback);
             }
             if let Some(callback) = present.on_presented {
                 crate::surface::on_presented(&drawable, callback);

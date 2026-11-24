@@ -26,12 +26,39 @@ pub struct Present<'a> {
     pub signal: &'a [(crate::Timeline, u64)],
     /// Called once the image is on screen.
     pub on_presented: Option<PresentedCallback>,
-    /// Called with the GPU time of the commands (ms) once they finish, `None` if unmeasured.
+    /// Called with the commands' GPU timing once they finish.
     pub on_gpu_time: Option<GpuTimeCallback>,
 }
 
-/// Receives a submission's GPU time in milliseconds (`None` if the backend cannot measure it).
-pub type GpuTimeCallback = Box<dyn FnOnce(Option<f64>) + Send>;
+/// Receives a submission's GPU timing once it completes.
+pub type GpuTimeCallback = Box<dyn FnOnce(GpuTiming) + Send>;
+
+/// What a timed submission measured.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct GpuTiming {
+    /// The whole submission's GPU time (ms); `None` if the backend cannot measure it.
+    pub total_ms: Option<f64>,
+    /// Each timer scope, in command order; empty without per-pass timestamps.
+    pub scopes: Vec<ScopeTime>,
+}
+
+/// One timer scope's GPU interval, in ms from the submission's first sample.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ScopeTime {
+    /// The scope.
+    pub scope: crate::TimerScope,
+    /// Start (ms).
+    pub start_ms: f64,
+    /// End (ms).
+    pub end_ms: f64,
+}
+
+impl ScopeTime {
+    /// The scope's duration (ms).
+    pub fn ms(&self) -> f64 {
+        self.end_ms - self.start_ms
+    }
+}
 
 impl<'a> Present<'a> {
     /// Just the commands: no signals, no callback.

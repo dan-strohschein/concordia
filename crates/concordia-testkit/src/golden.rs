@@ -2,7 +2,11 @@
 //! `CONCORDIA_BLESS=1` (`just bless`), never when `CI=true`. Failures leave
 //! `<name>.{actual,expected,flip}.png` under `target/golden-failures/<suite>/`.
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+
+use concordia_reflect::Reflect;
+use serde::{Deserialize, Serialize};
 
 /// An 8-bit RGBA image (sRGB-encoded, as captured).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,13 +101,26 @@ pub struct FlipScore {
     pub p99: f32,
 }
 
-/// Accepted FLIP error.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// Accepted FLIP error (per suite in `tests/golden/<suite>/tolerances.ron`).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
 pub struct Tolerance {
     /// Largest accepted mean.
+    #[reflect(range(min = 0.0, max = 1.0))]
     pub mean: f32,
     /// Largest accepted 99th percentile.
+    #[reflect(range(min = 0.0, max = 1.0))]
     pub p99: f32,
+}
+
+/// `tests/golden/<suite>/tolerances.ron`: the suite's default and per-golden tolerances.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct Tolerances {
+    /// For goldens not listed.
+    pub default: Tolerance,
+    /// By golden name.
+    pub goldens: BTreeMap<String, Tolerance>,
 }
 
 impl Default for Tolerance {
@@ -116,14 +133,6 @@ impl Default for Tolerance {
 }
 
 impl Tolerance {
-    /// A tolerance with this mean and the default p99.
-    pub fn mean(mean: f32) -> Self {
-        Self {
-            mean,
-            ..Self::default()
-        }
-    }
-
     /// True if `score` is within tolerance.
     pub fn accepts(&self, score: &FlipScore) -> bool {
         score.mean <= self.mean && score.p99 <= self.p99
@@ -133,6 +142,14 @@ impl Tolerance {
 /// Why a golden check failed.
 #[derive(Debug, thiserror::Error)]
 pub enum GoldenError {
+    /// A suite's `tolerances.ron` is unreadable or invalid.
+    #[error("{path}: {message}")]
+    Tolerances {
+        /// The file.
+        path: PathBuf,
+        /// Why.
+        message: String,
+    },
     /// No golden exists yet.
     #[error("no golden at {path}; render it, check it by eye, then run `just bless`")]
     Missing {
@@ -223,15 +240,29 @@ impl Golden {
         )
     }
 
-    /// Compares `image` with `<suite>/<name>.png` (or writes it when blessing).
+    /// The tolerance for golden `name` in `suite`: its entry in the suite's `tolerances.ron`, else
+    /// the file's default, else [`Tolerance::default`] when the suite has no file.
+    pub fn tolerance(&self, suite: &str, name: &str) -> Result<Tolerance, GoldenError> {
+        let path = self.path(suite, name)?.with_file_name("tolerances.ron");
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Tolerance::default()),
+            Err(e) => return Err(tolerances_error(&path, e)),
+        };
+        let file: Tolerances =
+            concordia_scene::read_document(&text).map_err(|e| tolerances_error(&path, e))?;
+        Ok(file.goldens.get(name).copied().unwrap_or(file.default))
+    }
+
+    /// Compares `image` with `<suite>/<name>.png` within its tolerance (or writes it when blessing).
     pub fn check(
         &self,
         suite: &str,
         name: &str,
         image: &RgbaImage,
-        tolerance: Tolerance,
     ) -> Result<FlipScore, GoldenError> {
         let path = self.path(suite, name)?;
+        let tolerance = self.tolerance(suite, name)?;
         if self.bless {
             if self.ci {
                 return Err(GoldenError::BlessInCi);
@@ -298,9 +329,16 @@ impl Golden {
     }
 }
 
+fn tolerances_error(path: &Path, e: impl std::fmt::Display) -> GoldenError {
+    GoldenError::Tolerances {
+        path: path.to_path_buf(),
+        message: e.to_string(),
+    }
+}
+
 /// Asserts `image` matches its golden under the repository store; panics with the reason.
-pub fn assert_golden(suite: &str, name: &str, image: &RgbaImage, tolerance: Tolerance) {
-    if let Err(e) = Golden::from_env().check(suite, name, image, tolerance) {
+pub fn assert_golden(suite: &str, name: &str, image: &RgbaImage) {
+    if let Err(e) = Golden::from_env().check(suite, name, image) {
         panic!("golden {suite}/{name}: {e}");
     }
 }

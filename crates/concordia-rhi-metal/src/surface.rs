@@ -150,25 +150,38 @@ pub(crate) fn on_presented(drawable: &Drawable, callback: concordia_rhi::Present
     unsafe { as_drawable.addPresentedHandler(&*block as *const _ as *mut _) };
 }
 
-/// Calls `callback` with the command buffer's GPU time (ms) once it completes.
+/// Calls `callback` with the recorded command buffer's GPU timing once it completes.
 pub(crate) fn on_gpu_time(
-    command_buffer: &ProtocolObject<dyn objc2_metal::MTLCommandBuffer>,
+    inner: &crate::device::Inner,
+    recorded: crate::encode::Recorded,
     callback: concordia_rhi::GpuTimeCallback,
 ) {
     use objc2_metal::MTLCommandBuffer;
     let slot = std::sync::Mutex::new(Some(callback));
+    let (device, since, timer) = (inner.device.clone(), inner.calibration, recorded.timer);
     let block = block2::RcBlock::new(
         move |done: std::ptr::NonNull<ProtocolObject<dyn MTLCommandBuffer>>| {
             // SAFETY: Metal passes the live command buffer for the duration of the handler.
             let done = unsafe { done.as_ref() };
             let ms = (done.GPUEndTime() - done.GPUStartTime()) * 1000.0;
+            let scopes = timer
+                .as_ref()
+                .map_or_else(Vec::new, |t| t.resolve(&device, &since));
             if let Some(callback) = slot.lock().ok().and_then(|mut c| c.take()) {
-                callback((ms.is_finite() && ms >= 0.0).then_some(ms));
+                callback(concordia_rhi::GpuTiming {
+                    total_ms: (ms.is_finite() && ms >= 0.0).then_some(ms),
+                    scopes,
+                });
             }
         },
     );
-    // SAFETY: Metal copies and retains the block until the handler has run; its state is Send.
-    unsafe { command_buffer.addCompletedHandler(&*block as *const _ as *mut _) };
+    // SAFETY: Metal copies and retains the block until the handler has run; its state (the
+    // callback, the device and the sample buffer, both thread-safe Metal objects) moves with it.
+    unsafe {
+        recorded
+            .cb
+            .addCompletedHandler(&*block as *const _ as *mut _)
+    };
 }
 
 /// Makes `view` (an `NSView`) layer-backed by a new opaque `CAMetalLayer` and returns it with its

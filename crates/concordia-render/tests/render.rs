@@ -45,7 +45,7 @@ fn unlit_cube_golden() {
         [231, 89, 89][..],
         "unlit sRGB-encodes base color 0.8/0.1/0.1"
     );
-    golden("unlit_cube", &image, 0.01);
+    golden("unlit_cube", &image);
 }
 
 /// 7×7 spheres from metal 0..1 (rows) and roughness 0..1 (columns) under the sun.
@@ -93,7 +93,6 @@ fn pbr_sphere_grid_directional_golden() {
     golden(
         "pbr_sphere_grid_directional",
         &sphere_grid(&mut r, &m1_grid),
-        0.01,
     );
 }
 
@@ -113,7 +112,7 @@ fn m1_pbr_materials_migrate_to_one_slab_unchanged_in_golden() {
         migrated.rgba == authored.rgba,
         "M1 text draws exactly as the slab written by hand"
     );
-    golden("pbr_sphere_grid_directional", &migrated, 0.01);
+    golden("pbr_sphere_grid_directional", &migrated);
 }
 
 #[test]
@@ -173,7 +172,7 @@ fn orthographic_isometric_camera_golden() {
     };
     let id = s.entity(eye, iso, Vec3::ONE);
     s.world.insert(id, camera).unwrap();
-    golden("orthographic_isometric", &s.render(&mut r, 512, 384), 0.01);
+    golden("orthographic_isometric", &s.render(&mut r, 512, 384));
 }
 
 #[test]
@@ -300,7 +299,7 @@ fn msaa_resolve_matches_golden() {
         .filter(|p| p[0] > 10 && p[0] < 245)
         .count();
     assert!(partial > 50, "edges have blended coverage: {partial}");
-    golden("msaa_resolve", &image, 0.01);
+    golden("msaa_resolve", &image);
 }
 
 /// Renders a full-view unlit plane textured with `texels` (2×2 sRGB).
@@ -936,7 +935,7 @@ fn overlays_draw_the_selection_and_gizmo_on_top_and_are_off_by_default() {
         ..plain.clone()
     };
     let image = r.render(&rw, &mut s.assets, &with).unwrap();
-    golden("overlay_selection_gizmo", &image, 0.01);
+    golden("overlay_selection_gizmo", &image);
     let count = |img: &concordia_render::Image, f: &dyn Fn(&[u8]) -> bool| {
         img.rgba
             .as_chunks::<4>()
@@ -1010,7 +1009,7 @@ fn the_grid_lies_on_the_ground_behind_objects() {
         pixel(&without, 128, 96)[..3],
         "the cube hides the grid behind it"
     );
-    golden("overlay_grid", &with, 0.01);
+    golden("overlay_grid", &with);
 }
 
 /// A uniform `w`×`h` linear texture.

@@ -1,0 +1,37 @@
+BudgetFile(
+    frame: (
+        median_ms: Some(3.1),
+        p95_ms: Some(5.95),
+    ),
+    passes: {
+        "forward": (
+            median_ms: Some(2.3),
+            p95_ms: Some(2.55),
+        ),
+        "lights.cluster": (
+            median_ms: Some(0.05),
+            p95_ms: None,
+        ),
+        "readback": (
+            median_ms: Some(0.1),
+            p95_ms: Some(0.1),
+        ),
+        "shadow 0": (
+            median_ms: Some(0.2),
+            p95_ms: Some(0.25),
+        ),
+        "shadow 1": (
+            median_ms: Some(0.2),
+            p95_ms: Some(0.2),
+        ),
+        "shadow 2": (
+            median_ms: Some(0.2),
+            p95_ms: Some(0.2),
+        ),
+        "tonemap": (
+            median_ms: Some(0.15),
+            p95_ms: Some(0.15),
+        ),
+    },
+    scene: "m1-gate",
+)

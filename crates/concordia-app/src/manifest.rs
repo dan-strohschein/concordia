@@ -165,6 +165,8 @@ impl Default for StudioSection {
 pub struct RenderSection {
     /// Closures a pixel may evaluate, 1..=8; only lowers the platform's budget (ADR-0068).
     pub closure_budget: Option<u8>,
+    /// Time each pass of every frame (`render.stats` `passes`; `concordia perf run` sets it).
+    pub perf_mode: bool,
 }
 
 /// `[assets]` (no settings yet).

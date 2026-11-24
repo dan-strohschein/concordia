@@ -79,7 +79,7 @@ fn pbr_spheres_with_ibl_golden() {
     let image = s.render(&mut r, 384, 256);
     let top = pixel(&image, 192, 4);
     assert!(top[2] > 60, "the skybox fills the background: {top:?}");
-    golden("pbr_spheres_ibl", &image, 0.01);
+    golden("pbr_spheres_ibl", &image);
 }
 
 #[test]

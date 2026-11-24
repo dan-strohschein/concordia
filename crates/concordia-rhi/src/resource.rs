@@ -6,7 +6,7 @@ use crate::caps::SampleCount;
 use crate::error::RhiError;
 use crate::format::Format;
 
-/// Largest buffer the RHI accepts (backends may allow less; see `DeviceCaps::max_buffer_bytes`).
+/// Largest buffer the RHI accepts (backends may allow less; see `RhiCaps::max_buffer_bytes`).
 const MAX_BUFFER_BYTES: u64 = 1 << 36;
 /// Largest texture dimension.
 const MAX_TEXTURE_DIM: u32 = 16_384;

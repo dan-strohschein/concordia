@@ -489,7 +489,7 @@ fn instanced_representation_draws_100k_in_one_pass() {
         stats.draw_calls, 2,
         "one instanced call per mesh and material"
     );
-    common::golden("representation_100k", &image, 1.0);
+    common::golden("representation_100k", &image);
 }
 
 #[test]
@@ -584,5 +584,5 @@ fn lod_view_mode_colors_simulation_lod_and_representation() {
         common::pixel(&image, 375, 3),
         "hidden: background"
     );
-    common::golden("view_mode_lod", &image, 1.0);
+    common::golden("view_mode_lod", &image);
 }

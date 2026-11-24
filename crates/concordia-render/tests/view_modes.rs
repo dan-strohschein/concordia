@@ -126,7 +126,7 @@ fn every_view_mode_matches_its_golden() {
     let mut s = scene();
     for (mode, name) in MODES {
         let image = render(&mut r, &mut s, mode);
-        golden(&format!("view_mode_{name}"), &image, 0.01);
+        golden(&format!("view_mode_{name}"), &image);
     }
 }
 

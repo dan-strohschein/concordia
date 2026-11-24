@@ -232,12 +232,7 @@ fn navmesh_debug_layer_draws_a_fixture_level() {
         json!({"width": 400, "height": 300, "overlays": true}),
     ));
     assert_eq!(via_overlays.pixels(), drawn.pixels());
-    concordia_testkit::golden::assert_golden(
-        "nav",
-        "navmesh_debug_layer",
-        &drawn,
-        concordia_testkit::golden::Tolerance::mean(0.01),
-    );
+    concordia_testkit::golden::assert_golden("nav", "navmesh_debug_layer", &drawn);
 }
 
 /// How many of two fresh agents on a floor plan on the first tick, under `manifest`.

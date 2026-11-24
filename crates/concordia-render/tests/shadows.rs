@@ -107,7 +107,7 @@ fn box_on_plane_casts_shadow_golden() {
         darker > 500,
         "the box shadows part of the floor: {darker} pixels"
     );
-    golden("shadow_box_plane_iso", &shadowed, 0.01);
+    golden("shadow_box_plane_iso", &shadowed);
 }
 
 #[test]

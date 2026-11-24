@@ -448,3 +448,40 @@ fn the_projects_closure_budget_reaches_the_renderer() {
     assert_eq!(frame["closure_budget"], 2, "{frame}");
     drop(dir);
 }
+
+/// `[render] perf_mode = true` times every frame's passes (`render.stats` `passes`); off by default.
+#[test]
+fn the_projects_perf_mode_reaches_the_renderer() {
+    use concordia_api::Engine;
+    use serde_json::json;
+
+    if let Err(concordia_rhi::RhiError::NoDevice { reason }) = concordia_rhi_metal::new_headless() {
+        assert!(
+            !concordia_testkit::gpu_required(),
+            "CONCORDIA_REQUIRE_GPU=1 but no device: {reason}"
+        );
+        return;
+    }
+    for (manifest, want) in [
+        ("[render]\nperf_mode = true\n", "measured"),
+        ("[render]\n", "off"),
+    ] {
+        let (dir, project) = project_with(manifest);
+        let mut engine = Engine::new(project.unwrap().engine_config().unwrap()).unwrap();
+        let s = engine.open_session();
+        let scene = json!({"path": "scenes/a.scene.ron", "name": "A", "actor": "agent:test"});
+        engine.call(s, "scene.new", scene).unwrap();
+        engine
+            .call(s, "entity.spawn", json!({"actor": "agent:test", "components": {
+                "Transform": {"translation": [0.0, 0.0, 3.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]},
+                "Camera": {},
+            }}))
+            .unwrap();
+        engine
+            .call(s, "capture.screenshot", json!({"width": 16, "height": 16}))
+            .unwrap();
+        let frame = engine.call(s, "render.stats", json!({})).unwrap()["frame"].clone();
+        assert_eq!(frame["pass_timing"], want, "{manifest}: {frame}");
+        drop(dir);
+    }
+}

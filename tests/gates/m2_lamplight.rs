@@ -26,7 +26,7 @@
 mod lamplight;
 
 use base64::Engine as _;
-use concordia_testkit::golden::{RgbaImage, Tolerance, assert_golden};
+use concordia_testkit::golden::{RgbaImage, assert_golden};
 use concordia_testkit::gpu_required;
 use lamplight::{Town, project};
 use serde_json::{Value, json};
@@ -94,11 +94,7 @@ async fn golden(town: &Town, name: &str) -> bool {
         .decode(data)
         .unwrap();
     let image = RgbaImage::from_png(&png).expect("a PNG");
-    let tolerance = Tolerance {
-        mean: 0.02,
-        p99: 0.3,
-    };
-    assert_golden("gates", name, &image, tolerance);
+    assert_golden("gates", name, &image);
     true
 }
 

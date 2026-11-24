@@ -1,0 +1,28 @@
+{
+  "device_name": "Apple M5",
+  "unified_memory": true,
+  "families": [
+    "apple10",
+    "apple6",
+    "apple7",
+    "apple8",
+    "apple9",
+    "common3",
+    "mac2",
+    "metal3",
+    "metal4"
+  ],
+  "msaa_sample_counts": [
+    1,
+    2,
+    4
+  ],
+  "argument_buffers_tier": 2,
+  "supports_raytracing": true,
+  "timestamp_counter_set": true,
+  "counter_sampling": [
+    "stage"
+  ],
+  "metalfx_temporal": true,
+  "max_buffer_bytes": 12884901888
+}

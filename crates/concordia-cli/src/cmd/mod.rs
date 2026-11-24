@@ -7,6 +7,7 @@ pub(crate) mod gpu_probe;
 pub(crate) mod headless;
 pub(crate) mod import;
 pub(crate) mod new;
+pub(crate) mod perf;
 pub(crate) mod replay;
 pub(crate) mod run;
 pub(crate) mod schema;
