@@ -1,0 +1,22 @@
+ReferenceFile(
+    blessed: Some((
+        backend: "gpu",
+        baseline: (
+            mean: 0.1019156,
+            p99: 0.7134887,
+        ),
+        git: "69138a3",
+        noise: (
+            mean: 0.0066948305,
+            p99: 0.019018743,
+        ),
+    )),
+    height: 720,
+    max_bounces: 8,
+    project: "examples/m2-lamplight",
+    scene: None,
+    seed: 1,
+    spp: 1024,
+    view: None,
+    width: 1280,
+)

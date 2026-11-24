@@ -1,0 +1,22 @@
+ReferenceFile(
+    blessed: Some((
+        backend: "gpu",
+        baseline: (
+            mean: 0.07240217,
+            p99: 0.95230746,
+        ),
+        git: "69138a3",
+        noise: (
+            mean: 0.006797184,
+            p99: 0.03772548,
+        ),
+    )),
+    height: 720,
+    max_bounces: 8,
+    project: "examples/m1-physics-stack",
+    scene: None,
+    seed: 1,
+    spp: 1024,
+    view: None,
+    width: 1280,
+)
