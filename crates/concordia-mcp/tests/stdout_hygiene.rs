@@ -145,10 +145,10 @@ fn binary_serves_replay_tools_when_replay_is_configured() {
     let tools = frames[1]["result"]["tools"].as_array().unwrap();
     assert_eq!(
         tools.len(),
-        37,
-        "35 core tools plus replay_record and replay_run"
+        38,
+        "35 core tools plus replay_record, replay_run and assert_eval (M3 3.2b)"
     );
-    for name in ["replay_record", "replay_run"] {
+    for name in ["replay_record", "replay_run", "assert_eval"] {
         assert!(tools.iter().any(|t| t["name"] == name), "{name}: {tools:?}");
     }
 }

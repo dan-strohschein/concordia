@@ -24,8 +24,10 @@ Each task:
 
 Good acceptance: "an entity named `Ramp` exists with a `Collider`; a sphere dropped at (0, 5, 0) settles below y = 1 within 300 ticks". Bad: "make a nice ramp".
 
+Write behaviour over time as a playtest assertion the engine can check (`concordia-write-playtest` has the language), e.g. `within 300 ticks: name("Sphere").Transform.translation.y < 1` or `within 10s: distance(tag("player"), tag("door")) < 2m`. Put it in an `assert` criterion as is: the reviewer runs it with `assert_eval`, so it must name real components, fields and tags.
+
 ## 4. Create them
-`mcp__concordia__task_create {"title": "...", "role": "level-designer", "description": "...", "acceptance": [{"assert": "..."}], "depends_on": ["T-0003"]}`
+`mcp__concordia__task_create {"title": "...", "role": "level-designer", "description": "...", "acceptance": [{"assert": "within 300 ticks: name(\"Sphere\").Transform.translation.y < 1"}], "depends_on": ["T-0003"]}`
 
 ## 5. Delegate
 Start the role's subagent with the Agent tool and pass only the task id and one line of context: "Work task T-0007 (concordia-task-workflow)." The task holds everything else.

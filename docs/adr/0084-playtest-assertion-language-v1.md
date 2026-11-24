@@ -41,3 +41,13 @@ Agents and tests need to state gameplay outcomes precisely and have the engine p
 - Acceptance criteria can be pasted into tasks and checked by the engine (3.2b's `assert_eval`).
 - A misspelled component or field fails before anything runs, and the message names the closest match.
 - New expressions touch one crate: syntax tree, printer, parser, checker and builder (AGENTS.md).
+- **Note (M3 phase 3.2b): evaluation.**
+  - **Where it runs:** `concordia-replay` evaluates assertions (`assert.eval`, MCP `assert_eval`) over a replay, a `.playtest.ron` scenario, or the current play world ("live": the condition on the current tick, changing nothing).
+  - **How it decides:** a monitor per assertion decides tick by tick from tick 0, with early exit. `always` and `never` over a whole run pass at its end, and `eventually` and an unreached `at` are undecided there.
+  - **Values:**
+    - `event("X")` means a signal of type X was raised on that tick (`World::pending_signal_count`).
+    - Times compare in seconds (ticks divided by the rate).
+    - `any` and `all` apply over every pair of values.
+    - A selector read as one that matches 0 or several entities is an `error` result, not a failure.
+  - **The CLI:** `concordia assert eval` and `concordia test playtests`.
+

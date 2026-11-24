@@ -1107,6 +1107,7 @@ version = "0.0.0"
 dependencies = [
  "blake3",
  "concordia-api",
+ "concordia-assert",
  "concordia-command",
  "concordia-core",
  "concordia-input",
@@ -1313,6 +1314,7 @@ dependencies = [
  "blake3",
  "concordia-anim",
  "concordia-api",
+ "concordia-assert",
  "concordia-assets",
  "concordia-audio",
  "concordia-command",

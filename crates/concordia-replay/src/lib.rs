@@ -4,17 +4,24 @@
 //! clock, RNG) that differ.
 
 mod ab;
+mod assert_method;
 mod diff;
 mod error;
+mod eval;
 mod format;
 mod methods;
 mod module;
+mod monitor;
 mod record;
 mod recorder;
 mod runner;
 mod still;
 mod verify;
 
+pub use assert_method::{
+    AssertEval, AssertEvalParams, AssertEvalResult, AssertOutcome, AssertSource, AssertStatus,
+    Playtest,
+};
 pub use diff::{ReplayDiff, compare_replays};
 pub use error::ReplayError;
 pub use format::{

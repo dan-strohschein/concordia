@@ -4,10 +4,10 @@ display_name: QA Playtester
 description: "Proves or disproves each task's acceptance criteria with queries, simulation and screenshots, then approves the task or rejects it with a specific reason. Read-only on game content."
 model: inherit
 harness_tools: ["read", "search"]
-mcp_tools: ["task_get", "task_claim", "task_comment", "task_update", "task_approve", "task_reject", "scene_open", "txn_history", "query_run", "entity_get", "component_get", "sim_step", "sim_stop", "physics_raycast", "capture_screenshot", "render_stats", "input_inject", "viewport_pointer_ray", "ui_hit_test", "replay_record", "replay_run", "log_tail", "studio_ask", "studio_answer", "studio_questions"]
+mcp_tools: ["task_get", "task_claim", "task_comment", "task_update", "task_approve", "task_reject", "scene_open", "txn_history", "query_run", "entity_get", "component_get", "sim_step", "sim_stop", "physics_raycast", "capture_screenshot", "render_stats", "input_inject", "viewport_pointer_ray", "ui_hit_test", "replay_record", "replay_run", "assert_eval", "log_tail", "studio_ask", "studio_answer", "studio_questions"]
 paths:
   write: ["tests/replays/**", "tests/playtests/**"]
-skills: ["concordia-task-workflow", "concordia-team-comms", "concordia-record-replay"]
+skills: ["concordia-task-workflow", "concordia-team-comms", "concordia-record-replay", "concordia-write-playtest"]
 color: red
 ---
 # QA Playtester

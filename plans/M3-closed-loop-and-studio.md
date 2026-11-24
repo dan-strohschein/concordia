@@ -1,7 +1,7 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b, 3.0c, 3.1 (a–c) and 3.2a done) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b, 3.0c, 3.1 (a–c) and 3.2 (a–b) done) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
@@ -889,6 +889,103 @@ Every role stays under 50k. If the AST's recursive schema makes `assert_eval` he
 - One new snapshot, blessed (snapshot log).
 - No tools changed, so role budgets are as in 3.1c.
 - 40 GB free.
+
+### Phase 3.2b As built (2026-11-23; ADR-0084 note)
+**Status: done (branch `m3/3.2-assert-eval`).** Assertions are decided by the engine. Phase 3.2 is complete.
+
+**What landed:**
+- **`concordia-replay`:**
+  - **`eval.rs`:** a predicate on one tick's world.
+    - Selectors read `Tags`, `Name`, the entity id, or component presence.
+    - `distance` is the closest pair of world positions; `count` and `exists` count matches; `event` counts pending signals by name.
+    - Fields come from the component's JSON (vectors by `x`, `y`, `z`, `w`), and `any`/`all` apply over every pair of values.
+  - **`monitor.rs`:** decides each temporal operator from tick 0 with early exit, keeps a `within`'s closest approach, and settles the run's end (`always` and `never` pass, the rest stay undecided).
+  - **`assert_method.rs`:**
+    - `assert.eval` with `AssertSource::{live, replay, scenario}`, `AssertOutcome` (status, `decided_at`, witness) and `AssertStatus::{passed, failed, undecided, error}`;
+    - the `.playtest.ron` `Playtest` (scene, `max_ticks`, inputs, optional replay, assertions);
+    - parse and type errors are `InvalidParams` naming the assertion's index and the fix.
+  - `[replay]` now serves 3 tools.
+- **`concordia-terra`:** `World::pending_signal_count(name)`.
+- **`concordia-cli`:** `concordia assert eval <text>… [--replay|--scenario] [--json]` exits 0, 1 or 2. `concordia test playtests` runs every suite under `tests/playtests/`. Both reuse the replay command's in-process session (`replay::Cli`, now `pub(crate)` with `try_call`).
+- **Studio:**
+  - **Scopes:** `assert_eval` goes to QA, the level designer and the gameplay programmer, and joins `PROJECT_TOOLS`. QA and the level designer preload `concordia-write-playtest`.
+  - **Skills:**
+    - `concordia-write-playtest` is rewritten around the real language, format and tool;
+    - `concordia-fix-bug-with-replay` proves fixes with an assertion over the replay and mentions `ab`;
+    - `concordia-director-planning` writes behaviour criteria as assertions.
+  - Both "Not available yet" notes are gone.
+
+**Choices (my recommendations, pre-approved):**
+- **"live" checks the condition on the current tick only:** stepping would change the play world, and a copy can't step (physics and other module state live outside the world).
+- **A selector read as one that matches 0 or several entities is an `error` result,** not a failure, so a typo in a name can't pass as "the condition never held".
+- **A scenario runs on the open scene,** and says which scene to open otherwise.
+
+**Tests** (expected values derived in each header):
+- **`concordia-replay` `tests/assert_eval.rs` (6), walking at 2 m/s toward a door 10 m away (z = t/30):**
+  - reach passes at 241 (1.9667 m);
+  - within 120 fails with the closest approach 6 m at 120;
+  - always `z < 1` fails at 30;
+  - `never` passes at the end, 300;
+  - `eventually` is undecided;
+  - `at 60` with `all` passes;
+  - `any` vs `all` on x = 0, 1, 2 differ;
+  - a scenario equals the replay;
+  - live changes nothing;
+  - bad text is refused with suggestions.
+- **`concordia-terra`:** `pending_signals_are_counted_by_type_name`.
+- **`concordia-cli` `tests/cli_assert.rs` (2):** exit codes 0, 1 and 2; and `test playtests` passing, then failing by name.
+- **`concordia-mcp`:** `assert_eval` over MCP (the box above 0.51 m at tick 31), and the method's schemas. The tool count with `[replay]` changed deliberately from 37 to 38.
+- **`concordia-studio`:** `playtest_skills_use_the_real_assert_tool_assertions_and_suite_format`.
+
+**Red runs and test mistakes:**
+- **Not run red first:** the evaluation tests were written before the code but first ran after it. With `assert.eval` unregistered, all six fail.
+- **My derivation was off by one tick:** steer sets the velocity before integration on the same tick, so z = t/30, not (t − 1)/30. The header and the expected ticks (241 and 30) were corrected; the engine's values matched the corrected derivation exactly.
+- **The `any`/`all` mutant first survived,** because every mover had the same z. A case where they differ (x = 0, 1, 2) now kills it.
+- **The Studio skill test** failed with 1 example where 3 were needed; the CLI tests failed on "not yet"; the signal-count test returned 0.
+
+**Called out:**
+- **Written after its code:** the MCP `assert_eval` check.
+
+**Mutation checks** (all failed tests; restored files touched):
+- `assert.eval` unregistered (6);
+- `within` deciding too early;
+- `all` read as `any`;
+- the closest approach never updating.
+
+**Snapshots:** four, blessed. The synced agent files of QA, the level designer and the gameplay programmer gain `assert_eval` (and QA and the level designer `concordia-write-playtest`), and so does the M3S gate's structure snapshot.
+
+**Docs:**
+- ADR-0084 note;
+- AGENTS.md of `concordia-replay`, `concordia-cli` and `concordia-studio`;
+- README.md of `concordia-replay`;
+- the agent guide's "Playtest assertions";
+- `plans/README.md`.
+
+**Checklist (2026-11-23):**
+- `just lint` (one `needless_borrows` fix) and Tauri clippy: clean.
+- `just wasm`, `just native-fixtures`, and the full suite with `CONCORDIA_REQUIRE_GPU=1`: 1,890 run, all passed.
+- Doc tests: clean.
+- `just gate-tests M1` (4/4) and `M3S` (13/13).
+- Both deny checks: ok. The editor's lock gains `concordia-assert`.
+- `just editor-schemas`: no changes. `just editor-test`: 118 unit and 22 end-to-end tests pass.
+- No new Linux library.
+- Free disk fell to 18 GB, so I ran `just clean-builds`.
+- **Role budgets** (2026-11-23):
+
+  | Role | Tools | Tokens |
+  |---|---|---|
+  | QA | 26 | 24,688 |
+  | level designer | 38 | 24,006 |
+  | UI/UX | 26 | 21,424 |
+  | tech artist | 23 | 20,172 |
+  | animator | 22 | 16,890 |
+  | sound designer | 24 | 15,138 |
+  | gameplay programmer | 18 | 14,374 |
+  | composer | 20 | 13,054 |
+  | director | 13 | 12,453 |
+  | writer | 11 | 9,576 |
+
+  All are under 50k.
 
 ## Goal & context
 M3 closes the loop the design promises (principle 3): an agent can **record** a play session, **replay** it deterministically, **find the first frame** where two runs diverge, and **prove** behavior with typed playtest assertions, all from tests, the CLI and MCP. On top of that loop, M3 ships **Agent Studio v1**: a configurable team of specialist agents that runs **inside the user's own Claude Code on a regular subscription, with no API key** (principle 0).
