@@ -98,6 +98,7 @@ test: wasm native-fixtures
 deny:
     cargo deny check
     cargo deny --manifest-path {{guest}} check licenses bans sources
+    cargo deny --manifest-path tests/fixtures/m3-studio-game/scripts/player_controller/Cargo.toml check licenses bans sources
 
 # Full CI, then the milestone's gate tests (tests/gates/<prefix>_*.rs)
 gate milestone: ci

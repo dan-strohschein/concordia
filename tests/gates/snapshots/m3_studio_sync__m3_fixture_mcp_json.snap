@@ -1,0 +1,16 @@
+---
+source: tests/gates/m3_studio_sync.rs
+expression: "read(&root, \".mcp.json\")"
+---
+{
+  "mcpServers": {
+    "concordia": {
+      "args": [
+        "mcp",
+        "--project",
+        "${CLAUDE_PROJECT_DIR:-.}"
+      ],
+      "command": "concordia"
+    }
+  }
+}

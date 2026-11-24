@@ -1,0 +1,11 @@
+--- a/scripts/player_controller/src/lib.rs
++++ b/scripts/player_controller/src/lib.rs
+@@ -75,7 +75,7 @@
+ 
+ /// How far the player moves this frame along one axis, at `speed` with the stick at `axis`.
+ pub fn step(axis: f32, speed: f32, dt: f32) -> f32 {
+-    axis * speed * dt * dt
++    axis * speed * dt
+ }
+ 
+ /// The module.

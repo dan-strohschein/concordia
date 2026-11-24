@@ -4,7 +4,8 @@
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, Output, Stdio};
+use std::time::SystemTime;
 
 use serde_json::{Value, json};
 
@@ -168,4 +169,107 @@ pub async fn agent_call(
     agent_try(root, mcp, role, tool, args)
         .await
         .unwrap_or_else(|e| panic!("{role:?} {tool}: {}", e.text))
+}
+
+/// Runs `concordia studio <args>` in `root`.
+pub fn studio(root: &Path, args: &[&str]) -> Output {
+    Command::new(concordia_bin())
+        .arg("studio")
+        .args(args)
+        .current_dir(root)
+        .output()
+        .expect("run concordia studio")
+}
+
+/// A project file's text.
+pub fn read(root: &Path, relative: &str) -> String {
+    std::fs::read_to_string(root.join(relative)).unwrap_or_else(|e| panic!("{relative}: {e}"))
+}
+
+/// Generated Claude Code files: files directly in `dir` (agents) or one level down (skills), project-relative and sorted.
+pub fn generated(root: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    for entry in std::fs::read_dir(root.join(".claude/agents")).unwrap() {
+        files.push(entry.unwrap().path());
+    }
+    for entry in std::fs::read_dir(root.join(".claude/skills")).unwrap() {
+        files.push(entry.unwrap().path().join("SKILL.md"));
+    }
+    let mut files: Vec<PathBuf> = files
+        .into_iter()
+        .map(|p| p.strip_prefix(root).unwrap().to_owned())
+        .collect();
+    files.sort();
+    files
+}
+
+/// Each generated agent and skill with its `name:` and `tools:` lines.
+pub fn outline(root: &Path) -> String {
+    generated(root)
+        .iter()
+        .map(|file| {
+            let text = read(root, file.to_str().unwrap());
+            let keep: Vec<&str> = text
+                .lines()
+                .filter(|l| l.starts_with("name: ") || l.starts_with("tools: "))
+                .collect();
+            format!("{}\n  {}", file.display(), keep.join("\n  "))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The managed block of `CLAUDE.md`.
+pub fn managed_block(root: &Path) -> String {
+    let text = read(root, "CLAUDE.md");
+    let start = text
+        .find("<!-- concordia-studio:begin -->")
+        .expect("begin marker");
+    let end = text
+        .find("<!-- concordia-studio:end -->")
+        .expect("end marker");
+    text[start..end].to_owned()
+}
+
+/// Each generated file's modification time.
+pub fn mtimes(root: &Path) -> Vec<(PathBuf, SystemTime)> {
+    let mut files = generated(root);
+    files.extend(
+        [".claude/settings.json", ".mcp.json", "CLAUDE.md"]
+            .iter()
+            .map(PathBuf::from),
+    );
+    files
+        .into_iter()
+        .map(|f| {
+            let time = std::fs::metadata(root.join(&f))
+                .unwrap()
+                .modified()
+                .unwrap();
+            (f, time)
+        })
+        .collect()
+}
+
+/// A file edit as `role`'s first agent makes it in Claude Code: the PreToolUse hook decides; on
+/// `allow` the file is written and the PostToolUse hook journals it. Returns the decision.
+pub fn agent_edit(root: &Path, role: Option<&str>, path: &str, text: &str) -> String {
+    let agent = format!("agent-{}", role.unwrap_or("main"));
+    let file = root.join(path);
+    let tool_input = json!({"file_path": file.display().to_string()});
+    let pre = pre_tool_use(root, role, &agent, "Write", tool_input.clone());
+    let verdict = decision(&pre).to_owned();
+    if verdict == "allow" {
+        if let Some(dir) = file.parent() {
+            std::fs::create_dir_all(dir).expect("make the file's directory");
+        }
+        std::fs::write(&file, text).expect("write the file");
+        let mut post = input_as("PostToolUse", role, &agent);
+        post["tool_name"] = json!("Write");
+        post["tool_input"] = tool_input;
+        post["tool_use_id"] = json!(format!("toolu-Write-{agent}"));
+        post["tool_response"] = json!({"success": true});
+        hook(root, "post-tool-use", &post);
+    }
+    verdict
 }

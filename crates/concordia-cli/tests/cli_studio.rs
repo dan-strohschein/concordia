@@ -321,6 +321,27 @@ fn studio_init_adds_gen_when_missing_for_the_content_roles() {
 }
 
 #[test]
+fn studio_init_adds_render_and_physics_when_missing() {
+    let dir = tempfile::tempdir().unwrap();
+    // A project without [render] or [physics] (M3 3.9b's fixture): several roles take
+    // screenshots, and the level designer casts rays.
+    let root = new_project(dir.path(), &["--no-studio"]);
+    let manifest_path = root.join("concordia.toml");
+    let mut manifest = std::fs::read_to_string(&manifest_path).unwrap();
+    for block in ["\n[render]\n", "\n[physics]\ngravity = [0.0, -9.81, 0.0]\n"] {
+        assert!(manifest.contains(block), "{manifest}");
+        manifest = manifest.replace(block, "\n");
+    }
+    std::fs::write(&manifest_path, manifest).unwrap();
+    let output = run(&["studio", "init"], &root);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let manifest = std::fs::read_to_string(&manifest_path).unwrap();
+    for section in ["[render]", "[physics]"] {
+        assert_eq!(manifest.matches(section).count(), 1, "{manifest}");
+    }
+}
+
+#[test]
 fn studio_init_adds_anim_when_missing_for_the_animator() {
     let dir = tempfile::tempdir().unwrap();
     // A project made before [anim] existed.

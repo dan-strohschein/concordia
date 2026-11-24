@@ -1,0 +1,23 @@
+[package]
+name = "player-controller"
+description = "The M3 gate fixture's gameplay module: the player walks where `move` points."
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+# Paths into the Concordia repository; the gate rewrites them when it copies the fixture.
+concordia-core = { path = "../../../../../crates/concordia-core" }
+concordia-reflect = { path = "../../../../../crates/concordia-reflect" }
+concordia-script-guest = { path = "../../../../../crates/concordia-script-guest" }
+serde = { version = "1", features = ["derive"] }
+
+[profile.release]
+opt-level = "s"
+strip = true
+
+[workspace]
