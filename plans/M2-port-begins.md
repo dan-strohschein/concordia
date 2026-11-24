@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2) and 2.5d (2026-11-22) done; phase 2.5 complete; 2.7 split into 2.7a (audio) and 2.7b (UI); 2.7a refined (2.7a.1, 2.7a.2), 2.7a.1 and 2.7a.2 (2026-11-22) done; phase 2.7a complete; 2.7b refined (2.7b.1–2.7b.3, 2026-11-22); 2.7b.1, 2.7b.2 and 2.7b.3 (2026-11-23) done; phase 2.7b complete; 2.10 refined (the sample game "Lamplight", 2.10a–2.10d, 2026-11-23); 2.10a and 2.10b (2026-11-23) done; 2.10c refined (2.10c.1–2.10c.3); 2.10c.1–2.10c.3 (2026-11-23) done; phase 2.10c complete · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: **Gate passed (2026-11-23): the author accepted M2 by playing Lamplight in a window** (see "M2 completion"). Phases 2.0–2.8 and 2.10a–2.10c done; 2.10d (the scripted CI gate, goldens, the live Studio gate) replaced by that acceptance and deferred · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -69,7 +69,7 @@ The numbers 2.1, 2.2 and 2.9 are retired: they moved to M5, and reusing them wou
 | 8 | **2.4b Terra LOD and representation** | simulation LOD (deterministic inputs only); representation LOD and switching (full, instanced, hidden) | M7 7.4, 7.6 (representation), G8 | |
 | 9 | **2.5 Navigation, crowds and traffic** | recast-sys, navmesh build and queries, agents, Detour crowds as Terra processors, lane-based traffic (rule-based; AI-driven behavior stays M7/M4) | old 2.5 (Godot mapping out), M7 7.7 | |
 | 10 | **2.7 Audio and in-game UI** (2.7a audio, ADR-0066; 2.7b UI, ADR-0060; split by the 2.7a refinement) | audio stack and cues; retained ECS UI, taffy plus anchors, parley and swash (ADR-0060; P1 replaced cosmic-text) | old 2.7 (Godot import and sound bank out) | sound-designer, composer (synth in M3 3.7), ui-ux |
-| 11 | **2.10 Sample game and gate** (refined 2026-11-23: "Lamplight", 2.10a–2.10d) | an original sample game (D2), the deterministic gate, an optional live Studio gate | D2 | |
+| 11 | **2.10 Sample game and gate** (refined 2026-11-23: "Lamplight", 2.10a–2.10d) | an original sample game (D2), the deterministic gate, an optional live Studio gate | D2 | Done: 2.10a–2.10c; the gate passed by the author's playtest (2026-11-23); 2.10d deferred |
 
 The VFX artist stays disabled: particles are not in M2 (open question, unchanged). M11 (Sparx, ADR-0015) enables it.
 
@@ -4655,6 +4655,46 @@ The author records pass or fail per item in the Status:
 
 **After merging (2026-11-23, PR "wet cobbles"):** in the windowed game the author found the ground "highly reflective, like a polished tile floor". The wet-cobbles material had laid a near-mirror clear coat (roughness 0.08) over the whole street. It is now matte stone (0.85) with puddles only in the gaps: roughness 0.3, mixed at 0.5 by the mask. Low-angle before and after screenshots confirmed it. Vertical layering is still shown by the wagon paint's clear coat. The stones' size (1.25 m, the mask stretched over 10 m tiles) and their missing per-stone variation are left for 2.10d's look pass, alongside the goldens.
 
+
+## M2 completion (2026-11-23)
+**M2's gate passed by the author's acceptance.** The author played Lamplight in a window (`concordia run --project examples/m2-lamplight`, release build) and declared the gate good and done. They confirmed:
+- input works (walking, lighting, the title screen's controls, pause);
+- the crowds work (townsfolk and wisps);
+- the camera and the rendering pipeline work;
+- physics works (the character, the lamp sensors, contacts);
+- the UI works "mostly correctly": text runs outside the boxes it sits in (carried over below).
+
+The play session also produced one fix: the wet cobbles looked like a polished floor, and the material was made matte (PR #78).
+
+**What the acceptance replaced (2.10d, deferred, not dropped):**
+- the scripted headless gate `tests/gates/m2_lamplight.rs`: a won night, a lost night, replay across 1 and 8 threads, a mid-night `script_reload`, goldens, an audio-mix digest, and every enabled role using a tool;
+- the optional live Studio gate (`m2_live.sh` and `m2_live_check`);
+- `just play-sample`, and `just gate-tests M2` in `regression.yml`;
+- the new skill `concordia-sample-lamplight`, and the stale `replay_run` note in `concordia-write-playtest`;
+- the windowed by-hand list items not confirmed above: the music loop, footsteps, wagon rumble panning, typing with Shift-selection, OS clipboard paste and copy, and world numbers hiding behind the camera.
+
+`just gate M2` has no gate binaries yet. The in-process Lamplight tests (`lamplight_content`, `lamplight_night`, `lamplight_town`, `lamplight_ui`: 26 tests, all driving the real scene with both modules) run in the full suite and are the automated evidence today.
+
+**Carry-overs, with their owners:**
+- **M3 (closed loop):**
+  - 2.10d's scripted gate, goldens and live gate (M3 adds playtests and general replay, which that gate wants);
+  - world UI takes no input;
+  - assets first named during play measure as missing in the UI simulation;
+  - trackpad scrolling arrives as lines;
+  - the ignored `run_bench_latency`;
+  - the `navmesh` layer's re-gather;
+  - the editor's deny warning.
+- **M7 7.7 (scale):**
+  - ADR-0069's chunk components;
+  - the crowd's sequential steps at 10,000 agents;
+  - physics queries seeing last-step bodies;
+  - the crowd's unreachable-target arrival (2.10c.1);
+  - townsfolk at a few hundred: a spawner can't carry a skinned prefab hierarchy.
+- **UI (M3, with the deferred gate's goldens):** text overflows its box in the windowed game (author, 2026-11-23). Labels and buttons ignore their box's width, which may be the `Overflow::Visible` default or text measured at a different scale from the window's.
+- **Lamplight's look, when its next pass comes:**
+  - representation LOD for the townsfolk (2.10c.2);
+  - the cobbles' stone size and per-stone variation;
+  - a visible fog, which is an engine feature: height and distance fog. The author parked this question.
 
 ### Effort (re-estimated)
 | Phase | Estimate |
