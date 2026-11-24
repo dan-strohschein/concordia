@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use concordia_rhi::{
-    Backend, BlendMode, CompareOp, CullMode, DepthState, Device, Format, GraphicsPipelineDesc,
-    Pipeline, SampleCount, ShaderSource,
+    BlendMode, CompareOp, CullMode, DepthState, Device, Format, GraphicsPipelineDesc, Pipeline,
+    SampleCount, ShaderSource,
 };
 use concordia_shaders::{CompileRequest, ShaderCompiler, ShaderModule, Stage, Target};
 
@@ -54,10 +54,7 @@ fn compile_with(
     stage: Stage,
     defines: BTreeMap<String, String>,
 ) -> Result<ShaderModule, RenderError> {
-    let target = match device.caps().backend {
-        Backend::Metal => Target::Msl,
-        Backend::Vulkan => Target::SpirV,
-    };
+    let target = Target::from(device.caps().backend);
     let request = CompileRequest {
         path: shader_dir().join(file),
         entry: entry.into(),

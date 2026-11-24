@@ -279,36 +279,17 @@ float3 shading_normal(VsOut i, uint tex, float scale) {
 }
 
 Closure load_closure(Frame* frame, uint4* r, VsOut i, bool front, float3 v, bool layered, uint features) {
-    Closure c;
-    float4 base = asfloat(r[0]) * sample_or(r[7].x, i.uv, float4(1.0));
-    c.base = base.rgb;
-    c.alpha = base.a;
-    c.emissive = asfloat(r[1].xyz) * sample_or(r[6].w, i.uv, float4(1.0)).rgb;
+    Closure c = closure_factors(r, features);
+    float4 base = sample_or(r[7].x, i.uv, float4(1.0));
+    c.base *= base.rgb;
+    c.alpha *= base.a;
+    c.emissive *= sample_or(r[6].w, i.uv, float4(1.0)).rgb;
     float4 mr = sample_or(r[7].y, i.uv, float4(1.0));
-    c.metallic = saturate(asfloat(r[1].w) * mr.b);
-    c.transmittance = asfloat(r[2].xyz);
-    c.specular = asfloat(r[2].w);
-    c.roughness = saturate(asfloat(r[3].x) * mr.g);
+    c.metallic = saturate(c.metallic * mr.b);
+    c.roughness = saturate(c.roughness * mr.g);
     c.occlusion = lerp(1.0, sample_or(r[7].w, i.uv, float4(1.0)).r, asfloat(r[3].z));
-    c.features = features;
-    float4 haze_film = asfloat(r[4]);
-    c.haze_roughness = haze_film.x;
-    c.haze_weight = haze_film.y;
-    c.film_thickness = haze_film.z;
-    c.film_ior = haze_film.w;
-    float4 fuzz = asfloat(r[5]);
-    c.fuzz = fuzz.rgb;
-    c.fuzz_roughness = fuzz.w;
-    c.mfp = asfloat(r[6].xyz);
-    c.n = shading_normal(i, r[7].z, asfloat(r[3].y)) * (front ? 1.0 : -1.0);
-    c.nov = abs(dot(c.n, v)) + 1e-5;
-    c.f0 = f0_of(c);
-    c.a = alpha_of(c.roughness);
-    c.haze_a = alpha_of(c.haze_roughness);
-    c.diffuse_weight = 1.0 - specular_energy(tables_of(frame), c, min(c.nov, 1.0));
-    c.diffuse = c.diffuse_weight * (1.0 - c.metallic) * c.base * (1.0 - c.transmittance) / PI;
-    c.sheen_e = has(c, FEATURE_FUZZ) ? tables_of(frame).sheen_albedo(c.nov, c.fuzz_roughness) : 0.0;
-    c.tv = layered ? transmittance(tables_of(frame), c, dot(c.n, v)) : float3(1.0);
+    float3 n = shading_normal(i, r[7].z, asfloat(r[3].y)) * (front ? 1.0 : -1.0);
+    finish_closure(c, tables_of(frame), n, v, layered);
     return c;
 }
 

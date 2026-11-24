@@ -6,7 +6,8 @@ The reference path tracer (M4 4.1b, ADR-0101): a test oracle that renders a worl
 ## Public entry points
 - `scene_from_world(&World, &mut dyn AssetSource, &View)` → `Scene`: what the renderer would draw (world transforms, `MeshRenderer`s, point/spot/sun along each entity's −Z, the first `Environment`, the camera by `pick_camera`; `View::Look` keeps the chosen camera's exposure, tone mapping and clear color).
 - `SceneBuilder` (`mesh`, `material`, `instance`, `point_light`, `spot_light`, `sun`, `environment` / `environment_with_background`, `camera`, `build`) for scenes made in code.
-- `render_cpu(&Scene, &Settings { width, height, spp, seed, max_bounces, threads })` → `HdrImage` (exposed radiance, before tone mapping).
+- `render(&Scene, &Settings, &Backend)` → `HdrImage` (exposed radiance, before tone mapping); `Backend::auto(Some((device, compiler)))` is the GPU when the tracer builds there, else `Backend::Cpu`; `render_cpu(&Scene, &Settings { width, height, spp, seed, max_bounces, threads })`.
+- `GpuTracer::new(Arc<dyn Device>, &dyn ShaderCompiler)` (needs bindless buffers) and `GpuTracer::render`; `gpu::shader_dir()` holds `pathtrace.slang`.
 - Core pieces: `Triangle::intersect`, `Bvh` and the generic `bvh::Tree`, `Accel` / `Instance` (two levels), `SampleStream`, `EnvMap`, `Light`, `PathTraceError`.
 
 ## Invariants
@@ -16,14 +17,15 @@ The reference path tracer (M4 4.1b, ADR-0101): a test oracle that renders a worl
 - **Transport:** unidirectional; next-event estimation for every punctual light and the sun, one sky sample (luminance × solid angle) and one emitting triangle (by area), MIS by the power heuristic against BSDF sampling; BSDF directions from a mixture of cosine (half) and each slab's GGX lobe; Russian roulette from the third bounce; masked materials cut out below their cutoff, blended ones pass with probability 1 − alpha.
 - Shadow rays start off the surface and are aimed at the target point itself, with a margin before it (a ray measured from the surface stopped at the emitter's own plane: the disk-light test found it).
 - Instancing: rays move into object space (same `t`). World- and object-space tests may disagree only within rounding of a triangle edge (Möller–Trumbore isn't watertight across spaces).
+- **The GPU backend** (`shaders/pathtrace.slang`, 4.1b3) is the CPU algorithm step for step: the same PCG streams and dimension order, traversal, sampling, MIS, light definitions, alpha handling and emission. It reads the scene from `float4`/`uint4` row buffers (`gpu.rs` `Packed`; the header's 12 rows are documented in `context`): both BVH levels (2 rows per node; the TLAS after the meshes' trees), 3 rows per triangle and per corner-normal set, 7 rows per instance, `concordia-material`'s rows plus a 6-row table per material (rows offset, lobes, alpha mode, unlit; cutoff and alpha; emission; unlit color; 8 lobe alphas), 4 rows per light, 3 per emitter, the sky and its cumulative weights, and the 32×32 albedo tables (bilinear like `dfg::bilinear`). Materials are walked like `MaterialProgram::eval` (a dynamic loop over the shared `closure_factors` / `finish_closure` / combinators). Samples run in batches of 16 per dispatch, each thread adding to its pixel's running sum; the CPU divides and exposes. Images are deterministic on one device; GPU and CPU agree statistically, not bit for bit (float operations differ).
 - Known differences from the renderer, by design: every face is two-sided; meshes are drawn full (no representation LOD) and unskinned (bind pose); textures are not sampled (the CPU BSDF takes factors only, as `concordia-material`'s reference does).
 
 ## How to test
-`cargo nextest run -p concordia-pathtrace` (no GPU). Tests run optimized (`[profile.dev.package.concordia-pathtrace] opt-level = 3`). `tests/bvh.rs` and `tests/instances.rs` are proptests against brute force; `tests/transport.rs` has the furnace, the disk light, the punctual lights, convergence and determinism; `tests/world.rs` reads worlds.
+`cargo nextest run -p concordia-pathtrace`. The transport tests run on every backend (`tests/common` adds the GPU when a device exists; required with `CONCORDIA_REQUIRE_GPU=1`), plus `gpu_and_cpu_tracers_converge` (the GPU differs from the CPU no more than two CPU seeds do) and `gpu_and_cpu_agree_on_layered_materials` (noise-free, direct light only). Tests run optimized (`[profile.dev.package.concordia-pathtrace] opt-level = 3`). `tests/bvh.rs` and `tests/instances.rs` are proptests against brute force; `tests/transport.rs` has the furnace, the disk light, the punctual lights, convergence and determinism; `tests/world.rs` reads worlds.
 
 ## Common tasks
 - **Add a light type:** define it in `concordia-render-types` (shared with the renderer), add a `Light` variant and its `arriving` case in `cpu.rs`, read it in `world.rs`, and test it exactly with `max_bounces: 1` like `punctual_lights_follow_the_engines_definitions`.
-- **Change sampling:** keep `sample_bsdf` and `bsdf_pdf` in agreement; the furnace and convergence tests catch a mismatch.
+- **Change sampling or transport:** change `cpu.rs` and `pathtrace.slang` together (same steps, same random-number order); keep `sample_bsdf` and `bsdf_pdf` in agreement. The furnace, convergence and GPU-vs-CPU tests catch a mismatch.
 
 ## Don'ts
 - Don't share rendering code with `concordia-render` (the oracle must stay independent); share definitions through `concordia-render-types` instead.
@@ -40,7 +42,7 @@ The reference path tracer (M4 4.1b, ADR-0101): a test oracle that renders a worl
 No engine source consulted.
 
 ## Status
-M4 phase 4.1b2: core and CPU backend. Next: the GPU backend (4.1b3), `capture.reference` and the baselines (4.1b4).
+M4 phase 4.1b2: core and CPU backend. M4 phase 4.1b3: the GPU backend, `Backend`, `render`. Next: `capture.reference` and the baselines (4.1b4).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

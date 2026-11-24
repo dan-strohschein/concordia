@@ -117,6 +117,22 @@ impl EnvMap {
         }
     }
 
+    /// Width and height in texels.
+    pub fn size(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+
+    /// Texels (radiance × intensity), rows from the top.
+    pub fn texels(&self) -> &[Vec3] {
+        &self.texels
+    }
+
+    /// Cumulative row weights (`height + 1`) and per-row cumulative texel weights
+    /// (`height × (width + 1)`), for sampling.
+    pub fn distributions(&self) -> (&[f32], &[f32]) {
+        (&self.rows, &self.columns)
+    }
+
     fn texel(&self, [u, v]: [f32; 2]) -> (u32, u32) {
         let x = ((u.rem_euclid(1.0) * self.width as f32) as u32).min(self.width - 1);
         let y = ((v.clamp(0.0, 1.0) * self.height as f32) as u32).min(self.height - 1);

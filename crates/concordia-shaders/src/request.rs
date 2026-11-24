@@ -38,6 +38,16 @@ pub enum Target {
     SpirV,
 }
 
+impl From<concordia_rhi::Backend> for Target {
+    /// The shader target a device's backend runs.
+    fn from(backend: concordia_rhi::Backend) -> Self {
+        match backend {
+            concordia_rhi::Backend::Metal => Self::Msl,
+            concordia_rhi::Backend::Vulkan => Self::SpirV,
+        }
+    }
+}
+
 impl Target {
     pub(crate) fn slang(self) -> &'static str {
         match self {

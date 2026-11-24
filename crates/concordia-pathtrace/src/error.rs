@@ -15,6 +15,9 @@ pub enum PathTraceError {
     /// The scene has no camera.
     #[error("the scene has no camera")]
     NoCamera,
+    /// The GPU backend failed (device, shader or submission).
+    #[error("gpu: {0}")]
+    Gpu(String),
     /// Render settings are out of range.
     #[error("settings: {0}")]
     Settings(String),

@@ -6,9 +6,6 @@ use concordia_core::math::{Mat3, Mat4, Vec3, Vec4};
 use crate::cluster::ClusterGrid;
 use crate::shadow::{Cascade, CascadeSettings};
 
-/// No texture bound (shaders use the factor alone).
-pub(crate) const NO_TEXTURE: u32 = u32::MAX;
-
 /// Push constants for one forward draw (mirrors `DrawPush` in `forward.slang`).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
