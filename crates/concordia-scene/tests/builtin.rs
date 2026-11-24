@@ -121,3 +121,22 @@ fn headless_schedule_runs_simulation_lod_from_world_positions() {
     // 30 m from the viewer's world position (the rig's 100 m), not its local 0.
     assert_eq!(world.get::<SimLod>(far).unwrap().level, 2);
 }
+
+/// `Tags` (M3 phase 3.2a) labels an entity for selectors like the assertions' `tag("player")`:
+/// a list of words, empty by default, registered with the other built-ins, written in a scene
+/// as a plain list.
+#[test]
+fn tags_are_a_builtin_list_of_words() {
+    use concordia_scene::builtin::Tags;
+    let mut reg = TypeRegistry::new();
+    builtin::register(&mut reg).unwrap();
+    let schema = reg.schema_for("Tags").unwrap();
+    assert_eq!(schema["type"], "array", "{schema}");
+    assert_eq!(Tags::default(), Tags(Vec::new()));
+    let tags = Tags(vec!["player".into(), "hero".into()]);
+    assert!(tags.has("player") && !tags.has("door"));
+    assert_eq!(
+        serde_json::to_value(&tags).unwrap(),
+        serde_json::json!(["player", "hero"])
+    );
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "default": [],
+  "description": "Words that label an entity for selectors (e.g. the playtest assertions' `tag(\"player\")`).",
+  "items": {
+    "type": "string"
+  },
+  "title": "Tags",
+  "type": "array",
+  "x-concordia-category": "Core",
+  "x-concordia-type": "Tags"
+}

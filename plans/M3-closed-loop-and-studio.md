@@ -1,7 +1,7 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b, 3.0c and 3.1 (a–c) done) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b, 3.0c, 3.1 (a–c) and 3.2a done) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
@@ -829,6 +829,66 @@ Every role stays under 50k. If the AST's recursive schema makes `assert_eval` he
   | writer | 11 | 9,576 |
 
   All are under 50k.
+
+### Phase 3.2a As built (2026-11-23; ADR-0084)
+**Status: done (branch `m3/3.2-assert-lang`).** The assertion language, without evaluation.
+
+**What landed:**
+- **`concordia-assert` (new crate):**
+  - `ast.rs`: the tree;
+  - `parse.rs`: a hand-written lexer and recursive-descent parser with 1-based column spans;
+  - `print.rs`: the canonical `Display`;
+  - `check.rs`: the type checker over component JSON Schemas, `Dim` units, quantifiers, seconds to ticks, and edit-distance suggestions;
+  - `builder.rs`: the Rust builder, with a doc test;
+  - `error.rs`: `ParseError` and `TypeError`.
+- **`concordia-scene`:** the built-in `Tags(Vec<String>)` (`Tags::has`), registered with `Name`.
+
+**Choices (my recommendations, pre-approved; ADR-0084):**
+- **Text only:** the tree is not reflected, and `assert_eval` will take the canonical text. This is the refinement's fallback, taken up front: one form for agents, and a small tool schema.
+- **`id("…")` takes a string,** like the other selectors.
+- **Booleans stand alone** (`exists`, `event`, boolean fields); comparing them by size is a type error.
+- **`Tags` is a `Vec`:** reflection has no `BTreeSet`.
+
+**Tests** (expected values derived in each header):
+- **`tests/parse.rs` (4):**
+  - `parses_within_distance_example_from_design` (new snapshot, blessed);
+  - `every_form_round_trips`: ten forms, plus `and` binding tighter;
+  - `parse_error_points_at_offending_span`: columns 12–16 for `tickz`, expected `ticks` or `s`;
+  - `prop_pretty_print_then_parse_is_identity`.
+- **`tests/typeck.rs` (4):**
+  - `unknown_component_field_suggests_nearest_name`: `Helth` → `Health`, `curent` → `current`, and `translation.w` is past the end;
+  - `unit_mismatch_is_rejected`: Length vs Time, Angle vs Time, booleans;
+  - `field_on_multi_entity_selector_requires_any_or_all`;
+  - `seconds_convert_to_ticks_using_project_tick_rate`: 10 s → 600 ticks, 0.5 s → 30, 0.01 s refused.
+- **`tests/builder.rs`:** `builder_matches_the_text_form`.
+- **`concordia-scene`:** `tags_are_a_builtin_list_of_words`.
+
+**Red runs:**
+- Every assertion test failed against the stubs: `parse` always erred, `check` accepted everything.
+- The `Tags` test failed because `Tags` wasn't registered.
+
+**Mutation checks** (all failed tests; restored files touched):
+- the quantifier rule off;
+- units always compatible;
+- `and`'s right operand printed without parentheses;
+- fractional ticks accepted.
+
+**Studio and docs:**
+- **No tools yet:** `assert_eval` comes in 3.2b, and the skills' notes stay until then.
+- **New:** ADR-0084; `concordia-assert`'s AGENTS.md and README.
+- **Updated:** `concordia-scene`'s AGENTS.md; `plans/README.md` (crate table, ADR registry); the agent guide's "Tags".
+
+**Checklist (2026-11-23):**
+- `just lint` and Tauri clippy: clean.
+- `just wasm`, `just native-fixtures`, and the full suite with `CONCORDIA_REQUIRE_GPU=1`: 1,880 run, all passed.
+- Doc tests: clean, including the builder's.
+- `just gate-tests M1` (4/4) and `M3S` (13/13).
+- Both deny checks: ok.
+- `just editor-schemas`: `Tags`, committed.
+- `just editor-test`: 118 unit and 22 end-to-end tests pass.
+- One new snapshot, blessed (snapshot log).
+- No tools changed, so role budgets are as in 3.1c.
+- 40 GB free.
 
 ## Goal & context
 M3 closes the loop the design promises (principle 3): an agent can **record** a play session, **replay** it deterministically, **find the first frame** where two runs diverge, and **prove** behavior with typed playtest assertions, all from tests, the CLI and MCP. On top of that loop, M3 ships **Agent Studio v1**: a configurable team of specialist agents that runs **inside the user's own Claude Code on a regular subscription, with no API key** (principle 0).
