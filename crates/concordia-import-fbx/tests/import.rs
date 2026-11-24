@@ -514,10 +514,11 @@ fn reimport_with(
 ) -> Result<concordia_assets::ImportReport, concordia_assets::AssetError> {
     let sidecar = p.dir.path().join(format!("{name}.import.ron"));
     let text = std::fs::read_to_string(&sidecar).unwrap();
-    assert!(text.contains("settings: {}"), "{text}");
+    // New sidecars declare the model settings left to the project (ADR-0102).
+    assert!(text.contains(NEW_SETTINGS), "{text}");
     std::fs::write(
         &sidecar,
-        text.replace("settings: {}", &format!("settings: {settings}")),
+        text.replace(NEW_SETTINGS, &format!("settings: {settings}")),
     )
     .unwrap();
     p.db.import(std::path::Path::new(name))
@@ -578,3 +579,6 @@ fn bad_clip_events_are_descriptive_import_errors() {
         }
     }
 }
+
+/// A new model sidecar's settings block.
+const NEW_SETTINGS: &str = "settings: {\n        \"emissive_reference_ev100\": None,\n    }";

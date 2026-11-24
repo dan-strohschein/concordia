@@ -32,7 +32,7 @@ pub use document::{read_document, write_document};
 pub use error::SceneError;
 pub use model::{EntityDoc, FORMAT_VERSION, PrefabDoc, SceneDoc, SceneMeta, TemplateDoc};
 pub use prefab::{instantiate_prefab, remap};
-pub use read::{read_prefab, read_scene};
+pub use read::{read_components, read_prefab, read_scene};
 pub use template::{read_template, write_template};
 pub use world::{load_into_world, snapshot_world};
 pub use write::{format, write_prefab, write_scene};

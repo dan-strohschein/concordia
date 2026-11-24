@@ -37,7 +37,7 @@ impl Importer for FbxImporter {
     }
 
     fn default_settings(&self) -> serde_json::Value {
-        serde_json::json!({})
+        ModelSettings::defaults()
     }
 
     fn import(&self, input: ImportInput<'_>) -> Result<ImportOutput, AssetError> {
@@ -56,7 +56,16 @@ impl Importer for FbxImporter {
         let images =
             material::textures(&files, &materials, &names, input.read_relative, &mut output)
                 .map_err(fail)?;
-        material::materials(&materials, &images, &names, input.sub_ids, &mut output)?;
+        let settings = ModelSettings::from_json(input.settings).map_err(&fail)?;
+        let scale = settings.emission_scale();
+        material::materials(
+            &materials,
+            &images,
+            &names,
+            scale,
+            input.sub_ids,
+            &mut output,
+        )?;
         let stem = input
             .path
             .file_stem()
@@ -66,7 +75,6 @@ impl Importer for FbxImporter {
         let clusters =
             skin::skins(&scene, &meshes, &names, &entities, &mut output).map_err(fail)?;
         mesh::meshes(&scene, &meshes, &clusters, &names, &mut output).map_err(fail)?;
-        let settings = ModelSettings::from_json(input.settings).map_err(&fail)?;
         anim::clips(&scene, &stacks, &names, &entities, &settings, &mut output).map_err(fail)?;
         for sub in output.artifacts.keys().filter(|k| !k.is_empty()) {
             input.sub_ids.id(sub);

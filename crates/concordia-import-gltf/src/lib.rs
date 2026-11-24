@@ -45,7 +45,7 @@ impl Importer for GltfImporter {
     }
 
     fn default_settings(&self) -> serde_json::Value {
-        serde_json::json!({})
+        ModelSettings::defaults()
     }
 
     fn import(&self, input: ImportInput<'_>) -> Result<ImportOutput, AssetError> {
@@ -76,7 +76,15 @@ impl Importer for GltfImporter {
             &mut output,
         )
         .map_err(fail)?;
-        material::materials(&gltf.document, &images, &names, input.sub_ids, &mut output)?;
+        let settings = ModelSettings::from_json(input.settings).map_err(&fail)?;
+        material::materials(
+            &gltf.document,
+            &images,
+            &names,
+            settings.emission_scale(),
+            input.sub_ids,
+            &mut output,
+        )?;
         mesh::meshes(&gltf.document, &buffers, &names, &mut output).map_err(fail)?;
         extras::lights_and_cameras(&gltf.document, &names, &mut output)?;
         let stem = input
@@ -85,7 +93,6 @@ impl Importer for GltfImporter {
             .and_then(|s| s.to_str())
             .unwrap_or("gltf");
         let entities = prefab::prefab(&gltf.document, &names, stem, input.sub_ids, &mut output)?;
-        let settings = ModelSettings::from_json(input.settings).map_err(&fail)?;
         anim::skins_and_clips(
             &gltf.document,
             &buffers,

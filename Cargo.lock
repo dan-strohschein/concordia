@@ -720,6 +720,7 @@ dependencies = [
  "concordia-physics",
  "concordia-platform",
  "concordia-render",
+ "concordia-render-types",
  "concordia-replay",
  "concordia-rhi",
  "concordia-rhi-metal",

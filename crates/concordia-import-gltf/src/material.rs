@@ -78,6 +78,7 @@ pub(crate) fn materials(
     doc: &gltf::Document,
     images: &BTreeMap<usize, String>,
     names: &Names,
+    emission_scale: f32,
     sub_ids: &mut SubIds,
     out: &mut ImportOutput,
 ) -> Result<(), AssetError> {
@@ -92,7 +93,10 @@ pub(crate) fn materials(
             alpha_mode: alpha_mode(&m),
             double_sided: m.double_sided(),
             unlit: m.unlit(),
-            ..Material::from_slab(slab(&m, &texture))
+            ..Material::from_slab(Slab {
+                emissive_strength: slab(&m, &texture).emissive_strength * emission_scale,
+                ..slab(&m, &texture)
+            })
         };
         let sub = format!("material/{}", names.materials[index]);
         out.artifacts.insert(

@@ -25,6 +25,57 @@ pub fn read_scene(text: &str, registry: &TypeRegistry) -> Result<SceneDoc, Scene
     })
 }
 
+/// Every entity's value of component `name`, as `T`, skipping the scene's other components (no
+/// registry: tools that need one component type, like the main camera's exposure).
+pub fn read_components<T: concordia_reflect::Reflect>(
+    text: &str,
+    name: &str,
+) -> Result<Vec<(EntityId, T)>, SceneError> {
+    let root = parse(text).map_err(syntax)?;
+    let fields = Fields::of(&root, "Scene", &["format", "id", "name", "entities"])?;
+    fields.format()?;
+    let node = fields.get("entities")?;
+    let Kind::List(items) = &node.kind else {
+        return Err(parse_error(
+            node.pos,
+            "`entities` must be a list [Entity(...), ...]",
+        ));
+    };
+    let mut out = Vec::new();
+    for item in items {
+        let entity = Fields::of(item, "Entity", &["id", "components"])?;
+        let id: EntityId = entity.parsed("id")?;
+        let Kind::Map(entries) = &entity.get("components")?.kind else {
+            continue;
+        };
+        for (key, value) in entries {
+            if matches!(&key.kind, Kind::Str(n) if n == name) {
+                out.push((id, typed_component::<T>(name, value)?));
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// One component node as `T`, validated against `T`'s reflected schema.
+fn typed_component<T: concordia_reflect::Reflect>(
+    name: &str,
+    node: &Node,
+) -> Result<T, SceneError> {
+    let info = T::type_info();
+    let mut converter = Converter::default();
+    let json = converter
+        .value(node, info, "")
+        .map_err(|e| convert_error(name, e))?;
+    concordia_reflect::validate_json(&json, info)
+        .map_err(|e| reflect_error(name, &e, &converter))?;
+    serde_json::from_value(json).map_err(|e| SceneError::Parse {
+        line: node.pos.line,
+        col: node.pos.col,
+        message: format!("{name}: {e}"),
+    })
+}
+
 /// Reads a prefab, validating every component against the registry.
 pub fn read_prefab(text: &str, registry: &TypeRegistry) -> Result<PrefabDoc, SceneError> {
     let root = parse(text).map_err(syntax)?;

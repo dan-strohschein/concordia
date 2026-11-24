@@ -72,6 +72,8 @@ pub struct AssetDb {
     keys: BTreeMap<AssetId, DdcKey>,
     /// Small artifacts already read, by asset and sub-asset.
     memory: ArtifactMemory,
+    /// The project's values for import settings importers declare as `null`.
+    setting_defaults: BTreeMap<String, serde_json::Value>,
 }
 
 /// An artifact's kind and bytes.
@@ -149,9 +151,42 @@ impl AssetDb {
             generations: BTreeMap::new(),
             keys: BTreeMap::new(),
             memory: ArtifactMemory::default(),
+            setting_defaults: BTreeMap::new(),
         };
         db.scan()?;
         Ok(db)
+    }
+
+    /// Sets the project's value for import setting `key`, used wherever an importer declares the
+    /// key as `null` and the sidecar leaves it `null` (e.g. `emissive_reference_ev100`).
+    pub fn set_setting_default(&mut self, key: &str, value: serde_json::Value) {
+        self.setting_defaults.insert(key.to_owned(), value);
+    }
+
+    /// `sidecar`'s settings with every key the importer declares as `null` (and the sidecar leaves
+    /// `null` or absent) taken from the project's defaults: what the importer sees and what the
+    /// cache key covers, so a changed default re-imports.
+    fn effective_settings(
+        &self,
+        importer: &dyn Importer,
+        settings: &serde_json::Value,
+    ) -> serde_json::Value {
+        let mut out = settings.clone();
+        let (serde_json::Value::Object(declared), Some(map)) =
+            (importer.default_settings(), out.as_object_mut())
+        else {
+            return out;
+        };
+        for (key, value) in declared {
+            let unset = map.get(&key).is_none_or(serde_json::Value::is_null);
+            if value.is_null()
+                && unset
+                && let Some(default) = self.setting_defaults.get(&key)
+            {
+                map.insert(key, default.clone());
+            }
+        }
+        out
     }
 
     /// Adds an importer (later registrations win for shared extensions).
@@ -202,7 +237,7 @@ impl AssetDb {
             importer.name(),
             importer.version(),
             PLATFORM,
-            &sidecar.settings,
+            &self.effective_settings(importer.as_ref(), &sidecar.settings),
             &bytes,
         );
         let cached = self
@@ -265,7 +300,7 @@ impl AssetDb {
         let output = importer.import(ImportInput {
             path: rel,
             bytes,
-            settings: &sidecar.settings,
+            settings: &self.effective_settings(importer, &sidecar.settings),
             read_relative: &read_relative,
             sub_ids: &mut sub_ids,
         })?;
@@ -384,7 +419,7 @@ impl AssetDb {
             importer.name(),
             importer.version(),
             PLATFORM,
-            &record.sidecar.settings,
+            &self.effective_settings(importer.as_ref(), &record.sidecar.settings),
             &bytes,
         ))
     }

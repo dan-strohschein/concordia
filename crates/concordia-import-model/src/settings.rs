@@ -13,12 +13,32 @@ pub struct ModelSettings {
     /// Events to add to each clip, by clip name (seconds from the clip's start).
     #[serde(default)]
     pub clip_events: BTreeMap<String, Vec<ClipEvent>>,
+    /// The exposure (EV100) at which the file's emission looks right: imported emission is screen
+    /// brightness at this exposure, converted to nits (ADR-0102). Null: the project's default.
+    #[serde(default)]
+    pub emissive_reference_ev100: Option<f32>,
 }
 
 impl ModelSettings {
     /// Reads settings from the sidecar's JSON; unknown keys are errors.
     pub fn from_json(json: &serde_json::Value) -> Result<Self, String> {
-        Self::deserialize(json).map_err(|e| format!("import settings: {e}"))
+        let settings = Self::deserialize(json).map_err(|e| format!("import settings: {e}"))?;
+        match settings.emissive_reference_ev100 {
+            Some(ev) if !(-10.0..=30.0).contains(&ev) => Err(format!(
+                "import settings: emissive_reference_ev100 {ev} is outside -10..=30"
+            )),
+            _ => Ok(settings),
+        }
+    }
+
+    /// The settings every model importer declares (null: filled from the project's defaults).
+    pub fn defaults() -> serde_json::Value {
+        serde_json::json!({ "emissive_reference_ev100": null })
+    }
+
+    /// Nits per unit of imported emission: 1.2 · 2^EV at the reference exposure (EV 0 when unset).
+    pub fn emission_scale(&self) -> f32 {
+        1.2 * 2f32.powf(self.emissive_reference_ev100.unwrap_or(0.0))
     }
 
     /// Gives `clip` its events (sorted by time, ties in authored order) and validates them.

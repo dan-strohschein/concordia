@@ -122,6 +122,30 @@ impl Project {
         InputMap::parse(&text).map_err(|e| file_error(e.to_string()))
     }
 
+    /// The main scene camera's EV100: the default reference exposure for imported emission.
+    pub fn main_camera_ev100(&self) -> Option<f32> {
+        let main = self.manifest.scene.main.as_ref()?;
+        let path = self.root.join(main);
+        let text = std::fs::read_to_string(&path).ok()?;
+        let cameras: Vec<(_, concordia_render::Camera)> = match concordia_scene::read_components(
+            &text, "Camera",
+        ) {
+            Ok(cameras) => cameras,
+            Err(e) => {
+                tracing::warn!(target: "concordia::app", path = %path.display(), error = %e, "can't read the main scene's cameras");
+                return None;
+            }
+        };
+        let chosen = concordia_render_types::pick_camera(
+            cameras.iter().map(|(id, c)| (*id, c.priority)),
+            None,
+        )?;
+        cameras
+            .iter()
+            .find(|(id, _)| *id == chosen)
+            .map(|(_, c)| c.exposure_ev100)
+    }
+
     /// The project's closure budget (`[render] closure_budget`; None: the platform's).
     pub fn closure_budget(&self) -> Option<ClosureBudget> {
         self.manifest
@@ -155,6 +179,14 @@ impl Project {
             let assets = asset_importers()
                 .into_iter()
                 .fold(AssetsModule::new(&self.root), AssetsModule::with_importer);
+            // Imported emission converts at the main camera's exposure unless a sidecar says
+            // otherwise (ADR-0102).
+            let assets = match self.main_camera_ev100() {
+                Some(ev) => {
+                    assets.with_setting_default("emissive_reference_ev100", serde_json::json!(ev))
+                }
+                None => assets,
+            };
             modules.push(Arc::new(assets));
         }
         if self.manifest.anim.is_some() {
