@@ -1,5 +1,5 @@
 # ADR-0089: Perf testing on reference hardware
-- Status: Accepted (M4 phase 4.1a, 2026-11-24; the plan, `concordia-perf` as its own crate, perf mode only on request and the MetalFX probe approved by the author on 2026-11-24; the budget numbers are approved in 4.1a's review)
+- Status: Accepted (M4 phase 4.1a, 2026-11-24; the plan, `concordia-perf` as its own crate, perf mode only on request and the MetalFX probe approved by the author on 2026-11-24; the first budget files approved in 4.1a's review, 2026-11-24)
 - Date: 2026-11-24
 - Builds on: ADR-0040 (RHI), ADR-0071 (fast CI, manual regression suite); M4 refinement D1, D5 and D10
 
