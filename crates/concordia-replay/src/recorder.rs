@@ -36,7 +36,11 @@ pub(crate) fn start(
         .state::<Pending>()
         .cloned()
         .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "replay module not started"))?;
-    pending.set(Recording::new(header, rel.clone(), file));
+    let stills = p
+        .stills
+        .unwrap_or(true)
+        .then(|| engine.project().join(crate::runner::DDC));
+    pending.set(Recording::new(header, rel.clone(), file, stills));
     if let Err(e) = engine.restart_play(None) {
         // Don't let the recording join a later, unrelated play world.
         pending.take();
@@ -106,7 +110,8 @@ fn not_recording() -> ApiError {
     .suggest(["start one with replay.record {\"action\": \"start\", \"path\": \"tests/replays/<name>.replay.ron\"}".to_owned()])
 }
 
-fn write(file: &std::path::Path, replay: &Replay) -> Result<(), String> {
+/// Writes `replay` to `file`, creating its directory.
+pub(crate) fn write(file: &std::path::Path, replay: &Replay) -> Result<(), String> {
     let text = write_replay(replay).map_err(|e| e.to_string())?;
     if let Some(dir) = file.parent() {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;

@@ -33,6 +33,8 @@ fn checkpoint(tick: u64, world: &str) -> Checkpoint {
             ("@clock".to_owned(), H2.to_owned()),
             ("Transform".to_owned(), H1.to_owned()),
         ]),
+        // The checkpoint at 60 carries a still's DDC key (3.1b); the others were taken without.
+        still: (tick == 60).then(|| H2.to_owned()),
     }
 }
 
@@ -128,6 +130,14 @@ fn replay_format_rejects_unknown_major_version_bad_hashes_and_unordered_ticks() 
         other => panic!("{other:?}"),
     }
 
+    let mut bad_still = sample();
+    bad_still.checkpoints[1].still = Some("xyz".into());
+    let err = read_replay(&text(&bad_still)).unwrap_err();
+    assert!(
+        matches!(&err, ReplayError::Hash { at, .. } if at == "checkpoints[1].still"),
+        "{err:?}"
+    );
+
     let mut unordered = sample();
     unordered.inputs.swap(0, 1);
     let err = read_replay(&text(&unordered)).unwrap_err();
@@ -219,6 +229,7 @@ fn a_version_0_file_reads_as_version_1() {
     want.header.manifest_hash = None;
     want.header.task = None;
     want.hashes = Vec::new();
+    want.checkpoints.iter_mut().for_each(|c| c.still = None);
     assert_eq!(replay, want);
     let again = write_replay(&replay).unwrap();
     assert!(

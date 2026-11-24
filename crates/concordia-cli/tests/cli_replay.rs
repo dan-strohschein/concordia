@@ -125,3 +125,71 @@ fn replay_migrate_rewrites_version_0_as_version_1() {
     );
     assert_eq!(std::fs::read_to_string(&file).unwrap(), v1);
 }
+
+/// `concordia replay diff a b` compares two replays offline (M3 3.1b): a recording against
+/// itself is the same (exit 0); against one where Space is pressed on tick 5 instead of 3, the
+/// first differing input tick, 3, is reported (exit 1). `run --mode resimulate --update` re-blesses a file.
+#[test]
+fn replay_diff_and_update_from_the_cli() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = project(dir.path());
+    let press = |name: &str, tick: u32| {
+        std::fs::write(
+            root.join(name),
+            format!(
+                r#"[{{"tick": {tick}, "event": {{"Key": {{"key": "Space", "pressed": true}}}}}}]"#
+            ),
+        )
+        .unwrap();
+    };
+    press("a.json", 3);
+    press("b.json", 5);
+    for (file, inputs) in [
+        ("tests/replays/a.replay.ron", "a.json"),
+        ("tests/replays/b.replay.ron", "b.json"),
+    ] {
+        let out = run(
+            &[
+                "replay", "record", file, "--ticks", "60", "--inputs", inputs,
+            ],
+            &root,
+        );
+        assert!(out.status.success(), "{}", stderr(&out));
+    }
+    let same = run(
+        &[
+            "replay",
+            "diff",
+            "tests/replays/a.replay.ron",
+            "tests/replays/a.replay.ron",
+        ],
+        &root,
+    );
+    assert!(same.status.success(), "{}", stderr(&same));
+    assert_eq!(json(&same)["first_tick"], Value::Null);
+    let differ = run(
+        &[
+            "replay",
+            "diff",
+            "tests/replays/a.replay.ron",
+            "tests/replays/b.replay.ron",
+        ],
+        &root,
+    );
+    assert!(!differ.status.success());
+    // Nothing in this project reacts to Space, so the hashes agree; the inputs don't, from 3.
+    assert_eq!(json(&differ)["first_input_tick"], 3, "{}", stdout(&differ));
+
+    let updated = run(
+        &[
+            "replay",
+            "run",
+            "tests/replays/a.replay.ron",
+            "--mode",
+            "resimulate",
+            "--update",
+        ],
+        &root,
+    );
+    assert!(updated.status.success(), "{}", stderr(&updated));
+}

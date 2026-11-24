@@ -1,7 +1,7 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b, 3.0c and 3.1a done) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b, 3.0c, 3.1a and 3.1b done) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
@@ -676,6 +676,84 @@ Every role stays under 50k. If the AST's recursive schema makes `assert_eval` he
 - `just editor-schemas`: no changes. `just editor-test`: 118 unit and 22 end-to-end tests pass.
 - No new Linux library.
 - Free disk fell to 6 GB, so I ran `just clean-builds`; 96 GB free after.
+
+### Phase 3.1b As built (2026-11-23; ADR-0072 note)
+**Status: done (branch `m3/3.1-divergence`).** Stills, field-level divergence reports, re-blessing, offline comparison and a committed replay.
+
+**Refinement change (my recommendation, pre-approved):** 3.1b's `ab` mode and `suspect_system` move to a new **3.1c (`m3/3.1-ab`)**. They need new Terra and Engine seams (observed ticks, a second engine through an injected factory), which deserve their own PR. 3.1c's tests are the refinement's `ab_mode_names_suspect_system` and `ab_mode_reports_first_divergence_between_two_builds`.
+
+**What landed:**
+- **`concordia-replay`:**
+  - **Stills:**
+    - `still.rs` takes the hashed component values as JSON (presentation-only components left out, as in the hash), stores them in `.concordia/ddc` under a BLAKE3 key, and diffs two of them down to field paths.
+    - `Checkpoint::still` holds the key, and `replay.record`'s `stills` (default true) turns them off.
+  - **Field diffs:** `Divergence` gains `fields` (`FieldDiff { entity, component, path, expected, actual }`, at most 32) and `fields_note`, which says why the list is empty: no stills were recorded, or the still is not in the cache (which also logs a warning).
+  - **Re-blessing:** `replay.run`'s `update`, with `resimulate` only, rewrites the file on current code with the same inputs and a fresh header, hashes and stills, accepting changed code and content. The recorder's logic is shared (`Recording::begin_state`, `note_state`, `finish_with`).
+  - **Offline comparison:** `compare_replays(a, b, ddc) -> ReplayDiff`: header mismatches, `first_input_tick`, `first_tick` (from per-tick hashes, else common checkpoints), `parts_tick`, parts and fields.
+- **`concordia-terra`:** `World::is_presentation`.
+- **`concordia-cli`:** `concordia replay diff <a> <b>` prints JSON and exits 1 when they differ. `replay run` gains `--update`.
+- **`tests/replays/m1-physics.replay.ron`:** 300 ticks, no stills, recorded on `macos-aarch64`.
+  - `committed_m1_physics_replay_verifies_on_its_platform` verifies it at 1 and 8 threads on its platform and resimulates it elsewhere.
+  - The ignored `rebless_the_committed_m1_physics_replay` re-records it; the command is in `tests/replays/README.md`.
+  - Every PR's full suite runs it, so no new CI job is needed.
+
+**Found while building (this As built wins):**
+- **Replays can differ only in input.** In a project where nothing reacts to Space, two replays pressing it on different ticks have identical hashes. `ReplayDiff` therefore also reports `first_input_tick`, and `same()` counts it.
+- **Re-blessing implies acceptance.** `update` accepts header mismatches without `force`, since it exists for intended changes.
+
+**Tests** (expected values derived in each header):
+- **`concordia-replay` `tests/divergence.rs` (5):**
+  - `divergence_report_names_entity_component_and_field`: the first mover's `translation/0` is 0.25 larger at 140;
+  - `missing_still_reports_without_values_and_says_why`;
+  - `stills_can_be_left_out`;
+  - `resimulate_update_rewrites_the_replay_on_current_code`;
+  - `compare_replays_names_the_first_differing_tick_and_fields`: 131 and 140, `Transform`, `translation/0`.
+- **`tests/format.rs`:** the sample's 60-tick checkpoint carries a still. A bad still key is refused, and the snapshot gains one line (blessed; snapshot log).
+- **`concordia-cli`:** `replay_diff_and_update_from_the_cli`.
+- **`tests/integration/replay_m1_physics.rs`:** `committed_m1_physics_replay_verifies_on_its_platform` and the ignored re-bless.
+
+**Red runs:**
+- The divergence tests: no fields, no note, no `update`, and no comparison. The missing-still test first failed in its own setup, because no cache existed yet.
+- The committed test: the file didn't exist.
+
+**Called out:**
+- **Written alongside its code:** the CLI test was written together with the CLI. It then caught the input-only gap above.
+
+**Mutation checks** (all failed tests; restored files touched):
+- the field diff never descending (4);
+- input differences ignored (2);
+- stills off by default (6).
+
+**Studio and docs:**
+- **No tools added.** `replay_run` gains `update` and the `fields`, and `replay_record` gains `stills`.
+- **`concordia-record-replay`:** fields and `update`; its note now names 3.1c.
+- **ADR-0072 note; the agent guide; AGENTS.md and README of `concordia-replay`; `tests/replays/README.md`.**
+- **Role budgets** (2026-11-23):
+
+  | Role | Tools | Tokens |
+  |---|---|---|
+  | QA | 25 | 23,722 |
+  | level designer | 37 | 23,144 |
+  | UI/UX | 26 | 21,424 |
+  | tech artist | 23 | 20,172 |
+  | animator | 22 | 16,890 |
+  | sound designer | 24 | 15,138 |
+  | gameplay programmer | 17 | 13,408 |
+  | composer | 20 | 13,054 |
+  | director | 13 | 12,453 |
+  | writer | 11 | 9,576 |
+
+  All are under 50k.
+
+**Checklist (2026-11-23):**
+- `just lint` and Tauri clippy: clean.
+- `just wasm`, `just native-fixtures`, and the full suite with `CONCORDIA_REQUIRE_GPU=1`: 1,866 run, all passed.
+- Doc tests: clean.
+- `just gate-tests M1` (4/4) and `M3S` (13/13).
+- Both deny checks: ok.
+- `just editor-schemas`: no changes. `just editor-test`: 118 unit and 22 end-to-end tests pass.
+- No new Linux library.
+- One snapshot changed and was blessed (snapshot log). 48 GB free.
 
 ## Goal & context
 M3 closes the loop the design promises (principle 3): an agent can **record** a play session, **replay** it deterministically, **find the first frame** where two runs diverge, and **prove** behavior with typed playtest assertions, all from tests, the CLI and MCP. On top of that loop, M3 ships **Agent Studio v1**: a configurable team of specialist agents that runs **inside the user's own Claude Code on a regular subscription, with no API key** (principle 0).

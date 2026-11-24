@@ -1,4 +1,4 @@
-//! `concordia replay record|run|migrate`: replays headless, in process (ADR-0072).
+//! `concordia replay record|run|migrate|diff`: replays headless, in process (ADR-0072).
 
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
@@ -28,6 +28,21 @@ enum ReplayCommand {
     Run(RunArgs),
     /// Rewrite a version 0 replay as version 1, in place.
     Migrate(MigrateArgs),
+    /// Compare two replays offline: header fields, the first differing tick, parts and fields
+    /// (exit 1 if they differ).
+    Diff(DiffArgs),
+}
+
+/// `concordia replay diff` arguments.
+#[derive(Debug, clap::Args)]
+struct DiffArgs {
+    /// The expected replay (project-relative).
+    a: String,
+    /// The replay to compare with it.
+    b: String,
+    /// Project root (its .concordia/ddc holds the stills).
+    #[arg(long, default_value = ".")]
+    project: PathBuf,
 }
 
 /// `concordia replay migrate` arguments.
@@ -73,6 +88,9 @@ struct RunArgs {
     /// Run even if the engine, scene, seed or code differ from the recording.
     #[arg(long)]
     force: bool,
+    /// With --mode resimulate: rewrite the file on current code (re-bless; never in CI).
+    #[arg(long)]
+    update: bool,
     /// Job system threads.
     #[arg(long)]
     threads: Option<NonZeroUsize>,
@@ -86,6 +104,7 @@ pub(crate) fn run(args: &ReplayArgs) -> Result<(), Failure> {
         ReplayCommand::Record(a) => record(a),
         ReplayCommand::Run(a) => replay(a),
         ReplayCommand::Migrate(a) => migrate(a),
+        ReplayCommand::Diff(a) => diff(a),
     }
 }
 
@@ -113,6 +132,25 @@ fn record(args: &RecordArgs) -> Result<(), Failure> {
     let stopped = cli.call("replay.record", json!({"action": "stop"}))?;
     println!("{stopped}");
     Ok(())
+}
+
+/// Prints how two replay files differ; fails if they do.
+fn diff(args: &DiffArgs) -> Result<(), Failure> {
+    let read = |rel: &str| -> Result<concordia_replay::Replay, Failure> {
+        let file = args.project.join(rel);
+        let text = std::fs::read_to_string(&file)
+            .map_err(|e| Failure::usage(format!("{}: {e}", file.display())))?;
+        concordia_replay::read_replay(&text).map_err(|e| Failure::usage(format!("{rel}: {e}")))
+    };
+    let (a, b) = (read(&args.a)?, read(&args.b)?);
+    let found = concordia_replay::compare_replays(&a, &b, &args.project.join(".concordia/ddc"));
+    let text = serde_json::to_string(&found).map_err(|e| Failure::usage(e.to_string()))?;
+    println!("{text}");
+    if found.same() {
+        Ok(())
+    } else {
+        Err(Failure::usage(format!("{} and {} differ", args.a, args.b)))
+    }
 }
 
 /// Reads any supported version and writes version 1 back, unless it already is.
@@ -145,7 +183,7 @@ fn replay(args: &RunArgs) -> Result<(), Failure> {
     let result = cli
         .call(
             "replay.run",
-            json!({"path": args.path, "mode": args.mode, "force": args.force}),
+            json!({"path": args.path, "mode": args.mode, "force": args.force, "update": args.update}),
         )
         .map_err(|f| Failure::usage(f.message.replace("\"force\": true", "--force")))?;
     println!("{result}");

@@ -22,12 +22,19 @@ pub(crate) struct Recording {
     checkpoints: Vec<Checkpoint>,
     /// Each tick's world hash prefix, ticks 1, 2, … in order.
     ticks: Vec<String>,
+    /// Where checkpoint stills go (`.concordia/ddc`); none: recorded without stills.
+    stills: Option<PathBuf>,
     error: Option<String>,
 }
 
 impl Recording {
     /// An empty recording; [`Recording::begin`] takes its baseline.
-    pub(crate) fn new(header: ReplayHeader, rel: String, file: PathBuf) -> Self {
+    pub(crate) fn new(
+        header: ReplayHeader,
+        rel: String,
+        file: PathBuf,
+        stills: Option<PathBuf>,
+    ) -> Self {
         Self {
             header,
             rel,
@@ -36,6 +43,7 @@ impl Recording {
             inputs: Vec::new(),
             checkpoints: Vec::new(),
             ticks: Vec::new(),
+            stills,
             error: None,
         }
     }
@@ -46,8 +54,14 @@ impl Recording {
         self.checkpoint(world);
     }
 
-    /// Records the tick just simulated: its input changes, and a checkpoint when one is due.
+    /// Records the tick just simulated: its input changes, its hash, and a checkpoint when due.
     pub(crate) fn after_tick(&mut self, world: &World) {
+        self.note_inputs(world);
+        self.note_state(world);
+    }
+
+    /// The action changes and typed text of the tick just simulated.
+    fn note_inputs(&mut self, world: &World) {
         let tick = tick_of(world);
         if let (Some(last), Some(now)) = (&self.last, world.resource::<ActionStates>()) {
             let actions = now.changed_since(last);
@@ -64,6 +78,11 @@ impl Recording {
             }
             self.last = Some(now.clone());
         }
+    }
+
+    /// The hash of the tick just simulated, and a checkpoint when one is due.
+    pub(crate) fn note_state(&mut self, world: &World) {
+        let tick = tick_of(world);
         if tick.is_multiple_of(u64::from(self.header.checkpoint_every.max(1))) {
             self.checkpoint(world);
         }
@@ -90,6 +109,21 @@ impl Recording {
         (self.inputs.len(), self.checkpoints.len())
     }
 
+    /// Takes the tick-0 checkpoint only (inputs come from elsewhere: re-blessing a replay).
+    pub(crate) fn begin_state(&mut self, world: &World) {
+        self.checkpoint(world);
+    }
+
+    /// The finished replay with `inputs` in place of recorded ones.
+    pub(crate) fn finish_with(
+        mut self,
+        world: &World,
+        inputs: Vec<InputChange>,
+    ) -> Result<Replay, String> {
+        self.inputs = inputs;
+        self.finish(world)
+    }
+
     /// The finished replay, with a last checkpoint at the current tick.
     pub(crate) fn finish(mut self, world: &World) -> Result<Replay, String> {
         let ticks = tick_of(world);
@@ -114,7 +148,15 @@ impl Recording {
     }
 
     fn checkpoint(&mut self, world: &World) {
-        match checkpoint(world) {
+        let taken = checkpoint(world)
+            .map_err(|e| e.to_string())
+            .and_then(|mut c| {
+                if let Some(root) = &self.stills {
+                    c.still = Some(crate::still::store(root, &crate::still::take(world)?)?);
+                }
+                Ok(c)
+            });
+        match taken {
             Ok(c) => self.checkpoints.push(c),
             Err(e) => {
                 self.error.get_or_insert_with(|| format!("checkpoint: {e}"));
@@ -134,6 +176,7 @@ pub(crate) fn checkpoint(world: &World) -> Result<Checkpoint, EcsError> {
             .into_iter()
             .map(|(name, hash)| (name, hash.to_string()))
             .collect(),
+        still: None,
     })
 }
 
