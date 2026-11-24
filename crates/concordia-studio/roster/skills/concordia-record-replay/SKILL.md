@@ -6,7 +6,7 @@ user-invocable: false
 ---
 # Recording and replaying
 
-> `ab` runs (two builds side by side, naming the system that diverged) come in M3 phase 3.1c. `mcp__concordia__input_inject` exists only in projects with an `[input] map`.
+> `mcp__concordia__input_inject` exists only in projects with an `[input] map`.
 
 A replay is text (`tests/replays/<name>.replay.ron`, format version 1): a header (engine, platform, the manifest's hash, scene and its hash, seed, tick rate, the script builds, the input map and the templates, and the task), the input changes per tick, checkpoint hashes, and every tick's hash. It replays bit-exactly on the same build and platform, at any thread count. Version 0 files still run; `concordia replay migrate <file>` rewrites one as version 1. Recording and replaying never change the scene.
 
@@ -24,6 +24,7 @@ The in-game UI reads the pointer, clicks, wheel and keys through the input map's
 ## Run
 - `verify` (default): `mcp__concordia__replay_run {"path": "tests/replays/jump-over-gap.replay.ron"}` compares every tick's hash. `ok: true` proves nothing changed. On a divergence it reports the exact first `tick` that differs, the `last_matching_tick`, and, at the next checkpoint (`parts_tick`), the `parts` that differ (component names, or `@clock`, `@rng`, `@entities`, `@signals`) and the `fields`: each differing value with its `entity`, `component`, `path` (e.g. `translation/0`), `expected` and `actual`. Values come from stills the recording kept in `.concordia/ddc` (a cache; `fields_note` says when they are gone).
 - `resimulate`: `mcp__concordia__replay_run {"path": "tests/replays/jump-over-gap.replay.ron", "mode": "resimulate"}` replays the inputs on current code and returns new checkpoint hashes. Use it to prove a fix. Add `"update": true` to rewrite the file on current code after an intended change (re-blessing; it accepts changed code and content).
+- `ab`: `mcp__concordia__replay_run {"path": "tests/replays/jump-over-gap.replay.ron", "mode": "ab", "other": "../game-before-fix"}` runs the replay here and on another copy of the project (another build, e.g. before a change) tick by tick. It reports the exact first tick they differ, the fields (this project's values as `expected`, the other's as `actual`), and `suspect_system`: the system (or `<Phase> commands`) after which they first differ. Use it to find which change, and which system, altered behaviour.
 - A replay recorded with another platform, manifest, scene, seed, tick rate, build, input map or template set is refused (`ReplayMismatch`, listing the fields). Pass `"force": true` only to see where they diverge.
 
 After a run the play world stays at the last tick, so `mcp__concordia__query_run {"world": "play"}` inspects the replayed state.

@@ -117,3 +117,54 @@ fn appended_schedules_keep_their_tick_end_hooks() {
     sim.step(&mut world, &jobs(), 4);
     assert_eq!(*count.lock().unwrap(), 4);
 }
+
+/// An observed tick (M3 3.1c, for naming the system that diverged) reports each wave by its
+/// systems' names and each simulation phase's command flush, in run order, and ends in the same
+/// world as an ordinary tick: Terra's built-in "terra.timers" and "first" (PrePhysics), its
+/// flush, "second" (PostPhysics), its flush;
+/// the hash after "first" already differs from the start, and the last equals a plain step's.
+#[test]
+fn observed_ticks_report_each_system_and_phase_flush() {
+    use concordia_terra::Phase;
+    let schedule = || {
+        let mut s = Schedule::new();
+        s.add_in(
+            Phase::PrePhysics,
+            system("first", |world: &mut World, _: &SystemCtx| {
+                let mut query = world.query::<&mut Pos>().unwrap();
+                query.for_each(world, |_, p| p.x += 1.0);
+            }),
+        );
+        s.add_in(
+            Phase::PostPhysics,
+            system("second", |world: &mut World, _: &SystemCtx| {
+                let mut query = world.query::<&mut Pos>().unwrap();
+                query.for_each(world, |_, p| p.y += 1.0);
+            }),
+        );
+        s
+    };
+    let mut plain = moving_world(5);
+    let mut observed = plain.clone();
+    let start = observed.state_hash().unwrap();
+    let mut a = SimLoop::new(TickRate::HZ_60, schedule(), &mut plain).unwrap();
+    a.step(&mut plain, &jobs(), 1);
+    let mut b = SimLoop::new(TickRate::HZ_60, schedule(), &mut observed).unwrap();
+    let mut seen: Vec<(String, WorldHash)> = Vec::new();
+    b.step_observed(&mut observed, &jobs(), &mut |label: &str, w: &World| {
+        seen.push((label.to_owned(), w.state_hash().unwrap()));
+    });
+    let labels: Vec<&str> = seen.iter().map(|(l, _)| l.as_str()).collect();
+    assert_eq!(
+        labels,
+        [
+            "terra.timers",
+            "first",
+            "PrePhysics commands",
+            "second",
+            "PostPhysics commands"
+        ]
+    );
+    assert_ne!(seen[1].1, start, "after first");
+    assert_eq!(observed.state_hash().unwrap(), plain.state_hash().unwrap());
+}

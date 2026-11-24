@@ -4,7 +4,7 @@ use concordia_api::{ApiError, ApiErrorKind, CallCtx, Engine, WorldSel};
 
 use crate::format::{Replay, write_replay};
 use crate::methods::{EXTENSION, ReplayRecordParams, ReplayRecordResult, actor_name};
-use crate::module::Pending;
+use crate::module::ReplayState;
 use crate::record::{Recording, RecordingHandle};
 use crate::verify::{current_header, fingerprints, mismatch_error, modules_mismatch};
 
@@ -33,8 +33,8 @@ pub(crate) fn start(
     }
     let header = current_header(engine, actor_name(ctx), every, p.task.clone())?;
     let pending = engine
-        .state::<Pending>()
-        .cloned()
+        .state::<ReplayState>()
+        .map(|s| s.pending.clone())
         .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "replay module not started"))?;
     let stills = p
         .stills

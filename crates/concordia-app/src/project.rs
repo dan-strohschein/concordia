@@ -182,7 +182,9 @@ impl Project {
             modules.push(Arc::new(StudioModule::new(&self.root, &studio.dir)));
         }
         if self.manifest.replay.is_some() {
-            modules.push(Arc::new(ReplayModule::new()));
+            modules.push(Arc::new(
+                ReplayModule::new().with_factory(Arc::new(other_engine)),
+            ));
         }
         if let Some(scripts) = &self.manifest.scripts {
             // Last, so script components may refer to every other module's types.
@@ -312,4 +314,24 @@ fn inside(rel: &str) -> Result<(), String> {
         )),
         false => Ok(()),
     }
+}
+
+/// The engine for another project directory (`replay.run`'s `ab` mode): its own manifest's
+/// modules and settings, with `threads` job threads.
+fn other_engine(
+    dir: &Path,
+    threads: std::num::NonZeroUsize,
+) -> Result<concordia_api::Engine, concordia_api::ApiError> {
+    let invalid = |e: AppError| {
+        concordia_api::ApiError::new(
+            concordia_api::ApiErrorKind::InvalidParams,
+            format!("other project {}: {e}", dir.display()),
+        )
+    };
+    let mut config = Project::load(dir)
+        .map_err(invalid)?
+        .engine_config()
+        .map_err(invalid)?;
+    config.threads = threads;
+    concordia_api::Engine::new(config)
 }

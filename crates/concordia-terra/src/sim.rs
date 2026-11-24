@@ -117,23 +117,48 @@ impl SimLoop {
     /// advances simulated time by the step times the clock's time scale, then runs the
     /// schedule's end-of-tick hooks.
     pub fn step(&mut self, world: &mut World, jobs: &JobSystem, ticks: u32) {
-        let base = 1.0 / f64::from(self.rate.hz());
         for _ in 0..ticks {
-            world.signals.deliver(&world.entities);
-            let clock = *self.clock(world);
-            let dt_exact = base * f64::from(clock.time_scale.get());
-            let ctx = SystemCtx {
-                jobs,
-                tick: clock.tick,
-                dt: dt_exact as f32,
-                dt_exact,
-            };
-            self.schedule.run(world, &ctx);
-            let clock = self.clock(world);
-            clock.tick = Tick(clock.tick.0.saturating_add(1));
-            clock.time += dt_exact;
-            self.schedule.run_tick_end(world);
+            self.tick(world, jobs, None);
         }
+    }
+
+    /// One fixed step, observed after each wave and phase flush when `observe` is given.
+    fn tick(
+        &mut self,
+        world: &mut World,
+        jobs: &JobSystem,
+        observe: Option<crate::schedule::Observer<'_>>,
+    ) {
+        let base = 1.0 / f64::from(self.rate.hz());
+        world.signals.deliver(&world.entities);
+        let clock = *self.clock(world);
+        let dt_exact = base * f64::from(clock.time_scale.get());
+        let ctx = SystemCtx {
+            jobs,
+            tick: clock.tick,
+            dt: dt_exact as f32,
+            dt_exact,
+        };
+        match observe {
+            Some(observe) => self.schedule.run_observed(world, &ctx, observe),
+            None => self.schedule.run(world, &ctx),
+        }
+        let clock = self.clock(world);
+        clock.tick = Tick(clock.tick.0.saturating_add(1));
+        clock.time += dt_exact;
+        self.schedule.run_tick_end(world);
+    }
+
+    /// Runs one fixed step like [`SimLoop::step`], calling `observe` with a label and the world
+    /// after each wave of systems and each phase's command flush (diagnostics: naming the
+    /// system where two runs diverge).
+    pub fn step_observed(
+        &mut self,
+        world: &mut World,
+        jobs: &JobSystem,
+        observe: &mut dyn FnMut(&str, &World),
+    ) {
+        self.tick(world, jobs, Some(observe));
     }
 
     /// Real time until the next tick is due.

@@ -60,7 +60,9 @@ pub use query::{
     ElemAccess, QueryData, QueryElem, QueryFilter, QueryState, ReadSlice, With, Without,
 };
 pub use resource::Resource;
-pub use schedule::{FnSystem, FnTickEnd, Schedule, System, SystemCtx, TickEnd, system, tick_end};
+pub use schedule::{
+    FnSystem, FnTickEnd, Observer, Schedule, System, SystemCtx, TickEnd, system, tick_end,
+};
 pub use sim::{SimClock, SimLoop, TimeScale};
 pub use storage::kind::{CHUNK_ROWS, EntityStorage, StorageKind, StorageStats};
 pub use timer::Timer;
