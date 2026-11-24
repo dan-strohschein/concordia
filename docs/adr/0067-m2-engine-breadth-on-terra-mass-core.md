@@ -38,3 +38,18 @@ ADR-0048 renamed M2 "Engine breadth" and moved the reference port to M5, but lef
 - `concordia-terra-sim` and `concordia-terra-crowd` become M2 crates. `concordia-interchange` and `concordia-import-godot` become M5 crates.
 - M1 material files migrate once, in 2.3.
 - The disabled Studio roles become enabled phase by phase, as their features land.
+
+## Update (2026-11-23): M2 closed
+D2's sample game is Lamplight (`examples/m2-lamplight`), an original night-watch game in a harbour town. It uses every M2 subsystem:
+- Terra processors, signals and templates;
+- WASM and native scripts;
+- Substrate-style materials;
+- animation with clip events and attachments;
+- navigation, crowds and lane traffic;
+- simulation LOD;
+- audio with buses;
+- in-game and world-space UI;
+- physics sensors;
+- replay-ready determinism.
+
+The author accepted M2's gate by playing it in a window. The scripted CI playthrough, the replay across thread counts and the golden screenshots (phase 2.10d) are deferred to M3, where playtests and general replay land. The M2 plan's "M2 completion" lists what was confirmed, what was deferred, and every carry-over's owner.
