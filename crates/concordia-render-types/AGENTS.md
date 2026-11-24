@@ -5,7 +5,7 @@ The render vocabulary shared by the GPU renderer (`concordia-render`) and the re
 
 ## Public entry points
 - Components: `Camera` (`exposure()`), `Projection` (`matrix(aspect)` → `ProjectionError`), `Msaa`, `Tonemap`, `DirectionalLight` (with `CascadeSettings`, `PcfKernel`; `CascadeSettings::validate`), `PointLight`, `SpotLight`, `Environment`.
-- `view_matrix(world)`, `candela(lumens)`.
+- `view_matrix(world)`, `pick_camera(cameras, requested)` (highest priority, ties to the lowest id), `candela(lumens)`, `distance_window(d², range)` (the falloff windowed to zero at `range`), `SpotCone` (`attenuation`), `equirect::{dir_to_uv, uv_to_dir}`.
 - `tonemap::{apply, srgb_encode}`: the CPU references `tonemap.slang` must match.
 
 ## Invariants
@@ -28,7 +28,7 @@ The render vocabulary shared by the GPU renderer (`concordia-render`) and the re
 - Khronos PBR Neutral Tone Mapper specification; AgX after Troy Sobotka (minimal analytic fit, Benjamin Wrensch 2023; Godot 4.4, MIT); ACES fitted after Krzysztof Narkowicz (2015).
 
 ## Status
-M4 phase 4.1b1: moved out of `concordia-render` (components, `CascadeSettings`, camera math, `candela`, the CPU tonemap).
+M4 phase 4.1b2: the light falloff, the spot cone, the equirect mapping and the camera rule, shared with the path tracer. M4 phase 4.1b1: moved out of `concordia-render` (components, `CascadeSettings`, camera math, `candela`, the CPU tonemap).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

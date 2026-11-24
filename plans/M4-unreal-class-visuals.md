@@ -1,5 +1,5 @@
 # M4: Unreal-class visuals
-Status: In progress (4.1a done; next 4.1b) · Depends on: M1 (render), M2 (scripting host, graphs' WIT API), M3 (replay assertions, Studio) · Detail level: **Refined after M3 (2026-11-24; R1–R5 and D1–D10 approved by the author)** · Estimated effort: 32–45 agent-assisted engineer-weeks (two parallel tracks; see Effort estimate)
+Status: In progress (4.1a, 4.1b1 done; 4.1b2 in review) · Depends on: M1 (render), M2 (scripting host, graphs' WIT API), M3 (replay assertions, Studio) · Detail level: **Refined after M3 (2026-11-24; R1–R5 and D1–D10 approved by the author)** · Estimated effort: 32–45 agent-assisted engineer-weeks (two parallel tracks; see Effort estimate)
 
 > This plan has full phase breakdowns and test lists. Its numbers (budgets, FLIP tolerances, page sizes, meshlet sizes) are **provisional** and must be recalibrated in the refinement pass after M3, using measurements from the M1–M3 renderer on the reference Mac. Every recalibrated number lands in a text file (`tests/perf/budgets/*.budget.ron`, per-test tolerances), never in code.
 
@@ -172,6 +172,14 @@ Numbers stay as they are because other plans cite them. Each phase gets its own 
 - `concordia-material/shaders/material.slang`: the slab BSDF and the program combinators, moved out of `forward.slang`, with the albedo tables behind `IAlbedoTables` (the renderer's `FrameTables`). `concordia_render::include_dirs()` serves every render shader compile. It compiles without the renderer (`tests/shader_module.rs`, Metal and SPIR-V), and every render golden and shader-vs-CPU comparison is unchanged.
 - A mutation check found that no test covered `fresnel`'s Schlick term: the only featured slab at grazing light was metallic. `shader_matches_cpu_reference_at_grazing_light` gained a hazy dielectric and now catches it.
 - `plans/M14-cpu-only.md`: CPU-only games, the last milestone.
+
+**4.1b2** (`m4/4.1b2-pathtrace-cpu`, 2026-11-24):
+- `concordia-pathtrace`: a backend-neutral core (rays, Möller–Trumbore, a binned-SAH `Tree` flattened depth-first, the per-mesh `Bvh` and the instance level `Accel`, counter-based `SampleStream`s, `EnvMap`, `Light`, `Scene` / `SceneBuilder`) and the CPU backend `render_cpu` (NEE for every light and the sun, one sky sample and one emitting triangle with MIS, a cosine/GGX mixture over the slabs, alpha cut-outs and blending, Russian roulette, rows in parallel). `scene_from_world` reads a world plus its assets the way the renderer would.
+- Shared rather than copied: the light falloff (`distance_window`), `SpotCone`, the equirect mapping and the camera rule (`pick_camera`) in `concordia-render-types`; `AssetSource` and `TextureData::linear_rgb` in `concordia-assets`. The renderer uses them too.
+- Tests: BVH and instancing against brute force (proptest); the white furnace (Lambert within 0.14%, rough GGX against `dfg::direct_albedo`); a disk light against closed-form geometry (1%); point, spot and sun exactly (0.1%); the convergence slope; bit-identical at 1 and 8 threads; worlds, views, errors, the sky and the clear color.
+- Bugs found by tests: shadow rays measured from the surface but started off it stopped at an emitter's own plane (75% of area-light samples lost); no test covered `pick_camera`'s tie-break.
+- Plan differences: the furnace uses a large quad seen at two angles (a tessellated sphere's shading normals would blur a 0.5% check); the convergence reference is 16k spp on 8×8 pixels (64k was too slow for every run).
+- For the author: emission is display-referred in the renderer (radiance = emission ÷ exposure), and the tracer matches it; GI (4.8) will need physical emissive units, a decision for before 4.8.
 
 ### Effort (re-estimated)
 - The plan's 32–45 weeks, plus **4.1v Vulkan at 6–10**, plus about 1 for D2, D6 and D9: **about 39–56 engineer-weeks**.
