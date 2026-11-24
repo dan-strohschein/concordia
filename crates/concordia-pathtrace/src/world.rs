@@ -285,9 +285,9 @@ impl LoadedAssets {
             }
         }
         for t in sampled {
-            if !out.textures.contains_key(&t) {
-                let data = source.texture(&t);
-                out.textures.insert(t, data);
+            if let std::collections::btree_map::Entry::Vacant(slot) = out.textures.entry(t) {
+                let data = source.texture(slot.key());
+                slot.insert(data);
             }
         }
         out
