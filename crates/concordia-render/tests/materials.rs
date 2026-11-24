@@ -146,6 +146,14 @@ fn dusty_coat() -> Material {
     )
 }
 
+/// A dielectric with a haze lobe: Fresnel matters (F0 0.08), unlike the metallic `haze`.
+fn haze_dielectric() -> Slab {
+    Slab {
+        metallic: 0.0,
+        ..haze(0.5)
+    }
+}
+
 fn haze(weight: f32) -> Slab {
     Slab {
         haze: Some(Haze {
@@ -412,7 +420,8 @@ fn shader_matches_cpu_reference_per_feature() {
 }
 
 /// Light from behind the tiles' side, so the half vector is far from the view and Fresnel (and the
-/// layers' grazing transmittance) dominate what the sun-facing tiles reflect.
+/// layers' grazing transmittance) dominate what the sun-facing tiles reflect. Covers both Schlick
+/// terms: the plain slab's inlined one and the featured slab's (`fresnel`).
 #[test]
 fn shader_matches_cpu_reference_at_grazing_light() {
     let Some(mut r) = renderer() else { return };
@@ -428,6 +437,14 @@ fn shader_matches_cpu_reference_at_grazing_light() {
         ),
         ("clear_coat", clear_coat()),
         ("thin_film", one(thin_film(400.0))),
+        // A featured dielectric takes `eval_slab`'s own Schlick term (plain slabs inline theirs).
+        (
+            "hazy_dielectric",
+            one(Slab {
+                specular: 1.0,
+                ..haze_dielectric()
+            }),
+        ),
     ] {
         let program = MaterialProgram::compile(&material).unwrap();
         let image = tiles_lit(material, 20.0, sun).render(&mut r, W, H);

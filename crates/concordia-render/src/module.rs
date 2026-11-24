@@ -729,7 +729,7 @@ fn with_bounds<R>(
 /// A view that cannot be used is a parameter error at `/view`.
 fn check_view(view: &crate::View) -> Result<(), ApiError> {
     view.world_matrix()
-        .and_then(|_| view.projection.matrix(1.0))
+        .and_then(|_| Ok(view.projection.matrix(1.0)?))
         .map(|_| ())
         .map_err(|e| ApiError::new(ApiErrorKind::InvalidParams, e.to_string()).at("/view"))
 }

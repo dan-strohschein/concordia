@@ -23,6 +23,7 @@ The top-level design is in [`../docs/design.md`](../docs/design.md). This folder
 | M11 Advanced particles (Sparx; ADR-0015) | [M11-sparx-particles.md](M11-sparx-particles.md) | M1 (RHI compute, render graph, `ShaderLibrary`, asset hot reload, `render.stats`); M2 (signals, materials 2.3b, scripts, replay); M3 Studio roster; M10 10.7 or M4 4.3 indirect draws reused if they land first | Outline; needs refinement after M2 | Planned |
 | M12 Rigging v1.0 (procedural rigs, in-engine keyframing; ADR-0016) | [M12-rigging.md](M12-rigging.md) | M2 (animation 2.4, phases and presentation 2.0, FBX 2.3d, scripts 2.6, replay 2.8); M1 (gizmos, overlays, inspector, goldens); M3 Studio roster; M4 4.10 document transactions reused if they land first | Outline; needs refinement after M2 2.4 | Planned |
 | M13 Advanced Godot features (the AnimationTree features 2.4.3 left out; ADR-0017) | [M13-advanced-godot-features.md](M13-advanced-godot-features.md) | M2 (animation graphs 2.4.3, `anim.*` tools 2.4.4, the animator 2.4.5, `SimRng` and replay 2.8); before M5's AnimationTree import (recommended) | Outline; needs refinement after M2 2.4 | Planned |
+| M14 CPU-only games (author decision, 2026-11-24; deliberately the last milestone) | [M14-cpu-only.md](M14-cpu-only.md) | M4 (4.1b2 CPU path-tracing core, 4.1v Vulkan); all rendering milestones | Outline; needs refinement when it starts | Planned |
 | Later | [later-backlog.md](later-backlog.md) | none | Backlog | n/a |
 
 Status values: `Planned` → `Refined` → `In progress (phase N)` → `Gate passed`.
@@ -94,6 +95,7 @@ examples/             # small sample projects used by tests and docs
 | `concordia-rhi` | RHI traits and types; backends `concordia-rhi-metal` (M1), `concordia-rhi-vulkan` (M1 stretch / M2) | M1 |
 | `concordia-shaders` | Slang compilation, reflection, shader cache | M1 |
 | `concordia-render` | render graph, PBR clustered forward+, materials, cameras, capture; GPU skinning of posed characters (M2 2.4.2) | M1 |
+| `concordia-render-types` | the render vocabulary shared by the renderer and the path tracer: reflected render components, camera math, photometric units, CPU tone mapping; no GPU dependencies (ADR-0101) | M4 (4.1b1) |
 | `concordia-material` | Substrate-style material evaluation: closure programs, the closure budget, the CPU reference BSDF and albedo tables (ADR-0068); the model, `.material.ron` and `material.get/set` live in `concordia-assets` (2.3c); `concordia-render`'s shader mirrors it (2.3b) | M2 (2.3a) |
 | `concordia-assets` | asset database, importers registry, content-addressed derived-data cache (`.concordia/ddc`), hot reload; layered materials (2.3) and animation graphs (`.animgraph.ron`, 2.4.3) as canonical text | M1 |
 | `concordia-import-gltf` | glTF 2.0 importer | M1 |

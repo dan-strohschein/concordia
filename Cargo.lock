@@ -972,6 +972,7 @@ version = "0.0.0"
 dependencies = [
  "concordia-assets",
  "concordia-core",
+ "concordia-shaders",
  "proptest",
  "thiserror 2.0.21",
 ]
@@ -1124,6 +1125,7 @@ dependencies = [
  "concordia-input",
  "concordia-material",
  "concordia-reflect",
+ "concordia-render-types",
  "concordia-rhi",
  "concordia-rhi-metal",
  "concordia-scene",
@@ -1141,6 +1143,17 @@ dependencies = [
  "thiserror 2.0.21",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "concordia-render-types"
+version = "0.0.0"
+dependencies = [
+ "concordia-assets",
+ "concordia-core",
+ "concordia-reflect",
+ "serde",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

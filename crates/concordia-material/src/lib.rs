@@ -13,3 +13,9 @@ pub use bsdf::{SSS_SCALE, eval_slab, slab_transmittance};
 pub use budget::{BudgetError, ClosureBudget, ClosureMerge, ClosureReport, MergeKind, fit_budget};
 pub use film::{WAVELENGTHS_NM, thin_film_reflectance};
 pub use program::{MaterialProgram, Op, Shaded};
+
+/// The folder holding `material.slang`, the GPU mirror of this crate's BSDF (add it to a shader's
+/// include directories and `import material;`).
+pub fn shader_dir() -> std::path::PathBuf {
+    std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/shaders"))
+}

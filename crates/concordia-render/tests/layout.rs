@@ -17,7 +17,7 @@ fn check_push<T: ShaderStruct>(entry: &str) {
                 stage: Stage::Vertex,
                 target,
                 defines: Default::default(),
-                include_dirs: vec![concordia_shaders::builtin_dir()],
+                include_dirs: concordia_render::include_dirs(),
             })
             .unwrap();
         check_layout::<T>(&module.reflection.push.expect("push constants")).unwrap();

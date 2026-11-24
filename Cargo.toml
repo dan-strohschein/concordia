@@ -59,6 +59,7 @@ concordia-assert = { path = "crates/concordia-assert" }
 concordia-replay = { path = "crates/concordia-replay" }
 concordia-reflect-derive = { path = "crates/concordia-reflect-derive" }
 concordia-render = { path = "crates/concordia-render" }
+concordia-render-types = { path = "crates/concordia-render-types" }
 concordia-rhi = { path = "crates/concordia-rhi" }
 concordia-rhi-metal = { path = "crates/concordia-rhi-metal" }
 concordia-testkit = { path = "crates/concordia-testkit" }

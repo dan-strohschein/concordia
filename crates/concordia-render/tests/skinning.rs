@@ -747,10 +747,11 @@ mod readback {
                     Backend::Vulkan => Target::SpirV,
                 },
                 defines: Default::default(),
-                include_dirs: vec![
-                    concordia_shaders::builtin_dir(),
-                    concordia_render::shader_dir(),
-                ],
+                include_dirs: [
+                    concordia_render::include_dirs(),
+                    vec![concordia_render::shader_dir()],
+                ]
+                .concat(),
             })
             .unwrap();
         let pipeline = device

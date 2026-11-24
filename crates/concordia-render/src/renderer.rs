@@ -1664,7 +1664,7 @@ fn add_tonemap(
     tonemap: Tonemap,
     device: Arc<dyn Device>,
 ) {
-    let mode = tonemap.shader_mode();
+    let mode = crate::components::tonemap_shader_mode(tonemap);
     graph.add_pass_recorded(
         "tonemap",
         |p| {
