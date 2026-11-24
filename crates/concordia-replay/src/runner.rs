@@ -8,8 +8,13 @@ use concordia_core::time::TickRate;
 use concordia_input::InputSampler;
 
 use crate::format::{Checkpoint, Replay};
-use crate::methods::{Divergence, Mismatch, ReplayRunResult, RunMode, TickHash};
-use crate::record::{checkpoint, tick_of};
+use crate::methods::{Divergence, FieldDiff, Mismatch, ReplayRunResult, RunMode, TickHash};
+use crate::record::{Recording, checkpoint, tick_of};
+use crate::recorder::write;
+use crate::still;
+
+/// The derived-data cache, where stills live.
+pub(crate) const DDC: &str = ".concordia/ddc";
 use crate::verify::{current_header, diverged_parts, mismatches};
 
 /// Starts a fresh play world at the replay's rate and loads its inputs; returns what differs
@@ -94,6 +99,7 @@ pub(crate) fn run(
             last_matching = Some(expected.tick);
             continue;
         }
+        let (fields, fields_note) = fields_at(engine, expected)?;
         divergence = Some(Divergence {
             tick: first.unwrap_or(expected.tick),
             last_matching_tick: first.map_or(last_matching, |t| t.checked_sub(1)),
@@ -101,6 +107,8 @@ pub(crate) fn run(
             parts: diverged_parts(expected, &actual),
             expected: expected.world.clone(),
             actual: actual.world,
+            fields,
+            fields_note,
         });
         break;
     }
@@ -120,6 +128,84 @@ pub(crate) fn run(
         divergence,
         mismatches,
         checkpoints,
+        world_hash,
+        elapsed_ms: started.elapsed().as_secs_f64() * 1000.0,
+    })
+}
+
+/// The values that differ at `expected`'s tick, from its still; or why they aren't known.
+fn fields_at(
+    engine: &Engine,
+    expected: &Checkpoint,
+) -> Result<(Vec<FieldDiff>, Option<String>), ApiError> {
+    let Some(key) = &expected.still else {
+        let why = "the recording was made without stills, so the values aren't known; record with stills (the default) to see them";
+        return Ok((Vec::new(), Some(why.to_owned())));
+    };
+    let root = engine.project().join(DDC);
+    let Some(recorded) = still::load(&root, key) else {
+        let why = format!(
+            "the recording's still for tick {} is not in {DDC} (a cache, so it may have been cleared); record again to see the values",
+            expected.tick
+        );
+        tracing::warn!(target: "concordia::replay", tick = expected.tick, "{why}");
+        return Ok((Vec::new(), Some(why)));
+    };
+    let now = still::take(engine.world(WorldSel::play)?)
+        .map_err(|e| ApiError::new(ApiErrorKind::Internal, e))?;
+    Ok((still::diff(&recorded, &now), None))
+}
+
+/// Replays `replay`'s inputs on the current code and rewrites `file` with fresh hashes, stills
+/// (when it had them) and header: re-blessing a replay after an intended change.
+pub(crate) fn rebless(
+    engine: &mut Engine,
+    replay: &Replay,
+    (rel, file): (&str, &std::path::Path),
+    recorded_by: String,
+    mismatches: Vec<Mismatch>,
+) -> Result<ReplayRunResult, ApiError> {
+    let started = Instant::now();
+    let header = current_header(
+        engine,
+        recorded_by,
+        replay.header.checkpoint_every,
+        replay.header.task.clone(),
+    )?;
+    let stills = replay
+        .checkpoints
+        .iter()
+        .any(|c| c.still.is_some())
+        .then(|| engine.project().join(DDC));
+    let mut recording = Recording::new(header, rel.to_owned(), file.to_path_buf(), stills);
+    recording.begin_state(engine.world(WorldSel::play)?);
+    for _ in 0..replay.ticks {
+        engine.step_play(1)?;
+        recording.note_state(engine.world(WorldSel::play)?);
+    }
+    let world = engine.world(WorldSel::play)?;
+    let world_hash = world
+        .state_hash()
+        .map_err(|e| ApiError::new(ApiErrorKind::Internal, e.to_string()))?
+        .to_string();
+    let fresh = recording
+        .finish_with(world, replay.inputs.clone())
+        .map_err(|e| ApiError::new(ApiErrorKind::Internal, e))?;
+    write(file, &fresh).map_err(|e| ApiError::new(ApiErrorKind::SceneIo, format!("{rel}: {e}")))?;
+    Ok(ReplayRunResult {
+        ok: true,
+        ticks: fresh.ticks,
+        matched: 0,
+        divergence: None,
+        mismatches,
+        checkpoints: fresh
+            .checkpoints
+            .iter()
+            .map(|c| TickHash {
+                tick: c.tick,
+                world_hash: c.world.clone(),
+            })
+            .collect(),
         world_hash,
         elapsed_ms: started.elapsed().as_secs_f64() * 1000.0,
     })

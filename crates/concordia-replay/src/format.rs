@@ -109,6 +109,10 @@ pub struct Checkpoint {
     pub world: String,
     /// Hashes by part: each component by name, and `@entities`, `@clock`, `@rng`, `@signals`.
     pub parts: BTreeMap<String, String>,
+    /// The DDC key of the world's component values here (a cache for field diffs; none when
+    /// recorded without stills).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub still: Option<String>,
 }
 
 /// The version 0 format (M2 phase 2.8): version 1 without the fields it added, all optional.
@@ -134,6 +138,9 @@ pub fn read_replay(text: &str) -> Result<Replay, ReplayError> {
     check_tick_hashes(&replay)?;
     for (i, checkpoint) in replay.checkpoints.iter().enumerate() {
         check_hash(&format!("checkpoints[{i}].world"), &checkpoint.world)?;
+        if let Some(still) = &checkpoint.still {
+            check_hash(&format!("checkpoints[{i}].still"), still)?;
+        }
         for (part, hash) in &checkpoint.parts {
             check_hash(&format!("checkpoints[{i}].parts.{part}"), hash)?;
         }

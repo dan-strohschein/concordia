@@ -1,13 +1,14 @@
 # concordia-replay: agent guide
 
 ## Purpose
-Records play sessions as input changes, checkpoint hashes and every tick's hash (`.replay.ron` v1; v0 is read and migrated) and replays them to verify the same world states, naming the exact first divergent tick (ADR-0072). M3 phase 3.1b adds stills, field diffs and `ab`.
+Records play sessions as input changes, checkpoint hashes and every tick's hash (`.replay.ron` v1; v0 is read and migrated) and replays them to verify the same world states, naming the exact first divergent tick (ADR-0072). Checkpoint stills (component values as JSON in `.concordia/ddc`) name the differing fields; `update` re-blesses a file; `compare_replays` diffs two files. M3 phase 3.1c adds `ab`.
 
 ## Public entry points
 - `ReplayModule` (EngineModule, `[replay]`): `replay.record` (`ReplayRecord`, `RecordAction::start|stop`) and `replay.run` (`ReplayRun`, `RunMode::verify|resimulate`, `force`)
 - `Replay` (`tick_hash`), `ReplayHeader`, `InputChange`, `Checkpoint`, `FORMAT_VERSION` (1), `VERSION_0`, `TICK_HASH_HEX`, `TICKS_PER_LINE`, `read_replay` (versions 0 and 1), `write_replay` (version 1), `ReplayError`
-- Results: `ReplayRecordResult`, `ReplayRunResult`, `Divergence`, `Mismatch`, `TickHash`
-- Layout: `methods.rs` (API types and dispatch), `recorder.rs` (start/stop), `runner.rs` (prepare/run), `record.rs` (the recording and its tick-end hook), `verify.rs` (header and checkpoint comparisons), `format.rs`
+- Results: `ReplayRecordResult`, `ReplayRunResult`, `Divergence` (with `fields`, `FieldDiff`), `Mismatch`, `TickHash`
+- `compare_replays(a, b, ddc) -> ReplayDiff` (offline: header, first input and hash tick, parts, fields)
+- Layout: `methods.rs` (API types and dispatch), `recorder.rs` (start/stop), `runner.rs` (prepare/run), `record.rs` (the recording and its tick-end hook, also used to re-bless), `verify.rs` (header and checkpoint comparisons), `still.rs` (stills: take, store, load, diff), `diff.rs` (two files), `format.rs`
 
 ## Invariants
 - Never touches the edit world or the command journal (ADR-0032); recording and running each start a fresh play world from the open scene, and log `replay recorded` / `replay run` with the actor.
@@ -28,13 +29,14 @@ Records play sessions as input changes, checkpoint hashes and every tick's hash 
 - Don't add replay systems to the schedule; use end-of-tick hooks (read-only) and the sampler's playback.
 - Don't compare headers field by field outside `verify.rs`.
 - Don't journal anything or write to the edit world.
+- Don't restore stills into a world: they are for diffs only (decision R2); restoring is later-backlog.
 
 ## References
 - Deterministic lockstep and replay practice: Glenn Fiedler, "Deterministic Lockstep" and "Fix Your Timestep!" (gafferongames.com); GGPO's public documentation on input-only replays.
 - BLAKE3 (the `blake3` crate, Apache-2.0/CC0) for content and state hashes.
 
 ## Status
-M2 phase 2.8 (v0). M3 phase 3.1a: format version 1 (platform, manifest hash, task, per-tick hashes, content fingerprints; exact first divergent tick; `concordia replay migrate`). M2 phase 2.7b.3: input changes carry the tick's typed text (`InputChange::text`, omitted when empty, so files without typing are unchanged and the format stays version 0); ticks with only typing are recorded; runs play it back (`play_back_text`).
+M2 phase 2.8 (v0). M3 phase 3.1b: stills and field diffs, `update`, `compare_replays`, and the committed `tests/replays/m1-physics.replay.ron`. M3 phase 3.1a: format version 1 (platform, manifest hash, task, per-tick hashes, content fingerprints; exact first divergent tick; `concordia replay migrate`). M2 phase 2.7b.3: input changes carry the tick's typed text (`InputChange::text`, omitted when empty, so files without typing are unchanged and the format stays version 0); ticks with only typing are recorded; runs play it back (`play_back_text`).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

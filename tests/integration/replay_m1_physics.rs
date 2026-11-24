@@ -125,3 +125,60 @@ fn replay_runs_headless_faster_than_realtime() {
         "replayed {sim_ms} ms of play in {wall_ms} ms"
     );
 }
+
+/// The committed replay of the M1 physics stack (M3 3.1b): `tests/replays/m1-physics.replay.ron`.
+const COMMITTED: &str = "tests/replays/m1-physics.replay.ron";
+
+/// Puts the committed replay into a fresh copy of the example; returns its platform.
+fn with_committed(dir: &Path) -> Option<String> {
+    let text = concordia_tests::read_repo_file(COMMITTED);
+    let to = dir.join(COMMITTED);
+    std::fs::create_dir_all(to.parent().unwrap()).unwrap();
+    std::fs::write(to, &text).unwrap();
+    concordia_replay::read_replay(&text)
+        .unwrap()
+        .header
+        .platform
+}
+
+/// The committed replay still describes the engine: on the platform it was recorded on, it
+/// verifies tick for tick at 1 and 8 threads (any physics or scheduling change shows here); on
+/// other platforms floats may differ, so it only replays to the end (resimulate). Re-bless after
+/// an intended change with `cargo nextest run -p concordia-tests --run-ignored only -E
+/// 'test(rebless_the_committed_m1_physics_replay)'`.
+#[test]
+fn committed_m1_physics_replay_verifies_on_its_platform() {
+    let dir = project();
+    let platform = with_committed(dir.path());
+    let here = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
+    for threads in [1, 8] {
+        let mut stack = Stack::new(dir.path(), threads);
+        let run = if platform.as_deref() == Some(here.as_str()) {
+            stack.ok("replay.run", json!({"path": COMMITTED}))
+        } else {
+            stack.ok(
+                "replay.run",
+                json!({"path": COMMITTED, "mode": "resimulate", "force": true}),
+            )
+        };
+        assert_eq!(run["ok"], true, "{threads} threads: {run}");
+        assert_eq!(run["ticks"], 300);
+    }
+}
+
+/// Records the committed replay anew (300 ticks, checkpoints every 60, no stills: they live in
+/// a cache, not in git) and writes it into the repository. Run by hand after an intended change.
+#[test]
+#[ignore = "rewrites tests/replays/m1-physics.replay.ron; run by hand to re-bless"]
+fn rebless_the_committed_m1_physics_replay() {
+    let dir = project();
+    let mut stack = Stack::new(dir.path(), 4);
+    stack.ok(
+        "replay.record",
+        json!({"path": COMMITTED, "checkpoint_every": 60, "stills": false}),
+    );
+    stack.ok("sim.step", json!({"ticks": 300}));
+    stack.ok("replay.record", json!({"action": "stop"}));
+    let text = std::fs::read_to_string(dir.path().join(COMMITTED)).unwrap();
+    std::fs::write(concordia_tests::repo_root().join(COMMITTED), text).unwrap();
+}

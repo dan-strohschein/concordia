@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::format::read_replay;
 use crate::recorder::{start, stop};
-use crate::runner::{prepare, run};
+use crate::runner::{prepare, rebless, run};
 use crate::verify::mismatch_error;
 
 /// The replay file extension.
@@ -43,6 +43,9 @@ pub struct ReplayRecordParams {
     pub actor: Option<Actor>,
     /// With start: the task this replay is evidence for, e.g. T-0001 (kept in its header).
     pub task: Option<String>,
+    /// With start: keep the world's values at each checkpoint in .concordia/ddc, so a
+    /// divergence names fields and values (default true).
+    pub stills: Option<bool>,
 }
 
 /// `replay.record` result.
@@ -85,6 +88,8 @@ pub struct ReplayRunParams {
     pub mode: Option<RunMode>,
     /// Run even if the engine, scene, seed or code differ.
     pub force: Option<bool>,
+    /// With resimulate: rewrite the file with the new hashes (re-bless on current code).
+    pub update: Option<bool>,
     /// Who is asking (log only).
     pub actor: Option<Actor>,
 }
@@ -115,6 +120,25 @@ pub struct Divergence {
     pub expected: String,
     /// Replayed world hash at `parts_tick`.
     pub actual: String,
+    /// Differing values at `parts_tick` (at most 32), from the recording's still.
+    pub fields: Vec<FieldDiff>,
+    /// Why `fields` is empty although parts differ (no still recorded, or not in the cache).
+    pub fields_note: Option<String>,
+}
+
+/// One value that differs.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct FieldDiff {
+    /// The entity's id.
+    pub entity: String,
+    /// The component (`@entity` when the entity itself is missing on one side).
+    pub component: String,
+    /// The path inside the component, e.g. translation/0 (empty: the whole value).
+    pub path: String,
+    /// The recorded value (null when absent).
+    pub expected: serde_json::Value,
+    /// The replayed value (null when absent).
+    pub actual: serde_json::Value,
 }
 
 /// A checkpoint's world hash.
@@ -184,12 +208,25 @@ impl Method for ReplayRun {
             ApiError::new(ApiErrorKind::InvalidParams, format!("{}: {e}", p.path)).at("/path")
         })?;
         let mode = p.mode.unwrap_or_default();
+        let update = p.update.unwrap_or(false);
+        if update && mode != RunMode::resimulate {
+            return Err(ApiError::new(
+                ApiErrorKind::InvalidParams,
+                "update rewrites the replay on current code, so it needs \"mode\": \"resimulate\"",
+            )
+            .at("/update"));
+        }
         let found = prepare(engine, &replay)?;
-        if !found.is_empty() && !p.force.unwrap_or(false) {
+        // Re-blessing exists for code or content that changed on purpose, so it accepts them.
+        if !found.is_empty() && !p.force.unwrap_or(false) && !update {
             return Err(mismatch_error("the replay was recorded differently", &found)
                 .suggest(["open the scene and build it was recorded with, or pass \"force\": true to run it anyway".to_owned()]));
         }
-        let result = run(engine, &replay, mode, found)?;
+        let result = if update {
+            rebless(engine, &replay, (&p.path, &file), actor_name(ctx), found)?
+        } else {
+            run(engine, &replay, mode, found)?
+        };
         tracing::info!(
             target: "concordia::replay",
             actor = actor_name(ctx),

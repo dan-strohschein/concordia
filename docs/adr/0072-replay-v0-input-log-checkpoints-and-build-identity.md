@@ -43,4 +43,10 @@ The engine is deterministic per binary and machine: the same inputs from the sam
   - **Per-tick hashes:** a `hashes` block holds every tick's world hash, the first 16 hex digits each, 64 ticks per line. `verify` steps tick by tick, reports the exact first divergent `tick`, and compares parts at the next checkpoint (`parts_tick`). Bisection is no longer needed.
   - **Mismatches:** `platform`, `manifest_hash` and `rate_hz` join the compared fields. Fields a version 0 file never recorded are not compared.
   - **Snapshots (R2, the author's decision):** they are stills for field diffs (3.1b) and are never restored. Raw device events stay out (`later-backlog`).
+- **Note (M3 phase 3.1b): stills.**
+  - **What they are:** at each checkpoint the recorder keeps the hashed component values as JSON in `.concordia/ddc` (BLAKE3-keyed). Their key is on the checkpoint (`still`), and `"stills": false` leaves them out.
+  - **On a divergence:** `verify` diffs the recorded still against the replayed world at `parts_tick`, listing up to 32 `fields`. A still missing from the cache leaves the list empty, with a `fields_note` and a warning.
+  - **Re-blessing:** `resimulate` with `update` rewrites the file on current code.
+  - **Offline:** `compare_replays` and `concordia replay diff` compare two files.
+  - **Stills are never restored** (R2).
 

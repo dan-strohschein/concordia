@@ -155,6 +155,11 @@ impl World {
         self.presentation.insert(T::type_info().name);
     }
 
+    /// Whether component `name` is presentation-only (never hashed; ADR-0063).
+    pub fn is_presentation(&self, name: &str) -> bool {
+        self.presentation.contains(name)
+    }
+
     /// Despawns remembered for [`World::changes_since`].
     pub const DESPAWN_HISTORY: usize = 4096;
 
