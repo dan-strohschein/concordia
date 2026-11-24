@@ -215,3 +215,52 @@ fn the_end_screen_keeps_the_record_and_another_night_resets_the_town() {
     );
     assert_eq!(n.errors(), json!([]));
 }
+
+/// Every line of text stays inside its node's content box on all four screens (M3 3.0c, the
+/// author's "text runs outside its boxes"): at 1280×720 (the canvas), 1512×982 (a 14" laptop's
+/// logical size) and 800×600, each screen shown in the play world, every `ui.inspect` line (placed
+/// from its node's content corner) must lie within the `content` size, allowing half a pixel.
+#[test]
+fn lamplight_text_stays_in_its_boxes() {
+    let mut n = Night::new("title");
+    n.step(1);
+    let screens = ["Title screen", "HUD", "Pause menu", "End screen"];
+    for screen in screens {
+        let id = n.named(screen).0;
+        n.ok(
+            "component.patch",
+            json!({"entity": id, "component": "UiNode", "world": "play",
+                   "patch": {"visible": true}, "actor": world::ACTOR}),
+        );
+    }
+    let mut outside = Vec::new();
+    for (w, h) in [(1280, 720), (1512, 982), (800, 600)] {
+        let report = n.ok(
+            "ui.inspect",
+            json!({"world": "play", "width": w, "height": h}),
+        );
+        for node in report["nodes"].as_array().unwrap() {
+            let c = &node["content"];
+            let f = |v: &Value, k: &str| v[k].as_f64().unwrap();
+            let (cx, cy, cw, ch) = (f(c, "x"), f(c, "y"), f(c, "w"), f(c, "h"));
+            for line in node["lines"].as_array().into_iter().flatten() {
+                let (x, top) = (f(line, "x"), f(line, "top"));
+                let (lw, lh) = (f(line, "width"), f(line, "height"));
+                // Lines are placed from the content box's corner.
+                let inside = x >= -0.5 && top >= -0.5 && x + lw <= cw + 0.5 && top + lh <= ch + 0.5;
+                if !inside {
+                    outside.push(format!(
+                        "{w}x{h} {:?} {:?}: line ({x:.1},{top:.1},{lw:.1}×{lh:.1}) content ({cx:.1},{cy:.1},{cw:.1}×{ch:.1})",
+                        node["entity"], line["text"]
+                    ));
+                }
+            }
+        }
+    }
+    assert!(
+        outside.is_empty(),
+        "{} lines outside:\n{}",
+        outside.len(),
+        outside.join("\n")
+    );
+}

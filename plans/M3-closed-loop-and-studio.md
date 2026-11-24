@@ -1,7 +1,7 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b done) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b and 3.0c done) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
@@ -504,6 +504,82 @@ Every role stays under 50k. If the AST's recursive schema makes `assert_eval` he
 - `just editor-schemas`: no changes.
 - `just editor-test`: lint, 118 unit and 22 end-to-end tests pass. On the first run, `activity.spec.ts` timed out after 20 s waiting for its headless engine while the workspace suite ran beside it. It passed on the rerun on its own.
 - No new Linux system library, and no new or changed snapshots or goldens.
+
+### Phase 3.0c As built (2026-11-23; ADR-0060 notes)
+**Status: done (branch `m3/3.0c-ui-fixes`).** It closes three M2 UI carry-overs: text overflowing its box, world UI taking no input, and assets first named during play. The author approved the before and after captures of Lamplight's screens (review page, 2026-11-23).
+
+**What landed:**
+- **`concordia-ui`:**
+  - **Text sizes its box**, following Godot's `Label` (`Pass::text_floor`, applied through the layout extras).
+    - With `Overflow::Visible`, a node's minimum height is its text wrapped at the box's fixed width (unwrapped when the width isn't fixed).
+    - `Wrap::None` text also sets the node's minimum width.
+    - `Clip` and `Ellipsis` opt out, and an explicit `min_*` wins.
+    - A node with children and text gets the same floor.
+  - **World roots take input:** `UiLens` and `UiModule::with_lens`. `ui.interact`, `ui.inspect` and `ui.hit_test` lay world roots out through the lens. Without one, they are skipped as in M2.
+  - **Templates in the asset snapshot:** `preload_templates`. The play asset snapshot also covers what every template's UI components name.
+  - `Edges::horizontal`.
+- **`concordia-render`:** `world_ui_lens(world, viewport)`, the highest-priority camera's clip-from-world matrix.
+- **`concordia-app`:** with `[render]`, `[ui]`'s module gets the renderer's lens. The UI crate still doesn't depend on render; the app wires the two together.
+- **Lamplight:** the pause panel grows from 340 to 360 px (`build_town.py` and the scene). Its contents need about 359 px once the labels fit their text: 65.4 + 3 × (24.5 + 22) + 44 + 7 gaps × 10 + 40 padding.
+
+**Found while building (this As built wins):**
+- **The overflow was vertical, and not a scale mismatch.** At 1280 × 720, 1512 × 982 and 800 × 600, seven labels were taller than their fixed boxes:
+  - "Lamplight" and "Paused": 65.4 px in 64 and 52;
+  - "Oil" and "Spirit": 21.8 in 20;
+  - the three bus labels: 24.5 in 22.
+
+  Widths all fit. Measuring and drawing share one logical layout, and `ui_scale` only multiplies it, so the plan's "scales 1 and 2" check became two capture scales on the review page instead of a test.
+- **`ui.inspect`'s line positions are relative to the content box,** and node rects are in the root's UI space (the root's `map` places it). The first versions of both new tests used screen coordinates; this was fixed in the tests.
+- **The template test needed `[input]`:** without input, `ui.interact` never runs, so the test first passed for the wrong reason.
+
+**Tests** (expected values derived in each header):
+- **`concordia-ui` `tests/layout.rs`:** `labels_grow_to_fit_their_text`. With mono at 20 px:
+  - a 10 px tall label grows to one line, L = 27.24;
+  - "aa bb" in a 2.5u wide box wraps to 2L + 4;
+  - unwrapped "MMMM" is 4u = 48 px wide;
+  - a `Clip` label stays 10 px;
+  - a label with a child grows too.
+- **`tests/integration/lamplight_ui.rs`:** `lamplight_text_stays_in_its_boxes`, covering all four screens at three viewports.
+- **`concordia-app` `tests/ui_world.rs` (3):**
+  - `world_button_is_pressed_by_a_click_at_its_projected_centre`: an orthographic camera puts (3, 1, 0) at (260, 80);
+  - `hit_test_and_inspect_see_world_roots`: map offset (210, 60);
+  - `world_clicks_are_deterministic_across_threads`: 1 and 8 threads.
+- **`concordia-app` `tests/ui.rs`:** `a_font_only_a_template_names_is_loaded_for_the_simulation`, which checks that no "UI asset not found" warning is logged.
+
+**Red runs:**
+- The label test: 10 != 27.24.
+- The Lamplight test: 21 lines outside their boxes.
+- The world-button tests: 0 presses, and a null hit.
+- The template test: the font was reported missing.
+
+**Mutation checks** (each failed a test; restored files touched):
+- `Clip` not opting out;
+- `Wrap::None` setting no width;
+- no lens in the app;
+- the template preload removed.
+
+**Called out:**
+- `world_clicks_are_deterministic_across_threads` passed at once: it guards the hashes.
+- On its first run the full suite failed `m3s_live_checker_accepts_a_scripted_session_and_rejects_violations` with "target/debug/concordia was not built", because `just editor-schemas` was relinking that binary in parallel. It passed when rerun alone.
+
+**Studio and docs:**
+- **No tools or roles changed.** Role budgets are as in the refinement's table.
+- **`concordia-ui` skill:** world UI takes clicks, and `ui_inspect` / `ui_hit_test` see it.
+- **ADR-0060:** notes for the snapshot and the lens, and a "text sizes its box" section.
+- **AGENTS.md:** `concordia-ui`, `concordia-render` and `concordia-app`.
+- **README.md:** `concordia-ui`.
+- **The agent guide:** text and world UI.
+- **`plans/README.md`.**
+
+**Checklist (2026-11-23):**
+- `just lint` and Tauri clippy: clean.
+- `just wasm`, `just native-fixtures`, and the full suite with `CONCORDIA_REQUIRE_GPU=1`: 1,850 run, 1,849 passed on the first run. The one failure was the race above, which passed when rerun alone.
+- Doc tests: clean.
+- `just gate-tests M1` (4/4) and `M3S` (13/13).
+- Both deny checks: ok.
+- `just editor-schemas`: no changes.
+- `just editor-test`: 118 unit and 22 end-to-end tests pass.
+- No new Linux library. No snapshots or goldens changed (every UI and app golden still matches). `tracing-subscriber` joins `concordia-app`'s dev-dependencies; it was already in the workspace.
 
 ## Goal & context
 M3 closes the loop the design promises (principle 3): an agent can **record** a play session, **replay** it deterministically, **find the first frame** where two runs diverge, and **prove** behavior with typed playtest assertions, all from tests, the CLI and MCP. On top of that loop, M3 ships **Agent Studio v1**: a configurable team of specialist agents that runs **inside the user's own Claude Code on a regular subscription, with no API key** (principle 0).

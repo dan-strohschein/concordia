@@ -374,7 +374,7 @@ class Town:
         self.set(self.label(h, "Dawn clock", "", "hud_label", 22.0), "lamplight.Readout", {"field": "clock"})
         self.set(self.label(h, "Lamps lit", "", "hud_label", 22.0), "lamplight.Readout", {"field": "lamps"})
         pause = self.screen("Pause menu", ["paused"], 10)
-        m = self.panel(pause, "Pause panel", -200.0, -170.0, 200.0, 170.0)
+        m = self.panel(pause, "Pause panel", -200.0, -180.0, 200.0, 180.0)
         self.label(m, "Paused", "Paused", "title", 52.0)
         for bus, gain in (("Music", -6.0), ("SFX", 0.0), ("Ambience", -8.0)):
             self.label(m, f"{bus} label", bus, "label", 22.0)

@@ -164,7 +164,13 @@ impl Project {
             modules.push(Arc::new(self.audio_module(playback)?));
         }
         if self.manifest.ui.is_some() {
-            modules.push(Arc::new(concordia_ui::UiModule::new()));
+            let ui = concordia_ui::UiModule::new();
+            // With a renderer, world roots are seen through its camera (they take input).
+            let ui = match self.manifest.render {
+                Some(_) => ui.with_lens(Arc::new(concordia_render::world_ui_lens)),
+                None => ui,
+            };
+            modules.push(Arc::new(ui));
         }
         if self.manifest.render.is_some() {
             modules.push(Arc::new(

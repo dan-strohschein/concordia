@@ -5,6 +5,7 @@ use std::collections::BTreeSet;
 use concordia_api::{
     ApiError, ApiErrorKind, CallCtx, Engine, EntityRef, Method, MethodInfo, WorldSel,
 };
+use concordia_assets::AssetDb;
 use concordia_core::id::EntityId;
 use concordia_reflect::Reflect;
 use serde::{Deserialize, Serialize};
@@ -16,8 +17,8 @@ use crate::controls::UiState;
 use crate::geom::Rect;
 use crate::hit::{HitPart, Index, hit_with};
 use crate::interact::UiInput;
-use crate::layout::{UNBOUNDED, UiLayout, compute_layout};
-use crate::module::{UiCore, UiShared, scene_and_db};
+use crate::layout::{UNBOUNDED, UiLayout, compute_layout_seen};
+use crate::module::{UiCore, UiShared};
 use crate::root::CanvasMap;
 use crate::scene::{UiElement, UiScene};
 use crate::style::Cursor;
@@ -161,13 +162,14 @@ fn lay_out(
         .resource::<ActionStates>()
         .map(UiInput::read)
         .and_then(|i| i.viewport);
-    let (scene, db) = scene_and_db(engine, world)
-        .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the world is missing"))?;
+    let scene = UiScene::gather(engine.world(world)?);
     let viewport = viewport(width, height, input, &scene)?;
+    let seen = shared.clip_from_world(engine.world(world)?, viewport);
+    let db = engine.state_mut::<AssetDb>();
     let mut core = shared.lock();
     let UiCore { context, cache } = &mut *core;
     let mut assets = DbAssets { db, cache };
-    let layout = compute_layout(&scene, &mut context.fonts, &mut assets, viewport);
+    let layout = compute_layout_seen(&scene, &mut context.fonts, &mut assets, viewport, seen);
     Ok((scene, layout, viewport))
 }
 

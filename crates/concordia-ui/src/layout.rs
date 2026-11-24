@@ -31,7 +31,7 @@ use crate::scene::{UiElement, UiScene, UiTree};
 use crate::style::{ResolvedStyle, UiThemed, WidgetState};
 use crate::text::{TextBlock, caret_x, shape};
 use crate::theme::{ThemeClass, resolve};
-use crate::widgets::{Orientation, UiText, Wrap};
+use crate::widgets::{Orientation, Overflow, UiText, Wrap};
 
 /// One node's results.
 #[derive(Debug, Clone, PartialEq)]
@@ -503,7 +503,36 @@ impl Pass<'_> {
         if el.spin.is_some() && el.text_box.is_some() {
             extras.right = SPIN_W;
         }
+        if let Some(text) = &el.text {
+            self.text_floor(el, text, &style, &mut extras);
+        }
         extras
+    }
+
+    /// A label's box never squeezes its text (Godot's `Label`): its minimum height is the text
+    /// wrapped at the box's fixed width, and unwrapped text sets its minimum width too.
+    /// `Clip` and `Ellipsis` opt out.
+    fn text_floor(
+        &mut self,
+        el: &UiElement,
+        text: &UiText,
+        style: &ResolvedStyle,
+        extras: &mut Extras,
+    ) {
+        if text.overflow != Overflow::Visible {
+            return;
+        }
+        let width = match el.node.width {
+            Length::Px(w) => {
+                Some((w - el.node.padding.horizontal() - extras.left - extras.right).max(0.0))
+            }
+            _ => None,
+        };
+        let block = shape(self.fonts, self.assets, text, style, width, None);
+        extras.min_height = extras.min_height.max(block.height);
+        if text.wrap == Wrap::None {
+            extras.min_width = block.width;
+        }
     }
 
     /// `text` shaped on one line in `style`.
@@ -779,7 +808,10 @@ struct Extras {
     left: f32,
     top: f32,
     right: f32,
+    /// The least content height (0: none).
     min_height: f32,
+    /// The least content width (0: none).
+    min_width: f32,
 }
 
 impl Extras {
@@ -789,7 +821,12 @@ impl Extras {
         s.padding.right = LengthPercentage::length(node.padding.right + self.right);
         if self.min_height > 0.0 && node.min_height == Length::Auto {
             s.min_size.height =
-                LengthPercentageAuto::length(self.min_height + node.padding.vertical());
+                LengthPercentageAuto::length(self.min_height + node.padding.vertical() + self.top);
+        }
+        if self.min_width > 0.0 && node.min_width == Length::Auto {
+            s.min_size.width = LengthPercentageAuto::length(
+                self.min_width + node.padding.horizontal() + self.left + self.right,
+            );
         }
     }
 }
