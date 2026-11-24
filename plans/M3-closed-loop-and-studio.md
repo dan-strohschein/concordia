@@ -1379,6 +1379,13 @@ Every role stays under 50k. If the AST's recursive schema makes `assert_eval` he
   - the role's stale `assert_eval` note and the VFX artist's stale phase note go;
   - tests: `gameplay_programmer_drives_its_own_bug_replay_with_input_inject` and `role_notes_never_promise_a_tool_that_already_exists`. Both failed first for the right reason, and a mutation that drops the skill's step fails the first.
   - The role snapshots and the fixture's roster copy are updated.
+- **The live re-run after that change (2026-11-24)** failed twice, in two different ways. Both were real evidence gaps, and the checker was right each time:
+  - **First:** the gameplay programmer now did the whole loop itself, but QA's own replay stopped at about 90 ticks. A `within 600 ticks` assertion over it is `undecided` on the seeded bug, so it proves nothing.
+    - Fix: `concordia-record-replay`, `concordia-write-playtest` and `concordia-fix-bug-with-replay` say that evidence runs the assertion's whole window (`evidence_replays_cover_the_assertions_whole_window`).
+  - **Second:** with full-window replays from the gameplay programmer, QA verified them but recorded none of its own.
+    - Fix: QA's reproducibility rule says to always record its own replay for the whole window; the author's replay is never QA's evidence (`qa_records_its_own_evidence_for_the_whole_window`).
+  - Both tests failed first. The checker is unchanged.
+  - **The third run passed on attempt 1** (report `tests/gates/live-reports/M3/20261124T090120.ron`: 8 turns, about $1.11). The Director did not need to step in: the gameplay programmer recorded the bug and fix replays, and QA recorded its own 600-tick evidence.
 - **QA has no shell,** so it relies on engine evidence, not `cargo test`. That's by design (ADR-0073).
 - **The fixture's door doesn't stop the player.** That's outside the task, and the Director rightly raised it as a question rather than acting. **Kept as is:** the acceptance is reaching the door, and a blocking door would need physics or a clamp in the fixture's script without testing anything new.
 - **New, found while fixing the first:** `replay.record` and `replay.run` with `update` write files but aren't path-checked (`check_paths` in `concordia-mcp/src/studio.rs`). So any role holding them can write anywhere, including `tests/replays/`, which the design table gives to QA alone; the fix-bug skill records there. Decide in the next Studio change: path-check both, and either give the gameplay programmer a replay folder or `tests/replays/**`.

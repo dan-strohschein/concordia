@@ -16,6 +16,8 @@ A replay is text (`tests/replays/<name>.replay.ron`, format version 1): a header
 3. Drive it: `mcp__concordia__input_inject` events at ticks, and `mcp__concordia__sim_step` ticks.
 4. Stop and write the file: `mcp__concordia__replay_record {"action": "stop"}`.
 
+A replay that is evidence for an assertion runs its whole window: for `within 600 ticks: …`, step at least 600 ticks before stopping, even when the fix passes at tick 88. A shorter replay ends `undecided` on the old build, so it can't show the bug and proves nothing.
+
 Recording is lost if the play world is discarded (`sim_stop`, `scene_open`) before stop. If a script module is rebuilt and reloaded with different code while recording, stop refuses: record again.
 
 ## Clicking through menus

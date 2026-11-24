@@ -34,6 +34,7 @@ Playtest(
 ```
 
 5. Run it with its scene open (`mcp__concordia__scene_open`): `mcp__concordia__assert_eval {"source": "scenario", "path": "tests/playtests/crate-rests.playtest.ron"}`. Or check assertions over a recorded replay's inputs: `mcp__concordia__assert_eval {"assertions": ["within 300 ticks: name(\"Crate\").Transform.translation.y < 1"], "source": "replay", "path": "tests/replays/crate-drop.replay.ron"}`.
+   A replay that is evidence for an assertion runs its whole window: for `within 600 ticks: …`, step at least 600 ticks before stopping, even when the fix passes at tick 88. A shorter replay ends `undecided` on the old build, so it can't show the bug and proves nothing.
 6. Each result has a `status` (`passed`, `failed`, `undecided` when the run ended first, `error` when a value couldn't be read), `decided_at` (the tick) and a `witness`: the comparison's left side by its text, and for a `within` that ran out, the `closest` value and `closest_at`.
 7. A failing assertion is information: fix the scene or the code, never the threshold, unless the task's criterion itself was wrong (then say so in a comment).
 

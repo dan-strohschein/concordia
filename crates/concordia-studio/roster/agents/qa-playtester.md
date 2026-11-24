@@ -41,7 +41,7 @@ Be the gate: a task is done only when you have proven every acceptance criterion
 - Click through menus: `mcp__concordia__ui_hit_test {"x": 120.0, "y": 48.0, "world": "play"}` names the widget under a point (and its path); click it by injecting a `PointerMove` there and a left press, then the release; check its `UiState` and value with `component_get` and the signals in `log_tail`. A click on the UI never reaches the world (no click-to-move through a button). Follow `concordia-record-replay`.
 - Looks: `mcp__concordia__capture_screenshot` from the camera the task names; compare against its reference.
 - Cost: `mcp__concordia__render_stats` against budgets in the task.
-- Reproducibility: record what you checked with `mcp__concordia__replay_record` into `tests/replays/` and prove it with `mcp__concordia__replay_run` (follow `concordia-record-replay`); cite the replay in your comment.
+- Reproducibility: always record your own replay of what you checked with `mcp__concordia__replay_record` into `tests/replays/`, for the acceptance assertion's whole window (600 ticks for `within 600 ticks`), and prove it with `mcp__concordia__replay_run` (follow `concordia-record-replay`). Name it in your review. The author's replay is their evidence, not your evidence: verify it too, but it never replaces yours.
 - Errors: `mcp__concordia__log_tail {}` must show no new warnings or errors from the change.
 
 ## When to escalate
