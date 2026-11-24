@@ -1,7 +1,7 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b, 3.0c, 3.1 (a–c), 3.2 (a–b), 3.7 (a–c), 3.9a and 3.9b done; `just gate-tests M2` and `M3` run the scripted gates; the live gate (3.9c) is next) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b, 3.0c, 3.1 (a–c), 3.2 (a–b), 3.7 (a–c) and 3.9 (a–c) done; **M3 gate: scripted `just gate-tests M3` green, and the live gate passed on 2026-11-24** (Claude Code 2.1.330, first attempt); M3 closes once the `regression` workflow is green on `main` and the author has rechecked the windowed items) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
@@ -1324,6 +1324,51 @@ Every role stays under 50k. If the AST's recursive schema makes `assert_eval` he
 **Mutation checks:** the checker without the task check (2 failed) and without the integrity check (2).
 
 **Snapshots** (blessed under the author's M3 authority; logged on the review page): `m3_studio_sync__m3_fixture_{agents_and_skills, settings_json, mcp_json, claude_md_block}.snap` (new). They match M3S's apart from the level designer's ×1.
+
+### Phase 3.9c As built (2026-11-24)
+**Status: done (branch `m3/3.9-live`). The live M3 gate passed on its first attempt (2026-11-24, Claude Code 2.1.330, subscription login, no API key in the environment).**
+
+**What landed:**
+- **`tests/gates/m3_live_studio.rs`:**
+  - `m3_live_director_gameplay_qa_fix_seeded_bug` is ignored and run by the script. It judges what the run left with the shared `m3_checker`, plus `check_env`.
+  - `m3_live_env_check_rejects_keys_and_tokens` runs in the normal suite. The checker itself is tested by `m3_studio_loop_scripted`.
+- **`tools/gates/m3_live.sh`** (`just gate-live M3`):
+  1. **Preflight:** `claude` is installed, and `claude auth status` reports `authMethod: claude.ai`.
+  2. **Setup:**
+     - builds `concordia` in release and puts it first on PATH;
+     - copies the fixture (its crate pointed at this repository), builds the module, `git init`s and commits it, and runs `studio sync`;
+     - saves the post-sync configuration as the baseline;
+     - builds a pristine copy;
+     - checks the precondition: `concordia test playtests` fails on the seeded bug.
+  3. **The run:** every `*_API_KEY`, `*_AUTH_TOKEN` and `CLAUDE_CODE_OAUTH_TOKEN` is removed; then `claude -p <prompt> --agent director --permission-mode acceptEdits --max-turns 80 --max-budget-usd 3`, with a 30-minute timeout.
+  4. **Afterwards:**
+     - artifacts are saved: the result, env names, tasks, replays, journals and the diff;
+     - the checker runs;
+     - a RON report is written; a passing report is copied to `tests/gates/live-reports/M3/`.
+  - At most 2 attempts.
+- **`tools/gates/m3_live_prompt.md`:** "Work the Studio task board until T-0001 is done. Follow your Director instructions."
+
+**The live pass** (report `tests/gates/live-reports/M3/20261124T030909.ron`: 9 Director turns, about $1.14 by Claude Code's estimate, about 3.4 minutes):
+- **The Director** assigned T-0001 to the gameplay programmer.
+- **The gameplay programmer:**
+  - reproduced the bug with the playtest (failed at tick 600, 9.08 m);
+  - wrote failing tests first (`tests/gameplay/walk.rs`, registered in the crate);
+  - fixed `step()`, built and reloaded;
+  - confirmed the playtest passes at tick 88;
+  - handed it in.
+- **The Director** saw the gameplay programmer couldn't record a replay (it has no `input_inject`) and asked QA to record the proof.
+- **QA:**
+  - recorded `tests/replays/walk-to-door.replay.ron`;
+  - verified it (11 of 11 checkpoints);
+  - asserted the acceptance over it (passed at tick 88, 1.933 m);
+  - checked z = 55.0 m at tick 600 (5.5 m/s × 10 s);
+  - approved.
+- **The checker passed all six outcomes,** and no keys were in the environment.
+
+**Follow-ups the run surfaced** (none blocks the gate):
+- **The gameplay programmer has `replay_record` but no `input_inject`,** so it can't record the reproduction replay that `concordia-fix-bug-with-replay` asks for. Adding `input_inject` costs about 2k tokens, which is within budget. This is for the next Studio change, with a live re-run.
+- **QA has no shell,** so it relies on engine evidence, not `cargo test`. That's by design (ADR-0073).
+- **The fixture's door doesn't stop the player.** That's outside the task, and the Director rightly raised it as a question rather than acting.
 
 ## Goal & context
 M3 closes the loop the design promises (principle 3): an agent can **record** a play session, **replay** it deterministically, **find the first frame** where two runs diverge, and **prove** behavior with typed playtest assertions, all from tests, the CLI and MCP. On top of that loop, M3 ships **Agent Studio v1**: a configurable team of specialist agents that runs **inside the user's own Claude Code on a regular subscription, with no API key** (principle 0).

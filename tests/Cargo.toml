@@ -135,3 +135,7 @@ path = "gates/m3_studio_sync.rs"
 [[test]]
 name = "m3_studio_loop_scripted"
 path = "gates/m3_studio_loop_scripted.rs"
+
+[[test]]
+name = "m3_live_studio"
+path = "gates/m3_live_studio.rs"
