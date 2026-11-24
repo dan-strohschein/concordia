@@ -34,7 +34,7 @@ Follow `concordia-task-workflow`; for materials follow `concordia-add-material`.
 
 ## How you verify
 - Look: `mcp__concordia__capture_screenshot` from the scene camera, plus a debug view when it helps (`"view_mode": "normals"` for normal maps, `"closures"` for layered materials, `"overdraw"` for transparency).
-- Check lighting against the truth: `mcp__concordia__capture_reference {"width": 384, "height": 216, "spp": 64}` path-traces the same view (a noisy preview in seconds; capped at 1280 × 720 × 64 samples). Compare it with a `capture_screenshot` of the same size: what the real-time image gets wrong (missing bounce light, shadow shape) shows up as a difference. Textures and skinning aren't traced; full-quality references are blessed by a human with `just bless-reference`.
+- Check lighting against the truth: `mcp__concordia__capture_reference {"width": 384, "height": 216, "spp": 64}` path-traces the same view (a noisy preview in seconds; capped at 1280 × 720 × 64 samples). Compare it with a `capture_screenshot` of the same size: what the real-time image gets wrong (missing bounce light, shadow shape) shows up as a difference. Normal maps and skinning aren't traced; full-quality references are blessed by a human with `just bless-reference`.
 - Lighting: step the simulation (`mcp__concordia__sim_step`) if the look depends on moving lights or bodies, then `mcp__concordia__sim_stop`.
 - Cost: `mcp__concordia__render_stats {}` before and after; report draws, triangles and GPU ms, and any `downgraded_materials` (a material over the closure budget).
 - Values: `mcp__concordia__schema_get {"name": "Material"}` for every node, field and range; dielectrics use `metallic: 0`, metals `1`.

@@ -17,6 +17,8 @@ The asset pipeline: source files with `<file>.import.ron` sidecars holding stabl
 - Animation graphs (2.4.3): `AnimGraph` (`parameters`, `nodes`, `root`; registered for `schema.get {"name": "AnimGraph"}`; `validate`, `node`, `clips`, `reachable`), `Parameter` (`Float`, `Int`, `Bool`, `Trigger`), `AnimNode` (`Clip`, `Blend2`, `BlendN`, `OneShot`, `TimeScale`, `Transition`, `StateMachine`; `children`), `TransitionInput`, `StateTransition`, `SwitchMode`, `AdvanceMode`, `FadeCurve`, `AnimGraphError` (`node()`); `read_animgraph`, `write_animgraph`; `AnimGraphImporter` (`animgraph`, version 1, `.animgraph.ron` → `AssetKind::AnimGraph`), registered by `AssetDb::new`. Evaluation is in `concordia-anim`.
 - Audio kinds (2.7a.1, ADR-0066): `AssetKind::Sound` and `AssetKind::Cue`, produced by `concordia-audio`'s `SoundImporter` (`wav`, `ogg`) and `CueImporter` (`.cue.ron`). Those importers live there and are registered by whoever builds the `AssetDb` (2.7a.2: the `audio` module).
 - `Sidecar`, `import_key`, `PLATFORM`; `AssetsModule` (EngineModule)
+- `TextureData::linear_rgba()` (as the GPU samples it: sRGB color decoded, alpha linear, R8 as (r, 0, 0, 1)); `linear_rgb()` is its RGB.
+- `AssetDb::set_setting_default(key, value)` fills an importer's null-declared settings (and the cache key) with the project's value; `AssetsModule::with_setting_default` (M4 4.1b4: `emissive_reference_ev100`, ADR-0102).
 
 ## Invariants
 - An asset's id lives in its sidecar: re-imports and moves (with the sidecar) keep it. Sub-asset ids are UUIDv5(parent, sub-path), recorded in the sidecar so they survive reordering.

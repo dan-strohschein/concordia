@@ -11,7 +11,11 @@ autotests = false
 
 [dependencies]
 # The M3 gate's shared checker (src/m3_checker.rs) drives an engine and reads the Studio journal.
+# src/reference.rs blesses path-traced references (testkit's FLIP; this crate never ships).
+base64.workspace = true
 concordia-api.workspace = true
+concordia-pathtrace.workspace = true
+concordia-testkit.workspace = true
 concordia-app.workspace = true
 concordia-core.workspace = true
 concordia-replay.workspace = true
@@ -23,15 +27,14 @@ tokio.workspace = true
 toml.workspace = true
 
 [dev-dependencies]
-base64.workspace = true
 concordia-assets.workspace = true
 concordia-audio.workspace = true
 concordia-input.workspace = true
 concordia-mcp.workspace = true
 concordia-reflect.workspace = true
 concordia-render.workspace = true
+concordia-rhi-metal.workspace = true
 concordia-scene.workspace = true
-concordia-testkit.workspace = true
 concordia-ui.workspace = true
 insta.workspace = true
 regex.workspace = true
@@ -40,6 +43,14 @@ sha2.workspace = true
 wasmparser.workspace = true
 wasmtime.workspace = true
 wasmtime-wasi.workspace = true
+
+[[test]]
+name = "reference_blessing"
+path = "integration/reference_blessing.rs"
+
+[[test]]
+name = "bless_reference"
+path = "integration/bless_reference.rs"
 
 [[test]]
 name = "repo_hygiene"

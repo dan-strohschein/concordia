@@ -196,11 +196,12 @@ Steps, each a commit and a push:
    - Tests first: `emission_is_scaled_by_exposure_like_light` (renderer, both tracers); `converted_materials_look_unchanged` (goldens).
 2. **`capture.reference`** (author decision 2026-11-24: Engine API method from a `PathTraceModule` in `concordia-pathtrace`, enabled with `[render]`; through MCP capped: 64 spp preview by default, at most about a minute of work (a sample budget), scoped to the tech-artist and lighting roles; full quality only through `just bless-reference`): renders a world with the path tracer (`backend: auto|gpu|cpu`, `spp`, `seed`, `max_bounces`, `width`, `height`, camera or view) and returns a PNG tone-mapped like `capture.screenshot` (same tonemap, CPU reference). Tests: it matches `scene_from_world` + `render`; errors name missing cameras and assets; `backend: cpu` works without a GPU.
 3. **`just bless-reference <scene>`** and `tests/golden/m4_reference/<scene>.reference.ron` (inputs: project, scene, view, size, spp, seed, max_bounces; results: backend, git hash, the renderer's FLIP against it = the baseline, the noise FLIP between two seeds). Blessing writes `<scene>.png` and never runs in CI. Tests: the file round-trips canonically; blessing is refused with `CI=true`; a reference whose noise FLIP exceeds a fifth of its suite's tolerance is refused.
-4. **Baselines (D3)** (author decision 2026-11-24): three references at 1280×720: the M1 gate camera, Lamplight's town camera over the square, and a Lamplight street-level view; shown on a review page (references, renderer images, FLIP heat maps, numbers) before they are committed.
-5. **Recalibration (D1):** Lamplight budgets to a 1.5× margin; the plan's provisional canyon table re-derived from 4.1a's per-pass numbers.
-6. **ADRs** 0090, 0101, 0102; docs, As built, checklist.
+4. **Textures in the tracer** (added 2026-11-24, author decision after the first baseline trial: without textures the Lamplight baselines measured missing paint, 0.18 FLIP on the street view, not lighting): base color (with alpha), emission, metallic-roughness and mix textures, sampled on both backends with the renderer's rule (bilinear, repeat, mip 0) and applied like its `load_closure` (`MaterialProgram::textured` on the CPU, the shared `apply_texels` in Slang). Normal and occlusion maps stay out (the tracer computes occlusion itself). Tests: sampling, unlit, lit, mask, mix, a textured emitter by quadrature, GPU against CPU sample for sample, and loading from worlds.
+5. **Baselines (D3)** (author decision 2026-11-24): three references at 1280×720: the M1 gate camera, Lamplight's town camera over the square, and a Lamplight street-level view; shown on a review page (references, renderer images, FLIP heat maps, numbers) before they are committed.
+6. **Recalibration (D1):** Lamplight budgets to a 1.5× margin; the plan's provisional canyon table re-derived from 4.1a's per-pass numbers.
+7. **ADRs** 0090, 0101, 0102; docs, As built, checklist.
 
-Out of scope: textures in the tracer (the CPU BSDF is factor-only), skinning, representation LOD.
+Out of scope: normal and occlusion maps in the tracer, skinning, representation LOD.
 
 ### Effort (re-estimated)
 - The plan's 32–45 weeks, plus **4.1v Vulkan at 6–10**, plus about 1 for D2, D6 and D9: **about 39–56 engineer-weeks**.

@@ -1,22 +1,16 @@
-//! `concordia reference bless` (M4 4.1b4, ADR-0090): traces a reference twice (two seeds), renders
-//! the same view with the renderer, records both FLIPs and writes the image and its file; refused
-//! in CI and for noisy references. Needs a GPU for the renderer (required with
+//! Blessing references (M4 4.1b4, ADR-0090): traces a reference twice (two seeds), renders the
+//! same view with the renderer, records both FLIPs and writes the image and its file; refused in
+//! CI and for noisy references. Needs a GPU for the renderer (required with
 //! CONCORDIA_REQUIRE_GPU=1).
 
-mod common;
-
 use std::path::Path;
-use std::process::Output;
 
-use common::{concordia, stderr, stdout};
 use concordia_testkit::golden::Golden;
+use concordia_tests::reference::{Blessing, bless as bless_in};
 
 /// A golden store in `dir` with one reference of the M1 stack, tolerating `mean` FLIP.
 fn store(dir: &Path, mean: f32) -> std::path::PathBuf {
-    let project = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../examples/m1-physics-stack")
-        .canonicalize()
-        .unwrap();
+    let project = concordia_tests::repo_root().join("examples/m1-physics-stack");
     let suite = dir.join("golden/m4_reference");
     std::fs::create_dir_all(&suite).unwrap();
     std::fs::write(
@@ -35,19 +29,9 @@ fn store(dir: &Path, mean: f32) -> std::path::PathBuf {
     dir.join("golden")
 }
 
-/// Runs `concordia reference bless stack` against `golden`; `ci` sets CI=true (otherwise CI is
-/// removed: these stores are temporary, never the repository's).
-fn bless(golden: &Path, ci: bool) -> Output {
-    let mut cmd = concordia();
-    cmd.args(["reference", "bless", "stack", "--golden"])
-        .arg(golden);
-    if ci {
-        cmd.env("CI", "true");
-    } else {
-        cmd.env_remove("CI");
-    }
-    cmd.current_dir(golden.parent().unwrap());
-    cmd.output().expect("concordia runs")
+/// Blesses `stack` in `golden` (review images beside it); `ci` stands for CI=true.
+fn bless(golden: &Path, ci: bool) -> Result<Blessing, String> {
+    bless_in("stack", golden, &golden.join("../review"), ci)
 }
 
 fn has_gpu() -> bool {
@@ -66,9 +50,9 @@ fn blessing_records_the_baseline_and_the_noise() {
     }
     let dir = tempfile::tempdir().unwrap();
     let golden = store(dir.path(), 1.0);
-    let out = bless(&golden, false);
-    assert!(out.status.success(), "{}{}", stdout(&out), stderr(&out));
+    let blessing = bless(&golden, false).unwrap();
     assert!(golden.join("m4_reference/stack.png").is_file());
+    assert_eq!(blessing.image, golden.join("m4_reference/stack.png"));
     let store = Golden::new(golden.clone(), dir.path().join("failures"), false, false);
     let file = store.reference("stack").unwrap();
     let blessed = file.blessed.expect("blessed");
@@ -88,8 +72,11 @@ fn blessing_records_the_baseline_and_the_noise() {
         "two seeds differ: {:?}",
         blessed.noise
     );
-    assert!(stdout(&out).contains("baseline"), "{}", stdout(&out));
-    let review = dir.path().join("target/reference-review/m4_reference");
+    assert_eq!(
+        blessed, blessing.blessed,
+        "the file records what was measured"
+    );
+    let review = dir.path().join("review/m4_reference");
     for kind in ["expected", "actual", "flip"] {
         assert!(
             review.join(format!("stack.{kind}.png")).is_file(),
@@ -102,9 +89,8 @@ fn blessing_records_the_baseline_and_the_noise() {
 fn blessing_is_refused_in_ci_before_tracing() {
     let dir = tempfile::tempdir().unwrap();
     let golden = store(dir.path(), 1.0);
-    let out = bless(&golden, true);
-    assert!(!out.status.success());
-    assert!(stderr(&out).contains("CI"), "{}", stderr(&out));
+    let err = bless(&golden, true).unwrap_err();
+    assert!(err.contains("CI"), "{err}");
     assert!(!golden.join("m4_reference/stack.png").exists());
 }
 
@@ -115,8 +101,7 @@ fn a_noisy_reference_is_refused() {
     }
     let dir = tempfile::tempdir().unwrap();
     let golden = store(dir.path(), 0.0001);
-    let out = bless(&golden, false);
-    assert!(!out.status.success());
-    assert!(stderr(&out).contains("spp"), "{}", stderr(&out));
+    let err = bless(&golden, false).unwrap_err();
+    assert!(err.contains("spp"), "{err}");
     assert!(!golden.join("m4_reference/stack.png").exists());
 }

@@ -816,7 +816,6 @@ dependencies = [
 name = "concordia-cli"
 version = "0.0.0"
 dependencies = [
- "base64 0.22.1",
  "clap",
  "concordia-api",
  "concordia-app",
@@ -825,7 +824,6 @@ dependencies = [
  "concordia-input",
  "concordia-mcp",
  "concordia-nav",
- "concordia-pathtrace",
  "concordia-perf",
  "concordia-platform",
  "concordia-reflect",
@@ -1511,9 +1509,11 @@ dependencies = [
  "concordia-core",
  "concordia-input",
  "concordia-mcp",
+ "concordia-pathtrace",
  "concordia-reflect",
  "concordia-render",
  "concordia-replay",
+ "concordia-rhi-metal",
  "concordia-scene",
  "concordia-studio",
  "concordia-testkit",

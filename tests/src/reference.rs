@@ -1,5 +1,7 @@
-//! `concordia reference bless <name>`: traces a path-traced reference at full quality, measures
-//! the renderer against it and its own noise, and writes it (ADR-0090). Never in CI.
+//! Blessing path-traced references (M4 4.1b4, ADR-0090): trace a reference at full quality and a
+//! second seed for its noise, render the same view with the renderer for the baseline, and write
+//! the image and its `.reference.ron`. Test-only (it compares with testkit's FLIP); run through
+//! `just bless-reference <name>`, never in CI.
 
 use std::path::{Path, PathBuf};
 
@@ -12,58 +14,33 @@ use concordia_testkit::golden::{Golden, GoldenError, RgbaImage, flip_score};
 use concordia_testkit::reference::{Blessed, ReferenceFile, SUITE};
 use serde_json::{Value, json};
 
-use crate::Failure;
-
-/// `concordia reference` arguments.
-#[derive(Debug, clap::Args)]
-pub(crate) struct ReferenceArgs {
-    #[command(subcommand)]
-    command: ReferenceCommand,
-}
-
-#[derive(Debug, clap::Subcommand)]
-enum ReferenceCommand {
-    /// Trace `<golden>/m4_reference/<name>.reference.ron` and write `<name>.png` with the
-    /// measured baseline and noise.
-    Bless(BlessArgs),
-}
-
-/// `concordia reference bless` arguments.
-#[derive(Debug, clap::Args)]
-struct BlessArgs {
-    /// The reference's name.
-    name: String,
-    /// The golden store.
-    #[arg(long, default_value = "tests/golden")]
-    golden: PathBuf,
-}
-
-pub(crate) fn run(args: &ReferenceArgs) -> Result<(), Failure> {
-    match &args.command {
-        ReferenceCommand::Bless(bless) => bless_reference(bless),
-    }
-}
-
-/// Where the reference, the renderer's image and their FLIP heat map are written for review.
-const REVIEW_DIR: &str = "target/reference-review";
-
 /// Seed offset for the second trace (the noise measurement).
 const NOISE_SEED_OFFSET: u32 = 0x9e37;
 /// Near and far planes of a reference's free view.
 const NEAR: f32 = 0.1;
 const FAR: f32 = 1000.0;
 
-fn bless_reference(args: &BlessArgs) -> Result<(), Failure> {
-    let golden = Golden::new(
-        args.golden.clone(),
-        PathBuf::from(REVIEW_DIR),
-        false,
-        std::env::var("CI").as_deref() == Ok("true"),
-    );
-    if golden.is_ci() {
+/// What blessing measured.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Blessing {
+    /// The written reference image.
+    pub image: PathBuf,
+    /// Where the reference, the renderer's image and their FLIP map were written for review.
+    pub review: String,
+    /// The measurements recorded in the reference file.
+    pub blessed: Blessed,
+    /// Tracing time of the first seed (ms).
+    pub elapsed_ms: f64,
+}
+
+/// Blesses reference `name` in the golden store at `golden` (`<golden>/m4_reference/`), writing
+/// review images under `review_dir`; `ci` refuses before tracing.
+pub fn bless(name: &str, golden: &Path, review_dir: &Path, ci: bool) -> Result<Blessing, String> {
+    let store = Golden::new(golden.to_path_buf(), review_dir.to_path_buf(), false, ci);
+    if store.is_ci() {
         return Err(fail(GoldenError::BlessInCi));
     }
-    let mut file = golden.reference(&args.name).map_err(fail)?;
+    let mut file = store.reference(name).map_err(fail)?;
     let mut session = Session::open(&file)?;
     let first = session.trace(&file, file.seed)?;
     let second = session.trace(&file, file.seed.wrapping_add(NOISE_SEED_OFFSET))?;
@@ -75,47 +52,31 @@ fn bless_reference(args: &BlessArgs) -> Result<(), Failure> {
         baseline: flip_score(&reference, &rendered).map_err(fail)?,
         noise: flip_score(&reference, &image(&second)?).map_err(fail)?,
     };
-    println!(
-        "{}: traced on {} in {:.1} s; baseline FLIP mean {:.4} p99 {:.4}; noise FLIP mean {:.4} p99 {:.4}",
-        args.name,
-        blessed.backend,
-        first.elapsed_ms / 1000.0,
-        blessed.baseline.mean,
-        blessed.baseline.p99,
-        blessed.noise.mean,
-        blessed.noise.p99
-    );
-    let review = golden
-        .write_comparison(SUITE, &args.name, &reference, &rendered)
+    let review = store
+        .write_comparison(SUITE, name, &reference, &rendered)
         .map_err(fail)?;
-    println!(
-        "review: {review}/{}.{{expected,actual,flip}}.png (reference, renderer, FLIP)",
-        args.name
-    );
-    file.blessed = Some(blessed);
-    golden
-        .bless_reference(&args.name, &file, &reference)
+    file.blessed = Some(blessed.clone());
+    store
+        .bless_reference(name, &file, &reference)
         .map_err(fail)?;
-    println!(
-        "wrote {}",
-        args.golden
-            .join(SUITE)
-            .join(format!("{}.png", args.name))
-            .display()
-    );
-    Ok(())
+    Ok(Blessing {
+        image: golden.join(SUITE).join(format!("{name}.png")),
+        review,
+        blessed,
+        elapsed_ms: first.elapsed_ms,
+    })
 }
 
-fn fail(e: impl std::fmt::Display) -> Failure {
-    Failure::usage(e.to_string())
+fn fail(e: impl std::fmt::Display) -> String {
+    e.to_string()
 }
 
-fn image(traced: &Traced) -> Result<RgbaImage, Failure> {
+fn image(traced: &Traced) -> Result<RgbaImage, String> {
     RgbaImage::new(traced.width, traced.height, traced.rgba.clone()).map_err(fail)
 }
 
 /// The short hash of HEAD in the repository holding `project`.
-fn git_hash(project: &Path) -> Result<String, Failure> {
+fn git_hash(project: &Path) -> Result<String, String> {
     let out = std::process::Command::new("git")
         .arg("-C")
         .arg(project)
@@ -143,7 +104,7 @@ struct Session {
 }
 
 impl Session {
-    fn open(file: &ReferenceFile) -> Result<Self, Failure> {
+    fn open(file: &ReferenceFile) -> Result<Self, String> {
         let project = Path::new(&file.project);
         let loaded = Project::load(project).map_err(fail)?;
         let scene = file
@@ -168,13 +129,13 @@ impl Session {
         Ok(opened)
     }
 
-    fn call(&mut self, method: &str, params: Value) -> Result<Value, Failure> {
+    fn call(&mut self, method: &str, params: Value) -> Result<Value, String> {
         self.engine
             .call(self.session, method, params)
             .map_err(|e| fail(format!("{method}: {}", e.message)))
     }
 
-    fn trace(&mut self, file: &ReferenceFile, seed: u32) -> Result<Traced, Failure> {
+    fn trace(&mut self, file: &ReferenceFile, seed: u32) -> Result<Traced, String> {
         let mut params = json!({"width": file.width, "height": file.height, "spp": file.spp,
             "seed": seed, "max_bounces": file.max_bounces});
         if let Some(view) = view(file) {
@@ -184,7 +145,7 @@ impl Session {
         concordia_pathtrace::trace(&mut self.engine, &params).map_err(|e| fail(e.message))
     }
 
-    fn screenshot(&mut self, file: &ReferenceFile) -> Result<RgbaImage, Failure> {
+    fn screenshot(&mut self, file: &ReferenceFile) -> Result<RgbaImage, String> {
         let mut params = json!({"width": file.width, "height": file.height, "ui": false});
         if let Some(view) = view(file) {
             params["view"] = view;

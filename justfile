@@ -126,7 +126,7 @@ bless:
 # Trace a path-traced reference at full quality and record its baseline and noise (ADR-0090).
 # Never in CI; review the image and numbers before committing.
 bless-reference name:
-    cargo run --release -p concordia-cli -- reference bless {{name}}
+    CONCORDIA_REFERENCE={{name}} cargo nextest run --release -p concordia-tests --test bless_reference --run-ignored only --no-capture
 
 # Release-only perf smoke tests (fail on pathological regressions)
 perf-smoke:
