@@ -690,6 +690,7 @@ dependencies = [
  "futures",
  "insta",
  "jsonschema",
+ "png",
  "serde",
  "serde_json",
  "tempfile",
@@ -717,6 +718,7 @@ dependencies = [
  "concordia-import-gltf",
  "concordia-input",
  "concordia-nav",
+ "concordia-pathtrace",
  "concordia-physics",
  "concordia-platform",
  "concordia-render",
@@ -1034,9 +1036,13 @@ dependencies = [
 name = "concordia-pathtrace"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
+ "concordia-api",
  "concordia-assets",
+ "concordia-command",
  "concordia-core",
  "concordia-material",
+ "concordia-reflect",
  "concordia-render-types",
  "concordia-rhi",
  "concordia-rhi-metal",
@@ -1045,9 +1051,14 @@ dependencies = [
  "concordia-terra",
  "concordia-testkit",
  "half",
+ "png",
  "proptest",
  "rayon",
+ "serde",
+ "serde_json",
+ "tempfile",
  "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]
@@ -1174,6 +1185,7 @@ dependencies = [
  "concordia-assets",
  "concordia-core",
  "concordia-reflect",
+ "concordia-terra",
  "serde",
  "thiserror 2.0.21",
 ]

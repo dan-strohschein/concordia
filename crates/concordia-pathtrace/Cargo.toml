@@ -12,7 +12,11 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+concordia-api.workspace = true
+concordia-reflect.workspace = true
+serde.workspace = true
 concordia-assets.workspace = true
+concordia-command.workspace = true
 concordia-core.workspace = true
 concordia-material.workspace = true
 concordia-render-types.workspace = true
@@ -22,8 +26,13 @@ concordia-scene.workspace = true
 concordia-terra.workspace = true
 rayon.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
+base64.workspace = true
+png = "0.18.1"
+serde_json.workspace = true
+tempfile.workspace = true
 concordia-rhi-metal.workspace = true
 concordia-testkit.workspace = true
 half = "2.7.1"

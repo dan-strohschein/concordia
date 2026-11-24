@@ -644,6 +644,7 @@ dependencies = [
  "concordia-terra",
  "concordia-terra-sim",
  "futures",
+ "png",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -668,11 +669,14 @@ dependencies = [
  "concordia-import-gltf",
  "concordia-input",
  "concordia-nav",
+ "concordia-pathtrace",
  "concordia-physics",
  "concordia-platform",
  "concordia-render",
+ "concordia-render-types",
  "concordia-replay",
  "concordia-rhi-metal",
+ "concordia-scene",
  "concordia-scripting",
  "concordia-studio",
  "concordia-terra-crowd",
@@ -904,6 +908,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "concordia-pathtrace"
+version = "0.0.0"
+dependencies = [
+ "concordia-api",
+ "concordia-assets",
+ "concordia-command",
+ "concordia-core",
+ "concordia-material",
+ "concordia-reflect",
+ "concordia-render-types",
+ "concordia-rhi",
+ "concordia-scene",
+ "concordia-shaders",
+ "concordia-terra",
+ "rayon",
+ "serde",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
 name = "concordia-physics"
 version = "0.0.0"
 dependencies = [
@@ -989,6 +1014,7 @@ dependencies = [
  "concordia-assets",
  "concordia-core",
  "concordia-reflect",
+ "concordia-terra",
  "serde",
  "thiserror 2.0.21",
 ]

@@ -8,6 +8,7 @@ The reference path tracer (M4 4.1b, ADR-0101): a test oracle that renders a worl
 - `SceneBuilder` (`mesh`, `material`, `instance`, `point_light`, `spot_light`, `sun`, `environment` / `environment_with_background`, `camera`, `build`) for scenes made in code.
 - `render(&Scene, &Settings, &Backend)` → `HdrImage` (exposed radiance, before tone mapping); `Backend::auto(Some((device, compiler)))` is the GPU when the tracer builds there, else `Backend::Cpu`; `render_cpu(&Scene, &Settings { width, height, spp, seed, max_bounces, threads })`.
 - `GpuTracer::new(Arc<dyn Device>, &dyn ShaderCompiler)` (needs bindless buffers) and `GpuTracer::render`; `gpu::shader_dir()` holds `pathtrace.slang`.
+- `PathTraceModule::new(Option<DeviceFactory>)`: the `capture.reference` Engine API method (registered by the app under `[render]`). It loads the world's assets first (`asset_refs` + `LoadedAssets`, so the world and the asset database aren't borrowed together), builds the GPU tracer on first use (auto falls back to the CPU), caps a call at `MAX_SAMPLES` (1280 × 720 × 64) and returns a PNG tone-mapped by `HdrImage::to_rgba8`.
 - Core pieces: `Triangle::intersect`, `Bvh` and the generic `bvh::Tree`, `Accel` / `Instance` (two levels), `SampleStream`, `EnvMap`, `Light`, `PathTraceError`.
 
 ## Invariants
@@ -42,7 +43,7 @@ The reference path tracer (M4 4.1b, ADR-0101): a test oracle that renders a worl
 No engine source consulted.
 
 ## Status
-M4 phase 4.1b2: core and CPU backend. M4 phase 4.1b3: the GPU backend, `Backend`, `render`. Next: `capture.reference` and the baselines (4.1b4).
+M4 phase 4.1b2: core and CPU backend. M4 phase 4.1b3: the GPU backend, `Backend`, `render`. M4 phase 4.1b4 (in progress): `capture.reference`; next the blessed baselines.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

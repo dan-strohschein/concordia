@@ -15,6 +15,26 @@ pub struct EncodedImage {
 }
 
 impl EncodedImage {
+    /// A PNG of `width × height` RGBA8 pixels (rows from the top).
+    pub fn from_rgba8(width: u32, height: u32, rgba: &[u8]) -> Result<Self, String> {
+        if rgba.len() != width as usize * height as usize * 4 {
+            return Err(format!(
+                "{width}×{height} needs {} bytes, got {}",
+                width as usize * height as usize * 4,
+                rgba.len()
+            ));
+        }
+        let mut out = Vec::new();
+        let mut encoder = png::Encoder::new(&mut out, width, height);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let fail = |e: png::EncodingError| format!("PNG encoding failed: {e}");
+        let mut writer = encoder.write_header().map_err(fail)?;
+        writer.write_image_data(rgba).map_err(fail)?;
+        writer.finish().map_err(fail)?;
+        Ok(Self::png(&out))
+    }
+
     /// A PNG from its encoded bytes.
     pub fn png(bytes: &[u8]) -> Self {
         Self {

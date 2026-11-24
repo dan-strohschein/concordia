@@ -50,6 +50,20 @@ pub const MAX_SIZE: u32 = 16_384;
 /// Light passing through cut-out or blended surfaces at most this many times per path segment.
 const MAX_PASSES: u32 = 64;
 
+impl HdrImage {
+    /// Tone-mapped sRGB RGBA8 pixels, as the renderer's `tonemap.slang` maps them.
+    pub fn to_rgba8(&self, tonemap: concordia_render_types::Tonemap) -> Vec<u8> {
+        use concordia_render_types::tonemap::{apply, srgb_encode};
+        self.pixels
+            .iter()
+            .flat_map(|p| {
+                let [r, g, b] = apply(tonemap, *p).map(|c| (srgb_encode(c) * 255.0).round() as u8);
+                [r, g, b, 255]
+            })
+            .collect()
+    }
+}
+
 /// Renders `scene` on the CPU.
 pub fn render_cpu(scene: &Scene, settings: &Settings) -> Result<HdrImage, PathTraceError> {
     validate(settings)?;

@@ -85,10 +85,6 @@ pub use view_mode::ViewMode;
 pub fn register_types(
     registry: &mut concordia_reflect::TypeRegistry,
 ) -> Result<(), concordia_reflect::RegistryError> {
-    concordia_terra::register_component::<Camera>(registry)?;
-    concordia_terra::register_component::<DirectionalLight>(registry)?;
-    concordia_terra::register_component::<PointLight>(registry)?;
-    concordia_terra::register_component::<SpotLight>(registry)?;
-    concordia_terra::register_component::<Environment>(registry)?;
+    concordia_render_types::register_components(registry)?;
     concordia_terra::register_component::<Representation>(registry)
 }
