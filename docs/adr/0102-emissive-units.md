@@ -1,5 +1,5 @@
 # ADR-0102: Emission in physical units (nits)
-- Status: Proposed (M4 4.1b4; author decision 2026-11-24)
+- Status: Accepted (M4 4.1b4, 2026-11-24; author decisions on nits and the importers' reference exposure)
 - Date: 2026-11-24
 - Builds on: ADR-0068 (materials), ADR-0090
 

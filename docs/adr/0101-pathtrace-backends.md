@@ -1,5 +1,5 @@
 # ADR-0101: The reference path tracer: GPU by default, CPU as the fallback, one core
-- Status: Proposed (M4 4.1b2–4.1b4; author decisions 2026-11-24)
+- Status: Accepted (M4 4.1b2–4.1b4, 2026-11-24; author decisions on both backends and on textures)
 - Date: 2026-11-24
 - Builds on: ADR-0040 (RHI), ADR-0068 (materials), ADR-0090 (quality methodology)
 

@@ -1,5 +1,5 @@
 # ADR-0090: Quality methodology: a path-traced oracle, reference and regression goldens
-- Status: Proposed (M4 4.1b4)
+- Status: Accepted (M4 4.1b4, 2026-11-24; the first three references approved by the author on the 4.1b4 review page)
 - Date: 2026-11-24
 - Builds on: ADR-0089 (perf testing), ADR-0101 (path-tracer backends), M4 refinement D2 and D3
 

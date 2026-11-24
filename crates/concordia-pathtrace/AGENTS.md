@@ -44,7 +44,7 @@ The reference path tracer (M4 4.1b, ADR-0101): a test oracle that renders a worl
 No engine source consulted.
 
 ## Status
-M4 phase 4.1b2: core and CPU backend. M4 phase 4.1b3: the GPU backend, `Backend`, `render`. M4 phase 4.1b4 (in progress): `capture.reference`; next the blessed baselines.
+M4 phase 4.1b2: core and CPU backend. M4 phase 4.1b3: the GPU backend, `Backend`, `render`. M4 phase 4.1b4: `capture.reference`, textures, and the three blessed baselines (M1 gate, Lamplight town and street).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.
