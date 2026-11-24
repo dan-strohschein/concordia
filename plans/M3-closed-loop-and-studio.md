@@ -1348,6 +1348,12 @@ Every role stays under 50k. If the AST's recursive schema makes `assert_eval` he
   - At most 2 attempts.
 - **`tools/gates/m3_live_prompt.md`:** "Work the Studio task board until T-0001 is done. Follow your Director instructions."
 
+**First `regression` run on `main` (2026-11-24):**
+- Every test passed on macOS and Linux except one: the M2 gate's won night hit nextest's 10-minute limit on both runners. It takes about 5 minutes on the dev machine.
+- **Fixed (`m3/3.9-ci-timeout`):**
+  - the 1-thread and 8-thread verifies run side by side, each on its own copy of the project (servers on one project would share an engine): 314 s to 218 s locally;
+  - `m2_lamplight` gets its own 25-minute override.
+
 **The live pass** (report `tests/gates/live-reports/M3/20261124T030909.ron`: 9 Director turns, about $1.14 by Claude Code's estimate, about 3.4 minutes):
 - **The Director** assigned T-0001 to the gameplay programmer.
 - **The gameplay programmer:**
