@@ -21,6 +21,7 @@ mod prefab_method;
 mod reference;
 pub mod shapes;
 mod sidecar;
+mod source;
 
 pub use anim_graph::{
     AdvanceMode, AnimGraph, AnimGraphError, AnimNode, FadeCurve, Parameter, StateTransition,
@@ -53,6 +54,7 @@ pub use module::{AssetImport, AssetImportParams, AssetImportResult, AssetList, A
 pub use prefab_method::PrefabInstantiate;
 pub use reference::AssetRef;
 pub use sidecar::{Provenance, Sidecar};
+pub use source::AssetSource;
 
 /// Registers the asset components (`MeshRenderer`, `Skinned`) and the `Material` and `AnimGraph`
 /// types (for `schema.get`).

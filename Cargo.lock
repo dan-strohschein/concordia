@@ -767,6 +767,7 @@ dependencies = [
  "concordia-reflect",
  "concordia-scene",
  "concordia-terra",
+ "half",
  "ignore",
  "image",
  "insta",
@@ -1026,6 +1027,22 @@ dependencies = [
  "thiserror 2.0.21",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "concordia-pathtrace"
+version = "0.0.0"
+dependencies = [
+ "concordia-assets",
+ "concordia-core",
+ "concordia-material",
+ "concordia-render-types",
+ "concordia-scene",
+ "concordia-terra",
+ "half",
+ "proptest",
+ "rayon",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

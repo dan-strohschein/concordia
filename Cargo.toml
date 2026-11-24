@@ -128,6 +128,10 @@ opt-level = 2
 
 # Terra's 100k-entity determinism tests (templates, LOD) run hundreds of ticks; unoptimized they
 # approach nextest's hang guard under a full parallel test run.
+# The reference path tracer's tests trace millions of paths (furnace, convergence).
+[profile.dev.package.concordia-pathtrace]
+opt-level = 3
+
 [profile.dev.package.concordia-terra]
 opt-level = 1
 

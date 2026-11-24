@@ -1,0 +1,26 @@
+[package]
+name = "concordia-pathtrace"
+description = "Reference path tracer (test oracle): backend-neutral scene, BVH and sampling; a CPU backend, a GPU backend in 4.1b3."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+concordia-assets.workspace = true
+concordia-core.workspace = true
+concordia-material.workspace = true
+concordia-render-types.workspace = true
+concordia-scene.workspace = true
+concordia-terra.workspace = true
+rayon.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+half = "2.7.1"
+proptest.workspace = true

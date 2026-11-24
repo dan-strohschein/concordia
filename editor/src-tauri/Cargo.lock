@@ -705,6 +705,7 @@ dependencies = [
  "concordia-reflect",
  "concordia-scene",
  "concordia-terra",
+ "half",
  "ignore",
  "image",
  "postcard",

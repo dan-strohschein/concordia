@@ -4,13 +4,14 @@
 
 mod camera;
 mod components;
+pub mod equirect;
 mod shadow_settings;
 pub mod tonemap;
 mod units;
 
-pub use camera::{ProjectionError, view_matrix};
+pub use camera::{ProjectionError, pick_camera, view_matrix};
 pub use components::{
     Camera, DirectionalLight, Environment, Msaa, PointLight, Projection, SpotLight, Tonemap,
 };
 pub use shadow_settings::{CascadeSettings, PcfKernel};
-pub use units::candela;
+pub use units::{SpotCone, candela, distance_window};

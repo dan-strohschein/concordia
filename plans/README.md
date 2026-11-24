@@ -126,7 +126,7 @@ examples/             # small sample projects used by tests and docs
 | `concordia-translate` | logic-translation tooling (GDScript, C# and Blueprint front ends) | M5 |
 | `concordia-cluster` (+ `meshopt-sys`) | meshlet building and per-meshlet bounds for GPU culling (ADR-0100) | M4 |
 | `concordia-perf` | perf testing on reference hardware (ADR-0089): budget files, the reference machine, reports, verdicts (`NotReference` off the reference) and the scripted-camera runner behind `concordia perf run` | M4 (4.1a) |
-| `concordia-pathtrace` | reference path tracer (test oracle; must not depend on `concordia-render`) | M4 |
+| `concordia-pathtrace` | reference path tracer (test oracle; must not depend on `concordia-render`): backend-neutral scene, two-level SAH BVH and counter-based sampling, the CPU backend (4.1b2), the GPU backend (4.1b3) | M4 (4.1b2) |
 | `concordia-ai-llm-local` | opt-in example local-LLM provider; not a default workspace member | M4 |
 | `concordia-evolve` | Evolve plugin system: manifests, resolution, lockfile, trust, orchestration over the native and WASM hosts | M6 |
 | `concordia-evolve-api` | stable extension-point API that native plugins link (WIT package `concordia:evolve` for WASM plugins) | M6 |

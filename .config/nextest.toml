@@ -14,6 +14,13 @@ slow-timeout = { period = "60s", terminate-after = 10 }
 filter = "binary(m2_lamplight)"
 slow-timeout = { period = "60s", terminate-after = 25 }
 
+# GPU timing comparisons need the GPU to themselves: the test claims every test thread so nothing
+# runs beside it, and perf tests may retry twice (M4 plan's perf rule; every attempt is logged).
+[[profile.default.overrides]]
+filter = "test(=pass_timer_overhead_under_2_percent)"
+threads-required = "num-test-threads"
+retries = 2
+
 [profile.ci]
 fail-fast = false
 retries = 0
