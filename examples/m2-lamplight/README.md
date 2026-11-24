@@ -5,12 +5,12 @@ game in a small harbour town. You are the lamplighter. Fog wisps drift in from t
 the street lamps before they reach the square, refill your oil from the wagons on the ring road,
 and keep the town's spirit up until the dawn bells.
 
-**Status:** playable (2.10c): the night, the town's life, and the menus and HUD. The gate
-arrives in 2.10d.
+**Status:** playable (2.10c): the night, the town's life, and the menus and HUD. Its gate,
+`tests/gates/m2_lamplight.rs` (`just gate-tests M2`), landed in M3 phase 3.9a.
 
 ## Running it
-`just lamplight-build` builds both gameplay modules into `build/` (git-ignored): the rules as
-WASM and the fog as a native library. The town opens on the title screen: type a name, pick
+`just play-sample` builds both gameplay modules into `build/` (git-ignored; `just lamplight-build`
+alone builds them), the rules as WASM and the fog as a native library, and opens the game in a window. The town opens on the title screen: type a name, pick
 the night's length and the fog, and press "Light the lamps".
 
 ## How it plays (2.10c.1)

@@ -197,7 +197,8 @@ fn project(clip_from_world: Mat4, p: Vec3, viewport: [f32; 2]) -> Option<([f32; 
 /// What a taffy leaf measures.
 #[derive(Debug, Clone, Copy)]
 enum Leaf {
-    Text(EntityId),
+    /// Text, and the least height it reports (a fixed height that is only a floor).
+    Text(EntityId, f32),
     Fixed([f32; 2]),
 }
 
@@ -401,7 +402,14 @@ impl Pass<'_> {
         self.extras(el).apply(&mut style, &el.node);
         let (kids, anchored) = self.build_kids(tree, el, el.scroll.is_some())?;
         let id = match (kids.is_empty(), self.leaf(el)) {
-            (true, Some(leaf)) => tree.new_leaf_with_context(style, leaf)?,
+            (true, Some(leaf)) => {
+                if matches!(leaf, Leaf::Text(_, floor) if floor > 0.0) {
+                    // Measured at its laid-out width; the fixed height is the floor.
+                    style.size.height = Dimension::auto();
+                    style.min_size.height = LengthPercentageAuto::auto();
+                }
+                tree.new_leaf_with_context(style, leaf)?
+            }
             _ => {
                 let ids: Vec<NodeId> = kids.iter().map(|k| k.id).collect();
                 tree.new_with_children(style, &ids)?
@@ -474,8 +482,11 @@ impl Pass<'_> {
                 self.line_height(&style),
             ]));
         }
-        if el.text.is_some() {
-            return Some(Leaf::Text(el.entity));
+        if let Some(text) = &el.text {
+            return Some(Leaf::Text(
+                el.entity,
+                text_leaf_floor(el, text).unwrap_or(0.0),
+            ));
         }
         let image = el.image.as_ref()?;
         let data = self.assets.image(&image.image)?;
@@ -510,7 +521,8 @@ impl Pass<'_> {
     }
 
     /// A label's box never squeezes its text (Godot's `Label`): its minimum height is the text
-    /// wrapped at the box's fixed width, and unwrapped text sets its minimum width too.
+    /// wrapped at the box's fixed width, and unwrapped text sets its minimum width too. A text
+    /// leaf whose width comes from layout is measured there instead ([`text_leaf_floor`]).
     /// `Clip` and `Ellipsis` opt out.
     fn text_floor(
         &mut self,
@@ -865,6 +877,19 @@ fn collect_texts<'e>(built: &Built<'e>) -> BTreeMap<EntityId, &'e UiText> {
     out
 }
 
+/// The fixed height a wrapping, unclipped text leaf treats as a floor when layout sets its width
+/// (Godot's `Label`: the box grows to the wrapped text, never squeezes it).
+fn text_leaf_floor(el: &UiElement, text: &UiText) -> Option<f32> {
+    let fixed_width = matches!(el.node.width, Length::Px(_));
+    let wraps = text.wrap != Wrap::None && text.overflow == Overflow::Visible;
+    match el.node.height {
+        Length::Px(h) if wraps && !fixed_width && el.node.min_height == Length::Auto => {
+            Some((h - el.node.padding.vertical()).max(0.0))
+        }
+        _ => None,
+    }
+}
+
 /// A leaf's intrinsic size: text shaped at the known or available width; images at their size.
 fn measure(
     leaf: Option<Leaf>,
@@ -878,7 +903,7 @@ fn measure(
     let natural = match leaf {
         None => [0.0, 0.0],
         Some(Leaf::Fixed(size)) => size,
-        Some(Leaf::Text(entity)) => {
+        Some(Leaf::Text(entity, floor)) => {
             let (Some(text), Some(style)) = (texts.get(&entity), styles.get(&entity)) else {
                 return Size::ZERO;
             };
@@ -888,7 +913,7 @@ fn measure(
                 AvailableSpace::MaxContent => None,
             });
             let block = shape(fonts, assets, text, style, width, None);
-            [block.width, block.height]
+            [block.width, block.height.max(floor)]
         }
     };
     Size {

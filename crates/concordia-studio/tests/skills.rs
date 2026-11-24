@@ -7,8 +7,8 @@ use std::path::Path;
 use concordia_studio::{CLAUDE_SKILL_FIELDS, Roster, SkillFile, default_roster, init};
 
 /// The eight built-in skills the plan names (3.6), plus team comms (3.6b), animation (M2 2.4.5)
-/// navigation (M2 2.5a), and sound design and music (M2 2.7a.2).
-const PLANNED: [&str; 18] = [
+/// navigation (M2 2.5a), sound design and music (M2 2.7a.2), and the sample tour (M3 3.9a).
+const PLANNED: [&str; 19] = [
     "concordia-add-material",
     "concordia-animation-graphs",
     "concordia-director-planning",
@@ -18,6 +18,7 @@ const PLANNED: [&str; 18] = [
     "concordia-nav-agents",
     "concordia-navigation",
     "concordia-record-replay",
+    "concordia-sample-lamplight",
     "concordia-scripting",
     "concordia-sound-design",
     "concordia-synthesize-sfx",
@@ -1282,5 +1283,35 @@ fn playtest_skills_use_the_real_assert_tool_assertions_and_suite_format() {
             preloads,
             "{role}"
         );
+    }
+}
+
+/// The Lamplight tour (M3 3.9a) names real files: every `examples/m2-lamplight/…` path it gives
+/// exists in the repository, and it covers both modules, the scene builder and the gate.
+#[test]
+fn sample_lamplight_tour_names_real_files() {
+    let text = skill("concordia-sample-lamplight");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let paths: Vec<&str> = text
+        .split('`')
+        .skip(1)
+        .step_by(2)
+        .filter(|p| p.starts_with("examples/m2-lamplight/") || p.starts_with("tests/"))
+        .collect();
+    assert!(paths.len() >= 8, "{paths:?}");
+    for path in &paths {
+        assert!(
+            root.join(path).exists(),
+            "the tour names {path}, which doesn't exist"
+        );
+    }
+    for needle in [
+        "lamplight-rules",
+        "lamplight-fog",
+        "build_town.py",
+        "tests/gates/m2_lamplight.rs",
+        "just play-sample",
+    ] {
+        assert!(text.contains(needle), "the tour covers {needle}");
     }
 }

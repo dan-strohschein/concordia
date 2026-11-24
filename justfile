@@ -66,6 +66,10 @@ lamplight-build: wasm native-fixtures
     cp {{wasm_dir}}/wasm32-wasip2/release/lamplight_rules.wasm examples/m2-lamplight/build/lamplight_rules.wasm
     cp {{native_dir}}/out/lamplight_fog.{{dll_ext}} examples/m2-lamplight/build/lamplight_fog.{{dll_ext}}
 
+# Play Lamplight, the M2 sample, in a window (builds its modules first; release for smooth play)
+play-sample: lamplight-build
+    cargo run --release -p concordia-cli -- run --project examples/m2-lamplight
+
 # Build native module library fixtures (ADR-0061), in their own target dir so their features
 # never unify into the workspace build
 native-fixtures:

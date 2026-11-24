@@ -118,3 +118,7 @@ path = "gates/m1_live_check.rs"
 
 [lints]
 workspace = true
+
+[[test]]
+name = "m2_lamplight"
+path = "gates/m2_lamplight.rs"

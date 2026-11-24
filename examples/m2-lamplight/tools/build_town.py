@@ -376,7 +376,7 @@ class Town:
         pause = self.screen("Pause menu", ["paused"], 10)
         m = self.panel(pause, "Pause panel", -200.0, -180.0, 200.0, 180.0)
         self.label(m, "Paused", "Paused", "title", 52.0)
-        for bus, gain in (("Music", -6.0), ("SFX", 0.0), ("Ambience", -8.0)):
+        for bus, gain in (("Music", -6.0), ("SFX", -3.0), ("Ambience", -8.0)):
             self.label(m, f"{bus} label", bus, "label", 22.0)
             self.ui(m, f"{bus} volume", {
                 "UiNode": {"height": {"Px": 22.0}},

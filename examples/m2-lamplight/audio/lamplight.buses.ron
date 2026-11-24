@@ -7,7 +7,7 @@ BusLayout(
             send: Some("Master"),
         ),
         (
-            gain_db: 0.0,
+            gain_db: -3.0,
             mute: false,
             name: "SFX",
             send: Some("Master"),

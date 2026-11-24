@@ -24732,7 +24732,7 @@ Scene(
                     orientation: Horizontal,
                     page: 6.0,
                     step: 1.0,
-                    value: 0.0,
+                    value: -3.0,
                 ),
                 "UiThemed": (
                     class: "field",
