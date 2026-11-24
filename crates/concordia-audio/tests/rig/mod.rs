@@ -47,6 +47,15 @@ pub struct Hush {
     pub at: u64,
 }
 
+/// Gameplay's test fader: raises `SetBusGain { bus, gain_db }` on its entity on tick `at`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "test.Fader")]
+pub struct Fader {
+    pub bus: String,
+    pub gain_db: f32,
+    pub at: u64,
+}
+
 /// Gameplay's test doom: despawns its entity on tick `at`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 #[reflect(name = "test.Doom")]
@@ -65,6 +74,7 @@ impl EngineModule for Bells {
     fn register_types(&self, registry: &mut TypeRegistry) -> Result<(), RegistryError> {
         register_component::<Bell>(registry)?;
         register_component::<Hush>(registry)?;
+        register_component::<Fader>(registry)?;
         register_component::<Doom>(registry)
     }
 
@@ -99,6 +109,22 @@ impl EngineModule for Bells {
                     }
                     for id in hushes {
                         commands.signal(id, concordia_audio::StopCue { cue: None });
+                    }
+                }),
+        );
+        setup.schedule.add_processor(
+            processor("test.fade", Phase::PostPhysics)
+                .reads::<Fader>()
+                .run(|view: &mut View<'_>, ctx: &SystemCtx<'_>| {
+                    let mut fades = Vec::new();
+                    view.query::<&Fader>().unwrap().for_each(|id, fader| {
+                        if fader.at == ctx.tick.0 {
+                            fades.push((id, fader.bus.clone(), fader.gain_db));
+                        }
+                    });
+                    let commands = view.commands().unwrap();
+                    for (id, bus, gain_db) in fades {
+                        commands.signal(id, concordia_audio::SetBusGain { bus, gain_db });
                     }
                 }),
         );

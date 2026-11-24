@@ -270,3 +270,46 @@ fn stop_cue_stops_what_the_entity_started() {
     close(&left[4000..4800], &ramp);
     assert!(rig.audio().lock().playing().is_empty());
 }
+
+fn bus_gain(rig: &mut Rig, bus: &str) -> f64 {
+    let buses = rig.ok("audio.buses", json!({}));
+    buses["buses"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["name"] == bus)
+        .unwrap_or_else(|| panic!("no bus {bus}: {buses}"))["gain_db"]
+        .as_f64()
+        .unwrap()
+}
+
+#[test]
+fn set_bus_gain_signal_sets_a_bus_gain_from_gameplay() {
+    // Gameplay can't call `audio.buses`, so a volume slider raises `SetBusGain` (M2 phase
+    // 2.10c.3, gap G1). Raised on tick 2, delivered on tick 3: after ticks 0..=2 Music is still
+    // 0 dB, after tick 3 it is −12 dB. An unknown bus changes nothing and warns once.
+    use tracing_subscriber::layer::SubscriberExt;
+    let ring = Arc::new(concordia_core::log::LogRing::new(
+        std::num::NonZeroUsize::new(64).unwrap(),
+    ));
+    // Process-wide (nextest runs each test in its own process): the collector may run on a job
+    // thread, which a thread-scoped subscriber wouldn't see.
+    let subscriber = tracing_subscriber::registry().with(ring.layer());
+    tracing::subscriber::set_global_default(subscriber).unwrap();
+    {
+        let mut rig = Rig::new(1, Backend::Offline);
+        rig.spawn(json!({"test.Fader": {"bus": "Music", "gain_db": -12.0, "at": 2}}));
+        rig.spawn(json!({"test.Fader": {"bus": "Nope", "gain_db": -6.0, "at": 2}}));
+        rig.steps(3);
+        assert_eq!(bus_gain(&mut rig, "Music"), 0.0);
+        rig.steps(1);
+        assert_eq!(bus_gain(&mut rig, "Music"), -12.0);
+        assert_eq!(bus_gain(&mut rig, "SFX"), 0.0, "only Music changed");
+    }
+    let warnings: Vec<_> = ring
+        .tail(None)
+        .into_iter()
+        .filter(|r| r.level == concordia_core::log::LogLevel::Warn && r.message.contains("Nope"))
+        .collect();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+}

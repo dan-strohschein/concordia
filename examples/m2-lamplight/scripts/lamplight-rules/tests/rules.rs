@@ -14,6 +14,12 @@
 //!   up walks north, −Z) at 3.5 m/s; a diagonal (1, 1) is normalized, so each axis is
 //!   3.5 / √2 ≈ 2.4749; `walk_amount` is the speed over 3.5.
 //! - Reach: the nearest unlit lamp within 2 m is lit; a lit lamp is never chosen.
+//! - Commands move the night between phases: title + start → playing; playing + pause →
+//!   paused; paused + pause or resume → playing; won or lost + again → title. Anything else
+//!   (start while playing, again while paused) changes nothing.
+//! - The HUD's clock shows the whole seconds left, rounded up: 0.08 s into a 180 s night is
+//!   "Dawn in 3:00", 179.5 s in is "Dawn in 0:01", past dawn "Dawn in 0:00". The fog choices
+//!   Thin, Normal and Thick are densities 0.5, 1 and 1.75.
 //! - Refill: a wagon refills the can when its centre is within 4.5 m of the lamplighter, it has
 //!   slowed to walking pace (0.5 m/s or less: the IDM creeps up on a standing person rather than
 //!   halting), its 5 s cooldown has run out and the can isn't full.
@@ -150,4 +156,32 @@ fn a_stopped_wagon_close_by_refills_the_can() {
     assert!(!can_refill(3.0, 0.0, 1.0, 20.0), "cooling down");
     assert!(!can_refill(3.0, 0.0, 0.0, CAN_MAX), "the can is full");
     assert_eq!(rules::REFILL_COOLDOWN, 5.0);
+}
+
+#[test]
+fn commands_move_the_night_between_phases() {
+    use lamplight_rules::rules::next_phase;
+    assert_eq!(next_phase("title", "start"), Some("playing"));
+    assert_eq!(next_phase("playing", "pause"), Some("paused"));
+    assert_eq!(next_phase("paused", "pause"), Some("playing"));
+    assert_eq!(next_phase("paused", "resume"), Some("playing"));
+    assert_eq!(next_phase("won", "again"), Some("title"));
+    assert_eq!(next_phase("lost", "again"), Some("title"));
+    assert_eq!(next_phase("playing", "start"), None);
+    assert_eq!(next_phase("paused", "again"), None);
+    assert_eq!(next_phase("title", "pause"), None);
+}
+
+#[test]
+fn the_hud_clock_and_the_fog_choices() {
+    // Written after the code (it moved here from the screens processor).
+    use lamplight_rules::rules::{dawn_in, density, result_line};
+    assert_eq!(dawn_in(0.08, 180.0), "Dawn in 3:00");
+    assert_eq!(dawn_in(179.5, 180.0), "Dawn in 0:01");
+    assert_eq!(dawn_in(200.0, 180.0), "Dawn in 0:00");
+    assert_eq!(density(0), 0.5);
+    assert_eq!(density(1), 1.0);
+    assert_eq!(density(2), 1.75);
+    assert_eq!(result_line("won"), "Dawn came. The town held.");
+    assert_eq!(result_line("lost"), "The fog took the square.");
 }

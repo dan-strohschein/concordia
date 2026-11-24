@@ -5,13 +5,13 @@ game in a small harbour town. You are the lamplighter. Fog wisps drift in from t
 the street lamps before they reach the square, refill your oil from the wagons on the ring road,
 and keep the town's spirit up until the dawn bells.
 
-**Status:** the night plays (2.10c.1) and the town lives (2.10c.2): the lamplighter, lamps,
-wisps, townsfolk and oil wagons. The menus and HUD arrive in 2.10c.3, the gate in 2.10d.
+**Status:** playable (2.10c): the night, the town's life, and the menus and HUD. The gate
+arrives in 2.10d.
 
 ## Running it
 `just lamplight-build` builds both gameplay modules into `build/` (git-ignored): the rules as
-WASM and the fog as a native library. The night starts when `lamplight.Night`'s `phase` is
-`playing` (the title screen sets it in 2.10c.3); until then nothing moves.
+WASM and the fog as a native library. The town opens on the title screen: type a name, pick
+the night's length and the fog, and press "Light the lamps".
 
 ## How it plays (2.10c.1)
 - Walk with WASD or the arrows; press E (or F) beside a dark lamp to light it. The reach's `lit`
@@ -30,11 +30,22 @@ WASM and the fog as a native library. The night starts when `lamplight.Night`'s 
   merges at x = 5, two junctions. Wagons brake for anyone in the road. Stand in a wagon's way and
   it slows beside you and fills your can (then waits 5 s before filling again).
 
+## Menus and HUD (2.10c.3)
+- **Title:** a name box, the night's length (a spin box, 60–600 s in steps of 30) and the fog
+  (Thin, Normal or Thick: waves of half, normal or 1.75 times the size).
+- **HUD:** the can's oil and Town Spirit as bars, "Dawn in m:ss" and the lamps lit.
+- **P (or Escape) pauses:** the clock and the fog stop, and the pause menu sets the Music, SFX and
+  Ambience volumes (each slider raises `SetBusGain`); Resume plays on.
+- **The end screen:** whether the town held, and a night-records list that keeps every night
+  played this session. "Another night" goes back to the title; starting again resets the
+  lamps, the wisps, the can and the fog.
+- Burn and spirit numbers rise in the world over the wisps and the fountain.
+
 ## Layout
 - `concordia.toml`: the project (input, physics, navigation, assets, animation, audio, UI,
   rendering, replay and the two script modules).
 - `scenes/town.scene.ron`: the town, built by `tools/build_town.py` through the Engine API.
-- `templates/`: the wisp and the burn and spirit numbers.
+- `templates/`: the wisp, the burn and spirit numbers, and a night-records row.
 - The scene also holds the lanes and junctions, the wagons (a cart under each) and the townsfolk
   (a walker with the body under it, as the lamplighter).
 - `scripts/`: `lamplight-rules` (module `lamplight`, WASM), `lamplight-fog` (module `fog`,

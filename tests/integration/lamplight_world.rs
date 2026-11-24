@@ -17,6 +17,8 @@ pub struct Night {
     _dir: tempfile::TempDir,
     engine: Engine,
     session: concordia_core::id::SessionId,
+    /// The next tick to simulate.
+    pub tick: u64,
 }
 
 impl Night {
@@ -43,6 +45,7 @@ impl Night {
             _dir: dir,
             engine,
             session,
+            tick: 0,
         };
         night.ok("scene.open", json!({"path": "scenes/town.scene.ron"}));
         let id = night.one("lamplight.Night", "edit").0;
@@ -108,10 +111,68 @@ impl Night {
     }
 
     pub fn step(&mut self, ticks: u32) -> String {
+        self.tick += u64::from(ticks);
         self.ok("sim.step", json!({"ticks": ticks}))["world_hash"]
             .as_str()
             .unwrap()
             .to_owned()
+    }
+
+    fn inject(&mut self, events: Vec<Value>) {
+        self.ok("input.inject", json!({"events": events, "actor": ACTOR}));
+    }
+
+    /// The centre of a widget's box in the play world (UI pixels).
+    pub fn centre(&mut self, widget: &str) -> (f64, f64) {
+        let report = self.ok("ui.inspect", json!({"world": "play", "entity": widget}));
+        let rect = &report["nodes"][0]["rect"];
+        let f = |k: &str| rect[k].as_f64().unwrap();
+        (f("x") + f("w") / 2.0, f("y") + f("h") / 2.0)
+    }
+
+    /// Clicks a widget's centre: move and press on the next tick, release the tick after.
+    pub fn click(&mut self, widget: &str) {
+        let (x, y) = self.centre(widget);
+        let t = self.tick;
+        self.inject(vec![
+            json!({"tick": t, "event": {"PointerMove": {"x": x, "y": y}}}),
+            json!({"tick": t, "event": {"MouseButton": {"button": "Left", "pressed": true}}}),
+            json!({"tick": t + 1, "event": {"MouseButton": {"button": "Left", "pressed": false}}}),
+        ]);
+        self.step(3);
+    }
+
+    /// Types `text` on the next tick (the keys too, as the OS sends both).
+    pub fn type_text(&mut self, text: &str) {
+        let t = self.tick;
+        let mut events = Vec::new();
+        for c in text.chars() {
+            let key = c.to_ascii_uppercase().to_string();
+            events.push(json!({"tick": t, "event": {"Key": {"key": key, "pressed": true}}}));
+            events.push(json!({"tick": t, "event": {"Text": {"Insert": c.to_string()}}}));
+        }
+        for c in text.chars() {
+            let key = c.to_ascii_uppercase().to_string();
+            events.push(json!({"tick": t + 1, "event": {"Key": {"key": key, "pressed": false}}}));
+        }
+        self.inject(events);
+        self.step(2);
+    }
+
+    /// Taps `key` on the next tick.
+    pub fn tap(&mut self, key: &str) {
+        let t = self.tick;
+        self.inject(vec![
+            json!({"tick": t, "event": {"Key": {"key": key, "pressed": true}}}),
+            json!({"tick": t + 1, "event": {"Key": {"key": key, "pressed": false}}}),
+        ]);
+        self.step(2);
+    }
+
+    /// Whether a UI root (by name) is shown in the play world.
+    pub fn shown(&mut self, name: &str) -> bool {
+        let id = self.named(name).0;
+        self.play(&id, "UiNode")["visible"] == true
     }
 
     pub fn keys(&mut self, events: &[(u64, &str, bool)]) {

@@ -11,7 +11,7 @@ use concordia_core::math::{Mat4, Vec3};
 use concordia_scene::builtin::{Parent, Transform, world_matrix_with};
 use concordia_terra::{Phase, Processor, ProcessorDecl, SystemCtx, View, processor};
 
-use crate::components::{AnimEventCues, AudioEmitter, AudioListener, PlayCue, StopCue};
+use crate::components::{AnimEventCues, AudioEmitter, AudioListener, PlayCue, SetBusGain, StopCue};
 use crate::core::{AudioCore, AudioShared, Output, Start};
 use crate::cue::DrawKey;
 use crate::mixer::VoiceId;
@@ -38,6 +38,7 @@ struct Gathered {
     anim_cues: BTreeMap<EntityId, AnimEventCues>,
     plays: Vec<(EntityId, PlayCue)>,
     stops: Vec<(EntityId, StopCue)>,
+    gains: Vec<(EntityId, SetBusGain)>,
     events: Vec<(EntityId, String)>,
 }
 
@@ -84,7 +85,8 @@ impl Collector {
             .reads::<AudioListener>()
             .reads::<AnimEventCues>()
             .receives::<PlayCue>()
-            .receives::<StopCue>();
+            .receives::<StopCue>()
+            .receives::<SetBusGain>();
         if anim_events {
             decl = decl.receives::<concordia_anim::AnimEvent>();
         }
@@ -133,6 +135,10 @@ impl Collector {
             .signals::<StopCue>()
             .map(<[_]>::to_vec)
             .unwrap_or_default();
+        g.gains = view
+            .signals::<SetBusGain>()
+            .map(<[_]>::to_vec)
+            .unwrap_or_default();
         if self.anim_events {
             g.events = view
                 .signals::<concordia_anim::AnimEvent>()
@@ -157,6 +163,24 @@ impl Collector {
         if found.is_none() && positioned && !self.no_listener_warned {
             self.no_listener_warned = true;
             tracing::warn!(target: "concordia::audio", "no AudioListener; positioned sounds play centred");
+        }
+    }
+
+    /// Applies gameplay's `SetBusGain`s in delivery order, warning once per bad request.
+    fn gains(&mut self, g: &Gathered, core: &mut AudioCore) {
+        for (_, set) in &g.gains {
+            let valid = set.gain_db.is_finite() && (-80.0..=24.0).contains(&set.gain_db);
+            let applied = match core.buses().index(&set.bus) {
+                Some(bus) if valid => core.set_bus(bus, Some(set.gain_db), None).is_ok(),
+                _ => false,
+            };
+            let problem = format!(
+                "SetBusGain {{ bus: {:?}, gain_db: {} }}",
+                set.bus, set.gain_db
+            );
+            if !applied && self.warned.insert(problem.clone()) {
+                tracing::warn!(target: "concordia::audio", "{problem} ignored: no such bus, or a gain outside [-80, 24]");
+            }
         }
     }
 
@@ -320,6 +344,7 @@ impl Processor for Collector {
         let mut n = BTreeMap::new();
         core.prune();
         self.listen(&g, &mut core);
+        self.gains(&g, &mut core);
         self.emitters(&g, &mut core, tick, &mut n);
         self.signals(&g, &mut core, tick, &mut n);
         Self::follow(&g, &mut core);

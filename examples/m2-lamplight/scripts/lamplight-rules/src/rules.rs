@@ -113,3 +113,39 @@ pub fn nearest_unlit(at: [f32; 3], lamps: &[([f32; 3], bool)]) -> Option<usize> 
 pub fn can_refill(distance: f32, speed: f32, cooldown: f32, can: f32) -> bool {
     distance <= REFILL_REACH && speed.abs() <= STOPPED && cooldown <= 0.0 && can < CAN_MAX
 }
+
+/// The phase a command moves the night to from `phase`, if it applies there.
+pub fn next_phase(phase: &str, action: &str) -> Option<&'static str> {
+    use lamplight_types::night::{LOST, PAUSED, PLAYING, TITLE, WON};
+    match (phase, action) {
+        (TITLE, "start") => Some(PLAYING),
+        (PLAYING, "pause") => Some(PAUSED),
+        (PAUSED, "pause" | "resume") => Some(PLAYING),
+        (WON | LOST, "again") => Some(TITLE),
+        _ => None,
+    }
+}
+
+/// "Dawn in m:ss": the whole seconds left until dawn, rounded up.
+pub fn dawn_in(clock: f32, length: f32) -> String {
+    let left = (length - clock).max(0.0).ceil() as u32;
+    format!("Dawn in {}:{:02}", left / 60, left % 60)
+}
+
+/// The end screen's line for an outcome phase.
+pub fn result_line(phase: &str) -> &'static str {
+    match phase {
+        lamplight_types::night::WON => "Dawn came. The town held.",
+        lamplight_types::night::LOST => "The fog took the square.",
+        _ => "",
+    }
+}
+
+/// The fog density each fog choice (Thin, Normal, Thick) stands for.
+pub fn density(choice: u32) -> f32 {
+    match choice {
+        0 => 0.5,
+        2 => 1.75,
+        _ => 1.0,
+    }
+}

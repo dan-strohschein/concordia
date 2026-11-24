@@ -1,0 +1,15 @@
+Template(
+    format: 1,
+    description: "A row of the night-records list: one night's name and result.",
+    traits: {},
+    components: {
+        "Name": "Record",
+        "UiNode": (
+            height: Px(26.0),
+        ),
+        "UiText": (),
+        "lamplight.RecordRow": (
+            night: 0,
+        ),
+    },
+)

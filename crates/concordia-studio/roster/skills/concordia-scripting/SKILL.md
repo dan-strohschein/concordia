@@ -21,7 +21,7 @@ A gameplay module is a Rust crate under `scripts/<module>/` written with `concor
 6. Check it: `mcp__concordia__sim_step {"ticks": 60}`, `mcp__concordia__query_run {"with": ["<module>.<Type>"], "world": "play"}`, and `mcp__concordia__log_tail {"level": "info"}` for script log lines and faults (a faulting processor is disabled until the next play session or reload).
 
 ## Sound from a script
-Play a cue by raising the engine's `PlayCue` signal on an entity (`ctx.signal(id, &PlayCue { .. })`): it sounds at that entity's position on tick t + 1, and never changes the world hash beyond the signal itself. `StopCue` stops what that entity started. Mirror both field for field (names resolve against the engine's registry; an asset reference travels as its string), and ask the sound designer for the cue id. Clip events need no code: the sound designer maps them with `AnimEventCues`.
+Play a cue by raising the engine's `PlayCue` signal on an entity (`ctx.signal(id, &PlayCue { .. })`): it sounds at that entity's position on tick t + 1, and never changes the world hash beyond the signal itself. `StopCue` stops what that entity started. Mirror both field for field (names resolve against the engine's registry; an asset reference travels as its string), and ask the sound designer for the cue id. Clip events need no code: the sound designer maps them with `AnimEventCues`. A volume slider raises `SetBusGain { bus, gain_db }` (on any entity) to set that bus's gain, as `audio.buses` does.
 ```rust
 /// The engine's `PlayCue`, mirrored.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, Reflect)]

@@ -12,7 +12,7 @@ use concordia_script_guest::{
     EntityId, Module, ModuleDesc, Phase, RunCtx, describe_type, export_module, processor,
 };
 use lamplight_types::engine::{NavAgent, NavArrived, SimLod, Transform};
-use lamplight_types::night::NightTick;
+use lamplight_types::night::{NewNight, NightTick};
 use serde::{Deserialize, Serialize};
 
 /// The fog's director: when the next wave comes, how big waves are, and where they come from.
@@ -22,6 +22,8 @@ pub struct Fog {
     /// Seconds between waves.
     #[reflect(range(min = 1.0, max = 600.0))]
     pub every: f32,
+    /// Seconds from a night's start to its first wave.
+    pub first: f32,
     /// Seconds until the next wave.
     pub next: f32,
     /// Wisps in a wave at density 1.
@@ -44,6 +46,7 @@ impl Default for Fog {
     fn default() -> Self {
         Self {
             every: 20.0,
+            first: 5.0,
             next: 5.0,
             per_wave: 6,
             waves: 0,
@@ -129,6 +132,7 @@ impl Module for FogModule {
                 processor("fog.waves", Phase::PrePhysics)
                     .writes::<Fog>()
                     .receives::<NightTick>()
+                    .receives::<NewNight>()
                     .build(),
                 processor("fog.steer", Phase::PrePhysics)
                     .reads::<Drifter>()
