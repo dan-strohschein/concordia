@@ -1,0 +1,25 @@
+BudgetFile(
+    frame: (
+        median_ms: Some(2.5),
+        p95_ms: Some(5.1),
+    ),
+    passes: {
+        "forward": (
+            median_ms: Some(2.2),
+            p95_ms: Some(3.25),
+        ),
+        "lights.cluster": (
+            median_ms: Some(0.05),
+            p95_ms: None,
+        ),
+        "readback": (
+            median_ms: Some(0.1),
+            p95_ms: Some(0.1),
+        ),
+        "tonemap": (
+            median_ms: Some(0.15),
+            p95_ms: Some(0.15),
+        ),
+    },
+    scene: "lamplight-night",
+)

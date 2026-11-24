@@ -36,6 +36,8 @@ pub struct RenderModule {
     factory: DeviceFactory,
     /// The project's closure budget (None: the platform's).
     closure_budget: Option<crate::ClosureBudget>,
+    /// Time each pass of every frame (`render.stats` `passes`).
+    perf_mode: bool,
 }
 
 impl std::fmt::Debug for RenderModule {
@@ -50,7 +52,13 @@ impl RenderModule {
         Self {
             factory,
             closure_budget: None,
+            perf_mode: false,
         }
+    }
+
+    /// Turns perf mode on: every frame's passes are timed (`concordia perf run`, perf tests).
+    pub fn with_perf_mode(self, perf_mode: bool) -> Self {
+        Self { perf_mode, ..self }
     }
 
     /// Lowers the platform's closure budget to the project's (`[render] closure_budget`); a
@@ -67,6 +75,7 @@ impl RenderModule {
 pub(crate) struct RenderState {
     factory: DeviceFactory,
     closure_budget: Option<crate::ClosureBudget>,
+    perf_mode: bool,
     thread: Option<RenderThread>,
     /// Whether a host attached the editor's native viewport.
     surface: bool,
@@ -157,6 +166,7 @@ impl EngineModule for RenderModule {
         Some(Box::new(RenderState {
             factory: self.factory.clone(),
             closure_budget: self.closure_budget,
+            perf_mode: self.perf_mode,
             thread: None,
             surface: false,
             shipped: BTreeSet::new(),
@@ -399,10 +409,11 @@ fn render_thread(engine: &mut Engine) -> Result<&RenderThread, ApiError> {
         .state_mut::<RenderState>()
         .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render module has no state"))?;
     if state.thread.is_none() {
-        let (factory, budget) = (state.factory.clone(), state.closure_budget);
+        let (factory, budget, perf) =
+            (state.factory.clone(), state.closure_budget, state.perf_mode);
         let last = state.last.clone();
         state.thread = Some(
-            RenderThread::spawn(move || make_renderer(&factory, ddc, budget), last)
+            RenderThread::spawn(move || make_renderer(&factory, ddc, budget, perf), last)
                 .map_err(api_error)?,
         );
     }
@@ -418,6 +429,7 @@ fn make_renderer(
     factory: &DeviceFactory,
     ddc: std::path::PathBuf,
     closure_budget: Option<crate::ClosureBudget>,
+    perf_mode: bool,
 ) -> Result<Renderer, RenderError> {
     let device = factory().map_err(RenderError::Gpu)?;
     let toolchain = SlangToolchain::locate().map_err(|e| RenderError::Shader(e.to_string()))?;
@@ -427,6 +439,7 @@ fn make_renderer(
     );
     let mut renderer = Renderer::new(Arc::from(device), Box::new(compiler))?;
     renderer.set_closure_budget(closure_budget);
+    renderer.set_perf_mode(perf_mode);
     Ok(renderer)
 }
 

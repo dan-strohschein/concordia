@@ -5,6 +5,11 @@
  */
 export type MergedOperator = "horizontal" | "vertical";
 /**
+ * Whether its passes were timed: `off` unless perf mode is on, `unsupported` when the device
+ * cannot time passes.
+ */
+export type PassTiming = "off" | "unsupported" | "measured";
+/**
  * How it was drawn.
  */
 export type ViewMode =
@@ -77,6 +82,12 @@ export interface FrameStats {
    * GPU memory the device has allocated, in bytes (null if the device cannot tell).
    */
   memory_bytes?: null | number;
+  pass_timing: PassTiming;
+  /**
+   * Each timed pass's GPU time, in order (empty unless `pass_timing` is `measured`, and until
+   * the GPU reports).
+   */
+  passes: PassTime[];
   /**
    * Point and spot lights in the world.
    */
@@ -133,4 +144,21 @@ export interface ClosureMergeStats {
    * The merged slabs: `[a, b]` or `[top, bottom]`.
    */
   slabs: string[];
+}
+/**
+ * One pass's GPU time.
+ */
+export interface PassTime {
+  /**
+   * Its GPU time (ms).
+   */
+  gpu_ms: number;
+  /**
+   * The render-graph pass (or `lights.cluster`).
+   */
+  name: string;
+  /**
+   * When it started, in ms from the frame's first timed pass.
+   */
+  start_ms: number;
 }

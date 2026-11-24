@@ -2,7 +2,7 @@
 //! over MCP from the real `concordia-mcp` binary, matching the in-process golden.
 
 use base64::Engine as _;
-use concordia_testkit::golden::{RgbaImage, Tolerance, assert_golden};
+use concordia_testkit::golden::{RgbaImage, assert_golden};
 use concordia_testkit::gpu_required;
 use concordia_tests::bins::concordia_mcp_bin;
 use concordia_tests::mcp_client::McpClient;
@@ -91,11 +91,7 @@ async fn m1_gate_agent_captures_screenshot_over_mcp() {
         .unwrap();
     let image = RgbaImage::from_png(&png).expect("a valid PNG");
     assert_eq!((image.width(), image.height()), (1280, 720));
-    let tolerance = Tolerance {
-        mean: 0.015,
-        p99: 0.25,
-    };
-    assert_golden("gates", "m1_physics_stack", &image, tolerance);
+    assert_golden("gates", "m1_physics_stack", &image);
 
     let log = client
         .call("log_tail", json!({"limit": 1000}))

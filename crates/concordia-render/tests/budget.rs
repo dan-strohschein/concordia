@@ -2,17 +2,23 @@
 //! it but never raise it.
 
 use concordia_render::{ClosureBudget, effective_closure_budget, platform_closure_budget};
-use concordia_rhi::{Backend, DeviceCaps, SampleCount};
+use concordia_rhi::{Backend, RhiCaps, SampleCount, TimestampGranularity};
 
-fn caps(backend: Backend) -> DeviceCaps {
-    DeviceCaps {
+fn caps(backend: Backend) -> RhiCaps {
+    RhiCaps {
         backend,
         device_name: "test".into(),
         unified_memory: true,
         msaa_sample_counts: vec![SampleCount::X1, SampleCount::X4],
         bindless: true,
         mesh_shaders: false,
+        object_shaders: false,
         ray_tracing: false,
+        hw_ray_tracing: false,
+        metalfx_temporal: false,
+        timestamp_granularity: TimestampGranularity::CommandBuffer,
+        max_mesh_output_vertices: 0,
+        max_mesh_output_primitives: 0,
         max_buffer_bytes: 1 << 30,
         max_bindless_textures: 1 << 16,
         max_bindless_buffers: 1 << 16,

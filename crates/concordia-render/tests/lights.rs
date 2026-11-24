@@ -239,7 +239,7 @@ fn many_lights_golden() {
     };
     let id = s.entity(iso * Vec3::new(0.0, 0.0, 40.0), iso, Vec3::ONE);
     s.world.insert(id, camera).unwrap();
-    golden("many_lights_iso", &s.render(&mut r, 512, 288), 0.01);
+    golden("many_lights_iso", &s.render(&mut r, 512, 288));
 }
 
 #[test]
@@ -293,5 +293,5 @@ fn spot_light_cone_falloff_golden() {
         inside > 100 && outside < 10,
         "lit inside the cone, dark outside: {inside} {outside}"
     );
-    golden("spot_light_cone", &image, 0.01);
+    golden("spot_light_cone", &image);
 }

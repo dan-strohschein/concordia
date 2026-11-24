@@ -31,3 +31,18 @@ fn gpu_probe_prints_a_json_report_and_require_m1_matches_it() {
         assert!(stderr(&required).contains("M1"), "{}", stderr(&required));
     }
 }
+
+#[test]
+fn gpu_probe_record_prints_the_raw_probe_record() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = run(&["gpu-probe", "--record"], dir.path());
+    if !output.status.success() {
+        assert!(!concordia_testkit::gpu_required(), "{}", stderr(&output));
+        assert!(stderr(&output).contains("no"), "{}", stderr(&output));
+        return;
+    }
+    let record: concordia_rhi_metal::record::ProbeRecord =
+        serde_json::from_str(&stdout(&output)).expect("a probe record");
+    assert!(!record.device_name.is_empty());
+    assert!(record.families.windows(2).all(|w| w[0] < w[1]), "sorted");
+}

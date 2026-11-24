@@ -4,7 +4,7 @@ use crate::barrier::{Access, AccessFlags, Layout, Stages, TextureBarrier};
 use crate::caps::SampleCount;
 use crate::command::{
     ClearValue, ColorAttachment, Command, CommandList, DepthAttachment, LoadOp, RenderPassDesc,
-    StoreOp,
+    StoreOp, TimerScope,
 };
 use crate::device::{Device, QueueKind, Submit};
 use crate::error::RhiError;
@@ -177,7 +177,7 @@ pub fn triangle_renders_golden(device: &dyn Device, h: &Harness<'_>) {
         [0, 0, 0, 255],
         "corner is the clear color"
     );
-    h.golden.check("triangle", SIZE, SIZE, &image, 0.001);
+    h.golden.check("triangle", SIZE, SIZE, &image);
 }
 
 /// Clearing RGBA8 to (0.25, 0.5, 0.75, 1) reads back (64, 128, 191, 255).
@@ -277,7 +277,7 @@ pub fn msaa4x_resolve_produces_antialiased_edge(device: &dyn Device, h: &Harness
         partial > 50,
         "only {partial} partially covered pixels: no antialiasing"
     );
-    h.golden.check("msaa_edge", SIZE, SIZE, &image, 0.001);
+    h.golden.check("msaa_edge", SIZE, SIZE, &image);
 }
 
 /// A compute write to a texture is visible to a fragment read in the same submission, every time.
@@ -695,7 +695,7 @@ pub fn additive_blend_sums_overlapping_draws(device: &dyn Device, h: &Harness<'_
     }
 }
 
-/// `submit_timed` calls back exactly once after the work: a finite, non-negative time in ms, or
+/// `submit_timed` calls back exactly once after the work: a finite, non-negative total in ms, or
 /// `None` when the backend cannot measure it.
 pub fn submit_timed_reports_the_gpu_time_once(device: &dyn Device, _: &Harness<'_>) {
     let color = target(device, SIZE, SampleCount::X1);
@@ -711,7 +711,7 @@ pub fn submit_timed_reports_the_gpu_time_once(device: &dyn Device, _: &Harness<'
                 wait: &[],
                 signal: &[],
             },
-            Box::new(move |ms| tx.send(ms).expect("one report")),
+            Box::new(move |timing| tx.send(timing.total_ms).expect("one report")),
         )
         .expect("submit");
     device.wait_idle().expect("wait idle");
@@ -723,5 +723,75 @@ pub fn submit_timed_reports_the_gpu_time_once(device: &dyn Device, _: &Harness<'
         rx.recv_timeout(std::time::Duration::from_millis(100))
             .is_err(),
         "reported once"
+    );
+}
+
+/// Timer scopes around a render pass, a dispatch and a copy each report once, in command order,
+/// when the device times passes; otherwise none are reported.
+pub fn timer_scopes_report_each_scope_once_in_order(device: &dyn Device, h: &Harness<'_>) {
+    const N: u32 = 65_536;
+    let color = target(device, SIZE, SampleCount::X1);
+    let out = upload(device, &vec![0u8; N as usize * 4]);
+    let copy = upload(device, &vec![0u8; N as usize * 4]);
+    let pipeline = compute(device, h, "fill");
+    let mut list = CommandList::new("timed scopes");
+    list.push(Command::BeginTimer(TimerScope(7)))
+        .push(pass(color, clear([0.2, 0.3, 0.4, 1.0]), None, None))
+        .push(Command::EndRenderPass)
+        .push(Command::EndTimer)
+        .push(Command::BeginTimer(TimerScope(3)))
+        .push(Command::SetPipeline(pipeline))
+        .push(push(&[device.buffer_index(out).unwrap().0, N], &[]))
+        .push(Command::Dispatch {
+            groups: [N / 64, 1, 1],
+        })
+        .push(Command::EndTimer)
+        .push(Command::BeginTimer(TimerScope(5)))
+        .push(Command::CopyBuffer {
+            src: out,
+            src_offset: 0,
+            dst: copy,
+            dst_offset: 0,
+            size: u64::from(N) * 4,
+        })
+        .push(Command::EndTimer);
+    let (tx, rx) = std::sync::mpsc::channel();
+    device
+        .submit_timed(
+            Submit {
+                queue: QueueKind::Graphics,
+                commands: &list,
+                wait: &[],
+                signal: &[],
+            },
+            Box::new(move |timing| tx.send(timing).expect("one report")),
+        )
+        .expect("submit");
+    device.wait_idle().expect("wait idle");
+    let timing = rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("the timing is reported");
+    let got = words(&download(device, copy, 16));
+    assert_eq!(got, [1, 4, 7, 10], "timed work still runs");
+    if !device.caps().timestamp_granularity.times_passes() {
+        assert!(timing.scopes.is_empty(), "{timing:?}");
+        return;
+    }
+    let scopes: Vec<u32> = timing.scopes.iter().map(|s| s.scope.0).collect();
+    assert_eq!(scopes, [7, 3, 5], "each scope once, in command order");
+    for s in &timing.scopes {
+        assert!(s.start_ms.is_finite() && s.start_ms >= 0.0, "{s:?}");
+        assert!(s.end_ms.is_finite() && s.end_ms >= s.start_ms, "{s:?}");
+    }
+    assert!(
+        timing
+            .scopes
+            .windows(2)
+            .all(|w| w[0].start_ms <= w[1].start_ms),
+        "scopes start in order: {timing:?}"
+    );
+    assert!(
+        timing.scopes[1].ms() > 0.0,
+        "a 64k-thread dispatch takes measurable time: {timing:?}"
     );
 }

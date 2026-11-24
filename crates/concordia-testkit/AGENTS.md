@@ -5,19 +5,20 @@ Dev-dependency-only test helpers: GPU test guards and golden images compared wit
 
 ## Public entry points
 - `gpu_required()` / `gpu_required_from(value)` and `REQUIRE_GPU_ENV`
-- `golden::{assert_golden, Golden, RgbaImage, Tolerance, FlipScore, flip_score, GoldenError}`
+- `golden::{assert_golden, Golden, RgbaImage, Tolerance, Tolerances, FlipScore, flip_score, GoldenError}`; `Golden::tolerance(suite, name)`
 
 ## Invariants
 - Only ever a `[dev-dependencies]` entry.
 - Goldens live at `tests/golden/<suite>/<name>.png`. Blessing needs `CONCORDIA_BLESS=1` and is refused when `CI=true`. Failures write `<name>.{actual,expected,flip}.png` to `target/golden-failures/<suite>/`.
-- FLIP is LDR (RGB, alpha ignored) at the default pixels-per-degree; the default tolerance is mean ≤ 0.01, p99 ≤ 0.25.
+- FLIP is LDR (RGB, alpha ignored) at the default pixels-per-degree.
+- Tolerances live in text (M4 4.1a, D2): `tests/golden/<suite>/tolerances.ron` (`Tolerances { default, goldens: {name: (mean, p99)} }`, canonical RON, values in [0, 1]). A golden's tolerance is its entry, else the file's default; only a suite without a file falls back to `Tolerance::default()` (mean ≤ 0.01, p99 ≤ 0.25), the one tolerance in code. `repo_hygiene::golden_tolerances_live_in_text` forbids tolerance literals outside this crate; `every_tolerance_entry_names_an_existing_golden` keeps the files honest.
 - Golden names are `[A-Za-z0-9_@-]+` (no path escapes).
 
 ## How to test
 `cargo nextest run -p concordia-testkit`
 
 ## Common tasks
-- **Add a golden test:** render, then call `assert_golden(suite, name, &image, Tolerance::mean(x))`; run `just bless`, check the PNG by eye, and commit it.
+- **Add a golden test:** render, then call `assert_golden(suite, name, &image)`; if it needs other than the suite's default, add its entry to `tests/golden/<suite>/tolerances.ron`. Run `just bless`, check the PNG by eye, and commit it.
 
 ## Don'ts
 - Don't let a GPU test silently pass on a machine that should have a GPU: check `gpu_required()`.
@@ -27,7 +28,7 @@ Dev-dependency-only test helpers: GPU test guards and golden images compared wit
 - NVIDIA FLIP (BSD-3-Clause) through the `nv-flip` crate (MIT/Apache/Zlib); Andersson et al., "FLIP: A Difference Evaluator for Alternating Images" (HPG 2020).
 
 ## Status
-M1 phase 1.2b (golden harness moved up from 1.5a).
+M1 phase 1.2b (golden harness moved up from 1.5a). M4 phase 4.1a: tolerances per suite in `tolerances.ron` (D2).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

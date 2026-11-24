@@ -1,0 +1,24 @@
+Tolerances(
+    default: (
+        mean: 0.01,
+        p99: 0.25,
+    ),
+    goldens: {
+        "m1_physics_stack": (
+            mean: 0.015,
+            p99: 0.25,
+        ),
+        "m2_lamplight_dawn": (
+            mean: 0.02,
+            p99: 0.3,
+        ),
+        "m2_lamplight_mid_night": (
+            mean: 0.02,
+            p99: 0.3,
+        ),
+        "m2_lamplight_title": (
+            mean: 0.02,
+            p99: 0.3,
+        ),
+    },
+)

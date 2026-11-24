@@ -8,7 +8,7 @@ use concordia_rhi::{Device, RhiError, ShaderSource};
 use concordia_shaders::{
     CompileRequest, ShaderCompiler, ShaderModule, SlangToolchain, SlangcCompiler, Stage, Target,
 };
-use concordia_testkit::golden::{RgbaImage, Tolerance, assert_golden};
+use concordia_testkit::golden::{RgbaImage, assert_golden};
 use concordia_testkit::gpu_required;
 
 fn device() -> Option<Box<dyn Device>> {
@@ -28,9 +28,9 @@ fn device() -> Option<Box<dyn Device>> {
 struct Goldens;
 
 impl GoldenCheck for Goldens {
-    fn check(&self, name: &str, width: u32, height: u32, rgba: &[u8], mean_flip: f32) {
+    fn check(&self, name: &str, width: u32, height: u32, rgba: &[u8]) {
         let image = RgbaImage::new(width, height, rgba.to_vec()).expect("well-formed capture");
-        assert_golden("rhi", name, &image, Tolerance::mean(mean_flip));
+        assert_golden("rhi", name, &image);
     }
 }
 

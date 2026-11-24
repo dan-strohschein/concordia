@@ -47,8 +47,9 @@ pub struct Harness<'a> {
 
 /// Compares a rendered RGBA8 image with a golden (backends pass a `concordia-testkit` implementation).
 pub trait GoldenCheck {
-    /// Panics if `rgba` (tightly packed `width`×`height`) does not match golden `name` within `mean_flip`.
-    fn check(&self, name: &str, width: u32, height: u32, rgba: &[u8], mean_flip: f32);
+    /// Panics if `rgba` (tightly packed `width`×`height`) does not match golden `name` within its
+    /// tolerance (`tests/golden/rhi/tolerances.ron`).
+    fn check(&self, name: &str, width: u32, height: u32, rgba: &[u8]);
 }
 
 /// One `#[test]` per conformance case. `$make` returns `Option<Box<dyn Device>>` (`None` skips);
@@ -73,7 +74,8 @@ macro_rules! conformance_tests {
             invalid_descriptors_and_stale_handles_are_errors,
             static_samplers_filter_and_address_as_named,
             additive_blend_sums_overlapping_draws,
-            submit_timed_reports_the_gpu_time_once
+            submit_timed_reports_the_gpu_time_once,
+            timer_scopes_report_each_scope_once_in_order
         );
     };
     (@cases $make:expr, $golden:expr, $shaders:expr; $($name:ident),+) => {$(

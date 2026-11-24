@@ -1,0 +1,48 @@
+Tolerances(
+    default: (
+        mean: 0.01,
+        p99: 0.25,
+    ),
+    goldens: {
+        "gltf_alpha_blend_mode_test": (
+            mean: 0.02,
+            p99: 0.25,
+        ),
+        "gltf_boombox": (
+            mean: 0.02,
+            p99: 0.25,
+        ),
+        "gltf_flight_helmet": (
+            mean: 0.02,
+            p99: 0.25,
+        ),
+        "gltf_metal_rough_spheres": (
+            mean: 0.02,
+            p99: 0.25,
+        ),
+        "gltf_metal_rough_spheres_no_textures": (
+            mean: 0.02,
+            p99: 0.25,
+        ),
+        "gltf_normal_tangent_mirror_test": (
+            mean: 0.02,
+            p99: 0.25,
+        ),
+        "gltf_normal_tangent_test": (
+            mean: 0.02,
+            p99: 0.25,
+        ),
+        "gltf_orientation_test": (
+            mean: 0.02,
+            p99: 0.25,
+        ),
+        "representation_100k": (
+            mean: 1.0,
+            p99: 0.25,
+        ),
+        "view_mode_lod": (
+            mean: 1.0,
+            p99: 0.25,
+        ),
+    },
+)

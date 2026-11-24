@@ -44,6 +44,8 @@ enum Command {
     Assert(cmd::assert::AssertArgs),
     /// Run the project's tests: playtests.
     Test(cmd::assert::TestArgs),
+    /// Measure a perf scene's GPU time per pass and judge it against its budget (`perf run`).
+    Perf(cmd::perf::PerfArgs),
 }
 
 /// A failure with a process exit code.
@@ -82,6 +84,7 @@ fn main() -> ExitCode {
         Command::Replay(args) => cmd::replay::run(&args),
         Command::Assert(args) => cmd::assert::run_assert(&args),
         Command::Test(args) => cmd::assert::run_test(&args),
+        Command::Perf(args) => cmd::perf::run(&args),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

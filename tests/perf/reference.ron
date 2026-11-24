@@ -1,0 +1,18 @@
+ReferenceMachine(
+    device_name: "Apple M3 Pro",
+    families: [
+        "apple6",
+        "apple7",
+        "apple8",
+        "apple9",
+        "common3",
+        "mac2",
+        "metal3",
+        "metal4",
+    ],
+    gpu_cores: 18,
+    memory_gb: 18,
+    name: "author-m3-pro",
+    os: "macOS",
+    os_major: 26,
+)

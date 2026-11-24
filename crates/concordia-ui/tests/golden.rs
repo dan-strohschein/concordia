@@ -14,7 +14,7 @@ use concordia_render::{Camera, RenderRequest, RenderWorld, Renderer, Tonemap};
 use concordia_rhi::RhiError;
 use concordia_scene::builtin::Transform;
 use concordia_shaders::{SlangToolchain, SlangcCompiler};
-use concordia_testkit::golden::{Golden, GoldenError, RgbaImage, Tolerance};
+use concordia_testkit::golden::{Golden, GoldenError, RgbaImage};
 use concordia_testkit::gpu_required;
 use concordia_ui::*;
 
@@ -75,13 +75,13 @@ fn golden(name: &str, t: &mut Tree, assets: &mut MemoryAssets, size: [u32; 2]) {
         )
         .expect("render");
     let rgba = RgbaImage::new(image.width, image.height, image.rgba).unwrap();
-    match Golden::from_env().check("ui", name, &rgba, Tolerance::mean(0.005)) {
+    match Golden::from_env().check("ui", name, &rgba) {
         Ok(_) => {}
         Err(GoldenError::Missing { path }) => {
             let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../../target/golden-candidates");
             Golden::new(dir.clone(), dir.clone(), true, false)
-                .check("ui", name, &rgba, Tolerance::mean(0.005))
+                .check("ui", name, &rgba)
                 .unwrap();
             panic!(
                 "golden ui/{name} is missing ({}); its candidate is in {}/ui",

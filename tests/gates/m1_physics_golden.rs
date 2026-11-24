@@ -9,7 +9,7 @@ use concordia_api::{ApiErrorKind, Engine, EngineConfig};
 use concordia_core::id::SessionId;
 use concordia_core::math::{Quat, Vec3};
 use concordia_render::{Projection, View};
-use concordia_testkit::golden::{RgbaImage, Tolerance, assert_golden};
+use concordia_testkit::golden::{RgbaImage, assert_golden};
 use concordia_testkit::gpu_required;
 use serde_json::{Value, json};
 
@@ -227,11 +227,7 @@ fn m1_gate_physics_scene_golden() {
     let Some(png) = gate.capture() else { return };
     let image = RgbaImage::from_png(&png).unwrap();
     assert_eq!((image.width(), image.height()), (WIDTH, HEIGHT));
-    let tolerance = Tolerance {
-        mean: 0.015,
-        p99: 0.25,
-    };
-    assert_golden("gates", "m1_physics_stack", &image, tolerance);
+    assert_golden("gates", "m1_physics_stack", &image);
     assert_not_degenerate(&mut gate, &image);
 
     let mut again = Gate::new();

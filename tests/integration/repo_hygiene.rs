@@ -173,6 +173,25 @@ fn no_private_markers_in_tracked_files() {
     }
 }
 
+/// Golden tolerances live in `tests/golden/<suite>/tolerances.ron` (M4 4.1a, D2); only the
+/// testkit's default is in code.
+#[test]
+fn golden_tolerances_live_in_text() {
+    let literal = Regex::new(r"Tolerance\s*\{|Tolerance::mean\(").unwrap();
+    for file in tracked_files() {
+        if !file.ends_with(".rs") || file.starts_with("crates/concordia-testkit/") {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(repo_root().join(&file)) else {
+            continue;
+        };
+        assert!(
+            !literal.is_match(&text),
+            "{file} sets a golden tolerance in code; put it in tests/golden/<suite>/tolerances.ron"
+        );
+    }
+}
+
 fn assert_contains_all(relative: &str, needles: &[&str]) {
     let text = read_repo_file(relative).to_lowercase();
     for needle in needles {

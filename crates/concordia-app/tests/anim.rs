@@ -211,12 +211,7 @@ fn gpu_skinning_golden() {
         moved > 500,
         "the play world draws the pose, not the bind mesh ({moved} pixels)"
     );
-    concordia_testkit::golden::assert_golden(
-        "anim",
-        "gpu_skinning_walk",
-        &walking,
-        concordia_testkit::golden::Tolerance::mean(0.01),
-    );
+    concordia_testkit::golden::assert_golden("anim", "gpu_skinning_walk", &walking);
 }
 
 /// A rotation whose -Z looks from `eye` toward `target` (Y up), as `[x, y, z, w]`.
@@ -719,12 +714,7 @@ fn skeleton_overlay_golden() {
         changed > 200,
         "the overlay draws bones and a box ({changed} pixels)"
     );
-    concordia_testkit::golden::assert_golden(
-        "anim",
-        "skeleton_overlay_walk",
-        &drawn,
-        concordia_testkit::golden::Tolerance::mean(0.01),
-    );
+    concordia_testkit::golden::assert_golden("anim", "skeleton_overlay_walk", &drawn);
 }
 
 #[test]
@@ -1083,12 +1073,7 @@ fn fixture_character_plays_its_states_through_the_graph() {
         // One panel per state, at its first event (idle, walk, attack, hit, death).
         let firsts = [0, 1, 3, 5, 7];
         let strip = side_by_side(&firsts.map(|i| &panels[i]));
-        concordia_testkit::golden::assert_golden(
-            "anim",
-            "fixture_character_states",
-            &strip,
-            concordia_testkit::golden::Tolerance::mean(0.01),
-        );
+        concordia_testkit::golden::assert_golden("anim", "fixture_character_states", &strip);
     }
 }
 

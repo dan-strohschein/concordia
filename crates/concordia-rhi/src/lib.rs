@@ -21,10 +21,10 @@ mod surface;
 pub mod conformance;
 
 pub use barrier::{Access, AccessFlags, BufferBarrier, Layout, Stages, TextureBarrier};
-pub use caps::{Backend, DeviceCaps, Requirement, SampleCount};
+pub use caps::{Backend, CapsMask, Requirement, RhiCaps, SampleCount, TimestampGranularity};
 pub use command::{
     ClearValue, ColorAttachment, Command, CommandList, DepthAttachment, LoadOp, MAX_PUSH_CONSTANTS,
-    RenderPassDesc, StoreOp,
+    RenderPassDesc, StoreOp, TimerScope,
 };
 pub use device::{Device, QueueKind, Submit};
 pub use error::RhiError;
@@ -36,4 +36,6 @@ pub use pipeline::{
 };
 pub use resource::{BufferDesc, BufferUsage, HeapDesc, MemoryLocation, TextureDesc, TextureUsage};
 pub use slots::Slots;
-pub use surface::{GpuTimeCallback, Present, PresentedCallback, SurfaceTarget};
+pub use surface::{
+    GpuTimeCallback, GpuTiming, Present, PresentedCallback, ScopeTime, SurfaceTarget,
+};

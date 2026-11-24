@@ -257,6 +257,45 @@ fn render_stats_reports_the_last_frame() {
     assert!(frame["cpu_ms"].as_f64().unwrap() > 0.0, "{frame}");
     assert!(frame["gpu_ms"].as_f64().unwrap() > 0.0, "{frame}");
     assert!(frame["memory_bytes"].as_u64().unwrap() > 0, "{frame}");
+    assert_eq!(frame["pass_timing"], "off", "perf mode is off by default");
+    assert_eq!(frame["passes"], json!([]));
+}
+
+/// With perf mode on (`concordia perf run`), `render.stats` names each pass with its GPU time.
+#[test]
+fn render_stats_reports_each_pass_in_perf_mode() {
+    if !has_gpu() {
+        return;
+    }
+    let render =
+        RenderModule::new(Arc::new(concordia_rhi_metal::new_headless)).with_perf_mode(true);
+    let mut h = Harness::configured(render, None);
+    h.cube_scene();
+    h.ok("capture.screenshot", json!({"width": 320, "height": 180}));
+    let mut frame = Value::Null;
+    for _ in 0..100 {
+        frame = h.ok("render.stats", json!({}))["frame"].clone();
+        if frame["passes"].as_array().is_some_and(|p| !p.is_empty()) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(frame["pass_timing"], "measured", "{frame}");
+    let names: Vec<&str> = frame["passes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        ["lights.cluster", "forward", "tonemap", "readback"],
+        "{frame}"
+    );
+    for pass in frame["passes"].as_array().unwrap() {
+        assert!(pass["gpu_ms"].as_f64().unwrap() >= 0.0, "{pass}");
+        assert!(pass["start_ms"].as_f64().unwrap() >= 0.0, "{pass}");
+    }
 }
 
 /// An `Environment` on an entity without a `Transform` still lights a capture (agents add the

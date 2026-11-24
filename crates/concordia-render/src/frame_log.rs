@@ -67,7 +67,7 @@ pub(crate) fn remove_frame(log: &FrameLog, id: u64) {
 
 /// Records frame `id`'s GPU time.
 pub(crate) fn gpu_time_callback(log: FrameLog, id: u64) -> concordia_rhi::GpuTimeCallback {
-    Box::new(move |ms| update_frame(&log, id, |f| f.gpu_ms = ms))
+    Box::new(move |ms| update_frame(&log, id, |f| f.gpu_ms = ms.total_ms))
 }
 
 /// Records when frame `id` reached the display.

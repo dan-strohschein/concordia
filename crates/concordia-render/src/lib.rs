@@ -21,6 +21,7 @@ mod material_rows;
 mod module;
 mod orbit;
 mod overlay;
+pub mod perf;
 mod pipelines;
 mod pointer;
 mod programs;

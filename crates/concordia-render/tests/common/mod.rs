@@ -16,24 +16,38 @@ use concordia_rhi::RhiError;
 use concordia_scene::builtin::Transform;
 use concordia_shaders::{SlangToolchain, SlangcCompiler};
 use concordia_terra::World;
-use concordia_testkit::golden::{RgbaImage, Tolerance, assert_golden};
+use concordia_testkit::golden::{RgbaImage, assert_golden};
 use concordia_testkit::gpu_required;
 
 /// A renderer on the default device, or None (skip) when there is no GPU and none is required.
 pub fn renderer() -> Option<Renderer> {
-    let device = match concordia_rhi_metal::new_headless() {
-        Ok(device) => Arc::<dyn concordia_rhi::Device>::from(device),
+    renderer_masked(&concordia_rhi::CapsMask::default())
+}
+
+/// A renderer on the default device with `mask`'s features hidden, or None (skip) as above.
+pub fn renderer_masked(mask: &concordia_rhi::CapsMask) -> Option<Renderer> {
+    let device = device_masked(mask)?;
+    let compiler = SlangcCompiler::new(SlangToolchain::locate().expect("run `just slang-fetch`"));
+    Some(Renderer::new(device, Box::new(compiler)).expect("renderer"))
+}
+
+/// The default device, or None (skip) as above.
+pub fn device() -> Option<Arc<dyn concordia_rhi::Device>> {
+    device_masked(&concordia_rhi::CapsMask::default())
+}
+
+fn device_masked(mask: &concordia_rhi::CapsMask) -> Option<Arc<dyn concordia_rhi::Device>> {
+    match concordia_rhi_metal::new_headless_masked(mask) {
+        Ok(device) => Some(Arc::<dyn concordia_rhi::Device>::from(device)),
         Err(RhiError::NoDevice { reason }) => {
             assert!(
                 !gpu_required(),
                 "CONCORDIA_REQUIRE_GPU=1 but no device: {reason}"
             );
-            return None;
+            None
         }
         Err(other) => panic!("unexpected device error: {other}"),
-    };
-    let compiler = SlangcCompiler::new(SlangToolchain::locate().expect("run `just slang-fetch`"));
-    Some(Renderer::new(device, Box::new(compiler)).expect("renderer"))
+    }
 }
 
 /// A world plus id source and in-memory assets.
@@ -237,8 +251,8 @@ pub fn pixel(image: &Image, x: u32, y: u32) -> [u8; 4] {
     image.rgba[i..i + 4].try_into().unwrap()
 }
 
-pub fn golden(name: &str, image: &Image, mean: f32) {
+pub fn golden(name: &str, image: &Image) {
     let rgba =
         RgbaImage::new(image.width, image.height, image.rgba.clone()).expect("well-formed image");
-    assert_golden("render", name, &rgba, Tolerance::mean(mean));
+    assert_golden("render", name, &rgba);
 }

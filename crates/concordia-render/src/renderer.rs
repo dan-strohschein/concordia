@@ -77,6 +77,7 @@ pub struct Renderer {
     surfaces: Vec<Surface>,
     /// Called when the frame being rendered reaches the display (set by `present_with`).
     callbacks: FrameCallbacks,
+    perf_mode: bool,
     /// A surface image acquired ahead of its frame (`acquire_ahead`), with its size.
     ahead: Option<(Surface, Texture, (u32, u32))>,
     environments: EnvironmentCache,
@@ -268,7 +269,7 @@ struct ClusterJob<'a> {
 }
 
 /// Light and overflow counts of the last frame.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RenderStats {
     /// Point and spot lights in the world.
     pub punctual_lights: usize,
@@ -292,6 +293,10 @@ pub struct RenderStats {
     pub shadows_cached: bool,
     /// The environment is still being prefiltered (this viewport frame was drawn without it).
     pub environment_pending: bool,
+    /// Whether this frame's passes were timed (perf mode).
+    pub pass_timing: crate::perf::PassTiming,
+    /// The timed passes, in timer-scope order (scope `i` is `timed_passes[i]`).
+    pub timed_passes: Vec<String>,
 }
 
 /// One draw call, ready to record: `instances` consecutive instances of one mesh and material.
@@ -320,6 +325,7 @@ impl Renderer {
             culler,
             surfaces: Vec::new(),
             callbacks: FrameCallbacks::default(),
+            perf_mode: false,
             ahead: None,
             environments: EnvironmentCache::default(),
             shadow_maps: ShadowMaps::default(),
@@ -589,12 +595,40 @@ impl Renderer {
 
     /// Light and overflow counts of the last frame.
     pub fn stats(&self) -> RenderStats {
-        self.stats
+        self.stats.clone()
     }
 
     /// The closure budget materials are fitted to.
     pub fn closure_budget(&self) -> ClosureBudget {
         self.programs.budget()
+    }
+
+    /// A pass timer for this frame when perf mode is on and the device can time passes; records
+    /// which in the frame's stats.
+    fn pass_timer(&mut self) -> Option<crate::perf::PassTimer> {
+        use crate::perf::PassTiming;
+        let can = self.device.caps().timestamp_granularity.times_passes();
+        self.stats.pass_timing = match (self.perf_mode, can) {
+            (false, _) => PassTiming::off,
+            (true, false) => PassTiming::unsupported,
+            (true, true) => PassTiming::measured,
+        };
+        (self.stats.pass_timing == PassTiming::measured).then(crate::perf::PassTimer::new)
+    }
+
+    /// The device this renderer draws with.
+    pub fn device(&self) -> &Arc<dyn Device> {
+        &self.device
+    }
+
+    /// Turns perf mode on or off: when on (and the device can), each pass is timed on its own.
+    pub fn set_perf_mode(&mut self, on: bool) {
+        self.perf_mode = on;
+    }
+
+    /// True if perf mode is on.
+    pub fn perf_mode(&self) -> bool {
+        self.perf_mode
     }
 
     /// Sets the project's closure budget (None: the platform's); it can only lower the platform's.
@@ -1236,6 +1270,10 @@ impl Renderer {
             access: AccessFlags::SHADER_READ,
             layout: Layout::General,
         };
+        let mut timer = self.pass_timer();
+        if let Some(t) = &mut timer {
+            t.begin(&mut list, "lights.cluster");
+        }
         self.culler.record(
             &mut list,
             job.buffers,
@@ -1243,7 +1281,14 @@ impl Renderer {
             job.light_count,
             fragment_read,
         );
-        compiled.execute(&graph, &transients, &mut list)?;
+        match &mut timer {
+            Some(t) => {
+                t.end(&mut list);
+                compiled.execute_timed(&graph, &transients, &mut list, t)?;
+            }
+            None => compiled.execute(&graph, &transients, &mut list)?,
+        }
+        self.stats.timed_passes = timer.map(|t| t.names().to_vec()).unwrap_or_default();
         list.push(Command::CopyBuffer {
             src: job.buffers.counts,
             src_offset: clusters * 4,

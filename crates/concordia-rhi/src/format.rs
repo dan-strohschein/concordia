@@ -21,7 +21,7 @@ pub enum Format {
     R32Float,
     /// 32-bit unsigned red.
     R32Uint,
-    /// 64-bit unsigned red (visibility buffer; needs `DeviceCaps` 64-bit atomics).
+    /// 64-bit unsigned red (visibility buffer; needs `RhiCaps` 64-bit atomics).
     R64Uint,
     /// 32-bit float depth.
     Depth32Float,

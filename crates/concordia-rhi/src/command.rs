@@ -158,7 +158,16 @@ pub enum Command {
         /// Byte offset.
         offset: u64,
     },
+    /// Start timing the commands up to the next [`Command::EndTimer`] (outside render passes; no
+    /// nesting). Backends without per-pass timestamps ignore it (`RhiCaps::timestamp_granularity`).
+    BeginTimer(TimerScope),
+    /// Stop the open timer.
+    EndTimer,
 }
+
+/// Names one timed range within a command list (unique per list).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct TimerScope(pub u32);
 
 /// A labelled sequence of commands.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -186,59 +195,115 @@ impl CommandList {
 
     /// Checks structure: draws only inside passes, dispatches/copies/barriers outside, passes closed, push constants small.
     pub fn validate(&self) -> Result<(), RhiError> {
-        let mut in_pass = false;
+        let mut state = Structure::default();
         for (i, command) in self.commands.iter().enumerate() {
-            let fail = |reason: &str| {
-                Err(RhiError::invalid(
+            state.step(command).map_err(|reason| {
+                RhiError::invalid(
                     "command list",
                     format!("{:?} command {i}: {reason}", self.label),
-                ))
-            };
-            match command {
-                Command::BeginRenderPass(desc) if in_pass => {
-                    return fail(&format!("nested render pass {desc:?}"));
-                }
-                Command::BeginRenderPass(desc)
-                    if desc.colors.is_empty() && desc.depth.is_none() =>
-                {
-                    return fail("render pass without attachments");
-                }
-                Command::BeginRenderPass(desc) if desc.colors.len() > 8 => {
-                    return fail("more than 8 color attachments");
-                }
-                Command::BeginRenderPass(_) => in_pass = true,
-                Command::EndRenderPass if !in_pass => {
-                    return fail("EndRenderPass without a render pass");
-                }
-                Command::EndRenderPass => in_pass = false,
-                Command::Draw { .. } | Command::DrawIndexed { .. } if !in_pass => {
-                    return fail("draws must be inside a render pass");
-                }
-                Command::Dispatch { .. }
-                | Command::DispatchIndirect { .. }
-                | Command::CopyBuffer { .. }
-                | Command::CopyBufferToTexture { .. }
-                | Command::CopyTextureToBuffer { .. }
-                | Command::Barrier { .. }
-                    if in_pass =>
-                {
-                    return fail("dispatches, copies and barriers must be outside render passes");
-                }
-                Command::PushConstants(bytes) if bytes.len() > MAX_PUSH_CONSTANTS => {
-                    return fail(&format!(
-                        "{} push-constant bytes; the limit is {MAX_PUSH_CONSTANTS}",
-                        bytes.len()
-                    ));
-                }
-                _ => {}
-            }
+                )
+            })?;
         }
-        match in_pass {
-            true => Err(RhiError::invalid(
-                "command list",
-                format!("{:?}: render pass not ended", self.label),
+        state.finish().map_err(|reason| {
+            RhiError::invalid("command list", format!("{:?}: {reason}", self.label))
+        })
+    }
+}
+
+/// Where validation is in a command list: inside a render pass, inside a timer, scopes seen.
+#[derive(Default)]
+struct Structure {
+    in_pass: bool,
+    timer: Option<TimerScope>,
+    scopes: std::collections::BTreeSet<TimerScope>,
+}
+
+impl Structure {
+    fn step(&mut self, command: &Command) -> Result<(), String> {
+        match command {
+            Command::BeginTimer(_) | Command::EndTimer => self.timer_step(command),
+            _ => self.pass_step(command),
+        }
+    }
+
+    fn pass_step(&mut self, command: &Command) -> Result<(), String> {
+        match command {
+            Command::BeginRenderPass(desc) if self.in_pass => {
+                Err(format!("nested render pass {desc:?}"))
+            }
+            Command::BeginRenderPass(desc) if desc.colors.is_empty() && desc.depth.is_none() => {
+                Err("render pass without attachments".into())
+            }
+            Command::BeginRenderPass(desc) if desc.colors.len() > 8 => {
+                Err("more than 8 color attachments".into())
+            }
+            Command::BeginRenderPass(_) => {
+                self.in_pass = true;
+                Ok(())
+            }
+            Command::EndRenderPass if !self.in_pass => {
+                Err("EndRenderPass without a render pass".into())
+            }
+            Command::EndRenderPass => {
+                self.in_pass = false;
+                Ok(())
+            }
+            Command::Draw { .. } | Command::DrawIndexed { .. } if !self.in_pass => {
+                Err("draws must be inside a render pass".into())
+            }
+            Command::Dispatch { .. }
+            | Command::DispatchIndirect { .. }
+            | Command::CopyBuffer { .. }
+            | Command::CopyBufferToTexture { .. }
+            | Command::CopyTextureToBuffer { .. }
+            | Command::Barrier { .. }
+                if self.in_pass =>
+            {
+                Err("dispatches, copies and barriers must be outside render passes".into())
+            }
+            Command::PushConstants(bytes) if bytes.len() > MAX_PUSH_CONSTANTS => Err(format!(
+                "{} push-constant bytes; the limit is {MAX_PUSH_CONSTANTS}",
+                bytes.len()
             )),
-            false => Ok(()),
+            _ => Ok(()),
+        }
+    }
+
+    fn timer_step(&mut self, command: &Command) -> Result<(), String> {
+        if self.in_pass {
+            return Err("timers must begin and end outside render passes".into());
+        }
+        match command {
+            Command::BeginTimer(scope) => self.begin_timer(*scope),
+            _ => self.end_timer(),
+        }
+    }
+
+    fn begin_timer(&mut self, scope: TimerScope) -> Result<(), String> {
+        if let Some(open) = self.timer {
+            return Err(format!(
+                "timer {scope:?} begins inside timer {open:?} (no nesting)"
+            ));
+        }
+        if !self.scopes.insert(scope) {
+            return Err(format!("timer {scope:?} is used twice"));
+        }
+        self.timer = Some(scope);
+        Ok(())
+    }
+
+    fn end_timer(&mut self) -> Result<(), String> {
+        self.timer
+            .take()
+            .map(|_| ())
+            .ok_or_else(|| "EndTimer without an open timer".into())
+    }
+
+    fn finish(&self) -> Result<(), String> {
+        match (self.in_pass, self.timer) {
+            (true, _) => Err("render pass not ended".into()),
+            (_, Some(scope)) => Err(format!("timer {scope:?} not ended")),
+            _ => Ok(()),
         }
     }
 }

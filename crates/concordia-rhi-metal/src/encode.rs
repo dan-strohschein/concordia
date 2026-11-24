@@ -17,6 +17,7 @@ use objc2_metal::{
 use crate::bindless::{MtlBuffer, MtlTexture};
 use crate::device::{Inner, PipelineEntry, as_event};
 use crate::slots;
+use crate::timing::TimerPlan;
 
 type CommandBuffer = ProtocolObject<dyn MTLCommandBuffer>;
 type ComputeEncoder = ProtocolObject<dyn MTLComputeCommandEncoder>;
@@ -46,13 +47,21 @@ struct Recorder<'a> {
     cb: Retained<CommandBuffer>,
     encoder: Encoder,
     push: Vec<u8>,
+    timer: Option<TimerPlan>,
 }
 
-/// Records `submit` into a new command buffer (not yet committed).
+/// A recorded command buffer (not yet committed) and its timer scopes, if any are sampled.
+pub(crate) struct Recorded {
+    pub(crate) cb: Retained<CommandBuffer>,
+    pub(crate) timer: Option<TimerPlan>,
+}
+
+/// Records `submit` into a new command buffer; `timed` samples its timer scopes.
 pub(crate) fn record(
     inner: &Inner,
     submit: &Submit<'_>,
-) -> Result<Retained<CommandBuffer>, RhiError> {
+    timed: bool,
+) -> Result<Recorded, RhiError> {
     let cb = inner
         .queue
         .commandBuffer()
@@ -65,6 +74,7 @@ pub(crate) fn record(
         cb,
         encoder: Encoder::None,
         push: Vec::new(),
+        timer: TimerPlan::for_list(&inner.device, submit.commands, timed),
     };
     for command in &submit.commands.commands {
         recorder.command(command)?;
@@ -75,13 +85,28 @@ pub(crate) fn record(
             .cb
             .encodeSignalEvent_value(as_event(event(inner, *timeline)?), *value);
     }
-    Ok(recorder.cb)
+    Ok(Recorded {
+        cb: recorder.cb,
+        timer: recorder.timer,
+    })
 }
 
 impl Recorder<'_> {
     fn command(&mut self, command: &Command) -> Result<(), RhiError> {
         match command {
             Command::Barrier { .. } => self.encoder.end(),
+            Command::BeginTimer(scope) => {
+                if let Some(timer) = &mut self.timer {
+                    self.encoder.end();
+                    timer.begin(*scope);
+                }
+            }
+            Command::EndTimer => {
+                if let Some(timer) = &mut self.timer {
+                    self.encoder.end();
+                    timer.end();
+                }
+            }
             Command::BeginRenderPass(desc) => self.begin_pass(desc)?,
             Command::EndRenderPass => self.encoder.end(),
             Command::SetPipeline(pipeline) => self.set_pipeline(*pipeline)?,
@@ -166,10 +191,11 @@ impl Recorder<'_> {
             return e.clone();
         }
         self.encoder.end();
-        let e = self
-            .cb
-            .blitCommandEncoder()
-            .expect("Metal returns a blit encoder for a fresh command buffer");
+        let e = match self.timer.as_mut().and_then(TimerPlan::blit_pass) {
+            Some(desc) => self.cb.blitCommandEncoderWithDescriptor(&desc),
+            None => self.cb.blitCommandEncoder(),
+        }
+        .expect("Metal returns a blit encoder for a fresh command buffer");
         self.encoder = Encoder::Blit(e.clone());
         e
     }
@@ -179,10 +205,11 @@ impl Recorder<'_> {
             return (e.clone(), *threads);
         }
         self.encoder.end();
-        let e = self
-            .cb
-            .computeCommandEncoder()
-            .expect("Metal returns a compute encoder for a fresh command buffer");
+        let e = match self.timer.as_mut().and_then(TimerPlan::compute_pass) {
+            Some(desc) => self.cb.computeCommandEncoderWithDescriptor(&desc),
+            None => self.cb.computeCommandEncoder(),
+        }
+        .expect("Metal returns a compute encoder for a fresh command buffer");
         // SAFETY: the tables are live shared buffers owned by the device.
         unsafe {
             e.setBuffer_offset_atIndex(Some(self.inner.buffer_table.raw()), 0, slots::BUFFERS);
@@ -245,6 +272,9 @@ impl Recorder<'_> {
                 StoreOp::Store => MTLStoreAction::Store,
                 StoreOp::DontCare => MTLStoreAction::DontCare,
             });
+        }
+        if let Some(timer) = &mut self.timer {
+            timer.attach_render(&rp);
         }
         let e = self
             .cb

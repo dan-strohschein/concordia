@@ -127,6 +127,15 @@ bless:
 perf-smoke:
     cargo nextest run --workspace --release -E 'test(/^perf_smoke_/)'
 
+# Budgets pass only on the reference Mac; elsewhere runs report `not_reference` (ADR-0089).
+# Lamplight needs its scripts built (lamplight-build).
+# Measure every perf scene per pass on this GPU (release; reports in target/perf/)
+perf *args: lamplight-build
+    cargo build --release -q -p concordia-cli
+    status=0; for scene in tests/perf/scenes/*.perf.ron; do \
+        target/release/concordia perf run "$scene" {{args}} || status=$?; \
+    done; exit $status
+
 # Criterion benchmarks (record results in crates/<crate>/benches/BASELINE.md)
 bench *args:
     cargo bench --workspace {{args}}

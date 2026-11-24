@@ -56,7 +56,7 @@ impl From<SampleCount> for u8 {
 
 /// Device capabilities, as reported by a backend's probe.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DeviceCaps {
+pub struct RhiCaps {
     /// Graphics API.
     pub backend: Backend,
     /// Device name as the driver reports it.
@@ -67,10 +67,22 @@ pub struct DeviceCaps {
     pub msaa_sample_counts: Vec<SampleCount>,
     /// Bindless resource tables (Metal: argument buffers tier 2).
     pub bindless: bool,
-    /// Mesh and object/task shaders.
+    /// Mesh shaders.
     pub mesh_shaders: bool,
-    /// Hardware ray tracing.
+    /// Object (task/amplification) shaders.
+    pub object_shaders: bool,
+    /// The ray-tracing API (intersection queries; may run in software).
     pub ray_tracing: bool,
+    /// Hardware-accelerated ray tracing.
+    pub hw_ray_tracing: bool,
+    /// A temporal upscaler (Metal: MetalFX's temporal scaler).
+    pub metalfx_temporal: bool,
+    /// The finest point at which GPU timestamps can be sampled.
+    pub timestamp_granularity: TimestampGranularity,
+    /// Most vertices one mesh-shader threadgroup may output (0 without mesh shaders).
+    pub max_mesh_output_vertices: u32,
+    /// Most primitives one mesh-shader threadgroup may output (0 without mesh shaders).
+    pub max_mesh_output_primitives: u32,
     /// Largest single buffer in bytes.
     pub max_buffer_bytes: u64,
     /// Bindless table capacity for textures.
@@ -81,6 +93,43 @@ pub struct DeviceCaps {
     pub feature_sets: Vec<String>,
 }
 
+/// Where a device can sample GPU timestamps, coarsest first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TimestampGranularity {
+    /// No GPU timestamps.
+    None,
+    /// Only a whole submission's start and end.
+    CommandBuffer,
+    /// At encoder (stage) boundaries: enough to time each render-graph pass.
+    StageBoundary,
+    /// Between individual draws and dispatches.
+    DrawBoundary,
+}
+
+impl TimestampGranularity {
+    /// True if each render-graph pass can be timed on its own.
+    pub fn times_passes(self) -> bool {
+        self >= Self::StageBoundary
+    }
+}
+
+/// Features to hide from a device, so one machine can test every fallback path.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct CapsMask {
+    /// Hide mesh and object shaders.
+    pub mesh_shaders: bool,
+    /// Hide the ray-tracing API (and so hardware ray tracing).
+    pub ray_tracing: bool,
+    /// Hide hardware ray tracing only.
+    pub hw_ray_tracing: bool,
+    /// Hide the temporal upscaler.
+    pub metalfx_temporal: bool,
+    /// Hide per-pass timestamps (whole-submission timing stays).
+    pub timestamps: bool,
+}
+
 /// A capability bar a milestone needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Requirement {
@@ -88,7 +137,33 @@ pub enum Requirement {
     M1,
 }
 
-impl DeviceCaps {
+impl RhiCaps {
+    /// These caps with `mask`'s features hidden.
+    pub fn masked(&self, mask: &CapsMask) -> RhiCaps {
+        let mut caps = self.clone();
+        if mask.mesh_shaders {
+            caps.mesh_shaders = false;
+            caps.object_shaders = false;
+            caps.max_mesh_output_vertices = 0;
+            caps.max_mesh_output_primitives = 0;
+        }
+        if mask.ray_tracing {
+            caps.ray_tracing = false;
+        }
+        if mask.ray_tracing || mask.hw_ray_tracing {
+            caps.hw_ray_tracing = false;
+        }
+        if mask.metalfx_temporal {
+            caps.metalfx_temporal = false;
+        }
+        if mask.timestamps {
+            caps.timestamp_granularity = caps
+                .timestamp_granularity
+                .min(TimestampGranularity::CommandBuffer);
+        }
+        caps
+    }
+
     /// Human-readable reasons the device falls short of `requirement` (empty if it meets it).
     pub fn missing(&self, requirement: Requirement) -> Vec<String> {
         match requirement {

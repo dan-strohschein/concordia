@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::module::RenderState;
 use concordia_assets::AssetRef;
 use concordia_material::{ClosureReport, MergeKind};
+use concordia_rhi::GpuTiming;
 
 use crate::{RenderRequest, RenderStats, ViewMode};
 
@@ -28,6 +29,12 @@ pub struct FrameStats {
     pub cpu_ms: f64,
     /// GPU time of its commands (ms); null until measured, or when the device cannot tell.
     pub gpu_ms: Option<f64>,
+    /// Whether its passes were timed: `off` unless perf mode is on, `unsupported` when the device
+    /// cannot time passes.
+    pub pass_timing: crate::perf::PassTiming,
+    /// Each timed pass's GPU time, in order (empty unless `pass_timing` is `measured`, and until
+    /// the GPU reports).
+    pub passes: Vec<crate::perf::PassTime>,
     /// Meshes drawn.
     pub draws: u64,
     /// Meshes outside the camera's view (not drawn).
@@ -84,11 +91,23 @@ pub enum MergedOperator {
     vertical,
 }
 
-/// The last frame's stats, and a GPU time that arrived before its frame was recorded.
+/// The last frame's stats, its timed passes' names, and GPU timing that arrived before its frame
+/// was recorded.
 #[derive(Debug, Default)]
 pub(crate) struct Last {
     frame: Option<FrameStats>,
-    early_gpu: Option<(u64, Option<f64>)>,
+    timed_passes: Vec<String>,
+    early_gpu: Option<(u64, GpuTiming)>,
+}
+
+impl Last {
+    /// Fills the recorded frame's GPU time and pass times from `timing`.
+    fn apply(&mut self, timing: &GpuTiming) {
+        if let Some(frame) = self.frame.as_mut() {
+            frame.gpu_ms = timing.total_ms;
+            frame.passes = crate::perf::pass_times(&self.timed_passes, timing);
+        }
+    }
 }
 
 /// Shared between the engine (reads) and the render thread (writes).
@@ -104,17 +123,20 @@ pub(crate) fn record(
     renderer: &crate::Renderer,
 ) {
     let Ok(mut last) = last.lock() else { return };
-    let gpu_ms = match last.early_gpu.take() {
-        Some((n, ms)) if n == number => ms,
+    let early = match last.early_gpu.take() {
+        Some((n, timing)) if n == number => Some(timing),
         _ => None,
     };
+    last.timed_passes = stats.timed_passes;
     last.frame = Some(FrameStats {
         frame: number,
         width: request.width,
         height: request.height,
         view_mode: request.view_mode,
         cpu_ms,
-        gpu_ms,
+        gpu_ms: None,
+        pass_timing: stats.pass_timing,
+        passes: Vec::new(),
         draws: stats.draws as u64,
         culled: stats.culled as u64,
         draw_calls: stats.draw_calls as u64,
@@ -129,6 +151,9 @@ pub(crate) fn record(
             .map(|(material, report)| downgrade(material, report))
             .collect(),
     });
+    if let Some(timing) = early {
+        last.apply(&timing);
+    }
 }
 
 fn downgrade(material: &AssetRef, report: &ClosureReport) -> MaterialDowngrade {
@@ -154,11 +179,11 @@ fn downgrade(material: &AssetRef, report: &ClosureReport) -> MaterialDowngrade {
 
 /// Fills in frame `number`'s GPU time when the device reports it.
 pub(crate) fn gpu_callback(last: LastFrame, number: u64) -> concordia_rhi::GpuTimeCallback {
-    Box::new(move |ms| {
+    Box::new(move |timing| {
         let Ok(mut last) = last.lock() else { return };
-        match last.frame.as_mut() {
-            Some(f) if f.frame == number => f.gpu_ms = ms,
-            _ => last.early_gpu = Some((number, ms)),
+        match last.frame.as_ref() {
+            Some(f) if f.frame == number => last.apply(&timing),
+            _ => last.early_gpu = Some((number, timing)),
         }
     })
 }

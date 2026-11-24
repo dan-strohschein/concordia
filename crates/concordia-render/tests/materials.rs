@@ -677,11 +677,7 @@ fn feature_golden(name: &str, materials: Vec<Material>, light: Light) {
     if renderer().is_none() {
         return;
     }
-    golden(
-        &format!("material_{name}"),
-        &sphere_row(materials, light),
-        0.01,
-    );
+    golden(&format!("material_{name}"), &sphere_row(materials, light));
 }
 
 #[test]
@@ -868,7 +864,7 @@ fn material_view_modes_match_their_goldens() {
     let (mut s, _) = view_scene();
     for (mode, name) in MATERIAL_MODES {
         let image = s.render_mode(&mut r, VW, VH, mode);
-        golden(&format!("view_mode_{name}"), &image, 0.01);
+        golden(&format!("view_mode_{name}"), &image);
     }
 }
 

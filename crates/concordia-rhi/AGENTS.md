@@ -8,7 +8,9 @@ Backend-neutral GPU vocabulary and the `Device` trait (ADR-0040): validated desc
 - `CommandList` (`push`, `validate`) and `Command`, `RenderPassDesc`, `ColorAttachment`, `DepthAttachment`, `LoadOp`, `StoreOp`, `ClearValue`
 - Descriptors: `BufferDesc`, `TextureDesc`, `HeapDesc` (`validate`), `ComputePipelineDesc`, `GraphicsPipelineDesc`, `MeshPipelineDesc`, `ShaderSource`
 - Handles: `Buffer`, `Texture`, `Pipeline`, `Heap`, `Timeline`, `BindlessIndex`; `Slots<T>` for backends
-- `Access`, `BufferBarrier`, `TextureBarrier`, `Format`, `DeviceCaps`, `Requirement`, `RhiError`
+- `Access`, `BufferBarrier`, `TextureBarrier`, `Format`, `Requirement`, `RhiError`
+- Capabilities (M4 4.1a, D10): `RhiCaps` (was `DeviceCaps`; adds `object_shaders`, `hw_ray_tracing`, `metalfx_temporal`, `timestamp_granularity`, `max_mesh_output_vertices` / `_primitives`), `TimestampGranularity` (`times_passes`), `CapsMask` and `RhiCaps::masked`
+- Timing (4.1a, ADR-0089): `Command::BeginTimer(TimerScope)` / `EndTimer`; `GpuTiming { total_ms, scopes }` and `ScopeTime` through `GpuTimeCallback` (`submit_timed`, `Present::on_gpu_time`)
 - `conformance` (feature `conformance`): `conformance_tests!(make, golden, shaders)`, `Harness`, `GoldenCheck`, `ShaderProvider`, `shader_dir()` (Slang sources in `conformance/*.slang`)
 
 ## Invariants
@@ -16,7 +18,9 @@ Backend-neutral GPU vocabulary and the `Device` trait (ADR-0040): validated desc
 - Every descriptor and command list is validated before a backend sees it; public APIs return `RhiError` and never panic on bad input.
 - Handles are generation-checked: a destroyed resource's handle is `StaleHandle`, never another resource.
 - Shaders see resources only through bindless indices (buffer table, texture table) and ≤ 128 bytes of push constants.
-- `DeviceCaps::feature_sets` is sorted; `SampleCount` holds only 1/2/4/8.
+- `RhiCaps::feature_sets` is sorted; `SampleCount` holds only 1/2/4/8.
+- `masked` only ever removes capabilities: mesh shaders take object shaders and the mesh output limits with them, the ray-tracing API takes hardware ray tracing, and masked timestamps leave at most `command_buffer`.
+- Timer scopes are paired, not nested, unique per list and outside render passes (`CommandList::validate`). A backend whose caps don't `times_passes()` ignores them and reports no scopes; one that does reports each scope once, in command order, in ms from the submission's first sample.
 
 ## How to test
 `cargo nextest run -p concordia-rhi` (GPU-free unit tests). The conformance cases run in each backend's `tests/conformance.rs`.
@@ -30,10 +34,11 @@ Backend-neutral GPU vocabulary and the `Device` trait (ADR-0040): validated desc
 - Don't make the conformance suite depend on testkit; goldens come in through `GoldenCheck`.
 
 ## References
+- Apple, "Sampling GPU data into counter sample buffers" (timer scopes at stage boundaries).
 - Vulkan synchronization2 chapter; Microsoft "Enhanced Barriers" (D3D12) for the barrier vocabulary; Apple WWDC 2022 "Go bindless with Metal 3"; Apple *Metal Feature Set Tables*.
 
 ## Status
-M1 phase 1.2b; conformance shaders in Slang since 1.3.
+M1 phase 1.2b; conformance shaders in Slang since 1.3. M4 phase 4.1a: `RhiCaps` and masking, timer scopes (`timer_scopes_report_each_scope_once_in_order`).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

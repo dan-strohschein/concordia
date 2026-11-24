@@ -36,7 +36,7 @@ pub enum RhiError {
         /// Compiler output.
         log: String,
     },
-    /// The device does not support a feature (see `DeviceCaps`).
+    /// The device does not support a feature (see `RhiCaps`).
     #[error("unsupported: {0}")]
     Unsupported(String),
     /// The backend failed to allocate.

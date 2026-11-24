@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use crate::caps::DeviceCaps;
+use crate::caps::RhiCaps;
 use crate::command::CommandList;
 use crate::error::RhiError;
 use crate::handle::{BindlessIndex, Buffer, Heap, Pipeline, Texture, Timeline};
@@ -36,7 +36,7 @@ pub struct Submit<'a> {
 /// A GPU device. Object-safe so the conformance suite runs against any backend.
 pub trait Device: Send + Sync {
     /// Capabilities.
-    fn caps(&self) -> &DeviceCaps;
+    fn caps(&self) -> &RhiCaps;
     /// GPU memory this device currently has allocated, in bytes, if the backend can tell.
     fn allocated_bytes(&self) -> Option<u64> {
         None
@@ -83,15 +83,15 @@ pub trait Device: Send + Sync {
     ) -> Result<bool, RhiError>;
     /// Validates and submits work.
     fn submit(&self, submit: Submit<'_>) -> Result<(), RhiError>;
-    /// [`Device::submit`], reporting the submission's GPU time (ms) once it completes; backends
-    /// that cannot measure it report `None` right away.
+    /// [`Device::submit`], reporting the submission's GPU timing once it completes; backends
+    /// that cannot measure it report an empty [`crate::GpuTiming`] right away.
     fn submit_timed(
         &self,
         submit: Submit<'_>,
         on_gpu_time: crate::GpuTimeCallback,
     ) -> Result<(), RhiError> {
         self.submit(submit)?;
-        on_gpu_time(None);
+        on_gpu_time(crate::GpuTiming::default());
         Ok(())
     }
     /// Blocks until all submitted work finished.
