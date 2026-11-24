@@ -36,8 +36,15 @@ impl Rig {
     }
 
     fn with_ring(ring: Option<std::sync::Arc<concordia_core::log::LogRing>>) -> Self {
+        Self::with_manifest("[assets]\n\n[gen]\n", ring)
+    }
+
+    fn with_manifest(
+        manifest: &str,
+        ring: Option<std::sync::Arc<concordia_core::log::LogRing>>,
+    ) -> Self {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("concordia.toml"), "[assets]\n\n[gen]\n").unwrap();
+        std::fs::write(dir.path().join("concordia.toml"), manifest).unwrap();
         let project = Project::load(dir.path()).unwrap();
         let mut config = EngineConfig::new(dir.path());
         config.log_ring = ring;
@@ -81,7 +88,7 @@ fn registry_lists_procedural_providers_by_default_and_no_model_providers() {
         .iter()
         .map(|p| p["id"].as_str().unwrap())
         .collect();
-    assert_eq!(ids, ["mesh"], "{list}");
+    assert_eq!(ids, ["mesh", "sfx", "music", "texture"], "{list}");
     let mesh = &providers[0];
     assert_eq!(
         (&mesh["kind"], &mesh["extensions"]),
@@ -190,4 +197,35 @@ fn gen_run_requires_actor_and_is_logged() {
         .find(|r| r["message"] == "content generated")
         .unwrap_or_else(|| panic!("{logs}"));
     assert_eq!(generated["fields"]["actor"], ACTOR, "{generated}");
+}
+
+/// A provider's import settings reach the sidecar (M3 3.7b): generated music keeps its loop
+/// points. One bar of 4 beats at 120 bpm is 2 s = 96,000 frames, all of it looping. Generated
+/// sound effects and textures import as sounds and images.
+#[test]
+fn generated_music_imports_with_its_loop_points() {
+    let mut rig = Rig::with_manifest("[assets]\n\n[audio]\n\n[gen]\n", None);
+    let score = json!({"bpm": 120.0, "beats_per_bar": 4, "bars": 1,
+        "tracks": [{"instrument": "Sine", "volume": 0.5, "notes": [{"beat": 0.0, "beats": 4.0, "pitch": 57}]}]});
+    rig.ok("gen.run", json!({"provider": "music", "request": score, "path": "assets/music/hum.wav", "actor": ACTOR}));
+    let sidecar = Sidecar::read(&Sidecar::path_for(
+        &rig.dir.path().join("assets/music/hum.wav"),
+    ))
+    .unwrap();
+    assert_eq!(sidecar.importer, "sound");
+    assert_eq!(
+        (
+            &sidecar.settings["loop_start"],
+            &sidecar.settings["loop_end"]
+        ),
+        (&json!(0), &json!(96_000))
+    );
+    rig.ok("gen.run", json!({"provider": "sfx", "request": {"preset": "pickup"}, "path": "assets/sfx/coin.wav", "actor": ACTOR}));
+    rig.ok("gen.run", json!({"provider": "texture", "request": {"size": 16, "pattern": {"Checker": {"cells": 4}}, "colors": [[0, 0, 0, 255], [255, 255, 255, 255]]},
+        "path": "assets/textures/check.png", "actor": ACTOR}));
+    let image = Sidecar::read(&Sidecar::path_for(
+        &rig.dir.path().join("assets/textures/check.png"),
+    ))
+    .unwrap();
+    assert_eq!(image.importer, "image");
 }

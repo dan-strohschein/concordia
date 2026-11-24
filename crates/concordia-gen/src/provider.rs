@@ -28,6 +28,8 @@ pub struct Generated {
     pub bytes: Vec<u8>,
     /// Facts for the caller, e.g. triangle counts and bounds.
     pub info: Value,
+    /// Import settings to merge into the sidecar (e.g. a sound's loop points).
+    pub settings: Option<Value>,
 }
 
 /// Makes content from a request; the same request and seed give the same bytes.

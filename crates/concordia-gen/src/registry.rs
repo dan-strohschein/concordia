@@ -22,7 +22,11 @@ impl std::fmt::Debug for ProviderRegistry {
 impl ProviderRegistry {
     /// The procedural providers every project has.
     pub fn procedural() -> Self {
-        Self::default().with(Arc::new(crate::mesh::MeshProvider))
+        Self::default()
+            .with(Arc::new(crate::mesh::MeshProvider))
+            .with(Arc::new(crate::sfx::SfxProvider))
+            .with(Arc::new(crate::music::MusicProvider))
+            .with(Arc::new(crate::texture::TextureProvider))
     }
 
     /// Adds a provider (a later one with the same id replaces it).

@@ -206,6 +206,7 @@ impl crate::provider::ContentProvider for MeshProvider {
                 "triangles": mesh.indices.len() / 3,
                 "bounds": {"min": mesh.aabb.0, "max": mesh.aabb.1},
             }),
+            settings: None,
         })
     }
 }

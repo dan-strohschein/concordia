@@ -885,6 +885,8 @@ dependencies = [
  "concordia-command",
  "concordia-core",
  "concordia-reflect",
+ "hound",
+ "png",
  "serde",
  "serde_json",
  "tempfile",

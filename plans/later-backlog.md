@@ -83,6 +83,7 @@ Rules that still apply to everything here: subscription-first (no item may *requ
 - **Mod packaging** (after M2). WASM components plus content packs, sandboxed by the M2 scripting host; mod manifests as text.
 
 ## 12. Rendering and simulation beyond M4
+- **GPU texture bake from Slang shaders** (deferred from M3 3.7b, my recommendation under the author's standing approval). `concordia-gen`'s textures are CPU noise and patterns, deterministic on every platform. A shader bake (an offscreen compute pass through the RHI and `slangc`, golden-tested with FLIP) would tie a content tool to the GPU and the Slang toolchain. Revisit when a role needs procedural materials baked to images.
 - **Replay: restore mid-stream** (author decision R2 in the M3 refinement, 2026-11-23). M3's replays start every run at tick 0 and keep only component stills for diffs. Restoring needs every module that keeps play state outside the world (the Detour crowd's C++ state among them) to save and restore it. Revisit with M7's long sessions, as part of the author's planned full record and replay test system ("a Playwright for games").
 - **Replay: raw device events behind a flag** (ADR-0072; deferred by the M3 refinement). Action-level input survives rebinding, and nothing consumes raw events yet.
 - **Hardware ray tracing and a reference path tracer** (after M4). Ground truth for golden images and GI validation.
