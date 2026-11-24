@@ -1,11 +1,12 @@
 //! Building a [`Scene`] from a world and its assets: what the renderer would draw, read the same
 //! way (world transforms, entity order, the camera rule), without depending on the renderer.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use concordia_assets::{AssetRef, AssetSource, MeshRenderer};
 use concordia_core::id::EntityId;
 use concordia_core::math::{Mat4, Vec3};
+use concordia_material::MaterialProgram;
 use concordia_render_types::{
     Camera, DirectionalLight, Environment, PointLight, Projection, SpotLight, pick_camera,
 };
@@ -43,6 +44,7 @@ pub fn scene_from_world(
         builder: SceneBuilder::new(),
         meshes: BTreeMap::new(),
         materials: BTreeMap::new(),
+        textures: BTreeSet::new(),
         cameras: Vec::new(),
         sky: None,
     };
@@ -76,6 +78,7 @@ struct Reader {
     builder: SceneBuilder,
     meshes: BTreeMap<AssetRef, MeshId>,
     materials: BTreeMap<AssetRef, MaterialId>,
+    textures: BTreeSet<AssetRef>,
     cameras: Vec<(EntityId, Mat4, Camera)>,
     sky: Option<Environment>,
 }
@@ -148,7 +151,30 @@ impl Reader {
             .material(&data)
             .map_err(|e| PathTraceError::Material(format!("entity {id}: {r}: {e}")))?;
         self.materials.insert(r.clone(), m);
+        let program = MaterialProgram::compile(&data)
+            .map_err(|e| PathTraceError::Material(format!("entity {id}: {r}: {e}")))?;
+        for t in program.sampled_textures() {
+            self.texture(assets, id, r, t)?;
+        }
         Ok(m)
+    }
+
+    /// Adds texture `t` of material `material` (once).
+    fn texture(
+        &mut self,
+        assets: &mut dyn AssetSource,
+        id: EntityId,
+        material: &AssetRef,
+        t: &AssetRef,
+    ) -> Result<(), PathTraceError> {
+        if !self.textures.insert(t.clone()) {
+            return Ok(());
+        }
+        let what = |e: &dyn std::fmt::Display| {
+            PathTraceError::Texture(format!("entity {id}: {material}: {t}: {e}"))
+        };
+        let data = assets.texture(t).map_err(|e| what(&e))?;
+        self.builder.texture(t.clone(), &data).map_err(|e| what(&e))
     }
 
     /// Sets the builder's camera from `view` (the renderer's rule for which camera).
@@ -240,17 +266,28 @@ impl LoadedAssets {
     /// Loads `refs` from `source`, keeping each failure to report when the scene asks for it.
     pub fn load(refs: &[(AssetKind, AssetRef)], source: &mut dyn AssetSource) -> Self {
         let mut out = Self::default();
+        let mut sampled = Vec::new();
         for (kind, r) in refs {
             match kind {
                 AssetKind::Mesh => {
                     out.meshes.insert(r.clone(), source.mesh(r));
                 }
                 AssetKind::Material => {
-                    out.materials.insert(r.clone(), source.material(r));
+                    let material = source.material(r);
+                    if let Ok(Ok(program)) = material.as_ref().map(MaterialProgram::compile) {
+                        sampled.extend(program.sampled_textures().cloned());
+                    }
+                    out.materials.insert(r.clone(), material);
                 }
                 AssetKind::Texture => {
                     out.textures.insert(r.clone(), source.texture(r));
                 }
+            }
+        }
+        for t in sampled {
+            if !out.textures.contains_key(&t) {
+                let data = source.texture(&t);
+                out.textures.insert(t, data);
             }
         }
         out

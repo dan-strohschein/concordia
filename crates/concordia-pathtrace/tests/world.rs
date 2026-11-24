@@ -7,7 +7,9 @@ use concordia_assets::{
 };
 use concordia_core::id::{DeterministicIdGen, EntityId};
 use concordia_core::math::{Mat4, Quat, Vec3};
-use concordia_pathtrace::{Light, PathTraceError, View, scene_from_world};
+use concordia_pathtrace::{
+    Light, LoadedAssets, PathTraceError, View, asset_refs, scene_from_world,
+};
 use concordia_render_types::{
     Camera, DirectionalLight, Environment, PointLight, Projection, SpotLight,
 };
@@ -18,6 +20,7 @@ use concordia_terra::World;
 #[derive(Default)]
 struct Assets {
     textures: BTreeMap<AssetRef, TextureData>,
+    materials: BTreeMap<AssetRef, Material>,
 }
 
 impl AssetSource for Assets {
@@ -28,6 +31,9 @@ impl AssetSource for Assets {
         }
     }
     fn material(&mut self, r: &AssetRef) -> Result<Material, String> {
+        if let Some(m) = self.materials.get(r) {
+            return Ok(m.clone());
+        }
         match concordia_assets::Builtin::of(r) {
             Some(concordia_assets::BuiltinAsset::Material(m)) => Ok(m),
             _ => Ok(Material::from_slab(Slab::default())),
@@ -287,4 +293,71 @@ fn the_environment_texture_becomes_the_sky() {
         "texel × intensity"
     );
     let _ = Mat4::IDENTITY;
+}
+
+fn asset(n: u8) -> AssetRef {
+    format!("asset:0193a1c2-7e40-7000-8000-0000000000{n:02x}")
+        .parse()
+        .unwrap()
+}
+
+/// A cube drawn with `asset(1)`, a material whose base color is texture `asset(2)`.
+fn textured_cube() -> (Fixture, Assets) {
+    let mut f = Fixture::new();
+    let cube = f.mesh(Vec3::ZERO, "cube");
+    let mut draw = f.world.get::<MeshRenderer>(cube).unwrap().clone();
+    draw.material = asset(1);
+    f.world.insert(cube, draw).unwrap();
+    f.camera(Vec3::new(0.0, 0.0, 5.0), 0, 12.0);
+    let mut assets = Assets::default();
+    assets.materials.insert(
+        asset(1),
+        Material::from_slab(Slab {
+            base_color_texture: Some(asset(2)),
+            ..Slab::default()
+        }),
+    );
+    (f, assets)
+}
+
+fn checker() -> TextureData {
+    TextureData {
+        width: 2,
+        height: 1,
+        format: TextureFormat::Rgba8Srgb,
+        mips: vec![vec![255, 0, 0, 255, 0, 0, 255, 255]],
+    }
+}
+
+#[test]
+fn a_materials_textures_and_the_meshes_uvs_come_along() {
+    let (f, mut assets) = textured_cube();
+    assets.textures.insert(asset(2), checker());
+    let scene = scene_from_world(&f.world, &mut assets, &View::Camera(None)).unwrap();
+    assert_eq!(scene.texture_ids.keys().collect::<Vec<_>>(), [&asset(2)]);
+    assert_eq!(
+        scene.textures[0].texels[0],
+        [1.0, 0.0, 0.0, 1.0],
+        "decoded to linear"
+    );
+    assert!(
+        scene.uvs.iter().all(|m| !m.is_empty()),
+        "the built-in cube has UVs"
+    );
+}
+
+#[test]
+fn a_missing_texture_is_an_error_naming_it() {
+    let (f, mut assets) = textured_cube();
+    let err = scene_from_world(&f.world, &mut assets, &View::Camera(None)).unwrap_err();
+    assert!(err.to_string().contains(&asset(2).to_string()), "{err}");
+}
+
+#[test]
+fn preloaded_assets_include_the_materials_textures() {
+    let (f, mut assets) = textured_cube();
+    assets.textures.insert(asset(2), checker());
+    let mut loaded = LoadedAssets::load(&asset_refs(&f.world), &mut assets);
+    let scene = scene_from_world(&f.world, &mut loaded, &View::Camera(None)).unwrap();
+    assert_eq!(scene.textures.len(), 1);
 }

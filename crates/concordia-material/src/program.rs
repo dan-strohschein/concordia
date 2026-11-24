@@ -145,21 +145,23 @@ impl MaterialProgram {
     /// Whether [`Self::textured`] would apply any texture (base color, emission,
     /// metallic-roughness or a mix texture).
     pub fn samples_textures(&self) -> bool {
-        let slab = |s: &Slab| {
-            s.base_color_texture.is_some()
-                || s.emissive_texture.is_some()
-                || s.metallic_roughness_texture.is_some()
-        };
-        self.slabs.iter().any(|(_, s)| slab(s))
-            || self.ops.iter().any(|op| {
-                matches!(
-                    op,
-                    Op::Horizontal {
-                        mix_texture: Some(_),
-                        ..
-                    }
-                )
-            })
+        self.sampled_textures().next().is_some()
+    }
+
+    /// The textures [`Self::textured`] applies, in slab then op order (may repeat).
+    pub fn sampled_textures(&self) -> impl Iterator<Item = &AssetRef> {
+        let slabs = self.slabs.iter().flat_map(|(_, s)| {
+            [
+                &s.base_color_texture,
+                &s.emissive_texture,
+                &s.metallic_roughness_texture,
+            ]
+        });
+        let mixes = self.ops.iter().map(|op| match op {
+            Op::Horizontal { mix_texture, .. } => mix_texture,
+            _ => &None,
+        });
+        slabs.chain(mixes).flatten()
     }
 
     /// Whether slab alpha is coverage (alpha-blended materials).
