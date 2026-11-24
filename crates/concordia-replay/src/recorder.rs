@@ -6,7 +6,7 @@ use crate::format::{Replay, write_replay};
 use crate::methods::{EXTENSION, ReplayRecordParams, ReplayRecordResult, actor_name};
 use crate::module::Pending;
 use crate::record::{Recording, RecordingHandle};
-use crate::verify::{current_header, mismatch_error, modules_mismatch};
+use crate::verify::{current_header, fingerprints, mismatch_error, modules_mismatch};
 
 /// Ticks between checkpoints unless a recording asks otherwise.
 const DEFAULT_EVERY: u32 = 60;
@@ -31,7 +31,7 @@ pub(crate) fn start(
         )
         .at("/checkpoint_every"));
     }
-    let header = current_header(engine, actor_name(ctx), every)?;
+    let header = current_header(engine, actor_name(ctx), every, p.task.clone())?;
     let pending = engine
         .state::<Pending>()
         .cloned()
@@ -56,7 +56,7 @@ pub(crate) fn start(
 /// `replay.record {action: stop}`: writes the replay, unless the code changed meanwhile.
 pub(crate) fn stop(engine: &mut Engine, ctx: &CallCtx) -> Result<ReplayRecordResult, ApiError> {
     let handle = recording(engine)?;
-    let now = engine.fingerprints();
+    let now = fingerprints(engine);
     let mut guard = handle.lock();
     let Some(recording) = guard.as_ref() else {
         return Err(not_recording());

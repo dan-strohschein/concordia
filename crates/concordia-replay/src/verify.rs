@@ -2,16 +2,17 @@
 
 use std::collections::BTreeSet;
 
-use concordia_api::{ApiError, ApiErrorKind, Engine, WorldSel};
+use concordia_api::{ApiError, ApiErrorKind, Engine, Fingerprint, WorldSel};
 
 use crate::format::{Checkpoint, ReplayHeader};
 use crate::methods::Mismatch;
 
-/// The header a recording started now would have.
+/// The header a recording started now would have (for `task`, when given).
 pub(crate) fn current_header(
     engine: &Engine,
     recorded_by: String,
     checkpoint_every: u32,
+    task: Option<String>,
 ) -> Result<ReplayHeader, ApiError> {
     let scene = engine
         .scene_path()
@@ -23,18 +24,65 @@ pub(crate) fn current_header(
         .map_err(|e| ApiError::new(ApiErrorKind::Internal, e.to_string()))?;
     Ok(ReplayHeader {
         engine: concordia_core::version().to_owned(),
+        platform: Some(platform()),
+        manifest_hash: Some(manifest_hash(engine)),
         scene,
         scene_hash: scene_hash.to_string(),
         seed: engine.sim_seed(),
         rate_hz: engine.sim_rate().hz(),
         threads: u32::try_from(engine.threads().get()).unwrap_or(u32::MAX),
         checkpoint_every,
-        modules: engine.fingerprints(),
+        modules: fingerprints(engine),
         recorded_by,
+        task,
     })
 }
 
-/// The fields a run must match: engine, scene, scene hash, seed and module code.
+/// This build's OS and CPU, e.g. `macos-aarch64`.
+pub(crate) fn platform() -> String {
+    format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)
+}
+
+/// BLAKE3 of the project's `concordia.toml` (of nothing when there is none).
+fn manifest_hash(engine: &Engine) -> String {
+    let bytes = std::fs::read(engine.project().join("concordia.toml")).unwrap_or_default();
+    blake3::hash(&bytes).to_hex().to_string()
+}
+
+/// What the engine runs: every module's fingerprints, then the template catalog's.
+pub(crate) fn fingerprints(engine: &Engine) -> Vec<Fingerprint> {
+    let mut all = engine.fingerprints();
+    all.push(templates_fingerprint(engine));
+    all
+}
+
+/// The template catalog (built-ins and project files) by the BLAKE3 of each template's name,
+/// traits and components; a catalog that can't be read is fingerprinted by its error.
+fn templates_fingerprint(engine: &Engine) -> Fingerprint {
+    let mut hasher = blake3::Hasher::new();
+    match engine.template_catalog() {
+        Ok(catalog) => {
+            for t in catalog.iter() {
+                let parts =
+                    serde_json::to_string(&(&t.name, &t.traits, &t.components)).unwrap_or_default();
+                hasher.update(parts.as_bytes());
+                hasher.update(b"\n");
+            }
+        }
+        Err(e) => {
+            hasher.update(e.message.as_bytes());
+        }
+    }
+    Fingerprint {
+        module: "engine".into(),
+        name: "templates".into(),
+        kind: "templates".into(),
+        hash: hasher.finalize().to_hex().to_string(),
+    }
+}
+
+/// The fields a run must match: engine, platform, manifest, scene, scene hash, seed, tick rate,
+/// and module code and content. Fields a version 0 file never recorded are not compared.
 pub(crate) fn mismatches(recorded: &ReplayHeader, current: &ReplayHeader) -> Vec<Mismatch> {
     let mut out = Vec::new();
     let mut check = |field: &str, a: String, b: String| {
@@ -47,6 +95,21 @@ pub(crate) fn mismatches(recorded: &ReplayHeader, current: &ReplayHeader) -> Vec
         }
     };
     check("engine", recorded.engine.clone(), current.engine.clone());
+    let unset = |v: &Option<String>| v.clone().unwrap_or_default();
+    if recorded.platform.is_some() {
+        check(
+            "platform",
+            unset(&recorded.platform),
+            unset(&current.platform),
+        );
+    }
+    if recorded.manifest_hash.is_some() {
+        check(
+            "manifest_hash",
+            unset(&recorded.manifest_hash),
+            unset(&current.manifest_hash),
+        );
+    }
     check("scene", recorded.scene.clone(), current.scene.clone());
     check(
         "scene_hash",
@@ -54,6 +117,11 @@ pub(crate) fn mismatches(recorded: &ReplayHeader, current: &ReplayHeader) -> Vec
         current.scene_hash.clone(),
     );
     check("seed", recorded.seed.to_string(), current.seed.to_string());
+    check(
+        "rate_hz",
+        recorded.rate_hz.to_string(),
+        current.rate_hz.to_string(),
+    );
     if recorded.modules != current.modules {
         out.push(modules_mismatch(recorded, current));
     }

@@ -10,7 +10,7 @@ pub enum ReplayError {
     Parse(#[from] SceneError),
     /// The file is another format version.
     #[error(
-        "replay format version {found} is not supported; this engine reads version {}",
+        "replay format version {found} is not supported; this engine reads versions 0 and {}",
         crate::FORMAT_VERSION
     )]
     Version {
@@ -34,5 +34,13 @@ pub enum ReplayError {
         tick: u64,
         /// The recorded length.
         ticks: u64,
+    },
+    /// The per-tick hashes don't cover every tick in full lines of hex digits.
+    #[error("replay hashes[{line}]: {reason}")]
+    TickHashes {
+        /// The line (0-based).
+        line: usize,
+        /// What is wrong with it.
+        reason: String,
     },
 }

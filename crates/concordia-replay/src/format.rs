@@ -1,4 +1,5 @@
-//! The `.replay.ron` format, version 0: a header, input changes per tick and checkpoints.
+//! The `.replay.ron` format, version 1: a header, input changes per tick, checkpoints and every
+//! tick's world hash (ADR-0072; M3 phase 3.1a). Version 0 files are read and migrated.
 
 use std::collections::BTreeMap;
 
@@ -9,14 +10,20 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::ReplayError;
 
-/// The format version this crate reads and writes.
-pub const FORMAT_VERSION: u32 = 0;
+/// The format version this crate writes (it also reads version 0).
+pub const FORMAT_VERSION: u32 = 1;
 
-/// A recorded play session (`.replay.ron`, version 0).
+/// Hex digits kept of each tick's world hash in [`Replay::hashes`].
+pub const TICK_HASH_HEX: usize = 16;
+
+/// Ticks per line of [`Replay::hashes`].
+pub const TICKS_PER_LINE: usize = 64;
+
+/// A recorded play session (`.replay.ron`, version 1).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 #[serde(deny_unknown_fields)]
 pub struct Replay {
-    /// Format version (0).
+    /// Format version (1).
     pub version: u32,
     /// What the session ran on.
     pub header: ReplayHeader,
@@ -26,6 +33,23 @@ pub struct Replay {
     pub inputs: Vec<InputChange>,
     /// World hashes at tick 0, every `checkpoint_every` ticks and the last tick.
     pub checkpoints: Vec<Checkpoint>,
+    /// Every tick's world hash after it ran (ticks 1..=`ticks`), the first 16 hex digits each,
+    /// 64 ticks per line; empty in files migrated from version 0.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hashes: Vec<String>,
+}
+
+impl Replay {
+    /// Tick `tick`'s world hash prefix (ticks 1..=`ticks`; none without per-tick hashes).
+    pub fn tick_hash(&self, tick: u64) -> Option<&str> {
+        if tick == 0 || tick > self.ticks {
+            return None;
+        }
+        let index = usize::try_from(tick - 1).ok()?;
+        let line = self.hashes.get(index / TICKS_PER_LINE)?;
+        let at = (index % TICKS_PER_LINE) * TICK_HASH_HEX;
+        line.get(at..at + TICK_HASH_HEX)
+    }
 }
 
 /// What a replay was recorded with; a run refuses a different engine, scene, seed or code.
@@ -34,6 +58,12 @@ pub struct Replay {
 pub struct ReplayHeader {
     /// Engine version.
     pub engine: String,
+    /// OS and CPU, e.g. `macos-aarch64` (replays are exact on one platform; none: migrated).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform: Option<String>,
+    /// BLAKE3 of `concordia.toml` (of nothing when absent; none: migrated).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest_hash: Option<String>,
     /// Project-relative scene path.
     pub scene: String,
     /// The scene's edit-world hash when recording started.
@@ -46,10 +76,14 @@ pub struct ReplayHeader {
     pub threads: u32,
     /// Ticks between checkpoints.
     pub checkpoint_every: u32,
-    /// The code the engine's modules ran (e.g. script builds).
+    /// The code and content the engine ran: module fingerprints (e.g. script builds, the
+    /// input map) and the template catalog.
     pub modules: Vec<Fingerprint>,
     /// Who recorded it.
     pub recorded_by: String,
+    /// The task it is evidence for, e.g. `T-0001`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<String>,
 }
 
 /// The actions whose state changed on one tick, and the text typed on it.
@@ -77,13 +111,18 @@ pub struct Checkpoint {
     pub parts: BTreeMap<String, String>,
 }
 
-/// Reads and checks replay text: the version, every hash, and tick order.
+/// The version 0 format (M2 phase 2.8): version 1 without the fields it added, all optional.
+pub const VERSION_0: u32 = 0;
+
+/// Reads and checks replay text (version 1, or 0 migrated to 1): every hash, the per-tick
+/// hashes and tick order. A version 0 file has no platform, manifest hash, task or per-tick
+/// hashes, so runs don't compare them.
 pub fn read_replay(text: &str) -> Result<Replay, ReplayError> {
-    let replay: Replay = concordia_scene::read_document(text)?;
-    if replay.version != FORMAT_VERSION {
-        return Err(ReplayError::Version {
-            found: replay.version,
-        });
+    let mut replay: Replay = concordia_scene::read_document(text)?;
+    match replay.version {
+        FORMAT_VERSION => {}
+        VERSION_0 => replay.version = FORMAT_VERSION,
+        found => return Err(ReplayError::Version { found }),
     }
     check_hash("header.scene_hash", &replay.header.scene_hash)?;
     check_order("inputs", replay.inputs.iter().map(|i| i.tick), replay.ticks)?;
@@ -92,6 +131,7 @@ pub fn read_replay(text: &str) -> Result<Replay, ReplayError> {
         replay.checkpoints.iter().map(|c| c.tick),
         replay.ticks,
     )?;
+    check_tick_hashes(&replay)?;
     for (i, checkpoint) in replay.checkpoints.iter().enumerate() {
         check_hash(&format!("checkpoints[{i}].world"), &checkpoint.world)?;
         for (part, hash) in &checkpoint.parts {
@@ -104,6 +144,43 @@ pub fn read_replay(text: &str) -> Result<Replay, ReplayError> {
 /// Writes a replay as canonical RON.
 pub fn write_replay(replay: &Replay) -> Result<String, ReplayError> {
     Ok(concordia_scene::write_document(replay)?)
+}
+
+/// Per-tick hashes (when present) cover ticks 1..=`ticks`: full lines of 64 ticks, then the
+/// rest, 16 hex digits each.
+fn check_tick_hashes(replay: &Replay) -> Result<(), ReplayError> {
+    if replay.hashes.is_empty() {
+        return Ok(());
+    }
+    let ticks = usize::try_from(replay.ticks).unwrap_or(usize::MAX);
+    let lines = ticks.div_ceil(TICKS_PER_LINE);
+    let fail = |line: usize, reason: String| Err(ReplayError::TickHashes { line, reason });
+    if replay.hashes.len() != lines {
+        return fail(
+            replay.hashes.len().min(lines),
+            format!(
+                "{} lines for {ticks} ticks; expected {lines}",
+                replay.hashes.len()
+            ),
+        );
+    }
+    for (i, line) in replay.hashes.iter().enumerate() {
+        let in_line = (ticks - i * TICKS_PER_LINE).min(TICKS_PER_LINE);
+        if line.len() != in_line * TICK_HASH_HEX {
+            return fail(
+                i,
+                format!(
+                    "{} hex digits; expected {}",
+                    line.len(),
+                    in_line * TICK_HASH_HEX
+                ),
+            );
+        }
+        if let Some(bad) = line.chars().find(|c| !c.is_ascii_hexdigit()) {
+            return fail(i, format!("{bad:?} is not a hex digit"));
+        }
+    }
+    Ok(())
 }
 
 fn check_hash(at: &str, value: &str) -> Result<(), ReplayError> {

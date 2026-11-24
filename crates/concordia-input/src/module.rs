@@ -2,7 +2,8 @@
 //! and serves `input.inject` (ADR-0046).
 
 use concordia_api::{
-    ApiError, ApiErrorKind, CallCtx, Engine, EngineModule, Method, MethodInfo, PlaySetup,
+    ApiError, ApiErrorKind, CallCtx, Engine, EngineModule, Fingerprint, Method, MethodInfo,
+    PlaySetup,
 };
 use concordia_command::Actor;
 use concordia_reflect::{Reflect, RegistryError, TypeRegistry};
@@ -42,6 +43,18 @@ impl EngineModule for InputModule {
 
     fn methods(&self) -> Vec<MethodInfo> {
         vec![MethodInfo::of::<InputInject>()]
+    }
+
+    /// The input map, by the BLAKE3 of its canonical text: a replay recorded with other
+    /// bindings or actions is a different session (M3 3.1a).
+    fn fingerprints(&self) -> Vec<Fingerprint> {
+        let text = self.map.to_ron().unwrap_or_default();
+        vec![Fingerprint {
+            module: "input".into(),
+            name: "map".into(),
+            kind: "input_map".into(),
+            hash: blake3::hash(text.as_bytes()).to_hex().to_string(),
+        }]
     }
 
     fn start_play(&self, world: &mut World) -> Result<PlaySetup, ApiError> {

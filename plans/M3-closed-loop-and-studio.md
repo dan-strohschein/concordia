@@ -1,7 +1,7 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b and 3.0c done) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b, 3.0c and 3.1a done) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
@@ -580,6 +580,102 @@ Every role stays under 50k. If the AST's recursive schema makes `assert_eval` he
 - `just editor-schemas`: no changes.
 - `just editor-test`: 118 unit and 22 end-to-end tests pass.
 - No new Linux library. No snapshots or goldens changed (every UI and app golden still matches). `tracing-subscriber` joins `concordia-app`'s dev-dependencies; it was already in the workspace.
+
+### Author's standing instructions for M3 (2026-11-23)
+- **Lamplight windowed recheck deferred:** the author's recheck of Lamplight in a window (text fit, world buttons, the by-hand M2 items) is postponed.
+- **M3 runs unattended:**
+  - I approve my own recommendations for M3's decisions, and record each one in the As built.
+  - I merge each PR once the local checklist and GitHub's CI are green.
+  - I bless every snapshot and golden. Each is still listed in its As built and on the running "M3 snapshot log" review page.
+
+### Phase 3.1a As built (2026-11-23; ADR-0072 note)
+**Status: done (branch `m3/3.1-format`).** Replay format version 1.
+
+**What landed:**
+- **`concordia-replay`:**
+  - **Header:** `ReplayHeader` gains `platform`, `manifest_hash` (BLAKE3 of `concordia.toml`, or of nothing) and `task` (from `replay.record`'s new `task` param). All three are optional, so version 0 files read unchanged.
+  - **Per-tick hashes:** `Replay::hashes` holds every tick's world hash (16 hex digits, 64 per line), with `Replay::tick_hash`. The recorder reuses a checkpoint's hash on its tick.
+  - **Reading:** version 0 and 1 (a version 0 file is read into the same struct, with the absent fields empty). The writer writes version 1.
+  - **Verify:** steps tick by tick when per-tick hashes exist. `Divergence` gains `parts_tick`, the checkpoint where parts are compared; `tick` is now the exact first divergent tick.
+  - **Mismatches:** `platform`, `manifest_hash` and `rate_hz` join the compared fields. Fields a file never recorded are skipped.
+  - **Fingerprints:** `verify::fingerprints` is the engine's module fingerprints plus `engine/templates` (BLAKE3 over each template's name, traits and components). Recording, stopping and running all use it.
+- **`concordia-input`:** `InputModule::fingerprints` reports `input/map`, the BLAKE3 of the map's canonical text.
+- **`concordia-cli`:** `concordia replay migrate <path>` rewrites a version 0 file as version 1 in place, and leaves version 1 files as they are.
+- **`tests/src/replays.rs`:** `as_version_0`, shared by the replay and CLI tests.
+
+**Choices (my recommendations, pre-approved):**
+- **The task goes in the header, not a separate `meta` block:** one place for "what this replay is".
+- **The manifest's hash:** a project without `concordia.toml` hashes the empty input. A recording therefore always has one, and adding a manifest later is a mismatch.
+- **Content identity uses fingerprints, not a new content hash:** the input map through the input module's existing seam, and the templates beside the module fingerprints.
+
+**Tests** (expected values derived in each header):
+- **`concordia-replay` `tests/format.rs`:**
+  - `replay_ron_roundtrip_is_byte_identical`: new snapshot; the v0 snapshot is gone, and its text is now `tests/fixtures/v0.replay.ron`;
+  - `replay_format_rejects_unknown_major_version_bad_hashes_and_unordered_ticks`: version 2, not 1, is refused;
+  - `tick_hashes_must_cover_every_tick_in_full_lines`: 120 ticks are 1,024 + 896 hex digits;
+  - `a_version_0_file_reads_as_version_1`;
+  - `prop_input_stream_roundtrips` (proptest).
+- **`concordia-replay` `tests/record_run.rs`:**
+  - `per_tick_hashes_locate_the_first_divergent_tick_exactly`: checkpoints every 64; a nudge at `SystemCtx::tick` 416 → tick 417, last matching 416, parts at 448, 7 checkpoints matched;
+  - `recordings_name_platform_manifest_task_and_every_tick`: 300 ticks fill 5 lines;
+  - `platform_rate_or_manifest_change_is_a_mismatch`;
+  - `input_map_and_template_changes_are_mismatches`;
+  - `a_version_0_replay_verifies_with_the_same_final_hash`: 5 checkpoints.
+- **`concordia-cli`:** `replay_migrate_rewrites_version_0_as_version_1`.
+
+**Changed deliberately:**
+- `replay_detects_divergence_and_reports_first_tick_and_component` now expects the exact tick 131 (it was checkpoint 140), with `parts_tick` 140.
+- `recording_stores_only_ticks_where_input_changed` now names three fingerprints (input map, steer, templates), not one.
+
+**Red runs:**
+- The format tests: no tick lookup, v0 refused, and the new snapshot.
+- Five run tests: no per-tick hashes, no platform or task, no new mismatches, no content fingerprints, and the checkpoint tick instead of the exact one.
+- The migrate test: "not yet".
+
+**Called out:**
+- **Passed at once:**
+  - `prop_input_stream_roundtrips`: inputs already round-tripped;
+  - the version-2 refusal: any version other than 0 was already refused.
+- **Written after their code:** `a_version_0_replay_verifies_with_the_same_final_hash` came after the reader that makes it pass.
+
+**Mutation checks** (all four failed tests; restored files touched):
+- per-tick checking never reporting (4 tests);
+- the rate never compared (2);
+- `tick_hash` off by one (6);
+- the input map not fingerprinted (2).
+
+**Studio and docs:**
+- **`concordia-record-replay`:** format v1, `task`, the exact tick and `parts_tick`, the mismatch list; its note now names 3.1b.
+- **Role budgets** (2026-11-23):
+
+  | Role | Tools | Tokens |
+  |---|---|---|
+  | QA | 25 | 23,379 |
+  | level designer | 37 | 23,144 |
+  | UI/UX | 26 | 21,424 |
+  | tech artist | 23 | 20,172 |
+  | animator | 22 | 16,890 |
+  | sound designer | 24 | 15,138 |
+  | composer | 20 | 13,054 |
+  | gameplay programmer | 17 | 13,065 |
+  | director | 13 | 12,453 |
+  | writer | 11 | 9,576 |
+
+  All are under 50k. QA and the gameplay programmer grew by about 120 tokens, from `task` and `parts_tick`.
+- **ADR-0072:** a version 1 note.
+- **AGENTS.md:** `concordia-replay`, `concordia-input` and `concordia-cli`.
+- **README.md:** `concordia-replay`.
+- **The agent guide's replays section.**
+
+**Checklist (2026-11-23):**
+- `just lint` and Tauri clippy: clean.
+- `just wasm`, `just native-fixtures`, and the full suite with `CONCORDIA_REQUIRE_GPU=1`: 1,859 run. The one failure was the new snapshot, which is now blessed; `concordia-replay` then passed 27/27.
+- Doc tests: clean.
+- `just gate-tests M1` (4/4) and `M3S` (13/13).
+- Both deny checks: ok. The editor's lock gains `blake3` (through `concordia-input`).
+- `just editor-schemas`: no changes. `just editor-test`: 118 unit and 22 end-to-end tests pass.
+- No new Linux library.
+- Free disk fell to 6 GB, so I ran `just clean-builds`; 96 GB free after.
 
 ## Goal & context
 M3 closes the loop the design promises (principle 3): an agent can **record** a play session, **replay** it deterministically, **find the first frame** where two runs diverge, and **prove** behavior with typed playtest assertions, all from tests, the CLI and MCP. On top of that loop, M3 ships **Agent Studio v1**: a configurable team of specialist agents that runs **inside the user's own Claude Code on a regular subscription, with no API key** (principle 0).

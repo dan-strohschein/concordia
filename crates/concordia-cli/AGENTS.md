@@ -9,7 +9,7 @@ The `concordia` command: `new` (project skeleton), `headless` (Engine API over s
 ## Invariants
 - No engine logic here; subcommands call library crates.
 - `concordia new` writes `concordia.toml`, `scenes/main.scene.ron` (canonical), `.gitignore` (`.concordia/`) and `.mcp.json` registering the server as `concordia` (`<abs concordia> mcp --project .`). It refuses a non-empty directory without `--force` and never deletes files.
-- `concordia replay record <path> --ticks N [--scene] [--inputs events.json] [--checkpoint-every]` and `concordia replay run <path> [--mode] [--force] [--threads]` run in process; `run` opens the replay's scene, prints the result JSON and exits 1 on a mismatch or divergence (2.8).
+- `concordia replay record <path> --ticks N [--scene] [--inputs events.json] [--checkpoint-every]` and `concordia replay run <path> [--mode] [--force] [--threads]` run in process; `run` opens the replay's scene, prints the result JSON and exits 1 on a mismatch or divergence (2.8); `concordia replay migrate <path>` rewrites a version 0 replay as version 1 in place (M3 3.1a).
 - `concordia import --project <dir> <paths…>` writes or updates each file's sidecar with the importers every project registers (`concordia_app::asset_importers()`: models, images, materials, anim graphs, sounds, cues, fonts and themes; 2.10b).
 - Exit codes: 0 success; 1 usage errors, missing items and `fmt --check` failures; 2 files that cannot be parsed.
 - `headless --ws` binds to 127.0.0.1 only and writes `.concordia/headless.json` (mode 0600).

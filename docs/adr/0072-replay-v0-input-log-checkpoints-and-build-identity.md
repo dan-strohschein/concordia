@@ -37,3 +37,10 @@ The engine is deterministic per binary and machine: the same inputs from the sam
 - **Note (M2 phase 2.5b.2a, ADR-0078):** pointer rays (`ActionValue::Ray`) are recorded like any action value, so a click replays without the window size or camera. The format stays version 0.
 - **Note (M2 phase 2.7b.2, ADR-0060):** the in-game UI reads only actions (`ui_pointer`, `ui_click`, `ui_scroll`, `ui_viewport`, the `ui_*` keys). The window's size is input too: `InputEvent::Viewport` feeds the new `Binding::Viewport`, so a resize is recorded like any action value. The format stays version 0.
 - **Note (M2 phase 2.7b.3, ADR-0060):** typed text can't be an action value, so each input change gains an optional `text` list (inserts and editing commands, in order) and ticks with only typing are recorded too. A tick without typing writes no `text` field, so earlier files read unchanged and the format stays version 0; playback feeds the text back through `InputSampler::play_back_text`.
+- **Note (M3 phase 3.1a): format version 1.** The writer writes version 1, and the reader takes 0 and 1 (`concordia replay migrate` rewrites a version 0 file).
+  - **Header:** gains `platform` (`<OS>-<arch>`), `manifest_hash` (BLAKE3 of `concordia.toml`) and `task`.
+  - **Content in the fingerprints:** `modules` also fingerprints content: the input map (`input/map`, through `InputModule::fingerprints`) and the template catalog (`engine/templates`).
+  - **Per-tick hashes:** a `hashes` block holds every tick's world hash, the first 16 hex digits each, 64 ticks per line. `verify` steps tick by tick, reports the exact first divergent `tick`, and compares parts at the next checkpoint (`parts_tick`). Bisection is no longer needed.
+  - **Mismatches:** `platform`, `manifest_hash` and `rate_hz` join the compared fields. Fields a version 0 file never recorded are not compared.
+  - **Snapshots (R2, the author's decision):** they are stills for field diffs (3.1b) and are never restored. Raw device events stay out (`later-backlog`).
+

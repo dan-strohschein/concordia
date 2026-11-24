@@ -18,7 +18,7 @@ pub(crate) fn prepare(engine: &mut Engine, replay: &Replay) -> Result<Vec<Mismat
     let header = &replay.header;
     let mut found = mismatches(
         header,
-        &current_header(engine, String::new(), header.checkpoint_every)?,
+        &current_header(engine, String::new(), header.checkpoint_every, None)?,
     );
     let rate = TickRate::from_hz(header.rate_hz).map_err(|e| {
         ApiError::new(
@@ -75,7 +75,12 @@ pub(crate) fn run(
     let mut last_matching = None;
     let mut divergence = None;
     let mut checkpoints = Vec::new();
+    let per_tick = mode == RunMode::verify && !replay.hashes.is_empty();
+    let mut first: Option<u64> = None;
     for expected in &replay.checkpoints {
+        if per_tick && first.is_none() {
+            first = step_checking(engine, replay, expected.tick)?;
+        }
         let actual = advance_to(engine, expected.tick)?;
         if mode == RunMode::resimulate {
             checkpoints.push(TickHash {
@@ -84,14 +89,15 @@ pub(crate) fn run(
             });
             continue;
         }
-        if actual.world == expected.world {
+        if actual.world == expected.world && first.is_none() {
             matched += 1;
             last_matching = Some(expected.tick);
             continue;
         }
         divergence = Some(Divergence {
-            tick: expected.tick,
-            last_matching_tick: last_matching,
+            tick: first.unwrap_or(expected.tick),
+            last_matching_tick: first.map_or(last_matching, |t| t.checked_sub(1)),
+            parts_tick: expected.tick,
             parts: diverged_parts(expected, &actual),
             expected: expected.world.clone(),
             actual: actual.world,
@@ -117,6 +123,23 @@ pub(crate) fn run(
         world_hash,
         elapsed_ms: started.elapsed().as_secs_f64() * 1000.0,
     })
+}
+
+/// Steps the play world one tick at a time up to `to`, comparing each tick's hash with the
+/// recorded one; returns the first tick that differs (the rest are stepped unchecked).
+fn step_checking(engine: &mut Engine, replay: &Replay, to: u64) -> Result<Option<u64>, ApiError> {
+    let mut tick = tick_of(engine.world(WorldSel::play)?);
+    while tick < to {
+        let hash = engine.step_play(1)?.to_string();
+        tick += 1;
+        if replay
+            .tick_hash(tick)
+            .is_some_and(|want| !hash.starts_with(want))
+        {
+            return Ok(Some(tick));
+        }
+    }
+    Ok(None)
 }
 
 /// Steps the play world to `tick` (if it is behind) and returns its checkpoint there.
