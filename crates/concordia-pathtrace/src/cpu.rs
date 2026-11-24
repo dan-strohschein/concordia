@@ -194,13 +194,13 @@ fn trace(scene: &Scene, mut ray: Ray, rng: &mut SampleStream, max_bounces: u32) 
         }
         if m.emission.max_element() > 0.0 {
             let w = last_pdf.map_or(1.0, |p| power(p, emitter_pdf(scene, &surf, ray.dir)));
-            radiance += beta * m.emission / exposure * w;
+            radiance += beta * m.emission * w;
         }
         if bounce >= max_bounces {
             break;
         }
         let v = -ray.dir;
-        radiance += beta * direct(scene, &surf, m, v, rng, exposure);
+        radiance += beta * direct(scene, &surf, m, v, rng);
         let Some((l, pdf)) = sample_bsdf(m, surf.n, v, rng) else {
             break;
         };
@@ -249,7 +249,6 @@ fn direct(
     m: &SceneMaterial,
     v: Vec3,
     rng: &mut SampleStream,
-    exposure: f32,
 ) -> Vec3 {
     let mut sum = Vec3::ZERO;
     for light in &scene.lights {
@@ -275,7 +274,7 @@ fn direct(
     {
         let f = m.program.eval(surf.n, v, l).color;
         let w = power(pdf, bsdf_pdf(m, surf.n, v, l));
-        sum += f * le / exposure / pdf * w;
+        sum += f * le / pdf * w;
     }
     sum
 }

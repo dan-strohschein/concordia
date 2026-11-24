@@ -774,6 +774,7 @@ impl Renderer {
             }),
             lut: tables,
             view_mode: view_mode.shader_index(),
+            exposure,
         });
         let frame_buf = frame.keep(up.buffer(device, &block, "frame")?);
         let FrameBlocks {

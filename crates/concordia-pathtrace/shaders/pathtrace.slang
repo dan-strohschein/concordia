@@ -499,7 +499,7 @@ float3 direct(Ctx c, Surface s, float3 v, inout Rng rng) {
                 float3 le = asfloat(c.mtab[mat * 6 + 2].xyz);
                 float pdf = d2 / (cos_l * c.emitter_area);
                 float3 f = eval_program(c, s.mat, s.n, v, l);
-                sum += f * le / c.exposure / pdf * power(pdf, bsdf_pdf(c, s.mat, s.n, v, l));
+                sum += f * le / pdf * power(pdf, bsdf_pdf(c, s.mat, s.n, v, l));
             }
         }
     }
@@ -547,7 +547,7 @@ float3 trace(Ctx c, Ray ray, inout Rng rng) {
                 float epdf = (c.emitter_count == 0 || cos_l <= 0.0) ? 0.0 : s.t * s.t / (cos_l * c.emitter_area);
                 w = power(last_pdf, epdf);
             }
-            radiance += beta * emission / exposure * w;
+            radiance += beta * emission * w;
         }
         if (bounce >= c.max_bounces) break;
         float3 v = -ray.d;

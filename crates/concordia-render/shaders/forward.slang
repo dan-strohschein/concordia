@@ -39,7 +39,7 @@ struct Frame {
     uint4 env_a; uint4 env_b;
     // debug.x = view mode (ViewMode order: 0 lit, 1 unlit, 2 wireframe, 3 normals, 4 albedo,
     // 5 roughness/metallic, 6 overdraw, 7 shadow cascades, 8 light clusters, 9 closures, 10–13 the
-    // feature views, 14 lod).
+    // feature views, 14 lod); debug.y = the exposure as float bits (emission is in nits).
     uint4 debug;
 };
 // Per light: position+range, direction, exposed radiance, spot (scale, offset).
@@ -566,7 +566,8 @@ float4 fs(VsOut i, bool front : SV_IsFrontFace, uniform DrawPush push) : SV_Targ
     Entry ambient_light = single ? covered(slab_entry(frame, c0, EVAL_AMBIENT, v, v, 0, false), blend)
                                  : run(frame, rows, EVAL_AMBIENT, v, v, i.uv, 0, blend);
     lit += ambient_light.color;
-    float3 emissive = ambient_light.emissive;
+    // Emission is luminance in nits, exposed like light (ADR-0102); unlit surfaces return above.
+    float3 emissive = ambient_light.emissive * asfloat(frame.debug.y);
     float alpha = ambient_light.alpha;
     if (mode == 7) {
         const float3 tints[5] = { float3(1.0, 0.3, 0.3), float3(0.3, 1.0, 0.3), float3(0.3, 0.4, 1.0), float3(1.0, 1.0, 0.3), float3(1.0) };
