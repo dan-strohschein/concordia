@@ -212,6 +212,75 @@ Steps, each a commit and a push:
 
 Out of scope: normal and occlusion maps in the tracer, skinning, representation LOD.
 
+**4.1v(a) plan** (`m4/4.1v-vulkan-a`, 2026-11-24; ADR-0088; approved by the author on 2026-11-24 with Q2 `gpu-allocator` and Q3 home layouts plus global barriers. **Author decision: no TDD for Vulkan device code.** It is written first and its tests added after; they can't run on the author's Mac and are re-tested on another machine later. Non-Vulkan pieces (the shared harness, the testkit flag, the SPIR-V shader layout) and the pure modules stay test-first.):
+Scope: the crate `concordia-rhi-vulkan` on `ash`, implementing the existing `Device` trait so the RHI conformance suite runs on it unchanged. Surfaces and the M1 renderer are 4.1v(b); the D4 spike and the editor viewport are 4.1v(c).
+
+Facts found while planning (checked in code, 2026-11-24):
+- **Metal hides synchronisation.** The Metal backend uses tracked hazards (RHI barriers only end an encoder), and the conformance cases rely on it: dispatch → copy, render → readback and upload → dispatch all run without barriers. Vulkan does no tracking, so the backend has to.
+- **The buffer table can't be a uniform buffer on SPIR-V.** Slang lays `ParameterBlock<BufferTable>` (16 384 `uint*`) out as a std140 uniform block with a 16-byte stride: 256 KiB, above many drivers' 64 KiB `maxUniformBufferRange`. Declared as `StructuredBuffer<uint*>` on SPIR-V only, it becomes a storage buffer with an 8-byte stride at set 0, binding 0. Shaders keep `g_buffers.ptr[i]`, and the Metal output is unchanged (tried with `slangc` 2026.22).
+- The texture tables already map cleanly: set 1 binding 0 (16 384 sampled images), set 1 binding 1 (4 samplers), set 2 binding 0 (storage images); push constants are `PushConstant` blocks.
+- Metal's conformance harness (its Slang `ShaderProvider` and `GoldenCheck`) lives in `rhi-metal/tests/conformance.rs`. A second copy for Vulkan would duplicate it.
+- `pipeline_creation_error_is_reported_not_panicked` hands Vulkan the single word `0xdeadbeef`; drivers may crash on malformed SPIR-V, so the backend checks the module before the driver sees it.
+
+Design (ADR-0088):
+- **Vulkan 1.3 core:** dynamic rendering (no `VkRenderPass`), synchronization2, timeline semaphores, descriptor indexing, buffer device addresses. lavapipe, MoltenVK and current desktop drivers all have them. A device without them is `NoDevice` with the missing features named.
+- **Loading:** `ash` with `loaded`, so the loader is opened at run time. The crate builds everywhere, and without a loader (this Mac) every entry point is `NoDevice`.
+- **Bindless:** one descriptor set layout per table (update-after-bind, partially bound), one pipeline layout per device (128 bytes of push constants for every stage), and immutable static samplers. The buffer table is a device-owned storage buffer of `VkDeviceAddress`es written when a bindless buffer is created.
+- **Memory:** `gpu-allocator` (MIT OR Apache-2.0; Traverse Research), `Upload` → CPU-to-GPU, `Readback` → GPU-to-CPU, `GpuOnly` → device-local. A heap is one dedicated allocation; placed textures bind at an offset.
+- **Hazards: home layouts plus a full barrier between steps** (author decision 2026-11-24, Q3). Each texture has a home layout from its usage: storage → `General`, sampled → `ShaderRead`, attachment-only → its attachment layout, copy-only → `General`. Each step (render pass, dispatch, copy) moves what it uses out of the home layout and back, and a global memory barrier separates consecutive steps. That serializes the steps as Metal's tracked mode does. RHI barriers are still checked and translated (aliasing barriers discard from `Undefined`), so a later phase can make the render graph's barriers authoritative and drop the global ones (deferred; perf).
+- **Y up, as on Metal:** a negative-height viewport (core since 1.1), with the front face set so `CullMode::Back` keeps counter-clockwise triangles as it does on Metal.
+- **Queues:** one universal queue. `QueueKind::Compute` and `Transfer` run on it until a phase needs async compute (as on Metal today).
+- **Submission and retirement:** an internal timeline semaphore counts submissions. A retire thread waits on it, then fires `submit_timed` callbacks, recycles command buffers and frees resources destroyed while in use.
+- **Timestamps (ADR-0089's scopes):** a query pool per timed submission, with `vkCmdWriteTimestamp2` at each scope edge and around the whole list, converted with `timestampPeriod` and relative to the first sample. Granularity is `draw_boundary` when the queue has `timestampValidBits` (`none` otherwise); `CapsMask::timestamps` masks it like Metal.
+- **Mesh pipelines, ray tracing and surfaces:** `Unsupported` in (a), and the caps say false.
+- **Validation:** the Khronos validation layer and a debug-utils messenger feed a `ValidationLog`. Tests fail on any error-severity message. Under `CONCORDIA_REQUIRE_VULKAN=1`, a missing layer or device fails instead of skipping.
+- **`unsafe`** only in this crate (R4), with `#![deny(clippy::undocumented_unsafe_blocks)]` at the crate root. Raw `ash` calls stay in a few modules (`instance`, `device`, `memory`, `record`, `timing`); conversion, SPIR-V checks, caps and hazard planning are safe, pure and tested on every OS.
+
+Testing:
+- **Pure logic tests run everywhere**, including this Mac: conversions, the SPIR-V check, caps from probe records, the hazard planner (including a proptest).
+- **Device tests** run the conformance suite plus Vulkan-only cases. Linux CI runs them on lavapipe through a new `vulkan (lavapipe)` job in `ci.yml` (Mesa's `mesa-vulkan-drivers`, `vulkan-validationlayers`) with `CONCORDIA_REQUIRE_VULKAN=1`. The `regression` workflow's Linux job sets it too.
+- **On this Mac** the crate builds and its device tests skip (no loader). `CONCORDIA_REQUIRE_GPU=1` doesn't make them fail: it keeps meaning Metal.
+- **No local red/green loop** (author decision 2026-11-24): no container. The `vulkan (lavapipe)` job is informational (`continue-on-error`) until the author's re-test on another machine, then it becomes required.
+- **Goldens:** the RHI goldens are shared across backends, with the same `tests/golden/rhi/tolerances.ron`. If lavapipe misses one, the images go on a review page before any per-backend golden or tolerance change. New images are collected with `INSTA_UPDATE=new` and never blessed in CI.
+- **Deferred (author decision, 2026-11-24):** real GPUs, meaning the author's Linux machine and MoltenVK on the Mac. The plan's "conformance passes on lavapipe and MoltenVK" becomes lavapipe now and MoltenVK later. No perf work or budget changes.
+
+Steps, each a commit and a push (device code first, then its tests, per the author's decision):
+1. **Shared conformance harness** (no behaviour change):
+   - Metal's Slang `ShaderProvider` moves into `concordia-shaders` (feature `conformance`, `SlangShaders::new(Target)`), and its `GoldenCheck` into `concordia-testkit` (`golden::RhiGoldens`).
+   - `conformance_tests!` gains an optional per-case `finish` hook.
+   - `concordia-testkit::vulkan_required()` reads `CONCORDIA_REQUIRE_VULKAN`, with the same "exactly `1`" rule.
+   - Tests: `vulkan_required_only_for_exactly_1`, and the Metal suite unchanged.
+2. **SPIR-V bindless ABI:**
+   - `concordia-shaders` defines `CONCORDIA_SPIRV` for the SPIR-V target, and `bindless.slang` declares the buffer table as a storage buffer under it.
+   - Tests first: `spirv_bindless_tables_use_sets_0_1_2` (reflection: set 0 binding 0 storage buffer; set 1 bindings 0 and 1; set 2 binding 0) and `msl_bindless_layout_is_unchanged`. Every Metal golden stays identical.
+3. **Crate, loader and pure modules; CI and the container:**
+   - `concordia-rhi-vulkan` (`ash`, `gpu-allocator`), with `probe()`, `new_headless()` and `new_headless_masked()`.
+   - The `vulkan (lavapipe)` CI job (informational).
+   - Tests:
+     - `formats_usages_and_states_map_to_vulkan` (every `Format`, `Layout`, `Stages`, `AccessFlags`, compare, cull and blend value);
+     - `malformed_spirv_is_a_pipeline_compile_error` (magic, length, version, a missing entry point by name and stage);
+     - `caps_from_records` (a recorded lavapipe probe and hand-written fixtures: no descriptor indexing, no timestamps, too few bindless slots);
+     - `requirement_m1_names_vulkan_features`: `Requirement::M1`'s bindless message becomes backend-neutral;
+     - `without_a_loader_the_device_is_no_device` (runs where no loader exists; under the require flag it asserts a device instead).
+4. **Hazard planner** (pure): `plan(commands, homes) → steps with barriers`.
+   - Example tests: `copy_after_dispatch_waits_for_shader_writes`, `render_targets_return_to_their_home_layout`, `copy_from_a_render_target_transitions_and_returns`, `aliasing_barrier_discards_from_undefined`, `draws_inside_one_pass_need_no_barrier`, `explicit_barriers_are_translated`.
+   - Property test: `every_command_sees_the_layout_it_needs`, which simulates layouts over random command lists.
+5. **Device bring-up:**
+   - Instance, validation messenger, device selection (discrete, then integrated, virtual, CPU), the universal queue, the allocator, the bindless sets and pipeline layout, timelines and the retire thread.
+   - Conformance cases: `device_reports_caps_and_limits`, `timeline_fence_signals_monotonically`, `buffer_upload_and_readback_round_trips`, `invalid_descriptors_and_stale_handles_are_errors`.
+   - Vulkan cases: `validation_errors_fail_the_test` (a test hook provokes one known error; the log must catch it) and `destroyed_resources_outlive_their_last_submission`.
+6. **Compute:** compute pipelines from SPIR-V and bindless buffers. Cases: `compute_dispatch_writes_expected_values`, `compute_reads_bindless_buffer_by_index`, `pipeline_creation_error_is_reported_not_panicked`.
+7. **Graphics:**
+   - Textures, the static samplers, heaps and placed textures; graphics pipelines and dynamic rendering, with MSAA resolve, depth and blending.
+   - Cases: `triangle_renders_golden`, `clear_color_readback_is_exact`, `depth_test_orders_overlapping_triangles`, `msaa4x_resolve_produces_antialiased_edge`, `barrier_between_compute_write_and_fragment_read_is_respected`, `transient_textures_aliased_in_same_heap_do_not_corrupt`, `static_samplers_filter_and_address_as_named`, `additive_blend_sums_overlapping_draws`, `readback_of_frame_n_does_not_block_frame_n_plus_1_submission`.
+   - A new conformance case for both backends: `clip_space_y_is_up_and_back_faces_cull`.
+8. **Timestamps:** `submit_timed_reports_the_gpu_time_once`, `timer_scopes_report_each_scope_once_in_order`, and `masked_timestamps_report_no_scopes` (Vulkan).
+9. **Mutation checks, docs and the checklist:**
+   - Mutation targets: the hazard planner's global barrier and layout returns, the buffer-table write, the front-face rule, timestamp ordering and the validation log.
+   - Docs: ADR-0088 accepted, the As built, `plans/README.md`, the crate's `AGENTS.md` and README.
+
+Out of scope: surfaces and present, the M1 renderer, `concordia gpu-probe --backend vulkan` (all 4.1v(b)); mesh shaders (4.3b); async queues; making the render graph's barriers authoritative; pipeline caches.
+
 ### Effort (re-estimated)
 - The plan's 32–45 weeks, plus **4.1v Vulkan at 6–10**, plus about 1 for D2, D6 and D9: **about 39–56 engineer-weeks**.
 - Track R is now about 27–38 weeks on the critical path, with Track G (12–17) after it (R2).
