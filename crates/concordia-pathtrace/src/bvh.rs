@@ -26,56 +26,28 @@ pub struct Node {
     pub count: u32,
 }
 
-/// A built hierarchy over a triangle list (hits name indices into that list).
+/// A hierarchy over boxes (triangles, or instances): flattened nodes and the leaf order.
 #[derive(Debug, Clone, Default)]
-pub struct Bvh {
-    triangles: Vec<Triangle>,
+pub struct Tree {
     nodes: Vec<Node>,
     order: Vec<u32>,
 }
 
-impl Bvh {
-    /// Builds a hierarchy over `triangles`.
-    pub fn build(triangles: &[Triangle]) -> Self {
-        let mut bvh = Self {
-            triangles: triangles.to_vec(),
-            nodes: Vec::with_capacity(triangles.len().max(1) * 2),
-            order: (0..triangles.len() as u32).collect(),
+impl Tree {
+    /// Builds a hierarchy over primitives with these (min, max) bounds.
+    pub fn build(bounds: &[(Vec3, Vec3)]) -> Self {
+        let mut tree = Self {
+            nodes: Vec::with_capacity(bounds.len().max(1) * 2),
+            order: (0..bounds.len() as u32).collect(),
         };
-        if !triangles.is_empty() {
+        if !bounds.is_empty() {
             let builder = Builder {
-                centroids: triangles.iter().map(Triangle::centroid).collect(),
-                bounds: triangles.iter().map(Triangle::bounds).collect(),
+                centroids: bounds.iter().map(|(lo, hi)| (*lo + *hi) * 0.5).collect(),
+                bounds: bounds.to_vec(),
             };
-            builder.node(&mut bvh.nodes, &mut bvh.order, 0, triangles.len());
+            builder.node(&mut tree.nodes, &mut tree.order, 0, bounds.len());
         }
-        bvh
-    }
-
-    /// The nearest hit along `ray`.
-    pub fn intersect(&self, ray: &Ray) -> Option<Hit> {
-        let mut nearest = None;
-        // Each hit shortens the search, so every later one is nearer.
-        self.walk(ray, |hit| {
-            nearest = Some(hit);
-            false
-        });
-        nearest
-    }
-
-    /// True if anything blocks `ray` (shadow rays; stops at the first hit).
-    pub fn occluded(&self, ray: &Ray) -> bool {
-        let mut blocked = false;
-        self.walk(ray, |_| {
-            blocked = true;
-            true
-        });
-        blocked
-    }
-
-    /// The triangles, in the caller's order.
-    pub fn triangles(&self) -> &[Triangle] {
-        &self.triangles
+        tree
     }
 
     /// The flattened nodes (root first).
@@ -83,42 +55,38 @@ impl Bvh {
         &self.nodes
     }
 
-    /// Triangle indices in leaf order.
+    /// Primitive indices in leaf order.
     pub fn order(&self) -> &[u32] {
         &self.order
     }
 
-    /// Visits leaf triangles the ray may hit, nearest box first, shortening the ray to each hit;
-    /// `on_hit` returns true to stop.
-    fn walk(&self, ray: &Ray, mut on_hit: impl FnMut(Hit) -> bool) {
+    /// Visits the primitives whose boxes `ray` crosses, nearest box first. `leaf` may shorten
+    /// the ray (`t_max`) and returns true to stop.
+    pub fn walk(&self, ray: &mut Ray, mut leaf: impl FnMut(u32, &mut Ray) -> bool) {
         if self.nodes.is_empty() {
             return;
         }
         let inv = Vec3::ONE / ray.dir;
-        let mut ray = *ray;
         let mut stack = [0u32; 64];
         let mut top = 1;
         while top > 0 {
             top -= 1;
             let index = stack[top];
             let node = &self.nodes[index as usize];
-            if slab(node, &ray, inv).is_none() {
+            if slab(node, ray, inv).is_none() {
                 continue;
             }
             if node.count > 0 {
-                let leaf = &self.order[node.first as usize..(node.first + node.count) as usize];
-                for &prim in leaf {
-                    if let Some(hit) = self.triangles[prim as usize].intersect(&ray, prim) {
-                        ray.t_max = hit.t;
-                        if on_hit(hit) {
-                            return;
-                        }
+                let leaves = &self.order[node.first as usize..(node.first + node.count) as usize];
+                for &prim in leaves {
+                    if leaf(prim, ray) {
+                        return;
                     }
                 }
                 continue;
             }
             let (left, right) = (index + 1, node.first);
-            let near = |child: u32| slab(&self.nodes[child as usize], &ray, inv);
+            let near = |child: u32| slab(&self.nodes[child as usize], ray, inv);
             // Push the farther child first so the nearer one is visited next.
             let order = match (near(left), near(right)) {
                 (Some(a), Some(b)) if a <= b => [Some(right), Some(left)],
@@ -128,13 +96,78 @@ impl Bvh {
                 (None, None) => [None, None],
             };
             for child in order.into_iter().flatten() {
-                debug_assert!(top < stack.len(), "BVH deeper than its stack");
+                debug_assert!(top < stack.len(), "tree deeper than its stack");
                 if top < stack.len() {
                     stack[top] = child;
                     top += 1;
                 }
             }
         }
+    }
+}
+
+/// A hierarchy over a triangle list (hits name indices into that list).
+#[derive(Debug, Clone, Default)]
+pub struct Bvh {
+    triangles: Vec<Triangle>,
+    tree: Tree,
+}
+
+impl Bvh {
+    /// Builds a hierarchy over `triangles`.
+    pub fn build(triangles: &[Triangle]) -> Self {
+        let bounds: Vec<_> = triangles.iter().map(Triangle::bounds).collect();
+        Self {
+            triangles: triangles.to_vec(),
+            tree: Tree::build(&bounds),
+        }
+    }
+
+    /// The nearest hit along `ray`.
+    pub fn intersect(&self, ray: &Ray) -> Option<Hit> {
+        let mut nearest = None;
+        // Each hit shortens the ray, so every later one is nearer.
+        self.tree.walk(&mut ray.clone(), |prim, ray| {
+            if let Some(hit) = self.triangles[prim as usize].intersect(ray, prim) {
+                ray.t_max = hit.t;
+                nearest = Some(hit);
+            }
+            false
+        });
+        nearest
+    }
+
+    /// True if anything blocks `ray` (shadow rays; stops at the first hit).
+    pub fn occluded(&self, ray: &Ray) -> bool {
+        let mut blocked = false;
+        self.tree.walk(&mut ray.clone(), |prim, ray| {
+            blocked = self.triangles[prim as usize].intersect(ray, prim).is_some();
+            blocked
+        });
+        blocked
+    }
+
+    /// The triangles, in the caller's order.
+    pub fn triangles(&self) -> &[Triangle] {
+        &self.triangles
+    }
+
+    /// The mesh's bounds (min, max); empty meshes have inverted bounds.
+    pub fn bounds(&self) -> (Vec3, Vec3) {
+        self.tree.nodes().first().map_or(
+            (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)),
+            |n| (n.min, n.max),
+        )
+    }
+
+    /// The flattened nodes (root first).
+    pub fn nodes(&self) -> &[Node] {
+        self.tree.nodes()
+    }
+
+    /// Triangle indices in leaf order.
+    pub fn order(&self) -> &[u32] {
+        self.tree.order()
     }
 }
 

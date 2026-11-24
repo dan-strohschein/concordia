@@ -111,7 +111,9 @@ fn the_bvh_splits_into_small_leaves_covering_every_triangle_once() {
     let triangles: Vec<Triangle> = (0..1000)
         .map(|i| {
             let o = Vec3::new((i % 10) as f32, ((i / 10) % 10) as f32, (i / 100) as f32) * 3.0;
-            Triangle { v: [o, o + Vec3::X, o + Vec3::Y] }
+            Triangle {
+                v: [o, o + Vec3::X, o + Vec3::Y],
+            }
         })
         .collect();
     let bvh = Bvh::build(&triangles);

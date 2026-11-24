@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 6049f588cef6068a4dcc0ecdc71d3a43c1dcbec57fd99ef8d859d58adc8fc216 # shrinks to meshes = [[Triangle { v: [Vec3(0.0, -1.2253925, 0.0), Vec3(0.0, 0.9823075, 0.0), Vec3(0.0, 0.0, 1.1464107)] }]], placements = [(0, Mat4 { x_axis: Vec4(-0.19680586, 0.016372118, -0.031613912, 0.0), y_axis: Vec4(-0.23212586, 1.645853, 2.297401, 0.0), z_axis: Vec4(0.39952326, 2.0477738, -1.4266545, 0.0), w_axis: Vec4(5.849916, 6.824637, 0.0, 1.0) })], rays = [(Vec3(1.7745167, 6.64084, 0.0), Vec3(0.87327236, 0.0, -0.13559543))]
+cc d443ba33602dcc861c515dd579d47688f704a772af88d012aed579ced2f44e4c # shrinks to meshes = [[Triangle { v: [Vec3(0.0, 0.0, 0.0), Vec3(-1.4510998, -0.57050836, 1.6945735), Vec3(-0.8328584, 0.45131493, 0.03299386)] }]], placements = [(0, Mat4 { x_axis: Vec4(0.7696507, 1.2581391, 1.7670193, 0.0), y_axis: Vec4(0.42895493, -2.0365536, 1.2632135, 0.0), z_axis: Vec4(2.1931562, -0.09057731, -0.8907683, 0.0), w_axis: Vec4(-0.3196677, -4.6807046, 3.2073994, 1.0) })], rays = [(Vec3(3.9278219, -10.187189, -4.2541604), Vec3(-0.4921792, 0.9441441, 0.69419837))]
