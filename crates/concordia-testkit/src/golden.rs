@@ -62,7 +62,7 @@ impl RgbaImage {
             .collect()
     }
 
-    fn save(&self, path: &Path) -> Result<(), GoldenError> {
+    pub(crate) fn save(&self, path: &Path) -> Result<(), GoldenError> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| io(path, e))?;
         }
@@ -93,7 +93,8 @@ impl RgbaImage {
 }
 
 /// FLIP statistics of a comparison (0 = identical, 1 = maximally different).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
 pub struct FlipScore {
     /// Mean error.
     pub mean: f32,
@@ -171,6 +172,19 @@ pub enum GoldenError {
     /// Blessing was requested while `CI=true`.
     #[error("refusing to bless golden images in CI (CI=true); bless locally with `just bless`")]
     BlessInCi,
+    /// A reference's own noise is too large to measure the renderer against it.
+    #[error("{name}: noise FLIP mean {:.4} exceeds a fifth of the tolerance ({:.4}); trace it with more spp", noise.mean, tolerance.mean / 5.0)]
+    NoisyReference {
+        /// Reference name.
+        name: String,
+        /// FLIP between two seeds.
+        noise: FlipScore,
+        /// The suite's tolerance for it.
+        tolerance: Tolerance,
+    },
+    /// A reference file is invalid.
+    #[error("{0}")]
+    Reference(String),
     /// Images or buffers have the wrong size.
     #[error("image size: {0}")]
     Size(String),
@@ -290,7 +304,12 @@ impl Golden {
         })
     }
 
-    fn path(&self, suite: &str, name: &str) -> Result<PathBuf, GoldenError> {
+    /// True when running in CI (blessing is refused there).
+    pub fn is_ci(&self) -> bool {
+        self.ci
+    }
+
+    pub(crate) fn path(&self, suite: &str, name: &str) -> Result<PathBuf, GoldenError> {
         for part in [suite, name] {
             let ok = !part.is_empty()
                 && part

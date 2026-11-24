@@ -23,7 +23,7 @@ pub use env::EnvMap;
 pub use error::PathTraceError;
 pub use geometry::{Hit, Ray, Triangle};
 pub use gpu::GpuTracer;
-pub use module::{CaptureReference, PathTraceModule};
+pub use module::{CaptureReference, PathTraceModule, Traced, trace};
 pub use rng::SampleStream;
 pub use scene::{Light, MaterialId, MeshId, Scene, SceneBuilder};
 pub use world::{AssetKind, LoadedAssets, View, asset_refs, scene_from_world};

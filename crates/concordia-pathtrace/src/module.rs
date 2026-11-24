@@ -174,46 +174,77 @@ impl Method for CaptureReference {
         p: CaptureReferenceParams,
     ) -> Result<CaptureReferenceResult, ApiError> {
         check(&p)?;
-        let sel = p.world.unwrap_or_default();
-        let refs = asset_refs(engine.world(sel)?);
-        let mut assets = match engine.state_mut::<AssetDb>() {
-            Some(db) => LoadedAssets::load(&refs, db),
-            None => LoadedAssets::load(&refs, &mut BuiltinsOnly),
-        };
-        let world = engine.world(sel)?;
-        let view = match (&p.camera, &p.view) {
-            (Some(c), _) => View::Camera(Some(c.resolve(world)?)),
-            (None, Some(v)) => View::Look {
-                eye: v.eye,
-                target: v.target,
-                projection: v.projection,
-            },
-            (None, None) => View::Camera(None),
-        };
-        let scene = scene_from_world(world, &mut assets, &view).map_err(api_error)?;
-        let (backend, used) = backend(engine, p.backend)?;
-        let settings = Settings {
-            width: p.width,
-            height: p.height,
-            spp: p.spp,
-            seed: p.seed,
-            max_bounces: p.max_bounces,
-            threads: None,
-        };
-        let start = std::time::Instant::now();
-        let image = render(&scene, &settings, &backend).map_err(api_error)?;
-        let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-        let rgba = image.to_rgba8(scene.camera.tonemap);
+        let traced = trace(engine, &p)?;
         Ok(CaptureReferenceResult {
-            image: EncodedImage::from_rgba8(image.width, image.height, &rgba)
+            image: EncodedImage::from_rgba8(traced.width, traced.height, &traced.rgba)
                 .map_err(|e| ApiError::new(ApiErrorKind::Internal, e))?,
-            width: image.width,
-            height: image.height,
+            width: traced.width,
+            height: traced.height,
             spp: p.spp,
-            backend: used,
-            elapsed_ms,
+            backend: traced.backend,
+            elapsed_ms: traced.elapsed_ms,
         })
     }
+}
+
+/// A traced, tone-mapped image.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Traced {
+    /// Width in pixels.
+    pub width: u32,
+    /// Height in pixels.
+    pub height: u32,
+    /// sRGB RGBA8 pixels, rows from the top.
+    pub rgba: Vec<u8>,
+    /// Where it was traced.
+    pub backend: ReferenceBackend,
+    /// Wall-clock time (ms).
+    pub elapsed_ms: f64,
+}
+
+/// Traces `p` without the agents' cap (`just bless-reference` uses this; the method caps first).
+pub fn trace(engine: &mut Engine, p: &CaptureReferenceParams) -> Result<Traced, ApiError> {
+    if p.camera.is_some() && p.view.is_some() {
+        return Err(ApiError::new(
+            ApiErrorKind::InvalidParams,
+            "pass either camera or view, not both",
+        ));
+    }
+    let sel = p.world.unwrap_or_default();
+    let refs = asset_refs(engine.world(sel)?);
+    let mut assets = match engine.state_mut::<AssetDb>() {
+        Some(db) => LoadedAssets::load(&refs, db),
+        None => LoadedAssets::load(&refs, &mut BuiltinsOnly),
+    };
+    let world = engine.world(sel)?;
+    let view = match (&p.camera, &p.view) {
+        (Some(c), _) => View::Camera(Some(c.resolve(world)?)),
+        (None, Some(v)) => View::Look {
+            eye: v.eye,
+            target: v.target,
+            projection: v.projection,
+        },
+        (None, None) => View::Camera(None),
+    };
+    let scene = scene_from_world(world, &mut assets, &view).map_err(api_error)?;
+    let (backend, used) = backend(engine, p.backend)?;
+    let settings = Settings {
+        width: p.width,
+        height: p.height,
+        spp: p.spp,
+        seed: p.seed,
+        max_bounces: p.max_bounces,
+        threads: None,
+    };
+    let start = std::time::Instant::now();
+    let image = render(&scene, &settings, &backend).map_err(api_error)?;
+    Ok(Traced {
+        width: image.width,
+        height: image.height,
+        rgba: image.to_rgba8(scene.camera.tonemap),
+        backend: used,
+        elapsed_ms: start.elapsed().as_secs_f64() * 1000.0,
+    })
 }
 
 /// The most samples (width × height × spp) one call may trace: about a minute of work, so an
@@ -221,12 +252,6 @@ impl Method for CaptureReference {
 pub const MAX_SAMPLES: u64 = 1280 * 720 * 64;
 
 fn check(p: &CaptureReferenceParams) -> Result<(), ApiError> {
-    if p.camera.is_some() && p.view.is_some() {
-        return Err(ApiError::new(
-            ApiErrorKind::InvalidParams,
-            "pass either camera or view, not both",
-        ));
-    }
     let samples = u64::from(p.width) * u64::from(p.height) * u64::from(p.spp);
     if samples > MAX_SAMPLES {
         return Err(ApiError::new(

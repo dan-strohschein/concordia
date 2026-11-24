@@ -1,0 +1,30 @@
+---
+source: crates/concordia-testkit/tests/reference.rs
+expression: text
+---
+ReferenceFile(
+    blessed: Some((
+        backend: "gpu",
+        baseline: (
+            mean: 0.12,
+            p99: 0.6,
+        ),
+        git: "0ee19fb",
+        noise: (
+            mean: 0.01,
+            p99: 0.3,
+        ),
+    )),
+    height: 720,
+    max_bounces: 8,
+    project: "examples/m2-lamplight",
+    scene: None,
+    seed: 1,
+    spp: 4096,
+    view: Some((
+        eye: (0.0, 1.7, 6.0),
+        fov_y_degrees: 55.0,
+        target: (0.0, 1.5, 0.0),
+    )),
+    width: 1280,
+)

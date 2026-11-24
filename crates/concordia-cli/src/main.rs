@@ -46,6 +46,8 @@ enum Command {
     Test(cmd::assert::TestArgs),
     /// Measure a perf scene's GPU time per pass and judge it against its budget (`perf run`).
     Perf(cmd::perf::PerfArgs),
+    /// Bless a path-traced reference image and its baseline (`reference bless`; never in CI).
+    Reference(cmd::reference::ReferenceArgs),
 }
 
 /// A failure with a process exit code.
@@ -85,6 +87,7 @@ fn main() -> ExitCode {
         Command::Assert(args) => cmd::assert::run_assert(&args),
         Command::Test(args) => cmd::assert::run_test(&args),
         Command::Perf(args) => cmd::perf::run(&args),
+        Command::Reference(args) => cmd::reference::run(&args),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

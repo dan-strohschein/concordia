@@ -16,6 +16,7 @@ path = "src/main.rs"
 clap.workspace = true
 concordia-api.workspace = true
 concordia-app.workspace = true
+concordia-pathtrace.workspace = true
 concordia-perf.workspace = true
 concordia-replay.workspace = true
 concordia-assets.workspace = true
@@ -29,7 +30,9 @@ concordia-rhi.workspace = true
 concordia-rhi-metal.workspace = true
 concordia-scene.workspace = true
 concordia-studio.workspace = true
+concordia-testkit.workspace = true
 serde_json.workspace = true
+base64.workspace = true
 tokio = { workspace = true, features = ["signal"] }
 
 [dev-dependencies]
@@ -38,7 +41,6 @@ concordia-nav.workspace = true
 concordia-rhi.workspace = true
 futures.workspace = true
 concordia-rhi-metal.workspace = true
-concordia-testkit.workspace = true
 insta.workspace = true
 tempfile.workspace = true
 tokio-tungstenite.workspace = true

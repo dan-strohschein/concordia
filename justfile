@@ -123,6 +123,11 @@ gate-live milestone:
 bless:
     CONCORDIA_BLESS=1 cargo insta test --workspace --accept --test-runner nextest
 
+# Trace a path-traced reference at full quality and record its baseline and noise (ADR-0090).
+# Never in CI; review the image and numbers before committing.
+bless-reference name:
+    cargo run --release -p concordia-cli -- reference bless {{name}}
+
 # Release-only perf smoke tests (fail on pathological regressions)
 perf-smoke:
     cargo nextest run --workspace --release -E 'test(/^perf_smoke_/)'
