@@ -46,6 +46,7 @@ fn bless(golden: &Path, ci: bool) -> Output {
     } else {
         cmd.env_remove("CI");
     }
+    cmd.current_dir(golden.parent().unwrap());
     cmd.output().expect("concordia runs")
 }
 
@@ -88,6 +89,13 @@ fn blessing_records_the_baseline_and_the_noise() {
         blessed.noise
     );
     assert!(stdout(&out).contains("baseline"), "{}", stdout(&out));
+    let review = dir.path().join("target/reference-review/m4_reference");
+    for kind in ["expected", "actual", "flip"] {
+        assert!(
+            review.join(format!("stack.{kind}.png")).is_file(),
+            "{kind} for review"
+        );
+    }
 }
 
 #[test]

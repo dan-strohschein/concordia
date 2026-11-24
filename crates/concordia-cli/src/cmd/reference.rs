@@ -44,6 +44,9 @@ pub(crate) fn run(args: &ReferenceArgs) -> Result<(), Failure> {
     }
 }
 
+/// Where the reference, the renderer's image and their FLIP heat map are written for review.
+const REVIEW_DIR: &str = "target/reference-review";
+
 /// Seed offset for the second trace (the noise measurement).
 const NOISE_SEED_OFFSET: u32 = 0x9e37;
 /// Near and far planes of a reference's free view.
@@ -53,7 +56,7 @@ const FAR: f32 = 1000.0;
 fn bless_reference(args: &BlessArgs) -> Result<(), Failure> {
     let golden = Golden::new(
         args.golden.clone(),
-        PathBuf::from("target/golden-failures"),
+        PathBuf::from(REVIEW_DIR),
         false,
         std::env::var("CI").as_deref() == Ok("true"),
     );
@@ -68,7 +71,7 @@ fn bless_reference(args: &BlessArgs) -> Result<(), Failure> {
     let reference = image(&first)?;
     let blessed = Blessed {
         backend: format!("{:?}", first.backend),
-        git: git_hash()?,
+        git: git_hash(Path::new(&file.project))?,
         baseline: flip_score(&reference, &rendered).map_err(fail)?,
         noise: flip_score(&reference, &image(&second)?).map_err(fail)?,
     };
@@ -81,6 +84,13 @@ fn bless_reference(args: &BlessArgs) -> Result<(), Failure> {
         blessed.baseline.p99,
         blessed.noise.mean,
         blessed.noise.p99
+    );
+    let review = golden
+        .write_comparison(SUITE, &args.name, &reference, &rendered)
+        .map_err(fail)?;
+    println!(
+        "review: {review}/{}.{{expected,actual,flip}}.png (reference, renderer, FLIP)",
+        args.name
     );
     file.blessed = Some(blessed);
     golden
@@ -104,9 +114,11 @@ fn image(traced: &Traced) -> Result<RgbaImage, Failure> {
     RgbaImage::new(traced.width, traced.height, traced.rgba.clone()).map_err(fail)
 }
 
-/// The short hash of HEAD.
-fn git_hash() -> Result<String, Failure> {
+/// The short hash of HEAD in the repository holding `project`.
+fn git_hash(project: &Path) -> Result<String, Failure> {
     let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(project)
         .args(["rev-parse", "--short", "HEAD"])
         .output()
         .map_err(|e| fail(format!("git: {e}")))?;

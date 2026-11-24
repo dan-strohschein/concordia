@@ -295,7 +295,7 @@ impl Golden {
         if tolerance.accepts(&score) {
             return Ok(score);
         }
-        let failures = self.write_failures(suite, name, &expected, image)?;
+        let failures = self.write_comparison(suite, name, &expected, image)?;
         Err(GoldenError::Mismatch {
             path,
             score,
@@ -324,7 +324,9 @@ impl Golden {
         Ok(self.root.join(suite).join(format!("{name}.png")))
     }
 
-    fn write_failures(
+    /// Writes `<name>.actual.png`, `.expected.png` and the FLIP heat map `.flip.png` under the
+    /// failures directory's `suite`; returns that directory.
+    pub fn write_comparison(
         &self,
         suite: &str,
         name: &str,
