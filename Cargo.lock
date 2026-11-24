@@ -1032,8 +1032,12 @@ dependencies = [
 name = "concordia-pathtrace"
 version = "0.0.0"
 dependencies = [
+ "concordia-assets",
  "concordia-core",
+ "concordia-material",
+ "concordia-render-types",
  "proptest",
+ "rayon",
  "thiserror 2.0.21",
 ]
 

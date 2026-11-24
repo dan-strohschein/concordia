@@ -12,7 +12,11 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+concordia-assets.workspace = true
 concordia-core.workspace = true
+concordia-material.workspace = true
+concordia-render-types.workspace = true
+rayon.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

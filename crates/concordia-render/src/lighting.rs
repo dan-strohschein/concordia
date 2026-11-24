@@ -37,9 +37,8 @@ pub(crate) fn punctual_lights(
         let (scale, offset) = match light.kind {
             PunctualKind::Point => (0.0, 1.0),
             PunctualKind::Spot { inner, outer } => {
-                let (ci, co) = (inner.cos(), outer.cos());
-                let scale = 1.0 / (ci - co).max(1e-4);
-                (scale, -co * scale)
+                let cone = concordia_render_types::SpotCone::new(inner, outer);
+                (cone.scale, cone.offset)
             }
         };
         push_rows(

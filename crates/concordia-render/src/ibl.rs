@@ -145,24 +145,7 @@ fn srgb_to_linear(c: u8) -> f32 {
     }
 }
 
-/// Direction → (u, v): u = 0.5 at -Z, increasing toward +X; v = 0 straight up.
-pub fn dir_to_uv(d: Vec3) -> [f32; 2] {
-    let d = d.normalize_or(Vec3::NEG_Z);
-    [
-        0.5 + d.x.atan2(-d.z) / TAU,
-        d.y.clamp(-1.0, 1.0).acos() / PI,
-    ]
-}
-
-/// (u, v) → unit direction (inverse of [`dir_to_uv`]).
-pub fn uv_to_dir([u, v]: [f32; 2]) -> Vec3 {
-    let (phi, theta) = ((u - 0.5) * TAU, v * PI);
-    Vec3::new(
-        theta.sin() * phi.sin(),
-        theta.cos(),
-        -theta.sin() * phi.cos(),
-    )
-}
+pub use concordia_render_types::equirect::{dir_to_uv, uv_to_dir};
 
 /// The nine real SH basis functions at `n`.
 fn sh_basis(n: Vec3) -> [f32; 9] {
