@@ -974,21 +974,41 @@ fn music_skill_examples_are_real_params_components_and_a_valid_cue() {
     }
 }
 
+/// The generator skills (M3 3.7c) show working calls; `gen_run` imports its output itself, so
+/// no skill tells a role to import a generated file again.
 #[test]
-fn synthesize_sfx_waits_only_for_the_synthesizer() {
-    let text = skill("concordia-synthesize-sfx");
-    let note = text
-        .lines()
-        .find(|l| l.contains("Not available yet"))
-        .expect("its note stays");
-    assert!(
-        note.contains("gen_run") && note.contains("phase 3.7"),
-        "{note}"
-    );
-    assert!(
-        !note.contains("engine audio"),
-        "engine audio has landed: {note}"
-    );
+fn generator_skills_show_gen_run_and_never_reimport_its_output() {
+    for (name, needles) in [
+        (
+            "concordia-synthesize-sfx",
+            &["\"provider\": \"sfx\"", "gen_list"][..],
+        ),
+        (
+            "concordia-generate-mesh-blender",
+            &[
+                "\"provider\": \"mesh\"",
+                "\"provider\": \"blender\"",
+                "SEED",
+                "actions",
+            ][..],
+        ),
+        (
+            "concordia-music",
+            &["\"provider\": \"music\"", "loop_from_bar"][..],
+        ),
+        ("concordia-add-material", &["\"provider\": \"texture\""][..]),
+    ] {
+        let text = skill(name);
+        for needle in needles {
+            assert!(text.contains(needle), "{name} explains {needle}");
+        }
+        for line in text.lines().filter(|l| l.contains("asset_import")) {
+            assert!(
+                !line.to_lowercase().contains("import it") && !line.contains("then import"),
+                "{name}: gen_run already imports: {line}"
+            );
+        }
+    }
 }
 
 #[test]

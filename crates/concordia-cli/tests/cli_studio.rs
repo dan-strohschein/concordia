@@ -305,6 +305,22 @@ fn studio_init_adds_replay_when_missing_for_the_qa_playtester() {
 }
 
 #[test]
+fn studio_init_adds_gen_when_missing_for_the_content_roles() {
+    let dir = tempfile::tempdir().unwrap();
+    // A project made before [gen] existed (M3 3.7c).
+    let root = new_project(dir.path(), &["--no-studio"]);
+    let manifest_path = root.join("concordia.toml");
+    let manifest = std::fs::read_to_string(&manifest_path).unwrap();
+    assert!(manifest.contains("[gen]\n"), "{manifest}");
+    std::fs::write(&manifest_path, manifest.replace("[gen]\n", "")).unwrap();
+    let output = run(&["studio", "init"], &root);
+    assert!(output.status.success(), "{}", stderr(&output));
+    let manifest = std::fs::read_to_string(&manifest_path).unwrap();
+    assert_eq!(manifest.matches("[gen]").count(), 1, "{manifest}");
+    assert!(root.join(".claude/agents/modeler.md").is_file());
+}
+
+#[test]
 fn studio_init_adds_anim_when_missing_for_the_animator() {
     let dir = tempfile::tempdir().unwrap();
     // A project made before [anim] existed.

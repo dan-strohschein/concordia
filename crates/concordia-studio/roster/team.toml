@@ -9,13 +9,9 @@ director = "director"
 count = 2
 
 # Roles whose engine features have not landed yet. Enable them when they do.
-[roles.modeler]
-enabled = false
-reason = "mesh generation and the Blender bridge arrive in M3 phase 3.7"
-
 [roles.vfx-artist]
 enabled = false
-reason = "particles and VFX arrive in M2"
+reason = "particles and VFX arrive in M11"
 
 [concurrency]
 max_parallel_subagents = 4

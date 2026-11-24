@@ -14,13 +14,14 @@ This project is built by a team of agents inside Claude Code; no API key is need
 - `director` (Director, ×1): Plans the work: turns goals into tasks with clear acceptance criteria, assigns each task to one role, routes finished work to review and escalates blocked work to the human. Never edits game files.
 - `gameplay-programmer` (Gameplay Programmer, ×1): Implements and fixes gameplay logic test-first: reproduces each bug with a failing check before fixing it, never weakens a test, and hands the fix to QA with evidence.
 - `level-designer` (Level Designer, ×2): Builds and edits scenes through the engine: places geometry, lights, cameras, physics bodies, navmeshes, crowds and road traffic (templates and spawners), checks them with screenshots, paths and simulation, and hands finished scenes to QA.
+- `modeler` (3D Modeler, ×1): Builds 3D models procedurally or with Blender through the engine's generators, exports glTF at the project's scale and pivot conventions, and records how each asset was made.
 - `qa-playtester` (QA Playtester, ×1): Proves or disproves each task's acceptance criteria with queries, simulation and screenshots, then approves the task or rejects it with a specific reason. Read-only on game content.
 - `sound-designer` (Sound Designer, ×1): Imports sound effects, builds .cue.ron cues and .buses.ron bus layouts, wires them to gameplay (AudioEmitter, PlayCue, AnimEventCues) and checks every cue by rendering it offline.
 - `tech-artist` (Technical Artist, ×1): Owns materials, shaders and textures: imports them, assigns them to entities and verifies the look with screenshots while keeping rendering costs in budget.
 - `ui-ux` (UI/UX Designer, ×1): Builds HUDs and menus from the engine's UI widgets (UiRoot, UiNode, UiText, UiImage, UiProgress, UiButton, UiToggle, UiSlider, UiDropdown, UiTabs, UiScroll…), lays them out with flex, grid and anchors, styles them with .theme.ron themes, and checks them with ui_inspect, ui_hit_test, injected clicks and screenshots.
 - `writer` (Writer, ×1): Writes dialogue, quest text and UI strings as text assets with stable localization keys and a consistent voice.
 
-Disabled: `modeler` (mesh generation and the Blender bridge arrive in M3 phase 3.7), `vfx-artist` (particles and VFX arrive in M2).
+Disabled: `vfx-artist` (particles and VFX arrive in M11).
 
 **How work flows**
 1. The Director turns goals into tasks (`task_create`) with acceptance criteria and delegates each task to one role with the Agent tool, passing the task id.

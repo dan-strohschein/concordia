@@ -38,6 +38,8 @@ pub const PROJECT_TOOLS: &[&str] = &[
     "entity_reparent",
     "entity_spawn",
     "entity_templates",
+    "gen_list",
+    "gen_run",
     "input_inject",
     "log_tail",
     "material_get",

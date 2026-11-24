@@ -1,7 +1,7 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b, 3.0c, 3.1 (a–c), 3.2 (a–b), 3.7a and 3.7b done) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b, 3.0c, 3.1 (a–c), 3.2 (a–b) and 3.7 (a–c) done) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
@@ -1108,6 +1108,104 @@ Every role stays under 50k. If the AST's recursive schema makes `assert_eval` he
 - Both deny checks: ok. The editor's lock gains `hound` and `png` under `concordia-gen`.
 - `just editor-schemas`: no changes. `just editor-test`: 118 unit and 22 end-to-end tests pass.
 - No new Linux library, and no snapshots changed. 41 GB free.
+
+### Phase 3.7c As built (2026-11-24)
+**Status: done (branch `m3/3.7-blender`).** The Blender bridge, opt-in content plugins, and the generators in Studio. Phase 3.7 is complete.
+
+**What landed:**
+- **`concordia-gen`:**
+  - **`blender` provider:**
+    - locates Blender (`[gen.blender] path`, then `BLENDER_PATH`, then the default install, then `PATH`) and refuses anything older than 4.2;
+    - runs `tools/blender-bridge/bridge.py` (MIT OR Apache-2.0, embedded) in a separate Blender process: `--background --factory-startup --offline-mode`;
+    - the role's script runs in an empty scene with `bpy` and `SEED`;
+    - the result is a GLB plus `info`: objects with triangle counts and dimensions, actions, Blender's version and `script_hash`.
+  - **The script's BLAKE3** goes into `inputs_hash` through the new `Generated::inputs`.
+  - **`process.rs`:** one runner shared by Blender and plugins. It has pipes, a timeout, and kills the whole process group (`process_group(0)` plus the system `kill`; **no new `unsafe`**).
+  - **`[[gen.plugin]]`** (`PluginProvider`): out-of-process providers that take JSON on stdin. Nothing loads unless listed.
+  - **`GenConfig`** is the `[gen]` section; `GenModule::new(&GenConfig)`.
+  - **`ContentProvider::generate`** takes a `GenContext { project }`. `id` and `extensions` now borrow from the provider (plugins name themselves at run time).
+- **`concordia-mcp`:** `gen.run`'s `request.script` must be inside the calling role's write paths (`check_script`), so a role runs only code it could have written.
+- **CLI:** `concordia new` and `studio init` add `[gen]`.
+- **ADR-0085:** the licence boundary. Blender is a program the user runs, sharing only files with the engine.
+
+**Studio:**
+- **The modeler is enabled** (colour `#84cc16`).
+- **`gen_list` and `gen_run` go to** the modeler, the animator, the tech artist, the sound designer and the composer.
+- **The animator** gains `assets/blender/**` (shared with the modeler) and `concordia-generate-mesh-blender`, for clips authored in Blender.
+- **Skills:**
+  - `generate-mesh-blender`, `synthesize-sfx` and `music` drop their notes and show working calls;
+  - `synthesize-sfx` no longer re-imports `gen_run`'s output;
+  - `music` gains "Writing a score";
+  - `add-material` gains generated textures.
+- **The VFX artist's reason** now says M11.
+- **Role budgets** (every enabled role, under 50k):
+
+  | Role | Tools | Tokens |
+  |---|---|---|
+  | QA | 26 | 24,688 |
+  | level designer | 38 | 24,006 |
+  | UI/UX | 26 | 21,424 |
+  | tech artist | 25 | 21,211 |
+  | animator | 24 | 17,929 |
+  | sound designer | 26 | 16,177 |
+  | gameplay programmer | 18 | 14,374 |
+  | composer | 22 | 14,093 |
+  | director | 13 | 12,453 |
+  | modeler | 11 | 10,345 |
+  | writer | 11 | 9,576 |
+
+**Choices (my recommendations, pre-approved):**
+- A fresh Blender process per run, not a server: runs stay isolated.
+- `kill -KILL` on the group, not `-TERM`: it can't be caught, so a stuck Blender always stops, and a timed-out run has nothing worth saving.
+- Blender output is checked by structure, not bytes, because it differs across Blender versions.
+- A script that makes nothing is refused. The Studio scope test found that an empty glTF fails to import with an unhelpful message.
+
+**Tests:**
+- **`tests/blender_bridge.rs` (8):**
+  - locate order;
+  - version parse and the 4.2 minimum;
+  - a 2 m cube gives one 12-triangle object 2 m wide, and its scratch files are removed;
+  - an exception gives `exited with 1` and the `ValueError: boom` traceback;
+  - a runaway script is killed at 3 s;
+  - an armature action exports as the clip `Wave`;
+  - scripts outside the project are refused before launch;
+  - a script that makes nothing is refused.
+  - The Blender tests skip without Blender unless `CONCORDIA_REQUIRE_BLENDER=1`.
+- **`tests/plugin.rs` (2):** no plugin loads unless listed; an echo plugin's output, info and failure (exit 3 plus stderr).
+- **`role_scope`:** a tech artist's Blender script in `scripts/` is refused.
+- **Studio:**
+  - `content_roles_generate_with_the_gen_tools_and_their_skills`;
+  - `generator_skills_show_gen_run_and_never_reimport_its_output`;
+  - the note test now fails on the stale generator notes.
+- **CLI:** `studio_init_adds_gen_when_missing_for_the_content_roles`.
+
+**Changed deliberately:**
+- the registry test lists five providers;
+- the animator may write `assets/blender/**` (hook test);
+- the exact tool lists of the animator, sound designer and composer;
+- the director's `Agent(...)` list and the agent-file list include the modeler;
+- the three role tests check for `gen_run` instead of "phase 3.7";
+- the budget and shared-engine projects enable `[gen]`.
+
+**Red runs:**
+- the bridge tests against the missing module;
+- the outside-project test, until the paths were real files (the first version passed for the wrong reason: the files didn't exist);
+- the made-nothing test, before the bridge check;
+- the role-scope test, which imported an empty glTF;
+- the Studio tests, against the old notes and scopes;
+- the CLI test, with no `[gen]`.
+
+**Mutation checks** (all failed tests; restored files touched):
+- no group kill (2 failed; nextest's timeout now counts as a kill in `mut.sh`);
+- no project-relative check (2);
+- plugins never registered (4);
+- no Studio script check (2).
+
+**Snapshots** (blessed under the author's M3 authority; logged on the review page):
+- the agent files of the animator, composer, director, sound designer and tech artist;
+- the new modeler agent file;
+- the CLAUDE.md block;
+- the M3S gate's agents-and-skills and CLAUDE.md snapshots.
 
 ## Goal & context
 M3 closes the loop the design promises (principle 3): an agent can **record** a play session, **replay** it deterministically, **find the first frame** where two runs diverge, and **prove** behavior with typed playtest assertions, all from tests, the CLI and MCP. On top of that loop, M3 ships **Agent Studio v1**: a configurable team of specialist agents that runs **inside the user's own Claude Code on a regular subscription, with no API key** (principle 0).

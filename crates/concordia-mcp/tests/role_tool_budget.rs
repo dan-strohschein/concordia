@@ -15,12 +15,13 @@ use serde_json::Value;
 const ROLE_TOOL_BUDGET: usize = 50_000;
 
 /// The roles the default team enables.
-const ENABLED: [&str; 10] = [
+const ENABLED: [&str; 11] = [
     "animator",
     "composer",
     "director",
     "gameplay-programmer",
     "level-designer",
+    "modeler",
     "qa-playtester",
     "sound-designer",
     "tech-artist",
@@ -29,7 +30,7 @@ const ENABLED: [&str; 10] = [
 ];
 
 /// Every module a Studio project can enable, so every role's tools are served.
-const MODULES: &str = "[input]\nmap = \"input/default.input.ron\"\n\n[physics]\n\n[nav]\n\n[assets]\n\n[anim]\n\n[audio]\n\n[ui]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n";
+const MODULES: &str = "[input]\nmap = \"input/default.input.ron\"\n\n[physics]\n\n[nav]\n\n[assets]\n\n[anim]\n\n[audio]\n\n[ui]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[gen]\n\n[studio]\n";
 
 /// The served tool definitions of a project with the default roster, by name.
 async fn served_tools(dir: &tempfile::TempDir) -> BTreeMap<String, Value> {

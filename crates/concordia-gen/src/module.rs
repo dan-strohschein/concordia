@@ -5,17 +5,25 @@ use concordia_api::{EngineModule, MethodInfo};
 use crate::registry::ProviderRegistry;
 
 /// Serves `gen.list` and `gen.run`; enabled by `[gen]` in `concordia.toml`.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct GenModule {
     registry: ProviderRegistry,
 }
 
 impl GenModule {
-    /// The module with the procedural providers.
-    pub fn new() -> Self {
-        Self {
-            registry: ProviderRegistry::procedural(),
-        }
+    /// The module with the procedural providers, Blender, and the plugins `config` lists.
+    pub fn new(config: &crate::config::GenConfig) -> Self {
+        let blender =
+            crate::blender::BlenderProvider::new(config.blender.clone().unwrap_or_default());
+        let registry = config.plugin.iter().fold(
+            ProviderRegistry::procedural().with(std::sync::Arc::new(blender)),
+            |r, p| {
+                r.with(std::sync::Arc::new(crate::plugin::PluginProvider::new(
+                    p.clone(),
+                )))
+            },
+        );
+        Self { registry }
     }
 
     /// The module's providers.

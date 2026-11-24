@@ -698,13 +698,15 @@ fn director_coordinates_with_task_team_and_history_tools_only() {
 }
 
 /// The animator's scope (M2 2.4.5, ADR-0073): previews, steering, inspection and the team tools.
-const ANIMATOR_TOOLS: [&str; 22] = [
+const ANIMATOR_TOOLS: [&str; 24] = [
     "anim_inspect",
     "asset_import",
     "asset_list",
     "capture_screenshot",
     "component_patch",
     "component_set",
+    "gen_list",
+    "gen_run",
     "log_tail",
     "prefab_instantiate",
     "query_run",
@@ -734,13 +736,18 @@ fn animator_previews_and_steers_graphs_with_its_tools_and_skill() {
     assert_eq!(animator.mcp_tools, ANIMATOR_TOOLS);
     assert_eq!(
         animator.write,
-        ["assets/anim/**", "assets/models/**/*.import.ron"]
+        [
+            "assets/anim/**",
+            "assets/blender/**",
+            "assets/models/**/*.import.ron"
+        ]
     );
     assert_eq!(
         animator.skills,
         [
             "concordia-task-workflow",
             "concordia-animation-graphs",
+            "concordia-generate-mesh-blender",
             "concordia-team-comms"
         ]
     );
@@ -752,7 +759,7 @@ fn animator_previews_and_steers_graphs_with_its_tools_and_skill() {
         "assets/anim/previews/",
         ".animgraph.ron",
         "clip_events",
-        "phase 3.7",
+        "mcp__concordia__gen_run",
     ] {
         assert!(
             animator.body.contains(needle),
@@ -804,7 +811,7 @@ fn scenes_are_shared_by_the_level_designer_and_the_tech_artist() {
 
 /// The sound designer's scope (M2 2.7a.2, A1): import, wire emitters into scenes, listen, and
 /// the team tools.
-const SOUND_DESIGNER_TOOLS: [&str; 24] = [
+const SOUND_DESIGNER_TOOLS: [&str; 26] = [
     "asset_import",
     "asset_list",
     "audio_buses",
@@ -816,6 +823,8 @@ const SOUND_DESIGNER_TOOLS: [&str; 24] = [
     "component_patch",
     "component_set",
     "entity_get",
+    "gen_list",
+    "gen_run",
     "log_tail",
     "query_run",
     "scene_save",
@@ -832,7 +841,7 @@ const SOUND_DESIGNER_TOOLS: [&str; 24] = [
 ];
 
 /// The composer's scope (M2 2.7a.2, A1): import music, place a music emitter, listen.
-const COMPOSER_TOOLS: [&str; 20] = [
+const COMPOSER_TOOLS: [&str; 22] = [
     "asset_import",
     "asset_list",
     "audio_buses",
@@ -842,6 +851,8 @@ const COMPOSER_TOOLS: [&str; 20] = [
     "component_get",
     "component_patch",
     "component_set",
+    "gen_list",
+    "gen_run",
     "query_run",
     "scene_save",
     "sim_step",
@@ -885,7 +896,7 @@ fn sound_designer_wires_and_listens_with_its_tools_and_skill() {
         "AnimEventCues",
         ".cue.ron",
         ".buses.ron",
-        "phase 3.7",
+        "mcp__concordia__gen_run",
     ] {
         assert!(role.body.contains(needle), "the prompt explains {needle}");
     }
@@ -1000,7 +1011,7 @@ fn composer_brings_finished_music_with_its_tools_and_skill() {
         "Music",
         "loop_start",
         "\"stream\"",
-        "phase 3.7",
+        "mcp__concordia__gen_run",
     ] {
         assert!(role.body.contains(needle), "the prompt explains {needle}");
     }
@@ -1009,4 +1020,42 @@ fn composer_brings_finished_music_with_its_tools_and_skill() {
         "{}",
         role.body
     );
+}
+
+/// The generators reach the roles that make content (M3 3.7c): the modeler (enabled now), the
+/// animator (Blender actions), the tech artist (textures), the sound designer (effects) and the
+/// composer (scores), each with the skill that uses them. VFX waits for particles (M11).
+#[test]
+fn content_roles_generate_with_the_gen_tools_and_their_skills() {
+    let (_dir, roster) = roster();
+    for (role, skill) in [
+        ("modeler", "concordia-generate-mesh-blender"),
+        ("animator", "concordia-generate-mesh-blender"),
+        ("tech-artist", "concordia-add-material"),
+        ("sound-designer", "concordia-synthesize-sfx"),
+        ("composer", "concordia-music"),
+    ] {
+        let r = roster
+            .role(role)
+            .unwrap_or_else(|| panic!("{role} is enabled"));
+        for tool in ["gen_list", "gen_run"] {
+            assert!(
+                r.mcp_tools.iter().any(|t| t == tool),
+                "{role}: {:?}",
+                r.mcp_tools
+            );
+        }
+        assert!(
+            r.skills.iter().any(|s| s == skill),
+            "{role}: {:?}",
+            r.skills
+        );
+        assert!(!r.body.contains("Disabled in the default team"), "{role}");
+    }
+    let vfx = roster
+        .disabled()
+        .iter()
+        .find(|d| d.role.as_str() == "vfx-artist")
+        .expect("VFX stays off");
+    assert!(vfx.reason.contains("M11"), "{}", vfx.reason);
 }

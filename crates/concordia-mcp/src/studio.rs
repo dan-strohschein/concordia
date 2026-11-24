@@ -116,7 +116,8 @@ impl StudioGate {
         Ok(policy)
     }
 
-    /// Scene, asset, material and rendered-audio writes must land inside the role's paths.
+    /// Scene, asset, material, rendered-audio and generated writes must land inside the role's
+    /// paths.
     async fn check_paths(
         &self,
         engine: &dyn EngineLink,
@@ -126,6 +127,9 @@ impl StudioGate {
         method: &MethodInfo,
         args: &JsonObject,
     ) -> Result<(), ApiError> {
+        if method.name == "gen.run" {
+            check_script(policy, role, args)?;
+        }
         let given = args.get("path").and_then(Value::as_str).map(str::to_owned);
         let path = match (method.name, given) {
             (
@@ -275,4 +279,20 @@ fn poisoned() -> ApiError {
         ApiErrorKind::Internal,
         "the Studio gate's state is poisoned",
     )
+}
+
+/// A Blender script (`gen.run`'s `request.script`) runs as the role's own code, so the role
+/// must be allowed to write it (M3 3.7c).
+fn check_script(policy: &Policy, role: &str, args: &JsonObject) -> Result<(), ApiError> {
+    let script = args
+        .get("request")
+        .and_then(|r| r.get("script"))
+        .and_then(Value::as_str);
+    match script.map(|s| (s, policy.write(Some(role), s))) {
+        Some((s, Decision::Deny(reason))) => Err(not_permitted(&format!(
+            "the Blender script {s} is outside your write paths: {reason}"
+        ))
+        .at("/request/script")),
+        _ => Ok(()),
+    }
 }
