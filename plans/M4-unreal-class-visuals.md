@@ -167,6 +167,12 @@ Numbers stay as they are because other plans cite them. Each phase gets its own 
 - **D2:** `tests/golden/<suite>/tolerances.ron` for all six suites, numbers moved unchanged; `Tolerance::mean` is gone and `Tolerance::default()` is the only tolerance in code (`golden_tolerances_live_in_text`).
 - Not in 4.1a: `FrameStats.raster_path` (no meshlet path yet; masking is observed through refused features, perf mode's `unsupported` and unchanged pixels), the path tracer and recalibration (4.1b), and Vulkan timestamps (4.1v).
 
+**4.1b1** (`m4/4.1b1-shared-shading`, 2026-11-24):
+- `concordia-render-types` (new, GPU-free): the render components, `CascadeSettings`, camera math (`Projection::matrix` → `ProjectionError`, `view_matrix`), `candela` and the CPU tonemap. `concordia-render` re-exports them under the old paths, so scenes, schemas and snapshots are unchanged. The hygiene test `gpu_free_crates_keep_their_dependencies` keeps it free of the renderer, the RHI and the shader crate; 4.1b2 adds `concordia-pathtrace` to it.
+- `concordia-material/shaders/material.slang`: the slab BSDF and the program combinators, moved out of `forward.slang`, with the albedo tables behind `IAlbedoTables` (the renderer's `FrameTables`). `concordia_render::include_dirs()` serves every render shader compile. It compiles without the renderer (`tests/shader_module.rs`, Metal and SPIR-V), and every render golden and shader-vs-CPU comparison is unchanged.
+- A mutation check found that no test covered `fresnel`'s Schlick term: the only featured slab at grazing light was metallic. `shader_matches_cpu_reference_at_grazing_light` gained a hazy dielectric and now catches it.
+- `plans/M14-cpu-only.md`: CPU-only games, the last milestone.
+
 ### Effort (re-estimated)
 - The plan's 32–45 weeks, plus **4.1v Vulkan at 6–10**, plus about 1 for D2, D6 and D9: **about 39–56 engineer-weeks**.
 - Track R is now about 27–38 weeks on the critical path, with Track G (12–17) after it (R2).
