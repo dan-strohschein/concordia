@@ -303,6 +303,17 @@ fn check_integrity(root: &Path, baseline: &Path) -> Outcome {
     Ok(())
 }
 
+/// The agent's environment (one variable name per line) had no API key or token, whatever the
+/// provider.
+pub fn check_env(names: &str) -> Result<(), String> {
+    match names.lines().find(|n| {
+        n.ends_with("_API_KEY") || n.ends_with("_AUTH_TOKEN") || *n == "CLAUDE_CODE_OAUTH_TOKEN"
+    }) {
+        Some(name) => Err(format!("the agent's environment had {name}")),
+        None => Ok(()),
+    }
+}
+
 /// Every check on `root` (after the run), against `baseline` (its configuration after sync) and
 /// `pristine` (a built copy of the untouched fixture); all failures, not just the first.
 pub fn check_all(root: &Path, baseline: &Path, pristine: &Path) -> Vec<String> {
