@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use concordia_api::{ApiError, ApiErrorKind, WorldSel};
@@ -19,10 +20,24 @@ use crate::navmesh::NavMesh;
 /// A memo slot: (play world?, volume).
 type Slot = (bool, EntityId);
 
+/// A world's state when a navmesh was memoized: (identity, change tick).
+type Stamp = (u64, u64);
+
+/// A memoized navmesh: the world stamp it was gathered at, its input key and the mesh.
+type Memo = (Stamp, DdcKey, Arc<NavMesh>);
+
 /// The engine-lifetime memo of built navmeshes.
 #[derive(Debug, Default)]
 pub(crate) struct NavState {
-    memo: Mutex<BTreeMap<Slot, (DdcKey, Arc<NavMesh>)>>,
+    memo: Mutex<BTreeMap<Slot, Memo>>,
+    gathers: AtomicU64,
+}
+
+impl NavState {
+    /// How many times navmesh input has been gathered.
+    pub fn gathers(&self) -> u64 {
+        self.gathers.load(Ordering::Relaxed)
+    }
 }
 
 /// A volume's navmesh and how it was obtained.
@@ -49,17 +64,31 @@ impl Builder<'_> {
         which: WorldSel,
         volume: EntityId,
     ) -> Result<Built, NavError> {
-        let input = NavInput::gather(world, volume)?;
-        let key = input.key();
         let slot = (which == WorldSel::play, volume);
-        if let Some((k, navmesh)) = self
+        let stamp = (world.identity(), world.change_tick());
+        let memo = self
             .state
             .memo
             .lock()
             .ok()
-            .and_then(|m| m.get(&slot).cloned())
+            .and_then(|m| m.get(&slot).cloned());
+        if let Some((s, key, navmesh)) = &memo
+            && *s == stamp
+        {
+            return Ok(Built {
+                volume,
+                navmesh: navmesh.clone(),
+                cached: true,
+                key: *key,
+            });
+        }
+        self.state.gathers.fetch_add(1, Ordering::Relaxed);
+        let input = NavInput::gather(world, volume)?;
+        let key = input.key();
+        if let Some((_, k, navmesh)) = memo
             && k == key
         {
+            self.remember(slot, (stamp, key, navmesh.clone()));
             return Ok(Built {
                 volume,
                 navmesh,
@@ -70,15 +99,20 @@ impl Builder<'_> {
         let cache = NavCache::new(Ddc::new(self.project.join(".concordia/ddc")));
         let loaded = cache.load_or_build(&input, self.threads)?;
         let navmesh = Arc::new(loaded.navmesh);
-        if let Ok(mut memo) = self.state.memo.lock() {
-            memo.insert(slot, (key, navmesh.clone()));
-        }
+        self.remember(slot, (stamp, key, navmesh.clone()));
         Ok(Built {
             volume,
             navmesh,
             cached: loaded.cached,
             key,
         })
+    }
+
+    /// Memoizes a slot's navmesh.
+    fn remember(&self, slot: Slot, memo: Memo) {
+        if let Ok(mut all) = self.state.memo.lock() {
+            all.insert(slot, memo);
+        }
     }
 
     /// Every volume's navmesh in `world`, by entity id.
@@ -125,4 +159,9 @@ pub(crate) fn api_error(e: NavError) -> ApiError {
         }
         _ => error,
     }
+}
+
+/// How many times the engine's nav module has gathered navmesh input (diagnostics; 0 without it).
+pub fn gathers(engine: &concordia_api::Engine) -> u64 {
+    engine.state::<NavState>().map_or(0, NavState::gathers)
 }

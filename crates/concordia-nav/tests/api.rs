@@ -143,6 +143,56 @@ fn navmesh_debug_layer_draws_every_polygon() {
     );
 }
 
+/// Drawing the `navmesh` layer reuses the edit world's navmesh until the edit world changes
+/// (M3 3.0b): `nav.build` gathers once (one volume); two draws with no edit gather nothing more;
+/// lifting the floor 1 m makes the next draw gather once and draw at y = 0.2 + 1 + 0.02 = 1.22;
+/// a further draw gathers nothing.
+#[test]
+fn navmesh_layer_gathers_once_until_the_edit_world_changes() {
+    let mut rig = Rig::new();
+    rig.floor();
+    rig.ok("nav.build", json!({}));
+    let built = concordia_nav::gathers(&rig.engine);
+    assert_eq!(built, 1, "one volume, gathered once");
+    for _ in 0..2 {
+        rig.engine
+            .debug_geometry("navmesh", WorldSel::edit)
+            .expect("drawn");
+    }
+    assert_eq!(
+        concordia_nav::gathers(&rig.engine),
+        built,
+        "no edit, no gather"
+    );
+    let floor = rig.ok("query.run", json!({"with": ["Collider"]}))["rows"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    rig.ok(
+        "component.patch",
+        json!({"entity": floor, "component": "Transform",
+               "patch": {"translation": [0.0, 0.5, 0.0]}, "actor": "agent:test"}),
+    );
+    let geometry = rig
+        .engine
+        .debug_geometry("navmesh", WorldSel::edit)
+        .expect("drawn");
+    assert_eq!(
+        concordia_nav::gathers(&rig.engine),
+        built + 1,
+        "the edit gathers once"
+    );
+    assert!(
+        geometry
+            .triangles
+            .iter()
+            .all(|t| t.points.iter().all(|p| (p.y - 1.22).abs() < 1e-3)),
+        "the lifted floor is drawn"
+    );
+    rig.engine.debug_geometry("navmesh", WorldSel::edit);
+    assert_eq!(concordia_nav::gathers(&rig.engine), built + 1);
+}
+
 #[test]
 fn nav_agent_moves_in_the_play_world_over_the_api() {
     // From (−5, 0) to (5.23, 0) at 3 m/s, as in `agents_physics.rs`: the target is set on tick 1,

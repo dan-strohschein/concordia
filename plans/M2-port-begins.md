@@ -4675,7 +4675,7 @@ The play session also produced one fix: the wet cobbles looked like a polished f
 
 `just gate M2` has no gate binaries yet. The in-process Lamplight tests (`lamplight_content`, `lamplight_night`, `lamplight_town`, `lamplight_ui`: 26 tests, all driving the real scene with both modules) run in the full suite and are the automated evidence today.
 
-**Carry-overs, with their owners:**
+**Carry-overs, with their owners** (each now has a home: the M3 plan's "M3 refinement" maps the M3 items to sub-phases 3.0b, 3.0c and 3.9a, and the M7 items are in `plans/M7-terra.md` 7.7):
 - **M3 (closed loop):**
   - 2.10d's scripted gate, goldens and live gate (M3 adds playtests and general replay, which that gate wants);
   - world UI takes no input;

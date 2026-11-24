@@ -6,13 +6,15 @@ OS integration behind engine-owned types: one winit window reporting `WindowEven
 ## Public entry points
 - `run_window(&WindowDesc, RunOptions, &mut dyn WindowApp)`, `WindowApp`, `Flow`, `WindowEvent`, `WindowDesc` (reflected; `[window]` in `concordia.toml`)
 - `FileWatcher` (`new(root, debounce, ignores)`, `recv_timeout`, `try_iter`), `FileChanged`, `ChangeKind`, `FileWatcher::DEFAULT_IGNORES`
-- `key_from_winit`, `mouse_button_from_winit`
+- `key_from_winit`, `mouse_button_from_winit`, `scroll_from_winit` (`SCROLL_LINE_PX`)
+- `RunOptions { exit_after, stop }`: a timer, or a flag another thread sets (polled every `STOP_POLL`)
 
 ## Invariants
 - On macOS the window event loop owns the main thread; call `run_window` from `main`'s thread only. Simulation and rendering run on other threads.
 - winit types never leave this crate's API (except the conversion helpers).
 - File changes are judged by modification time and size, not OS event kinds, so each OS gives the same result and replayed or spurious events produce nothing. Ignore globs like `target/**` also cover the directory itself.
 - Key repeats are dropped; pointer positions are logical pixels.
+- `Scroll` is always in lines: a trackpad's pixels are divided by `SCROLL_LINE_PX` (20 logical px), so `ui_scroll` means the same from a wheel or a trackpad and replays are unchanged.
 
 ## How to test
 `cargo nextest run -p concordia-platform`
@@ -28,7 +30,7 @@ OS integration behind engine-owned types: one winit window reporting `WindowEven
 - winit 0.30 `ApplicationHandler` documentation; notify / notify-debouncer-full documentation.
 
 ## Status
-M1 phase 1.1. M2 phase 2.7b.2: `CursorIcon` (`cursor_to_winit`) and `WindowApp::cursor`, which the runner applies after every event; `PageUp`, `PageDown`, `Home` and `End` map to engine keys. M2 phase 2.7b.3: key presses also become typed text (`text_from_key`, `Modifiers`, `insert`): editing keys and Ctrl/Cmd shortcuts are `Edit` commands (repeats kept), other keys insert the OS's text; the runner tracks modifiers.
+M1 phase 1.1. M2 phase 2.7b.2: `CursorIcon` (`cursor_to_winit`) and `WindowApp::cursor`, which the runner applies after every event; `PageUp`, `PageDown`, `Home` and `End` map to engine keys. M2 phase 2.7b.3: key presses also become typed text (`text_from_key`, `Modifiers`, `insert`): editing keys and Ctrl/Cmd shortcuts are `Edit` commands (repeats kept), other keys insert the OS's text; the runner tracks modifiers. M3 phase 3.0b: trackpad pixels arrive as lines (`scroll_from_winit`, `tests/scroll.rs`); `RunOptions::stop` lets the latency bench close the window when it is done.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.
