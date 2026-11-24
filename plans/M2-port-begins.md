@@ -2,7 +2,7 @@
 
 > **Renamed by ADR-0048 and restructured by ADR-0067** (refinement, 2026-11-19). Phases 2.1, 2.2 and 2.9 (Godot formats, GDScript translation, the playable slice) and every Godot-specific mapping in 2.3–2.7 move to M5. Terra's Mass-style core moves here from M7. The refinement section below wins wherever the older phase text disagrees. The file keeps its old name so links stay valid.
 
-Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2) and 2.5d (2026-11-22) done; phase 2.5 complete; 2.7 split into 2.7a (audio) and 2.7b (UI); 2.7a refined (2.7a.1, 2.7a.2), 2.7a.1 and 2.7a.2 (2026-11-22) done; phase 2.7a complete; 2.7b refined (2.7b.1–2.7b.3, 2026-11-22); 2.7b.1, 2.7b.2 and 2.7b.3 (2026-11-23) done; phase 2.7b complete; 2.10 refined (the sample game "Lamplight", 2.10a–2.10d, 2026-11-23); 2.10a and 2.10b (2026-11-23) done; 2.10c refined (2.10c.1–2.10c.3); 2.10c.1 and 2.10c.2 (2026-11-23) done · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
+Status: In progress: 2.0, 2.0b (2026-11-19), 2.0c, 2.6 (2.6a–2.6d), 2.8, 2.3a, 2.3b and 2.3c (2026-11-20), the 2.3c follow-ups, 2.3d, 2.4 (2.4.1–2.4.5, 2026-11-21) and 2.4b (2.4b.1, 2.4b.2; 2026-11-21) done; 2.5 refined (2.5a–2.5d), 2.5a and 2.5b (2.5b.1, 2.5b.2a, 2.5b.2b; 2026-11-22) done; 2.5c (2.5c.1, 2.5c.2) and 2.5d (2026-11-22) done; phase 2.5 complete; 2.7 split into 2.7a (audio) and 2.7b (UI); 2.7a refined (2.7a.1, 2.7a.2), 2.7a.1 and 2.7a.2 (2026-11-22) done; phase 2.7a complete; 2.7b refined (2.7b.1–2.7b.3, 2026-11-22); 2.7b.1, 2.7b.2 and 2.7b.3 (2026-11-23) done; phase 2.7b complete; 2.10 refined (the sample game "Lamplight", 2.10a–2.10d, 2026-11-23); 2.10a and 2.10b (2026-11-23) done; 2.10c refined (2.10c.1–2.10c.3); 2.10c.1–2.10c.3 (2026-11-23) done; phase 2.10c complete · Depends on: M1, M3's Studio track (done) · Detail level: refined at the milestone level; each phase is refined again at its start, against the code as built · Estimated effort: ~29–36 phase-weeks (see the refinement)
 
 ## Refinement (2026-11-19, against M0, M1 and the M3 Studio track as built)
 **Status: author decisions D1–D8 taken, and the phase list approved (2026-11-19).**
@@ -4417,7 +4417,7 @@ The author records pass or fail per item in the Status:
 - Far townsfolk read `SimLod` and act only when `due`, using its `elapsed`.
 
 **Gaps found so far (each test-first in its crate; the "stop past about three" rule still holds):**
-- **G1 (2.10c.3): gameplay can't set a bus's volume.** Only the `audio.buses` method changes gains, and scripts call no methods. Fix: a component or signal in `concordia-audio` that sets a bus's gain from gameplay.
+- **G1 (fixed in 2.10c.3): gameplay couldn't set a bus's volume.** Only the `audio.buses` method changed gains, and scripts call no methods. Fixed with the `SetBusGain` signal (see the 2.10c.3 As built).
 - **G2 (found and fixed in 2.10c.1): physics didn't register its contact signals**, so scripts couldn't receive them (see the 2.10c.1 As built).
 
 **Choices:**
@@ -4576,6 +4576,82 @@ The author records pass or fail per item in the Status:
 - Role budgets unchanged. No new Linux system library, and no new or changed snapshots or goldens.
 
 **Carry-over:** unchanged from 2.10c.1, plus representation LOD (to 2.10d).
+
+### Phase 2.10c.3 As built (2026-11-23; no ADR changes)
+**Status: done (branch `m2/2.10-game-ui`). The menus and HUD, with gameplay setting bus volumes (G1). Phase 2.10c is complete: Lamplight is playable from the title screen to the end screen.**
+
+**What landed:**
+- **`concordia-audio` (G1):** the `SetBusGain { bus, gain_db }` signal. `audio.collect` receives it and sets that bus's runtime gain as `audio.buses` does, warning once about an unknown bus or a gain outside [−80, 24]. It is presentation, so the world hash never sees it beyond the signal.
+- **The scene:** four screen roots, each 1280 × 720 and scaled to the window, each a `lamplight.Screen` listing the phases it shows in.
+  - **The title:** a name box, the night's length (a spin box, 60–600 s by 30), the fog (a dropdown: Thin, Normal, Thick) and "Light the lamps".
+  - **The HUD:** oil and spirit bars, "Dawn in m:ss" and "Lamps lit n".
+  - **The pause menu:** Music, SFX and Ambience sliders (−40..0 dB, set to the bus layout's gains) and Resume.
+  - **The end screen:** the result, the night-records list (a `UiList`) and "Another night".
+  - Widgets use the theme's classes, and buttons click with `ui_click`.
+- **`lamplight-rules`, new processors in `screens.rs`:**
+  - Every control reports its value to the night: spin boxes, dropdowns and text boxes as `Setting`s every tick, buttons as `Command`s.
+  - Sliders raise `SetBusGain` for their bus.
+  - Screens show by phase; text readouts and bars follow the night and the can.
+  - The records list adds a row (the `record_row` template) for each `Ended`.
+- **The night:**
+  - It takes the title's settings only on the title screen.
+  - It moves between phases by `rules::next_phase` on `Command`s: start, pause (the `pause` key) and resume, again.
+  - A start resets the night and raises `NewNight`, which darkens the lamps, removes the wisps, fills the can and restarts the fog (`fog.Fog.first`).
+  - An end raises `Ended`.
+  - `NightTick` now carries lamps lit and wisps burned.
+- **`lamplight-types`:** `ui.rs` mirrors the engine UI types the rules read or write (`UiNode`, `UiProgress` with its fills, the widgets, `Parent`, `UiPressed`, `UiValueChanged`), plus `SetBusGain` and `NewNight`.
+- **The shared test helper** clicks a widget's centre (from `ui.inspect`), types text with its keys, taps keys, tracks the tick and reports whether a screen is shown.
+
+**Found while building (this As built wins):**
+- **UI state is simulation state.** A presentation-phase processor may not write `UiNode`, and the engine refuses at play start, so the screen, readout, bar and records processors run in `FrameEnd`.
+- **The HUD's bars had no room.** The first screenshot showed the labels but no bars: the panel was shorter than its contents, so the bars shrank to nothing. The panel is taller now.
+- **Every wisp warned.** Its `NavAgent` size didn't match its controller's defaults, so the screenshot run logged a warning per wisp. The wisp template's controller now matches (0.35 × 1.25 m). The gate's zero-error check would have passed; zero warnings is better.
+- **The pure screen rules** (`dawn_in`, `result_line`, `density`) live in `rules.rs` with the other rules.
+
+**Tests** (expected values derived in each header):
+- **`concordia-audio`:** `set_bus_gain_signal_sets_a_bus_gain_from_gameplay` (Music −12 dB the tick after the signal, SFX untouched, one warning for an unknown bus). The rig gains `test.Fader`.
+- **`lamplight-rules`:** `commands_move_the_night_between_phases`, and `the_hud_clock_and_the_fog_choices`.
+- **`tests/integration/lamplight_ui.rs` (5), driven by real input:**
+  - the town opening on the title screen;
+  - the title starting the night with its choices ("Ada", 240 s from two ↑, Thick from Enter ↓ Enter), with W never walking while the name box types;
+  - the HUD following the night (oil 100 then 60, spirit 10, "Dawn in 3:00", "Lamps lit 0");
+  - pausing holding the clock, the Music slider's left end setting Music to −40 dB, and Resume;
+  - a night won showing the end screen and one record naming Ada, then "Another night" and a new start resetting lamps, wisps, the can and spirit, with the record kept.
+- **Red run:**
+  - the G1 test failed with Music at 0 dB;
+  - the phase test failed on its `todo!()`;
+  - four UI tests failed against stub processors;
+  - fixes to the tests themselves: play-world patches need an actor; the HUD clock reads 3:00 for the default 180 s night, not 4:00.
+- **Mutation checks** (all eight mutants failed a test; restored files touched):
+  - the mixer ignoring `SetBusGain`;
+  - sliders setting no gain;
+  - every screen always shown;
+  - the name box ignored;
+  - a new night resetting nothing;
+  - the pause key doing nothing;
+  - record rows vanishing;
+  - pause not pausing (the pure test).
+- **Called out:**
+  - `the_town_opens_on_the_title_screen` passed at once: the scene starts with the title shown.
+  - `the_hud_clock_and_the_fog_choices` was written after its code: the functions moved from the screens processor.
+  - The G1 test's warning check uses a process-wide log subscriber; nextest runs each test in its own process, and the collector may run on a job thread.
+
+**Studio and docs:**
+- **No tools or roles changed.** The scripting skill's sound section names `SetBusGain`.
+- **Docs updated:**
+  - `concordia-audio`'s AGENTS.md and README;
+  - the agent guide's audio section;
+  - the example's README ("Menus and HUD").
+
+**Checklist (2026-11-23):**
+- `just lint` and the Tauri shell's clippy: clean.
+- `just wasm`, `just native-fixtures`, then `cargo nextest run --workspace --no-fail-fast` with `CONCORDIA_REQUIRE_GPU=1`: 1,841 run, 1,841 passed. Doc tests: clean.
+- `just gate-tests M1` (4/4) and `M3S` (13/13).
+- `just deny` and the editor's deny: advisories, bans, licenses and sources ok.
+- `just editor-schemas`: no changes (the editor's schema project has no `[audio]`, so `SetBusGain` isn't among its types, like `PlayCue`). `just editor-test`: lint, 118 unit and 22 end-to-end tests pass.
+- Role budgets unchanged. No new Linux system library, and no new or changed snapshots or goldens.
+
+**Carry-over:** unchanged from 2.10c.2.
 
 ### Effort (re-estimated)
 | Phase | Estimate |

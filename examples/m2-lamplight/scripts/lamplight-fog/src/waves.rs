@@ -4,7 +4,7 @@
 use concordia_core::math::Vec3;
 use concordia_script_guest::RunCtx;
 use lamplight_types::engine::{NavAgent, Transform};
-use lamplight_types::night::NightTick;
+use lamplight_types::night::{NewNight, NightTick};
 
 use crate::{Drifter, Fog};
 
@@ -12,6 +12,14 @@ use crate::{Drifter, Fog};
 /// points on the harbour edge, each drifting to a random point on the ring `inner..outer` around
 /// the square.
 pub(crate) fn waves(ctx: &mut RunCtx<'_>) -> Result<(), String> {
+    if !ctx.signals::<NewNight>()?.is_empty() {
+        let mut fogs: Vec<Fog> = ctx.read()?;
+        for fog in &mut fogs {
+            fog.next = fog.first;
+            fog.waves = 0;
+        }
+        return ctx.write(&fogs);
+    }
     let Some((_, night)) = ctx.signals::<NightTick>()?.into_iter().last() else {
         return Ok(());
     };

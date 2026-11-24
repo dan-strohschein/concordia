@@ -30,7 +30,7 @@ mod wav;
 pub use bus::{BusDef, BusGraph, BusIndex, BusLayout, MASTER, read_buses, write_buses};
 pub use collect::{COLLECT, Collector};
 pub use components::{
-    AnimEventCues, AudioEmitter, AudioListener, PlayCue, StopCue, register_types,
+    AnimEventCues, AudioEmitter, AudioListener, PlayCue, SetBusGain, StopCue, register_types,
 };
 pub use core::{
     AudioCore, AudioDevice, AudioSettings, AudioShared, Backend, CAPTURE_SECONDS, OpenDevice,

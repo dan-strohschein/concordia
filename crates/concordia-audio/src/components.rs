@@ -86,7 +86,21 @@ pub fn register_types(registry: &mut TypeRegistry) -> Result<(), RegistryError> 
     register_component::<AnimEventCues>(registry)?;
     register_component::<PlayCue>(registry)?;
     register_component::<StopCue>(registry)?;
+    register_component::<SetBusGain>(registry)?;
     registry.register::<crate::Cue>()?;
     registry.register::<crate::BusLayout>()?;
     Ok(())
+}
+
+/// A signal: set bus `bus`'s gain to `gain_db` (in [−80, 24]) from gameplay, as `audio.buses`
+/// does; applied the tick it is delivered and kept until the engine closes. An unknown bus or a
+/// gain out of range is warned about once and ignored.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Audio", default)]
+#[serde(default, deny_unknown_fields)]
+pub struct SetBusGain {
+    /// The bus.
+    pub bus: String,
+    /// The gain in decibels.
+    pub gain_db: f32,
 }

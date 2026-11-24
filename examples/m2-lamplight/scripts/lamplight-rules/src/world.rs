@@ -10,12 +10,12 @@ use lamplight_types::engine::{
     InputActions, NavArrived, PlayCue, PointLight, PropertyTween, Transform, Transition, Tweens,
     UiText, VehicleState,
 };
-use lamplight_types::night::{self, NightTick};
+use lamplight_types::night::{self, NewNight, NightTick};
 
 use crate::rules::{self, Outcome};
 use crate::{
-    Chase, Kindle, Lamp, Lamplighter, Lit, Night, Number, Popped, Reached, Refill, Scorch,
-    SpiritLost, Wagon, Where, Wisp,
+    Chase, Command, Ended, Kindle, Lamp, Lamplighter, Lit, Night, Number, Popped, Reached, Refill,
+    Scorch, Setting, SpiritLost, Wagon, Where, Wisp,
 };
 
 /// The graph parameter the walk blend reads.
@@ -68,6 +68,13 @@ pub(crate) fn walk(ctx: &mut RunCtx<'_>) -> Result<(), String> {
             lighters[i].lit += 1;
         }
     }
+    if !ctx.signals::<NewNight>()?.is_empty() {
+        for lighter in &mut lighters {
+            lighter.can = rules::CAN_MAX;
+            lighter.lit = 0;
+        }
+    }
+    let night_id = night_tick(ctx)?.map(|(id, _)| id);
     for (id, _) in ctx.signals::<Refill>()? {
         if let Some(i) = row(&ids, id) {
             lighters[i].can = rules::CAN_MAX;
@@ -89,6 +96,14 @@ pub(crate) fn walk(ctx: &mut RunCtx<'_>) -> Result<(), String> {
             transforms[i].rotation = yaw(atan2f(velocity[0], velocity[2]));
         }
         let light = playing && inputs[i].just_pressed("light") && rules::can_light(lighters[i].can);
+        if let (Some(night), true) = (night_id, inputs[i].just_pressed("pause")) {
+            ctx.signal(
+                night,
+                &Command {
+                    action: "pause".into(),
+                },
+            )?;
+        }
         if let Some(body) = lighters[i].body {
             ctx.signal(
                 body,
@@ -178,6 +193,12 @@ pub(crate) fn lamps(ctx: &mut RunCtx<'_>) -> Result<(), String> {
     for lamp in &mut lamps {
         lamp.inside.retain(|e| !gone.contains(e));
     }
+    if !ctx.signals::<NewNight>()?.is_empty() {
+        for lamp in &mut lamps {
+            lamp.lit = false;
+            lamp.oil = 0.0;
+        }
+    }
     for (kindler, kindle) in ctx.signals::<Kindle>()? {
         let spots: Vec<([f32; 3], bool)> = transforms
             .iter()
@@ -258,6 +279,12 @@ fn number(
 pub(crate) fn wisps(ctx: &mut RunCtx<'_>) -> Result<(), String> {
     let ids = ctx.ids().to_vec();
     let dt = ctx.dt();
+    if !ctx.signals::<NewNight>()?.is_empty() {
+        for id in &ids {
+            ctx.despawn(*id);
+        }
+        return Ok(());
+    }
     let Some((night_id, tick)) = night_tick(ctx)? else {
         return Ok(());
     };
@@ -374,8 +401,33 @@ pub(crate) fn night(ctx: &mut RunCtx<'_>) -> Result<(), String> {
     let lost = ctx.signals::<SpiritLost>()?.len() as u32;
     let popped = ctx.signals::<Popped>()?.len() as u32;
     let lit = ctx.signals::<Lit>()?.len() as u32;
+    let settings = ctx.signals::<Setting>()?;
+    let commands = ctx.signals::<Command>()?;
     for i in 0..ids.len() {
         let n = &mut nights[i];
+        if n.phase == night::TITLE {
+            for (_, s) in &settings {
+                match s.role.as_str() {
+                    "name" => n.name = s.text.clone(),
+                    "length" => n.length = s.value.clamp(10.0, 1800.0),
+                    "fog" => n.density = rules::density(s.value as u32),
+                    _ => {}
+                }
+            }
+        }
+        for (_, command) in &commands {
+            let Some(next) = rules::next_phase(&n.phase, &command.action) else {
+                continue;
+            };
+            if n.phase == night::TITLE && next == night::PLAYING {
+                n.clock = 0.0;
+                n.spirit = rules::SPIRIT_START;
+                n.lamps_lit = 0;
+                n.wisps_burned = 0;
+                ctx.signal(ids[i], &NewNight)?;
+            }
+            n.phase = next.into();
+        }
         if n.phase == night::PLAYING {
             n.clock += dt;
             n.lamps_lit += lit;
@@ -390,21 +442,29 @@ pub(crate) fn night(ctx: &mut RunCtx<'_>) -> Result<(), String> {
                     None,
                 )?;
             }
-            match rules::outcome(n.clock, n.length, n.spirit) {
-                Some(Outcome::Won) => {
-                    n.phase = night::WON.into();
-                    for cue in n.dawn_cues.clone() {
-                        ctx.signal(
-                            ids[i],
-                            &PlayCue {
-                                cue,
-                                volume_db: 0.0,
-                            },
-                        )?;
-                    }
+            let outcome = rules::outcome(n.clock, n.length, n.spirit);
+            if outcome == Some(Outcome::Won) {
+                n.phase = night::WON.into();
+                for cue in n.dawn_cues.clone() {
+                    ctx.signal(
+                        ids[i],
+                        &PlayCue {
+                            cue,
+                            volume_db: 0.0,
+                        },
+                    )?;
                 }
-                Some(Outcome::Lost) => n.phase = night::LOST.into(),
-                None => {}
+            } else if outcome == Some(Outcome::Lost) {
+                n.phase = night::LOST.into();
+            }
+            if let Some(outcome) = outcome {
+                let ended = Ended {
+                    name: n.name.clone(),
+                    won: outcome == Outcome::Won,
+                    lamps: n.lamps_lit,
+                    burned: n.wisps_burned,
+                };
+                ctx.signal(ids[i], &ended)?;
             }
         }
         let tick = NightTick {
@@ -413,6 +473,8 @@ pub(crate) fn night(ctx: &mut RunCtx<'_>) -> Result<(), String> {
             length: n.length,
             spirit: n.spirit,
             density: n.density,
+            lamps_lit: n.lamps_lit,
+            wisps_burned: n.wisps_burned,
         };
         ctx.signal(ids[i], &tick)?;
     }

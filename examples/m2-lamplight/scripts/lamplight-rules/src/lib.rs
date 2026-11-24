@@ -5,6 +5,7 @@
 //! a processor sees only its own query's columns (plan: 2.10c refinement).
 
 pub mod rules;
+mod screens;
 mod world;
 
 use concordia_core::math::Vec3;
@@ -15,9 +16,12 @@ use concordia_script_guest::{
 use lamplight_types::body::{Body, Stride};
 use lamplight_types::engine::{
     AnimEvent, AnimGraphPlayer, AudioEmitter, CharacterMotion, ContactBegan, ContactEnded,
-    InputActions, NavArrived, PointLight, Transform, VehicleState,
+    InputActions, NavArrived, PointLight, Transform, UiText, VehicleState,
 };
-use lamplight_types::night::NightTick;
+use lamplight_types::night::{NewNight, NightTick};
+use lamplight_types::ui::{
+    UiDropdown, UiNode, UiPressed, UiProgress, UiSlider, UiSpinBox, UiTextBox, UiValueChanged,
+};
 use serde::{Deserialize, Serialize};
 
 /// The lamplighter: the oil in their can.
@@ -243,6 +247,81 @@ pub struct Where {
     pub can: f32,
 }
 
+/// A control on a menu, by what it does: `name`, `length`, `fog`, `start`, `resume`, `again`,
+/// or a bus name (`Music`, `SFX`, `Ambience`) for a volume slider.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "lamplight.Control", default)]
+pub struct Control {
+    /// What it does.
+    pub role: String,
+}
+
+/// A screen (a UI root) shown in some of the night's phases.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "lamplight.Screen", default)]
+pub struct Screen {
+    /// The phases it shows in.
+    pub phases: Vec<String>,
+}
+
+/// A HUD or end-screen readout: `oil`, `spirit` (bars), `clock`, `lamps` or `result` (text).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "lamplight.Readout", default)]
+pub struct Readout {
+    /// What it shows.
+    pub field: String,
+}
+
+/// The night-records list (a `UiList`): one row per night played this session.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "lamplight.Records", default)]
+pub struct Records {
+    /// Rows so far.
+    pub rows: u32,
+}
+
+/// A row of the night-records list.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "lamplight.RecordRow", default)]
+pub struct RecordRow {
+    /// Which night (from 0).
+    pub night: u32,
+}
+
+/// Signal: a title-screen control's value (on the night entity, every tick).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "lamplight.Setting", default)]
+pub struct Setting {
+    /// The control's role.
+    pub role: String,
+    /// A number (length, fog choice).
+    pub value: f32,
+    /// Text (the name).
+    pub text: String,
+}
+
+/// Signal: a button or key asks the night to `start`, `pause`, `resume` or go `again`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "lamplight.Command", default)]
+pub struct Command {
+    /// What to do.
+    pub action: String,
+}
+
+/// Signal: a night ended (on the night entity).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "lamplight.Ended", default)]
+pub struct Ended {
+    /// The lamplighter's name.
+    pub name: String,
+    /// Dawn came with spirit left.
+    pub won: bool,
+    /// Lamps lit.
+    pub lamps: u32,
+    /// Wisps burned.
+    pub burned: u32,
+}
+
 /// The module.
 pub struct Lamplight;
 
@@ -261,6 +340,11 @@ impl Module for Lamplight {
                 describe_type::<Chase>(),
                 describe_type::<Number>(),
                 describe_type::<Wagon>(),
+                describe_type::<Control>(),
+                describe_type::<Screen>(),
+                describe_type::<Readout>(),
+                describe_type::<Records>(),
+                describe_type::<RecordRow>(),
             ],
             signals: vec![
                 describe_type::<Stride>(),
@@ -273,6 +357,10 @@ impl Module for Lamplight {
                 describe_type::<Where>(),
                 describe_type::<Refill>(),
                 describe_type::<NightTick>(),
+                describe_type::<NewNight>(),
+                describe_type::<Setting>(),
+                describe_type::<Command>(),
+                describe_type::<Ended>(),
             ],
             traits: Vec::new(),
             processors: vec![
@@ -285,6 +373,7 @@ impl Module for Lamplight {
                     .receives::<Reached>()
                     .receives::<Lit>()
                     .receives::<Refill>()
+                    .receives::<NewNight>()
                     .after("input.actions")
                     .build(),
                 processor("lamplight.body", Phase::PrePhysics)
@@ -303,6 +392,7 @@ impl Module for Lamplight {
                     .receives::<Popped>()
                     .receives::<SpiritLost>()
                     .receives::<NightTick>()
+                    .receives::<NewNight>()
                     .build(),
                 processor("lamplight.wisps", Phase::PostPhysics)
                     .writes::<Wisp>()
@@ -311,6 +401,7 @@ impl Module for Lamplight {
                     .receives::<Scorch>()
                     .receives::<NavArrived>()
                     .receives::<NightTick>()
+                    .receives::<NewNight>()
                     .after("lamplight.lamps")
                     .build(),
                 processor("lamplight.wagons", Phase::PostPhysics)
@@ -328,6 +419,54 @@ impl Module for Lamplight {
                     .receives::<SpiritLost>()
                     .receives::<Popped>()
                     .receives::<Lit>()
+                    .receives::<Setting>()
+                    .receives::<Command>()
+                    .build(),
+                processor("lamplight.screens", Phase::FrameEnd)
+                    .reads::<Screen>()
+                    .writes::<UiNode>()
+                    .receives::<NightTick>()
+                    .build(),
+                processor("lamplight.readouts", Phase::FrameEnd)
+                    .reads::<Readout>()
+                    .writes::<UiText>()
+                    .receives::<NightTick>()
+                    .build(),
+                processor("lamplight.bars", Phase::FrameEnd)
+                    .reads::<Readout>()
+                    .writes::<UiProgress>()
+                    .receives::<NightTick>()
+                    .receives::<Where>()
+                    .build(),
+                processor("lamplight.records", Phase::FrameEnd)
+                    .writes::<Records>()
+                    .receives::<Ended>()
+                    .build(),
+                processor("lamplight.spinners", Phase::PostPhysics)
+                    .reads::<Control>()
+                    .reads::<UiSpinBox>()
+                    .receives::<NightTick>()
+                    .build(),
+                processor("lamplight.dropdowns", Phase::PostPhysics)
+                    .reads::<Control>()
+                    .reads::<UiDropdown>()
+                    .receives::<NightTick>()
+                    .build(),
+                processor("lamplight.textboxes", Phase::PostPhysics)
+                    .reads::<Control>()
+                    .reads::<UiTextBox>()
+                    .without::<UiSpinBox>()
+                    .receives::<NightTick>()
+                    .build(),
+                processor("lamplight.sliders", Phase::PostPhysics)
+                    .reads::<Control>()
+                    .with::<UiSlider>()
+                    .receives::<UiValueChanged>()
+                    .build(),
+                processor("lamplight.buttons", Phase::PostPhysics)
+                    .reads::<Control>()
+                    .receives::<UiPressed>()
+                    .receives::<NightTick>()
                     .build(),
                 processor("lamplight.chase", Phase::PostPhysics)
                     .reads::<Chase>()
@@ -347,6 +486,15 @@ impl Module for Lamplight {
             "lamplight.numbers" => world::numbers(ctx),
             "lamplight.wagons" => world::wagons(ctx),
             "lamplight.night" => world::night(ctx),
+            "lamplight.screens" => screens::screens(ctx),
+            "lamplight.readouts" => screens::readouts(ctx),
+            "lamplight.bars" => screens::bars(ctx),
+            "lamplight.records" => screens::records(ctx),
+            "lamplight.spinners" => screens::spinners(ctx),
+            "lamplight.dropdowns" => screens::dropdowns(ctx),
+            "lamplight.textboxes" => screens::textboxes(ctx),
+            "lamplight.sliders" => screens::sliders(ctx),
+            "lamplight.buttons" => screens::buttons(ctx),
             "lamplight.chase" => world::chase(ctx),
             other => Err(format!("unknown processor {other}")),
         }

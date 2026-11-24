@@ -14,7 +14,10 @@ Template(
             material: "asset:01a209fd-1a18-712e-a984-ae08a67017d8",
             cast_shadows: false,
         ),
-        "CharacterController": (),
+        "CharacterController": (
+            radius: 0.35,
+            height: 1.25,
+        ),
         "CharacterMotion": (),
         "NavAgent": (
             max_speed: 1.6,

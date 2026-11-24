@@ -29,6 +29,10 @@ pub struct NightTick {
     pub spirit: u32,
     /// How thick the fog is: wave sizes scale by it (1 is normal).
     pub density: f32,
+    /// Lamps lit this night.
+    pub lamps_lit: u32,
+    /// Wisps burned this night.
+    pub wisps_burned: u32,
 }
 
 impl NightTick {
@@ -37,3 +41,9 @@ impl NightTick {
         self.phase == PLAYING
     }
 }
+
+/// Signal: a new night starts (raised on the night entity): lamps go dark, wisps go, the can
+/// fills and the fog starts over.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "lamplight.NewNight", default)]
+pub struct NewNight;

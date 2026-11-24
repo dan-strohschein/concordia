@@ -17,7 +17,10 @@ placed at scale 3 (a 3 m storey; the lantern stands 4.7 m):
 - the ring road (16 m out, one way: east along the south side, then north, west and south),
   with the harbour spur leaving at x = −5 and rejoining at x = 5: two junctions (a split and a
   merge); four oil wagons drive it, wandering at junctions;
-- 40 townsfolk, each with a front door and a market stall to stroll between.
+- 40 townsfolk, each with a front door and a market stall to stroll between;
+- the screens (1280 × 720 UI roots, scaled to the window): the title (name, night length, fog,
+  Start), the HUD (oil and spirit bars, the dawn clock, lamps lit), the pause menu (a volume
+  slider per bus, Resume) and the end screen (the result, the night records, Another night).
 """
 import json
 import math
@@ -286,6 +289,115 @@ class Town:
                 "calm_in": 0.0, "last": list(at), "updates": 0, "body": body,
             })
 
+    # --- The screens -------------------------------------------------------------------------
+
+    def ui(self, parent, name, components):
+        return self.spawn({"Name": name, "Parent": parent, **components})
+
+    def themed(self, cls):
+        return {"UiThemed": {"theme": asset("ui/lamplight.theme.ron"), "class": cls}}
+
+    def label(self, parent, name, text, cls="label", height=28.0):
+        return self.ui(parent, name, {
+            "UiNode": {"height": {"Px": height}},
+            "UiText": {"runs": [{"text": text}], "align": "Center", "valign": "Center"},
+            **self.themed(cls),
+        })
+
+    def button(self, parent, name, text, role):
+        return self.ui(parent, name, {
+            "UiNode": {"height": {"Px": 44.0}},
+            "UiButton": {},
+            "UiText": {"runs": [{"text": text}], "align": "Center", "valign": "Center"},
+            "UiSounds": {"press": asset("audio/cues/ui_click.cue.ron")},
+            "lamplight.Control": {"role": role},
+            **self.themed("button"),
+        })
+
+    def screen(self, name, phases, z):
+        return self.spawn({
+            "Name": name,
+            "UiRoot": {"canvas": [1280.0, 720.0], "space": "Screen", "stretch": "Scale", "aspect": "Keep", "z": z},
+            "UiNode": {"visible": "title" in phases},
+            "lamplight.Screen": {"phases": phases},
+        })
+
+    def panel(self, parent, name, left, top, right, bottom, anchors=(0.5, 0.5, 0.5, 0.5), gap=10.0):
+        a = dict(zip(("left", "top", "right", "bottom"), anchors))
+        return self.ui(parent, name, {
+            "UiNode": {
+                "position": {"Anchored": {"anchors": a, "offsets": {"left": left, "top": top, "right": right, "bottom": bottom}}},
+                "layout": {"Flex": {"direction": "Column", "align_items": "Stretch"}},
+                "gap": [gap, gap],
+                "padding": {"left": 24.0, "top": 20.0, "right": 24.0, "bottom": 20.0},
+            },
+            **self.themed("panel"),
+        })
+
+    def screens(self):
+        title = self.screen("Title screen", ["title"], 0)
+        p = self.panel(title, "Title panel", -220.0, -230.0, 220.0, 200.0)
+        self.label(p, "Title", "Lamplight", "title", 64.0)
+        self.label(p, "Name label", "Your name")
+        self.ui(p, "Name box", {
+            "UiNode": {"height": {"Px": 36.0}},
+            "UiTextBox": {"placeholder": "Lamplighter", "max_len": 16, "editable": True},
+            "lamplight.Control": {"role": "name"},
+            **self.themed("field"),
+        })
+        self.label(p, "Length label", "Night length (seconds)")
+        self.ui(p, "Night length", {
+            "UiNode": {"height": {"Px": 36.0}},
+            "UiTextBox": {"text": "180", "editable": True},
+            "UiSpinBox": {"value": 180.0, "min": 60.0, "max": 600.0, "step": 30.0, "decimals": 0},
+            "lamplight.Control": {"role": "length"},
+            **self.themed("field"),
+        })
+        self.label(p, "Fog label", "Fog")
+        self.ui(p, "Fog", {
+            "UiNode": {"height": {"Px": 36.0}},
+            "UiDropdown": {"options": ["Thin", "Normal", "Thick"], "selected": 1, "max_visible": 3},
+            "lamplight.Control": {"role": "fog"},
+            **self.themed("button"),
+        })
+        self.button(p, "Start", "Light the lamps", "start")
+
+        hud = self.screen("HUD", ["playing", "paused"], 1)
+        h = self.panel(hud, "HUD panel", 16.0, 16.0, 336.0, 216.0, (0.0, 0.0, 0.0, 0.0), 6.0)
+        for name, field, top, colour in (("Oil", "oil", 100.0, [1.0, 0.7, 0.2, 1.0]), ("Spirit", "spirit", 10.0, [0.35, 0.65, 1.0, 1.0])):
+            self.label(h, f"{name} label", name, "hud_label", 20.0)
+            self.ui(h, name, {
+                "UiNode": {"height": {"Px": 14.0}},
+                "UiProgress": {"min": 0.0, "max": top, "value": top, "track": {"Solid": [0.05, 0.05, 0.08, 0.9]}, "bar": {"Solid": colour}},
+                "lamplight.Readout": {"field": field},
+            })
+        self.set(self.label(h, "Dawn clock", "", "hud_label", 22.0), "lamplight.Readout", {"field": "clock"})
+        self.set(self.label(h, "Lamps lit", "", "hud_label", 22.0), "lamplight.Readout", {"field": "lamps"})
+        pause = self.screen("Pause menu", ["paused"], 10)
+        m = self.panel(pause, "Pause panel", -200.0, -170.0, 200.0, 170.0)
+        self.label(m, "Paused", "Paused", "title", 52.0)
+        for bus, gain in (("Music", -6.0), ("SFX", 0.0), ("Ambience", -8.0)):
+            self.label(m, f"{bus} label", bus, "label", 22.0)
+            self.ui(m, f"{bus} volume", {
+                "UiNode": {"height": {"Px": 22.0}},
+                "UiSlider": {"value": gain, "min": -40.0, "max": 0.0, "step": 1.0, "page": 6.0, "orientation": "Horizontal"},
+                "lamplight.Control": {"role": bus},
+                **self.themed("field"),
+            })
+        self.button(m, "Resume", "Resume", "resume")
+
+        end = self.screen("End screen", ["won", "lost"], 5)
+        e = self.panel(end, "End panel", -260.0, -230.0, 260.0, 230.0)
+        self.set(self.label(e, "Result", "", "title", 44.0), "lamplight.Readout", {"field": "result"})
+        self.label(e, "Records label", "Night records")
+        self.ui(e, "Night records", {
+            "UiNode": {"height": {"Px": 200.0}, "layout": {"Flex": {"direction": "Column"}}, "gap": [4.0, 4.0]},
+            "UiList": {},
+            "lamplight.Records": {"rows": 0},
+            **self.themed("field"),
+        })
+        self.button(e, "Another night", "Another night", "again")
+
     def harbour(self):
         for i in range(-4, 5):
             self.piece("assets/town/planks.glb", (3 * i, 0, 35))
@@ -354,7 +466,7 @@ class Town:
             "AudioEmitter": {"cue": asset("audio/cues/night_theme.cue.ron"), "playing": True, "volume_db": 0.0},
         })
         self.spawn({"Name": "Fog", "fog.Fog": {
-            "every": 20.0, "next": 5.0, "per_wave": 6, "waves": 0,
+            "every": 20.0, "first": 5.0, "next": 5.0, "per_wave": 6, "waves": 0,
             "origin": [0.0, 0.0, 30.0], "half_extents": [16.0, 0.0, 2.0],
             "square": [0.0, 0.0, 0.0], "inner": 4.0, "outer": 6.0,
         }})
@@ -377,6 +489,7 @@ def main():
     town.roads()
     town.wagons()
     town.townsfolk(doors)
+    town.screens()
     town.lamplighter()
     town.camera()
     town.night()

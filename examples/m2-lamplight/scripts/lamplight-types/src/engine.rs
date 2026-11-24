@@ -470,3 +470,13 @@ pub struct SimLod {
     /// Scaled time its simulation has reached.
     pub last_time: f64,
 }
+
+/// The engine's `SetBusGain` signal: gameplay setting a bus's gain.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "SetBusGain", default)]
+pub struct SetBusGain {
+    /// The bus.
+    pub bus: String,
+    /// Gain in decibels, in [−80, 24].
+    pub gain_db: f32,
+}
