@@ -11,9 +11,9 @@ use concordia_core::math::{Mat4, Vec2, Vec3};
 use concordia_pathtrace::{Backend, HdrImage, SceneBuilder, SceneTexture, Settings, render};
 use concordia_render_types::{Camera, DirectionalLight, Projection, Tonemap};
 
-/// The backends these tests run on.
+/// The backends these tests run on: the CPU, and the GPU when there is one.
 fn tracers() -> Vec<(&'static str, Backend)> {
-    vec![("cpu", Backend::Cpu)]
+    common::backends()
 }
 
 fn tex_ref(n: u8) -> AssetRef {
@@ -445,4 +445,131 @@ fn a_textured_emitter_lights_by_where_it_glows() {
             &format!("{name}: off-centre, the brighter half dominates"),
         );
     }
+}
+
+/// Every texture kind at once, lit by a sun and a textured emitter: the GPU follows the CPU sample
+/// for sample (same random numbers), so 1 spp agrees to float precision per pixel.
+#[test]
+fn gpu_and_cpu_agree_on_textured_materials() {
+    let Some((_, gpu)) = common::backends().into_iter().find(|(n, _)| *n == "gpu") else {
+        return;
+    };
+    let mut b = SceneBuilder::new();
+    b.texture(tex_ref(1), &stripes()).unwrap();
+    let checker = texture(
+        2,
+        2,
+        &[
+            [200, 40, 40, 255],
+            [40, 200, 40, 128],
+            [40, 40, 200, 255],
+            [255, 255, 255, 30],
+        ],
+    );
+    b.texture(tex_ref(2), &checker).unwrap();
+    let metal_rough = texture(2, 1, &[[0, 64, 255, 255], [0, 255, 0, 255]]);
+    b.texture(tex_ref(3), &metal_rough).unwrap();
+    let slab = |s: Slab| MaterialNode::Slab(s);
+    let painted = Slab {
+        base_color: [1.0, 0.9, 0.8, 1.0],
+        base_color_texture: Some(tex_ref(2)),
+        metallic: 1.0,
+        roughness: 0.8,
+        metallic_roughness_texture: Some(tex_ref(3)),
+        ..Slab::default()
+    };
+    let rough = Slab {
+        base_color: [0.2, 0.3, 0.9, 1.0],
+        roughness: 0.9,
+        ..Slab::default()
+    };
+    let floor = Material {
+        nodes: [
+            ("painted".to_owned(), slab(painted.clone())),
+            ("rough".to_owned(), slab(rough)),
+            (
+                "mixed".to_owned(),
+                MaterialNode::Horizontal {
+                    a: "painted".into(),
+                    b: "rough".into(),
+                    mix: 0.9,
+                    mix_texture: Some(tex_ref(1)),
+                },
+            ),
+        ]
+        .into_iter()
+        .collect(),
+        root: "mixed".into(),
+        ..Material::default()
+    };
+    let mut glass = Material::from_slab(Slab {
+        base_color_texture: Some(tex_ref(2)),
+        ..painted
+    });
+    glass.alpha_mode = AlphaMode::Blend;
+    let mut ground = quad(4.0);
+    ground.uv0 = vec![[0.0, 0.0], [3.0, 0.0], [3.0, 3.0], [0.0, 3.0]];
+    let ground = b.mesh(&ground).unwrap();
+    let floor = b.material(&floor).unwrap();
+    b.instance(ground, Mat4::IDENTITY, floor);
+    let pane = b.mesh(&quad(1.5)).unwrap();
+    let glass = b.material(&glass).unwrap();
+    b.instance(
+        pane,
+        Mat4::from_translation(Vec3::new(0.3, 0.5, 0.0)),
+        glass,
+    );
+    let mut panel = quad(2.0);
+    panel.indices = vec![0, 1, 2, 0, 2, 3];
+    panel.normals = vec![[0.0, -1.0, 0.0]; 4];
+    let lamp = b.mesh(&panel).unwrap();
+    let glow = b
+        .material(&Material::from_slab(Slab {
+            base_color: [0.0, 0.0, 0.0, 1.0],
+            emissive: [3.0, 2.0, 1.0],
+            emissive_texture: Some(tex_ref(2)),
+            ..Slab::default()
+        }))
+        .unwrap();
+    b.instance(
+        lamp,
+        Mat4::from_translation(Vec3::new(-1.0, 1.5, 0.5)),
+        glow,
+    );
+    b.sun(
+        Vec3::new(-0.3, -1.0, 0.2).normalize(),
+        &DirectionalLight {
+            illuminance_lux: 2.0,
+            ..DirectionalLight::default()
+        },
+    );
+    top_camera(&mut b, 4.0);
+    let scene = b.build().unwrap();
+    let s = settings(32, 32, 1);
+    let (cpu, gpu) = (
+        render(&scene, &s, &Backend::Cpu).unwrap(),
+        render(&scene, &s, &gpu).unwrap(),
+    );
+    assert!(mean(&cpu).max_element() > 0.0, "lit");
+    let off: Vec<_> = cpu
+        .pixels
+        .iter()
+        .zip(&gpu.pixels)
+        .enumerate()
+        .filter(|(_, (c, g))| {
+            c.iter()
+                .zip(g.iter())
+                .any(|(c, g)| (c - g).abs() > 2e-3 * c.abs().max(1e-2))
+        })
+        .map(|(i, (c, g))| (i, *c, *g))
+        .collect();
+    // A path can split where the two round a comparison differently (Russian roulette, a cut-out
+    // edge); a handful of such pixels is float noise, more is a different algorithm.
+    assert!(
+        off.len() <= cpu.pixels.len() / 50,
+        "{} of {} pixels differ: {:?}",
+        off.len(),
+        cpu.pixels.len(),
+        &off[..off.len().min(5)]
+    );
 }

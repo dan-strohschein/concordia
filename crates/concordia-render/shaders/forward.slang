@@ -280,13 +280,8 @@ float3 shading_normal(VsOut i, uint tex, float scale) {
 
 Closure load_closure(Frame* frame, uint4* r, VsOut i, bool front, float3 v, bool layered, uint features) {
     Closure c = closure_factors(r, features);
-    float4 base = sample_or(r[7].x, i.uv, float4(1.0));
-    c.base *= base.rgb;
-    c.alpha *= base.a;
-    c.emissive *= sample_or(r[6].w, i.uv, float4(1.0)).rgb;
-    float4 mr = sample_or(r[7].y, i.uv, float4(1.0));
-    c.metallic = saturate(c.metallic * mr.b);
-    c.roughness = saturate(c.roughness * mr.g);
+    apply_texels(c, sample_or(r[7].x, i.uv, float4(1.0)), sample_or(r[6].w, i.uv, float4(1.0)),
+                 sample_or(r[7].y, i.uv, float4(1.0)));
     c.occlusion = lerp(1.0, sample_or(r[7].w, i.uv, float4(1.0)).r, asfloat(r[3].z));
     float3 n = shading_normal(i, r[7].z, asfloat(r[3].y)) * (front ? 1.0 : -1.0);
     finish_closure(c, tables_of(frame), n, v, layered);
