@@ -363,3 +363,16 @@ pub fn assert_golden(suite: &str, name: &str, image: &RgbaImage) {
         panic!("golden {suite}/{name}: {e}");
     }
 }
+
+/// The RHI conformance suite's golden check: `name` in suite `rhi` (`tests/golden/rhi/`).
+#[cfg(feature = "rhi")]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RhiGoldens;
+
+#[cfg(feature = "rhi")]
+impl concordia_rhi::conformance::GoldenCheck for RhiGoldens {
+    fn check(&self, name: &str, width: u32, height: u32, rgba: &[u8]) {
+        let image = RgbaImage::new(width, height, rgba.to_vec()).expect("well-formed capture");
+        assert_golden("rhi", name, &image);
+    }
+}

@@ -4,6 +4,8 @@
 //! Shaders `import bindless;` (in [`builtin_dir`]) to reach the RHI's bindless tables.
 
 mod cache;
+#[cfg(feature = "conformance")]
+pub mod conformance;
 mod deps;
 mod error;
 mod layout;

@@ -11,6 +11,10 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# The Slang `ShaderProvider` the RHI conformance suite uses on every backend.
+conformance = ["concordia-rhi/conformance"]
+
 [dependencies]
 blake3.workspace = true
 concordia-core.workspace = true
@@ -21,6 +25,8 @@ thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+# Self with `conformance`, so its tests run in a plain workspace build.
+concordia-shaders = { path = ".", features = ["conformance"] }
 concordia-rhi-metal.workspace = true
 concordia-testkit.workspace = true
 insta.workspace = true

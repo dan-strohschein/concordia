@@ -11,6 +11,7 @@ Compiles Slang shaders to MSL or SPIR-V with the pinned toolchain (ADR-0045), ex
 - `shader_struct!`, `ShaderStruct`, `check_layout`
 - `ShaderLibrary` (`load`, `get`, `on_files_changed` → `ReloadOutcome`)
 - `builtin_dir()` (`shaders/bindless.slang`)
+- `conformance::SlangShaders::new(Target)` (feature `conformance`): the RHI conformance suite's `ShaderProvider`, shared by every backend (M4 4.1v(a))
 
 ## Invariants
 - Shader ABI: `import bindless;`, no other globals, and push constants as the entry point's single `uniform push` parameter. On Metal: slots 0/1/2 are the tables and 3 is push (tested).

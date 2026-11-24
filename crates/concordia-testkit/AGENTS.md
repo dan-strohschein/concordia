@@ -4,7 +4,9 @@
 Dev-dependency-only test helpers: GPU test guards and golden images compared with NVIDIA FLIP.
 
 ## Public entry points
-- `gpu_required()` / `gpu_required_from(value)` and `REQUIRE_GPU_ENV`
+- `gpu_required()` / `gpu_required_from(value)` and `REQUIRE_GPU_ENV` (Metal)
+- `vulkan_required()` / `vulkan_required_from(value)` and `REQUIRE_VULKAN_ENV` (`CONCORDIA_REQUIRE_VULKAN`; M4 4.1v(a))
+- `golden::RhiGoldens` (feature `rhi`): the RHI conformance suite's `GoldenCheck`, shared by every backend
 - `golden::{assert_golden, Golden, RgbaImage, Tolerance, Tolerances, FlipScore, flip_score, GoldenError}`; `Golden::tolerance(suite, name)`, `Golden::write_comparison` (actual, expected and FLIP heat map), `Golden::is_ci`
 - `reference::{ReferenceFile, ReferenceLook, Blessed, SUITE}` (M4 4.1b4, ADR-0090): `<name>.reference.ron` in `tests/golden/m4_reference/` (inputs, and when blessed the backend, git hash, baseline FLIP and noise FLIP), canonical and validated; `Golden::reference(name)` and `Golden::bless_reference(name, file, image)`
 

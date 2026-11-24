@@ -53,11 +53,15 @@ pub trait GoldenCheck {
 }
 
 /// One `#[test]` per conformance case. `$make` returns `Option<Box<dyn Device>>` (`None` skips);
-/// `$golden` is a `GoldenCheck` and `$shaders` a `ShaderProvider`.
+/// `$golden` is a `GoldenCheck` and `$shaders` a `ShaderProvider`. An optional
+/// `finish = |device: &dyn Device| ...` runs after each case (e.g. to fail on validation errors).
 #[macro_export]
 macro_rules! conformance_tests {
     ($make:expr, $golden:expr, $shaders:expr) => {
-        $crate::conformance_tests!(@cases $make, $golden, $shaders;
+        $crate::conformance_tests!($make, $golden, $shaders, finish = |_: &dyn $crate::Device| {});
+    };
+    ($make:expr, $golden:expr, $shaders:expr, finish = $finish:expr) => {
+        $crate::conformance_tests!(@cases $make, $golden, $shaders, $finish;
             device_reports_caps_and_limits,
             buffer_upload_and_readback_round_trips,
             compute_dispatch_writes_expected_values,
@@ -78,12 +82,13 @@ macro_rules! conformance_tests {
             timer_scopes_report_each_scope_once_in_order
         );
     };
-    (@cases $make:expr, $golden:expr, $shaders:expr; $($name:ident),+) => {$(
+    (@cases $make:expr, $golden:expr, $shaders:expr, $finish:expr; $($name:ident),+) => {$(
         #[test]
         fn $name() {
             let Some(device) = ($make)() else { return };
             let harness = $crate::conformance::Harness { golden: &$golden, shaders: &$shaders };
             $crate::conformance::$name(&*device, &harness);
+            ($finish)(&*device);
         }
     )+};
 }
