@@ -6,8 +6,12 @@ pub mod glb;
 pub mod mesh;
 mod methods;
 mod module;
+pub mod music;
 mod provider;
 mod registry;
+pub mod sfx;
+pub mod texture;
+mod wav;
 
 pub use error::GenError;
 pub use methods::{GenList, GenListResult, GenRun, GenRunParams, GenRunResult, ProviderInfo};

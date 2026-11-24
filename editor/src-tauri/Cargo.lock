@@ -805,6 +805,8 @@ dependencies = [
  "concordia-assets",
  "concordia-command",
  "concordia-reflect",
+ "hound",
+ "png",
  "serde",
  "serde_json",
  "thiserror 2.0.21",

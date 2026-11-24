@@ -154,14 +154,21 @@ impl Method for GenRun {
             .at("/request")
         })?;
         write(&file, &generated.bytes)?;
-        let imported = concordia_assets::AssetImport::call(
-            engine,
-            ctx,
-            concordia_assets::AssetImportParams {
-                path: p.path.clone(),
-                actor: Some(actor.clone()),
-            },
-        )?;
+        let import = |engine: &mut Engine| {
+            concordia_assets::AssetImport::call(
+                engine,
+                ctx,
+                concordia_assets::AssetImportParams {
+                    path: p.path.clone(),
+                    actor: Some(actor.clone()),
+                },
+            )
+        };
+        let mut imported = import(engine)?;
+        if let Some(settings) = &generated.settings {
+            merge_settings(&file, settings)?;
+            imported = import(engine)?;
+        }
         let hash =
             crate::provider::inputs_hash(provider.id(), provider.version(), &p.request, seed);
         record_provenance(&file, provider.as_ref(), &p.request, seed, &hash)?;
@@ -195,6 +202,19 @@ fn write(file: &std::path::Path, bytes: &[u8]) -> Result<(), ApiError> {
     let tmp = file.with_extension("gen-tmp");
     std::fs::write(&tmp, bytes).map_err(io)?;
     std::fs::rename(&tmp, file).map_err(io)
+}
+
+/// Merges a provider's import settings (e.g. loop points) into `file`'s sidecar.
+fn merge_settings(file: &std::path::Path, settings: &Value) -> Result<(), ApiError> {
+    use concordia_assets::Sidecar;
+    let path = Sidecar::path_for(file);
+    let fail =
+        |e: concordia_assets::AssetError| ApiError::new(ApiErrorKind::SceneIo, e.to_string());
+    let mut sidecar = Sidecar::read(&path).map_err(fail)?;
+    if let (Value::Object(into), Value::Object(from)) = (&mut sidecar.settings, settings) {
+        into.extend(from.iter().map(|(k, v)| (k.clone(), v.clone())));
+    }
+    sidecar.write(&path).map_err(fail)
 }
 
 /// Records how `file` was made in its sidecar (which the import just wrote).

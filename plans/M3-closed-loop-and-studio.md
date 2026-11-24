@@ -1,7 +1,7 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b, 3.0c, 3.1 (a–c), 3.2 (a–b) and 3.7a done) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b, 3.0c, 3.1 (a–c), 3.2 (a–b), 3.7a and 3.7b done) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
@@ -1051,6 +1051,63 @@ Every role stays under 50k. If the AST's recursive schema makes `assert_eval` he
 - Both deny checks: ok. The editor's lock gains `concordia-gen` (through `concordia-app`).
 - `just editor-schemas`: no changes. `just editor-test`: 118 unit and 22 end-to-end tests pass.
 - No new Linux library, and no snapshots changed. 53 GB free.
+
+### Phase 3.7b As built (2026-11-24)
+**Status: done (branch `m3/3.7-gen-media`).** Sound effects, music and textures.
+
+**What landed:**
+- **`concordia-gen`:**
+  - **`sfx`:** five presets over a square, sine or sample-and-hold noise source, with an exponential pitch sweep, an attack-decay envelope and a one-pole low-pass. The result is normalized to −1 dBFS as mono 16-bit 48 kHz WAV.
+  - **`music`:** a `Score` (bpm, bars, tracks of `Note`s, seven `Instrument`s), mixed to one WAV. Notes past the end wrap to the top, and the loop points (`loop_from_bar`) go to the sidecar.
+  - **`texture`:** tileable value and Worley noise with octaves, checker and stripes, between two colours, as RGBA8 PNG.
+  - **`wav.rs`:** shared WAV writing, normalization and seeded noise.
+  - **`Generated::settings`:** `gen.run` merges these import settings into the sidecar and re-imports.
+
+**Choices (my recommendations, pre-approved):**
+- **The GPU Slang bake goes to `later-backlog`.** CPU noise is deterministic everywhere and needs no GPU or toolchain. So `shader_bake_matches_golden` is dropped, and no goldens are added.
+- **The score is the request itself,** not a `.score.ron` file.
+- **One mixed file, not stems.**
+- **Mono 48 kHz:** spatial playback pans mono sources, and the mixer's rate is 48 kHz.
+
+**Tests** (expected values derived in each header):
+- **`tests/procedural_audio.rs` (5):**
+  - `jump`'s sweep: first-fifth to last-fifth zero-crossing ratio 1.4^0.8 ≈ 1.309, within 10%;
+  - every preset peaks at 29,204 ± 2 (−1 dBFS);
+  - seeds vary noisy presets;
+  - a 2-bar score at 120 bpm is 192,000 frames, looping from 96,000;
+  - bad requests name their field.
+- **`tests/procedural_texture.rs` (4):**
+  - noise seams no larger than interior steps;
+  - checker squares of 8 px and stripes of 16 px;
+  - deterministic PNGs;
+  - bad sizes, cells and octaves refused.
+- **`tests/provider.rs`:** `generated_music_imports_with_its_loop_points` (96,000 frames looping); generated sfx and textures import as `sound` and `image`.
+
+**Changed deliberately:** the registry test now lists four providers.
+
+**Red runs:**
+- Every new test failed against stub providers.
+- The import-settings test failed with `loop_end` null.
+
+**Mutation checks** (all failed tests; restored files touched):
+- no sweep;
+- no normalization;
+- lattices not wrapping;
+- settings not merged;
+- the loop start ignored.
+
+**Studio and docs:**
+- **No role tools changed;** 3.7c widens the scopes.
+- **Updated:** `concordia-gen`'s AGENTS.md and README; the agent guide; `later-backlog` (the GPU bake).
+
+**Checklist (2026-11-24):**
+- `just lint` (one `is_multiple_of` fix) and Tauri clippy: clean.
+- `just wasm`, `just native-fixtures`, and the full suite with `CONCORDIA_REQUIRE_GPU=1`: 1,910 run, all passed.
+- Doc tests: clean.
+- `just gate-tests M1` (4/4) and `M3S` (13/13).
+- Both deny checks: ok. The editor's lock gains `hound` and `png` under `concordia-gen`.
+- `just editor-schemas`: no changes. `just editor-test`: 118 unit and 22 end-to-end tests pass.
+- No new Linux library, and no snapshots changed. 41 GB free.
 
 ## Goal & context
 M3 closes the loop the design promises (principle 3): an agent can **record** a play session, **replay** it deterministically, **find the first frame** where two runs diverge, and **prove** behavior with typed playtest assertions, all from tests, the CLI and MCP. On top of that loop, M3 ships **Agent Studio v1**: a configurable team of specialist agents that runs **inside the user's own Claude Code on a regular subscription, with no API key** (principle 0).
