@@ -171,7 +171,7 @@ pub(crate) fn render(s: &Score, seed: u64) -> Result<(Vec<f32>, u64, u64), GenEr
 pub struct MusicProvider;
 
 impl ContentProvider for MusicProvider {
-    fn id(&self) -> &'static str {
+    fn id(&self) -> &str {
         "music"
     }
     fn kind(&self) -> GenKind {
@@ -180,13 +180,18 @@ impl ContentProvider for MusicProvider {
     fn version(&self) -> u32 {
         1
     }
-    fn extensions(&self) -> &'static [&'static str] {
-        &["wav"]
+    fn extensions(&self) -> Vec<&str> {
+        vec!["wav"]
     }
     fn request_schema(&self) -> Value {
         concordia_reflect::schema_for(<Score as Reflect>::type_info())
     }
-    fn generate(&self, request: &Value, seed: u64) -> Result<Generated, GenError> {
+    fn generate(
+        &self,
+        request: &Value,
+        seed: u64,
+        _: &crate::provider::GenContext<'_>,
+    ) -> Result<Generated, GenError> {
         let s: Score = serde_json::from_value(request.clone())
             .map_err(|e| GenError::invalid("request", e.to_string()))?;
         let (samples, loop_start, loop_end) = render(&s, seed)?;
@@ -194,6 +199,7 @@ impl ContentProvider for MusicProvider {
             bytes: encode(&samples)?,
             info: json!({"frames": samples.len(), "rate": RATE, "loop_start": loop_start, "loop_end": loop_end}),
             settings: Some(json!({"loop_start": loop_start, "loop_end": loop_end})),
+            inputs: Vec::new(),
         })
     }
 }

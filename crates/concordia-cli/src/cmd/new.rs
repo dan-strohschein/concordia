@@ -110,6 +110,9 @@ fn manifest(name: &str, features: &Features) -> String {
         text.push_str(
             "\n# Replays: replay.record / replay.run, files under tests/replays/.\n[replay]\n",
         );
+        text.push_str(
+            "\n# Generators: gen.list / gen.run (meshes, sounds, music, textures, Blender scripts).\n[gen]\n",
+        );
     }
     if features.studio {
         text.push_str(

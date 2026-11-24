@@ -128,7 +128,7 @@ pub(crate) fn synth(r: &SfxRequest, seed: u64) -> Result<Vec<f32>, GenError> {
 pub struct SfxProvider;
 
 impl ContentProvider for SfxProvider {
-    fn id(&self) -> &'static str {
+    fn id(&self) -> &str {
         "sfx"
     }
     fn kind(&self) -> GenKind {
@@ -137,13 +137,18 @@ impl ContentProvider for SfxProvider {
     fn version(&self) -> u32 {
         1
     }
-    fn extensions(&self) -> &'static [&'static str] {
-        &["wav"]
+    fn extensions(&self) -> Vec<&str> {
+        vec!["wav"]
     }
     fn request_schema(&self) -> Value {
         concordia_reflect::schema_for(<SfxRequest as Reflect>::type_info())
     }
-    fn generate(&self, request: &Value, seed: u64) -> Result<Generated, GenError> {
+    fn generate(
+        &self,
+        request: &Value,
+        seed: u64,
+        _: &crate::provider::GenContext<'_>,
+    ) -> Result<Generated, GenError> {
         let r: SfxRequest = serde_json::from_value(request.clone())
             .map_err(|e| GenError::invalid("request", e.to_string()))?;
         let samples = synth(&r, seed)?;
@@ -151,6 +156,7 @@ impl ContentProvider for SfxProvider {
             bytes: encode(&samples)?,
             info: json!({"frames": samples.len(), "rate": RATE, "seconds": samples.len() as f64 / f64::from(RATE)}),
             settings: None,
+            inputs: Vec::new(),
         })
     }
 }

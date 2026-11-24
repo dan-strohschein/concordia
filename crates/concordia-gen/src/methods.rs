@@ -129,24 +129,23 @@ impl Method for GenRun {
             )
             .at("/provider")
         })?;
-        let extension = provider
-            .extensions()
+        let extensions = provider.extensions();
+        let extension = extensions
             .iter()
             .find(|e| p.path.ends_with(&format!(".{e}")))
             .ok_or_else(|| {
                 ApiError::new(
                     ApiErrorKind::InvalidParams,
-                    format!(
-                        "{} writes .{} files",
-                        provider.id(),
-                        provider.extensions().join(", .")
-                    ),
+                    format!("{} writes .{} files", provider.id(), extensions.join(", .")),
                 )
                 .at("/path")
             })?;
         let file = engine.project_file(&p.path, &format!(".{extension}"))?;
         let seed = p.seed.unwrap_or(0);
-        let generated = provider.generate(&p.request, seed).map_err(|e| {
+        let ctx_gen = crate::provider::GenContext {
+            project: engine.project(),
+        };
+        let generated = provider.generate(&p.request, seed, &ctx_gen).map_err(|e| {
             ApiError::new(
                 ApiErrorKind::InvalidParams,
                 format!("{}: {e}", provider.id()),
@@ -169,8 +168,13 @@ impl Method for GenRun {
             merge_settings(&file, settings)?;
             imported = import(engine)?;
         }
-        let hash =
-            crate::provider::inputs_hash(provider.id(), provider.version(), &p.request, seed);
+        let hash = crate::provider::inputs_hash(
+            provider.id(),
+            provider.version(),
+            &p.request,
+            seed,
+            &generated.inputs,
+        );
         record_provenance(&file, provider.as_ref(), &p.request, seed, &hash)?;
         tracing::info!(target: "concordia::gen", actor = %actor, provider = provider.id(), path = %p.path, "content generated");
         Ok(GenRunResult {

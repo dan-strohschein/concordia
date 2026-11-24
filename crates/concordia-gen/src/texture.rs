@@ -200,7 +200,7 @@ fn png(size: u32, rgba: &[u8]) -> Result<Vec<u8>, GenError> {
 pub struct TextureProvider;
 
 impl ContentProvider for TextureProvider {
-    fn id(&self) -> &'static str {
+    fn id(&self) -> &str {
         "texture"
     }
     fn kind(&self) -> GenKind {
@@ -209,13 +209,18 @@ impl ContentProvider for TextureProvider {
     fn version(&self) -> u32 {
         1
     }
-    fn extensions(&self) -> &'static [&'static str] {
-        &["png"]
+    fn extensions(&self) -> Vec<&str> {
+        vec!["png"]
     }
     fn request_schema(&self) -> Value {
         concordia_reflect::schema_for(<TextureRequest as Reflect>::type_info())
     }
-    fn generate(&self, request: &Value, seed: u64) -> Result<Generated, GenError> {
+    fn generate(
+        &self,
+        request: &Value,
+        seed: u64,
+        _: &crate::provider::GenContext<'_>,
+    ) -> Result<Generated, GenError> {
         let r: TextureRequest = serde_json::from_value(request.clone())
             .map_err(|e| GenError::invalid("request", e.to_string()))?;
         let rgba = render(&r, seed)?;
@@ -223,6 +228,7 @@ impl ContentProvider for TextureProvider {
             bytes: png(r.size, &rgba)?,
             info: json!({"width": r.size, "height": r.size}),
             settings: None,
+            inputs: Vec::new(),
         })
     }
 }

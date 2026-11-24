@@ -88,7 +88,13 @@ fn registry_lists_procedural_providers_by_default_and_no_model_providers() {
         .iter()
         .map(|p| p["id"].as_str().unwrap())
         .collect();
-    assert_eq!(ids, ["mesh", "sfx", "music", "texture"], "{list}");
+    // Blender (3.7c) runs the user's own Blender as a separate program: listed, not procedural.
+    assert_eq!(
+        ids,
+        ["mesh", "sfx", "music", "texture", "blender"],
+        "{list}"
+    );
+    assert_eq!(providers[4]["procedural"], false);
     let mesh = &providers[0];
     assert_eq!(
         (&mesh["kind"], &mesh["extensions"]),

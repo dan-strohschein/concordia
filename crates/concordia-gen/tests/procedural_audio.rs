@@ -10,7 +10,13 @@ fn generate(provider: &str, request: Value, seed: u64) -> (Vec<i16>, Value) {
         .get(provider)
         .unwrap_or_else(|| panic!("{provider}"));
     let out = p
-        .generate(&request, seed)
+        .generate(
+            &request,
+            seed,
+            &concordia_gen::GenContext {
+                project: std::path::Path::new("."),
+            },
+        )
         .unwrap_or_else(|e| panic!("{request}: {e}"));
     let reader = hound::WavReader::new(std::io::Cursor::new(out.bytes)).unwrap();
     let spec = reader.spec();
@@ -99,6 +105,9 @@ fn score_render_has_expected_length_and_loop_points() {
         .generate(
             &json!({"bpm": 120.0, "beats_per_bar": 4, "bars": 2, "tracks": []}),
             0,
+            &concordia_gen::GenContext {
+                project: std::path::Path::new("."),
+            },
         )
         .unwrap();
     assert_eq!(
@@ -136,7 +145,13 @@ fn bad_sound_requests_are_refused() {
         let err = registry
             .get(provider)
             .unwrap()
-            .generate(&request, 0)
+            .generate(
+                &request,
+                0,
+                &concordia_gen::GenContext {
+                    project: std::path::Path::new("."),
+                },
+            )
             .unwrap_err()
             .to_string();
         assert!(err.contains(field), "{request}: {err}");

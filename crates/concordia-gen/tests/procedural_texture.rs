@@ -9,7 +9,13 @@ fn generate(request: Value, seed: u64) -> (Vec<[u8; 4]>, u32, Vec<u8>) {
     let out = registry
         .get("texture")
         .unwrap()
-        .generate(&request, seed)
+        .generate(
+            &request,
+            seed,
+            &concordia_gen::GenContext {
+                project: std::path::Path::new("."),
+            },
+        )
         .unwrap_or_else(|e| panic!("{e}"));
     let decoder = png::Decoder::new(std::io::Cursor::new(out.bytes.clone()));
     let mut reader = decoder.read_info().unwrap();
@@ -121,7 +127,13 @@ fn bad_texture_requests_are_refused() {
         let err = registry
             .get("texture")
             .unwrap()
-            .generate(&request, 0)
+            .generate(
+                &request,
+                0,
+                &concordia_gen::GenContext {
+                    project: std::path::Path::new("."),
+                },
+            )
             .unwrap_err()
             .to_string();
         assert!(err.contains(field), "{request}: {err}");

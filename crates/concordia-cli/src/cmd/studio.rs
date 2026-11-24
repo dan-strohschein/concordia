@@ -23,7 +23,7 @@ pub(crate) struct StudioArgs {
 
 #[derive(Debug, clap::Subcommand)]
 enum StudioCommand {
-    /// Add the default Agent Studio files and a [studio] section (and [scripts], [replay], [anim], [audio] and [nav], if missing) to this project, then sync.
+    /// Add the default Agent Studio files and a [studio] section (and [scripts], [replay], [gen], [anim], [audio] and [nav], if missing) to this project, then sync.
     Init {
         /// Skip generating the Claude Code files.
         #[arg(long)]
@@ -265,10 +265,10 @@ fn studio_project(root: &Path) -> Result<Project, Failure> {
 }
 
 /// Writes the default Studio files and adds `[studio]` to `concordia.toml`, plus `[scripts]`,
-/// `[replay]`, `[anim]` (with `[assets]`), `[audio]`, `[ui]`, `[nav]` and an input map if missing:
-/// the default gameplay programmer reloads scripts, QA replays and injects input, the animator
-/// inspects poses, the sound designer and composer render audio, the UI/UX designer inspects
-/// layouts, and the level designer builds navmeshes.
+/// `[replay]`, `[gen]`, `[anim]` (with `[assets]`), `[audio]`, `[ui]`, `[nav]` and an input map if
+/// missing: the default gameplay programmer reloads scripts, QA replays and injects input, the
+/// content roles generate assets, the animator inspects poses, the sound designer and composer
+/// render audio, the UI/UX designer inspects layouts, and the level designer builds navmeshes.
 fn init(project: &Path) -> Result<(), Failure> {
     let files = concordia_studio::init(project, Path::new("studio"))
         .map_err(|e| Failure::usage(e.to_string()))?;
@@ -282,6 +282,9 @@ fn init(project: &Path) -> Result<(), Failure> {
     }
     if manifest.replay.is_none() {
         sections.push("[replay]".to_owned());
+    }
+    if manifest.generators.is_none() {
+        sections.push("[gen]".to_owned());
     }
     if manifest.assets.is_none() {
         sections.push("[assets]".to_owned());

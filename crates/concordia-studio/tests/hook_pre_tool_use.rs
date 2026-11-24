@@ -228,13 +228,14 @@ fn animator_writes_only_anim_files_and_model_sidecars() {
         "assets/anim/previews/hero.scene.ron",
         "assets/models/hero.fbx.import.ron",
         "assets/models/people/guard.glb.import.ron",
+        // Clips are authored as Blender scripts (M3 3.7c), shared with the modeler.
+        "assets/blender/hero.py",
     ] {
         assert_eq!(verdict(allowed), "allow", "{allowed}");
     }
     for denied in [
         "assets/models/hero.fbx",
         "assets/models/hero.fbx.import.ron.bak",
-        "assets/blender/hero.py",
         "scenes/main.scene.ron",
         "scripts/hero/src/lib.rs",
         "assets/materials/skin.material.ron",

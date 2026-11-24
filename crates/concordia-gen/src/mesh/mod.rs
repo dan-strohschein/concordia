@@ -170,7 +170,7 @@ pub fn build(request: &MeshRequest, seed: u64) -> Result<MeshData, GenError> {
 pub struct MeshProvider;
 
 impl crate::provider::ContentProvider for MeshProvider {
-    fn id(&self) -> &'static str {
+    fn id(&self) -> &str {
         "mesh"
     }
 
@@ -182,8 +182,8 @@ impl crate::provider::ContentProvider for MeshProvider {
         1
     }
 
-    fn extensions(&self) -> &'static [&'static str] {
-        &["glb"]
+    fn extensions(&self) -> Vec<&str> {
+        vec!["glb"]
     }
 
     fn request_schema(&self) -> serde_json::Value {
@@ -194,6 +194,7 @@ impl crate::provider::ContentProvider for MeshProvider {
         &self,
         request: &serde_json::Value,
         seed: u64,
+        _: &crate::provider::GenContext<'_>,
     ) -> Result<crate::provider::Generated, GenError> {
         let request: MeshRequest = serde_json::from_value(request.clone())
             .map_err(|e| GenError::invalid("request", e.to_string()))?;
@@ -207,6 +208,7 @@ impl crate::provider::ContentProvider for MeshProvider {
                 "bounds": {"min": mesh.aabb.0, "max": mesh.aabb.1},
             }),
             settings: None,
+            inputs: Vec::new(),
         })
     }
 }

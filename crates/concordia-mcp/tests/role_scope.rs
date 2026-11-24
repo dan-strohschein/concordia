@@ -226,7 +226,7 @@ async fn server_rejects_material_writes_outside_the_role_paths() {
 
 /// `gen.run` writes a file, so the server holds it to the role's write paths like a scene or a
 /// material (M3 3.7a): a tech artist given `gen_run` may generate into its texture folder, not
-/// into `scripts/` or `studio/`.
+/// into `scripts/` or `studio/`, and may run only Blender scripts it may write (3.7c).
 #[tokio::test]
 async fn server_rejects_generated_files_outside_the_role_paths() {
     let dir = tempfile::tempdir().unwrap();
@@ -257,6 +257,26 @@ async fn server_rejects_generated_files_outside_the_role_paths() {
     )
     .await;
     assert_ne!(inside.is_error, Some(true), "{}", text(&inside));
+    // A Blender script runs as the role's own code, so it must be inside the role's write
+    // paths too (3.7c): one in scripts/ is refused before Blender starts.
+    std::fs::create_dir_all(dir.path().join("scripts")).unwrap();
+    std::fs::write(dir.path().join("scripts/build.py"), "import bpy\n").unwrap();
+    let foreign = call(
+        &client,
+        "gen_run",
+        with(
+            json!({"provider": "blender", "request": {"script": "scripts/build.py"}, "path": "assets/textures/b.glb"}),
+            "tech-artist",
+            "s/2",
+        ),
+    )
+    .await;
+    assert_eq!(foreign.is_error, Some(true), "{}", text(&foreign));
+    assert!(
+        text(&foreign).contains("scripts/build.py"),
+        "{}",
+        text(&foreign)
+    );
 }
 
 #[tokio::test]
