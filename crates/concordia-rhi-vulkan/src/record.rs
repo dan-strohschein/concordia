@@ -62,6 +62,8 @@ pub struct Features {
     pub shader_storage_image_write_without_format: bool,
     /// `shaderInt64` (buffer pointers).
     pub shader_int64: bool,
+    /// `shaderDrawParameters` (Slang's `SV_VertexID` declares `DrawParameters`).
+    pub shader_draw_parameters: bool,
     /// `samplerAnisotropy` (optional: without it `LinearRepeat` is not anisotropic).
     pub sampler_anisotropy: bool,
 }
@@ -99,6 +101,7 @@ impl Features {
                 "shaderStorageImageWriteWithoutFormat",
             ),
             (self.shader_int64, "shaderInt64"),
+            (self.shader_draw_parameters, "shaderDrawParameters"),
         ]
         .into_iter()
         .filter_map(|(present, name)| (!present).then_some(name))

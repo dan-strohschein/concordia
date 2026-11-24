@@ -19,6 +19,7 @@
     "shader_storage_image_read_without_format": true,
     "shader_storage_image_write_without_format": true,
     "shader_int64": true,
+    "shader_draw_parameters": true,
     "sampler_anisotropy": true
   },
   "msaa_sample_counts": [

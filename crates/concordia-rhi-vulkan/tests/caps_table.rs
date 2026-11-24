@@ -26,7 +26,10 @@ fn lavapipe_meets_m1_with_draw_boundary_timestamps() {
         (caps.max_bindless_textures, caps.max_bindless_buffers),
         (BINDLESS_CAPACITY, BINDLESS_CAPACITY)
     );
-    assert_eq!(caps.feature_sets, ["VK_EXT_mesh_shader", "VK_KHR_ray_query", "vulkan1.4"]);
+    assert_eq!(
+        caps.feature_sets,
+        ["VK_EXT_mesh_shader", "VK_KHR_ray_query", "vulkan1.4"]
+    );
     assert!(
         !caps.mesh_shaders && !caps.ray_tracing && !caps.metalfx_temporal,
         "not implemented in 4.1v(a)"
@@ -139,4 +142,11 @@ fn print_this_machines_probe_record() {
         Ok(record) => println!("{}", serde_json::to_string_pretty(&record).unwrap()),
         Err(e) => println!("no Vulkan device: {e}"),
     }
+}
+
+#[test]
+fn slang_vertex_shaders_need_draw_parameters() {
+    let mut record = lavapipe();
+    record.features.shader_draw_parameters = false;
+    assert_eq!(record.missing(), ["shaderDrawParameters"]);
 }

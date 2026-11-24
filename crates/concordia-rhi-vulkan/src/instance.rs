@@ -193,9 +193,11 @@ impl Instance {
     }
 
     fn features(&self, physical: vk::PhysicalDevice) -> Features {
+        let mut v11 = vk::PhysicalDeviceVulkan11Features::default();
         let mut v12 = vk::PhysicalDeviceVulkan12Features::default();
         let mut v13 = vk::PhysicalDeviceVulkan13Features::default();
         let mut all = vk::PhysicalDeviceFeatures2::default()
+            .push_next(&mut v11)
             .push_next(&mut v12)
             .push_next(&mut v13);
         // SAFETY: `physical` came from this instance; the chain holds valid, writable structs.
@@ -224,6 +226,7 @@ impl Instance {
                 core.shader_storage_image_write_without_format
             ),
             shader_int64: on(core.shader_int64),
+            shader_draw_parameters: on(v11.shader_draw_parameters),
             sampler_anisotropy: on(core.sampler_anisotropy),
         }
     }

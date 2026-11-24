@@ -109,6 +109,10 @@ mod tests {
         assert_eq!((slots.get(a, ga), slots.get(c, gc)), (None, None));
         assert!(slots.drain().is_empty());
         let (d, gd) = slots.insert("d");
+        assert!(
+            d == a || d == c,
+            "drained slots are reused, not leaked: {d}"
+        );
         assert_ne!((d, gd), (a, ga), "a drained slot's old handle stays stale");
     }
 }

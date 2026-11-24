@@ -676,6 +676,7 @@ fn create_logical(instance: &Instance, chosen: &Candidate) -> Result<ash::Device
     let queues = [vk::DeviceQueueCreateInfo::default()
         .queue_family_index(chosen.family)
         .queue_priorities(&priorities)];
+    let mut v11 = vk::PhysicalDeviceVulkan11Features::default().shader_draw_parameters(true);
     let mut v12 = vk::PhysicalDeviceVulkan12Features::default()
         .timeline_semaphore(true)
         .buffer_device_address(true)
@@ -693,6 +694,7 @@ fn create_logical(instance: &Instance, chosen: &Candidate) -> Result<ash::Device
         .sampler_anisotropy(chosen.record.features.sampler_anisotropy);
     let mut features = vk::PhysicalDeviceFeatures2::default()
         .features(core)
+        .push_next(&mut v11)
         .push_next(&mut v12)
         .push_next(&mut v13);
     let portability = chosen
