@@ -65,7 +65,8 @@ pub struct RhiCaps {
     pub unified_memory: bool,
     /// Supported MSAA counts for color textures, ascending.
     pub msaa_sample_counts: Vec<SampleCount>,
-    /// Bindless resource tables (Metal: argument buffers tier 2).
+    /// Bindless resource tables (Metal: argument buffers tier 2; Vulkan: descriptor indexing and
+    /// buffer device addresses).
     pub bindless: bool,
     /// Mesh shaders.
     pub mesh_shaders: bool,
@@ -177,7 +178,12 @@ impl RhiCaps {
             missing.push("4x MSAA color textures".to_owned());
         }
         if !self.bindless {
-            missing.push("bindless resources (Metal argument buffers tier 2)".to_owned());
+            missing.push(match self.backend {
+                Backend::Metal => "bindless resources (Metal argument buffers tier 2)".to_owned(),
+                Backend::Vulkan => "bindless resources (Vulkan descriptor indexing with 16384 \
+                                    update-after-bind images, and buffer device addresses)"
+                    .to_owned(),
+            });
         }
         missing
     }

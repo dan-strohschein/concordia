@@ -79,7 +79,8 @@ macro_rules! conformance_tests {
             static_samplers_filter_and_address_as_named,
             additive_blend_sums_overlapping_draws,
             submit_timed_reports_the_gpu_time_once,
-            timer_scopes_report_each_scope_once_in_order
+            timer_scopes_report_each_scope_once_in_order,
+            clip_space_y_is_up_and_back_faces_cull
         );
     };
     (@cases $make:expr, $golden:expr, $shaders:expr, $finish:expr; $($name:ident),+) => {$(

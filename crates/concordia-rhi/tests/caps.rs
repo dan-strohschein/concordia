@@ -44,6 +44,20 @@ fn missing_msaa4_and_bindless_are_both_reported() {
 }
 
 #[test]
+fn requirement_m1_names_the_backends_bindless_features() {
+    let mut caps = metal_caps();
+    caps.bindless = false;
+    let metal = caps.missing(Requirement::M1);
+    assert!(metal[0].contains("argument buffers tier 2"), "{metal:?}");
+    caps.backend = concordia_rhi::Backend::Vulkan;
+    let vulkan = caps.missing(Requirement::M1);
+    assert!(
+        vulkan[0].contains("descriptor indexing") && vulkan[0].contains("buffer device addresses"),
+        "{vulkan:?}"
+    );
+}
+
+#[test]
 fn caps_serialize_with_lowercase_backend_and_numeric_sample_counts() {
     let json = serde_json::to_value(metal_caps()).unwrap();
     assert_eq!(json["backend"], "metal");
