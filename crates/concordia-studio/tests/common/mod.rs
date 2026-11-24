@@ -19,6 +19,7 @@ pub const PROJECT_TOOLS: &[&str] = &[
     "anim_inspect",
     "asset_import",
     "asset_list",
+    "assert_eval",
     "audio_buses",
     "audio_inspect",
     "audio_play",

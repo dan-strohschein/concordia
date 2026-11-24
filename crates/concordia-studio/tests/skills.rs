@@ -1215,3 +1215,52 @@ fn scripting_skill_reads_input_through_input_actions() {
         );
     }
 }
+
+/// The playtest skills (M3 3.2b) show the real `assert_eval` params, every assertion in them
+/// parses, and the suite example is a valid `.playtest.ron` whose assertions parse; QA and the
+/// level designer preload the playtest skill and have the tool, and the gameplay programmer has
+/// it for its fix skill.
+#[test]
+fn playtest_skills_use_the_real_assert_tool_assertions_and_suite_format() {
+    let mut checked = 0;
+    for name in ["concordia-write-playtest", "concordia-fix-bug-with-replay"] {
+        for (tool, args) in examples(skill(name), "assert_") {
+            assert_eq!(tool, "assert_eval", "{name}");
+            let params: concordia_replay::AssertEvalParams = serde_json::from_value(args.clone())
+                .unwrap_or_else(|e| panic!("{name}: {args}: {e}"));
+            for text in &params.assertions {
+                concordia_assert::parse(text).unwrap_or_else(|e| panic!("{name}: {text}: {e}"));
+            }
+            checked += 1;
+        }
+    }
+    assert!(
+        checked >= 3,
+        "live, scenario and replay examples ({checked})"
+    );
+    let suites = ron_blocks(skill("concordia-write-playtest"));
+    assert_eq!(suites.len(), 1, "one suite example");
+    let suite: concordia_replay::Playtest = concordia_scene::read_document(suites[0]).unwrap();
+    for text in &suite.assertions {
+        concordia_assert::parse(text).unwrap_or_else(|e| panic!("{text}: {e}"));
+    }
+    let roster = default_roster();
+    for (role, preloads) in [
+        ("qa-playtester", true),
+        ("level-designer", true),
+        ("gameplay-programmer", false),
+    ] {
+        let file = roster
+            .roles
+            .iter()
+            .find(|(n, _)| *n == role)
+            .map(|(_, t)| *t)
+            .unwrap();
+        assert!(file.contains("\"assert_eval\""), "{role} has assert_eval");
+        assert_eq!(
+            file.contains("\"concordia-write-playtest\""),
+            preloads,
+            "{role}"
+        );
+    }
+}

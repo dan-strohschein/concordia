@@ -1,5 +1,5 @@
-//! Replay tools over MCP (M2 phase 2.8): generated schemas, and an agent recording and
-//! replaying a session.
+//! Replay tools over MCP (M2 phase 2.8; assert_eval, M3 3.2b): generated schemas, and an agent
+//! recording, replaying and asserting over a session.
 
 mod common;
 
@@ -23,7 +23,7 @@ fn replay_methods_have_generated_schemas_and_mcp_tools() {
     let mut config = EngineConfig::new(dir.path());
     config.modules = vec![Arc::new(concordia_replay::ReplayModule::new())];
     let engine = Engine::new(config).unwrap();
-    for name in ["replay.record", "replay.run"] {
+    for name in ["replay.record", "replay.run", "assert.eval"] {
         let method = engine
             .methods()
             .get(name)
@@ -96,5 +96,19 @@ async fn replay_record_and_run_over_mcp() {
     assert_eq!(run["matched"], 4);
     assert_eq!(run["world_hash"], stepped["world_hash"]);
     let text = std::fs::read_to_string(dir.path().join(PATH)).unwrap();
-    concordia_replay::read_replay(&text).expect("a valid v0 replay");
+    concordia_replay::read_replay(&text).expect("a valid replay");
+
+    // assert_eval over the replay (M3 3.2b): the box rises at 1 m/s, y = t/60, so it is above
+    // 0.51 m first after tick 31 (0.5167; 0.5 at 30).
+    let checked = json_of(
+        &call(
+            &client,
+            "assert_eval",
+            json!({"assertions": ["within 90 ticks: name(\"Box\").Transform.translation.y > 0.51"],
+                   "source": "replay", "path": PATH}),
+        )
+        .await,
+    );
+    assert_eq!(checked["results"][0]["status"], "passed", "{checked}");
+    assert_eq!(checked["results"][0]["decided_at"], 31, "{checked}");
 }

@@ -40,6 +40,10 @@ enum Command {
     Task(cmd::studio::TaskArgs),
     /// Record a scripted scenario to a .replay.ron file, or replay one and check its checkpoints.
     Replay(cmd::replay::ReplayArgs),
+    /// Check playtest assertions over a replay, a playtest or the scene now.
+    Assert(cmd::assert::AssertArgs),
+    /// Run the project's tests: playtests.
+    Test(cmd::assert::TestArgs),
 }
 
 /// A failure with a process exit code.
@@ -76,6 +80,8 @@ fn main() -> ExitCode {
         Command::Studio(args) => cmd::studio::run_studio(&args),
         Command::Task(args) => cmd::studio::run_task(&args),
         Command::Replay(args) => cmd::replay::run(&args),
+        Command::Assert(args) => cmd::assert::run_assert(&args),
+        Command::Test(args) => cmd::assert::run_test(&args),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

@@ -32,6 +32,7 @@ uuid.workspace = true
 [dev-dependencies]
 concordia-input.workspace = true
 concordia-anim.workspace = true
+concordia-assert.workspace = true
 concordia-assets.workspace = true
 concordia-audio.workspace = true
 concordia-import-model.workspace = true

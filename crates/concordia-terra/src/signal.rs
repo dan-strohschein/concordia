@@ -189,6 +189,11 @@ impl SignalQueue {
             .unwrap_or_default()
     }
 
+    /// How many signals of the type named `name` are pending.
+    pub(crate) fn pending_named_count(&self, name: &str) -> usize {
+        self.pending.get(name).map_or(0, |l| l.entries().len())
+    }
+
     /// Pending signal types and counts for `id`, by type name.
     pub(crate) fn pending_for(&self, id: EntityId) -> Vec<(&'static str, usize)> {
         self.pending
@@ -239,6 +244,12 @@ impl World {
     /// This tick's delivered `S` signals, by entity then raise order.
     pub fn signals<S: Component>(&self) -> &[(EntityId, S)] {
         self.signals.delivered::<S>()
+    }
+
+    /// How many signals of the type named `name` were raised and not yet delivered (raised on
+    /// the tick just run, when read after it).
+    pub fn pending_signal_count(&self, name: &str) -> usize {
+        self.signals.pending_named_count(name)
     }
 
     /// `S` signals raised and not yet delivered (they arrive next tick), sorted by entity then

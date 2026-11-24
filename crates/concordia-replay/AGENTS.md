@@ -7,8 +7,9 @@ Records play sessions as input changes, checkpoint hashes and every tick's hash 
 - `ReplayModule` (EngineModule, `[replay]`; `with_factory(EngineFactory)` for `ab`): `replay.record` (`ReplayRecord`, `RecordAction::start|stop`) and `replay.run` (`ReplayRun`, `RunMode::verify|resimulate`, `force`)
 - `Replay` (`tick_hash`), `ReplayHeader`, `InputChange`, `Checkpoint`, `FORMAT_VERSION` (1), `VERSION_0`, `TICK_HASH_HEX`, `TICKS_PER_LINE`, `read_replay` (versions 0 and 1), `write_replay` (version 1), `ReplayError`
 - Results: `ReplayRecordResult`, `ReplayRunResult`, `Divergence` (with `fields`, `FieldDiff`), `Mismatch`, `TickHash`
+- `assert.eval` (`AssertEval`, `AssertEvalParams { assertions, source: live|replay|scenario, path }`, `AssertEvalResult`, `AssertOutcome`, `AssertStatus`) and the `.playtest.ron` format (`Playtest`)
 - `compare_replays(a, b, ddc) -> ReplayDiff` (offline: header, first input and hash tick, parts, fields)
-- Layout: `methods.rs` (API types and dispatch), `recorder.rs` (start/stop), `runner.rs` (prepare/run), `record.rs` (the recording and its tick-end hook, also used to re-bless), `verify.rs` (header and checkpoint comparisons), `still.rs` (stills: take, store, load, diff), `diff.rs` (two files), `ab.rs` (two builds), `format.rs`
+- Layout: `methods.rs` (API types and dispatch), `recorder.rs` (start/stop), `runner.rs` (prepare/run), `record.rs` (the recording and its tick-end hook, also used to re-bless), `verify.rs` (header and checkpoint comparisons), `still.rs` (stills: take, store, load, diff), `diff.rs` (two files), `ab.rs` (two builds), `assert_method.rs` (`assert.eval`, playtests), `eval.rs` (a predicate on one tick's world), `monitor.rs` (temporal operators, early exit, closest approach), `format.rs`
 
 ## Invariants
 - Never touches the edit world or the command journal (ADR-0032); recording and running each start a fresh play world from the open scene, and log `replay recorded` / `replay run` with the actor.
@@ -36,7 +37,7 @@ Records play sessions as input changes, checkpoint hashes and every tick's hash 
 - BLAKE3 (the `blake3` crate, Apache-2.0/CC0) for content and state hashes.
 
 ## Status
-M2 phase 2.8 (v0). M3 phase 3.1c: `ab` mode, `suspect_system`, `EngineFactory`. M3 phase 3.1b: stills and field diffs, `update`, `compare_replays`, and the committed `tests/replays/m1-physics.replay.ron`. M3 phase 3.1a: format version 1 (platform, manifest hash, task, per-tick hashes, content fingerprints; exact first divergent tick; `concordia replay migrate`). M2 phase 2.7b.3: input changes carry the tick's typed text (`InputChange::text`, omitted when empty, so files without typing are unchanged and the format stays version 0); ticks with only typing are recorded; runs play it back (`play_back_text`).
+M2 phase 2.8 (v0). M3 phase 3.1c: `ab` mode, `suspect_system`, `EngineFactory`. M3 phase 3.1b: stills and field diffs, `update`, `compare_replays`, and the committed `tests/replays/m1-physics.replay.ron`. M3 phase 3.1a: format version 1 (platform, manifest hash, task, per-tick hashes, content fingerprints; exact first divergent tick; `concordia replay migrate`). M2 phase 2.7b.3: input changes carry the tick's typed text (`InputChange::text`, omitted when empty, so files without typing are unchanged and the format stays version 0); ticks with only typing are recorded; runs play it back (`play_back_text`). M3 phase 3.2b: `assert.eval` over a replay, a `.playtest.ron` scenario or the current tick (ADR-0084), with `concordia-assert` parsing and checking.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

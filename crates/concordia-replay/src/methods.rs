@@ -270,5 +270,6 @@ pub(crate) fn methods() -> Vec<MethodInfo> {
     vec![
         MethodInfo::of::<ReplayRecord>(),
         MethodInfo::of::<ReplayRun>(),
+        MethodInfo::of::<crate::assert_method::AssertEval>(),
     ]
 }

@@ -316,3 +316,23 @@ fn hash_identical_for_1_and_8_threads_with_commands_signals_and_observers() {
     assert_eq!((one.1, one.2, one.3), (2, 128, 63));
     assert_eq!(run(8), one);
 }
+
+/// Signals raised and not yet delivered are counted by type name (M3 3.2b: the assertions'
+/// `event("Hit")` means "raised on this tick"): two `Hit`s on two entities count 2, an unknown
+/// type 0, and after delivery none are pending.
+#[test]
+fn pending_signals_are_counted_by_type_name() {
+    let mut world = moving_world(2);
+    let ids = world.entity_ids_sorted();
+    world.signal(ids[0], Hit(1));
+    world.signal(ids[1], Hit(2));
+    assert_eq!(world.pending_signal_count("Hit"), 2);
+    assert_eq!(world.pending_signal_count("Miss"), 0);
+    let mut sim = SimLoop::new(TickRate::HZ_60, Schedule::new(), &mut world).unwrap();
+    sim.step(&mut world, &jobs(1), 1);
+    assert_eq!(
+        world.pending_signal_count("Hit"),
+        0,
+        "delivered on the tick"
+    );
+}

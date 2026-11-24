@@ -205,13 +205,17 @@ fn replay(args: &RunArgs) -> Result<(), Failure> {
 }
 
 /// An in-process engine with a session as the local human and `scene` open.
-struct Cli {
+pub(crate) struct Cli {
     engine: Engine,
     session: SessionId,
 }
 
 impl Cli {
-    fn open(root: &Path, threads: Option<NonZeroUsize>, scene: &str) -> Result<Self, Failure> {
+    pub(crate) fn open(
+        root: &Path,
+        threads: Option<NonZeroUsize>,
+        scene: &str,
+    ) -> Result<Self, Failure> {
         let mut engine = project_engine_on(root, threads)?;
         let session = engine.open_session();
         let mut cli = Self { engine, session };
@@ -223,10 +227,17 @@ impl Cli {
         Ok(cli)
     }
 
-    fn call(&mut self, method: &str, params: Value) -> Result<Value, Failure> {
-        self.engine
-            .call(self.session, method, params)
-            .map_err(|e| api_failure(&e))
+    pub(crate) fn call(&mut self, method: &str, params: Value) -> Result<Value, Failure> {
+        self.try_call(method, params).map_err(|e| api_failure(&e))
+    }
+
+    /// The call's own error, for callers that map it (e.g. exit codes).
+    pub(crate) fn try_call(
+        &mut self,
+        method: &str,
+        params: Value,
+    ) -> Result<Value, concordia_api::ApiError> {
+        self.engine.call(self.session, method, params)
     }
 }
 

@@ -5,7 +5,7 @@ description: "Implements and fixes gameplay logic test-first: reproduces each bu
 model: inherit
 harness_tools: ["read", "search", "edit", "write", "bash"]
 bash_allow: ["cargo test *", "cargo nextest *", "cargo build *"]
-mcp_tools: ["task_get", "task_claim", "task_comment", "task_update", "scene_open", "schema_get", "script_reload", "sim_step", "sim_stop", "query_run", "log_tail", "replay_record", "replay_run", "nav_path", "studio_ask", "studio_answer", "studio_questions"]
+mcp_tools: ["task_get", "task_claim", "task_comment", "task_update", "scene_open", "schema_get", "script_reload", "sim_step", "sim_stop", "query_run", "log_tail", "replay_record", "replay_run", "assert_eval", "nav_path", "studio_ask", "studio_answer", "studio_questions"]
 paths:
   write: ["scripts/**", "src/**", "tests/gameplay/**"]
 skills: ["concordia-task-workflow", "concordia-scripting", "concordia-fix-bug-with-replay", "concordia-nav-agents", "concordia-team-comms"]

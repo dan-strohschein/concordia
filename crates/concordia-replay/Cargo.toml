@@ -11,6 +11,7 @@ publish.workspace = true
 [dependencies]
 blake3.workspace = true
 concordia-api.workspace = true
+concordia-assert.workspace = true
 concordia-command.workspace = true
 concordia-core.workspace = true
 concordia-input.workspace = true
