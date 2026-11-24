@@ -23,7 +23,7 @@ pub use error::{Diagnostic, ShaderError};
 pub use layout::{Layout, ShaderStruct, check_layout};
 pub use library::{ReloadOutcome, ShaderLibrary};
 pub use reflect::{Binding, FieldLayout, ShaderReflection, StructLayout};
-pub use request::{CompileRequest, ShaderCode, ShaderModule, Stage, Target};
+pub use request::{CompileRequest, SPIRV_DEFINE, ShaderCode, ShaderModule, Stage, Target};
 pub use slangc::SlangcCompiler;
 pub use toolchain::SlangToolchain;
 

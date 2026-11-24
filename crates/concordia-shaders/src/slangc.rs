@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::error::{Diagnostic, ShaderError, io};
-use crate::request::{CompileRequest, ShaderCode, ShaderModule, Target};
+use crate::request::{CompileRequest, SPIRV_DEFINE, ShaderCode, ShaderModule, Target};
 use crate::toolchain::SlangToolchain;
 use crate::{ShaderCompiler, reflect};
 
@@ -40,6 +40,9 @@ impl SlangcCompiler {
         }
         for (name, value) in &request.defines {
             cmd.arg(format!("-D{name}={value}"));
+        }
+        if request.target == Target::SpirV {
+            cmd.arg(format!("-D{SPIRV_DEFINE}=1"));
         }
         cmd
     }

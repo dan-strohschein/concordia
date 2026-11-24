@@ -2,7 +2,8 @@
 // Push constants are the entry point's only `uniform` parameter, named `push`:
 //   void main(..., uniform MyPush push)
 // Slots: 0 buffers (device pointers), 1 sampled textures + static samplers, 2 storage textures
-// (same table), 3 push constants.
+// (same table), 3 push constants. On SPIR-V (ADR-0088) these are descriptor sets 0, 1 and 2, and
+// the buffer table is a storage buffer of addresses (a std140 uniform block would be 256 KiB).
 module bindless;
 
 public static const uint BINDLESS_CAPACITY = 16384;
@@ -13,7 +14,11 @@ public static const uint SAMPLER_LINEAR_CLAMP = 1;
 public static const uint SAMPLER_NEAREST_CLAMP = 2;
 public static const uint SAMPLER_NEAREST_REPEAT = 3;
 
+#ifdef CONCORDIA_SPIRV
+public struct BufferTable { public StructuredBuffer<uint*> ptr; };
+#else
 public struct BufferTable { public uint* ptr[BINDLESS_CAPACITY]; };
+#endif
 public struct TextureTable { public Texture2D<float4> tex[BINDLESS_CAPACITY]; public SamplerState samplers[4]; };
 public struct StorageTable { public RWTexture2D<float4> tex[BINDLESS_CAPACITY]; };
 
