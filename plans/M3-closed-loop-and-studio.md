@@ -1,7 +1,7 @@
 # M3: Closed Loop & Agent Studio v1
 > **ADR-0049: Studio moves up.** Phases 3.3–3.6 and 3.8 run **right after the M1 gate, before M2**, with their own *Studio checkpoint* gate (below, before Phase 3.9). Refine those phases at their start: the `concordia new` project layout and how out-of-process hooks reach the command log are answerable from M0/M1. Phase 3.8 extends M1's Agent Activity panel (phase 1.15) instead of building a second command log. Replay (3.1–3.2), content generation (3.7) and the full gate stay after M2.
 
-Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b, 3.0c, 3.1 (a–c) and 3.2 (a–b) done) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
+Status: In progress (Studio track: 3.0, 3.3, 3.4, 3.5, 3.5b, 3.6, 3.6b and 3.8 done; Studio checkpoint passed: deterministic and live (2026-11-19, Claude Code 2.1.329); Studio refinement approved 2026-11-19; **M3 refinement after M2 approved 2026-11-23** (R1, R2); 3.0b, 3.0c, 3.1 (a–c), 3.2 (a–b) and 3.7a done) · Depends on: M2 (replay phases 3.1–3.2, gate), M0 (Studio phases 3.3–3.6 can start right after M0), M1 (texture baking in 3.7, editor panel in 3.8) · Detail level: **Refined after M2 (2026-11-23)** · Estimated effort: ~12–16 author-weeks with agents (see end)
 
 > **Needs refinement after M2.** Full phase breakdowns and test lists are below. When M2 completes, refine: the M2 input-log format that 3.1 generalizes, the WASM script build/hot-reload command the gate fixture uses, the game-project layout that `concordia new` produces (role default paths depend on it), and how the M0 command log is persisted and reached from an out-of-process hook (3.5).
 >
@@ -986,6 +986,71 @@ Every role stays under 50k. If the AST's recursive schema makes `assert_eval` he
   | writer | 11 | 9,576 |
 
   All are under 50k.
+
+### Phase 3.7a As built (2026-11-24)
+**Status: done (branch `m3/3.7-gen-core`).** The content-provider interface, `[gen]`, and procedural meshes.
+
+**Refinement change (my recommendation, pre-approved):** the opt-in plugin seam moves from 3.7a to **3.7c**. It is an out-of-process provider like the Blender bridge, so the two share one process runner (timeouts, process-group kill) instead of two.
+
+**What landed:**
+- **`concordia-gen` (new crate):**
+  - **The interface:** `ContentProvider` (`id`, `kind`, `version`, `extensions`, `request_schema`, `procedural`, `generate(request, seed)`), `GenKind`, `Generated`, `inputs_hash`, and `ProviderRegistry::procedural()`.
+  - **The module:** `GenModule` (`[gen]`) with `gen.list` and `gen.run`. `gen.run` needs an actor, checks the provider, extension and request before writing, writes atomically, imports through `asset.import`, records `Provenance` in the sidecar, and logs "content generated" with the actor.
+  - **`mesh/`:** `MeshRequest`, built by the `Builder` that orients each triangle by its vertex normals:
+    - box and sphere through `concordia_assets::shapes`;
+    - revolve-based capsule, cylinder, torus and lathe (axis points as fans);
+    - extrusion with ear-clipped caps;
+    - a seeded value-noise heightfield;
+    - SDF spheres and boxes with a smooth union, meshed by surface nets.
+  - **`glb.rs`:** a minimal sorted-key GLB writer.
+- **`concordia-assets`:** `shapes` (the built-ins' builders, now sized and shared), `Sidecar::provenance` and `Provenance`, and the `AssetImportParams` / `AssetImportResult` exports.
+- **`concordia-app`:** `[gen]` (`Manifest::generators`, since `gen` is reserved in Rust 2024) adds `GenModule`.
+- **`concordia-mcp`:** `gen.run`'s `path` joins the role write-path check.
+
+**Choices (my recommendations, pre-approved):**
+- **One file per run.** Music stems (3.7b) come as one mixed file with loop points.
+- **Provenance lives in the sidecar's new optional field.** It is absent on hand-made assets, so every existing sidecar reads and writes unchanged, and it is outside the importer's settings, so DDC keys don't change.
+- **`MeshData` is reused** as the mesh type; there is no second one.
+- **No role has `gen_*` yet.** 3.7c enables the modeler, widens the scopes and updates the skills' notes, which stay until then.
+
+**Tests** (expected values derived in each header):
+- **`tests/procedural_mesh.rs` (5):**
+  - a box of 24 vertices and 12 triangles with ±0.5 bounds;
+  - watertight with outward winding and the volume of each solid: sphere 4/3π, capsule, cylinder, torus 2π²Rr², lathe π, extrusion exactly 2, and an SDF sphere within 5%;
+  - sizes: the capsule's ±1, the torus ±1.25, the heightfield's 21 × 9 vertices and 320 triangles;
+  - seeded determinism, and the GLB header;
+  - bad requests naming their field.
+- **`tests/provider.rs` (4):**
+  - providers listed;
+  - `gen.run` with provenance, where the imported 12-sided cylinder keeps its 48 triangles;
+  - regeneration from provenance byte for byte, and a different seed giving different bytes;
+  - the actor required, the log, and the extension, provider and request errors.
+- **`concordia-mcp`:** `server_rejects_generated_files_outside_the_role_paths`.
+
+**Red runs:**
+- All nine gen tests failed against the stubs.
+- The role-scope test failed: `scripts/x.glb` was written.
+- The logging check first saw no records: the test process had no subscriber, which was fixed in the test, as in the audio tests.
+
+**Mutation checks** (all failed tests; restored files touched):
+- triangles never flipped;
+- provenance not recorded;
+- the heightfield ignoring the seed;
+- the axis fan as quads (triangle counts).
+
+**Studio and docs:**
+- **No role's tools changed,** so role budgets are as in 3.2b.
+- **New:** `concordia-gen`'s AGENTS.md and README.
+- **Updated:** AGENTS.md of `concordia-assets`, `concordia-app` and `concordia-mcp`; the agent guide's "Generated content"; `plans/README.md`.
+
+**Checklist (2026-11-24):**
+- `just lint` (three `is_multiple_of` fixes) and Tauri clippy: clean.
+- `just wasm`, `just native-fixtures`, and the full suite with `CONCORDIA_REQUIRE_GPU=1`: 1,900 run, all passed.
+- Doc tests: clean.
+- `just gate-tests M1` (4/4) and `M3S` (13/13).
+- Both deny checks: ok. The editor's lock gains `concordia-gen` (through `concordia-app`).
+- `just editor-schemas`: no changes. `just editor-test`: 118 unit and 22 end-to-end tests pass.
+- No new Linux library, and no snapshots changed. 53 GB free.
 
 ## Goal & context
 M3 closes the loop the design promises (principle 3): an agent can **record** a play session, **replay** it deterministically, **find the first frame** where two runs diverge, and **prove** behavior with typed playtest assertions, all from tests, the CLI and MCP. On top of that loop, M3 ships **Agent Studio v1**: a configurable team of specialist agents that runs **inside the user's own Claude Code on a regular subscription, with no API key** (principle 0).

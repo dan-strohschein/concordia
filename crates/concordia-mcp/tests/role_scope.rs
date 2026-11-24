@@ -9,12 +9,22 @@ use std::path::Path;
 
 /// A Studio project (default team, level-designer ×2) with an empty scene open.
 async fn studio(dir: &tempfile::TempDir, team_edit: impl Fn(String) -> String) -> Client {
+    studio_with(dir, team_edit, |_| {}).await
+}
+
+/// [`studio`], with `edit` applied to the project's `studio/` before the server starts.
+async fn studio_with(
+    dir: &tempfile::TempDir,
+    team_edit: impl Fn(String) -> String,
+    edit: impl Fn(&Path),
+) -> Client {
     concordia_studio::init(dir.path(), Path::new("studio")).unwrap();
     let team = dir.path().join("studio/team.toml");
     std::fs::write(&team, team_edit(std::fs::read_to_string(&team).unwrap())).unwrap();
+    edit(&dir.path().join("studio"));
     std::fs::write(
         dir.path().join("concordia.toml"),
-        "[input]\nmap = \"input/default.input.ron\"\n\n[physics]\n\n[nav]\n\n[assets]\n\n[anim]\n\n[audio]\n\n[ui]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[studio]\n",
+        "[input]\nmap = \"input/default.input.ron\"\n\n[physics]\n\n[nav]\n\n[assets]\n\n[anim]\n\n[audio]\n\n[ui]\n\n[render]\n\n[scripts]\n\n[replay]\n\n[gen]\n\n[studio]\n",
     )
     .unwrap();
     // QA injects input, so the project has an input map (2.5b.2a).
@@ -209,6 +219,41 @@ async fn server_rejects_material_writes_outside_the_role_paths() {
             "tech-artist",
             "s/2",
         ),
+    )
+    .await;
+    assert_ne!(inside.is_error, Some(true), "{}", text(&inside));
+}
+
+/// `gen.run` writes a file, so the server holds it to the role's write paths like a scene or a
+/// material (M3 3.7a): a tech artist given `gen_run` may generate into its texture folder, not
+/// into `scripts/` or `studio/`.
+#[tokio::test]
+async fn server_rejects_generated_files_outside_the_role_paths() {
+    let dir = tempfile::tempdir().unwrap();
+    let client = studio_with(
+        &dir,
+        |t| t,
+        |studio| {
+            let file = studio.join("agents/tech-artist.md");
+            let text = std::fs::read_to_string(&file).unwrap();
+            std::fs::write(
+                &file,
+                text.replacen("mcp_tools: [", "mcp_tools: [\"gen_run\", ", 1),
+            )
+            .unwrap();
+        },
+    )
+    .await;
+    let mesh = |path: &str| json!({"provider": "mesh", "request": {"Box": {"size": [1.0, 1.0, 1.0]}}, "path": path});
+    for path in ["scripts/x.glb", "studio/x.glb"] {
+        let outside = call(&client, "gen_run", with(mesh(path), "tech-artist", "s/2")).await;
+        assert_eq!(outside.is_error, Some(true), "{path}: {}", text(&outside));
+        assert!(!dir.path().join(path).exists(), "{path} was not written");
+    }
+    let inside = call(
+        &client,
+        "gen_run",
+        with(mesh("assets/textures/x.glb"), "tech-artist", "s/2"),
     )
     .await;
     assert_ne!(inside.is_error, Some(true), "{}", text(&inside));

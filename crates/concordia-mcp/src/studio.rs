@@ -129,7 +129,8 @@ impl StudioGate {
         let given = args.get("path").and_then(Value::as_str).map(str::to_owned);
         let path = match (method.name, given) {
             (
-                "scene.new" | "scene.save" | "asset.import" | "material.set" | "audio.render",
+                "scene.new" | "scene.save" | "asset.import" | "material.set" | "audio.render"
+                | "gen.run",
                 Some(path),
             ) => path,
             ("scene.save", None) => match engine.call(base, "scene.info", json!({})).await {

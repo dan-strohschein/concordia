@@ -24,6 +24,25 @@ pub struct Sidecar {
     pub settings: serde_json::Value,
     /// Sub-asset ids by path (`mesh/Body`, `material/Steel`, ...), kept stable across re-imports.
     pub sub_assets: BTreeMap<String, AssetId>,
+    /// How a generator made the source file, so it can be made again (none: made by hand).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<Provenance>,
+}
+
+/// What generated a source file (`concordia-gen`): enough to regenerate the same bytes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct Provenance {
+    /// The provider, e.g. `mesh`.
+    pub provider: String,
+    /// The provider's version (a change may change its output).
+    pub provider_version: u32,
+    /// The request, as given.
+    pub request: serde_json::Value,
+    /// The seed.
+    pub seed: u64,
+    /// BLAKE3 of the provider, version, request and seed (and any input files).
+    pub inputs_hash: String,
 }
 
 impl Sidecar {

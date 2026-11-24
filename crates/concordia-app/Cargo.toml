@@ -15,6 +15,7 @@ concordia-assets.workspace = true
 concordia-import-fbx.workspace = true
 concordia-import-gltf.workspace = true
 concordia-core.workspace = true
+concordia-gen.workspace = true
 concordia-input.workspace = true
 concordia-physics.workspace = true
 concordia-nav.workspace = true

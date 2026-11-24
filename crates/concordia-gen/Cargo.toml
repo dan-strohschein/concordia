@@ -1,0 +1,30 @@
+[package]
+name = "concordia-gen"
+description = "Generated content without APIs: the content-provider interface and registry, gen.list and gen.run with provenance in asset sidecars, and procedural providers (meshes as GLB first)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+blake3.workspace = true
+concordia-api.workspace = true
+concordia-assets.workspace = true
+concordia-command.workspace = true
+concordia-reflect.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+concordia-app = { path = "../concordia-app" }
+concordia-core.workspace = true
+tempfile.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true
