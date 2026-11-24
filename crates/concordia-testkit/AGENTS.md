@@ -5,10 +5,12 @@ Dev-dependency-only test helpers: GPU test guards and golden images compared wit
 
 ## Public entry points
 - `gpu_required()` / `gpu_required_from(value)` and `REQUIRE_GPU_ENV`
-- `golden::{assert_golden, Golden, RgbaImage, Tolerance, Tolerances, FlipScore, flip_score, GoldenError}`; `Golden::tolerance(suite, name)`
+- `golden::{assert_golden, Golden, RgbaImage, Tolerance, Tolerances, FlipScore, flip_score, GoldenError}`; `Golden::tolerance(suite, name)`, `Golden::write_comparison` (actual, expected and FLIP heat map), `Golden::is_ci`
+- `reference::{ReferenceFile, ReferenceLook, Blessed, SUITE}` (M4 4.1b4, ADR-0090): `<name>.reference.ron` in `tests/golden/m4_reference/` (inputs, and when blessed the backend, git hash, baseline FLIP and noise FLIP), canonical and validated; `Golden::reference(name)` and `Golden::bless_reference(name, file, image)`
 
 ## Invariants
-- Only ever a `[dev-dependencies]` entry.
+- Only ever a `[dev-dependencies]` entry, or a dependency of the test-only `concordia-tests` crate (its reference-blessing harness); never of a crate that ships.
+- Blessing a reference is refused in CI, without a `blessed` record, and when its noise FLIP mean exceeds a fifth of its tolerance's mean; nothing is written then.
 - Goldens live at `tests/golden/<suite>/<name>.png`. Blessing needs `CONCORDIA_BLESS=1` and is refused when `CI=true`. Failures write `<name>.{actual,expected,flip}.png` to `target/golden-failures/<suite>/`.
 - FLIP is LDR (RGB, alpha ignored) at the default pixels-per-degree.
 - Tolerances live in text (M4 4.1a, D2): `tests/golden/<suite>/tolerances.ron` (`Tolerances { default, goldens: {name: (mean, p99)} }`, canonical RON, values in [0, 1]). A golden's tolerance is its entry, else the file's default; only a suite without a file falls back to `Tolerance::default()` (mean ≤ 0.01, p99 ≤ 0.25), the one tolerance in code. `repo_hygiene::golden_tolerances_live_in_text` forbids tolerance literals outside this crate; `every_tolerance_entry_names_an_existing_golden` keeps the files honest.

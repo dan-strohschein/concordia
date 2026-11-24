@@ -75,6 +75,7 @@ pub(crate) fn materials(
     materials: &[MaterialValues],
     images: &BTreeMap<usize, String>,
     names: &Names,
+    emission_scale: f32,
     sub_ids: &SubIds,
     out: &mut ImportOutput,
 ) -> Result<(), AssetError> {
@@ -85,7 +86,8 @@ pub(crate) fn materials(
             .ok()
     };
     for (index, m) in materials.iter().enumerate() {
-        let slab = slab(m, &texture);
+        let mut slab = slab(m, &texture);
+        slab.emissive_strength *= emission_scale;
         let material = Material {
             alpha_mode: if slab.base_color[3] < 1.0 {
                 AlphaMode::Blend

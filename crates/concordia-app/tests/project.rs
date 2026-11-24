@@ -70,7 +70,10 @@ fn m1_example_modules_follow_core_in_manifest_order() {
         .iter()
         .map(|m| m.name())
         .collect();
-    assert_eq!(names, ["input", "physics", "assets", "ui", "render"]);
+    assert_eq!(
+        names,
+        ["input", "physics", "assets", "ui", "render", "pathtrace"]
+    );
     assert_eq!(
         project.manifest.physics.as_ref().unwrap().gravity,
         [0.0, -9.81, 0.0]
@@ -484,4 +487,39 @@ fn the_projects_perf_mode_reaches_the_renderer() {
         assert_eq!(frame["pass_timing"], want, "{manifest}: {frame}");
         drop(dir);
     }
+}
+
+/// The project's default reference exposure for imported emission is its main scene camera's
+/// EV100 (ADR-0102): the highest-priority camera, ties to the lowest id; none without a camera.
+#[test]
+fn the_default_emission_reference_is_the_main_cameras_ev() {
+    let lamplight = Project::load(&examples().join("m2-lamplight")).unwrap();
+    assert_eq!(lamplight.main_camera_ev100(), Some(0.0));
+    let stack = Project::load(&examples().join("m1-physics-stack")).unwrap();
+    assert_eq!(stack.main_camera_ev100(), Some(15.0));
+    let (_dir, bare) = project_with("[project]\nname = \"bare\"\n");
+    assert_eq!(
+        bare.unwrap().main_camera_ev100(),
+        None,
+        "no main scene, no camera"
+    );
+    let (dir, two) =
+        project_with("[project]\nname = \"two\"\n[scene]\nmain = \"main.scene.ron\"\n");
+    let camera = |id: &str, ev: f32, priority: i32| {
+        format!(
+            r#"Entity(id: "0193a1c2-7e40-7000-8000-0000000000{id}", components: {{"Camera": (exposure_ev100: {ev}, priority: {priority})}}),"#
+        )
+    };
+    let scene = format!(
+        r#"Scene(format: 1, id: "0193a1c2-7e40-7000-8000-000000000001", name: "Two", entities: [{} {} {}])"#,
+        camera("a1", 3.0, 0),
+        camera("a3", 12.0, 5),
+        camera("a2", 9.0, 5),
+    );
+    std::fs::write(dir.path().join("main.scene.ron"), scene).unwrap();
+    assert_eq!(
+        two.unwrap().main_camera_ev100(),
+        Some(9.0),
+        "priority 5 wins; of the two, the lower id"
+    );
 }

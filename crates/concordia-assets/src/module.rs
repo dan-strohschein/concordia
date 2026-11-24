@@ -18,6 +18,7 @@ use crate::importer::Importer;
 pub struct AssetsModule {
     root: PathBuf,
     importers: Vec<Arc<dyn Importer>>,
+    setting_defaults: Vec<(String, serde_json::Value)>,
 }
 
 impl std::fmt::Debug for AssetsModule {
@@ -36,12 +37,19 @@ impl AssetsModule {
         Self {
             root: root.to_path_buf(),
             importers: Vec::new(),
+            setting_defaults: Vec::new(),
         }
     }
 
     /// Adds an importer (e.g. glTF) to the module's database.
     pub fn with_importer(mut self, importer: Arc<dyn Importer>) -> Self {
         self.importers.push(importer);
+        self
+    }
+
+    /// The project's value for import setting `key` (see [`AssetDb::set_setting_default`]).
+    pub fn with_setting_default(mut self, key: &str, value: serde_json::Value) -> Self {
+        self.setting_defaults.push((key.to_owned(), value));
         self
     }
 }
@@ -75,6 +83,9 @@ impl EngineModule for AssetsModule {
                 self.importers
                     .iter()
                     .for_each(|i| db.register(Arc::clone(i)));
+                for (key, value) in &self.setting_defaults {
+                    db.set_setting_default(key, value.clone());
+                }
                 Some(Box::new(db))
             }
             Err(e) => {

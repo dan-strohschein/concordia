@@ -2,8 +2,10 @@
 //! closure programs, instances, lights by the engine's definitions, the sky, emitting triangles
 //! and the camera. Backend-neutral: the CPU backend reads it now, the GPU backend in 4.1b3.
 
-use concordia_assets::{AlphaMode, Material, MeshData};
-use concordia_core::math::{Mat3, Mat4, Vec3};
+use std::collections::BTreeMap;
+
+use concordia_assets::{AlphaMode, AssetRef, Material, MeshData, TextureData};
+use concordia_core::math::{Mat3, Mat4, Vec2, Vec3};
 use concordia_material::MaterialProgram;
 use concordia_render_types::{
     Camera, DirectionalLight, PointLight, Projection, SpotCone, SpotLight, Tonemap, candela,
@@ -14,6 +16,7 @@ use crate::accel::{Accel, Instance};
 use crate::bvh::Bvh;
 use crate::env::EnvMap;
 use crate::geometry::Triangle;
+use crate::texture::SceneTexture;
 
 /// A mesh added to a [`SceneBuilder`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,6 +75,8 @@ pub struct SceneMaterial {
     pub emission: Vec3,
     /// GGX alphas of its slabs (for sampling directions).
     pub lobes: Vec<f32>,
+    /// Whether shading applies textures at each hit (`MaterialProgram::samples_textures`).
+    pub textured: bool,
 }
 
 /// One emitting triangle in world space, for light sampling.
@@ -83,6 +88,8 @@ pub struct Emitter {
     pub area: f32,
     /// Instance it belongs to.
     pub instance: u32,
+    /// Triangle of the instance's mesh (for its texture coordinates).
+    pub prim: u32,
 }
 
 /// The camera: world placement (scale removed), projection, exposure and tone mapping.
@@ -116,6 +123,12 @@ pub struct Scene {
     pub accel: Accel,
     /// Corner normals per mesh, per triangle (object space).
     pub normals: Vec<Vec<[Vec3; 3]>>,
+    /// Corner texture coordinates per mesh, per triangle (empty for a mesh without them).
+    pub uvs: Vec<Vec<[Vec2; 3]>>,
+    /// Textures, in the order materials' rows index them.
+    pub textures: Vec<SceneTexture>,
+    /// Each texture's index in `textures`.
+    pub texture_ids: BTreeMap<AssetRef, u32>,
     /// Per instance.
     pub instances: Vec<InstanceShading>,
     /// Materials.
@@ -134,10 +147,15 @@ pub struct Scene {
     pub camera: CameraSetup,
 }
 
+/// A mesh's BVH with its corner normals and texture coordinates per triangle.
+type BuiltMesh = (Bvh, Vec<[Vec3; 3]>, Vec<[Vec2; 3]>);
+
 /// Collects a scene, validating as it goes.
 #[derive(Debug, Default)]
 pub struct SceneBuilder {
-    meshes: Vec<(Bvh, Vec<[Vec3; 3]>)>,
+    meshes: Vec<BuiltMesh>,
+    textures: Vec<SceneTexture>,
+    texture_ids: BTreeMap<AssetRef, u32>,
     materials: Vec<SceneMaterial>,
     instances: Vec<(Instance, u32)>,
     lights: Vec<Light>,
@@ -168,6 +186,17 @@ impl SceneBuilder {
             return bad("positions must be finite".into());
         }
         let smooth = mesh.normals.len() == n;
+        let uv = |i: u32| Vec2::from_array(mesh.uv0[i as usize]);
+        let uvs = if mesh.uv0.len() == n {
+            mesh.indices
+                .as_chunks::<3>()
+                .0
+                .iter()
+                .map(|t| t.map(uv))
+                .collect()
+        } else {
+            Vec::new()
+        };
         let (mut triangles, mut normals) = (Vec::new(), Vec::new());
         for t in mesh.indices.as_chunks::<3>().0 {
             let v = [0, 1, 2].map(|k| Vec3::from_array(mesh.positions[t[k] as usize]));
@@ -181,23 +210,31 @@ impl SceneBuilder {
             }));
             triangles.push(Triangle { v });
         }
-        self.meshes.push((Bvh::build(&triangles), normals));
+        self.meshes.push((Bvh::build(&triangles), normals, uvs));
         Ok(MeshId(self.meshes.len() as u32 - 1))
+    }
+
+    /// Adds texture `r` for materials to sample.
+    pub fn texture(&mut self, r: AssetRef, data: &TextureData) -> Result<(), PathTraceError> {
+        let texture =
+            SceneTexture::new(data).map_err(|e| PathTraceError::Texture(format!("{r}: {e}")))?;
+        match self.texture_ids.get(&r) {
+            Some(&i) => self.textures[i as usize] = texture,
+            None => {
+                self.texture_ids.insert(r, self.textures.len() as u32);
+                self.textures.push(texture);
+            }
+        }
+        Ok(())
     }
 
     /// Adds a material.
     pub fn material(&mut self, material: &Material) -> Result<MaterialId, PathTraceError> {
         let program = MaterialProgram::compile(material)
             .map_err(|e| PathTraceError::Material(e.to_string()))?;
-        let lobes = program
-            .slabs()
-            .iter()
-            .map(|(_, s)| {
-                let r = s.roughness.clamp(0.045, 1.0);
-                r * r
-            })
-            .collect();
+        let lobes = lobes(&program);
         let emission = program.unlit().emissive;
+        let textured = program.samples_textures();
         self.materials.push(SceneMaterial {
             source: material.clone(),
             program,
@@ -205,6 +242,7 @@ impl SceneBuilder {
             unlit: material.unlit,
             emission,
             lobes,
+            textured,
         });
         Ok(MaterialId(self.materials.len() as u32 - 1))
     }
@@ -273,7 +311,12 @@ impl SceneBuilder {
     /// The scene.
     pub fn build(self) -> Result<Scene, PathTraceError> {
         let camera = self.camera.ok_or(PathTraceError::NoCamera)?;
-        let (bvhs, normals): (Vec<_>, Vec<_>) = self.meshes.into_iter().unzip();
+        let (mut bvhs, mut normals, mut uvs) = (Vec::new(), Vec::new(), Vec::new());
+        for (bvh, n, uv) in self.meshes {
+            bvhs.push(bvh);
+            normals.push(n);
+            uvs.push(uv);
+        }
         let instances: Vec<Instance> = self.instances.iter().map(|(i, _)| *i).collect();
         let shading: Vec<InstanceShading> = self
             .instances
@@ -288,6 +331,9 @@ impl SceneBuilder {
         Ok(Scene {
             accel: Accel::build(bvhs, instances),
             normals,
+            uvs,
+            textures: self.textures,
+            texture_ids: self.texture_ids,
             instances: shading,
             materials: self.materials,
             lights: self.lights,
@@ -297,6 +343,39 @@ impl SceneBuilder {
             environment: self.environment.map(|(e, _)| e),
             camera,
         })
+    }
+}
+
+/// GGX alphas of a program's slabs (roughness clamped like the shader's).
+pub(crate) fn lobes(program: &MaterialProgram) -> Vec<f32> {
+    program
+        .slabs()
+        .iter()
+        .map(|(_, s)| {
+            let r = s.roughness.clamp(0.045, 1.0);
+            r * r
+        })
+        .collect()
+}
+
+impl Scene {
+    /// Texture coordinates on triangle `prim` of mesh `mesh` at barycentrics (u, w) of corners 1
+    /// and 2 (zero for a mesh without them).
+    pub fn uv(&self, mesh: u32, prim: u32, u: f32, w: f32) -> Vec2 {
+        match self
+            .uvs
+            .get(mesh as usize)
+            .and_then(|m| m.get(prim as usize))
+        {
+            Some(c) => c[0] * (1.0 - u - w) + c[1] * u + c[2] * w,
+            None => Vec2::ZERO,
+        }
+    }
+
+    /// Texture `r` at `uv` (None if the scene doesn't have it: the factor alone applies).
+    pub fn texel(&self, r: &AssetRef, uv: Vec2) -> Option<[f32; 4]> {
+        let i = *self.texture_ids.get(r)?;
+        Some(self.textures[i as usize].sample(uv))
     }
 }
 
@@ -313,7 +392,7 @@ fn emitters(
         if m.unlit || m.emission.max_element() <= 0.0 {
             continue;
         }
-        for t in meshes[inst.mesh as usize].triangles() {
+        for (prim, t) in meshes[inst.mesh as usize].triangles().iter().enumerate() {
             let v = t.v.map(|p| inst.world.transform_point3(p));
             let area = 0.5 * (v[1] - v[0]).cross(v[2] - v[0]).length();
             if area > 0.0 {
@@ -321,6 +400,7 @@ fn emitters(
                     v,
                     area,
                     instance: i as u32,
+                    prim: prim as u32,
                 });
             }
         }

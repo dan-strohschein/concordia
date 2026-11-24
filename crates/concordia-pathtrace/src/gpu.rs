@@ -22,7 +22,7 @@ use crate::scene::{Light, Scene};
 /// Samples per dispatch.
 const BATCH: u32 = 16;
 /// Header rows.
-const HEADER_ROWS: usize = 12;
+const HEADER_ROWS: usize = 13;
 
 /// The folder holding `pathtrace.slang`.
 pub fn shader_dir() -> PathBuf {
@@ -105,6 +105,9 @@ impl GpuTracer {
             &packed.env,
             &packed.erows,
             &packed.ecols,
+            &packed.uvs,
+            &packed.ttab,
+            &packed.texels,
         ]
         .into_iter()
         .map(|bytes| upload(bytes))
@@ -177,6 +180,12 @@ struct Packed {
     env: Vec<u8>,
     erows: Vec<u8>,
     ecols: Vec<u8>,
+    /// Corner texture coordinates, parallel to `tris`.
+    uvs: Vec<u8>,
+    /// Per texture: first texel, width, height.
+    ttab: Vec<u8>,
+    /// Every texture's linear RGBA texels, rows from the top.
+    texels: Vec<u8>,
     tlas_node: u32,
     tlas_order: u32,
 }
@@ -198,9 +207,10 @@ fn floats(values: &[f32]) -> Vec<u8> {
 
 impl Packed {
     fn of(scene: &Scene) -> Result<Self, PathTraceError> {
-        let (mut nodes, mut order, mut tris, mut normals, mut meshes) = (
+        let (mut nodes, mut order, mut tris, mut normals, mut meshes, mut uvs) = (
             Vec::new(),
             Vec::<u32>::new(),
+            Vec::new(),
             Vec::new(),
             Vec::new(),
             Vec::new(),
@@ -214,6 +224,10 @@ impl Packed {
             }
             for n in &scene.normals[m] {
                 normals.extend(n.map(|v| f4([v.x, v.y, v.z, 0.0])));
+            }
+            for prim in 0..bvh.triangles().len() {
+                let corners = scene.uvs[m].get(prim).copied().unwrap_or_default();
+                uvs.extend(corners.map(|t| f4([t.x, t.y, 0.0, 0.0])));
             }
         }
         let tlas = scene.accel.tree();
@@ -232,7 +246,7 @@ impl Packed {
                 let [a, b, c] = e.v;
                 [
                     [a.x.to_bits(), a.y.to_bits(), a.z.to_bits(), e.instance],
-                    f4([b.x, b.y, b.z, 0.0]),
+                    [b.x.to_bits(), b.y.to_bits(), b.z.to_bits(), e.prim],
                     f4([c.x, c.y, c.z, 0.0]),
                 ]
             })
@@ -249,6 +263,11 @@ impl Packed {
             }
             None => (Vec::new(), Vec::new(), Vec::new()),
         };
+        let (mut ttab, mut texels) = (Vec::new(), Vec::new());
+        for t in &scene.textures {
+            ttab.push([(texels.len()) as u32, t.width, t.height, 0]);
+            texels.extend(t.texels.iter().map(|&c| f4(c)));
+        }
         Ok(Self {
             nodes: bytes_of(&nodes),
             order: order.iter().flat_map(|w| w.to_le_bytes()).collect(),
@@ -265,6 +284,9 @@ impl Packed {
             env,
             erows,
             ecols,
+            uvs: bytes_of(&uvs),
+            ttab: bytes_of(&ttab),
+            texels: bytes_of(&texels),
             tlas_node,
             tlas_order,
         })
@@ -312,6 +334,7 @@ impl Packed {
                 area.to_bits(),
             ],
             f4([cam.clear.x, cam.clear.y, cam.clear.z, 0.0]),
+            [ids[15], ids[16], ids[17], scene.textures.len() as u32],
         ]
     }
 }
@@ -369,8 +392,10 @@ fn row3(m: &Mat3, r: usize) -> [f32; 4] {
 fn material_rows_of(scene: &Scene) -> Result<(Vec<Row>, Vec<Row>), PathTraceError> {
     let (mut table, mut rows) = (Vec::new(), Vec::new());
     for m in &scene.materials {
-        let encoded = material_rows(&m.source, &m.program, &|_| Some(NO_TEXTURE))
-            .map_err(PathTraceError::Material)?;
+        let encoded = material_rows(&m.source, &m.program, &|r| {
+            Some(scene.texture_ids.get(r).copied().unwrap_or(NO_TEXTURE))
+        })
+        .map_err(PathTraceError::Material)?;
         let (mode, cutoff) = match m.alpha {
             AlphaMode::Opaque => (0, 0.0),
             AlphaMode::Mask { cutoff } => (1, cutoff),
@@ -387,7 +412,12 @@ fn material_rows_of(scene: &Scene) -> Result<(Vec<Row>, Vec<Row>), PathTraceErro
             mode,
             u32::from(m.unlit),
         ]);
-        table.push([cutoff.to_bits(), shown.alpha.to_bits(), 0, 0]);
+        table.push([
+            cutoff.to_bits(),
+            shown.alpha.to_bits(),
+            u32::from(m.textured),
+            0,
+        ]);
         table.push(f4([m.emission.x, m.emission.y, m.emission.z, 0.0]));
         table.push(f4([shown.color.x, shown.color.y, shown.color.z, 0.0]));
         table.push(f4([lobes[0], lobes[1], lobes[2], lobes[3]]));

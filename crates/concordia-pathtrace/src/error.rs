@@ -12,6 +12,9 @@ pub enum PathTraceError {
     /// An environment map is malformed.
     #[error("environment: {0}")]
     Environment(String),
+    /// A texture is malformed.
+    #[error("texture: {0}")]
+    Texture(String),
     /// The scene has no camera.
     #[error("the scene has no camera")]
     NoCamera,

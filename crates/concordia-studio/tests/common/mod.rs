@@ -25,6 +25,7 @@ pub const PROJECT_TOOLS: &[&str] = &[
     "audio_play",
     "audio_render",
     "audio_stop",
+    "capture_reference",
     "capture_screenshot",
     "component_add",
     "component_get",

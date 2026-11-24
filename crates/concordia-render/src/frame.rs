@@ -113,6 +113,8 @@ pub(crate) struct FrameParams<'a> {
     pub(crate) lut: u32,
     /// The view mode's shader number (`ViewMode::shader_index`).
     pub(crate) view_mode: u32,
+    /// The camera's exposure (scales emission, which is luminance in nits; ADR-0102).
+    pub(crate) exposure: f32,
 }
 
 /// The environment as the shader sees it.
@@ -155,7 +157,7 @@ pub(crate) fn frame_block(p: &FrameParams<'_>) -> Vec<u8> {
     out.extend(words.iter().flat_map(|w| w.to_le_bytes()));
     shadow_rows(&mut out, p.shadow);
     ibl_rows(&mut out, p);
-    let debug = [p.view_mode, 0, 0, 0];
+    let debug = [p.view_mode, p.exposure.to_bits(), 0, 0];
     out.extend(debug.iter().flat_map(|w| w.to_le_bytes()));
     out
 }

@@ -16,4 +16,5 @@ concordia-assets.workspace = true
 concordia-core.workspace = true
 concordia-reflect.workspace = true
 serde.workspace = true
+concordia-terra.workspace = true
 thiserror.workspace = true

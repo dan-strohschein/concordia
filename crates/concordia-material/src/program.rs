@@ -112,6 +112,58 @@ impl MaterialProgram {
         &self.ops
     }
 
+    /// This program with sampled texels applied to its factors, as the renderer's `load_closure`
+    /// does (`texel` gives a texture's linear RGBA at the shaded point; None leaves the factor).
+    /// Normal and occlusion textures are left in place for the caller.
+    pub fn textured(&self, texel: &dyn Fn(&AssetRef) -> Option<[f32; 4]>) -> Self {
+        let sample = |t: &mut Option<AssetRef>| t.take().and_then(|r| texel(&r));
+        let mut out = self.clone();
+        for (_, slab) in &mut out.slabs {
+            if let Some([r, g, b, a]) = sample(&mut slab.base_color_texture) {
+                let c = &mut slab.base_color;
+                *c = [c[0] * r, c[1] * g, c[2] * b, c[3] * a];
+            }
+            if let Some([r, g, b, _]) = sample(&mut slab.emissive_texture) {
+                let e = &mut slab.emissive;
+                *e = [e[0] * r, e[1] * g, e[2] * b];
+            }
+            if let Some([_, g, b, _]) = sample(&mut slab.metallic_roughness_texture) {
+                slab.metallic = (slab.metallic * b).clamp(0.0, 1.0);
+                slab.roughness = (slab.roughness * g).clamp(0.0, 1.0);
+            }
+        }
+        for op in &mut out.ops {
+            if let Op::Horizontal { mix, mix_texture } = op
+                && let Some([r, ..]) = sample(mix_texture)
+            {
+                *mix *= r;
+            }
+        }
+        out
+    }
+
+    /// Whether [`Self::textured`] would apply any texture (base color, emission,
+    /// metallic-roughness or a mix texture).
+    pub fn samples_textures(&self) -> bool {
+        self.sampled_textures().next().is_some()
+    }
+
+    /// The textures [`Self::textured`] applies, in slab then op order (may repeat).
+    pub fn sampled_textures(&self) -> impl Iterator<Item = &AssetRef> {
+        let slabs = self.slabs.iter().flat_map(|(_, s)| {
+            [
+                &s.base_color_texture,
+                &s.emissive_texture,
+                &s.metallic_roughness_texture,
+            ]
+        });
+        let mixes = self.ops.iter().map(|op| match op {
+            Op::Horizontal { mix_texture, .. } => mix_texture,
+            _ => &None,
+        });
+        slabs.chain(mixes).flatten()
+    }
+
     /// Whether slab alpha is coverage (alpha-blended materials).
     pub fn blends(&self) -> bool {
         self.blend

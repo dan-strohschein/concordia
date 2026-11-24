@@ -44,8 +44,9 @@ pub struct TextureData {
 }
 
 impl TextureData {
-    /// Mip 0 as linear RGB, rows from the top (alpha dropped; sRGB decoded).
-    pub fn linear_rgb(&self) -> Result<Vec<[f32; 3]>, String> {
+    /// Mip 0 as linear RGBA, rows from the top, as the GPU samples it (sRGB color decoded, alpha
+    /// linear; R8 reads as (r, 0, 0, 1)).
+    pub fn linear_rgba(&self) -> Result<Vec<[f32; 4]>, String> {
         let bytes = self.mips.first().ok_or("texture has no mips")?;
         let expected = self.width as usize * self.height as usize * self.format.bytes_per_pixel();
         if bytes.len() != expected {
@@ -57,27 +58,43 @@ impl TextureData {
                 bytes.len()
             ));
         }
+        let unorm = |c: u8| f32::from(c) / 255.0;
         Ok(match self.format {
             TextureFormat::Rgba16Float => bytes
                 .as_chunks::<8>()
                 .0
                 .iter()
-                .map(|p| [0, 2, 4].map(|i| half::f16::from_le_bytes([p[i], p[i + 1]]).to_f32()))
+                .map(|p| [0, 2, 4, 6].map(|i| half::f16::from_le_bytes([p[i], p[i + 1]]).to_f32()))
                 .collect(),
             TextureFormat::Rgba8Linear => bytes
                 .as_chunks::<4>()
                 .0
                 .iter()
-                .map(|p| [p[0], p[1], p[2]].map(|c| f32::from(c) / 255.0))
+                .map(|p| p.map(unorm))
                 .collect(),
             TextureFormat::Rgba8Srgb => bytes
                 .as_chunks::<4>()
                 .0
                 .iter()
-                .map(|p| [p[0], p[1], p[2]].map(srgb_to_linear))
+                .map(|p| {
+                    let [r, g, b] = [p[0], p[1], p[2]].map(srgb_to_linear);
+                    [r, g, b, unorm(p[3])]
+                })
                 .collect(),
-            TextureFormat::R8 => return Err("a one-channel texture isn't color".into()),
+            TextureFormat::R8 => bytes.iter().map(|&r| [unorm(r), 0.0, 0.0, 1.0]).collect(),
         })
+    }
+
+    /// Mip 0 as linear RGB, rows from the top (alpha dropped; sRGB decoded).
+    pub fn linear_rgb(&self) -> Result<Vec<[f32; 3]>, String> {
+        if self.format == TextureFormat::R8 {
+            return Err("a one-channel texture isn't color".into());
+        }
+        Ok(self
+            .linear_rgba()?
+            .into_iter()
+            .map(|[r, g, b, _]| [r, g, b])
+            .collect())
     }
 }
 

@@ -393,7 +393,7 @@ impl Method for CaptureScreenshot {
             .unwrap_or_default();
         tracing::debug!(target: "concordia::render", actor, width = p.width, height = p.height, sim_tick, frame, "captured screenshot");
         Ok(CaptureScreenshotResult {
-            image: EncodedImage::png(&encode_png(&image)?),
+            image: encoded(&image)?,
             width: image.width,
             height: image.height,
             sim_tick,
@@ -561,18 +561,10 @@ fn asset_id(reference: &AssetRef) -> Option<concordia_core::id::AssetId> {
 }
 
 /// Deterministic PNG bytes (RGBA8, default compression).
-fn encode_png(image: &Image) -> Result<Vec<u8>, ApiError> {
-    let mut out = Vec::new();
-    let mut encoder = png::Encoder::new(&mut out, image.width, image.height);
-    encoder.set_color(png::ColorType::Rgba);
-    encoder.set_depth(png::BitDepth::Eight);
-    let fail = |e: png::EncodingError| {
-        ApiError::new(ApiErrorKind::Internal, format!("PNG encoding failed: {e}"))
-    };
-    let mut writer = encoder.write_header().map_err(fail)?;
-    writer.write_image_data(&image.rgba).map_err(fail)?;
-    writer.finish().map_err(fail)?;
-    Ok(out)
+/// The image as a PNG result.
+fn encoded(image: &Image) -> Result<EncodedImage, ApiError> {
+    EncodedImage::from_rgba8(image.width, image.height, &image.rgba)
+        .map_err(|e| ApiError::new(ApiErrorKind::Internal, e))
 }
 
 /// Maps renderer errors to API errors agents can act on.

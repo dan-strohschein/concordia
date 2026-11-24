@@ -329,9 +329,10 @@ fn gltf_clip_events_come_from_the_import_settings() {
     let report = p.sample("Fox", "glTF-Binary", "Fox.glb");
     let sidecar = p.dir.path().join("Fox/glTF-Binary/Fox.glb.import.ron");
     let text = std::fs::read_to_string(&sidecar).unwrap();
-    assert!(text.contains("settings: {}"), "{text}");
+    // New sidecars declare the model settings left to the project (ADR-0102).
+    assert!(text.contains(NEW_SETTINGS), "{text}");
     let settings = r#"settings: {"clip_events": {"Walk": [{"time": 0.4, "name": "step"}]}}"#;
-    std::fs::write(&sidecar, text.replace("settings: {}", settings)).unwrap();
+    std::fs::write(&sidecar, text.replace(NEW_SETTINGS, settings)).unwrap();
     let again =
         p.db.import(std::path::Path::new("Fox/glTF-Binary/Fox.glb"))
             .unwrap();
@@ -346,3 +347,6 @@ fn gltf_clip_events_come_from_the_import_settings() {
     );
     assert_eq!(walk.frame_rate, None, "events stay in seconds");
 }
+
+/// A new model sidecar's settings block.
+const NEW_SETTINGS: &str = "settings: {\n        \"emissive_reference_ev100\": None,\n    }";

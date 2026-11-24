@@ -100,7 +100,7 @@ fn guest_receives_anim_and_nav_signals() {
     let text = std::fs::read_to_string(&sidecar).unwrap();
     let events =
         r#"settings: {"clip_events": {"Armature|Walk": [{"time": 0.25, "name": "step"}]}}"#;
-    std::fs::write(&sidecar, text.replace("settings: {}", events)).unwrap();
+    std::fs::write(&sidecar, text.replace(NEW_MODEL_SETTINGS, events)).unwrap();
     let moves = stage.import("moves.fbx");
     let hero = stage.import("hero.fbx");
     let made = stage.ok(
@@ -173,3 +173,6 @@ fn guest_receives_anim_and_nav_signals() {
         .unwrap_or_else(|| panic!("no AnimEvent heard: {anim}"));
     assert_eq!(first, format!("step@0.25 in {walk}"), "{anim}");
 }
+
+/// A new model sidecar's settings block (the model settings left to the project, ADR-0102).
+const NEW_MODEL_SETTINGS: &str = "settings: {\n        \"emissive_reference_ev100\": None,\n    }";

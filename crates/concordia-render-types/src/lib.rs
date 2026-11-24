@@ -15,3 +15,15 @@ pub use components::{
 };
 pub use shadow_settings::{CascadeSettings, PcfKernel};
 pub use units::{SpotCone, candela, distance_window};
+
+/// Registers the render components (`RenderModule` does this in a project; hosts without the
+/// renderer, like the path tracer's tests, call it directly).
+pub fn register_components(
+    registry: &mut concordia_reflect::TypeRegistry,
+) -> Result<(), concordia_reflect::RegistryError> {
+    concordia_terra::register_component::<Camera>(registry)?;
+    concordia_terra::register_component::<DirectionalLight>(registry)?;
+    concordia_terra::register_component::<PointLight>(registry)?;
+    concordia_terra::register_component::<SpotLight>(registry)?;
+    concordia_terra::register_component::<Environment>(registry)
+}

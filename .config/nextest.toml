@@ -21,6 +21,11 @@ filter = "test(=pass_timer_overhead_under_2_percent)"
 threads-required = "num-test-threads"
 retries = 2
 
+# Blessing a path-traced reference (`just bless-reference`) traces for minutes at full quality.
+[[profile.default.overrides]]
+filter = "binary(bless_reference)"
+slow-timeout = { period = "60s", terminate-after = 60 }
+
 [profile.ci]
 fail-fast = false
 retries = 0

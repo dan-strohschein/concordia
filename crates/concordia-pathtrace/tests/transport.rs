@@ -308,27 +308,38 @@ fn punctual_lights(name: &str, backend: &Backend) {
     close(got, want, &format!("{name}: sun"));
 }
 
+/// Emission is luminance in nits: exposure scales it like any light (ADR-0102).
 #[test]
-fn emissive_surfaces_are_display_referred() {
-    let mut b = SceneBuilder::new();
-    let panel = b.mesh(&quad(10.0)).unwrap();
-    let glow = b
-        .material(&material(Slab {
-            base_color: [0.0, 0.0, 0.0, 1.0],
-            specular: 0.0,
-            emissive: [0.5, 0.25, 0.125],
-            ..Slab::default()
-        }))
-        .unwrap();
-    b.instance(panel, Mat4::IDENTITY, glow);
-    let (world, mut camera) = ortho(Vec3::ZERO, Vec3::Y, 1.0);
-    camera.exposure_ev100 = 12.0;
-    b.camera(world, &camera);
-    let scene = b.build().unwrap();
+fn emission_is_luminance_scaled_by_exposure() {
+    let scene = |ev100: f32| {
+        let mut b = SceneBuilder::new();
+        let panel = b.mesh(&quad(10.0)).unwrap();
+        let glow = b
+            .material(&material(Slab {
+                base_color: [0.0, 0.0, 0.0, 1.0],
+                specular: 0.0,
+                emissive: [0.6, 0.3, 0.15],
+                ..Slab::default()
+            }))
+            .unwrap();
+        b.instance(panel, Mat4::IDENTITY, glow);
+        let (world, mut camera) = ortho(Vec3::ZERO, Vec3::Y, 1.0);
+        camera.exposure_ev100 = ev100;
+        b.camera(world, &camera);
+        b.build().unwrap()
+    };
     for (name, backend) in backends() {
-        let got = mean(&render(&scene, &settings(2, 4, 1), &backend).unwrap());
-        let what = format!("{name}: emission shows as authored at any exposure");
-        close(got, Vec3::new(0.5, 0.25, 0.125), &what);
+        let draw = |ev| mean(&render(&scene(ev), &settings(2, 4, 1), &backend).unwrap());
+        close(
+            draw(0.0),
+            Vec3::new(0.5, 0.25, 0.125),
+            &format!("{name}: nits × 1/1.2 at EV 0"),
+        );
+        close(
+            draw(1.0),
+            Vec3::new(0.25, 0.125, 0.0625),
+            &format!("{name}: EV 1 halves it"),
+        );
     }
 }
 

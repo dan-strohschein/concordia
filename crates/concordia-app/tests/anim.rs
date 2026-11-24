@@ -545,7 +545,7 @@ fn imported_character_raises_an_event_and_moves_an_attached_item() {
     let text = std::fs::read_to_string(&sidecar).unwrap();
     let events =
         r#"settings: {"clip_events": {"Armature|Walk": [{"time": 0.25, "name": "step"}]}}"#;
-    std::fs::write(&sidecar, text.replace("settings: {}", events)).unwrap();
+    std::fs::write(&sidecar, text.replace(NEW_MODEL_SETTINGS, events)).unwrap();
     assert_eq!(stage.import("moves.fbx"), stage.moves, "same asset");
     let body = stage.body.clone();
     let walk = format!("asset:{}#clip/Armature|Walk", stage.moves);
@@ -1097,3 +1097,6 @@ fn side_by_side(
     }
     concordia_testkit::golden::RgbaImage::new(width, height, pixels).unwrap()
 }
+
+/// A new model sidecar's settings block (the model settings left to the project, ADR-0102).
+const NEW_MODEL_SETTINGS: &str = "settings: {\n        \"emissive_reference_ev100\": None,\n    }";

@@ -244,6 +244,16 @@ Closure closure_factors(uint4* r, uint features) {
     return c;
 }
 
+// Sampled texels applied to a slab's factors (`MaterialProgram::textured`): base × rgb, alpha ×
+// a, emission × rgb, metallic × b and roughness × g (saturated). Callers pass 1 for no texture.
+void apply_texels(inout Closure c, float4 base, float4 emissive, float4 mr) {
+    c.base *= base.rgb;
+    c.alpha *= base.a;
+    c.emissive *= emissive.rgb;
+    c.metallic = saturate(c.metallic * mr.b);
+    c.roughness = saturate(c.roughness * mr.g);
+}
+
 // The terms that follow from a closure's values, normal `n` and view `v`: F0, the GGX alphas,
 // the diffuse share and albedo, the sheen albedo and (when layered) the transmittance toward v.
 void finish_closure<T : IAlbedoTables>(inout Closure c, T tables, float3 n, float3 v, bool layered) {

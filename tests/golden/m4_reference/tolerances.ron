@@ -1,0 +1,7 @@
+Tolerances(
+    default: (
+        mean: 0.1,
+        p99: 1.0,
+    ),
+    goldens: {},
+)

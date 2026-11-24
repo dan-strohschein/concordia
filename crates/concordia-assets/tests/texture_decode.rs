@@ -58,3 +58,39 @@ fn every_color_format_decodes_to_linear_rgb() {
         "short data"
     );
 }
+
+#[test]
+fn every_format_decodes_to_linear_rgba_as_the_gpu_samples_it() {
+    let srgb = texture(
+        TextureFormat::Rgba8Srgb,
+        vec![255, 0, 188, 51, 0, 0, 0, 255],
+    );
+    let got = srgb.linear_rgba().unwrap();
+    assert!(
+        (got[0][2] - 0.5029).abs() < 1e-3,
+        "color decoded: {:?}",
+        got[0]
+    );
+    assert_eq!(got[0][3], 0.2, "alpha stays linear");
+    let linear = texture(
+        TextureFormat::Rgba8Linear,
+        vec![255, 0, 51, 102, 0, 0, 0, 0],
+    );
+    assert_eq!(linear.linear_rgba().unwrap()[0], [1.0, 0.0, 0.2, 0.4]);
+    let mask = TextureData {
+        width: 2,
+        height: 1,
+        format: TextureFormat::R8,
+        mips: vec![vec![51, 255]],
+    };
+    assert_eq!(
+        mask.linear_rgba().unwrap(),
+        vec![[0.2, 0.0, 0.0, 1.0], [1.0, 0.0, 0.0, 1.0]],
+        "R8 reads as (r, 0, 0, 1)"
+    );
+    assert_eq!(
+        srgb.linear_rgb().unwrap()[0],
+        [got[0][0], got[0][1], got[0][2]],
+        "linear_rgb is its rgb"
+    );
+}

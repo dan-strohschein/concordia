@@ -27,7 +27,7 @@ Every field has a default, so send only what differs:
 - `base_color` (linear RGBA, not sRGB; alpha is opacity), `metallic` (0 dielectric .. 1 metal), `roughness` (0 mirror .. 1 matte), `specular` (dielectric reflectance; 0.5 is the usual F0 0.04).
 - Textures: `base_color_texture`, `metallic_roughness_texture`, `normal_texture` (+ `normal_scale`), `occlusion_texture` (+ `occlusion_strength`), `emissive_texture`, as `"asset:<uuid>"` from importing the image first (`mcp__concordia__asset_import {"path": "assets/textures/paint_normal.png"}`).
 - Generated textures: `mcp__concordia__gen_run {"provider": "texture", "request": {"size": 256, "pattern": {"Noise": {"kind": "Worley", "cells": 8, "octaves": 3}}, "colors": [[40, 40, 44, 255], [180, 176, 168, 255]]}, "seed": 2, "path": "assets/textures/stone.png"}` writes a tileable PNG (noise, `Checker` or `Stripes`), imports it and records the recipe; use the returned `id` as `"asset:<id>"`. `mcp__concordia__gen_list {}` gives the full request schema.
-- `emissive` (linear RGB) with `emissive_strength`.
+- `emissive` (linear RGB) with `emissive_strength`: luminance in **nits**, exposed like any light (it dims with a darker camera and lights the world). Pick it from what it should look like at the scene camera's `exposure_ev100`: nits = brightness on screen × 1.2 × 2^EV (EV 0, a night scene: 1 shows as about 0.83; EV 15, daylight: a sign needs about 39,000). Unlit materials ignore exposure.
 - `transmittance`: how much light passes the slab's medium (only matters for a slab on top of another; a clear coat is `[1, 1, 1]` with a black base color).
 - Optional features (omit them or send `null` for none):
   - `haze`: `{"roughness": 0.6, "weight": 0.3}`, a second, blurrier highlight;

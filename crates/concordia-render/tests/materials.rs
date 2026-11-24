@@ -42,7 +42,8 @@ fn nodes(root: &str, list: Vec<(&str, MaterialNode)>) -> Material {
 
 fn paint() -> Slab {
     Slab {
-        emissive: [0.05, 0.02, 0.0],
+        // Nits (ADR-0102): 0.05, 0.02 as seen at the tests' EV 0 (× 1.2).
+        emissive: [0.06, 0.024, 0.0],
         ..slab([0.6, 0.1, 0.05], 0.5)
     }
 }
@@ -199,7 +200,7 @@ fn thin_film(thickness_nm: f32) -> Slab {
 fn cases() -> Vec<(&'static str, Material, f32)> {
     let mut blend = one(Slab {
         base_color: [0.9, 0.9, 0.2, 0.5],
-        emissive: [0.1, 0.05, 0.0],
+        emissive: [0.12, 0.06, 0.0],
         ..slab([0.9, 0.9, 0.2], 0.4)
     });
     blend.alpha_mode = AlphaMode::Blend;
@@ -411,7 +412,7 @@ fn shader_matches_cpu_reference_per_feature() {
             &image,
             |p| {
                 let shaded = program.eval(p.n, p.v, l);
-                shaded.color * lux * exposure + shaded.emissive
+                (shaded.color * lux + shaded.emissive) * exposure
             },
             MAX_STEPS,
         );
@@ -453,7 +454,7 @@ fn shader_matches_cpu_reference_at_grazing_light() {
             &image,
             |p| {
                 let shaded = program.eval(p.n, p.v, -sun);
-                shaded.color * 20.0 * exposure + shaded.emissive
+                (shaded.color * 20.0 + shaded.emissive) * exposure
             },
             MAX_STEPS,
             6,

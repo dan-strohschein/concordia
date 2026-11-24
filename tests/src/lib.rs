@@ -4,6 +4,7 @@ pub mod bins;
 pub mod m3_checker;
 pub mod m3_fixture;
 pub mod mcp_client;
+pub mod reference;
 pub mod replays;
 pub mod studio_gate;
 

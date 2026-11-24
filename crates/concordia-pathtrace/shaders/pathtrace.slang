@@ -15,6 +15,10 @@ static const uint MAX_PASSES = 64;
 static const float TABLE = 32.0;
 static const float ROBUST = 1.0 + 2.0 * (3.0 * 5.96046448e-8) / (1.0 - 3.0 * 5.96046448e-8);
 static const float INF = 1.0 / 0.0;
+static const uint NO_TEXTURE = 0xffffffff;
+// What `run_program` evaluates: lit by one light, or the unlit surface (`MaterialProgram::unlit`).
+static const uint RUN_LIGHT = 0;
+static const uint RUN_UNLIT = 1;
 
 struct Push { uint header; uint first; uint count; uint out; };
 
@@ -22,11 +26,11 @@ struct Push { uint header; uint first; uint count; uint out; };
 struct Ctx {
     float4* nodes; uint* order; float4* tris; float4* normals; uint4* meshes; float4* insts;
     uint4* mtab; uint4* mrows; float4* lights; float4* emitters; float* ecdf; float4* tables;
-    float4* env; float* erows; float* ecols;
+    float4* env; float* erows; float* ecols; float4* uvs; uint4* ttab; float4* texels;
     uint has_env; uint sky_visible; uint tlas_node; uint tlas_order; uint light_count;
     uint emitter_count; uint env_w; uint env_h; uint width; uint height; uint seed; uint max_bounces;
     uint proj_kind; float proj_param; float exposure; float emitter_area; float3 clear;
-    float4 cam0; float4 cam1; float4 cam2;
+    float4 cam0; float4 cam1; float4 cam2; uint texture_count;
 };
 
 Ctx context(uint header) {
@@ -67,6 +71,10 @@ Ctx context(uint header) {
     c.exposure = asfloat(h[10].z);
     c.emitter_area = asfloat(h[10].w);
     c.clear = asfloat(h[11].xyz);
+    c.uvs = (float4*)g_buffers.ptr[h[12].x];
+    c.ttab = (uint4*)g_buffers.ptr[h[12].y];
+    c.texels = (float4*)g_buffers.ptr[h[12].z];
+    c.texture_count = h[12].w;
     return c;
 }
 
@@ -236,9 +244,47 @@ Hit intersect(Ctx c, Ray world, bool any) {
     return hit;
 }
 
-// ---- Materials: table rows [rows, lobes, alpha mode, unlit], [cutoff, alpha], emission, unlit
-// color, lobe alphas ×8; then `MaterialProgram::eval` over the shared rows.
-float3 eval_program(Ctx c, uint mat, float3 n, float3 v, float3 l) {
+// ---- Textures (`texture.rs`): bilinear between the nearest texel centres, repeating, rows from
+// the top; `fallback` without a texture.
+float4 texel_at(Ctx c, uint4 t, int x, int y) {
+    int w = int(t.y), h = int(t.z);
+    uint col = uint(((x % w) + w) % w), row = uint(((y % h) + h) % h);
+    return c.texels[t.x + row * t.y + col];
+}
+
+float4 sample_tex(Ctx c, uint tex, float2 uv, float4 fallback) {
+    if (tex == NO_TEXTURE || tex >= c.texture_count) return fallback;
+    uint4 t = c.ttab[tex];
+    float x = uv.x * float(t.y) - 0.5, y = uv.y * float(t.z) - 0.5;
+    if (!isfinite(x) || !isfinite(y)) { x = 0.0; y = 0.0; }
+    float fx0 = floor(x), fy0 = floor(y);
+    int x0 = int(fx0), y0 = int(fy0);
+    float fx = x - fx0, fy = y - fy0;
+    float4 top = lerp(texel_at(c, t, x0, y0), texel_at(c, t, x0 + 1, y0), fx);
+    float4 bottom = lerp(texel_at(c, t, x0, y0 + 1), texel_at(c, t, x0 + 1, y0 + 1), fx);
+    return lerp(top, bottom, fy);
+}
+
+// Texture coordinates on a mesh's triangle at barycentrics (u, w) (`Scene::uv`).
+float2 surface_uv(Ctx c, uint mesh, uint prim, float u, float w) {
+    uint base = (c.meshes[mesh].y + prim) * 3;
+    return c.uvs[base].xy * (1.0 - u - w) + c.uvs[base + 1].xy * u + c.uvs[base + 2].xy * w;
+}
+
+// ---- Materials: table rows [rows, lobes, alpha mode, unlit], [cutoff, alpha, textured], emission,
+// unlit color, lobe alphas ×8 (the untextured values); then `MaterialProgram` over the shared rows.
+bool textured(Ctx c, uint mat) { return c.mtab[mat * 6 + 1].z != 0; }
+
+// A slab's closure factors with the point's texels applied (`MaterialProgram::textured`).
+Closure load_slab(Ctx c, uint4* r, float2 uv) {
+    Closure cl = closure_factors(r, r[3].w);
+    apply_texels(cl, sample_tex(c, r[7].x, uv, float4(1.0)), sample_tex(c, r[6].w, uv, float4(1.0)),
+                 sample_tex(c, r[7].y, uv, float4(1.0)));
+    return cl;
+}
+
+// The program's result at a point: lit by direction `l` (RUN_LIGHT, `eval`) or unlit (`unlit`).
+Entry run_program(Ctx c, uint mat, float2 uv, uint mode, float3 n, float3 v, float3 l) {
     uint4* rows = c.mrows + c.mtab[mat * 6].x;
     uint ops = rows[0].y;
     bool blend = (rows[0].z & FLAG_BLEND) != 0;
@@ -249,15 +295,21 @@ float3 eval_program(Ctx c, uint mat, float3 n, float3 v, float3 l) {
     for (uint i = 0; i < ops; i++) {
         uint4 op = rows[1 + i];
         if (op.x == OP_SLAB) {
-            uint4* r = rows + 1 + ops + op.y * CLOSURE_ROWS;
-            Closure cl = closure_factors(r, r[3].w);
-            finish_closure(cl, tables, n, v, true);
+            Closure cl = load_slab(c, rows + 1 + ops + op.y * CLOSURE_ROWS, uv);
             Entry e;
-            e.color = eval_slab(cl, v, l) * cl.occlusion;
             e.emissive = cl.emissive;
             e.alpha = cl.alpha;
-            e.tv = transmittance(tables, cl, dot(n, v));
-            e.tl = transmittance(tables, cl, dot(n, l));
+            if (mode == RUN_LIGHT) {
+                finish_closure(cl, tables, n, v, true);
+                e.color = eval_slab(cl, v, l) * cl.occlusion;
+                e.tv = transmittance(tables, cl, dot(n, v));
+                e.tl = transmittance(tables, cl, dot(n, l));
+            } else {
+                finish_closure(cl, tables, float3(0, 0, 1), float3(0, 0, 1), true);
+                e.color = albedo_of(cl);
+                e.tv = transmittance(tables, cl, 1.0);
+                e.tl = e.tv;
+            }
             if (blend) { float a = e.alpha; e = cover(e, a); e.alpha = a; }
             if (top < MAX_STACK) stack[top++] = e;
         } else if (op.x == OP_COVERAGE) {
@@ -266,16 +318,40 @@ float3 eval_program(Ctx c, uint mat, float3 n, float3 v, float3 l) {
             Entry b = stack[top - 1];
             Entry a = stack[top - 2];
             top--;
-            stack[top - 1] = op.x == OP_VERTICAL ? layer(a, b) : mix_entries(a, b, asfloat(op.z));
+            float mix = asfloat(op.z) * sample_tex(c, op.y, uv, float4(1.0)).r;
+            stack[top - 1] = op.x == OP_VERTICAL ? layer(a, b) : mix_entries(a, b, mix);
         }
     }
-    return top > 0 ? stack[0].color : float3(0.0);
+    return top > 0 ? stack[0] : nothing();
+}
+
+float3 eval_program(Ctx c, uint mat, float2 uv, float3 n, float3 v, float3 l) {
+    return run_program(c, mat, uv, RUN_LIGHT, n, v, l).color;
+}
+
+// The unlit surface: albedo, emission and alpha (precomputed without textures).
+Entry shown(Ctx c, uint mat, float2 uv) {
+    if (textured(c, mat)) return run_program(c, mat, uv, RUN_UNLIT, float3(0.0), float3(0.0), float3(0.0));
+    Entry e = nothing();
+    e.color = asfloat(c.mtab[mat * 6 + 3].xyz);
+    e.emissive = asfloat(c.mtab[mat * 6 + 2].xyz);
+    e.alpha = asfloat(c.mtab[mat * 6 + 1].y);
+    return e;
+}
+
+// Slab k's GGX alpha at the point (`scene.rs` `lobes`).
+float lobe_alpha(Ctx c, uint mat, float2 uv, uint k) {
+    if (!textured(c, mat)) return asfloat(c.mtab[mat * 6 + 4 + k / 4][k % 4]);
+    uint4* rows = c.mrows + c.mtab[mat * 6].x;
+    Closure cl = load_slab(c, rows + 1 + rows[0].y + k * CLOSURE_ROWS, uv);
+    float r = clamp(cl.roughness, 0.045, 1.0);
+    return r * r;
 }
 
 // ---- Sampling (`cpu.rs`).
 float d_ggx_pdf(float noh, float a) { float a2 = a * a; float f = noh * noh * (a2 - 1.0) + 1.0; return a2 / (PI * f * f); }
 
-float bsdf_pdf(Ctx c, uint mat, float3 n, float3 v, float3 l) {
+float bsdf_pdf(Ctx c, uint mat, float2 uv, float3 n, float3 v, float3 l) {
     float cosv = max(dot(n, l), 0.0) / PI;
     uint lobes = c.mtab[mat * 6].y;
     if (lobes == 0) return cosv;
@@ -284,8 +360,7 @@ float bsdf_pdf(Ctx c, uint mat, float3 n, float3 v, float3 l) {
     float noh = max(dot(n, h), 0.0), voh = max(abs(dot(v, h)), 1e-6);
     float ggx = 0.0;
     for (uint k = 0; k < lobes; k++) {
-        float a = asfloat(c.mtab[mat * 6 + 4 + k / 4][k % 4]);
-        ggx += d_ggx_pdf(noh, a) * noh / (4.0 * voh);
+        ggx += d_ggx_pdf(noh, lobe_alpha(c, mat, uv, k)) * noh / (4.0 * voh);
     }
     return 0.5 * cosv + 0.5 * ggx / float(lobes);
 }
@@ -309,20 +384,20 @@ float3 ggx_half(float3 n, float u, float w, float alpha) {
     return normalize(onb(n, float3(sin_t * cos(phi), sin_t * sin(phi), cos_t)));
 }
 
-bool sample_bsdf(Ctx c, uint mat, float3 n, float3 v, inout Rng rng, out float3 l, out float pdf) {
+bool sample_bsdf(Ctx c, uint mat, float2 uv, float3 n, float3 v, inout Rng rng, out float3 l, out float pdf) {
     float choice = next(rng), u = next(rng), w = next(rng);
     uint lobes = c.mtab[mat * 6].y;
     if (lobes == 0 || choice < 0.5) {
         l = cosine_dir(n, u, w);
     } else {
         uint k = min(uint((choice - 0.5) * 2.0 * float(lobes)), lobes - 1);
-        float3 h = ggx_half(n, u, w, asfloat(c.mtab[mat * 6 + 4 + k / 4][k % 4]));
+        float3 h = ggx_half(n, u, w, lobe_alpha(c, mat, uv, k));
         l = 2.0 * dot(v, h) * h - v;
         l = dot(l, l) > 0.0 ? normalize(l) : float3(0.0);
     }
     pdf = 0.0;
     if (dot(l, l) == 0.0) return false;
-    pdf = bsdf_pdf(c, mat, n, v, l);
+    pdf = bsdf_pdf(c, mat, uv, n, v, l);
     return true;
 }
 
@@ -409,7 +484,7 @@ Ray camera_ray(Ctx c, uint x, uint y, inout Rng rng) {
 }
 
 // ---- The surface a hit lands on, facing the incoming ray.
-struct Surface { float3 p; float3 n; float3 ng; uint mat; float t; };
+struct Surface { float3 p; float3 n; float3 ng; uint mat; float t; float2 uv; };
 
 Surface surface(Ctx c, Ray r, Hit h) {
     uint mesh = asuint(c.insts[h.inst * 7 + 6].x);
@@ -430,6 +505,7 @@ Surface surface(Ctx c, Ray r, Hit h) {
     s.ng = ng;
     s.mat = asuint(c.insts[h.inst * 7 + 6].y);
     s.t = h.t;
+    s.uv = surface_uv(c, mesh, h.prim, h.u, h.w);
     return s;
 }
 
@@ -469,15 +545,15 @@ float3 direct(Ctx c, Surface s, float3 v, inout Rng rng) {
             }
         }
         if (dot(l, s.ng) > 0.0 && !blocked(c, s, l, dist)) {
-            sum += eval_program(c, s.mat, s.n, v, l) * irradiance;
+            sum += eval_program(c, s.mat, s.uv, s.n, v, l) * irradiance;
         }
     }
     if (c.has_env != 0) {
         float3 dir, radiance; float pdf;
         env_sample(c, next(rng), next(rng), dir, radiance, pdf);
         if (pdf > 0.0 && dot(dir, s.ng) > 0.0 && !blocked(c, s, dir, INF)) {
-            float3 f = eval_program(c, s.mat, s.n, v, dir);
-            sum += f * radiance / pdf * power(pdf, bsdf_pdf(c, s.mat, s.n, v, dir));
+            float3 f = eval_program(c, s.mat, s.uv, s.n, v, dir);
+            sum += f * radiance / pdf * power(pdf, bsdf_pdf(c, s.mat, s.uv, s.n, v, dir));
         }
     }
     float u0 = next(rng), u1 = next(rng), u2 = next(rng);
@@ -496,10 +572,12 @@ float3 direct(Ctx c, Surface s, float3 v, inout Rng rng) {
             if (cos_l > 0.0 && dot(l, s.ng) > 0.0 && !blocked(c, s, l, dist)) {
                 uint inst = asuint(a.w);
                 uint mat = asuint(c.insts[inst * 7 + 6].y);
-                float3 le = asfloat(c.mtab[mat * 6 + 2].xyz);
+                uint mesh = asuint(c.insts[inst * 7 + 6].x);
+                float2 at = surface_uv(c, mesh, asuint(b.w), su * (1.0 - u2), su * u2);
+                float3 le = shown(c, mat, at).emissive;
                 float pdf = d2 / (cos_l * c.emitter_area);
-                float3 f = eval_program(c, s.mat, s.n, v, l);
-                sum += f * le / c.exposure / pdf * power(pdf, bsdf_pdf(c, s.mat, s.n, v, l));
+                float3 f = eval_program(c, s.mat, s.uv, s.n, v, l);
+                sum += f * le / pdf * power(pdf, bsdf_pdf(c, s.mat, s.uv, s.n, v, l));
             }
         }
     }
@@ -525,19 +603,19 @@ float3 trace(Ctx c, Ray ray, inout Rng rng) {
         }
         Surface s = surface(c, ray, h);
         uint4 m0 = c.mtab[s.mat * 6];
-        float alpha = asfloat(c.mtab[s.mat * 6 + 1].y);
+        Entry sh = shown(c, s.mat, s.uv);
         bool through = false;
-        if (m0.z == 1) through = alpha < asfloat(c.mtab[s.mat * 6 + 1].x);
-        else if (m0.z == 2) through = next(rng) >= alpha;
+        if (m0.z == 1) through = sh.alpha < asfloat(c.mtab[s.mat * 6 + 1].x);
+        else if (m0.z == 2) through = next(rng) >= sh.alpha;
         if (through && passes < MAX_PASSES) {
             passes++;
             ray.o = s.p + ray.d * offset_of(s.p);
             continue;
         }
         passes = 0;
-        float3 emission = asfloat(c.mtab[s.mat * 6 + 2].xyz);
+        float3 emission = sh.emissive;
         if (m0.w != 0) {
-            radiance += beta * (asfloat(c.mtab[s.mat * 6 + 3].xyz) + emission) / exposure;
+            radiance += beta * (sh.color + emission) / exposure;
             break;
         }
         if (max3v(emission) > 0.0) {
@@ -547,15 +625,15 @@ float3 trace(Ctx c, Ray ray, inout Rng rng) {
                 float epdf = (c.emitter_count == 0 || cos_l <= 0.0) ? 0.0 : s.t * s.t / (cos_l * c.emitter_area);
                 w = power(last_pdf, epdf);
             }
-            radiance += beta * emission / exposure * w;
+            radiance += beta * emission * w;
         }
         if (bounce >= c.max_bounces) break;
         float3 v = -ray.d;
         radiance += beta * direct(c, s, v, rng);
         float3 l; float pdf;
-        if (!sample_bsdf(c, s.mat, s.n, v, rng, l, pdf)) break;
+        if (!sample_bsdf(c, s.mat, s.uv, s.n, v, rng, l, pdf)) break;
         if (dot(l, s.ng) <= 0.0 || pdf <= 0.0) break;
-        float3 f = eval_program(c, s.mat, s.n, v, l);
+        float3 f = eval_program(c, s.mat, s.uv, s.n, v, l);
         if (max3v(f) <= 0.0) break;
         beta *= f / pdf;
         last_pdf = pdf;

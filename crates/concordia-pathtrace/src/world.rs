@@ -1,11 +1,12 @@
 //! Building a [`Scene`] from a world and its assets: what the renderer would draw, read the same
 //! way (world transforms, entity order, the camera rule), without depending on the renderer.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use concordia_assets::{AssetRef, AssetSource, MeshRenderer};
 use concordia_core::id::EntityId;
 use concordia_core::math::{Mat4, Vec3};
+use concordia_material::MaterialProgram;
 use concordia_render_types::{
     Camera, DirectionalLight, Environment, PointLight, Projection, SpotLight, pick_camera,
 };
@@ -43,6 +44,7 @@ pub fn scene_from_world(
         builder: SceneBuilder::new(),
         meshes: BTreeMap::new(),
         materials: BTreeMap::new(),
+        textures: BTreeSet::new(),
         cameras: Vec::new(),
         sky: None,
     };
@@ -76,6 +78,7 @@ struct Reader {
     builder: SceneBuilder,
     meshes: BTreeMap<AssetRef, MeshId>,
     materials: BTreeMap<AssetRef, MaterialId>,
+    textures: BTreeSet<AssetRef>,
     cameras: Vec<(EntityId, Mat4, Camera)>,
     sky: Option<Environment>,
 }
@@ -148,7 +151,30 @@ impl Reader {
             .material(&data)
             .map_err(|e| PathTraceError::Material(format!("entity {id}: {r}: {e}")))?;
         self.materials.insert(r.clone(), m);
+        let program = MaterialProgram::compile(&data)
+            .map_err(|e| PathTraceError::Material(format!("entity {id}: {r}: {e}")))?;
+        for t in program.sampled_textures() {
+            self.texture(assets, id, r, t)?;
+        }
         Ok(m)
+    }
+
+    /// Adds texture `t` of material `material` (once).
+    fn texture(
+        &mut self,
+        assets: &mut dyn AssetSource,
+        id: EntityId,
+        material: &AssetRef,
+        t: &AssetRef,
+    ) -> Result<(), PathTraceError> {
+        if !self.textures.insert(t.clone()) {
+            return Ok(());
+        }
+        let what = |e: &dyn std::fmt::Display| {
+            PathTraceError::Texture(format!("entity {id}: {material}: {t}: {e}"))
+        };
+        let data = assets.texture(t).map_err(|e| what(&e))?;
+        self.builder.texture(t.clone(), &data).map_err(|e| what(&e))
     }
 
     /// Sets the builder's camera from `view` (the renderer's rule for which camera).
@@ -200,4 +226,91 @@ fn look(eye: Vec3, target: Vec3) -> Result<Mat4, PathTraceError> {
         (-forward).extend(0.0),
         eye.extend(1.0),
     ))
+}
+
+/// Every asset `world` draws with: meshes, materials and sky textures (sorted, no repeats).
+pub fn asset_refs(world: &World) -> Vec<(AssetKind, AssetRef)> {
+    let mut refs = std::collections::BTreeSet::new();
+    for id in world.entity_ids_sorted() {
+        if let Some(draw) = world.get::<MeshRenderer>(id) {
+            refs.insert((AssetKind::Mesh, draw.mesh.clone()));
+            refs.insert((AssetKind::Material, draw.material.clone()));
+        }
+        if let Some(env) = world.get::<Environment>(id) {
+            refs.insert((AssetKind::Texture, env.map.clone()));
+        }
+    }
+    refs.into_iter().collect()
+}
+
+/// The kind of an asset a world draws with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum AssetKind {
+    /// A mesh.
+    Mesh,
+    /// A material.
+    Material,
+    /// A texture.
+    Texture,
+}
+
+/// Assets loaded ahead of time (so a world and the asset database needn't be borrowed together).
+#[derive(Debug, Default)]
+pub struct LoadedAssets {
+    meshes: BTreeMap<AssetRef, Result<concordia_assets::MeshData, String>>,
+    materials: BTreeMap<AssetRef, Result<concordia_assets::Material, String>>,
+    textures: BTreeMap<AssetRef, Result<concordia_assets::TextureData, String>>,
+}
+
+impl LoadedAssets {
+    /// Loads `refs` from `source`, keeping each failure to report when the scene asks for it.
+    pub fn load(refs: &[(AssetKind, AssetRef)], source: &mut dyn AssetSource) -> Self {
+        let mut out = Self::default();
+        let mut sampled = Vec::new();
+        for (kind, r) in refs {
+            match kind {
+                AssetKind::Mesh => {
+                    out.meshes.insert(r.clone(), source.mesh(r));
+                }
+                AssetKind::Material => {
+                    let material = source.material(r);
+                    if let Ok(Ok(program)) = material.as_ref().map(MaterialProgram::compile) {
+                        sampled.extend(program.sampled_textures().cloned());
+                    }
+                    out.materials.insert(r.clone(), material);
+                }
+                AssetKind::Texture => {
+                    out.textures.insert(r.clone(), source.texture(r));
+                }
+            }
+        }
+        for t in sampled {
+            if let std::collections::btree_map::Entry::Vacant(slot) = out.textures.entry(t) {
+                let data = source.texture(slot.key());
+                slot.insert(data);
+            }
+        }
+        out
+    }
+}
+
+fn loaded<T: Clone>(
+    map: &BTreeMap<AssetRef, Result<T, String>>,
+    r: &AssetRef,
+) -> Result<T, String> {
+    map.get(r)
+        .cloned()
+        .unwrap_or_else(|| Err(format!("{r} was not loaded")))
+}
+
+impl AssetSource for LoadedAssets {
+    fn mesh(&mut self, r: &AssetRef) -> Result<concordia_assets::MeshData, String> {
+        loaded(&self.meshes, r)
+    }
+    fn material(&mut self, r: &AssetRef) -> Result<concordia_assets::Material, String> {
+        loaded(&self.materials, r)
+    }
+    fn texture(&mut self, r: &AssetRef) -> Result<concordia_assets::TextureData, String> {
+        loaded(&self.textures, r)
+    }
 }
