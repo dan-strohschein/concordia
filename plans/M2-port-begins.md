@@ -4662,7 +4662,7 @@ The author records pass or fail per item in the Status:
 - the crowds work (townsfolk and wisps);
 - the camera and the rendering pipeline work;
 - physics works (the character, the lamp sensors, contacts);
-- the UI works "mostly correctly" (the parts that weren't right are to be recorded as they are named).
+- the UI works "mostly correctly": text runs outside the boxes it sits in (carried over below).
 
 The play session also produced one fix: the wet cobbles looked like a polished floor, and the material was made matte (PR #78).
 
@@ -4690,6 +4690,7 @@ The play session also produced one fix: the wet cobbles looked like a polished f
   - physics queries seeing last-step bodies;
   - the crowd's unreachable-target arrival (2.10c.1);
   - townsfolk at a few hundred: a spawner can't carry a skinned prefab hierarchy.
+- **UI (M3, with the deferred gate's goldens):** text overflows its box in the windowed game (author, 2026-11-23). Labels and buttons ignore their box's width, which may be the `Overflow::Visible` default or text measured at a different scale from the window's.
 - **Lamplight's look, when its next pass comes:**
   - representation LOD for the townsfolk (2.10c.2);
   - the cobbles' stone size and per-stone variation;
