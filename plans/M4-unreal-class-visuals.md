@@ -757,6 +757,186 @@ Steps, each a commit and a push (draft PR after step 1 of each sub-phase):
 - **4.3b1:** 1. This plan, with the author's decisions. 2. The spike as tests (`concordia-shaders`), shim only if needed. 3. RHI desc, command and checks; Metal pipeline and draw; `mesh.rs` on Metal. 4. Vulkan caps, pipeline and draw; the `vulkan` workflow on the RHI suite. 5. The object and mesh stages, `shade`/`fs_mesh`, path selection; forward buckets on the mesh path; goldens re-run (keep mode for anything new). 6. Shadows, masked, skinned composite, view modes and the wireframe rule; stats; schemas. 7. `compute_fallback_matches_mesh_shader_path`; the `vulkan` workflow on the render suite; the review page. 8. Timings, mutation checks, docs (As built, Status, ADR-0100 amendment, `plans/README.md`, AGENTS/README), the checklist; ready.
 - **4.3b2:** 1. `Rg16Float` and write masks on both backends. 2. Motion history, `prev_model`, `prev_view_proj`, the instance row. 3. The velocity target on all three paths and the sky; the readback tests; existing goldens re-run unchanged. 4. Skinned previous palettes. 5. The `motion` view, its golden on the review page, schemas. 6. The `vulkan` workflow, timings, mutation checks, docs, the checklist; ready.
 
+**4.4 plan** (`m4/4.4a-frustum-cone`, then `m4/4.4b-hzb-occlusion`, then `m4/4.4c-canyon`, 2026-11-25; D10, ADR-0100 and its 4.2, 4.3a and 4.3b amendments, `later-backlog.md` §12. **The author approved Q1–Q12 as recommended on 2026-11-25**, with one note on Q3: GPU-decided draw counts are wanted later (`later-backlog.md` §12). Everything is test-first, except Vulkan device code, which is written first and tested after on lavapipe, as in 4.1v and 4.3.)
+Scope: GPU culling of meshlet-path instances and meshlets (frustum, normal cone, two-pass HZB occlusion) on both draw paths and both backends; a per-view cull array (camera and shadow cascades); a deterministic GPU prefix sum for compaction; stats and two view modes; the canyon gate scene. Out: meshlet LODs (4.5), VSM pages as views (4.7 adds them to the array), per-view history for several cameras (4.6), GPU-decided draw counts (§12; Q3), perf calibration.
+
+Facts found while planning (checked in code, 2026-11-25):
+- **Instances are frustum-culled on the CPU** (`cull::Frustum`, eight box corners against six planes) before the meshlet plan; a culled meshlet-path instance gets no forward bucket. Shadow casters are every `cast_shadows` item, culled by nothing.
+- **`meshlet_expand`** writes every entry to a fixed slot and has no atomics; `meshlet_object` launches one mesh group per entry. The renderer has **no atomics anywhere**: `cluster.slang` avoids them on purpose, so its results are deterministic.
+- **Depth:** reverse-Z (`GreaterEqual`, cleared to 0), `Depth32Float`, 4× MSAA by default, `RENDER_TARGET` only and `StoreOp::DontCare`. The forward pass is one render pass: sky, M1 opaque, meshlet buckets, blended, grid. Shadow maps prove that depth textures are already sampled through the bindless table on both backends.
+- **Textures** have no per-mip views: a storage texture has one bindless slot (mip 0), so a mip chain can't be written level by level.
+- **Resolve:** Vulkan colour resolves use `AVERAGE` (`SAMPLE_ZERO` for integers); there is no depth resolve on either backend, and the probe record has no `supportedDepthResolveModes`.
+- **Shadow pipelines** cull no faces (`CullMode::None`); forward pipelines cull back faces unless the material is double-sided. The cascades' depth range is fitted to the casters (`shadow.rs`).
+- **The instance row** has spare words in `motion` (only `.x`, the previous palette start, is used). The mesh-table row is 32 bytes with no bounds.
+
+Design (each item is a question for the author, with the recommendation):
+- **Q1 sub-phases (three PRs):**
+  - **4.4a** frustum and cone culling, GPU instance culling, the view array, compaction, stats; no HZB.
+  - **4.4b** the RHI's depth resolve, the HZB, two-pass occlusion, the occlusion tests and the two views.
+  - **4.4c** the canyon (Q11).
+- **Q2 where culling runs, and compaction:**
+  - **One cull function** in `meshlet.slang` (`cull_meshlet(view, instance, meshlet) → code`), called by both paths, so they can't disagree.
+  - **Compute path:** `meshlet.expand` becomes `meshlet.cull`: classify each candidate entry, then compact the survivors with a **GPU exclusive prefix sum** (a new `scan` module and `scan.slang`: per-group scans, a scan of the group totals, then a scatter), then write each bucket's `DrawIndirect` instance count.
+  - **Mesh path:** `meshlet_object` classifies its 32 entries and compacts them inside the group (each lane counts the survivors before it in groupshared memory), then `DispatchMesh(survivors)`.
+  - **Determinism:** no atomics. Survivors keep their slot order, so culling on and off draw the same triangles in the same order, and the images match bit for bit. Each entry also gets a one-byte **cull code** per view (instance frustum, meshlet frustum, cone, occlusion, drawn in pass 1, drawn in pass 2), on both paths. The stats come from a deterministic reduction of those codes, and the tests compare the code buffers byte for byte.
+  - The alternative, an atomic append, is one dispatch instead of about five, but survivors land in a different order each run, so the images could differ where two surfaces tie on depth. It also needs Slang atomics through bindless pointers on Metal, which are still unverified. The scan is reused by 4.7's page lists and M11's particles.
+- **Q3 GPU-decided draw counts (§12) and `DrawMeshTasksIndirect`:** neither is needed in 4.4.
+  - The buckets (pipeline and material) stay CPU-known; only how many meshlets survive in each one is GPU-decided, which `DrawIndirect`'s instance count already carries.
+  - On the mesh path, the CPU still launches ⌈candidates / 32⌉ object groups per bucket, and groups with no survivors emit nothing.
+  - §12 stays in the backlog, with this reason added: it is needed once buckets themselves become GPU-decided (material binning, or many empty buckets measured as a cost).
+  - *Author note (2026-11-25): we do want the GPU-decided mode later;* §12 records it as planned work, not an optional idea.
+- **Q4 instance culling:**
+  - **Meshlet-path instances are culled on the GPU only:** a `meshlet.cull_instances` pass, one thread per (view, instance), runs the same eight-corner box test as `cull::Frustum` (plus the HZB in pass 2, 4.4b) and writes a code that the meshlet stage reads first.
+  - The CPU test stays for M1-path draws (skinned, blended, meshes without meshlets), which the CPU draws one by one.
+  - Every meshlet-path instance gets its forward bucket. The work items cover the whole scene, not just what the CPU saw.
+  - `render.stats.culled` keeps counting CPU-culled M1 draws; the GPU counts are in `meshlets` (Q9).
+  - The mesh-table row grows to 48 bytes with the mesh's local box (lo, hi).
+- **Q5 the per-view cull array:** a per-frame `CullView` table with each view's planes, eye position (perspective) or direction (orthographic), projection terms for sphere bounds, HZB (buffer, size, levels, or none) and flags (cone, occlusion, near plane).
+  - View 0 is the camera.
+  - **Views 1–3 are the shadow cascades, culled in 4.4 by frustum only:** no cone (shadow pipelines cull no faces), no HZB, and no near-plane test (casters between the light and the cascade must still cast).
+  - The shadow bucket is laid out once per cascade, and each cascade draws its own survivors.
+  - 4.7 adds VSM pages as more views; 4.6 makes history per view.
+- **Q6 the normal-cone test** (ADR-0100 decision 8, meshoptimizer's sphere form):
+  - Cull when `dot(c − eye, axis) ≥ cutoff·|c − eye| + r`, with the centre, radius and axis in world space (axis by the normal matrix, radius by the largest column scale).
+  - **Conservative skips:** double-sided materials (back faces are drawn), mirrored instances (negative determinant flips the winding), non-uniform scale (beyond 0.1 %: the cone's angle no longer holds), orthographic views, and `cutoff ≥ 1` (meshoptimizer's "never").
+  - **Masked materials need nothing special:** a cut-out doesn't change which way a triangle faces. As an occluder (4.4b), a masked surface writes only its kept pixels, so the HZB stays correct.
+- **Q7 the HZB (4.4b):**
+  - **Where it lives:** an `f32` buffer, a mip chain laid out level after level, read through the bindless buffer table. Textures have no per-mip storage views, and a buffer reads back easily for the tests.
+  - **The source:** the forward pass's depth, resolved to one sample with **min** (a new RHI `DepthAttachment::resolve` with `DepthResolve::Min`: Metal's `depthResolveFilter = .min`, Vulkan's `VK_RESOLVE_MODE_MIN_BIT`, probed from `supportedDepthResolveModes` as the cap `depth_resolve_min`). A device without the cap and MSAA on gets no occlusion culling (frustum and cone only), as stats report.
+  - **Reverse-Z:** the conservative value is the *farthest* depth, which in reverse-Z is the **smallest** number. Each texel is the min of its parents, and a sphere is occluded only when its *nearest* depth (the largest number) is smaller than that min. The plan's `hzb_mips_are_conservative_max_depth` becomes `…_farthest_depth`. A sphere crossing the near plane is never occluded.
+  - **The mip chain:** level 0 is ⌈w/2⌉ × ⌈h/2⌉ from the resolved depth, and each level halves rounding up, so a texel covers exactly parents 2x…2x+1 (odd edges included). It is built by one compute dispatch per level (about 11 at 1080p). AMD's single-pass downsampler (MIT) is the later option if the timings ask for it.
+  - **Sphere to screen:** Mara & McGuire's projected-sphere bounds (JCGT 2013); pick the level where the rectangle spans at most 2×2 texels and read those four.
+  - **Lifetime:** rebuilt every frame from this frame's pass-1 depth (Q8). No HZB is carried between frames, so resizes and frames in flight need nothing. Later passes in the frame (4.7's VSM marking) read it through the frame graph.
+- **Q8 two-pass occlusion (4.4b):**
+  - **Pass 1** draws the meshlets that were visible last frame and pass this frame's frustum and cone tests. Unlike the phase text, they are **not** tested against last frame's HZB: that needs reprojection, and it can't add correctness because pass 2 catches everything. This is Kapoulkine's niagara scheme (MIT) and a form of Haar & Aaltonen's.
+  - The **HZB** is then built from pass 1's depth.
+  - **Pass 2** tests *every* candidate against the new HZB. It draws those that pass 1 didn't draw, and records visibility for next frame (a meshlet drawn in pass 1 but now hidden is dropped from the set).
+  - **Visibility is stored per meshlet:** one bit per meshlet in a persistent GPU buffer, at a base offset the renderer allocates per (entity, mesh). The base sits in the spare word `motion.y`, and an instance not drawn this frame is pruned, like the motion history.
+  - **Edge cases are perf-only:** growth starts the buffer empty. The first frame, a new entity and a camera cut all mean pass 1 draws little or nothing and pass 2 does the work. None of them can lose geometry, so **no reset is needed** (`reset_motion_history` stays motion-only), and the camera-cut test proves it.
+  - **The forward pass splits in two:**
+    - `forward` (clear; sky, M1 opaque, pass-1 buckets; MSAA colour, motion and depth stored; depth resolved with min);
+    - then `meshlet.hzb` and `meshlet.cull_late`;
+    - then `forward_late` (load; pass-2 buckets, blended, grid; colour and motion resolved).
+
+    M1 opaque draws are occluders in pass 1. With culling off, or no meshlet path, the pass stays one, as today.
+  - Shadows are culled once, before both, with no HZB.
+- **Q9 stats and debug views:**
+  - **`render.stats.meshlets`** gains `candidates` (meshlets in the camera's buckets), `after_instance_frustum`, `after_frustum`, `after_cone`, `after_occlusion`, `drawn_early` and `drawn_late`. `meshlets` keeps meaning meshlets drawn (the plan's `meshlets_drawn`).
+  - **Cascades** get one `shadow_meshlets` total.
+  - **Timing of the counts:** captures read the counts back in the same frame; viewport frames read them one frame late, like the cluster overflow.
+  - **Pass timing:** perf mode times `meshlet.cull`, `meshlet.hzb` and `meshlet.cull_late`, plus `forward` and `forward_late`.
+  - **Two `view_mode`s:** `occlusion` (meshlets tinted by the pass that drew them: pass 1 one colour, pass 2 another, M1 draws grey) and `hzb` (level 0 of the pyramid as grey depth). Drawing the meshlets that were culled is left out: they aren't drawn, so showing them needs a second, debug-only draw of everything.
+  - Switches: `[render] culling = true | false` (default true) and `Renderer::set_culling(Culling { frustum, cone, occlusion })` for the comparisons.
+- **Q10 test scenes (in code, with fixed seeds):**
+  - **The occluded city:** a 16 × 16 grid of dense meshlet blocks behind a long opaque wall, with the camera at street level behind the wall. It is measured from frame 2, because frame 1 has no history by design.
+  - **The moving occluder:** a wall sliding across a field of meshlet spheres for 120 frames at 320 × 180. Every frame is compared with an occlusion-off render.
+  - **The camera cut:** frame N from one side of the city, frame N+1 from the other.
+  - **Dense scene:** 4.3a's 64 balls, for timings.
+- **Q11 the canyon:** it doesn't land in 4.4a or 4.4b. `concordia-gen` has heightfields and SDF surface nets but no rock or canyon generator, and 20 M triangles with instancing is a content task of its own. **4.4c** builds `examples/m4-canyon` (fixed seeds, CC0) and meets 4.4's done criterion: stable meshlet counts on both paths along a scripted path. It lands before 4.6, whose done criterion uses it.
+- **Q12 goldens and tolerances** (new suite `tests/golden/m4_culling/`, blessed on Metal only):
+  - Every culling test renders culling **on and off in the same run** and compares the two, on both draw paths (the mesh path, and a masked device for the compute path). The bound is a new per-golden `culling` entry in `tolerances.ron` (mean FLIP 0.001, as the plan says), beside `paths`.
+  - Because compaction keeps order (Q2), Metal is expected to measure 0.0.
+  - Blessed images: `occluded_city`, `moving_occluder_000` / `_060` / `_119`, `camera_cut`, `view_occlusion` and `view_hzb`, each collected with `CONCORDIA_GOLDEN_KEEP=1` and shown on a review page before blessing.
+  - Every existing suite re-runs unchanged with culling on by default, since culling must not change any image.
+  - **Vulkan:** all the Vulkan code lands in these PRs (the cull and scan shaders compile to SPIR-V in the pure tests, plus the depth resolve, the probe field, the planner's depth-resolve layouts, and the conformance cases). The device tests run on lavapipe at the end of each sub-phase in a **local Docker container** (the image removed and Docker Desktop quit afterwards), and in the `vulkan` workflow at M4's end. A Vulkan tolerance entry is added only when measured above the shared one, by the existing rule.
+- **ADR-0100** gets a 4.4 amendment: GPU-only instance culling for the meshlet path, the cull codes, deterministic compaction, the view array, the HZB in a buffer from a min depth resolve, pass 1 without an HZB test, and per-meshlet visibility bits.
+
+Crates and files:
+- `concordia-rhi`: `DepthResolve`, `RhiCaps::depth_resolve_min`, its `CapsMask` entry, and the conformance case (4.4b).
+- `concordia-rhi-metal`: the depth resolve (`encode.rs`).
+- `concordia-rhi-vulkan`: the probe record's `depth_resolve_modes`, the caps, `encode.rs` and `track.rs`, and the fixture.
+- `concordia-render`:
+  - new `scan.rs` and `shaders/scan.slang`;
+  - `cull.rs` (the CPU reference: sphere and frustum, cone, and projected sphere);
+  - new `hzb.rs` and `shaders/hzb.slang`;
+  - new `visibility.rs` (the bit allocator);
+  - `meshlet.rs`, `meshlet_pass.rs`, `meshlet.slang`, `forward.slang` (the two views), `renderer.rs` (the split forward pass), `shadow_pass.rs`, `frame.rs`, `stats.rs`, `view_mode.rs` and `module.rs` (`[render] culling`).
+- `concordia-api`: the stats and view-mode types, and the editor schemas.
+- `concordia-gen`: the canyon providers (4.4c).
+- Content and docs: `examples/m4-canyon/`, `tests/golden/m4_culling/`, `docs/adr/0100`, `plans/README.md`, `later-backlog.md` §12, and the AGENTS/README of the touched crates (with the references).
+
+No new crates or external dependencies.
+
+Tests first (each seen failing for the right reason before its code, except Vulkan device behaviour, which is tested after):
+- **4.4a, pure:**
+  - `meshlet_sphere_frustum_test_is_conservative` (proptest against the box test);
+  - `cone_test_matches_meshoptimizer_sphere_form`;
+  - `cone_test_is_skipped_for_double_sided_mirrored_and_non_uniform_instances`;
+  - `cascade_views_skip_near_plane_and_cone`;
+  - `plan_lays_out_one_shadow_region_per_cascade`;
+  - `every_meshlet_instance_gets_its_forward_bucket`;
+  - `mesh_table_rows_carry_local_bounds`;
+  - `culling_setting_reads_from_the_manifest`;
+  - `cull_view_rows_match_the_shader` (layout);
+  - `every_cull_entry_point_compiles_to_spirv_and_msl`.
+- **4.4a, GPU:**
+  - `scan_matches_a_cpu_prefix_sum` (proptest over sizes across group and level edges);
+  - `gpu_culling_matches_cpu_reference`: 50 fixed views, occlusion off. The GPU's codes must lie between a strict and a loose CPU reference (ε = 1e-4 relative), and must equal the strict one wherever no bound is within ε, because exact set equality breaks on floating-point ties;
+  - `compute_fallback_culls_the_same_meshlets_as_mesh_shaders` (code buffers equal, byte for byte);
+  - `backface_cone_culling_is_conservative`: 64 random views of a sphere, cone on against cone off, plus a CPU check that no meshlet with a front-facing triangle is culled;
+  - `frustum_culling_matches_culling_off`, `culled_cascades_match_unculled_shadows`, `survivors_keep_slot_order`;
+  - `render_stats_report_each_cull_stage`;
+  - the existing suites, unchanged.
+- **4.4b, pure:**
+  - `hzb_level_sizes_halve_rounding_up`;
+  - `projected_sphere_bounds_contain_the_sphere` (proptest);
+  - `hzb_level_choice_covers_the_rectangle_in_two_by_two`;
+  - `visibility_bases_are_stable_and_pruned`;
+  - `vulkan_caps_from_record_read_depth_resolve_modes`;
+  - `depth_resolve_needs_a_single_sample_depth_target` (check);
+  - the planner's `every_command_sees_the_layout_it_needs` with depth resolves.
+- **4.4b, GPU:**
+  - conformance `depth_resolve_min_keeps_the_farthest_sample`;
+  - `hzb_mips_are_conservative_farthest_depth` (readback; each texel equals the min of its parents, exactly);
+  - `two_pass_occlusion_has_no_false_negatives_on_camera_cut`;
+  - `two_pass_occlusion_has_no_false_negatives_with_moving_occluder`;
+  - `occlusion_culls_at_least_90_percent_in_occluded_city_scene`;
+  - `first_frame_draws_everything_in_pass_two`;
+  - `split_forward_pass_matches_the_single_pass` (occlusion on against off);
+  - `devices_without_depth_resolve_min_skip_occlusion` (masked caps);
+  - `occlusion_and_hzb_view_modes_golden`.
+- **4.4c:**
+  - `canyon_is_deterministic_for_its_seeds`;
+  - `canyon_has_at_least_20m_source_triangles`;
+  - `canyon_meshlet_counts_are_stable_on_both_paths` (along the scripted path, the counts are equal between runs and between paths);
+  - `canyon_culling_matches_culling_off`.
+- **Perf:** timings only, culling on and off, both paths, on the dense scene and the occluded city; recorded in the As built, with no budget changes.
+- **Mutation checks**, changed code only, in parallel worktrees with fresh mtimes:
+  - the plane, cone and skip rules;
+  - scan offsets and group edges;
+  - the in-group rank;
+  - the cull codes;
+  - cascade regions;
+  - the HZB min, level sizes and level choice;
+  - the near-plane rule;
+  - the pass-1 and pass-2 conditions;
+  - visibility bases and pruning;
+  - the stats reduction;
+  - the depth-resolve check.
+
+Steps, each a commit and a push (draft PR after step 1 of each sub-phase):
+- **4.4a:**
+  1. This plan, with the author's decisions.
+  2. The CPU reference (`cull.rs`) and the view array.
+  3. `scan` (shader and module).
+  4. `cull_meshlet`, instance culling, and compaction on the compute path.
+  5. The object stage's culling and in-group compaction.
+  6. Cascades.
+  7. Stats, `[render] culling`, schemas.
+  8. Vulkan on lavapipe (Docker).
+  9. Timings, mutants, docs, the checklist; ready.
+- **4.4b:**
+  1. The depth resolve on Metal, then Vulkan (planner tests first), with the conformance case.
+  2. The HZB build and its readback test.
+  3. Visibility bits and the split forward pass.
+  4. Two-pass culling on both paths and the occlusion tests.
+  5. The two views and the `m4_culling` goldens on the review page.
+  6. Vulkan on lavapipe (Docker).
+  7. Timings, mutants, docs, the ADR amendment, the checklist; ready.
+- **4.4c:**
+  1. The canyon providers and `examples/m4-canyon`.
+  2. The tests, timings and docs; ready.
+
 ### Effort (re-estimated)
 - The plan's 32–45 weeks, plus **4.1v Vulkan at 6–10**, plus about 1 for D2, D6 and D9: **about 39–56 engineer-weeks**.
 - Track R is now about 27–38 weeks on the critical path, with Track G (12–17) after it (R2).
