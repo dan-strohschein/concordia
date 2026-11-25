@@ -1,5 +1,5 @@
 # M4: Unreal-class visuals
-Status: In progress (4.1a, 4.1b1–b4, 4.1v(a) done; 4.1v(a)'s device tests await the author's re-test) · Depends on: M1 (render), M2 (scripting host, graphs' WIT API), M3 (replay assertions, Studio) · Detail level: **Refined after M3 (2026-11-24; R1–R5 and D1–D10 approved by the author)** · Estimated effort: 32–45 agent-assisted engineer-weeks (two parallel tracks; see Effort estimate)
+Status: In progress (4.1a, 4.1b1–b4, 4.1v(a) done; 4.1v(b) in progress; 4.1v(a)'s device tests await the author's re-test) · Depends on: M1 (render), M2 (scripting host, graphs' WIT API), M3 (replay assertions, Studio) · Detail level: **Refined after M3 (2026-11-24; R1–R5 and D1–D10 approved by the author)** · Estimated effort: 32–45 agent-assisted engineer-weeks (two parallel tracks; see Effort estimate)
 
 > This plan has full phase breakdowns and test lists. Its numbers (budgets, FLIP tolerances, page sizes, meshlet sizes) are **provisional** and must be recalibrated in the refinement pass after M3, using measurements from the M1–M3 renderer on the reference Mac. Every recalibrated number lands in a text file (`tests/perf/budgets/*.budget.ron`, per-test tolerances), never in code.
 
@@ -88,6 +88,7 @@ Status: In progress (4.1a, 4.1b1–b4, 4.1v(a) done; 4.1v(a)'s device tests awai
   - Vulkan goldens compare against the same blessed images as Metal, each with its own tolerance in `tolerances.ron`.
   - Perf is asserted only on Metal (the reference machine).
   - **A spike checks** whether lavapipe exposes `VK_EXT_mesh_shader` and `VK_KHR_ray_query` in the Mesa that the Ubuntu 24.04 runner ships. If it doesn't, those paths are tested on Linux through the compute fallbacks, and the gap is recorded.
+    - *Half answered by 4.1v(a):* the CI probe record (`rhi-vulkan/tests/fixtures/probes/lavapipe.probe.json`) shows lavapipe has both extensions. Whether they work (Slang mesh and ray-query SPIR-V on lavapipe) is the rest of the spike, in 4.1v(c).
 - **D5: the indirect-draw and per-pass-timing RHI additions land in 4.1** (timing) and 4.3a (indirect draws, viewport/scissor, texture copy), on both backends. M10 and M11 reuse them (ADR-0014, ADR-0015).
 - **D6: graph nodes come from what the engine really exposes.** Sources:
   - reflected components (get/set);
@@ -121,7 +122,7 @@ Numbers stay as they are because other plans cite them. Each phase gets its own 
 - **4.1b** (re-planned 2026-11-24, author decisions: **two path-tracer backends, GPU by default and CPU as the fallback, cross-checked**; a shared `concordia-render-types` crate; CPU-only games become M14, the last milestone): **4.1b1** `m4/4.1b1-shared-shading` (the types crate, the material Slang module owned by `concordia-material`, M14's outline); **4.1b2** `m4/4.1b2-pathtrace-cpu` (backend-neutral core: scene, two-level SAH BVH, sampling, the CPU backend and its tests); **4.1b3** `m4/4.1b3-pathtrace-gpu` (Slang compute backend, GPU-vs-CPU convergence, fallback); **4.1b4** `m4/4.1b4-references` (emissive in physical units, nits, with existing materials converted and an ADR (author decision 2026-11-24); `capture.reference` with `backend: auto|gpu|cpu`, `just bless-reference`, D3 baselines, D1 recalibration with Lamplight at 1.5×, ADR-0090 and ADR-0101). Originally `m4/4.1-pathtrace`: `concordia-pathtrace` with its own BVH, `capture.reference` and `just bless-reference`; the furnace, analytic, convergence and determinism tests; the baseline references (D3); the budget recalibration (D1).
 - **4.1v** `m4/4.1v-vulkan-*` (new; ADR-0088):
   - **(a)** the `ash` device, queues, memory, buffers, textures, samplers, bindless (descriptor indexing), pipelines from Slang SPIR-V, readback and timestamps. The RHI conformance suite passes on lavapipe and MoltenVK.
-  - **(b)** surfaces and the M1 renderer on Vulkan: forward+, CSM, tonemap, the M1 goldens within tolerance; Linux CI with lavapipe and `CONCORDIA_REQUIRE_GPU=1`.
+  - **(b)** surfaces and the M1 renderer on Vulkan: forward+, CSM, tonemap, the M1 goldens within tolerance; Linux CI on lavapipe through the on-demand `vulkan` workflow with `CONCORDIA_REQUIRE_VULKAN=1` (4.1v(a) found that `CONCORDIA_REQUIRE_GPU` keeps meaning Metal, and the author made the workflow on demand).
   - **(c)** the D4 spike, and the editor viewport on Vulkan where it runs.
 - **4.2** `m4/4.2-meshlets`: `meshopt-sys` (R5) and `concordia-cluster`; the glTF importer's `meshlets: auto|true|false` setting; the DDC; `concordia cluster stats`.
 - **4.3a** `m4/4.3-indirect`: indirect draws, viewport/scissor and texture copy on both backends (D5); the GPU scene buffers; the compute and indirect meshlet path.
@@ -320,6 +321,45 @@ Steps, each a commit and a push (device code first, then its tests, per the auth
    - Docs: ADR-0088 accepted, the As built, `plans/README.md`, the crate's `AGENTS.md` and README.
 
 Out of scope: surfaces and present, the M1 renderer, `concordia gpu-probe --backend vulkan` (all 4.1v(b)); mesh shaders (4.3b); async queues; making the render graph's barriers authoritative; pipeline caches.
+
+**4.1v(b) plan** (`m4/4.1v-vulkan-b`, 2026-11-24; ADR-0088, amended; approved by the author on 2026-11-24 with **Q1** the backend chosen by `CONCORDIA_BACKEND` *and* a project setting `[render] backend` (env wins, then the manifest, then `auto`), **Q2** one `unsafe` block in `concordia-cli` for Linux windows, and **Q3** the whole `concordia-render` suite plus the M1 gate golden on lavapipe. Vulkan device code is written first and tested after, as in 4.1v(a); everything else is test-first.):
+Scope: Vulkan surfaces and presentation through the existing RHI surface API, the M1 renderer on the Vulkan backend with its goldens on lavapipe, and `concordia gpu-probe --backend vulkan`. The editor viewport on Vulkan and the rest of the D4 spike are 4.1v(c).
+
+Facts found while planning (checked in code, 2026-11-24):
+- The renderer is backend-neutral: it takes any `Device` and picks SPIR-V or MSL from `caps().backend` (`render/src/pipelines.rs`). The RHI has no array or cube textures, so the renderer needs nothing 4.1v(a) lacks, as far as the code shows.
+- About 18 places call `concordia_rhi_metal::new_headless` directly (the app's device factory, `gpu-probe`, render, UI and pathtrace tests, benches). Nothing chooses a backend.
+- `SurfaceTarget` has only `MetalLayer`; `NativeView` (`concordia-platform`) maps only AppKit handles, though winit builds with x11 and wayland.
+- The lavapipe probe record has `VK_EXT_mesh_shader` and `VK_KHR_ray_query` (D4's spike, half answered).
+
+Design (ADR-0088, amended):
+- **Backend choice:** a new crate `concordia-rhi-select`, the one place that turns `auto|metal|vulkan` into a device, a probe or a probe record. `auto` is Metal on macOS and Vulkan elsewhere. `CONCORDIA_BACKEND` overrides the project's `[render] backend`, which overrides `auto` (Q1). Every call site moves to it.
+- **Surface targets:** `SurfaceTarget` gains `Xlib`, `Xcb`, `Wayland` and `Headless` (`VK_EXT_headless_surface`, for presenting in CI without a window). `MetalLayer` is reused by MoltenVK through `VK_EXT_metal_surface` (wired, untested). Metal refuses the new targets with `Unsupported`.
+- **Swapchain:** a pure planner picks the image count (2 when allowed, like Metal), clamps the extent and checks the format; FIFO present mode. `acquire` with a zero timeout returns `None` when no image is free; the swapchain is rebuilt on resize or when out of date. Images rest in `PRESENT_SRC`. `on_presented` fires when the frame's GPU work retires (an approximation: a headless surface never reaches a display; `VK_KHR_present_wait` later).
+- **Strict validation:** `CONCORDIA_VULKAN_VALIDATION=auto|on|strict`. Strict requires the layer, and any error-severity message makes the device's next submit, wait or readback return an error, so render tests that never see the device still fail on validation errors. The workflow sets `strict`.
+- **Per-backend tolerances (D4):** `tolerances.ron` gains an optional `backends: { "vulkan": (default: …, goldens: {…}) }`; files without it still read. Most specific wins: the backend's golden entry, the shared golden entry, the backend's default, the shared default. Vulkan failures go under `<suite>/vulkan/`. `CONCORDIA_GOLDEN_KEEP=1` also writes comparisons and scores for passing checks (for the review page).
+- **`concordia gpu-probe --backend auto|metal|vulkan`** (with `--record` too).
+- **Linux windows** (Q2): `NativeView` gains X11 and Wayland handles; `concordia run` attaches them through one `unsafe` call in `concordia-cli`, the twin of the macOS one.
+
+Testing:
+- Test-first: testkit tolerances and keep mode, `device_required(Backend)`, the selector (parsing, `auto` per OS, env and manifest precedence, no loader), `gpu-probe --backend`, `SurfaceTarget` refusal on Metal, `NativeView` from X11/Wayland handles, the swapchain planner, the validation env, the manifest field.
+- Metal's surface tests move into the shared conformance suite; each backend supplies a test surface (a `CAMetalLayer`, or `Headless`).
+- Device code tested after: surfaces and strict validation, on lavapipe through the on-demand `vulkan` workflow (`CONCORDIA_REQUIRE_VULKAN=1`, `CONCORDIA_VULKAN_VALIDATION=strict`), which also runs the `concordia-render` suite and the M1 gate with `CONCORDIA_BACKEND=vulkan`, `gpu-probe --backend vulkan`, and a `concordia run` smoke test on Xvfb.
+- Goldens compare against the blessed Metal images. Vulkan images, heat maps and any per-backend tolerance go on a review page before anything is committed; nothing is blessed in CI. A real feature gap goes back to the author, not into a looser tolerance (Q3).
+- On the Mac the crates build and the Vulkan tests skip without a loader.
+
+Steps, each a commit and a push:
+1. This plan and the fold-ins (the on-demand workflow, D4 half answered).
+2. Testkit: per-backend tolerances, keep mode, `device_required(Backend)`.
+3. `concordia-rhi-select`, `[render] backend`, `gpu-probe --backend`; call sites switched.
+4. `SurfaceTarget` and `NativeView` targets; the shared surface conformance cases.
+5. Vulkan surfaces: the swapchain planner, then the device code; the probe record lists instance surface extensions.
+6. Strict validation.
+7. The M1 renderer on lavapipe: the render tests through the selector, the workflow steps, fixes.
+8. Linux windows in `concordia run`, with the Xvfb smoke test.
+9. The goldens review page.
+10. Mutation checks, docs, the checklist.
+
+Out of scope: the editor viewport on Vulkan and the rest of the D4 spike (4.1v(c)); exact present timing; Windows; mesh shaders; perf and budgets.
 
 ### Effort (re-estimated)
 - The plan's 32–45 weeks, plus **4.1v Vulkan at 6–10**, plus about 1 for D2, D6 and D9: **about 39–56 engineer-weeks**.
