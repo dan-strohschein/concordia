@@ -3,7 +3,9 @@
 use std::collections::{BTreeMap, HashMap};
 
 use concordia_assets::{AssetKind, ImportOutput, MeshData};
-use concordia_import_model::{finish_mesh, insert_artifact, reduce_influences};
+use concordia_import_model::{
+    MeshletContext, attach_meshlets, finish_mesh, insert_artifact, reduce_influences,
+};
 
 use crate::ffi::{Corner, Mesh, Scene};
 use crate::names::Names;
@@ -13,19 +15,30 @@ pub(crate) fn part_sub(names: &Names, mesh: usize, part: usize) -> String {
     format!("mesh/{}/{part}", names.meshes[mesh])
 }
 
-/// Imports every non-empty part; `clusters` holds each used skin's cluster count.
+/// Imports every non-empty part, with meshlets per mesh as `meshlets` says; `clusters` holds
+/// each used skin's cluster count.
 pub(crate) fn meshes(
     scene: &Scene<'_>,
     meshes: &[Mesh],
     clusters: &BTreeMap<usize, usize>,
     names: &Names,
+    meshlets: &MeshletContext<'_>,
     out: &mut ImportOutput,
 ) -> Result<(), String> {
     for (m, mesh) in meshes.iter().enumerate() {
+        let mut subs = Vec::new();
+        let mut parts = Vec::new();
         for (p, triangles) in mesh.triangles.iter().enumerate().filter(|(_, t)| **t > 0) {
             let sub = part_sub(names, m, p);
-            let data = part(scene, mesh, (m, p, *triangles), clusters)
-                .map_err(|e| format!("{sub}: {e}"))?;
+            parts.push(
+                part(scene, mesh, (m, p, *triangles), clusters)
+                    .map_err(|e| format!("{sub}: {e}"))?,
+            );
+            subs.push(sub);
+        }
+        attach_meshlets(&mut parts, meshlets)
+            .map_err(|e| format!("mesh/{}: {e}", names.meshes[m]))?;
+        for (sub, data) in subs.into_iter().zip(parts) {
             insert_artifact(out, sub, AssetKind::Mesh, &data).map_err(|e| e.to_string())?;
         }
     }

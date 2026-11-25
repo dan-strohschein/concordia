@@ -714,6 +714,7 @@ name = "concordia-assets"
 version = "0.0.0"
 dependencies = [
  "concordia-api",
+ "concordia-cluster",
  "concordia-command",
  "concordia-core",
  "concordia-reflect",
@@ -751,6 +752,17 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tracing",
+]
+
+[[package]]
+name = "concordia-cluster"
+version = "0.0.0"
+dependencies = [
+ "concordia-core",
+ "concordia-reflect",
+ "meshopt-sys",
+ "serde",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -867,6 +879,7 @@ version = "0.0.0"
 dependencies = [
  "bevy_mikktspace",
  "concordia-assets",
+ "concordia-cluster",
  "concordia-core",
  "concordia-reflect",
  "concordia-scene",
@@ -3648,6 +3661,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "meshopt-sys"
+version = "0.0.0"
+dependencies = [
+ "cc",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

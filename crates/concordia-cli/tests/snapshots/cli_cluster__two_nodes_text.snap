@@ -1,0 +1,6 @@
+---
+source: crates/concordia-cli/tests/cli_cluster.rs
+expression: "stats(dir.path(), &[\"two_nodes.gltf\"])"
+---
+two_nodes.gltf
+  mesh/Tri/0: 1 triangle, no meshlets (auto: the mesh has 1 triangle, not more than 8192)

@@ -5,6 +5,7 @@
 //! spaces and reduces skin weights, so every model format produces the same artifacts.
 
 mod mesh;
+mod meshlets;
 mod names;
 mod prefab;
 mod settings;
@@ -12,6 +13,7 @@ mod skin;
 mod texture;
 
 pub use mesh::{finish_mesh, generate_tangents};
+pub use meshlets::{AUTO_MIN_TRIANGLES, MeshletContext, MeshletMode, attach_meshlets};
 pub use names::unique_names;
 pub use prefab::{
     EntitySummary, MeshPart, ModelNode, ModelTree, PrefabSummary, load_prefab, load_prefab_doc,

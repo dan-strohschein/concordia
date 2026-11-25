@@ -16,6 +16,7 @@ mod material;
 mod material_importer;
 mod material_m1;
 mod material_method;
+mod meshlet_stats;
 mod module;
 mod prefab_method;
 mod reference;
@@ -38,7 +39,8 @@ pub use error::AssetError;
 pub use files::{FileKind, ProjectFile, ProjectFiles};
 pub use image_importer::{ColorSpace, ImageImporter, ImageSettings, decode as decode_image};
 pub use importer::{
-    Artifact, AssetKind, ImportInput, ImportOutput, Importer, SubIds, decode, encode,
+    Artifact, AssetKind, DerivedCache, ImportInput, ImportOutput, Importer, NoDerivedCache, SubIds,
+    decode, encode, import_jobs,
 };
 pub use key::{PLATFORM, import_key};
 pub use material::{
@@ -49,6 +51,9 @@ pub use material_importer::MaterialImporter;
 pub use material_method::{
     MaterialGet, MaterialGetParams, MaterialGetResult, MaterialSet, MaterialSetParams,
     MaterialSetResult,
+};
+pub use meshlet_stats::{
+    AssetMeshletStats, AssetMeshletStatsParams, AssetMeshletStatsResult, MeshMeshlets,
 };
 pub use module::{AssetImport, AssetImportParams, AssetImportResult, AssetList, AssetsModule};
 pub use prefab_method::PrefabInstantiate;

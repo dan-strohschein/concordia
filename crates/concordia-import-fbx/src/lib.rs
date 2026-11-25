@@ -29,7 +29,8 @@ impl Importer for FbxImporter {
     fn version(&self) -> u32 {
         // 2 (2.4.1): `Skinned` on skinned renderers, bone names and the frame rate on clips.
         // 3 (2.4.4): clip events from the import settings.
-        3
+        // 4 (M4 4.2): meshlets (`meshlets: auto | true | false`).
+        4
     }
 
     fn extensions(&self) -> &'static [&'static str] {
@@ -74,7 +75,12 @@ impl Importer for FbxImporter {
         let entities = prefab::prefab(&nodes, &meshes, &names, stem, input.sub_ids, &mut output)?;
         let clusters =
             skin::skins(&scene, &meshes, &names, &entities, &mut output).map_err(fail)?;
-        mesh::meshes(&scene, &meshes, &clusters, &names, &mut output).map_err(fail)?;
+        let meshlets = concordia_import_model::MeshletContext {
+            mode: settings.meshlets,
+            jobs: input.jobs,
+            cache: input.derived,
+        };
+        mesh::meshes(&scene, &meshes, &clusters, &names, &meshlets, &mut output).map_err(fail)?;
         anim::clips(&scene, &stacks, &names, &entities, &settings, &mut output).map_err(fail)?;
         for sub in output.artifacts.keys().filter(|k| !k.is_empty()) {
             input.sub_ids.id(sub);

@@ -1,5 +1,5 @@
 # M4: Unreal-class visuals
-Status: In progress (4.1a, 4.1b1–b4, 4.1v(a), 4.1v(b) and 4.1v(c) done (D4's spike answered: mesh shaders and ray queries run on lavapipe); 4.2 next, awaiting the author; 4.1v(a)'s device tests await the author's re-test) · Depends on: M1 (render), M2 (scripting host, graphs' WIT API), M3 (replay assertions, Studio) · Detail level: **Refined after M3 (2026-11-24; R1–R5 and D1–D10 approved by the author)** · Estimated effort: 32–45 agent-assisted engineer-weeks (two parallel tracks; see Effort estimate)
+Status: In progress (4.1a, 4.1b1–b4, 4.1v(a), 4.1v(b) and 4.1v(c) done (D4's spike answered: mesh shaders and ray queries run on lavapipe); 4.2 done (`m4/4.2-meshlets`, PR #107: offline meshlets; awaiting the author's review); 4.1v(a)'s device tests await the author's re-test) · Depends on: M1 (render), M2 (scripting host, graphs' WIT API), M3 (replay assertions, Studio) · Detail level: **Refined after M3 (2026-11-24; R1–R5 and D1–D10 approved by the author)** · Estimated effort: 32–45 agent-assisted engineer-weeks (two parallel tracks; see Effort estimate)
 
 > This plan has full phase breakdowns and test lists. Its numbers (budgets, FLIP tolerances, page sizes, meshlet sizes) are **provisional** and must be recalibrated in the refinement pass after M3, using measurements from the M1–M3 renderer on the reference Mac. Every recalibrated number lands in a text file (`tests/perf/budgets/*.budget.ron`, per-test tolerances), never in code.
 
@@ -432,6 +432,133 @@ Steps, each a commit and a push:
 6. Mutation checks, docs (As built, ADR-0088, `plans/README.md`, AGENTS/README, the top-level README), the checklist.
 
 Out of scope: Wayland embedding (needs `unsafe` in the editor), native gizmo grabs and latency benches on Linux, Windows, MoltenVK and real GPUs.
+
+**4.2** (`m4/4.2-meshlets`, PR #107, 2026-11-25). The author approved Q1–Q8 as recommended. Everything was test-first, except where the test log below says otherwise.
+- **`meshopt-sys`:** meshoptimizer v1.3 (MIT) vendored unmodified under `third_party/meshoptimizer` and built by `cc` (C++11, `-O2` in every profile, `-ffp-contract=off`, no exceptions or RTTI).
+  - Hand-written bindings for `buildMeshlets`, `buildMeshletsBound`, `optimizeMeshlet` and `computeMeshletBounds`, checked against the header's blake3 and against the compiler's struct sizes (a size shim).
+  - A checked wrapper (`safe`) refuses everything meshoptimizer asserts on, so `concordia-cluster` is `#![forbid(unsafe_code)]`.
+- **`concordia-cluster`:**
+  - `build` makes meshlets per material (128 triangles, 128 vertices, cone weight 0.25 by default), optimized and bounded.
+  - Materials over 131,072 triangles are sorted by centroid Morton code and cut into piles, built in parallel on the `JobSystem` (`par_chunks_mut`, one pile per slot) and joined in pile order.
+  - Also: `MeshletSize::for_limits`; `MeshletBlob` v1 (`encode` / validated `decode`); `cache_key`; `MeshletStats`; and `AUTO_MIN_TRIANGLES`, kept here so that import and stats share it.
+- **Import:**
+  - `ImportInput` gains `derived` (`DerivedCache`: the DDC in an import, `NoDerivedCache` elsewhere) and `jobs` (`import_jobs()`, one pool per process).
+  - `ModelSettings::meshlets` (`"auto"` by default, written into new sidecars) and `attach_meshlets` per mesh: `auto` counts all of a mesh's parts; `true` refuses skinned meshes; a cache entry that doesn't decode is rebuilt.
+  - glTF importer v5 and FBX importer v4.
+  - Sample corpus: `auto` builds FlightHelmet's 4 large meshes, MetalRoughSpheres' 5 and MetalRoughSpheresNoTextures' 98. Every model takes `true` except Fox and SimpleSkin, which refuse it because they are skinned.
+- **Inspection:**
+  - `AssetDb::meshlet_stats` and the read-only method `asset.meshlet_stats` (MCP `asset_meshlet_stats`, for the modeler and tech-artist roles only; both prompts say when to use it), plus `concordia cluster stats [--json] <file | asset ref>`.
+  - A mesh without meshlets says why: `meshlets: false`, skinned, or `auto` with its triangle count.
+  - The agent guide documents it, and the editor's schemas are regenerated (two new generated types).
+- **Differences from the plan:**
+  - The 32-byte record has no reserved bytes: the sphere, cone, two offsets, the counts and the material fill it.
+  - The header is 48 bytes, not 32: it adds the source vertex count, so decode can check every reference, and starts the records 16-byte aligned.
+  - Triangle runs are padded to 4 bytes in memory too, so the in-memory layout is the GPU layout.
+  - `meshlet_settings_change_rebuilds` at import level was dropped, because the sidecar has no meshlet-settings knob; `cache_key_changes_with_what_the_build_reads` covers it.
+- **Found on the way** (fixed):
+  - meshoptimizer zeroes the bounds of a meshlet whose triangles all have zero area. The build now encloses those meshlets itself.
+  - meshoptimizer's cone cutoff is the *sine* of the normal cone's half-angle; the visibility cone is the normal cone widened by 90°. The stats first used `acos`.
+  - `meshopt-sys` checked every position of the whole mesh for each meshlet, which is O(meshlets × vertices): 16 s in debug for 320k triangles, 0.4 s after the fix.
+- **Cross-platform:** `output_hash_is_pinned` and the determinism tests pass on x86_64 Linux. This was checked in an emulated `rust:1-bookworm` container, with the author's approval; afterwards the image was removed and Docker Desktop quit. The CLI test's mesh is built from integers only, so its snapshots don't depend on libm.
+- **Perf** (`meshlet_build_throughput_budget`, ignored, release, M3 Pro, the reference machine): 10,008,338 triangles become 78,191 meshlets in 1.08 s on 12 threads, against the provisional 10 s budget. No recalibration.
+- **Test log:**
+  - **Seen failing for the right reason before their code:**
+    - `meshopt-sys`: `header_hash_matches_bindings` (no hash line), `a_quad_builds_one_meshlet`, `limits_beyond_meshoptimizer_are_refused`, `built_meshlets_stay_within_limits_and_buffers` (`unimplemented!`).
+    - `concordia-cluster`: the 11 build and settings tests; `large_materials_are_split_into_spatial_piles`; `a_meshlet_of_zero_area_triangles_still_has_enclosing_bounds`; the 7 blob tests; the 2 stats tests (`unimplemented!`, then the `acos` bug).
+    - `concordia-assets`: the 3 derived-cache tests.
+    - `concordia-import-model`: the 7 meshlet-setting tests.
+    - glTF: `meshlet_stats_explain_missing_meshlets` and `meshlet_stats_cover_every_mesh_of_an_asset`.
+  - **Passed at once:**
+    - `struct_sizes_match_the_c_compiler` and `vendored_version_is_1_3`, written with the bindings.
+    - `wasm_guests_never_depend_on_sys_crates`, a guard.
+    - `build_is_deterministic_across_thread_counts` and `small_meshes_match_meshoptimizers_unsplit_output`, while the build was still sequential.
+    - `cluster_stats_refuses_unknown_assets`.
+  - **Written after their code in the same step:**
+    - the glTF and FBX meshlet tests (the DDC hit, the unrelated setting change, the 11 per-model corpus tests and the corpus-coverage test);
+    - the CLI's `cluster stats` tests;
+    - the roster test `only_the_modeler_and_tech_artist_read_meshlet_stats`.
+    The mutation checks below show they bite.
+  - **Corrected deliberately:**
+    - A step-3 test assumed meshlets have at least 3 vertices; an all-degenerate meshlet may have 1 or 2.
+    - The pile test's first two measures (an XY box, then a grid box) misjudged a tilted patch and an L-shaped Morton block. It now scrambles the triangle order and requires the 3 piles to span under 2.2 patches, against 3.0 for index-order piles.
+    - `small_meshes_match…` compares meshlets run by run, because ours are padded.
+    - `meshlet_stats_method_matches_cli` compares typed results, because the engine writes an `f32` as an `f64` in JSON.
+    - Four tests pinning a new sidecar's settings text now include `"meshlets": "auto"`.
+  - **Studio:** the existing `every_scoped_tool_is_used_by_the_role_prompt_or_its_skills` caught the tech artist's prompt, which lacked the new tool. The test catalog `PROJECT_TOOLS` gained the tool. `agent_guide_mentions_every_agent_tool` required the guide line.
+- **Snapshots** (collected with `INSTA_UPDATE=new`, shown to the author on a review page and blessed by the author): `cli_cluster` hill text, two-nodes text and hill JSON (new); Studio `agent_modeler` and `agent_tech-artist` (the tool list and one prompt line each); and the M3 gates' `m3s_agents_and_skills` and `m3_fixture_agents_and_skills` (the tool lists).
+- **Mutation checks** (each restored with a fresh mtime, `Cargo.lock` included): 23 mutants. 21 were killed by test failures and 2 by a test aborting on meshoptimizer's own assertion (the wrapper's index and limit checks, exactly what the wrapper prevents); none died of a compile error. They covered:
+  - the pile threshold and the Morton sort;
+  - `auto`'s threshold and skinning rule, and `true` on a skinned mesh;
+  - the corrupt-cache rebuild;
+  - the cache key's materials and settings;
+  - decode's padding, reference and sphere checks;
+  - the size choice;
+  - the zero-area bounds fix;
+  - three wrapper checks;
+  - the glTF and FBX wiring;
+  - the stats' reason, subset and angle;
+  - the DDC as derived cache;
+  - the hygiene guard (`meshopt-sys` added to `concordia-core`).
+  One survivor on the first pass, `decode`'s padding check, killed after a one-triangle padding case was added. A first run was invalid (unquoted nextest filters failed in the shell) and was redone.
+- **Checklist** (2026-11-25, `CARGO_BUILD_JOBS=6`, M3 Pro):
+  - `just lint` and the Tauri clippy: clean.
+  - `just wasm` and `just native-fixtures`: pass.
+  - One `CONCORDIA_REQUIRE_GPU=1 cargo nextest run --workspace --no-fail-fast`: 2,266 of 2,272 passed. The 6 failures were the 4 snapshots then awaiting review, plus 2 M3 gate tests over the fixture game's copies of the roster's role files (synced). Each failing test was re-run alone after blessing: 8 of 8 pass.
+  - Doc tests: pass.
+  - `just gate-tests`: M1 4 of 4, M2 5 of 5, and M3 16 of 16. M3's run first failed on a seventh snapshot (the fixture's agents), which was reviewed, blessed and re-run.
+  - `just deny` and the editor's deny: clean (the editor's lock gains the two path crates).
+  - `just editor-schemas`: two new generated types (`asset.meshlet_stats`).
+  - `just editor-test`: 123 unit tests and 22 end-to-end tests pass.
+  - `just clean-builds`: run at the end, with free disk under 25 GB.
+  - The `vulkan` workflow wasn't run: no RHI or shader change.
+- **Disk:** the disk filled during step 6, leaving 356 MB free with `target/debug` at 93 GB. The corpus tests' "No space left on device" errors came from that. `just clean-builds` freed it.
+
+**4.2 plan** (`m4/4.2-meshlets`, 2026-11-25; R5, ADR-0100. Decisions Q1–Q8 below were approved by the author as recommended on 2026-11-25. Everything is test-first: 4.2 is CPU-only and touches no device code.)
+Scope: the vendored meshoptimizer behind `meshopt-sys`; `concordia-cluster` (meshlet build, bounds, normal cones, the encoded format, its build cache); the model importers' `meshlets` setting; `concordia cluster stats` and its Engine API method. Out: anything on the GPU (4.3), meshlet LODs (4.5), the vertex and index codecs, ray-tracing clusters (`buildMeshletsSpatial`, with 4.8), perf calibration.
+
+Facts found while planning (checked in code, 2026-11-25):
+- `MeshData::meshlets: Vec<u8>` is an empty placeholder (`concordia-assets/src/data.rs`), filled by nobody.
+- The glTF importer writes one `MeshData` per primitive (`mesh/<mesh>/<p>`), and FBX one per material part (`mesh/<mesh>/<part>`): each mesh artifact already has exactly one material.
+- Import settings are `ModelSettings` in `concordia-import-model`, shared by glTF and FBX; unknown keys are errors. The import's DDC key is blake3 over importer name and version, `PLATFORM`, the effective settings and the source bytes (`concordia-assets/src/key.rs`). `ImportInput` has no DDC or job-system handle.
+- `concordia-core::jobs::JobSystem` already does deterministic chunked `par_map_reduce` on an owned pool (chunk size from the caller, never from the thread count).
+- Mesh-output caps: Metal reports 256 vertices and 512 primitives on `metal3`; Vulkan reports 0 until 4.3b, and the lavapipe probe record doesn't capture the limits. `VK_EXT_mesh_shader` guarantees at least 256 and 256.
+- The wasm and native guests depend only on `concordia-core`, `concordia-reflect` and `concordia-script-guest`, so a `-sys` crate below `concordia-assets` never reaches `just wasm` or `just native-fixtures`.
+- meshoptimizer's latest release is v1.3 (2026-09-25). It is C++ with a C API, single-threaded and reentrant for the meshlet functions (`buildMeshlets*`: `max_vertices` ≤ 256, `max_triangles` ≤ 512; `optimizeMeshlet`; `computeMeshletBounds` with an 8-bit SNORM cone). Its vertex and index encoders are documented as not thread safe.
+
+Design:
+- **Q1 `meshopt-sys`:** vendor meshoptimizer **v1.3** (MIT) unmodified into `third_party/meshoptimizer/` (`src/*.cpp`, `meshoptimizer.h`, `LICENSE.md`, `VENDOR.md` with tag, commit and SHA-256), built by `cc` as C++ with `-O2` in every profile, `-ffp-contract=off` (no fused multiply-add, so x86 and ARM compute the same floats), no exceptions or RTTI, never downloading. Hand-written bindings for only what 4.2 uses (`buildMeshlets`, `buildMeshletsBound`, `optimizeMeshlet`, `computeMeshletBounds`, the `Meshlet` and `Bounds` structs), checked against the header's blake3 and against `sizeof` from a 10-line C++ size shim, as `ufbx-sys` does. **Unlike `ufbx-sys`, the crate also holds the small safe wrapper** (`meshopt_sys::safe`), validating every limit before the call and with a `// SAFETY:` comment on each block, so `concordia-cluster` stays `#![forbid(unsafe_code)]`. The wasm and native-fixtures builds are untouched (see Facts); a new hygiene test keeps it that way.
+- **Q2 meshlet size:** one portable default, **128 triangles and 128 vertices**, which fits Metal (256/512) and every `VK_EXT_mesh_shader` device (≥ 256/256); the compute fallback has no limit. `MeshletSize::for_limits(mesh_shaders, max_vertices, max_primitives)` (plain numbers, so the crate needn't depend on `concordia-rhi`) picks 128 when it fits and 64 otherwise; 4.3 calls it with `RhiCaps` and gets a separately cached 64 build only on a device that needs it (none known). The build doesn't depend on the device, so headless imports need no GPU.
+- **Q3 the encoded format and its key:** a GPU-ready, little-endian layout that 4.3 uploads without decoding, `MeshletBlob` v1:
+  - header: magic `CMLT`, format version, settings, counts, source triangle count;
+  - 32-byte meshlet records: sphere (center, radius: 4 × f32), cone axis and cutoff (4 × i8 SNORM, meshoptimizer's conservative rounding), vertex offset (u32), triangle offset (u32), vertex count (u8), triangle count (u8), material (u16) (*as built: no reserved bytes, as these fill the 32; the header grew to 48 bytes with the source vertex count*);
+  - vertex references (u32 into the mesh's streams); micro-triangles (3 × u8, each meshlet padded to 4 bytes).
+  Decoding validates everything and rejects a wrong magic or version. It's stored in `MeshData::meshlets` (one read for 4.3's loader), and the build is cached in the DDC under its own key, blake3 of `"concordia-meshlets"`, the format version, meshoptimizer's version, the canonical settings and a **content hash of only what the build reads** (positions, indices, per-triangle materials). So changing an unrelated import setting (emissive EV) or bumping the importer's version reuses the meshlets. `PLATFORM` is left out because the output is the same on every OS; a pinned-hash test proves it. **ADR-0100 is amended** with the format and the cache, rather than a new ADR. The vertex and index codecs are left out of v1; the format version bumps when they arrive (DDC size, which the canyon's instancing keeps small).
+- **Q4 `auto`:** `ModelSettings` gains `meshlets: auto | true | false` (default `auto`, written into new sidecars), shared by glTF and FBX. `auto` builds meshlets for a **static** mesh (no joints or weights) whose primitives together have **more than 8,192 triangles**, so a rock split over two materials counts as one object. `true` builds for every static mesh and is an import error on a skinned one; `false` never builds. Importers that write `MeshData` bump their version once.
+- **Q5 determinism across thread counts:** split a material's triangles into fixed piles, then build each pile in parallel. A mesh with up to 131,072 triangles is one pile, so it gets meshoptimizer's own unsplit result. A larger one is ordered by the Morton code of each triangle's centroid (ties by triangle index), then cut into 131,072-triangle piles. Each (material, pile) builds, optimizes and bounds its meshlets on `JobSystem`; results are joined in (material, pile) order. The piles depend only on the input, never on the thread count, so 1 and N threads give byte-identical blobs. `ImportInput` gains `jobs` and `derived` (a small `DerivedCache` trait over the DDC, in-memory in tests).
+- **Q6 throughput:** `meshlet_build_throughput_budget` lands now as an `#[ignore]` perf test with `concordia-perf`'s verdict (`NotReference` off the M3 Pro), run once in release. The time is recorded in the As built, with no budget change (perf deferred).
+- **Q7 `concordia cluster stats <asset>`:** for each mesh sub-asset it prints source triangles, meshlet count, triangles and vertices per meshlet (min, mean, max and fill %), sphere radius (min, mean, max), the share of meshlets whose cone can cull anything and the mean cone half-angle, encoded bytes and the settings. A mesh without meshlets says so and gives the reason (`auto` below 8k, skinned, `false`). `--json` prints the same data. **Also an Engine API method `asset.meshlet_stats`** (read-only, from the `[assets]` module, so MCP `asset_meshlet_stats`), given to the `modeler` and `tech-artist` roster roles only. The CLI calls the same function.
+- **Q8 one PR:** the plan's 1–2 weeks fits one PR in eight steps (below). It is split at review time if it grows.
+
+Crates and files: new `third_party/meshoptimizer/`, `crates/meshopt-sys/`, `crates/concordia-cluster/`; touched `concordia-assets` (`ImportInput`, `DerivedCache`, the `asset.meshlet_stats` method), `concordia-import-model` (`ModelSettings::meshlets`, the `auto` rule, the build call), `concordia-import-gltf` and `concordia-import-fbx` (versions, the call per mesh), `concordia-cli` (`cluster stats`), `concordia-api` types and the Studio roster, `docs/adr/0100`, `third_party/README.md`, `plans/README.md`, and the tests' hygiene checks. No RHI, shader or renderer change, so the `vulkan` workflow isn't run.
+
+Tests first (each seen failing for the right reason before its code):
+- `meshopt-sys`: `header_hash_matches_bindings`, `struct_sizes_match_the_c_compiler`, `vendored_version_is_1_3`, `a_quad_builds_one_meshlet`, `limits_beyond_meshoptimizer_are_refused`.
+- `concordia-cluster` (proptests over random meshes, including degenerate and multi-material ones): `meshlets_respect_vertex_and_triangle_limits`, `every_source_triangle_appears_in_exactly_one_meshlet` (winding kept, corners compared up to rotation), `meshlets_never_span_two_materials`, `meshlet_bounds_contain_every_vertex`, `normal_cone_is_conservative` (with the stored SNORM cone and the sphere formula 4.4 will use: a rejected meshlet has no front-facing, non-degenerate triangle from random views), `meshlet_encoding_roundtrips_exactly`, `decode_rejects_bad_magic_version_and_ranges`, `build_is_deterministic_across_thread_counts` (1, 2 and 8 threads, several piles), `small_meshes_match_meshoptimizers_unsplit_output`, `settings_are_validated`, `size_for_limits_picks_128_then_64`, `output_hash_is_pinned` (same hash on macOS and Linux CI), `cache_key_ignores_unread_streams`.
+- Import: `auto_builds_only_static_meshes_over_8k_triangles` (counted per mesh across primitives), `meshlets_true_and_false`, `meshlets_true_on_a_skinned_mesh_is_an_error`, `unknown_meshlets_value_is_an_error`, `ddc_reuses_meshlets_when_source_unchanged`, `meshlets_survive_an_unrelated_setting_change` (cache hit), `meshlet_settings_change_rebuilds`, `gltf_corpus_imports_with_meshlets` (the fixtures, plus the sample models when fetched), `fbx_mesh_gets_meshlets`.
+- CLI and API: `cluster_stats_prints_counts_and_bounds` and `cluster_stats_json` (insta, reviewed on an artifact page before blessing), `cluster_stats_explains_missing_meshlets`, `meshlet_stats_method_matches_cli`, the roster's tool lists.
+- Hygiene: `wasm_guests_never_depend_on_sys_crates` (cargo metadata), and the existing AGENTS sections test for the new crates.
+- Perf: `meshlet_build_throughput_budget` (`#[ignore]`, release, Q6).
+- Mutation checks with fresh mtimes over the pile rule, the `auto` threshold and skinning rule, the cache key, decode validation, the size choice and the safe wrapper's limit checks.
+
+Steps, each a commit and a push (draft PR after step 1):
+1. This plan.
+2. `third_party/meshoptimizer` and `meshopt-sys` (bindings, size shim, safe wrapper), with its tests; `just deny` and the editor's deny.
+3. `concordia-cluster`: settings, size choice, single-pile build, bounds and cones (proptests).
+4. The piles and the job system; determinism; the pinned hash.
+5. `MeshletBlob` v1 encode/decode; the build cache key.
+6. Import: `ModelSettings::meshlets`, `DerivedCache` and `jobs` in `ImportInput`, glTF and FBX, the DDC tests, the corpus.
+7. `concordia cluster stats`, `asset.meshlet_stats`, the roster; snapshots collected with `INSTA_UPDATE=new` and shown on an artifact page.
+8. Perf run, mutation checks, docs (As built with the test log, Status, ADR-0100, `plans/README.md`, `third_party/README.md`, AGENTS/README), the checklist.
 
 ### Effort (re-estimated)
 - The plan's 32–45 weeks, plus **4.1v Vulkan at 6–10**, plus about 1 for D2, D6 and D9: **about 39–56 engineer-weeks**.

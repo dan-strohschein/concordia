@@ -303,6 +303,8 @@ impl AssetDb {
             settings: &self.effective_settings(importer, &sidecar.settings),
             read_relative: &read_relative,
             sub_ids: &mut sub_ids,
+            derived: &self.ddc,
+            jobs: crate::importer::import_jobs()?,
         })?;
         let ddc_err = |e: concordia_core::ddc::DdcError| AssetError::Io(e.to_string());
         for (sub, artifact) in &output.artifacts {
@@ -525,6 +527,20 @@ impl AssetDb {
             }
         }
         reloaded
+    }
+
+    /// An imported asset's sub-asset paths and effective import settings (crate-internal).
+    pub(crate) fn subs_and_settings(
+        &self,
+        id: AssetId,
+    ) -> Option<(Vec<String>, serde_json::Value)> {
+        let record = self.records.get(&id)?;
+        let importer = self.importer_for(&record.path).ok()?;
+        let settings = self.effective_settings(importer.as_ref(), &record.sidecar.settings);
+        Some((
+            record.sidecar.sub_assets.keys().cloned().collect(),
+            settings,
+        ))
     }
 
     /// Every known asset, by id.

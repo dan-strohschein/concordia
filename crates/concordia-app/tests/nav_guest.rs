@@ -175,4 +175,4 @@ fn guest_receives_anim_and_nav_signals() {
 }
 
 /// A new model sidecar's settings block (the model settings left to the project, ADR-0102).
-const NEW_MODEL_SETTINGS: &str = "settings: {\n        \"emissive_reference_ev100\": None,\n    }";
+const NEW_MODEL_SETTINGS: &str = "settings: {\n        \"emissive_reference_ev100\": None,\n        \"meshlets\": \"auto\",\n    }";

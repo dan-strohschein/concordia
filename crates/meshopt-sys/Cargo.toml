@@ -1,0 +1,24 @@
+[package]
+name = "meshopt-sys"
+description = "Raw FFI to vendored meshoptimizer (MIT) plus a small checked wrapper for meshlets."
+links = "meshoptimizer"
+build = "build.rs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+thiserror.workspace = true
+
+[build-dependencies]
+cc = "1.11.2"
+
+[dev-dependencies]
+blake3.workspace = true
+proptest.workspace = true

@@ -224,6 +224,102 @@ fn gpu_free_crates_keep_their_dependencies() {
     }
 }
 
+/// The workspace's guest packages: script fixtures and example scripts, built for wasm32 by
+/// `just wasm` and as dylibs by `just native-fixtures`.
+fn guest_manifest_dirs() -> Vec<String> {
+    let mut dirs = Vec::new();
+    for parent in ["tests/fixtures/script"] {
+        for e in std::fs::read_dir(repo_root().join(parent))
+            .unwrap()
+            .flatten()
+        {
+            dirs.push(e.path().to_string_lossy().into_owned());
+        }
+    }
+    for example in std::fs::read_dir(repo_root().join("examples"))
+        .unwrap()
+        .flatten()
+    {
+        if let Ok(scripts) = std::fs::read_dir(example.path().join("scripts")) {
+            dirs.extend(
+                scripts
+                    .flatten()
+                    .map(|e| e.path().to_string_lossy().into_owned()),
+            );
+        }
+    }
+    dirs
+}
+
+/// No guest reaches a vendored C/C++ `-sys` crate through its normal dependencies, so the wasm
+/// and native-fixture builds never need a C compiler (M4 4.2, Q1).
+#[test]
+fn wasm_guests_never_depend_on_sys_crates() {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    let out = std::process::Command::new(cargo)
+        .args(["metadata", "--format-version", "1", "--offline"])
+        .current_dir(repo_root())
+        .output()
+        .expect("cargo metadata runs");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let meta: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let packages = meta["packages"].as_array().unwrap();
+    let name_of = |id: &str| {
+        packages.iter().find(|p| p["id"] == id).map(|p| {
+            (
+                p["name"].as_str().unwrap().to_owned(),
+                p["manifest_path"].as_str().unwrap().to_owned(),
+            )
+        })
+    };
+    let nodes = meta["resolve"]["nodes"].as_array().unwrap();
+    let normal_deps = |id: &str| -> Vec<String> {
+        let node = nodes.iter().find(|n| n["id"] == id).unwrap();
+        node["deps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|d| {
+                d["dep_kinds"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|k| k["kind"].is_null())
+            })
+            .map(|d| d["pkg"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    let guests: Vec<String> = guest_manifest_dirs();
+    assert!(!guests.is_empty());
+    let mut checked = 0;
+    for package in packages {
+        let manifest = package["manifest_path"].as_str().unwrap();
+        if !guests.iter().any(|g| manifest.starts_with(g.as_str())) {
+            continue;
+        }
+        checked += 1;
+        let root = package["id"].as_str().unwrap().to_owned();
+        let (mut stack, mut seen) = (vec![root.clone()], std::collections::HashSet::new());
+        while let Some(id) = stack.pop() {
+            if !seen.insert(id.clone()) {
+                continue;
+            }
+            let (name, path) = name_of(&id).unwrap();
+            assert!(
+                !(name.ends_with("-sys") && path.contains("/crates/")),
+                "guest {} depends on {name}; guests must build without a C compiler",
+                package["name"]
+            );
+            stack.extend(normal_deps(&id));
+        }
+    }
+    assert!(checked >= 5, "found only {checked} guest packages");
+}
+
 fn assert_contains_all(relative: &str, needles: &[&str]) {
     let text = read_repo_file(relative).to_lowercase();
     for needle in needles {

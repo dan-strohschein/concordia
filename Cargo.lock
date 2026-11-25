@@ -775,6 +775,7 @@ name = "concordia-assets"
 version = "0.0.0"
 dependencies = [
  "concordia-api",
+ "concordia-cluster",
  "concordia-command",
  "concordia-core",
  "concordia-reflect",
@@ -826,10 +827,12 @@ dependencies = [
 name = "concordia-cli"
 version = "0.0.0"
 dependencies = [
+ "base64 0.22.1",
  "clap",
  "concordia-api",
  "concordia-app",
  "concordia-assets",
+ "concordia-cluster",
  "concordia-core",
  "concordia-input",
  "concordia-mcp",
@@ -852,6 +855,20 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-tungstenite",
+]
+
+[[package]]
+name = "concordia-cluster"
+version = "0.0.0"
+dependencies = [
+ "concordia-core",
+ "concordia-perf",
+ "concordia-reflect",
+ "concordia-rhi-select",
+ "meshopt-sys",
+ "proptest",
+ "serde",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -916,6 +933,7 @@ name = "concordia-import-fbx"
 version = "0.0.0"
 dependencies = [
  "concordia-assets",
+ "concordia-cluster",
  "concordia-core",
  "concordia-import-model",
  "concordia-scene",
@@ -933,6 +951,7 @@ version = "0.0.0"
 dependencies = [
  "base64 0.23.1",
  "concordia-assets",
+ "concordia-cluster",
  "concordia-command",
  "concordia-core",
  "concordia-import-model",
@@ -952,6 +971,7 @@ version = "0.0.0"
 dependencies = [
  "bevy_mikktspace",
  "concordia-assets",
+ "concordia-cluster",
  "concordia-core",
  "concordia-reflect",
  "concordia-scene",
@@ -3285,6 +3305,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6b0ca1155a9ecc25aa12e8313a119f32edf0255fea2f44839c4ac0a12b2ac157"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "meshopt-sys"
+version = "0.0.0"
+dependencies = [
+ "blake3",
+ "cc",
+ "proptest",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

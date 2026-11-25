@@ -25,5 +25,6 @@ serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+concordia-cluster.workspace = true
 concordia-command.workspace = true
 tempfile.workspace = true

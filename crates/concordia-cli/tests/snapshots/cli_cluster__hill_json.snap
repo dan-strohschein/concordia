@@ -1,0 +1,72 @@
+---
+source: crates/concordia-cli/tests/cli_cluster.rs
+expression: json
+---
+{
+  "meshes": [
+    {
+      "meshlets": {
+        "cone_weight": 0.25,
+        "cullable_share": 1.0,
+        "encoded_bytes": 28788,
+        "max_triangles": 128,
+        "max_vertices": 128,
+        "mean_cone_half_angle_deg": 9.207782,
+        "meshlets": 39,
+        "radius": {
+          "max": 1.4032762,
+          "mean": 0.8000754,
+          "min": 0.44485956
+        },
+        "source_triangles": 4900,
+        "source_vertices": 5041,
+        "triangle_fill": 0.98157054,
+        "triangles_per_meshlet": {
+          "max": 128.0,
+          "mean": 125.64103,
+          "min": 36.0
+        },
+        "vertices_per_meshlet": {
+          "max": 90.0,
+          "mean": 82.0,
+          "min": 27.0
+        }
+      },
+      "missing": null,
+      "sub_asset": "mesh/Hill/0",
+      "triangles": 4900
+    },
+    {
+      "meshlets": {
+        "cone_weight": 0.25,
+        "cullable_share": 1.0,
+        "encoded_bytes": 28840,
+        "max_triangles": 128,
+        "max_vertices": 128,
+        "mean_cone_half_angle_deg": 9.949437,
+        "meshlets": 39,
+        "radius": {
+          "max": 2.6982,
+          "mean": 0.8389648,
+          "min": 0.45634544
+        },
+        "source_triangles": 4900,
+        "source_vertices": 5041,
+        "triangle_fill": 0.98157054,
+        "triangles_per_meshlet": {
+          "max": 128.0,
+          "mean": 125.64103,
+          "min": 36.0
+        },
+        "vertices_per_meshlet": {
+          "max": 91.0,
+          "mean": 82.333336,
+          "min": 27.0
+        }
+      },
+      "missing": null,
+      "sub_asset": "mesh/Hill/1",
+      "triangles": 4900
+    }
+  ]
+}

@@ -581,4 +581,4 @@ fn bad_clip_events_are_descriptive_import_errors() {
 }
 
 /// A new model sidecar's settings block.
-const NEW_SETTINGS: &str = "settings: {\n        \"emissive_reference_ev100\": None,\n    }";
+const NEW_SETTINGS: &str = "settings: {\n        \"emissive_reference_ev100\": None,\n        \"meshlets\": \"auto\",\n    }";

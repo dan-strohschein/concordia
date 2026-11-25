@@ -16,6 +16,7 @@ The glTF 2.0 importer (`.gltf` and `.glb`): meshes, metallic-roughness materials
 - Every primitive of a node with a skin gets `Skinned` (`skin/<index>`); clip channels carry their node's name (`target_name`) and clips have no `frame_rate` (glTF has none). Key times stay as authored (2.4.1).
 
 - Format-neutral work (names, the prefab, mesh finishing, texture color spaces) is `concordia-import-model`'s, shared with `concordia-import-fbx`; this crate maps glTF into it.
+- Version 5 (M4 4.2): meshes carry `MeshletBlob` v1 in `MeshData::meshlets` as the `meshlets` setting says (per glTF mesh, across its primitives).
 
 ## How to test
 `just gltf-assets && cargo nextest run -p concordia-import-gltf` (Khronos samples from the pinned commit, plus hand-made fixtures in `tests/fixtures`).

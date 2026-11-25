@@ -9,6 +9,7 @@ Format-neutral model import shared by the glTF and FBX importers: stable sub-ass
 - `finish_mesh` (bounds, smooth normals, zero UVs, tangents, validation), `generate_tangents` (MikkTSpace, glTF's V-down convention)
 - `ModelSettings` (2.4.4): the sidecar `settings` for models: `from_json` (unknown keys refused), `apply(&mut ClipData)` (events by clip name, sorted by time, ties in authored order, validated), `check_clips` (a named clip the file lacks is an error listing its clips)
 - `unique_names`, `TextureUsage` (`settings()` for `decode_image`), `reduce_influences`, `MAX_INFLUENCES`, `insert_artifact`
+- `MeshletMode` (`ModelSettings::meshlets`: `"auto"`, `true`, `false`), `AUTO_MIN_TRIANGLES` (8,192, from `concordia-cluster`), `MeshletContext` and `attach_meshlets(parts, ctx)` (M4 4.2)
 
 ## Invariants
 - A `MeshPart` with a `skin` (`skin/<index>`) gives its renderer entity `Skinned` beside `MeshRenderer` (2.4.1).
@@ -16,6 +17,7 @@ Format-neutral model import shared by the glTF and FBX importers: stable sub-ass
 - Names: the source name, or the index when missing; duplicates get `#<index>`; `/` becomes `_`.
 - Influences: the four largest finite, positive weights, normalized; ties keep the lower joint; none → joint 0 fully.
 - The glTF importer's artifacts were byte-identical before and after moving this code here (2.3d).
+- Meshlets are decided per mesh, over all its material parts: `auto` builds for static meshes with more than 8,192 triangles; `true` is an error on a skinned mesh; each part's blob comes from the `DerivedCache` when it decodes, else is built with the default settings and cached (M4 4.2, ADR-0100).
 
 ## How to test
 `cargo nextest run -p concordia-import-model`; the glTF and FBX importer tests cover it end to end.

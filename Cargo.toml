@@ -69,6 +69,8 @@ concordia-testkit = { path = "crates/concordia-testkit" }
 jolt-sys = { path = "crates/jolt-sys" }
 ufbx-sys = { path = "crates/ufbx-sys" }
 recast-sys = { path = "crates/recast-sys" }
+meshopt-sys = { path = "crates/meshopt-sys" }
+concordia-cluster = { path = "crates/concordia-cluster" }
 bitflags = "2.13"
 blake3 = "1.8"
 criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }

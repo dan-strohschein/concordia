@@ -1,6 +1,7 @@
 //! Subcommands.
 
 pub(crate) mod assert;
+pub(crate) mod cluster;
 pub(crate) mod doctor;
 pub(crate) mod fmt;
 pub(crate) mod gpu_probe;

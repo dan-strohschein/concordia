@@ -349,4 +349,4 @@ fn gltf_clip_events_come_from_the_import_settings() {
 }
 
 /// A new model sidecar's settings block.
-const NEW_SETTINGS: &str = "settings: {\n        \"emissive_reference_ev100\": None,\n    }";
+const NEW_SETTINGS: &str = "settings: {\n        \"emissive_reference_ev100\": None,\n        \"meshlets\": \"auto\",\n    }";

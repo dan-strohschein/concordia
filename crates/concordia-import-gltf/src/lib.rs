@@ -12,7 +12,7 @@ mod prefab;
 mod source;
 
 use concordia_assets::{AssetError, ImportInput, ImportOutput, Importer};
-use concordia_import_model::ModelSettings;
+use concordia_import_model::{MeshletContext, ModelSettings};
 
 pub use concordia_import_model::{EntitySummary, PrefabSummary, generate_tangents, load_prefab};
 
@@ -37,7 +37,8 @@ impl Importer for GltfImporter {
     fn version(&self) -> u32 {
         // 3 (2.4.1): `Skinned` on skinned renderers, bone names on clip channels.
         // 4 (2.4.4): clip events from the import settings.
-        4
+        // 5 (M4 4.2): meshlets (`meshlets: auto | true | false`).
+        5
     }
 
     fn extensions(&self) -> &'static [&'static str] {
@@ -85,7 +86,12 @@ impl Importer for GltfImporter {
             input.sub_ids,
             &mut output,
         )?;
-        mesh::meshes(&gltf.document, &buffers, &names, &mut output).map_err(fail)?;
+        let meshlets = MeshletContext {
+            mode: settings.meshlets,
+            jobs: input.jobs,
+            cache: input.derived,
+        };
+        mesh::meshes(&gltf.document, &buffers, &names, &meshlets, &mut output).map_err(fail)?;
         extras::lights_and_cameras(&gltf.document, &names, &mut output)?;
         let stem = input
             .path

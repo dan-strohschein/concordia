@@ -36,3 +36,30 @@ The reference machine and first backend are Metal (the author's M3 Pro). The goa
 - **The Nanite-style plan it replaces** (cluster LOD DAG, page streaming, visibility buffer, software rasterizer, material resolve). It scales best to film-quality assets, but it is a second renderer with its own shading path. It needs 64-bit atomics that older Apple GPUs lack, and it carries the most clean-room risk. It can still come later, built on top of meshlets.
 - **Compute-only culling everywhere** (no mesh shaders). One path is simpler, but it gives up amplification and per-meshlet output on the reference machine's best path. It is kept as the fallback instead.
 - **CPU per-object culling only.** Too coarse for dense scenes, and it leaves the GPU idle.
+
+## Amendment (2026-11-25, M4 4.2): the meshlet format and its build cache
+Approved with 4.2's plan (Q1–Q5). The ADR stays Proposed until 4.3a lands.
+
+8. **The build** (`concordia-cluster`, safe Rust over `meshopt-sys`'s checked wrapper of vendored meshoptimizer v1.3):
+   - One portable size, **128 triangles and 128 vertices**. It fits Metal (256 vertices, 512 primitives) and every `VK_EXT_mesh_shader` device (at least 256 and 256), and the compute fallback has no limit. `MeshletSize::for_limits` picks 64 only for a device that can't take 128; that build has its own cache key. The build needs no GPU.
+   - A meshlet never spans two materials. Materials are built in ascending order; a material over 131,072 triangles is ordered by its triangles' centroid Morton codes and cut into fixed piles, built in parallel and joined in pile order. No step depends on the thread count, so the output is byte-identical for any number of threads.
+   - meshoptimizer gives each meshlet a bounding sphere and an 8-bit normal cone whose cutoff (the sine of the normal cone's half-angle) is rounded up, so the sphere-form test `dot(c − eye, axis) ≥ cutoff·|c − eye| + r` never rejects a visible meshlet. For a meshlet whose triangles all have zero area, meshoptimizer returns zeroed bounds; the build replaces them with an enclosing sphere, and the zero cone never rejects.
+   - meshoptimizer is compiled with `-ffp-contract=off`. A pinned hash test shows the same bytes on macOS arm64 and Linux x86_64.
+9. **`MeshletBlob` v1**, little-endian and GPU-ready, so 4.3 uploads it without decoding:
+   - a 48-byte header: magic `CMLT`, format version, max triangles (u16), max vertices (u16), cone weight (f32), the meshlet count, the vertex-reference count, the triangle bytes, source triangles, source vertices, and 12 zero bytes;
+   - 32-byte meshlet records (16-byte aligned): center (3 × f32), radius (f32), cone axis (3 × i8) and cutoff (i8), vertex offset (u32), triangle offset (u32), vertex count (u8), triangle count (u8), material (u16);
+   - vertex references (u32 into the mesh's vertex streams);
+   - triangle runs (3 × u8 local corners per triangle), each meshlet's run 4-byte aligned with zero padding.
+   The layout is canonical (consecutive offsets), and decoding validates every count, range, reference, sphere and padding byte, so a decoded blob re-encodes to the same bytes. A layout change bumps the format version.
+10. **Storage and cache.**
+    - The blob is stored in `MeshData::meshlets`, so the mesh artifact carries it.
+    - The build is also cached in the DDC under its own key: blake3 of `"concordia-meshlets"`, the format version, the build version, meshoptimizer's version, the settings and only what the build reads (positions, indices, per-triangle materials). Changing an unrelated import setting or bumping an importer's version reuses the meshlets.
+    - The platform is left out of the key because the output is the same on every OS.
+    - A cache entry that doesn't decode is rebuilt.
+11. **Import.** The model importers' sidecar setting `"meshlets": "auto" | true | false` (default `"auto"`):
+    - `auto` builds meshlets for static meshes whose parts together have more than 8,192 triangles;
+    - `true` builds them for every static mesh and is an import error on a skinned one;
+    - `false` never builds them.
+12. **Inspection.** `asset.meshlet_stats` (MCP `asset_meshlet_stats`, for the modeler and tech-artist roles) and `concordia cluster stats` report each mesh's meshlet count, triangles and vertices per meshlet, sphere radii, normal-cone coverage and encoded size, or why the mesh has none.
+
+The vertex and index codecs (compression) are left out of v1; they would bump the format version when DDC size calls for them.
