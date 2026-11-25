@@ -54,24 +54,32 @@ def worktree(index):
     return path
 
 
+def nextest(tree, target, jobs, args):
+    """Runs `cargo nextest run args` in `tree`: (exit code or None on timeout, output)."""
+    env = dict(os.environ, CARGO_TARGET_DIR=target, CARGO_BUILD_JOBS=str(jobs),
+               CONCORDIA_REQUIRE_GPU=os.environ.get("CONCORDIA_REQUIRE_GPU", "1"))
+    try:
+        r = subprocess.run(["cargo", "nextest", "run", *args, "--no-fail-fast"], cwd=tree,
+                           env=env, capture_output=True, text=True, timeout=3600)
+        return r.returncode, r.stdout + r.stderr
+    except subprocess.TimeoutExpired:
+        return None, ""
+
+
 def run_mutant(tree, target, jobs, m):
     """Applies `m` in `tree`, runs its tests and restores the file; returns the verdict."""
     path = os.path.join(tree, m["file"])
     text = open(path).read()
     open(path, "w").write(text.replace(m["old"], m["new"]))
-    env = dict(os.environ, CARGO_TARGET_DIR=target, CARGO_BUILD_JOBS=str(jobs),
-               CONCORDIA_REQUIRE_GPU=os.environ.get("CONCORDIA_REQUIRE_GPU", "1"))
     try:
-        r = subprocess.run(["cargo", "nextest", "run", *m["args"], "--no-fail-fast"], cwd=tree,
-                           env=env, capture_output=True, text=True, timeout=3600)
-        out = r.stdout + r.stderr
-        if r.returncode == 0:
+        code, out = nextest(tree, target, jobs, m["args"])
+        if code is None:
+            return "killed (timeout)"
+        if code == 0:
             return "SURVIVED"
         if "error[E" in out or "could not compile" in out:
             return "COMPILE ERROR"
         return "killed"
-    except subprocess.TimeoutExpired:
-        return "killed (timeout)"
     finally:
         open(path, "w").write(text)
         os.utime(path, None)
@@ -100,6 +108,9 @@ def main():
     for m in mutants:
         todo.put(m)
     results, lock = [], threading.Lock()
+    # Each distinct test selection runs once unmutated first: a failing baseline (a broken
+    # setup, a missing fixture) would otherwise count every mutant as killed.
+    baselines = {}
 
     def worker(index):
         tree = worktree(index)
@@ -109,7 +120,14 @@ def main():
                 m = todo.get_nowait()
             except queue.Empty:
                 return
-            verdict = run_mutant(tree, target, jobs, m)
+            key = tuple(m["args"])
+            with lock:
+                baseline = baselines.get(key)
+            if baseline is None:
+                baseline = nextest(tree, target, jobs, m["args"])[0] == 0
+                with lock:
+                    baselines[key] = baseline
+            verdict = run_mutant(tree, target, jobs, m) if baseline else "NOT RUN: its tests fail unmutated"
             with lock:
                 results.append({"name": m["name"], "verdict": verdict})
                 print(f"{m['name']}: {verdict}", flush=True)
