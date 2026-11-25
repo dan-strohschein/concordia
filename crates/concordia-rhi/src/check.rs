@@ -5,6 +5,7 @@ use std::num::NonZeroU32;
 use crate::caps::SampleCount;
 use crate::command::{Rect, TextureOrigin, Viewport};
 use crate::error::RhiError;
+use crate::handle::Texture;
 use crate::resource::{BufferDesc, BufferUsage, TextureDesc, TextureUsage};
 
 /// `bytes` of indirect arguments at `offset` fit `args`, which has `BufferUsage::INDIRECT`.
@@ -22,15 +23,25 @@ pub fn indirect_args(args: &BufferDesc, offset: u64, bytes: u64) -> Result<(), R
     }
 }
 
-/// A copy of `extent` from `src_origin` in `src` to `dst_origin` in `dst` stays inside both mips,
-/// between single-sample, non-depth textures of one format with the copy usages.
+/// One side of a texture copy: the texture, its descriptor and the region's corner.
+#[derive(Debug, Clone, Copy)]
+pub struct CopySide<'a> {
+    /// The texture.
+    pub texture: Texture,
+    /// Its descriptor.
+    pub desc: &'a TextureDesc,
+    /// The region's corner and mip.
+    pub origin: TextureOrigin,
+}
+
+/// A copy of `extent` from `src` to `dst` stays inside both mips, between single-sample, non-depth
+/// textures of one format with the copy usages, without overlapping itself.
 pub fn texture_copy(
-    src: &TextureDesc,
-    src_origin: TextureOrigin,
-    dst: &TextureDesc,
-    dst_origin: TextureOrigin,
+    from: CopySide<'_>,
+    to: CopySide<'_>,
     extent: [NonZeroU32; 2],
 ) -> Result<(), RhiError> {
+    let (src, src_origin, dst, dst_origin) = (from.desc, from.origin, to.desc, to.origin);
     let invalid = |why: String| RhiError::invalid("texture copy", why);
     if src.format != dst.format {
         return Err(invalid(format!(
@@ -51,7 +62,20 @@ pub fn texture_copy(
         return Err(invalid(format!("{:?} lacks COPY_DST usage", dst.label)));
     }
     region_in(src, src_origin, extent).map_err(invalid)?;
-    region_in(dst, dst_origin, extent).map_err(invalid)
+    region_in(dst, dst_origin, extent).map_err(invalid)?;
+    if from.texture == to.texture && overlap(src_origin, dst_origin, extent) {
+        return Err(invalid(format!(
+            "regions at {src_origin:?} and {dst_origin:?} overlap in {:?}",
+            src.label
+        )));
+    }
+    Ok(())
+}
+
+/// Two same-sized regions of one mip share a texel.
+fn overlap(a: TextureOrigin, b: TextureOrigin, extent: [NonZeroU32; 2]) -> bool {
+    let apart = |p: u32, q: u32, len: NonZeroU32| p.abs_diff(q) >= len.get();
+    a.mip == b.mip && !apart(a.x, b.x, extent[0]) && !apart(a.y, b.y, extent[1])
 }
 
 /// The region lies inside its mip of `desc`.

@@ -521,7 +521,16 @@ impl Recorder<'_> {
             texture_entry(self.inner, src)?,
             texture_entry(self.inner, dst)?,
         );
-        concordia_rhi::check::texture_copy(&s.desc, from, &d.desc, to, extent)?;
+        let side = |texture, desc, origin| concordia_rhi::check::CopySide {
+            texture,
+            desc,
+            origin,
+        };
+        concordia_rhi::check::texture_copy(
+            side(src, &s.desc, from),
+            side(dst, &d.desc, to),
+            extent,
+        )?;
         let origin = |o: TextureOrigin| MTLOrigin {
             x: o.x as usize,
             y: o.y as usize,

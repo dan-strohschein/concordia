@@ -198,7 +198,14 @@ fn texture_copies_stay_inside_matching_single_sample_textures() {
     let a = tex(16, 16, 3, Format::Rgba8Unorm, SampleCount::X1);
     let b = tex(8, 8, 1, Format::Rgba8Unorm, SampleCount::X1);
     let ok = |src: &TextureDesc, s, dst: &TextureDesc, d, e: [u32; 2]| {
-        check::texture_copy(src, s, dst, d, [nz(e[0]), nz(e[1])])
+        // Each descriptor variable stands for one texture.
+        let handle = |desc: &TextureDesc| Texture::from_raw(std::ptr::from_ref(desc) as u32, 0);
+        let side = |desc, origin| check::CopySide {
+            texture: handle(desc),
+            desc,
+            origin,
+        };
+        check::texture_copy(side(src, s), side(dst, d), [nz(e[0]), nz(e[1])])
     };
     assert!(ok(&a, origin(0, 8, 8), &b, origin(0, 0, 0), [8, 8]).is_ok());
     assert!(ok(&a, origin(1, 0, 0), &b, origin(0, 0, 0), [8, 8]).is_ok());
@@ -220,6 +227,11 @@ fn texture_copies_stay_inside_matching_single_sample_textures() {
         "outside",
     );
     fails(ok(&a, origin(3, 0, 0), &b, origin(0, 0, 0), [1, 1]), "mip");
+    fails(
+        ok(&a, origin(0, 0, 0), &a, origin(0, 3, 3), [4, 4]),
+        "overlap",
+    );
+    assert!(ok(&a, origin(0, 0, 0), &a, origin(0, 4, 0), [4, 4]).is_ok());
     fails(
         ok(&a, origin(0, u32::MAX, 0), &b, origin(0, 0, 0), [8, 8]),
         "outside",

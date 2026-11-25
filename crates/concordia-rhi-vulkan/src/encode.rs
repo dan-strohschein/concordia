@@ -1,11 +1,12 @@
 //! Translates a planned command list into a Vulkan command buffer.
 
 use std::collections::BTreeMap;
+use std::num::NonZeroU32;
 
 use ash::vk;
 use concordia_rhi::{
-    Buffer, BufferUsage, Command, Format, Layout, Pipeline, RenderPassDesc, RhiError, SampleCount,
-    Texture, TextureUsage, TimerScope,
+    Buffer, BufferUsage, Command, Format, Layout, Pipeline, Rect, RenderPassDesc, RhiError,
+    SampleCount, Texture, TextureOrigin, TextureUsage, TimerScope, Viewport, check,
 };
 
 use crate::bindless::STAGES;
@@ -43,6 +44,7 @@ pub(crate) fn record(
         bound: None,
         in_pass: false,
         timer: None,
+        pass_size: None,
     };
     recorder.begin(inits)?;
     for op in &ops {
@@ -89,6 +91,7 @@ fn textures_of(command: &Command) -> Vec<Texture> {
         }
         Command::CopyBufferToTexture { dst, .. } => vec![*dst],
         Command::CopyTextureToBuffer { src, .. } => vec![*src],
+        Command::CopyTexture { src, dst, .. } => vec![*src, *dst],
         Command::Barrier { textures, .. } => textures.iter().map(|b| b.texture).collect(),
         _ => Vec::new(),
     }
@@ -100,6 +103,8 @@ struct Recorder<'a> {
     bound: Option<Kind>,
     in_pass: bool,
     timer: Option<TimerScope>,
+    /// The open render pass's target size (width, height).
+    pass_size: Option<[NonZeroU32; 2]>,
 }
 
 fn invalid(reason: impl Into<String>) -> RhiError {
@@ -251,6 +256,7 @@ impl Recorder<'_> {
             Command::BeginRenderPass(desc) => self.begin_pass(desc),
             Command::EndRenderPass => {
                 self.in_pass = false;
+                self.pass_size = None;
                 // SAFETY: a render pass is open (validated list).
                 unsafe { self.device().cmd_end_rendering(self.t.cb) };
                 Ok(())
@@ -292,13 +298,21 @@ impl Recorder<'_> {
                 self.timestamp(self.t.queries.zip(scope).and_then(|((_, q), s)| q.end(s)));
                 Ok(())
             }
-            Command::DrawIndirect { .. }
-            | Command::DrawIndexedIndirect { .. }
-            | Command::SetViewport(_)
-            | Command::SetScissor(_)
-            | Command::CopyTexture { .. } => Err(RhiError::Unsupported(format!(
-                "{command:?} on Vulkan (M4 4.3a step 4)"
-            ))),
+            Command::DrawIndirect { args, offset } => self.draw_indirect(None, *args, *offset),
+            Command::DrawIndexedIndirect {
+                indices,
+                args,
+                offset,
+            } => self.draw_indirect(Some(*indices), *args, *offset),
+            Command::SetViewport(viewport) => self.set_viewport(viewport),
+            Command::SetScissor(rect) => self.set_scissor(rect),
+            Command::CopyTexture {
+                src,
+                src_origin,
+                dst,
+                dst_origin,
+                extent,
+            } => self.copy_texture((*src, *src_origin), (*dst, *dst_origin), *extent),
         }
     }
 
@@ -509,6 +523,9 @@ impl Recorder<'_> {
             self.device().cmd_set_scissor(self.t.cb, 0, &[area]);
         }
         self.in_pass = true;
+        self.pass_size = NonZeroU32::new(extent.width)
+            .zip(NonZeroU32::new(extent.height))
+            .map(|(w, h)| [w, h]);
         Ok(())
     }
 
@@ -613,6 +630,132 @@ impl Recorder<'_> {
         Ok(())
     }
 
+    /// One indirect draw, indexed when `indices` is given, after the shared argument check.
+    fn draw_indirect(
+        &self,
+        indices: Option<Buffer>,
+        args: Buffer,
+        offset: u64,
+    ) -> Result<(), RhiError> {
+        self.require(Kind::Graphics)?;
+        let a = self.resources.buffer(args)?;
+        let bytes = match indices {
+            Some(_) => concordia_rhi::DRAW_INDEXED_INDIRECT_BYTES,
+            None => concordia_rhi::DRAW_INDIRECT_BYTES,
+        };
+        check::indirect_args(&a.desc, offset, bytes)?;
+        let stride = bytes as u32;
+        match indices {
+            Some(indices) => {
+                let i = self.buffer(indices, BufferUsage::INDEX, "indices")?;
+                // SAFETY: one argument record lies in a live indirect buffer (checked); the index
+                // buffer is live; a graphics pipeline is bound inside a render pass.
+                unsafe {
+                    self.device()
+                        .cmd_bind_index_buffer(self.t.cb, i.raw, 0, vk::IndexType::UINT32);
+                    self.device()
+                        .cmd_draw_indexed_indirect(self.t.cb, a.raw, offset, 1, stride);
+                }
+            }
+            // SAFETY: as above, without indices (the pipeline pulls its vertices).
+            None => unsafe {
+                self.device()
+                    .cmd_draw_indirect(self.t.cb, a.raw, offset, 1, stride)
+            },
+        }
+        Ok(())
+    }
+
+    fn pass_size(&self) -> Result<[NonZeroU32; 2], RhiError> {
+        self.pass_size
+            .ok_or_else(|| invalid("no render pass is open"))
+    }
+
+    /// Maps clip space into `viewport`, flipped so Y stays up as on Metal (ADR-0088).
+    fn set_viewport(&self, viewport: &Viewport) -> Result<(), RhiError> {
+        check::viewport_in(viewport, self.pass_size()?)?;
+        let flipped = flipped_viewport(viewport);
+        // SAFETY: inside a render pass; viewports are dynamic state in every pipeline.
+        unsafe { self.device().cmd_set_viewport(self.t.cb, 0, &[flipped]) };
+        Ok(())
+    }
+
+    fn set_scissor(&self, rect: &Rect) -> Result<(), RhiError> {
+        check::scissor_in(rect, self.pass_size()?)?;
+        let area = vk::Rect2D {
+            offset: vk::Offset2D {
+                x: rect.x as i32,
+                y: rect.y as i32,
+            },
+            extent: vk::Extent2D {
+                width: rect.width.get(),
+                height: rect.height.get(),
+            },
+        };
+        // SAFETY: inside a render pass; the rectangle lies inside the targets (checked), so its
+        // offsets fit an i32; scissors are dynamic state in every pipeline.
+        unsafe { self.device().cmd_set_scissor(self.t.cb, 0, &[area]) };
+        Ok(())
+    }
+
+    /// Copies one region between textures in the layouts the planner chose.
+    fn copy_texture(
+        &self,
+        (src, from): (Texture, TextureOrigin),
+        (dst, to): (Texture, TextureOrigin),
+        extent: [NonZeroU32; 2],
+    ) -> Result<(), RhiError> {
+        let (s, d) = (self.resources.texture(src)?, self.resources.texture(dst)?);
+        let side = |texture, desc, origin| check::CopySide {
+            texture,
+            desc,
+            origin,
+        };
+        check::texture_copy(side(src, &s.desc, from), side(dst, &d.desc, to), extent)?;
+        let (src_layout, dst_layout) = match src == dst {
+            true => (Layout::General, Layout::General),
+            false => (
+                track::copy_layout(s.state.home, Layout::CopySrc),
+                track::copy_layout(d.state.home, Layout::CopyDst),
+            ),
+        };
+        let layers = |desc: &concordia_rhi::TextureDesc, mip| vk::ImageSubresourceLayers {
+            aspect_mask: convert::aspect(desc.format),
+            mip_level: mip,
+            base_array_layer: 0,
+            layer_count: 1,
+        };
+        let offset = |o: TextureOrigin| vk::Offset3D {
+            x: o.x as i32,
+            y: o.y as i32,
+            z: 0,
+        };
+        let region = [vk::ImageCopy {
+            src_subresource: layers(&s.desc, from.mip),
+            src_offset: offset(from),
+            dst_subresource: layers(&d.desc, to.mip),
+            dst_offset: offset(to),
+            extent: vk::Extent3D {
+                width: extent[0].get(),
+                height: extent[1].get(),
+                depth: 1,
+            },
+        }];
+        // SAFETY: both regions lie inside live single-sample textures with copy usage and don't
+        // overlap (checked); the planner moved them into these layouts; outside a render pass.
+        unsafe {
+            self.device().cmd_copy_image(
+                self.t.cb,
+                s.raw,
+                convert::layout(src_layout),
+                d.raw,
+                convert::layout(dst_layout),
+                &region,
+            )
+        };
+        Ok(())
+    }
+
     fn dispatch_indirect(&self, buffer: Buffer, offset: u64) -> Result<(), RhiError> {
         self.require(Kind::Compute)?;
         let b = self.buffer(buffer, BufferUsage::INDIRECT, "dispatch arguments")?;
@@ -636,6 +779,18 @@ fn span(range: &std::ops::Range<u32>) -> Result<u32, RhiError> {
         .end
         .checked_sub(range.start)
         .ok_or_else(|| invalid(format!("range {range:?} ends before it starts")))
+}
+
+/// A Y-up viewport: Vulkan's framebuffer y points down, so the height is negated (core since 1.1).
+fn flipped_viewport(v: &Viewport) -> vk::Viewport {
+    vk::Viewport {
+        x: v.x,
+        y: v.y + v.height,
+        width: v.width,
+        height: -v.height,
+        min_depth: v.min_depth,
+        max_depth: v.max_depth,
+    }
 }
 
 fn shrink(extent: &mut vk::Extent2D, t: &VkTexture) {
@@ -716,4 +871,28 @@ fn image_region(
             depth: 1,
         },
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn flipped_viewports_keep_y_up_inside_their_rectangle() {
+        let v = Viewport {
+            x: 16.0,
+            y: 8.0,
+            width: 64.0,
+            height: 32.0,
+            min_depth: 0.25,
+            max_depth: 0.75,
+        };
+        let f = flipped_viewport(&v);
+        assert_eq!((f.x, f.width), (16.0, 64.0));
+        // Clip y = +1 maps to y + height/2 · (1 − 1) = the rectangle's top edge (8), y = −1 to 40.
+        let to_pixel = |clip_y: f32| f.y + f.height * (clip_y + 1.0) / 2.0;
+        assert_eq!(to_pixel(1.0), 8.0, "clip top is the rectangle's top");
+        assert_eq!(to_pixel(-1.0), 40.0, "clip bottom is the rectangle's bottom");
+        assert_eq!((f.min_depth, f.max_depth), (0.25, 0.75));
+    }
 }
