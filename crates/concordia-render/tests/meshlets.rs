@@ -549,6 +549,54 @@ fn draws_exactly_its_triangles(r: &mut Renderer) {
     assert!(differing <= 4, "{differing} pixels differ from the M1 path");
 }
 
+/// One bucket of 70 one-meshlet instances: its entries span three object groups (32 + 32 + 6), and
+/// every entry of every group draws, pixel for pixel as the M1 path, on each path (4.3b).
+#[test]
+fn every_entry_of_a_bucket_spanning_object_groups_is_drawn() {
+    for mut r in [renderer(), compute_renderer()].into_iter().flatten() {
+        let mut s = Scene::new();
+        let corners = [[0.0, 0.0, 0.0], [0.3, 0.0, 0.0], [0.0, 0.3, 0.0]];
+        let vertices = corners
+            .iter()
+            .map(|p| (*p, [0.0, 0.0, 1.0], [1.0, 0.0, 0.0, 1.0], [0.0, 0.0]))
+            .collect();
+        let one = s
+            .assets
+            .insert_mesh("one", with_meshlets(shapes::mesh(vertices, vec![0, 1, 2])));
+        let white = s.material("white", common::unlit([1.0; 4]));
+        for i in 0..70u32 {
+            let at = Vec3::new(
+                (i % 10) as f32 * 0.4 - 2.0,
+                (i / 10) as f32 * 0.4 - 1.4,
+                0.0,
+            );
+            place(&mut s, &one, &white, at, 1.0);
+        }
+        s.camera(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, camera());
+        let m1 = render(&mut r, &mut s, false);
+        let meshlets = render(&mut r, &mut s, true);
+        let stats = r.stats();
+        assert_eq!(
+            (stats.meshlets.instances, stats.meshlets.meshlets),
+            (70, 70)
+        );
+        let background = pixel(&m1, 0, 0);
+        let drawn = m1.rgba.chunks(4).filter(|p| *p != background).count();
+        assert!(drawn > 70 * 20, "every triangle covers pixels: {drawn}");
+        let differing = m1
+            .rgba
+            .chunks(4)
+            .zip(meshlets.rgba.chunks(4))
+            .filter(|(a, b)| a != b)
+            .count();
+        assert_eq!(
+            differing, 0,
+            "{:?}: pixels differ from the M1 path",
+            stats.raster_path
+        );
+    }
+}
+
 /// A blob built by hand: meshlet 0 draws triangle A four times (12 bytes, so no padding follows),
 /// meshlet 1 draws B. Read through meshlet 0's references, meshlet 1's first corners name C, a
 /// triangle in the vertex buffer that nothing draws; reading one triangle too far would show it.
