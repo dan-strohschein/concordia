@@ -65,6 +65,7 @@ async fn bench_native_orbit(
 }
 
 /// Native input's `viewport.stats` tags start here, apart from the page's.
+#[cfg(target_os = "macos")]
 const NATIVE_SEQ_BASE: u64 = 1 << 32;
 
 /// Applies viewport gestures in order: camera moves (merging any that queued up) go straight to
