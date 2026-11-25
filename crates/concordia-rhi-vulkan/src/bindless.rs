@@ -52,28 +52,22 @@ pub(crate) struct Bindless {
     pub addresses: VkBuffer,
     pub buffer_slots: Indices,
     pub texture_slots: Indices,
-    /// Empty texture slots hold null descriptors (`VK_EXT_robustness2`), which read as zero as
-    /// Metal's nil entries do; without them an unwritten or freed slot is undefined to read.
-    pub nulls: bool,
+    /// The fallback texture's views (sampled, storage), shown by every empty texture slot: an
+    /// unwritten or freed descriptor is undefined to read, whereas Metal reads nil entries as zero.
+    pub empty: Option<(vk::ImageView, vk::ImageView)>,
 }
 
 impl Bindless {
-    /// Creates the tables (`anisotropy`: the device's sampler anisotropy feature; `nulls`: it
-    /// has `nullDescriptor`, so every texture slot starts null).
+    /// Creates the tables (`anisotropy`: the device's sampler anisotropy feature).
     pub fn new(
         device: &ash::Device,
         allocator: &mut Allocator,
         anisotropy: bool,
-        nulls: bool,
     ) -> Result<Self, RhiError> {
         let mut made = Partial::new(device);
         let result = made.build(allocator, anisotropy);
         match result {
-            Ok(mut tables) => {
-                tables.nulls = nulls;
-                tables.clear_all(device);
-                Ok(tables)
-            }
+            Ok(tables) => Ok(tables),
             Err(e) => {
                 made.destroy();
                 Err(e)
@@ -91,31 +85,39 @@ impl Bindless {
         }
     }
 
-    /// Makes texture slot `index` null in both sets (when the tables hold nulls), after its texture
-    /// is freed.
+    /// Points texture slot `index` back at the fallback texture in both sets, after its texture is
+    /// freed.
     pub fn clear_texture(&self, device: &ash::Device, index: u32) {
         self.write_texture(device, index, None, None);
     }
 
-    /// Makes every texture slot null (when the tables hold nulls).
-    fn clear_all(&self, device: &ash::Device) {
-        if !self.nulls {
-            return;
-        }
-        let sampled =
-            vec![null_image(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL); BINDLESS_CAPACITY as usize];
-        let storage = vec![null_image(vk::ImageLayout::GENERAL); BINDLESS_CAPACITY as usize];
+    /// Makes `sampled` and `storage` (the fallback texture's views, in `General`) what every empty
+    /// slot shows, and points every slot at them.
+    pub fn fill_empty(
+        &mut self,
+        device: &ash::Device,
+        sampled: vk::ImageView,
+        storage: vk::ImageView,
+    ) {
+        self.empty = Some((sampled, storage));
+        let general = |view| {
+            vk::DescriptorImageInfo::default()
+                .image_view(view)
+                .image_layout(vk::ImageLayout::GENERAL)
+        };
+        let sampled = vec![general(sampled); BINDLESS_CAPACITY as usize];
+        let storage = vec![general(storage); BINDLESS_CAPACITY as usize];
         let writes = [
             image_write(self.sets[1], 0, vk::DescriptorType::SAMPLED_IMAGE, &sampled),
             image_write(self.sets[2], 0, vk::DescriptorType::STORAGE_IMAGE, &storage),
         ];
-        // SAFETY: the sets are new and unused, nullDescriptor is enabled, and each write covers
-        // the binding's BINDLESS_CAPACITY elements.
+        // SAFETY: the sets are unused (the device is opening), the views are live, and each write
+        // covers the binding's BINDLESS_CAPACITY elements.
         unsafe { device.update_descriptor_sets(&writes, &[]) };
     }
 
     /// Points texture slot `index` at `sampled` (set 1) and/or `storage` (set 2) views; a set
-    /// given no view gets a null descriptor when the tables hold nulls.
+    /// given no view shows the fallback texture.
     pub fn write_texture(
         &self,
         device: &ash::Device,
@@ -123,17 +125,15 @@ impl Bindless {
         sampled: Option<(vk::ImageView, vk::ImageLayout)>,
         storage: Option<vk::ImageView>,
     ) {
-        let or_null = |view: Option<(vk::ImageView, vk::ImageLayout)>, layout| match view {
-            Some((view, layout)) => Some([vk::DescriptorImageInfo::default()
+        let info = |(view, layout): (vk::ImageView, vk::ImageLayout)| {
+            [vk::DescriptorImageInfo::default()
                 .image_view(view)
-                .image_layout(layout)]),
-            None => self.nulls.then(|| [null_image(layout)]),
+                .image_layout(layout)]
         };
-        let sampled_info = or_null(sampled, vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL);
-        let storage_info = or_null(
-            storage.map(|view| (view, vk::ImageLayout::GENERAL)),
-            vk::ImageLayout::GENERAL,
-        );
+        let general = vk::ImageLayout::GENERAL;
+        let (empty_sampled, empty_storage) = self.empty.unzip();
+        let sampled_info = sampled.or(empty_sampled.map(|v| (v, general))).map(info);
+        let storage_info = storage.or(empty_storage).map(|v| info((v, general)));
         let mut writes = Vec::new();
         if let Some(info) = &sampled_info {
             writes.push(image_write(
@@ -155,8 +155,7 @@ impl Bindless {
             return;
         }
         // SAFETY: the sets are update-after-bind and partially bound, and slot `index` is not used
-        // by any pending submission (slots are reused only after retirement); the views are live,
-        // or null with nullDescriptor enabled.
+        // by any pending submission (slots are reused only after retirement); the views are live.
         unsafe { device.update_descriptor_sets(&writes, &[]) };
     }
 
@@ -175,11 +174,6 @@ impl Bindless {
             resources::Dead::Buffer(self.addresses),
         );
     }
-}
-
-/// A null image descriptor (`nullDescriptor`): reads return zero.
-fn null_image(layout: vk::ImageLayout) -> vk::DescriptorImageInfo {
-    vk::DescriptorImageInfo::default().image_layout(layout)
 }
 
 /// A write of `info.len()` image descriptors from element `index`.
@@ -248,7 +242,7 @@ impl<'d> Partial<'d> {
             addresses,
             buffer_slots: Indices::default(),
             texture_slots: Indices::default(),
-            nulls: false,
+            empty: None,
         })
     }
 

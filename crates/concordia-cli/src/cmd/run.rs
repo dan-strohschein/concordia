@@ -57,7 +57,9 @@ pub(crate) fn run(args: &Args) -> Result<(), Failure> {
             "--bench-hz must be 1..=1000 and --bench-frames > 0",
         ));
     }
-    let handle = Engine::new(config).map_err(|e| api_failure(&e))?.spawn();
+    let (handle, engine_thread) = Engine::new(config)
+        .map_err(|e| api_failure(&e))?
+        .spawn_with_thread();
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -96,10 +98,20 @@ pub(crate) fn run(args: &Args) -> Result<(), Failure> {
     };
     let mut window = project.manifest.window.clone();
     window.fullscreen |= args.fullscreen;
-    run_window(&window, RunOptions { exit_after, stop }, &mut viewer)
-        .map_err(|e| Failure::usage(e.to_string()))?;
-    viewer.failure.map_or(Ok(()), Err)
+    let ran = run_window(&window, RunOptions { exit_after, stop }, &mut viewer);
+    let failure = viewer.failure.take();
+    // The engine, its render thread and the GPU's threads stop before the process exits: drivers'
+    // exit handlers crash threads still inside them (seen with lavapipe).
+    drop(viewer);
+    if !concordia_api::join_engine(engine_thread, ENGINE_SHUTDOWN) {
+        eprintln!("concordia run: the engine did not stop within {ENGINE_SHUTDOWN:?}");
+    }
+    ran.map_err(|e| Failure::usage(e.to_string()))?;
+    failure.map_or(Ok(()), Err)
 }
+
+/// The longest `concordia run` waits for the engine to stop after the window closes.
+const ENGINE_SHUTDOWN: Duration = Duration::from_secs(30);
 
 /// The latency bench's settings.
 #[derive(Debug, Clone)]

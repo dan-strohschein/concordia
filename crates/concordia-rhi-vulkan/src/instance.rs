@@ -269,26 +269,6 @@ impl Instance {
         }
     }
 
-    /// True when `physical` has `VK_EXT_robustness2` with `nullDescriptor` (empty bindless slots
-    /// can then hold null descriptors, which read as zero).
-    pub fn null_descriptors(&self, physical: vk::PhysicalDevice) -> bool {
-        // SAFETY: `physical` came from this instance.
-        let has = unsafe { self.raw.enumerate_device_extension_properties(physical) }
-            .unwrap_or_default()
-            .iter()
-            .any(|e| e.extension_name_as_c_str() == Ok(ash::ext::robustness2::NAME));
-        if !has {
-            return false;
-        }
-        let mut robustness = vk::PhysicalDeviceRobustness2FeaturesEXT::default();
-        {
-            let mut all = vk::PhysicalDeviceFeatures2::default().push_next(&mut robustness);
-            // SAFETY: the device has VK_EXT_robustness2; the chain is writable.
-            unsafe { self.raw.get_physical_device_features2(physical, &mut all) };
-        }
-        robustness.null_descriptor == vk::TRUE
-    }
-
     fn noted_extensions(&self, physical: vk::PhysicalDevice) -> Result<Vec<String>, RhiError> {
         // SAFETY: `physical` came from this instance.
         let available = unsafe { self.raw.enumerate_device_extension_properties(physical) }

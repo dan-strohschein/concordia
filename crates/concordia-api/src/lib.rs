@@ -42,7 +42,7 @@ pub use debug_draw::{DebugGeometry, DebugLine, DebugTriangle};
 pub use engine::{Engine, EngineConfig};
 pub use error::{ApiError, ApiErrorKind, ErrorData};
 pub use events::{EventSink, Topic};
-pub use handle::EngineHandle;
+pub use handle::{EngineHandle, join_engine};
 pub use image::{EncodedImage, image_fields};
 pub use link::EngineLink;
 pub use method::{
