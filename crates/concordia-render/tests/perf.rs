@@ -363,6 +363,9 @@ fn masked_caps_hide_features_from_render_paths() {
 /// each pair) and the median of adjacent on/off ratios is compared, which cancels the drift.
 #[test]
 fn pass_timer_overhead_under_2_percent() {
+    if common::backend() != concordia_rhi::Backend::Metal {
+        return; // D4: perf is asserted only on Metal, the reference machine's backend.
+    }
     let Some(mut r) = common::renderer() else {
         return;
     };

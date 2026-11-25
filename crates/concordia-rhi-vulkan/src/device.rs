@@ -161,8 +161,10 @@ impl std::ops::Deref for VulkanDevice {
     }
 }
 
-/// How long the retire thread waits on the GPU, or sleeps with nothing in flight, per round.
-const RETIRE_POLL: Duration = Duration::from_millis(20);
+/// How often the retire thread looks at the progress timeline while work is in flight.
+const RETIRE_BUSY: Duration = Duration::from_millis(1);
+/// How long it sleeps with nothing in flight (a submission wakes it).
+const RETIRE_IDLE: Duration = Duration::from_millis(50);
 
 impl VulkanDevice {
     /// Opens the best Vulkan 1.3 device with `options`.
@@ -182,20 +184,15 @@ impl VulkanDevice {
     }
 }
 
-/// Retires finished submissions until `stop`: waits on the oldest one, or sleeps when idle.
+/// Retires finished submissions until `stop`. It makes no Vulkan call outside the state lock
+/// (`retire` reads the timeline under it): the validation layers Ubuntu 24.04 ships crashed when it
+/// waited on the timeline while another thread submitted.
 fn retire_loop(inner: &Inner, stop: &AtomicBool) {
     while !stop.load(Ordering::Acquire) {
-        match inner.oldest_in_flight() {
-            Some(value) => {
-                if inner
-                    .wait_value(inner.progress, value, RETIRE_POLL)
-                    .is_err()
-                {
-                    std::thread::park_timeout(RETIRE_POLL);
-                }
-                inner.retire();
-            }
-            None => std::thread::park_timeout(RETIRE_POLL),
+        let busy = inner.oldest_in_flight().is_some();
+        std::thread::park_timeout(if busy { RETIRE_BUSY } else { RETIRE_IDLE });
+        if busy {
+            inner.retire();
         }
     }
 }
