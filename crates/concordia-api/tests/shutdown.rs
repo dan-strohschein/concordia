@@ -25,6 +25,10 @@ fn a_handle_still_held_makes_the_join_give_up_instead_of_hanging() {
         .spawn_with_thread();
     let start = Instant::now();
     assert!(!join_engine(thread, Duration::from_millis(200)));
-    assert!(start.elapsed() < Duration::from_secs(5), "{:?}", start.elapsed());
+    assert!(
+        start.elapsed() < Duration::from_secs(5),
+        "{:?}",
+        start.elapsed()
+    );
     drop(handle);
 }
