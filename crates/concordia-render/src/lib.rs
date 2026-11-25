@@ -18,6 +18,8 @@ pub mod graph;
 pub mod ibl;
 mod lighting;
 mod material_rows;
+mod meshlet;
+mod meshlet_pass;
 mod module;
 mod orbit;
 mod overlay;
@@ -54,6 +56,7 @@ pub use extract::{
 };
 pub use frame::DrawPush;
 pub use lighting::candela;
+pub use meshlet::{ExpandPush, MeshletPush};
 pub use module::{
     CaptureScreenshot, CaptureScreenshotParams, CaptureScreenshotResult, DeviceFactory,
     RenderModule, ViewportControl, ViewportNavigateParams, attach_surface, detach_surface,
@@ -74,8 +77,8 @@ pub use representation::Representation;
 pub use scene_cache::{RenderScene, SceneCache, SceneDelta, SceneItems};
 pub use shadow_pass::ShadowPush;
 pub use stats::{
-    ClosureMergeStats, FrameStats, MaterialDowngrade, MergedOperator, RenderStatsGet,
-    RenderStatsParams, RenderStatsResult,
+    ClosureMergeStats, FrameStats, MaterialDowngrade, MergedOperator, MeshletCounts, RasterPath,
+    RenderStatsGet, RenderStatsParams, RenderStatsResult,
 };
 pub use ui_pass::{UI_QUAD_FLOATS, UI_STOP_FLOATS, UiPush, encode_ui};
 pub use view::{Landing, Pick, View, axis_delta, landing, pick, rotate_angle, scale_factor};

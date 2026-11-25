@@ -288,3 +288,37 @@ fn blessing_is_refused_on_vulkan() {
     assert!(matches!(err, GoldenError::BlessOnBackend { .. }), "{err}");
     assert!(!dir.path().join("golden/s/x.png").exists());
 }
+
+#[test]
+fn keep_writes_the_actual_image_of_a_missing_golden() {
+    let dir = tempfile::tempdir().unwrap();
+    let (base, _) = images();
+    let quiet = Golden::new(
+        dir.path().join("golden"),
+        dir.path().join("q"),
+        false,
+        false,
+    );
+    let err = quiet.check("s", "new", &base).expect_err("no golden yet");
+    assert!(matches!(err, GoldenError::Missing { .. }), "{err}");
+    assert!(
+        !dir.path().join("q").exists(),
+        "nothing written without keep"
+    );
+    let err = Golden::new(
+        dir.path().join("golden"),
+        dir.path().join("f"),
+        false,
+        false,
+    )
+    .with_keep(true)
+    .check_on(Some(concordia_rhi::Backend::Vulkan), "s", "new", &base)
+    .expect_err("still missing");
+    assert!(matches!(err, GoldenError::Missing { .. }), "{err}");
+    let actual = dir.path().join("f/s/vulkan/new.actual.png");
+    assert!(actual.is_file(), "the image to review before blessing");
+    assert!(
+        !dir.path().join("golden/s/new.png").exists(),
+        "keep never blesses"
+    );
+}

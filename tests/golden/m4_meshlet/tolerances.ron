@@ -1,0 +1,24 @@
+Tolerances(
+    default: (
+        mean: 0.01,
+        p99: 0.25,
+    ),
+    goldens: {
+        "masked_meshlets": (
+            mean: 0.005,
+            p99: 0.25,
+        ),
+        "meshlet_shadows": (
+            mean: 0.005,
+            p99: 0.25,
+        ),
+        "meshlets_vs_forward": (
+            mean: 0.005,
+            p99: 0.25,
+        ),
+        "skinned_composite": (
+            mean: 0.005,
+            p99: 0.25,
+        ),
+    },
+)

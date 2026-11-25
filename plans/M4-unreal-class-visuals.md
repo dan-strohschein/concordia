@@ -602,6 +602,16 @@ Design (each item is a question for the author, with the recommendation):
 - **Q9 ADR-0100** is amended with Q1–Q8 and moves to **Accepted** in this PR's last step, once the path renders on Metal and lavapipe with its goldens passing.
 - **Q10 one PR**, in ten steps (below). The RHI additions are small, and the meshlet path is their first user. It is split at review time if it grows.
 
+Changes while executing (recorded as they happened):
+- **Steps 5–7 landed as one commit:** the scene data has no reader until the shaders exist, and clippy forbids dead code.
+- **No atomics in `meshlet_expand`** (Q5 said each thread adds one to its bucket's count): the renderer has no atomics yet, and atomics through bindless pointers on Metal via Slang are unverified. Entries go to fixed slots, and the thread of each bucket's first entry writes the bucket's whole argument record from a bucket table (first entry, entries, vertices). Deterministic, and the GPU still writes every argument; 4.4 decides atomics or a prefix sum with culling. The entry point is `meshlet_expand` (`expand` is a Slang keyword).
+- **The mesh-table row is 32 bytes** (Q4 said 16): blob, positions, normals, tangents; UVs, meshlet count, triangles per meshlet, 0. A bucket groups several meshes, so the streams come per instance.
+- **Shared checks** in `concordia_rhi::check` (indirect argument range, texture copy, pass rectangles), run by both backends; viewports and scissors outside the pass's targets are errors (Metal requires it), a case added to the suite. Copies within one texture use `General` on Vulkan, and overlapping regions in one mip are refused.
+- **Goldens:** the shadow scene became a golden (`meshlet_shadows`) because every tolerance entry must name one; each scene's on-against-off check uses its golden's entry (mean 0.005). The four goldens are the M1 path's images; the meshlet images matched them exactly on Metal (FLIP 0.0). Approved and blessed by the author on 2026-11-25.
+- **Testkit:** keep mode also writes `<name>.actual.png` for a missing golden, so new images can be reviewed before blessing.
+- **Found:** a recording error inside an encoder aborted the process on Metal, and left a render pass open on Vulkan; Vulkan created image views for copy-only textures. All fixed.
+- **Limitation (unchanged from M1):** masked materials cast solid shadows (the shadow pass ignores alpha masks) on both paths.
+
 Crates and files: `concordia-rhi` (commands, validation, conformance cases), `concordia-rhi-metal` (`encode.rs`), `concordia-rhi-vulkan` (`encode.rs`, `track.rs`); `concordia-render` (new `meshlet.rs` (buckets, work items, mesh table), `shaders/meshlet.slang` (`expand`, `meshlet_vs`, `meshlet_shadow_vs`), `forward.slang` (one `VsOut` field, the two modes), `gpu.rs`, `pipelines.rs`, `renderer.rs`, `shadow_pass.rs`, `stats.rs`, `view_mode.rs`, `module.rs` (`[render] meshlets`)), with a new dependency on `concordia-cluster` (blob decode); `concordia-api` stats types and the editor schemas; `tests/golden/m4_meshlet/`; `docs/adr/0100`, `plans/README.md`, AGENTS/README of the touched crates. No new crates and no new external dependencies, so the locks change only by the path dependency.
 
 Tests first (each seen failing for the right reason before its code, except Vulkan device behaviour, tested after):

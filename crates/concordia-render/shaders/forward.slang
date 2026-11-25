@@ -44,8 +44,9 @@ struct Frame {
 };
 // Per light: position+range, direction, exposed radiance, spot (scale, offset).
 struct Light { float4 position_range; float4 direction; float4 radiance; float4 spot; };
-// skin = (first palette matrix, joint count, lod, 0); a count of 0 is unskinned; lod = simulation
-// LOD level + 1 (0: none), plus 16 when drawn as its representation's cheaper mesh.
+// skin = (first palette matrix, joint count, lod, meshlet mesh row + 1); a count of 0 is unskinned;
+// lod = simulation LOD level + 1 (0: none), plus 16 when drawn as its representation's cheaper
+// mesh; the mesh row is 0 off the meshlet path.
 struct Instance { float4 model[4]; float4 normal[4]; uint4 skin; };
 // Materials are `uint4` rows (floats as bits; `material_rows.rs`): a header (closures, ops, flags,
 // mask cutoff), one row per op (kind, slab index or mix texture, parameter), then CLOSURE_ROWS
@@ -81,6 +82,20 @@ float3 read3(uint buffer, uint i) {
     return float3(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]);
 }
 
+// An object-space vertex placed by `inst` and seen by `frame`, as triangle corner `corner`.
+VsOut surface_vertex(Frame* frame, Instance* inst, float3 p, float3 n, float4 t, float2 uv, uint corner) {
+    float4 world = xform(inst.model, float4(p, 1.0));
+    VsOut o;
+    o.position = xform(frame.view_proj, world);
+    o.world = world.xyz;
+    o.normal = xform(inst.normal, float4(n, 0.0)).xyz;
+    o.tangent = float4(xform(inst.model, float4(t.xyz, 0.0)).xyz, t.w);
+    o.uv = uv;
+    o.bary = float3(corner == 0 ? 1.0 : 0.0, corner == 1 ? 1.0 : 0.0, corner == 2 ? 1.0 : 0.0);
+    o.lod = inst.skin.z;
+    return o;
+}
+
 [shader("vertex")]
 VsOut vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform DrawPush push) {
     Instance* inst = ((Instance*)g_buffers.ptr[push.instances]) + push.instance + iid;
@@ -95,17 +110,8 @@ VsOut vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform DrawPush push
         n = s.normal;
         t.xyz = s.tangent;
     }
-    float4 world = xform(inst.model, float4(p, 1.0));
-    VsOut o;
-    o.position = xform(frame.view_proj, world);
-    o.world = world.xyz;
-    o.normal = xform(inst.normal, float4(n, 0.0)).xyz;
-    o.tangent = float4(xform(inst.model, float4(t.xyz, 0.0)).xyz, t.w);
-    o.uv = ((float2*)g_buffers.ptr[push.uvs])[v];
-    uint corner = vid % 3; // vertices are pulled per triangle corner
-    o.bary = float3(corner == 0 ? 1.0 : 0.0, corner == 1 ? 1.0 : 0.0, corner == 2 ? 1.0 : 0.0);
-    o.lod = inst.skin.z;
-    return o;
+    float2 uv = ((float2*)g_buffers.ptr[push.uvs])[v];
+    return surface_vertex(frame, inst, p, n, t, uv, vid % 3); // pulled per triangle corner
 }
 
 // The `lod` view mode's color (linear; the output is sRGB): hue from the simulation LOD (white

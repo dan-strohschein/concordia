@@ -55,6 +55,30 @@ pub struct FrameStats {
     pub downgraded_materials: Vec<MaterialDowngrade>,
 }
 
+/// How the frame's opaque static geometry reached the rasterizer (ADR-0100).
+#[allow(non_camel_case_types)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect)]
+pub enum RasterPath {
+    /// Every draw went through the M1 forward path (no draw took the meshlet path).
+    #[default]
+    forward,
+    /// Meshlets were expanded by a compute pass and drawn with indirect draws.
+    compute_indirect,
+}
+
+/// What the meshlet path drew in the frame's forward pass.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect)]
+pub struct MeshletCounts {
+    /// Instances drawn through meshlets (in the camera's view).
+    pub instances: u64,
+    /// Meshlets drawn.
+    pub meshlets: u64,
+    /// Triangles in those meshlets (not the padded draws).
+    pub triangles: u64,
+    /// Indirect draws issued (one per pipeline and material).
+    pub indirect_draws: u64,
+}
+
 /// A material simplified to fit the closure budget.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 pub struct MaterialDowngrade {

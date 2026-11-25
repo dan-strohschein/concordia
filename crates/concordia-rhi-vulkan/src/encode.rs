@@ -48,9 +48,13 @@ pub(crate) fn record(
     };
     recorder.begin(inits)?;
     for op in &ops {
-        match op {
-            Op::Barrier(transitions) => recorder.barrier(transitions)?,
-            Op::Command(n) => recorder.command(&commands[*n])?,
+        let step = match op {
+            Op::Barrier(transitions) => recorder.barrier(transitions),
+            Op::Command(n) => recorder.command(&commands[*n]),
+        };
+        if let Err(e) = step {
+            recorder.abandon();
+            return Err(e);
         }
     }
     recorder.finish();
@@ -172,6 +176,15 @@ impl Recorder<'_> {
         match transitions.is_empty() {
             true => Ok(()),
             false => self.barrier(&transitions),
+        }
+    }
+
+    /// Leaves the command buffer endable after a failed command: closes an open render pass.
+    fn abandon(&mut self) {
+        if self.in_pass {
+            // SAFETY: a render pass is open on this command buffer.
+            unsafe { self.device().cmd_end_rendering(self.t.cb) };
+            self.in_pass = false;
         }
     }
 
@@ -892,7 +905,11 @@ mod tests {
         // Clip y = +1 maps to y + height/2 · (1 − 1) = the rectangle's top edge (8), y = −1 to 40.
         let to_pixel = |clip_y: f32| f.y + f.height * (clip_y + 1.0) / 2.0;
         assert_eq!(to_pixel(1.0), 8.0, "clip top is the rectangle's top");
-        assert_eq!(to_pixel(-1.0), 40.0, "clip bottom is the rectangle's bottom");
+        assert_eq!(
+            to_pixel(-1.0),
+            40.0,
+            "clip bottom is the rectangle's bottom"
+        );
         assert_eq!((f.min_depth, f.max_depth), (0.25, 0.75));
     }
 }

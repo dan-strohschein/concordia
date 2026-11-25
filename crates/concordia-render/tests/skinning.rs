@@ -959,3 +959,50 @@ fn selection_box_follows_the_posed_bounds() {
     let (_, y) = px(0.0, 0.0);
     assert!(rows(y - 3, y + 4) > 20, "the posed box is drawn along -X");
 }
+
+/// The arms (skinned, M1 path) crossing a dense ball on the meshlet path, behind a half-clear
+/// pane (blended, M1 path): depth from both paths sorts them and the pane blends over both.
+#[test]
+fn skinned_mesh_composites_with_meshlet_depth() {
+    let Some(mut r) = renderer() else { return };
+    let mut s = arms_scene(true, [bent(0.8), bent(-0.6)]);
+    let ball = s.assets.insert_mesh(
+        "ball",
+        common::with_meshlets(concordia_assets::shapes::sphere(1.0, 96, 48)),
+    );
+    let stone = lit_material(&mut s, "stone", [0.55, 0.55, 0.5]);
+    spawn(&mut s, Vec3::new(0.0, 1.0, 0.0), &ball, &stone, None, None);
+    let glass = s.material(
+        "glass",
+        M1 {
+            base_color: [0.3, 0.6, 1.0, 0.45],
+            metallic: 0.0,
+            roughness: 0.2,
+            alpha_mode: concordia_assets::AlphaMode::Blend,
+            ..M1::default()
+        },
+    );
+    let pane = s.entity(
+        Vec3::new(-0.6, 1.2, 1.0),
+        Quat::from_rotation_x(std::f32::consts::FRAC_PI_2),
+        Vec3::splat(1.3),
+    );
+    let plane: AssetRef = "builtin:mesh/plane".parse().unwrap();
+    s.world.insert(pane, renderer_for(plane, glass)).unwrap();
+    let mut frame = |meshlets: bool| {
+        r.set_meshlets(meshlets);
+        s.render_mode(&mut r, 256, 192, ViewMode::lit)
+    };
+    let m1 = frame(false);
+    let meshlets = frame(true);
+    let stats = r.stats();
+    assert_eq!(
+        stats.meshlets.instances, 1,
+        "only the ball takes the meshlet path"
+    );
+    assert_eq!(
+        stats.draws, 5,
+        "two arms, the sleeve, the ball and the pane"
+    );
+    common::assert_same_as_m1("skinned_composite", &m1, &meshlets);
+}
