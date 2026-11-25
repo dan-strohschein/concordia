@@ -70,6 +70,9 @@ pub struct Features {
     pub shader_sampled_image_array_non_uniform_indexing: bool,
     /// `shaderStorageImageArrayNonUniformIndexing`.
     pub shader_storage_image_array_non_uniform_indexing: bool,
+    /// `independentBlend` (per-target write masks; absent in records made before 4.3b2).
+    #[serde(default)]
+    pub independent_blend: bool,
 }
 
 impl Features {
@@ -114,6 +117,7 @@ impl Features {
                 self.shader_storage_image_array_non_uniform_indexing,
                 "shaderStorageImageArrayNonUniformIndexing",
             ),
+            (self.independent_blend, "independentBlend"),
         ]
         .into_iter()
         .filter_map(|(present, name)| (!present).then_some(name))

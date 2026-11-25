@@ -1109,6 +1109,7 @@ fn create_logical(
         .shader_storage_image_read_without_format(true)
         .shader_storage_image_write_without_format(true)
         .shader_int64(true)
+        .independent_blend(true)
         .sampler_anisotropy(chosen.record.features.sampler_anisotropy);
     let mut mesh = vk::PhysicalDeviceMeshShaderFeaturesEXT::default()
         .mesh_shader(true)

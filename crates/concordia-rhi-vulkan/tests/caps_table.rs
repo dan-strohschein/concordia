@@ -264,3 +264,13 @@ fn bindless_textures_need_non_uniform_indexing() {
         ]
     );
 }
+
+/// Per-target write masks (M4 4.3b2) give attachments different blend states, which needs
+/// `independentBlend` (Vulkan 1.0 core; every desktop GPU, lavapipe and MoltenVK have it).
+#[test]
+fn independent_blend_is_required() {
+    let mut record = lavapipe();
+    assert!(record.missing().is_empty());
+    record.features.independent_blend = false;
+    assert_eq!(record.missing(), ["independentBlend"]);
+}
