@@ -1,5 +1,5 @@
 # M4: Unreal-class visuals
-Status: In progress (4.1a, 4.1b1–b4, 4.1v(a), 4.1v(b) and 4.1v(c) done (D4's spike answered: mesh shaders and ray queries run on lavapipe); 4.2 planned (`m4/4.2-meshlets`), awaiting the author's approval; 4.1v(a)'s device tests await the author's re-test) · Depends on: M1 (render), M2 (scripting host, graphs' WIT API), M3 (replay assertions, Studio) · Detail level: **Refined after M3 (2026-11-24; R1–R5 and D1–D10 approved by the author)** · Estimated effort: 32–45 agent-assisted engineer-weeks (two parallel tracks; see Effort estimate)
+Status: In progress (4.1a, 4.1b1–b4, 4.1v(a), 4.1v(b) and 4.1v(c) done (D4's spike answered: mesh shaders and ray queries run on lavapipe); 4.2 in progress (`m4/4.2-meshlets`, plan approved 2026-11-25); 4.1v(a)'s device tests await the author's re-test) · Depends on: M1 (render), M2 (scripting host, graphs' WIT API), M3 (replay assertions, Studio) · Detail level: **Refined after M3 (2026-11-24; R1–R5 and D1–D10 approved by the author)** · Estimated effort: 32–45 agent-assisted engineer-weeks (two parallel tracks; see Effort estimate)
 
 > This plan has full phase breakdowns and test lists. Its numbers (budgets, FLIP tolerances, page sizes, meshlet sizes) are **provisional** and must be recalibrated in the refinement pass after M3, using measurements from the M1–M3 renderer on the reference Mac. Every recalibrated number lands in a text file (`tests/perf/budgets/*.budget.ron`, per-test tolerances), never in code.
 
@@ -433,7 +433,7 @@ Steps, each a commit and a push:
 
 Out of scope: Wayland embedding (needs `unsafe` in the editor), native gizmo grabs and latency benches on Linux, Windows, MoltenVK and real GPUs.
 
-**4.2 plan** (`m4/4.2-meshlets`, 2026-11-25; R5, ADR-0100. Decisions Q1–Q8 below are *recommended, awaiting the author*. Everything is test-first: 4.2 is CPU-only and touches no device code.)
+**4.2 plan** (`m4/4.2-meshlets`, 2026-11-25; R5, ADR-0100. Decisions Q1–Q8 below were approved by the author as recommended on 2026-11-25. Everything is test-first: 4.2 is CPU-only and touches no device code.)
 Scope: the vendored meshoptimizer behind `meshopt-sys`; `concordia-cluster` (meshlet build, bounds, normal cones, the encoded format, its build cache); the model importers' `meshlets` setting; `concordia cluster stats` and its Engine API method. Out: anything on the GPU (4.3), meshlet LODs (4.5), the vertex and index codecs, ray-tracing clusters (`buildMeshletsSpatial`, with 4.8), perf calibration.
 
 Facts found while planning (checked in code, 2026-11-25):
