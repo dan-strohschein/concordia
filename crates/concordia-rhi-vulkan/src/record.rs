@@ -121,6 +121,55 @@ impl Features {
     }
 }
 
+/// `VK_EXT_mesh_shader`'s features and limits, as the probe reads them (M4 4.3b).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MeshRecord {
+    /// `meshShader`.
+    pub mesh_shader: bool,
+    /// `taskShader`.
+    pub task_shader: bool,
+    /// `maxMeshOutputVertices`.
+    pub max_output_vertices: u32,
+    /// `maxMeshOutputPrimitives`.
+    pub max_output_primitives: u32,
+    /// `maxTaskPayloadSize`.
+    pub max_payload_bytes: u32,
+    /// `maxMeshWorkGroupInvocations`.
+    pub max_mesh_invocations: u32,
+    /// `maxTaskWorkGroupInvocations`.
+    pub max_task_invocations: u32,
+    /// `maxMeshWorkGroupCount`.
+    pub max_mesh_groups: [u32; 3],
+    /// `maxMeshWorkGroupTotalCount`.
+    pub max_mesh_groups_total: u32,
+    /// `maxTaskWorkGroupCount`.
+    pub max_task_groups: [u32; 3],
+    /// `maxTaskWorkGroupTotalCount`.
+    pub max_task_groups_total: u32,
+}
+
+impl MeshRecord {
+    /// The device takes what the RHI lets a mesh pipeline or draw ask for (the portable limits).
+    pub fn meets_portable_limits(&self) -> bool {
+        use concordia_rhi::{
+            MAX_MESH_PAYLOAD_BYTES, MAX_MESH_STAGE_THREADS, MAX_MESH_TASK_GROUPS,
+            MAX_MESH_TASK_GROUPS_TOTAL,
+        };
+        let groups = |each: [u32; 3], total: u32| {
+            each.iter().all(|&g| g >= MAX_MESH_TASK_GROUPS)
+                && u64::from(total) >= MAX_MESH_TASK_GROUPS_TOTAL
+        };
+        self.max_output_vertices > 0
+            && self.max_output_primitives > 0
+            && self.max_payload_bytes >= MAX_MESH_PAYLOAD_BYTES
+            && self.max_mesh_invocations >= MAX_MESH_STAGE_THREADS
+            && self.max_task_invocations >= MAX_MESH_STAGE_THREADS
+            && groups(self.max_mesh_groups, self.max_mesh_groups_total)
+            && groups(self.max_task_groups, self.max_task_groups_total)
+    }
+}
+
 /// The raw facts a Vulkan probe reads from a physical device.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -160,6 +209,10 @@ pub struct ProbeRecord {
     /// in records made before 4.1v(b).
     #[serde(default)]
     pub surface_extensions: Vec<String>,
+    /// Mesh-shader features and limits when `VK_EXT_mesh_shader` is present; `None` without it
+    /// and in records made before 4.3b.
+    #[serde(default)]
+    pub mesh: Option<MeshRecord>,
 }
 
 impl ProbeRecord {
@@ -195,6 +248,12 @@ impl ProbeRecord {
 /// The capabilities a device with `record` has on this backend.
 pub fn caps_from_record(record: &ProbeRecord) -> RhiCaps {
     let usable = record.missing().is_empty();
+    let mesh = record.mesh.filter(|m| {
+        usable
+            && m.mesh_shader
+            && m.meets_portable_limits()
+            && record.extensions.iter().any(|e| e == "VK_EXT_mesh_shader")
+    });
     let [major, minor, _] = record.api_version;
     let mut feature_sets = vec![format!("vulkan{major}.{minor}")];
     feature_sets.extend(record.extensions.iter().cloned());
@@ -205,9 +264,9 @@ pub fn caps_from_record(record: &ProbeRecord) -> RhiCaps {
         unified_memory: record.unified_memory,
         msaa_sample_counts: record.msaa_sample_counts.clone(),
         bindless: usable && record.bindless_textures() >= BINDLESS_CAPACITY,
-        // Not implemented in 4.1v(a): mesh pipelines arrive in 4.3b, ray queries in 4.8.
-        mesh_shaders: false,
-        object_shaders: false,
+        mesh_shaders: mesh.is_some(),
+        object_shaders: mesh.is_some_and(|m| m.task_shader),
+        // Not implemented yet: ray queries arrive in 4.8.
         ray_tracing: false,
         hw_ray_tracing: false,
         metalfx_temporal: false,
@@ -215,8 +274,8 @@ pub fn caps_from_record(record: &ProbeRecord) -> RhiCaps {
             0 => TimestampGranularity::None,
             _ => TimestampGranularity::DrawBoundary,
         },
-        max_mesh_output_vertices: 0,
-        max_mesh_output_primitives: 0,
+        max_mesh_output_vertices: mesh.map_or(0, |m| m.max_output_vertices),
+        max_mesh_output_primitives: mesh.map_or(0, |m| m.max_output_primitives),
         max_buffer_bytes: record.max_buffer_bytes,
         max_bindless_textures: record.bindless_textures(),
         max_bindless_buffers: BINDLESS_CAPACITY,

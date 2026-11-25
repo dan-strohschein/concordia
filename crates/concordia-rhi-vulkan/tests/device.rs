@@ -271,11 +271,12 @@ fn wrong_shader_language_and_mesh_pipelines_are_errors() {
         blend: concordia_rhi::BlendMode::Opaque,
         label: "mesh".into(),
     };
-    assert!(matches!(
-        device.create_mesh_pipeline(&mesh),
-        Err(RhiError::Unsupported(_))
-    ));
-    assert!(!device.caps().mesh_shaders);
+    // With mesh shaders (lavapipe) MSL is refused like any other stage; without, the pipeline is.
+    let made = device.create_mesh_pipeline(&mesh);
+    match device.caps().mesh_shaders {
+        true => assert!(matches!(made, Err(RhiError::Invalid { .. })), "{made:?}"),
+        false => assert!(matches!(made, Err(RhiError::Unsupported(_))), "{made:?}"),
+    }
     assert_clean(&log);
 }
 

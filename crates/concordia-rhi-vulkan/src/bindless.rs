@@ -9,12 +9,18 @@ use crate::convert::{self, error};
 use crate::record::BINDLESS_CAPACITY;
 use crate::resources::{self, Ctx, VkBuffer};
 
-/// Every stage reads the tables and push constants.
-pub(crate) const STAGES: vk::ShaderStageFlags = vk::ShaderStageFlags::from_raw(
-    vk::ShaderStageFlags::VERTEX.as_raw()
-        | vk::ShaderStageFlags::FRAGMENT.as_raw()
-        | vk::ShaderStageFlags::COMPUTE.as_raw(),
-);
+/// The stages that read the tables and push constants: every stage the device has (the object and
+/// mesh stages only with `VK_EXT_mesh_shader` enabled, `task` with its task shaders).
+pub(crate) fn stages(mesh: bool, task: bool) -> vk::ShaderStageFlags {
+    let base = vk::ShaderStageFlags::VERTEX
+        | vk::ShaderStageFlags::FRAGMENT
+        | vk::ShaderStageFlags::COMPUTE;
+    match (mesh, task) {
+        (false, _) => base,
+        (true, false) => base | vk::ShaderStageFlags::MESH_EXT,
+        (true, true) => base | vk::ShaderStageFlags::MESH_EXT | vk::ShaderStageFlags::TASK_EXT,
+    }
+}
 
 /// Free slots in one table.
 #[derive(Debug, Default)]
@@ -47,6 +53,8 @@ pub(crate) struct Bindless {
     pub pool: vk::DescriptorPool,
     pub sets: [vk::DescriptorSet; 3],
     pub pipeline_layout: vk::PipelineLayout,
+    /// The stages of the layout's tables and push-constant range.
+    pub stages: vk::ShaderStageFlags,
     pub samplers: Vec<vk::Sampler>,
     /// `BINDLESS_CAPACITY` device addresses (set 0, binding 0).
     pub addresses: VkBuffer,
@@ -58,13 +66,15 @@ pub(crate) struct Bindless {
 }
 
 impl Bindless {
-    /// Creates the tables (`anisotropy`: the device's sampler anisotropy feature).
+    /// Creates the tables (`anisotropy`: the device's sampler anisotropy feature; `stages`: see
+    /// [`stages`]).
     pub fn new(
         device: &ash::Device,
         allocator: &mut Allocator,
         anisotropy: bool,
+        stages: vk::ShaderStageFlags,
     ) -> Result<Self, RhiError> {
-        let mut made = Partial::new(device);
+        let mut made = Partial::new(device, stages);
         let result = made.build(allocator, anisotropy);
         match result {
             Ok(tables) => Ok(tables),
@@ -163,6 +173,7 @@ impl Bindless {
     pub fn destroy(self, device: &ash::Device, allocator: &mut Allocator) {
         let mut made = Partial {
             device,
+            stages: self.stages,
             layouts: self.layouts.to_vec(),
             pool: self.pool,
             pipeline_layout: self.pipeline_layout,
@@ -194,6 +205,7 @@ fn image_write<'a>(
 /// Objects created so far, so a failed build can undo them.
 struct Partial<'d> {
     device: &'d ash::Device,
+    stages: vk::ShaderStageFlags,
     layouts: Vec<vk::DescriptorSetLayout>,
     pool: vk::DescriptorPool,
     pipeline_layout: vk::PipelineLayout,
@@ -201,9 +213,10 @@ struct Partial<'d> {
 }
 
 impl<'d> Partial<'d> {
-    fn new(device: &'d ash::Device) -> Self {
+    fn new(device: &'d ash::Device, stages: vk::ShaderStageFlags) -> Self {
         Self {
             device,
+            stages,
             layouts: Vec::new(),
             pool: vk::DescriptorPool::null(),
             pipeline_layout: vk::PipelineLayout::null(),
@@ -238,6 +251,7 @@ impl<'d> Partial<'d> {
             pool: self.pool,
             sets,
             pipeline_layout: self.pipeline_layout,
+            stages: self.stages,
             samplers: std::mem::take(&mut self.samplers),
             addresses,
             buffer_slots: Indices::default(),
@@ -272,7 +286,7 @@ impl<'d> Partial<'d> {
             .binding(0)
             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
             .descriptor_count(1)
-            .stage_flags(STAGES)];
+            .stage_flags(self.stages)];
         self.set_layout(&binding, &[vk::DescriptorBindingFlags::empty()], false)
     }
 
@@ -282,11 +296,11 @@ impl<'d> Partial<'d> {
                 .binding(0)
                 .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                 .descriptor_count(BINDLESS_CAPACITY)
-                .stage_flags(STAGES),
+                .stage_flags(self.stages),
             vk::DescriptorSetLayoutBinding::default()
                 .binding(1)
                 .descriptor_type(vk::DescriptorType::SAMPLER)
-                .stage_flags(STAGES)
+                .stage_flags(self.stages)
                 .immutable_samplers(&self.samplers),
         ];
         self.set_layout(
@@ -301,13 +315,13 @@ impl<'d> Partial<'d> {
             .binding(0)
             .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
             .descriptor_count(BINDLESS_CAPACITY)
-            .stage_flags(STAGES)];
+            .stage_flags(self.stages)];
         self.set_layout(&binding, &[table_flags()], true)
     }
 
     fn create_pipeline_layout(&self) -> Result<vk::PipelineLayout, RhiError> {
         let push = [vk::PushConstantRange::default()
-            .stage_flags(STAGES)
+            .stage_flags(self.stages)
             .offset(0)
             .size(MAX_PUSH_CONSTANTS as u32)];
         let info = vk::PipelineLayoutCreateInfo::default()

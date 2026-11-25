@@ -32,11 +32,9 @@ pub(crate) enum Model {
     Fragment = 4,
     /// `GLCompute`.
     Compute = 5,
-    /// `TaskEXT` (`VK_EXT_mesh_shader`; D4's spike until 4.3b's mesh pipelines).
-    #[cfg_attr(not(test), expect(dead_code))]
+    /// `TaskEXT` (`VK_EXT_mesh_shader`).
     Task = 5364,
     /// `MeshEXT`.
-    #[cfg_attr(not(test), expect(dead_code))]
     Mesh = 5365,
 }
 

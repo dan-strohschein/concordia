@@ -9,7 +9,6 @@ use concordia_rhi::{
     SampleCount, Texture, TextureOrigin, TextureUsage, TimerScope, Viewport, check,
 };
 
-use crate::bindless::STAGES;
 use crate::convert;
 use crate::device::Resources;
 use crate::pipeline::Kind;
@@ -22,7 +21,11 @@ pub(crate) struct Target<'a> {
     pub device: &'a ash::Device,
     pub cb: vk::CommandBuffer,
     pub layout: vk::PipelineLayout,
+    /// The layout's push-constant stages.
+    pub stages: vk::ShaderStageFlags,
     pub sets: [vk::DescriptorSet; 3],
+    /// `VK_EXT_mesh_shader`'s commands, when enabled.
+    pub mesh: Option<&'a ash::ext::mesh_shader::Device>,
     /// Timestamp queries, when timed.
     pub queries: Option<(vk::QueryPool, &'a Queries)>,
 }
@@ -289,9 +292,7 @@ impl Recorder<'_> {
                 count,
                 instances,
             } => self.draw_indexed(*indices, *offset, *count, instances.clone()),
-            Command::DrawMeshTasks { .. } => Err(RhiError::Unsupported(
-                "mesh-task draws arrive on Vulkan in M4 4.3b step 4".into(),
-            )),
+            Command::DrawMeshTasks { groups } => self.draw_mesh_tasks(*groups),
             Command::Dispatch { groups } => {
                 self.require(Kind::Compute)?;
                 // SAFETY: a compute pipeline is bound outside a render pass.
@@ -567,9 +568,9 @@ impl Recorder<'_> {
     fn set_pipeline(&mut self, handle: Pipeline) -> Result<(), RhiError> {
         let pipeline = self.resources.pipeline(handle)?;
         let point = match (pipeline.kind, self.in_pass) {
-            (Kind::Graphics, true) => vk::PipelineBindPoint::GRAPHICS,
+            (Kind::Graphics | Kind::Mesh, true) => vk::PipelineBindPoint::GRAPHICS,
             (Kind::Compute, false) => vk::PipelineBindPoint::COMPUTE,
-            (Kind::Graphics, false) => {
+            (Kind::Graphics | Kind::Mesh, false) => {
                 return Err(invalid("graphics pipelines are set inside render passes"));
             }
             (Kind::Compute, true) => {
@@ -594,7 +595,7 @@ impl Recorder<'_> {
         // SAFETY: at most 128 bytes (validated list), a multiple of 4, within the layout's range.
         unsafe {
             self.device()
-                .cmd_push_constants(self.t.cb, self.t.layout, STAGES, 0, &padded)
+                .cmd_push_constants(self.t.cb, self.t.layout, self.t.stages, 0, &padded)
         };
     }
 
@@ -603,6 +604,20 @@ impl Recorder<'_> {
             true => Ok(()),
             false => Err(invalid(format!("no {kind:?} pipeline is set"))),
         }
+    }
+
+    /// `groups` task (or mesh) groups of the bound mesh pipeline.
+    fn draw_mesh_tasks(&self, groups: [u32; 3]) -> Result<(), RhiError> {
+        self.require(Kind::Mesh)?;
+        let mesh = self
+            .t
+            .mesh
+            .ok_or_else(|| RhiError::Unsupported("mesh-task draws without mesh shaders".into()))?;
+        let [x, y, z] = groups;
+        // SAFETY: a mesh pipeline is bound inside a render pass; the counts are within the
+        // portable limits (validated list) the device meets (`MeshRecord::meets_portable_limits`).
+        unsafe { mesh.cmd_draw_mesh_tasks(self.t.cb, x, y, z) };
+        Ok(())
     }
 
     fn draw(

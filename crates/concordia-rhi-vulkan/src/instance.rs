@@ -7,7 +7,7 @@ use concordia_rhi::RhiError;
 
 use crate::Validation;
 use crate::convert::{error, sample_counts};
-use crate::record::{DeviceType, Features, ProbeRecord};
+use crate::record::{DeviceType, Features, MeshRecord, ProbeRecord};
 use crate::validation::{ValidationLog, callback};
 
 const VALIDATION_LAYER: &CStr = c"VK_LAYER_KHRONOS_validation";
@@ -182,6 +182,15 @@ impl Instance {
             timestamp_period_ns: limits.timestamp_period,
             extensions: self.noted_extensions(physical)?,
             surface_extensions: self.surface_names(),
+            mesh: None,
+        };
+        let record = ProbeRecord {
+            mesh: record
+                .extensions
+                .iter()
+                .any(|e| e == "VK_EXT_mesh_shader")
+                .then(|| self.mesh_record(physical)),
+            ..record
         };
         Ok(Candidate {
             physical,
@@ -266,6 +275,34 @@ impl Instance {
             shader_storage_image_array_non_uniform_indexing: on(
                 v12.shader_storage_image_array_non_uniform_indexing
             ),
+        }
+    }
+
+    /// `VK_EXT_mesh_shader`'s features and limits (only for devices with the extension).
+    fn mesh_record(&self, physical: vk::PhysicalDevice) -> MeshRecord {
+        let mut features = vk::PhysicalDeviceMeshShaderFeaturesEXT::default();
+        let mut all = vk::PhysicalDeviceFeatures2::default().push_next(&mut features);
+        // SAFETY: `physical` has VK_EXT_mesh_shader (checked by the caller); the chain is writable.
+        unsafe { self.raw.get_physical_device_features2(physical, &mut all) };
+        let mut limits = vk::PhysicalDeviceMeshShaderPropertiesEXT::default();
+        let mut props = vk::PhysicalDeviceProperties2::default().push_next(&mut limits);
+        // SAFETY: as above.
+        unsafe {
+            self.raw
+                .get_physical_device_properties2(physical, &mut props)
+        };
+        MeshRecord {
+            mesh_shader: features.mesh_shader == vk::TRUE,
+            task_shader: features.task_shader == vk::TRUE,
+            max_output_vertices: limits.max_mesh_output_vertices,
+            max_output_primitives: limits.max_mesh_output_primitives,
+            max_payload_bytes: limits.max_task_payload_size,
+            max_mesh_invocations: limits.max_mesh_work_group_invocations,
+            max_task_invocations: limits.max_task_work_group_invocations,
+            max_mesh_groups: limits.max_mesh_work_group_count,
+            max_mesh_groups_total: limits.max_mesh_work_group_total_count,
+            max_task_groups: limits.max_task_work_group_count,
+            max_task_groups_total: limits.max_task_work_group_total_count,
         }
     }
 
