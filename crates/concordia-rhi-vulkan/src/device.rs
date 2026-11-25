@@ -110,6 +110,8 @@ struct State {
     inits: Vec<Texture>,
     heap_memory_types: Option<u32>,
     surfaces: Slots<VkSurface>,
+    /// The texture every empty bindless slot shows.
+    empty_slot: Option<VkTexture>,
     lost: bool,
 }
 
@@ -184,9 +186,8 @@ impl VulkanDevice {
     }
 }
 
-/// Retires finished submissions until `stop`. It makes no Vulkan call outside the state lock
-/// (`retire` reads the timeline under it): the validation layers Ubuntu 24.04 ships crashed when it
-/// waited on the timeline while another thread submitted.
+/// Retires finished submissions until `stop`, polling the timeline under the state lock (`retire`)
+/// and making no Vulkan call outside it.
 fn retire_loop(inner: &Inner, stop: &AtomicBool) {
     while !stop.load(Ordering::Acquire) {
         let busy = inner.oldest_in_flight().is_some();
@@ -270,6 +271,7 @@ impl Inner {
                 inits: Vec::new(),
                 heap_memory_types: None,
                 surfaces: Slots::default(),
+                empty_slot: None,
                 lost: false,
             }),
             instance,
@@ -278,8 +280,8 @@ impl Inner {
         Ok(made)
     }
 
-    /// Creates the allocator, bindless tables, command pool and progress timeline (`Drop` undoes a
-    /// partial init).
+    /// Creates the allocator, bindless tables, command pool, progress timeline and the texture
+    /// empty slots show (`Drop` undoes a partial init).
     fn init(&mut self, family: u32, anisotropy: bool) -> Result<(), RhiError> {
         let mut allocator = Allocator::new(&AllocatorCreateDesc {
             instance: self.instance.raw.clone(),
@@ -304,6 +306,41 @@ impl Inner {
         state.command_pool = unsafe { self.device.create_command_pool(&pool, None) }
             .map_err(|e| error("vkCreateCommandPool", e))?;
         self.progress = timeline_semaphore(&self.device, 0)?;
+        self.fill_empty_slots()
+    }
+
+    /// Creates the 1×1 texture (cleared to zero, resting in `General`) that every empty bindless
+    /// slot shows, in both texture sets: an unwritten or freed descriptor is undefined to read, and
+    /// lavapipe faults on one, whereas Metal reads its nil entries as zero.
+    fn fill_empty_slots(&mut self) -> Result<(), RhiError> {
+        let (device, queue) = (&self.device, self.queue);
+        let state = self
+            .state
+            .get_mut()
+            .map_err(|_| RhiError::DeviceLost("state poisoned".into()))?;
+        let allocator = state
+            .allocator
+            .as_mut()
+            .ok_or_else(|| RhiError::DeviceLost("no allocator".into()))?;
+        let desc = TextureDesc {
+            width: std::num::NonZeroU32::MIN,
+            height: std::num::NonZeroU32::MIN,
+            mip_levels: std::num::NonZeroU32::MIN,
+            samples: concordia_rhi::SampleCount::X1,
+            format: concordia_rhi::Format::Rgba8Unorm,
+            usage: TextureUsage::SAMPLED | TextureUsage::STORAGE | TextureUsage::COPY_DST,
+            label: "empty bindless slot".into(),
+        };
+        let texture =
+            resources::create_texture(&mut Ctx { device, allocator }, &desc, Placement::Own)?;
+        let (image, sampled, storage) = (texture.raw, texture.view, texture.mip0);
+        state.empty_slot = Some(texture);
+        run_once(device, queue, state.command_pool, |cb| {
+            clear_to_general(device, cb, image)
+        })?;
+        if let Some(tables) = state.bindless.as_mut() {
+            tables.fill_empty(device, sampled, storage);
+        }
         Ok(())
     }
 
@@ -604,6 +641,7 @@ impl Inner {
                 }
                 Dead::Texture(t) => {
                     if let Some(slot) = t.bindless {
+                        tables.clear_texture(&self.device, slot);
                         tables.texture_slots.give_back(slot);
                     }
                 }
@@ -1085,6 +1123,112 @@ fn create_logical(
     // (`record::choose` checked them); `info` and its chain are valid for the call.
     unsafe { instance.raw.create_device(chosen.physical, &info, None) }
         .map_err(|e| error("vkCreateDevice", e))
+}
+
+/// Records `record` into a one-off command buffer from `pool`, submits it to `queue` and waits.
+fn run_once(
+    device: &ash::Device,
+    queue: vk::Queue,
+    pool: vk::CommandPool,
+    record: impl FnOnce(vk::CommandBuffer),
+) -> Result<(), RhiError> {
+    let info = vk::CommandBufferAllocateInfo::default()
+        .command_pool(pool)
+        .level(vk::CommandBufferLevel::PRIMARY)
+        .command_buffer_count(1);
+    // SAFETY: the pool is live and used only by the thread opening the device.
+    let cb = unsafe { device.allocate_command_buffers(&info) }
+        .map_err(|e| error("vkAllocateCommandBuffers", e))?[0];
+    let begin =
+        vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+    let cbs = [cb];
+    // SAFETY: `cb` is new; it is recorded, submitted and waited on with a fence before it is freed,
+    // and the queue is used only by the thread opening the device.
+    let result = unsafe {
+        device
+            .begin_command_buffer(cb, &begin)
+            .map_err(|e| error("vkBeginCommandBuffer", e))
+            .and_then(|()| {
+                record(cb);
+                device
+                    .end_command_buffer(cb)
+                    .map_err(|e| error("vkEndCommandBuffer", e))
+            })
+            .and_then(|()| {
+                device
+                    .create_fence(&vk::FenceCreateInfo::default(), None)
+                    .map_err(|e| error("vkCreateFence", e))
+            })
+            .and_then(|fence| {
+                let submit = vk::SubmitInfo::default().command_buffers(&cbs);
+                let waited = device
+                    .queue_submit(queue, &[submit], fence)
+                    .and_then(|()| device.wait_for_fences(&[fence], true, u64::MAX))
+                    .map_err(|e| error("vkQueueSubmit", e));
+                device.destroy_fence(fence, None);
+                waited
+            })
+    };
+    // SAFETY: the submission finished (or never started), so the buffer is not in use.
+    unsafe { device.free_command_buffers(pool, &cbs) };
+    result
+}
+
+/// Records moving a 1×1 color `image` from `Undefined` to `General`, cleared to zero and visible to
+/// any later read.
+fn clear_to_general(device: &ash::Device, cb: vk::CommandBuffer, image: vk::Image) {
+    type Scope = (vk::PipelineStageFlags2, vk::AccessFlags2);
+    let range = vk::ImageSubresourceRange::default()
+        .aspect_mask(vk::ImageAspectFlags::COLOR)
+        .level_count(1)
+        .layer_count(1);
+    let barrier = |old, src: Scope, dst: Scope| {
+        [vk::ImageMemoryBarrier2::default()
+            .image(image)
+            .old_layout(old)
+            .new_layout(vk::ImageLayout::GENERAL)
+            .src_stage_mask(src.0)
+            .src_access_mask(src.1)
+            .dst_stage_mask(dst.0)
+            .dst_access_mask(dst.1)
+            .subresource_range(range)]
+    };
+    let clear = (
+        vk::PipelineStageFlags2::CLEAR,
+        vk::AccessFlags2::TRANSFER_WRITE,
+    );
+    let before = barrier(
+        vk::ImageLayout::UNDEFINED,
+        (vk::PipelineStageFlags2::NONE, vk::AccessFlags2::NONE),
+        clear,
+    );
+    let after = barrier(
+        vk::ImageLayout::GENERAL,
+        clear,
+        (
+            vk::PipelineStageFlags2::ALL_COMMANDS,
+            vk::AccessFlags2::MEMORY_READ,
+        ),
+    );
+    // SAFETY: `cb` is recording; the image is live, 1×1 with one mip and layer, with TRANSFER_DST
+    // usage; synchronization2 is enabled.
+    unsafe {
+        device.cmd_pipeline_barrier2(
+            cb,
+            &vk::DependencyInfo::default().image_memory_barriers(&before),
+        );
+        device.cmd_clear_color_image(
+            cb,
+            image,
+            vk::ImageLayout::GENERAL,
+            &vk::ClearColorValue::default(),
+            &[range],
+        );
+        device.cmd_pipeline_barrier2(
+            cb,
+            &vk::DependencyInfo::default().image_memory_barriers(&after),
+        );
+    }
 }
 
 impl Device for VulkanDevice {
@@ -1579,6 +1723,7 @@ impl Drop for Inner {
                 .into_iter()
                 .map(Dead::Texture),
         );
+        dead.extend(state.empty_slot.take().map(Dead::Texture));
         dead.extend(state.resources.heaps.drain().into_iter().map(Dead::Heap));
         dead.extend(
             state

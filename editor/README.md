@@ -1,6 +1,6 @@
 # Concordia editor
 
-The Concordia editor: React panels (laid out like Godot) around a native Metal viewport, in a Tauri v2 shell. It is just another Engine API client; agents and the editor edit the same scene through the same API, live.
+The Concordia editor: React panels (laid out like Godot) around a native viewport (Metal on macOS, Vulkan on Linux under X11), in a Tauri v2 shell. It is just another Engine API client; agents and the editor edit the same scene through the same API, live.
 
 - `just editor`: open the native editor on `examples/m1-physics-stack`.
 - `just editor-dev`: the UI in a browser, against `concordia headless --ws`.

@@ -17,6 +17,10 @@ pub enum Stage {
     Vertex,
     /// Fragment shader.
     Fragment,
+    /// Mesh shader (`VK_EXT_mesh_shader`, Metal's object/mesh pipeline).
+    Mesh,
+    /// Amplification (task) shader, which launches mesh shader groups.
+    Amplification,
 }
 
 impl Stage {
@@ -25,7 +29,29 @@ impl Stage {
             Self::Compute => "compute",
             Self::Vertex => "vertex",
             Self::Fragment => "fragment",
+            Self::Mesh => "mesh",
+            Self::Amplification => "amplification",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_stage_has_its_own_slang_name() {
+        let stages = [
+            Stage::Compute,
+            Stage::Vertex,
+            Stage::Fragment,
+            Stage::Mesh,
+            Stage::Amplification,
+        ];
+        let names: std::collections::BTreeSet<&str> = stages.iter().map(|s| s.slang()).collect();
+        assert_eq!(names.len(), stages.len(), "{names:?}");
+        assert_eq!(Stage::Mesh.slang(), "mesh");
+        assert_eq!(Stage::Amplification.slang(), "amplification");
     }
 }
 

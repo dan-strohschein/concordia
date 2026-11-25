@@ -1,4 +1,26 @@
 Tolerances(
+    backends: {
+        "vulkan": (
+            default: Some((
+                mean: 0.025,
+                p99: 0.25,
+            )),
+            goldens: {
+                "gltf_metal_rough_spheres": (
+                    mean: 0.03,
+                    p99: 0.25,
+                ),
+                "gltf_metal_rough_spheres_no_textures": (
+                    mean: 0.035,
+                    p99: 0.25,
+                ),
+                "view_mode_normals": (
+                    mean: 0.035,
+                    p99: 0.25,
+                ),
+            },
+        ),
+    },
     default: (
         mean: 0.01,
         p99: 0.25,

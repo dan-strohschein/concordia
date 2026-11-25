@@ -7,7 +7,6 @@ pub mod bench;
 pub mod claude_launcher;
 pub mod input;
 pub mod launcher_commands;
-#[cfg(target_os = "macos")]
 pub mod native;
 
 use std::path::Path;
@@ -16,6 +15,27 @@ use concordia_api::transport::connection::HostKind;
 use concordia_api::{ApiErrorKind, EngineHandle};
 use concordia_app::{Project, SharedEngine};
 use serde_json::{Value, json};
+
+/// The page's start-up script: the engine's URL, what the shell does natively
+/// (`__CONCORDIA_NATIVE__`, `__CONCORDIA_NATIVE_INPUT__`) and, for the bench, its frame count.
+pub fn init_script(
+    engine_url: &str,
+    native: native::NativeSupport,
+    bench_frames: Option<usize>,
+) -> String {
+    let url = serde_json::to_string(engine_url).unwrap_or_default();
+    let mut script = format!(
+        "window.__CONCORDIA_ENGINE__ = {url}; window.__CONCORDIA_NATIVE__ = {}; \
+         window.__CONCORDIA_NATIVE_INPUT__ = {};",
+        native.viewport, native.input
+    );
+    if let Some(frames) = bench_frames {
+        script.push_str(&format!(
+            " window.__CONCORDIA_BENCH__ = {{ frames: {frames} }};"
+        ));
+    }
+    script
+}
 
 /// Why the host could not start.
 #[derive(Debug, thiserror::Error)]

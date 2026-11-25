@@ -32,6 +32,12 @@ pub(crate) enum Model {
     Fragment = 4,
     /// `GLCompute`.
     Compute = 5,
+    /// `TaskEXT` (`VK_EXT_mesh_shader`; D4's spike until 4.3b's mesh pipelines).
+    #[cfg_attr(not(test), expect(dead_code))]
+    Task = 5364,
+    /// `MeshEXT`.
+    #[cfg_attr(not(test), expect(dead_code))]
+    Mesh = 5365,
 }
 
 /// Ok if `words` is a SPIR-V module (≤ 1.6) with entry point `entry` for `model` and passes
@@ -202,6 +208,15 @@ mod tests {
                 .unwrap_err()
                 .contains("\"cs\"")
         );
+    }
+
+    #[test]
+    fn mesh_and_task_entry_points_use_the_ext_models() {
+        assert_eq!((Model::Mesh as u32, Model::Task as u32), (5365, 5364));
+        let words = module(&[(Model::Task, "as_main"), (Model::Mesh, "ms_main")]);
+        assert_eq!(check(&words, "ms_main", Model::Mesh), Ok(()));
+        assert_eq!(check(&words, "as_main", Model::Task), Ok(()));
+        assert!(check(&words, "ms_main", Model::Vertex).is_err());
     }
 
     #[test]

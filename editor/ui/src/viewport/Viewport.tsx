@@ -12,7 +12,7 @@ import type { ProjectFile } from "../files/tree";
 import { FrameQueue } from "./frameQueue";
 import { GizmoDrag } from "./gizmoDrag";
 import { inputTags } from "./latency";
-import { isNative, onNativeView, reportSlot } from "./native";
+import { isNative, onNativeView, pageGrabsGizmo, reportSlot, slotSize } from "./native";
 import { type NavParams, useNavigate } from "./navigate";
 import { RenderStatsReadout } from "./RenderStatsReadout";
 import { VIEW_MODES, gizmoMode, toolForKey, type Tool, type ViewModeId } from "./tools";
@@ -117,7 +117,7 @@ export function Viewport({ session, world, selected, onSelect, grid, onToggleGri
     if (!element) return;
     const observer = new ResizeObserver(([entry]) => {
       const box = entry?.contentRect;
-      if (box) setSize({ width: Math.max(16, Math.round(box.width)), height: Math.max(16, Math.round(box.height)) });
+      if (box) setSize(slotSize(box));
     });
     observer.observe(element);
     return () => observer.disconnect();
@@ -193,9 +193,9 @@ export function Viewport({ session, world, selected, onSelect, grid, onToggleGri
   };
   const onMouseDown = (e: React.MouseEvent) => {
     const button = e.altKey && e.button === 0 ? 1 : e.button;
-    // In a browser, a left press may grab the engine-drawn gizmo (natively the shell does this).
+    // A left press may grab the engine-drawn gizmo, unless the shell's native input does (macOS).
     const grab =
-      !native && button === 0 && mode !== undefined && selected !== undefined
+      pageGrabsGizmo() && button === 0 && mode !== undefined && selected !== undefined
         ? gizmo.start(local(e).x, local(e).y, size)
         : undefined;
     drag.current = { x: e.clientX, y: e.clientY, button, shift: e.shiftKey, moved: false, grab };

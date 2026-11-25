@@ -15,6 +15,10 @@ on:
         description: nextest filter expression for the renderer's tests on Vulkan (all by default)
         type: string
         default: all()
+      gdb:
+        description: "file:test of one renderer test to run under gdb for backtraces, skipping the other steps (e.g. gltf:gltf_flight_helmet_golden)"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -57,12 +61,38 @@ jobs:
           key: gltf-${{ hashFiles('tests/fixtures/gltf-sample-assets/manifest.ron') }}
       - name: glTF sample assets (the renderer's conformance goldens)
         run: just gltf-assets
+      - name: One renderer test under gdb (backtraces; GPU-assisted validation, strict, off)
+        if: ${{ inputs.gdb != '' }}
+        run: |
+          sudo apt-get install -y --no-install-recommends gdb
+          file="${GDB_TEST%%:*}"; test_name="${GDB_TEST#*:}"
+          bin=$(cargo test -q -p concordia-render --test "$file" --no-run --message-format=json \
+            | jq -r 'select(.executable != null and .target.kind[0] == "test") | .executable')
+          # GPU-assisted validation reports bad descriptor indices from inside shaders.
+          gpu_av=VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT
+          # GALLIVM_PERF=nopt turns off lavapipe's LLVM optimisation passes.
+          for run in "strict $gpu_av -" "off - -" "off - nopt"; do
+            set -- $run; validation=$1; enables=$2; perf=$3
+            [ "$enables" = - ] && enables=; [ "$perf" = - ] && perf=
+            echo "::group::$test_name with CONCORDIA_VULKAN_VALIDATION=$validation ${enables:+(GPU-AV)} ${perf:+GALLIVM_PERF=$perf}"
+            GALLIVM_PERF=$perf VK_LAYER_ENABLES=$enables VK_KHRONOS_VALIDATION_ENABLES=$enables \
+              CONCORDIA_VULKAN_VALIDATION=$validation gdb -q -batch -ex "set debuginfod enabled on" \
+              -ex "set pagination off" -ex run -ex "info registers" -ex "x/40i \$pc-120" -ex "x/8i \$pc" \
+              -ex "thread apply all bt 40" --args "$bin" "$test_name" --exact --test-threads=1 || true
+            echo "::endgroup::"
+          done
+        env:
+          GDB_TEST: ${{ inputs.gdb }}
+          CONCORDIA_BACKEND: vulkan
+          DEBUGINFOD_URLS: https://debuginfod.ubuntu.com
+          RUST_BACKTRACE: "1"
       - name: Vulkan backend tests
+        if: ${{ inputs.gdb == '' }}
         run: cargo nextest run -p concordia-rhi-vulkan --profile ci --no-tests=fail -E "$FILTER"
         env:
           FILTER: ${{ inputs.filter }}
       - name: Renderer on Vulkan (the render suite)
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.gdb == '' }}
         run: cargo nextest run -p concordia-render --profile ci --no-fail-fast -E "$RENDER_FILTER"
         env:
           CONCORDIA_BACKEND: vulkan
@@ -70,17 +100,17 @@ jobs:
           CONCORDIA_GOLDEN_KEEP: "1"
           RENDER_FILTER: ${{ inputs.render_filter }}
       - name: M1 gate golden on Vulkan
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.gdb == '' }}
         run: cargo nextest run -p concordia-tests --profile ci -E 'binary(m1_physics_golden)'
         env:
           CONCORDIA_BACKEND: vulkan
           CONCORDIA_VULKAN_VALIDATION: strict
           CONCORDIA_GOLDEN_KEEP: "1"
       - name: gpu-probe on Vulkan
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.gdb == '' }}
         run: cargo run -q -p concordia-cli -- gpu-probe --backend vulkan --require-m1
       - name: concordia run in an X11 window on Vulkan (Xvfb, the latency bench's frames)
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.gdb == '' }}
         run: |
           set -o pipefail
           sudo apt-get install -y --no-install-recommends xvfb libxcursor1 libxrandr2 libxi6 libxkbcommon-x11-0
@@ -102,4 +132,84 @@ jobs:
           path: |
             target/golden-failures/
             target/vulkan-window.*
+          if-no-files-found: ignore
+
+  # The editor's native viewport on Vulkan (M4 4.1v(c)): the Tauri shell on WebKitGTK in Xvfb
+  # presents into an X11 child window on lavapipe, under strict validation.
+  editor:
+    name: editor viewport (lavapipe, Xvfb)
+    if: ${{ inputs.gdb == '' }}
+    runs-on: ubuntu-24.04
+    env:
+      CONCORDIA_REQUIRE_VULKAN: "1"
+      CONCORDIA_BACKEND: vulkan
+      CONCORDIA_VULKAN_VALIDATION: strict
+      # WebKitGTK without a GPU: no DMA-BUF renderer, software GL.
+      WEBKIT_DISABLE_DMABUF_RENDERER: "1"
+      LIBGL_ALWAYS_SOFTWARE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: editor/src-tauri -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        with:
+          tool: just
+      - name: Vulkan, WebKitGTK and Xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers \
+            vulkan-validationlayers libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev librsvg2-dev libxdo-dev libssl-dev libasound2-dev \
+            xvfb x11-apps imagemagick
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/toolchain/slang
+          key: slang-${{ runner.os }}-${{ hashFiles('tools/slang/slang.toml') }}
+      - name: Slang toolchain
+        run: just slang-fetch
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: editor/ui/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: editor/ui/pnpm-lock.yaml
+      - name: Build the UI
+        working-directory: editor/ui
+        run: pnpm install --frozen-lockfile --ignore-scripts && pnpm build
+      - name: Clippy (the shell on Linux)
+        run: cargo clippy --manifest-path editor/src-tauri/Cargo.toml --all-targets -- -D warnings
+      - name: Shell tests and the native viewport smoke test (Xvfb)
+        run: |
+          set -o pipefail
+          xvfb-run -a -s "-screen 0 1600x1000x24" \
+            cargo test --manifest-path editor/src-tauri/Cargo.toml -- --nocapture 2>&1 | tee target/editor-tests.log
+          ! grep -i "validation error\|VUID-" target/editor-tests.log
+      - name: A screenshot of the editor with its Vulkan viewport (Xvfb)
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p target/editor-shot
+          Xvfb :97 -screen 0 1600x1000x24 & sleep 2
+          export DISPLAY=:97
+          cp -r examples/m1-physics-stack target/editor-shot/project
+          editor/src-tauri/target/debug/concordia-editor --project target/editor-shot/project \
+            > target/editor-shot/editor.log 2>&1 & editor=$!
+          sleep 90
+          import -window root target/editor-shot/screen.png
+          kill $editor || true
+          cat target/editor-shot/editor.log
+          ! grep -i "validation error\|VUID-" target/editor-shot/editor.log
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: editor-vulkan
+          path: |
+            target/editor-tests.log
+            target/editor-shot/screen.png
+            target/editor-shot/editor.log
           if-no-files-found: ignore

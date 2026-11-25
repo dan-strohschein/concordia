@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use concordia_editor::EngineHost;
 use concordia_editor::launcher_commands::{self as launcher, LauncherState};
-use tauri::{WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 /// Set once the page has reported its viewport slot (the UI is up).
 struct Shell {
@@ -65,6 +65,7 @@ async fn bench_native_orbit(
 }
 
 /// Native input's `viewport.stats` tags start here, apart from the page's.
+#[cfg(target_os = "macos")]
 const NATIVE_SEQ_BASE: u64 = 1 << 32;
 
 /// Applies viewport gestures in order: camera moves (merging any that queued up) go straight to
@@ -286,7 +287,7 @@ fn bench_report(
     Ok(())
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[tauri::command]
 fn slot_rect(
     rect: concordia_editor::native::SlotRect,
@@ -312,10 +313,79 @@ fn slot_rect(
         .map_err(|e| e.to_string())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 #[tauri::command]
 fn slot_rect() -> Result<(), String> {
-    Err("the native viewport is macOS-only in M1".into())
+    Err("the native viewport is built for macOS and Linux".into())
+}
+
+/// This platform's and session's native features (`GDK_BACKEND`, `WAYLAND_DISPLAY`, `DISPLAY`).
+fn native_support() -> concordia_editor::native::NativeSupport {
+    use concordia_editor::native::{support, x11_session};
+    let var = |name: &str| std::env::var(name).ok();
+    let x11 = x11_session(
+        var("GDK_BACKEND").as_deref(),
+        var("WAYLAND_DISPLAY").as_deref(),
+        var("DISPLAY").as_deref(),
+    );
+    support(std::env::consts::OS, x11)
+}
+
+/// Gives macOS native input the camera and gizmo, and starts the navigation worker.
+#[cfg(target_os = "macos")]
+fn native_input(
+    host: &Arc<EngineHost>,
+    engine: &concordia_api::EngineHandle,
+    shell: &Arc<Shell>,
+    app: &tauri::AppHandle,
+) -> Result<(), String> {
+    let control = host
+        .runtime()
+        .block_on(engine.run(concordia_render::viewport_control))
+        .map_err(|e| e.message)?
+        .map_err(|e| e.message)?;
+    let (moves, queue) = std::sync::mpsc::channel();
+    concordia_editor::native::install_input(move |action, at| {
+        let _ = moves.send((action, at));
+    });
+    // Presses grab the gizmo where the engine draws it (ADR-0047).
+    let (hit_control, hit_shell) = (control.clone(), shell.clone());
+    concordia_editor::native::set_hit_test(Box::new(move |x, y| {
+        let (w, h) = hit_shell.slot_size.lock().map_or((0.0, 0.0), |s| *s);
+        hit_control
+            .gizmo_hit(x as f32, y as f32, w as f32, h as f32)
+            .map(|(entity, axis)| (entity.to_string(), format!("{axis:?}")))
+    }));
+    let (host, worker_shell, app) = (host.clone(), shell.clone(), app.clone());
+    std::thread::Builder::new()
+        .name("concordia-navigation".into())
+        .spawn(move || navigation_worker(&host, &control, &worker_shell, &app, &queue))
+        .map_err(|e| e.to_string())?;
+    if let Ok(mut hz) = shell.display_hz.lock() {
+        *hz = concordia_editor::native::display_hz();
+    }
+    Ok(())
+}
+
+/// Detaches the engine's surface before GTK destroys the window it presents into.
+#[cfg(target_os = "linux")]
+fn detach_before_window_goes(
+    host: &Arc<EngineHost>,
+    window: &tauri::WebviewWindow,
+) -> Result<(), String> {
+    let host = host.clone();
+    concordia_editor::native::before_window_goes(window, move || {
+        let Some(engine) = host.handle() else { return };
+        match host
+            .runtime()
+            .block_on(engine.run(concordia_render::detach_surface))
+        {
+            Ok(Ok(())) => println!("VIEWPORT detached"),
+            Ok(Err(e)) | Err(e) => {
+                eprintln!("concordia-editor: detaching the viewport: {}", e.message)
+            }
+        }
+    })
 }
 
 fn arg(args: &[String], name: &str) -> Option<String> {
@@ -358,16 +428,16 @@ fn main() {
             host.host_description()
         );
     }
-    let url = serde_json::to_string(&host.url()).unwrap_or_default();
-    let mut init = format!(
-        "window.__CONCORDIA_ENGINE__ = {url}; window.__CONCORDIA_NATIVE__ = {};",
-        host.is_host()
+    // The native viewport needs the engine in this process; attached, the page renders it.
+    let native = match host.is_host() {
+        true => native_support(),
+        false => concordia_editor::native::NativeSupport::NONE,
+    };
+    let init = concordia_editor::init_script(
+        &host.url(),
+        native,
+        bench_out.is_some().then_some(bench_frames),
     );
-    if bench_out.is_some() {
-        init.push_str(&format!(
-            " window.__CONCORDIA_BENCH__ = {{ frames: {bench_frames} }};"
-        ));
-    }
     let bench = bench_out.is_some();
     let shell = Arc::new(Shell {
         slot_seen: AtomicBool::new(false),
@@ -405,40 +475,19 @@ fn main() {
                     // The page's own drag and drop (FileSystem dock → viewport); no OS file drops yet.
                     .disable_drag_drop_handler()
                     .build()?;
-            // The native viewport needs the engine in this process; attached, the page renders it.
-            #[cfg(target_os = "macos")]
-            if let Some(engine) = host_setup.handle() {
+            #[cfg(any(target_os = "macos", target_os = "linux"))]
+            if native.viewport
+                && let Some(engine) = host_setup.handle()
+            {
                 let target = concordia_editor::native::install(&window)?;
-                let control = host_setup
-                    .runtime()
-                    .block_on(engine.run(concordia_render::viewport_control))
-                    .map_err(|e| e.message)?
-                    .map_err(|e| e.message)?;
-                let (moves, queue) = std::sync::mpsc::channel();
-                concordia_editor::native::install_input(move |action, at| {
-                    let _ = moves.send((action, at));
-                });
-                // Presses grab the gizmo where the engine draws it (ADR-0047).
-                let (hit_control, hit_shell) = (control.clone(), shell_setup.clone());
-                concordia_editor::native::set_hit_test(Box::new(move |x, y| {
-                    let (w, h) = hit_shell.slot_size.lock().map_or((0.0, 0.0), |s| *s);
-                    hit_control
-                        .gizmo_hit(x as f32, y as f32, w as f32, h as f32)
-                        .map(|(entity, axis)| (entity.to_string(), format!("{axis:?}")))
-                }));
-                let (host, shell, app) = (
-                    host_setup.clone(),
-                    shell_setup.clone(),
-                    app.handle().clone(),
-                );
-                std::thread::Builder::new()
-                    .name("concordia-navigation".into())
-                    .spawn(move || navigation_worker(&host, &control, &shell, &app, &queue))?;
-                if let Ok(mut hz) = shell_setup.display_hz.lock() {
-                    *hz = concordia_editor::native::display_hz();
-                }
+                #[cfg(target_os = "macos")]
+                native_input(&host_setup, engine, &shell_setup, app.handle())?;
+                #[cfg(target_os = "linux")]
+                detach_before_window_goes(&host_setup, &window)?;
                 let attached = host_setup.runtime().block_on(engine.run(move |engine| {
-                    // SAFETY: the layer lives in the native thread-local for the life of the app.
+                    // SAFETY: the native view outlives the surface: macOS keeps its layer in the
+                    // native thread-local for the life of the app, and Linux detaches before GTK
+                    // destroys the window holding the child (`detach_before_window_goes`).
                     unsafe { concordia_render::attach_surface(engine, target) }
                         .map_err(|e| e.message)
                 }));
@@ -461,6 +510,10 @@ fn main() {
                             1
                         }
                     };
+                    // Close the window first, so its viewport detaches as when a person closes it.
+                    if let Some(window) = handle.get_webview_window("main") {
+                        let _ = window.destroy();
+                    }
                     handle.exit(code);
                 });
             }
@@ -496,6 +549,8 @@ fn smoke_test(host: &EngineHost, shell: &Shell) -> Result<String, String> {
         std::thread::sleep(Duration::from_millis(50));
     }
     let view = serde_json::json!({"eye": [7.0, 6.0, 10.0], "target": [0.0, 1.0, 0.0], "projection": {"Perspective": {"fov_y": 0.9, "near": 0.1, "far": 200.0}}});
+    // The slot's size, as the page presents it: a native window (X11) is exactly that size.
+    let (width, height) = shell.slot_px.lock().map_or((640, 360), |px| *px);
     let mut presented = 0;
     for _ in 0..30 {
         if presented == 10 {
@@ -503,7 +558,7 @@ fn smoke_test(host: &EngineHost, shell: &Shell) -> Result<String, String> {
         }
         let r = host.call(
             "viewport.present",
-            serde_json::json!({"view": view, "width": 640, "height": 360}),
+            serde_json::json!({"view": view, "width": width, "height": height}),
         )?;
         presented += usize::from(r["presented"] == true);
     }

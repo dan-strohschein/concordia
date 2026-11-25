@@ -1,7 +1,7 @@
 # Editor (`editor/`)
 
 ## Purpose
-The Concordia editor (ADR-0004, ADR-0043): React panels in a Tauri v2 shell around a native Metal viewport. Layout and UX follow Godot 4.6 (`docs/design/editor-ux.md`).
+The Concordia editor (ADR-0004, ADR-0043): React panels in a Tauri v2 shell around a native viewport (Metal on macOS; Vulkan in an X11 window on Linux, M4 4.1v(c)). Layout and UX follow Godot 4.6 (`docs/design/editor-ux.md`).
 - **`editor/ui`:** the panels. The same code runs in a browser (streamed viewport) and in the shell.
 - **`editor/src-tauri`:** the native shell (its own Cargo workspace).
   - `EngineHost` joins the project's shared engine (ADR-0082). With no live engine, it hosts one in-process, serves the token-protected WebSocket API and writes `.concordia/headless.json`, so `concordia mcp` attaches to the editor. With a live one (e.g. Claude Code started first), it attaches; the native viewport is then off (`__CONCORDIA_NATIVE__ = false`) and the page renders the viewport. Either way it opens the main scene if the engine has none open.
@@ -21,8 +21,10 @@ The Concordia editor (ADR-0004, ADR-0043): React panels in a Tauri v2 shell arou
   - "Run headless" runs `claude -p … --agent director --output-format stream-json --verbose` and streams summarized lines to the page as `launcher://event`, grouped by `parent_tool_use_id`.
   - Children inherit the environment unchanged. The launcher never reads, stores or logs credentials, and its log redacts every environment value.
 - **The shell window:**
-  - It opens a transparent window and injects the engine URL and `__CONCORDIA_NATIVE__`.
-  - The Metal viewport is an `NSView` + `CAMetalLayer` **below** the webview at the page's slot (ADR-0043 as amended), attached with `concordia_render::attach_surface`. The UI calls `viewport.present`, every animation frame during play.
+  - It opens a transparent window and injects the engine URL, `__CONCORDIA_NATIVE__` (a native viewport) and `__CONCORDIA_NATIVE_INPUT__` (the shell grabs the gizmo: macOS only); `init_script` builds it, `native::support` decides per platform and session.
+  - macOS (`native/macos.rs`): the Metal viewport is an `NSView` + `CAMetalLayer` **below** the webview at the page's slot (ADR-0043 as amended).
+  - Linux (`native/linux.rs`, ADR-0088 decision 19): an X11 child window of the Tauri window, on the editor's own XCB connection, **above** the webview inside the slot (page overlays there are hidden), selecting no input so the page keeps the mouse; placed by `native::child_rect`; detached from GTK's `unrealize` before the window goes. Only in an X11 session (`native::x11_session`); under Wayland the page renders the viewport (`GDK_BACKEND=x11` gives the native one).
+  - Both attach with `concordia_render::attach_surface` in the shell's one `unsafe` block. The UI calls `viewport.present` at `slotSize` × scale, every animation frame during play; an X11 surface must match its window exactly.
 
 ## Invariants
 - **No editor-only logic.** The editor is just another Engine API client. Every read is an API call. Every edit is `component.set` / `entity.*` / `txn.*`, attributed to `human:local`. Anything the editor can do, an agent can do through the same API, and vice versa (the e2e test `agent_edit_appears_live_in_inspector` proves the editor sees agent edits).
@@ -37,7 +39,7 @@ The Concordia editor (ADR-0004, ADR-0043): React panels in a Tauri v2 shell arou
 - **Panels are thin:** they show engine state and send Engine API calls. Behaviour that more than one panel or client needs goes into the engine behind a method, not into TypeScript.
 
 ## Native viewport coordinates
-The webview spans the window's content view including the area under the title bar, while the page starts below it. Measure the slot inside the webview, offset by `webview height − window.innerHeight` (`native::content_rect`). Verify placement by capturing the window (`screencapture -l <window>`; `CONCORDIA_EDITOR_PRINT_WINDOW=1` prints the number), not by reading the frame back through the same formula.
+The webview spans the window's content view including the area under the title bar, while the page starts below it. Measure the slot inside the webview, offset by `webview height − window.innerHeight` (`native::content_rect`). Verify placement by capturing the window (`screencapture -l <window>`; `CONCORDIA_EDITOR_PRINT_WINDOW=1` prints the number), not by reading the frame back through the same formula. On Linux the `vulkan` workflow's editor job captures the Xvfb screen (`import -window root`).
 
 ## How to test
 - `just editor-test`: lint (tsc, ESLint, Prettier), Vitest unit tests, then Playwright in Chromium against `concordia headless --ws` on a temporary copy of `examples/m1-physics-stack`. The e2e tests need a GPU, since the streamed viewport uses `capture.screenshot`.

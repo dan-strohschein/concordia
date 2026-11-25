@@ -61,6 +61,19 @@ impl Engine {
     }
 }
 
+/// Waits up to `timeout` for the engine thread to finish, which it does once every
+/// [`EngineHandle`] is dropped; false if it is still running (a handle is held elsewhere).
+pub fn join_engine(thread: JoinHandle<()>, timeout: std::time::Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    while !thread.is_finished() {
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    thread.join().is_ok()
+}
+
 fn run(mut engine: Engine, rx: &mpsc::Receiver<Request>) {
     loop {
         let next = match engine.idle_timeout() {

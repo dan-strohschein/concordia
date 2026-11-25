@@ -10,7 +10,7 @@
 ![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)
 ![Rust](https://img.shields.io/badge/rust-1.100-orange)
 ![macOS](https://img.shields.io/badge/macOS-available-success)
-![Linux](https://img.shields.io/badge/Linux-mid--2027-lightgrey)
+![Linux](https://img.shields.io/badge/Linux-Vulkan%20preview-yellow)
 ![Windows](https://img.shields.io/badge/Windows-mid--2027-lightgrey)
 ![No API key](https://img.shields.io/badge/LLM%20API%20key-not%20required-brightgreen)
 
@@ -21,9 +21,10 @@
 > paths that say `concordia` will be renamed then, and this README will tell you how to migrate.
 
 > [!WARNING]
-> **Pre-alpha.** Concordia is under heavy, test-driven development. The headless core, the renderer,
-> the editor and Agent Studio work today; gameplay systems are landing phase by phase (see
-> [Roadmap](#-roadmap)). It is not ready to ship a game yet. It is ready to explore, break and help build.
+> **Pre-alpha.** Concordia is under heavy, test-driven development. The headless core, the renderer
+> (Metal, and now Vulkan), the editor, Agent Studio and the gameplay systems of M2 work today, and
+> the M4 visuals are landing phase by phase (see [Roadmap](#-roadmap)). It is not ready to ship a
+> game yet. It is ready to explore, break and help build.
 
 ---
 
@@ -114,8 +115,11 @@ rigs: rebuilt clean-room from public papers and talks.
 
 ### 🎨 Rendering, physics and the rest
 
-- **A custom RHI and render graph** (Metal today, Vulkan next), **Slang** shaders, clustered forward
-  PBR, cascaded shadow maps and image-based lighting.
+- **A custom RHI and render graph** on **Metal and Vulkan** (one backend-neutral renderer; the Vulkan
+  backend runs the whole render suite on Mesa's software Vulkan in CI), **Slang** shaders, clustered
+  forward PBR, cascaded shadow maps and image-based lighting.
+- **A reference path tracer** (GPU, with a CPU fallback that cross-checks it) that renders the ground
+  truth the real-time renderer is measured against, plus per-pass GPU timing and perf budgets.
 - **Substrate-style layered materials:** slabs with haze, fuzz, subsurface and thin film, combined by
   layering, mixing and coverage under a per-pixel closure budget.
 - **Jolt physics** with character controllers, sensors, contact events and raycasts.
@@ -123,9 +127,9 @@ rigs: rebuilt clean-room from public papers and talks.
   semantics, and retargeting by bone name.
 - **Navigation:** Recast/Detour navmeshes, click-to-move, crowds with avoidance and LOD, and lane traffic.
 - **Import:** glTF and FBX today, with Unity, Unreal and Godot importers on the roadmap.
-- **Audio** (in progress right now): our own mixer and spatial audio.
-- **Editor:** React panels around a native viewport in a Tauri shell, laid out like Godot. It edits the
-  same live scene your agents do.
+- **Audio:** our own mixer and spatial audio.
+- **Editor:** React panels around a native viewport in a Tauri shell, laid out like Godot (Metal on
+  macOS; Vulkan in an X11 window on Linux). It edits the same live scene your agents do.
 
 ---
 
@@ -146,9 +150,9 @@ more than Concordia can. Here is where we are going differently.
 | **Scenes as diffable text** | ✅ Always (canonical RON) | ❌ Binary `.umap` | ➖ YAML with "Force Text" | ✅ `.tscn` |
 | **Every edit attributed and undoable** | ✅ Command log | ➖ Editor undo | ➖ Editor undo | ➖ Editor undo |
 | **Deterministic replay** | ✅ Across thread counts | ➖ Replay system, not deterministic | ❌ | ❌ |
-| **High-end rendering** | 🛠️ On the roadmap | ✅ Nanite, Lumen | ✅ HDRP | ➖ Improving |
+| **High-end rendering** | 🛠️ Being built (M4: path-traced references, Vulkan; meshlets next) | ✅ Nanite, Lumen | ✅ HDRP | ➖ Improving |
 | **Large-scale simulation** | 🛠️ Terra (Mass-style), in progress | ✅ Mass | ✅ DOTS/ECS | ➖ |
-| **Platforms** | macOS now; Linux and Windows mid-2027 | Everything | Everything | Everything |
+| **Platforms** | macOS now; Linux preview (Vulkan); Windows mid-2027 | Everything | Everything | Everything |
 | **Maturity** | Pre-alpha | Decades | Decades | 10+ years |
 
 ✅ yes · ➖ partly · ❌ no · 🛠️ being built
@@ -257,22 +261,50 @@ just editor examples/m1-physics-stack
 
 </details>
 
-### 🐧 Linux (coming mid-2027)
+### 🐧 Linux (preview: Vulkan, build from source)
 
-The headless engine already builds and tests on Linux in CI. The Vulkan renderer, editor and
-installer arrive in mid-2027. The plan:
+The engine, its Vulkan renderer, `concordia run` windows (X11 and Wayland) and the editor's native
+viewport (X11) build from source on Linux, and CI tests them on Mesa's software Vulkan (lavapipe)
+under the Khronos validation layers. They have not yet been re-tested on real Linux GPUs, and
+packages and an installer arrive in mid-2027.
+
+**Requirements:** a Vulkan 1.3 driver (Mesa, NVIDIA or AMD), Rust (pinned by the repo), Node and pnpm
+for the editor. On Ubuntu 24.04:
+
+```sh
+sudo apt-get install libvulkan1 mesa-vulkan-drivers vulkan-validationlayers libasound2-dev
+# the editor (Tauri on WebKitGTK):
+sudo apt-get install libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
+  libjavascriptcoregtk-4.1-dev librsvg2-dev libxdo-dev libssl-dev
+```
+
+**Build, test and run:**
+
+```sh
+git clone https://github.com/dan-strohschein/concordia.git && cd concordia
+just doctor                                # checks Rust, Node and the rest
+just slang-fetch                           # the pinned Slang shader compiler
+cargo build --workspace
+just test
+cargo install --path crates/concordia-cli
+concordia gpu-probe --backend vulkan       # what your GPU offers
+concordia run --project examples/m1-physics-stack
+just editor examples/m1-physics-stack      # under Wayland: GDK_BACKEND=x11 for the native viewport
+```
+
+`CONCORDIA_BACKEND=vulkan` (or `[render] backend = "vulkan"` in a project) picks Vulkan explicitly;
+`auto`, the default, is Metal on macOS and Vulkan elsewhere. `CONCORDIA_VULKAN_VALIDATION=strict`
+turns on the validation layers and fails on any error they report.
+
+<details>
+<summary><b>Coming in mid-2027: packages</b></summary>
 
 ```sh
 # Planned, not yet available
 curl -fsSL https://<launch-domain>/install.sh | sh     # plus .deb, .rpm and Flatpak packages
-
-# Build from source
-git clone https://github.com/dan-strohschein/concordia.git && cd concordia
-just doctor        # checks Vulkan drivers, Rust, Node and the rest
-cargo build --workspace
-just test
-cargo install --path crates/concordia-cli
 ```
+
+</details>
 
 ### 🪟 Windows (coming mid-2027)
 
@@ -322,9 +354,9 @@ Every milestone ends in an executable gate test.
 | **M0** Headless core | ECS, reflection, command log, text scenes, Engine API, MCP | ✅ Gate passed |
 | **M1** See it | Metal RHI, render graph, PBR, glTF, Jolt, input, editor v1 | ✅ Gate passed |
 | **M3s** Agent Studio | Team config, task board, `studio sync`, enforcement, Studio panel | ✅ Checkpoint passed |
-| **M2** Engine breadth | Terra Mass core, scripting, replay, materials, FBX, animation, navigation, crowds, traffic, **audio**, UI | 🛠️ In progress |
-| **M3** Closed loop & Studio v1 | Playtest assertions, generated-content plugins | Planned |
-| **M4** Unreal-class visuals | Meshlets with GPU culling, virtual shadow maps, dynamic GI, visual graphs, runtime AI | Planned |
+| **M2** Engine breadth | Terra Mass core, scripting, replay, materials, FBX, animation, navigation, crowds, traffic, audio, UI | ✅ Gate passed |
+| **M3** Closed loop & Studio v1 | Replays with playtest assertions, generated-content plugins, Studio v1 | ✅ Gates passed (closing) |
+| **M4** Unreal-class visuals | Path-traced references, **Vulkan**, meshlets with GPU culling, virtual shadow maps, dynamic GI, visual graphs, runtime AI | 🛠️ In progress (references, path tracer and Vulkan done) |
 | **M5** Bring your game | Unity importer, Unreal exporter, Godot port | Planned |
 | **M6** Evolve | Native and WASM plugins whose APIs become MCP tools | Planned |
 | **M7** Terra at scale | 100,000 crowd agents at 60 Hz, deterministic | Planned |
@@ -333,7 +365,9 @@ Every milestone ends in an executable gate test.
 | **M10** Advanced shadows | Tiled shadow atlas with static caching | Planned |
 | **M11** Sparx | GPU particles written in Slang | Planned |
 | **M12** Rigging | Procedural rigs and in-engine keyframing | Planned |
-| **Mid-2027** | **Linux and Windows** | Planned |
+| **M13** Advanced Godot features | The AnimationTree features M2 left out (one-shot fades, transition options, advance expressions, curves) | Planned |
+| **M14** CPU-only games | Games that render on the CPU, from M4's path-tracing core | Planned |
+| **Mid-2027** | **Linux packages and Windows** | Planned |
 
 The full design is in [`docs/design.md`](docs/design.md), the decisions behind it in
 [`docs/adr/`](docs/adr/), and each milestone's plan in [`plans/`](plans/).

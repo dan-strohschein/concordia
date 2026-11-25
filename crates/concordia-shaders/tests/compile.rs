@@ -67,6 +67,37 @@ fn compiles_to_spirv() {
     assert_eq!(words.first(), Some(&0x0723_0203), "SPIR-V magic number");
 }
 
+/// The execution models of a SPIR-V module's entry points.
+fn execution_models(words: &[u32]) -> Vec<u32> {
+    let (mut models, mut at) = (Vec::new(), 5);
+    while at < words.len() {
+        let (count, op) = ((words[at] >> 16) as usize, words[at] & 0xffff);
+        if op == 15 {
+            models.push(words[at + 1]);
+        }
+        at += count.max(1);
+    }
+    models
+}
+
+#[test]
+fn compiles_mesh_and_amplification_entries_to_spirv() {
+    let compiler = SlangcCompiler::new(toolchain());
+    // SPIR-V's MeshEXT and TaskEXT execution models (VK_EXT_mesh_shader).
+    for (entry, stage, model) in [
+        ("ms_main", Stage::Mesh, 5365),
+        ("as_main", Stage::Amplification, 5364),
+    ] {
+        let module = compiler
+            .compile(&request("mesh.slang", entry, stage, Target::SpirV))
+            .unwrap();
+        let ShaderCode::SpirV(words) = &module.code else {
+            panic!("expected SPIR-V")
+        };
+        assert_eq!(execution_models(words), vec![model], "{entry}");
+    }
+}
+
 #[test]
 fn bindless_abi_lands_on_the_metal_slots() {
     let compiler = SlangcCompiler::new(toolchain());

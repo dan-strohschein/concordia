@@ -119,6 +119,10 @@ pub(crate) fn plan(
 ) -> Result<Option<Plan>, RhiError> {
     let [min_w, min_h] = limits.min_extent;
     let [max_w, max_h] = limits.max_extent;
+    // A window's surface is its current size; a different request means it is being resized.
+    if width > 0 && height > 0 && limits.current_extent.is_some_and(|e| e != [width, height]) {
+        return Ok(None);
+    }
     if width == 0 || height == 0 || width > max_w || height > max_h {
         return Err(RhiError::invalid(
             "acquire",
@@ -138,9 +142,6 @@ pub(crate) fn plan(
         return Err(RhiError::Unsupported(
             "the surface has no FIFO present mode (required by Vulkan)".into(),
         ));
-    }
-    if limits.current_extent.is_some_and(|e| e != [width, height]) {
-        return Ok(None);
     }
     let images = match limits.max_images {
         0 => IMAGES.max(limits.min_images),
@@ -232,6 +233,12 @@ mod tests {
             plan(&fixed, 640, 480).unwrap(),
             None,
             "skip until the sizes agree"
+        );
+        // A window being resized larger: its limits are its current size, so this is not an error.
+        assert_eq!(
+            plan(&fixed, 860, 600).unwrap(),
+            None,
+            "a request past a fixed extent waits for the window too"
         );
     }
 
