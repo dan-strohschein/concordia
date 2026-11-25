@@ -581,6 +581,8 @@ Steps, each a commit and a push (draft PR after step 1):
   - `just deny` and the editor's deny: clean (both locks gain only the path dependency).
   - `just editor-schemas` (four generated files), `just editor-test`: 123 unit and 22 end-to-end tests pass.
   - `just gate-tests`: M1 4 of 4, M2 5 of 5, M3 16 of 16.
+  - The `vulkan` workflow on the final commit (run 45665134319): green end to end on lavapipe under strict validation.
+  - `just clean-builds`: run at the end.
   - The `vulkan` workflow: the RHI suite 107 of 107 on lavapipe after the two fixes; the render suite, the M1 gate golden, `gpu-probe` and the Xvfb window pass apart from the two goldens above.
 
 **4.3a plan** (`m4/4.3-indirect`, 2026-11-25; D5, ADR-0100 and its 4.2 amendment. **The author approved Q1–Q10 as recommended on 2026-11-25**, with two notes for future work: the GPU must eventually decide the number of draws too (Q1), and texture copies will need to grow (Q3); both are in `later-backlog.md` §12. Everything is test-first, except Vulkan device code, which is written first and tested after on lavapipe, as in 4.1v.)
