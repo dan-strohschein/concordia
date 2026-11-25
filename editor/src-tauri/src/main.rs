@@ -549,6 +549,8 @@ fn smoke_test(host: &EngineHost, shell: &Shell) -> Result<String, String> {
         std::thread::sleep(Duration::from_millis(50));
     }
     let view = serde_json::json!({"eye": [7.0, 6.0, 10.0], "target": [0.0, 1.0, 0.0], "projection": {"Perspective": {"fov_y": 0.9, "near": 0.1, "far": 200.0}}});
+    // The slot's size, as the page presents it: a native window (X11) is exactly that size.
+    let (width, height) = shell.slot_px.lock().map_or((640, 360), |px| *px);
     let mut presented = 0;
     for _ in 0..30 {
         if presented == 10 {
@@ -556,7 +558,7 @@ fn smoke_test(host: &EngineHost, shell: &Shell) -> Result<String, String> {
         }
         let r = host.call(
             "viewport.present",
-            serde_json::json!({"view": view, "width": 640, "height": 360}),
+            serde_json::json!({"view": view, "width": width, "height": height}),
         )?;
         presented += usize::from(r["presented"] == true);
     }

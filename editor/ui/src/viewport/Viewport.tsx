@@ -12,7 +12,7 @@ import type { ProjectFile } from "../files/tree";
 import { FrameQueue } from "./frameQueue";
 import { GizmoDrag } from "./gizmoDrag";
 import { inputTags } from "./latency";
-import { isNative, onNativeView, pageGrabsGizmo, reportSlot } from "./native";
+import { isNative, onNativeView, pageGrabsGizmo, reportSlot, slotSize } from "./native";
 import { type NavParams, useNavigate } from "./navigate";
 import { RenderStatsReadout } from "./RenderStatsReadout";
 import { VIEW_MODES, gizmoMode, toolForKey, type Tool, type ViewModeId } from "./tools";
@@ -117,7 +117,7 @@ export function Viewport({ session, world, selected, onSelect, grid, onToggleGri
     if (!element) return;
     const observer = new ResizeObserver(([entry]) => {
       const box = entry?.contentRect;
-      if (box) setSize({ width: Math.max(16, Math.round(box.width)), height: Math.max(16, Math.round(box.height)) });
+      if (box) setSize(slotSize(box));
     });
     observer.observe(element);
     return () => observer.disconnect();

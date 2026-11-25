@@ -27,3 +27,19 @@ describe("native flags", () => {
     expect(pageGrabsGizmo()).toBe(true);
   });
 });
+
+// The window the shell places and the frames the page presents use one size (M4 4.1v(c)): an X11
+// Vulkan surface must match its window exactly.
+describe("the slot's size", () => {
+  it("is whole CSS pixels, at least 16", async () => {
+    const { slotSize } = await import("../../src/viewport/native");
+    expect(slotSize({ width: 859.6, height: 701.4 })).toEqual({ width: 860, height: 701 });
+    expect(slotSize({ width: 3, height: 0 })).toEqual({ width: 16, height: 16 });
+  });
+
+  it("is what the slot report says, beside its position, scale and the page height", async () => {
+    const { slotRect } = await import("../../src/viewport/native");
+    const rect = slotRect({ left: 10.5, top: 40.25, width: 859.6, height: 701.4 }, 2, 900);
+    expect(rect).toEqual({ x: 10.5, y: 40.25, width: 860, height: 701, scale: 2, viewport_height: 900 });
+  });
+});
