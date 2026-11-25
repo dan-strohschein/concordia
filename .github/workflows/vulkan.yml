@@ -61,16 +61,20 @@ jobs:
           key: gltf-${{ hashFiles('tests/fixtures/gltf-sample-assets/manifest.ron') }}
       - name: glTF sample assets (the renderer's conformance goldens)
         run: just gltf-assets
-      - name: One renderer test under gdb (backtraces; validation strict, then off)
+      - name: One renderer test under gdb (backtraces; GPU-assisted validation, strict, off)
         if: ${{ inputs.gdb != '' }}
         run: |
           sudo apt-get install -y --no-install-recommends gdb
           file="${GDB_TEST%%:*}"; test_name="${GDB_TEST#*:}"
           bin=$(cargo test -q -p concordia-render --test "$file" --no-run --message-format=json \
             | jq -r 'select(.executable != null and .target.kind[0] == "test") | .executable')
-          for validation in strict off; do
-            echo "::group::$test_name with CONCORDIA_VULKAN_VALIDATION=$validation"
-            CONCORDIA_VULKAN_VALIDATION=$validation gdb -q -batch -ex "set debuginfod enabled on" \
+          # GPU-assisted validation reports bad descriptor indices from inside shaders.
+          gpu_av=VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT
+          for run in "strict $gpu_av" "strict -" "off -"; do
+            set -- $run; validation=$1; enables=$2; [ "$enables" = - ] && enables=
+            echo "::group::$test_name with CONCORDIA_VULKAN_VALIDATION=$validation ${enables:+(GPU-AV)}"
+            VK_LAYER_ENABLES=$enables VK_KHRONOS_VALIDATION_ENABLES=$enables \
+              CONCORDIA_VULKAN_VALIDATION=$validation gdb -q -batch -ex "set debuginfod enabled on" \
               -ex "set pagination off" -ex run -ex "info registers rip" -ex "x/6i \$pc" \
               -ex "thread apply all bt 40" --args "$bin" "$test_name" --exact --test-threads=1 || true
             echo "::endgroup::"
