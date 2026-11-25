@@ -15,6 +15,10 @@ on:
         description: nextest filter expression for the renderer's tests on Vulkan (all by default)
         type: string
         default: all()
+      gdb:
+        description: "file:test of one renderer test to run under gdb for backtraces, skipping the other steps (e.g. gltf:gltf_flight_helmet_golden)"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -57,12 +61,32 @@ jobs:
           key: gltf-${{ hashFiles('tests/fixtures/gltf-sample-assets/manifest.ron') }}
       - name: glTF sample assets (the renderer's conformance goldens)
         run: just gltf-assets
+      - name: One renderer test under gdb (backtraces; validation strict, then off)
+        if: ${{ inputs.gdb != '' }}
+        run: |
+          sudo apt-get install -y --no-install-recommends gdb
+          file="${GDB_TEST%%:*}"; test_name="${GDB_TEST#*:}"
+          bin=$(cargo test -q -p concordia-render --test "$file" --no-run --message-format=json \
+            | jq -r 'select(.executable != null and .target.kind[0] == "test") | .executable')
+          for validation in strict off; do
+            echo "::group::$test_name with CONCORDIA_VULKAN_VALIDATION=$validation"
+            CONCORDIA_VULKAN_VALIDATION=$validation gdb -q -batch -ex "set debuginfod enabled on" \
+              -ex "set pagination off" -ex run -ex "info registers rip" -ex "x/6i \$pc" \
+              -ex "thread apply all bt 40" --args "$bin" "$test_name" --exact --test-threads=1 || true
+            echo "::endgroup::"
+          done
+        env:
+          GDB_TEST: ${{ inputs.gdb }}
+          CONCORDIA_BACKEND: vulkan
+          DEBUGINFOD_URLS: https://debuginfod.ubuntu.com
+          RUST_BACKTRACE: "1"
       - name: Vulkan backend tests
+        if: ${{ inputs.gdb == '' }}
         run: cargo nextest run -p concordia-rhi-vulkan --profile ci --no-tests=fail -E "$FILTER"
         env:
           FILTER: ${{ inputs.filter }}
       - name: Renderer on Vulkan (the render suite)
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.gdb == '' }}
         run: cargo nextest run -p concordia-render --profile ci --no-fail-fast -E "$RENDER_FILTER"
         env:
           CONCORDIA_BACKEND: vulkan
@@ -70,17 +94,17 @@ jobs:
           CONCORDIA_GOLDEN_KEEP: "1"
           RENDER_FILTER: ${{ inputs.render_filter }}
       - name: M1 gate golden on Vulkan
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.gdb == '' }}
         run: cargo nextest run -p concordia-tests --profile ci -E 'binary(m1_physics_golden)'
         env:
           CONCORDIA_BACKEND: vulkan
           CONCORDIA_VULKAN_VALIDATION: strict
           CONCORDIA_GOLDEN_KEEP: "1"
       - name: gpu-probe on Vulkan
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.gdb == '' }}
         run: cargo run -q -p concordia-cli -- gpu-probe --backend vulkan --require-m1
       - name: concordia run in an X11 window on Vulkan (Xvfb, the latency bench's frames)
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && inputs.gdb == '' }}
         run: |
           set -o pipefail
           sudo apt-get install -y --no-install-recommends xvfb libxcursor1 libxrandr2 libxi6 libxkbcommon-x11-0
