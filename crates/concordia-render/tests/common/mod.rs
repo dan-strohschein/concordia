@@ -295,3 +295,13 @@ pub fn golden(name: &str, image: &Image) {
         RgbaImage::new(image.width, image.height, image.rgba.clone()).expect("well-formed image");
     assert_golden_on(Some(backend()), "render", name, &rgba);
 }
+
+/// [`golden`] as a result, so a test can check several images before failing.
+pub fn check_golden(name: &str, image: &Image) -> Result<(), String> {
+    let rgba =
+        RgbaImage::new(image.width, image.height, image.rgba.clone()).expect("well-formed image");
+    concordia_testkit::golden::Golden::from_env()
+        .check_on(Some(backend()), "render", name, &rgba)
+        .map(|_| ())
+        .map_err(|e| format!("golden render/{name} on {}: {e}", backend()))
+}
