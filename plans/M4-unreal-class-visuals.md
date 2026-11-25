@@ -229,7 +229,7 @@ Out of scope: normal and occlusion maps in the tracer, skinning, representation 
   - The buffer table is a storage buffer under `CONCORDIA_SPIRV`.
   - SPIR-V compiles keep source entry names (`-fvk-use-entrypoint-name`; Slang names them all `main` otherwise).
   - The shader cache key hashes each target's compiler arguments.
-- **CI ran the device tests after all.** The informational `vulkan (lavapipe)` job (moved from `ci.yml` to its own `vulkan.yml` when the hygiene test for ADR-0071 caught it) (`ubuntu-24.04`, Mesa lavapipe on LLVM 20.1.2, Vulkan 1.4.318, Khronos validation layers, `CONCORDIA_REQUIRE_VULKAN=1`) ran on every push:
+- **CI ran the device tests after all.** The `vulkan (lavapipe)` job (informational during this PR, on demand since 2026-11-25; moved from `ci.yml` to its own `vulkan.yml` when the hygiene test for ADR-0071 caught it) (`ubuntu-24.04`, Mesa lavapipe on LLVM 20.1.2, Vulkan 1.4.318, Khronos validation layers, `CONCORDIA_REQUIRE_VULKAN=1`) ran on every push:
   - First run: 53 of 63 passed; the other 10 failed on the entry-name bug.
   - Second run: 56 of 63 passed; the other 7 failed on one validation error, `DrawParameters` without `shaderDrawParameters`, which is now required. Their pixels had passed.
   - Third run: **64 of 64**, with no validation errors. The shared RHI goldens pass on lavapipe within the existing `tests/golden/rhi/tolerances.ron`, so there are no new goldens.
@@ -247,7 +247,7 @@ Out of scope: normal and occlusion maps in the tracer, skinning, representation 
   - Not run: mutants needing a Vulkan device (front face, the encoder's barriers, the address-table write). They wait for the re-test.
 - **Deferred:**
   - Real GPUs: the author's Linux machine, and MoltenVK (portability enumeration and subset are wired but untested).
-  - Making the CI job required and adding lavapipe to `regression`'s Linux job, after the re-test.
+  - Whether the Vulkan workflow becomes required, or joins `regression`'s Linux job (author: later).
   - Checking `maxPerStageUpdateAfterBindResources`: the tables need 32 773 per stage; lavapipe and desktop drivers have far more.
   - Explicit-barrier fast paths and perf work.
   - Surfaces, the M1 renderer and `gpu-probe --backend vulkan` (4.1v(b)).
@@ -278,9 +278,9 @@ Design (ADR-0088):
 
 Testing:
 - **Pure logic tests run everywhere**, including this Mac: conversions, the SPIR-V check, caps from probe records, the hazard planner (including a proptest).
-- **Device tests** run the conformance suite plus Vulkan-only cases. Linux CI runs them on lavapipe through a new `vulkan (lavapipe)` job (Mesa's `mesa-vulkan-drivers`, `vulkan-validationlayers`) with `CONCORDIA_REQUIRE_VULKAN=1`. *As built: its own workflow, `.github/workflows/vulkan.yml`, on PRs touching the RHI, shaders, testkit or the backend, because `ci.yml` must stay fast (ADR-0071, `ci_workflow_runs_the_fast_checks_on_every_pr`; pinned by `vulkan_workflow_runs_the_backend_on_lavapipe_under_validation`). The `regression` Linux job joins after the re-test.*
+- **Device tests** run the conformance suite plus Vulkan-only cases. Linux CI runs them on lavapipe through a new `vulkan (lavapipe)` job (Mesa's `mesa-vulkan-drivers`, `vulkan-validationlayers`) with `CONCORDIA_REQUIRE_VULKAN=1`. *As built: its own workflow, `.github/workflows/vulkan.yml`, on PRs touching the RHI, shaders, testkit or the backend, because `ci.yml` must stay fast (ADR-0071, `ci_workflow_runs_the_fast_checks_on_every_pr`; pinned by `vulkan_workflow_runs_the_backend_on_lavapipe_under_validation`). *After the PR's runs, the author made it on demand only (2026-11-25).*
 - **On this Mac** the crate builds and its device tests skip (no loader). `CONCORDIA_REQUIRE_GPU=1` doesn't make them fail: it keeps meaning Metal.
-- **No local red/green loop** (author decision 2026-11-24): no container. The `vulkan (lavapipe)` job is informational (`continue-on-error`) until the author's re-test on another machine, then it becomes required.
+- **No local red/green loop** (author decision 2026-11-24): no container. The `vulkan (lavapipe)` job runs **on demand only** (author decision 2026-11-25: `workflow_dispatch`, from Actions → vulkan → Run workflow or `gh workflow run vulkan --ref <branch>`, with an optional nextest `filter`; not required, revisited later).
 - **Goldens:** the RHI goldens are shared across backends, with the same `tests/golden/rhi/tolerances.ron`. If lavapipe misses one, the images go on a review page before any per-backend golden or tolerance change. New images are collected with `INSTA_UPDATE=new` and never blessed in CI.
 - **Deferred (author decision, 2026-11-24):** real GPUs, meaning the author's Linux machine and MoltenVK on the Mac. The plan's "conformance passes on lavapipe and MoltenVK" becomes lavapipe now and MoltenVK later. No perf work or budget changes.
 
@@ -295,7 +295,7 @@ Steps, each a commit and a push (device code first, then its tests, per the auth
    - Tests first: `spirv_bindless_tables_use_sets_0_1_2` (reflection: set 0 binding 0 storage buffer; set 1 bindings 0 and 1; set 2 binding 0) and `msl_bindless_layout_is_unchanged`. Every Metal golden stays identical.
 3. **Crate, loader and pure modules; CI and the container:**
    - `concordia-rhi-vulkan` (`ash`, `gpu-allocator`), with `probe()`, `new_headless()` and `new_headless_masked()`.
-   - The `vulkan (lavapipe)` CI job (informational).
+   - The `vulkan (lavapipe)` workflow (on demand).
    - Tests:
      - `formats_usages_and_states_map_to_vulkan` (every `Format`, `Layout`, `Stages`, `AccessFlags`, compare, cull and blend value);
      - `malformed_spirv_is_a_pipeline_compile_error` (magic, length, version, a missing entry point by name and stage);

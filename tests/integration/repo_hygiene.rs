@@ -501,20 +501,26 @@ fn ci_workflow_runs_the_fast_checks_on_every_pr() {
 }
 
 #[test]
-fn vulkan_workflow_runs_the_backend_on_lavapipe_under_validation() {
+fn vulkan_workflow_runs_the_backend_on_lavapipe_on_demand() {
     assert_contains_all(
         ".github/workflows/vulkan.yml",
         &[
-            "pull_request",
+            "workflow_dispatch",
             "ubuntu-24.04",
             "mesa-vulkan-drivers",
             "vulkan-validationlayers",
             "CONCORDIA_REQUIRE_VULKAN: \"1\"",
             "nextest run -p concordia-rhi-vulkan",
-            "crates/concordia-rhi-vulkan/**",
-            "crates/concordia-shaders/**",
         ],
     );
+    let workflow =
+        std::fs::read_to_string(repo_root().join(".github/workflows/vulkan.yml")).unwrap();
+    for automatic in ["pull_request", "push:", "schedule"] {
+        assert!(
+            !workflow.contains(automatic),
+            "the Vulkan workflow runs only on demand (author decision 2026-11-25); found {automatic:?}"
+        );
+    }
 }
 
 #[test]

@@ -1,28 +1,15 @@
 name: vulkan
 
-# The Vulkan backend's device tests on Mesa's software Vulkan (lavapipe) under the Khronos
-# validation layers (ADR-0088). Its own workflow so ci.yml stays fast (ADR-0071); it runs only
-# when the RHI, the shaders or the backend change.
+# Builds the Vulkan backend and runs its device tests on Mesa's software Vulkan (lavapipe) under
+# the Khronos validation layers (ADR-0088), on demand only (Actions → vulkan → Run workflow, or
+# `gh workflow run vulkan --ref <branch>`; author decision 2026-11-25). ci.yml stays fast (ADR-0071).
 on:
-  push:
-    branches: [main]
-    paths:
-      - "crates/concordia-rhi/**"
-      - "crates/concordia-rhi-vulkan/**"
-      - "crates/concordia-shaders/**"
-      - "crates/concordia-testkit/**"
-      - "tests/golden/rhi/**"
-      - "Cargo.lock"
-      - ".github/workflows/vulkan.yml"
-  pull_request:
-    paths:
-      - "crates/concordia-rhi/**"
-      - "crates/concordia-rhi-vulkan/**"
-      - "crates/concordia-shaders/**"
-      - "crates/concordia-testkit/**"
-      - "tests/golden/rhi/**"
-      - "Cargo.lock"
-      - ".github/workflows/vulkan.yml"
+  workflow_dispatch:
+    inputs:
+      filter:
+        description: nextest filter expression for the backend's tests (all by default)
+        type: string
+        default: all()
 
 permissions:
   contents: read
@@ -33,12 +20,8 @@ env:
 
 jobs:
   vulkan:
-    name: vulkan (lavapipe, informational)
+    name: vulkan (lavapipe)
     runs-on: ubuntu-24.04
-    # The Vulkan backend's device tests on Mesa's software Vulkan under the Khronos validation
-    # layers (ADR-0088). Informational until the author re-tests the backend on another machine;
-    # then this drops continue-on-error and the regression workflow's Linux job runs it too.
-    continue-on-error: true
     env:
       CONCORDIA_REQUIRE_VULKAN: "1"
     steps:
@@ -64,7 +47,9 @@ jobs:
       - name: Slang toolchain
         run: just slang-fetch
       - name: Vulkan backend tests
-        run: cargo nextest run -p concordia-rhi-vulkan --profile ci --no-tests=fail
+        run: cargo nextest run -p concordia-rhi-vulkan --profile ci --no-tests=fail -E "$FILTER"
+        env:
+          FILTER: ${{ inputs.filter }}
       - name: This runner's probe record (for fixtures)
         if: always()
         run: cargo nextest run -p concordia-rhi-vulkan --run-ignored only -E 'test(print_this_machines_probe_record)' --no-capture

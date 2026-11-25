@@ -26,7 +26,7 @@ Until M4 the engine rendered only on Metal. R3 brings Vulkan into M4, so every r
 8. **Timer scopes (ADR-0089)** use timestamp queries, one pool per timed submission. Granularity is `draw_boundary` when the queue has timestamp bits.
 9. **Tests:**
    - The RHI conformance suite runs unchanged, plus Vulkan-only cases.
-   - Linux CI runs them on Mesa's lavapipe with the Khronos validation layers in a `vulkan (lavapipe)` job of its own workflow (`vulkan.yml`, keeping `ci.yml` fast per ADR-0071), informational until the author's first re-test on another machine. Any error-severity validation message fails the test.
+   - Linux CI runs them on Mesa's lavapipe with the Khronos validation layers in a `vulkan (lavapipe)` job of its own workflow (`vulkan.yml`, keeping `ci.yml` fast per ADR-0071), run on demand (`workflow_dispatch`; author decision 2026-11-25). Any error-severity validation message fails the test.
    - `CONCORDIA_REQUIRE_VULKAN=1` turns a missing device or layer into a failure; `CONCORDIA_REQUIRE_GPU` keeps meaning Metal.
    - Slang's SPIR-V keeps source entry names (`-fvk-use-entrypoint-name`), and Slang vertex shaders need `shaderDrawParameters`, which the backend requires.
    - RHI goldens are shared across backends, with one tolerance file.

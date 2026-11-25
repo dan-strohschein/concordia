@@ -22,8 +22,8 @@ The Vulkan implementation of `concordia-rhi` (ADR-0088): `VulkanDevice` over `as
 
 ## How to test
 - `cargo nextest run -p concordia-rhi-vulkan`: the pure tests run everywhere; the device and conformance tests skip without Vulkan.
-- `CONCORDIA_REQUIRE_VULKAN=1` (Linux CI, `vulkan (lavapipe)` job: `mesa-vulkan-drivers`, `vulkan-validationlayers`) makes a missing device or validation layer a failure, and any validation error fails a test. `CONCORDIA_REQUIRE_GPU` means Metal and does not affect these tests.
-- The device code was written before its tests (author decision 2026-11-24). They pass on lavapipe in CI (64/64, no validation errors); real GPUs and MoltenVK are re-tested later, and the CI job stays informational until then.
+- `CONCORDIA_REQUIRE_VULKAN=1` (the on-demand `vulkan` workflow: `mesa-vulkan-drivers`, `vulkan-validationlayers`) makes a missing device or validation layer a failure, and any validation error fails a test. `CONCORDIA_REQUIRE_GPU` means Metal and does not affect these tests.
+- The device code was written before its tests (author decision 2026-11-24). They pass on lavapipe in CI (64/64, no validation errors); real GPUs and MoltenVK are re-tested later. The `vulkan` workflow runs only on demand (Actions → vulkan → Run workflow, or `gh workflow run vulkan --ref <branch>`, optional `filter`).
 
 ## Common tasks
 - **Translate a new command:** add it to `track::plan` (is it a step? which layouts?) and `encode.rs`, then a conformance case.
