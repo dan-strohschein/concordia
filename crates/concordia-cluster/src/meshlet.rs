@@ -18,7 +18,8 @@ pub struct Sphere {
 pub struct NormalCone {
     /// Cone axis.
     pub axis: [i8; 3],
-    /// Cosine of the half-angle, widened for the axis's rounding; 127 means "never cull".
+    /// Sine of the normal cone's half-angle (the visibility test's cutoff), rounded up for the
+    /// axis's quantization; 127 means "never cull".
     pub cutoff: i8,
 }
 

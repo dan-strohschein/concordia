@@ -1130,3 +1130,17 @@ fn content_roles_generate_with_the_gen_tools_and_their_skills() {
         .expect("VFX stays off");
     assert!(vfx.reason.contains("M11"), "{}", vfx.reason);
 }
+
+/// Meshlet statistics (M4 4.2 Q7) go to the roles that make and tune geometry, and no others.
+#[test]
+fn only_the_modeler_and_tech_artist_read_meshlet_stats() {
+    let (_dir, roster) = roster();
+    let mut with: Vec<&str> = roster
+        .roles()
+        .iter()
+        .filter(|r| r.mcp_tools.iter().any(|t| t == "asset_meshlet_stats"))
+        .map(|r| r.role.as_str())
+        .collect();
+    with.sort_unstable();
+    assert_eq!(with, ["modeler", "tech-artist"]);
+}

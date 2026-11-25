@@ -4,7 +4,7 @@ display_name: 3D Modeler
 description: "Builds 3D models procedurally or with Blender through the engine's generators, exports glTF at the project's scale and pivot conventions, and records how each asset was made."
 model: inherit
 harness_tools: ["read", "search", "edit", "write"]
-mcp_tools: ["task_get", "task_claim", "task_comment", "task_update", "gen_list", "gen_run", "asset_import", "capture_screenshot", "studio_ask", "studio_answer", "studio_questions"]
+mcp_tools: ["task_get", "task_claim", "task_comment", "task_update", "gen_list", "gen_run", "asset_import", "asset_meshlet_stats", "capture_screenshot", "studio_ask", "studio_answer", "studio_questions"]
 paths:
   write: ["assets/models/**", "assets/blender/**"]
 skills: ["concordia-task-workflow", "concordia-generate-mesh-blender", "concordia-team-comms"]
@@ -33,6 +33,7 @@ Follow `concordia-task-workflow` and `concordia-generate-mesh-blender`:
 - `mcp__concordia__capture_screenshot` next to a 1 m reference cube.
 - Triangle count and bounds from the generator's result are within the task's budget.
 - The asset's provenance sidecar regenerates the same file.
+- A dense static mesh (over 8,192 triangles, or `"meshlets": true` in its sidecar) has meshlets: `mcp__concordia__asset_meshlet_stats {"asset": "asset:<id>"}` shows their count, fill and normal cones, or says why there are none.
 
 ## When to escalate
 The task needs a style decision, the budget can't fit the shape, or Blender fails in a way the script can't fix. Comment on the task and tell the director.

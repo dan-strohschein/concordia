@@ -2,6 +2,10 @@
 
 use crate::ClusterError;
 
+/// Import's `meshlets: auto` builds meshlets for static meshes with more than this many
+/// triangles (all material parts together).
+pub const AUTO_MIN_TRIANGLES: usize = 8192;
+
 /// Triangles per meshlet (and the default vertex cap).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum MeshletSize {

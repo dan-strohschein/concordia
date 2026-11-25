@@ -13,9 +13,13 @@ workspace = true
 
 [dependencies]
 concordia-core.workspace = true
+concordia-reflect.workspace = true
 meshopt-sys.workspace = true
+serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+concordia-perf.workspace = true
+concordia-rhi-select.workspace = true
 meshopt-sys.workspace = true
 proptest.workspace = true

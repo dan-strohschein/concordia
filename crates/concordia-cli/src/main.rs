@@ -28,6 +28,8 @@ enum Command {
     Mcp(concordia_mcp::Args),
     /// Import source files (images, glTF) into the project's derived-data cache, writing sidecars.
     Import(cmd::import::Args),
+    /// Meshlets: `cluster stats` prints how a model's meshes were split for GPU culling.
+    Cluster(cmd::cluster::ClusterArgs),
     /// Print JSON Schemas of types and methods.
     Schema(cmd::schema::Args),
     /// Rewrite scene and prefab files in canonical form (or check them with --check).
@@ -76,6 +78,7 @@ fn main() -> ExitCode {
                 .map_err(|e| Failure::usage(e.to_string()))
         }),
         Command::Import(args) => cmd::import::run(&args),
+        Command::Cluster(args) => cmd::cluster::run(&args),
         Command::Schema(args) => cmd::schema::run(&args),
         Command::Fmt(args) => cmd::fmt::run(&args),
         Command::GpuProbe(args) => cmd::gpu_probe::run(&args),

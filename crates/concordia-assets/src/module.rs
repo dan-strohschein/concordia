@@ -70,6 +70,7 @@ impl EngineModule for AssetsModule {
         vec![
             MethodInfo::of::<AssetImport>(),
             MethodInfo::of::<AssetList>(),
+            MethodInfo::of::<crate::meshlet_stats::AssetMeshletStats>(),
             MethodInfo::of::<crate::prefab_method::PrefabInstantiate>(),
             MethodInfo::of::<crate::files::ProjectFiles>(),
             MethodInfo::of::<crate::material_method::MaterialGet>(),

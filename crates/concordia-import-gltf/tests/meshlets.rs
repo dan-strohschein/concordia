@@ -213,3 +213,79 @@ corpus_tests! {
     gltf_corpus_orientation_test = 9, auto builds 0;
     gltf_corpus_simple_skin = 10, auto builds 0;
 }
+
+#[test]
+fn meshlet_stats_explain_missing_meshlets() {
+    use concordia_assets::AssetRef;
+    let mut p = Project::new();
+    let boxed = p.sample("Box", "glTF-Binary", "Box.glb");
+    let whole: AssetRef = format!("asset:{}", boxed.id).parse().unwrap();
+    let stats = p.db.meshlet_stats(&whole).unwrap();
+    assert_eq!(stats.len(), 1);
+    assert_eq!(
+        (stats[0].sub_asset.as_str(), stats[0].triangles),
+        ("mesh/Mesh/0", 12)
+    );
+    assert!(stats[0].meshlets.is_none());
+    let why = stats[0].missing.as_deref().unwrap();
+    assert!(
+        why.contains("auto") && why.contains("12 triangles") && why.contains("8192"),
+        "{why}"
+    );
+
+    set_meshlets(&mut p, Path::new("Box/glTF-Binary/Box.glb"), "false").unwrap();
+    let why = p.db.meshlet_stats(&whole).unwrap()[0]
+        .missing
+        .clone()
+        .unwrap();
+    assert_eq!(why, "meshlets: false");
+
+    let fox = p.sample("Fox", "glTF-Binary", "Fox.glb");
+    let fox: AssetRef = format!("asset:{}", fox.id).parse().unwrap();
+    let why = p.db.meshlet_stats(&fox).unwrap()[0]
+        .missing
+        .clone()
+        .unwrap();
+    assert!(why.contains("skinned"), "{why}");
+}
+
+#[test]
+fn meshlet_stats_cover_every_mesh_of_an_asset() {
+    use concordia_assets::AssetRef;
+    use concordia_cluster::MeshletStats;
+    let mut p = Project::new();
+    let report = p.sample("FlightHelmet", "glTF", "FlightHelmet.gltf");
+    let whole: AssetRef = format!("asset:{}", report.id).parse().unwrap();
+    let stats = p.db.meshlet_stats(&whole).unwrap();
+    let names: Vec<&str> = report
+        .sub_assets
+        .keys()
+        .filter(|k| k.starts_with("mesh/"))
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        stats
+            .iter()
+            .map(|s| s.sub_asset.as_str())
+            .collect::<Vec<_>>(),
+        names
+    );
+    assert_eq!(stats.iter().filter(|s| s.meshlets.is_some()).count(), 4);
+    for s in &stats {
+        let mesh =
+            p.db.load_mesh(&Project::sub(&report, &s.sub_asset))
+                .unwrap();
+        assert_eq!(s.triangles as usize, mesh.indices.len() / 3);
+        if let Some(got) = &s.meshlets {
+            let want = MeshletStats::of(
+                &MeshletMesh::decode(&mesh.meshlets).unwrap(),
+                mesh.meshlets.len(),
+            );
+            assert_eq!(got, &want);
+        }
+    }
+    let one: AssetRef = format!("asset:{}#{}", report.id, names[0]).parse().unwrap();
+    assert_eq!(p.db.meshlet_stats(&one).unwrap(), stats[..1]);
+    let builtin: AssetRef = "builtin:mesh/cube".parse().unwrap();
+    assert!(p.db.meshlet_stats(&builtin).is_err());
+}

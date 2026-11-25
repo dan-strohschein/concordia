@@ -7,8 +7,7 @@ use concordia_core::jobs::JobSystem;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer};
 
-/// `auto` builds meshlets for static meshes with more than this many triangles (all parts).
-pub const AUTO_MIN_TRIANGLES: usize = 8192;
+pub use concordia_cluster::AUTO_MIN_TRIANGLES;
 
 /// The sidecar's `meshlets`: `"auto"`, `true` or `false`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

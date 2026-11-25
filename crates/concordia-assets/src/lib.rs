@@ -16,6 +16,7 @@ mod material;
 mod material_importer;
 mod material_m1;
 mod material_method;
+mod meshlet_stats;
 mod module;
 mod prefab_method;
 mod reference;
@@ -50,6 +51,9 @@ pub use material_importer::MaterialImporter;
 pub use material_method::{
     MaterialGet, MaterialGetParams, MaterialGetResult, MaterialSet, MaterialSetParams,
     MaterialSetResult,
+};
+pub use meshlet_stats::{
+    AssetMeshletStats, AssetMeshletStatsParams, AssetMeshletStatsResult, MeshMeshlets,
 };
 pub use module::{AssetImport, AssetImportParams, AssetImportResult, AssetList, AssetsModule};
 pub use prefab_method::PrefabInstantiate;

@@ -714,6 +714,7 @@ name = "concordia-assets"
 version = "0.0.0"
 dependencies = [
  "concordia-api",
+ "concordia-cluster",
  "concordia-command",
  "concordia-core",
  "concordia-reflect",
@@ -758,7 +759,9 @@ name = "concordia-cluster"
 version = "0.0.0"
 dependencies = [
  "concordia-core",
+ "concordia-reflect",
  "meshopt-sys",
+ "serde",
  "thiserror 2.0.21",
 ]
 
