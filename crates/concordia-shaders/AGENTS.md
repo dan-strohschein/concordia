@@ -18,6 +18,7 @@ Compiles Slang shaders to MSL or SPIR-V with the pinned toolchain (ADR-0045), ex
 - Shader ABI: `import bindless;`, no other globals, and push constants as the entry point's single `uniform push` parameter. On Metal: slots 0/1/2 are the tables and 3 is push (tested).
 - Cache keys cover the compiler version, target, stage, entry, defines and every dependency's contents; entries are written atomically in the DDC layout.
 - A failed reload never replaces a working module.
+- Mesh and object stages (M4 4.3b): on Metal the object stage takes the same slots (tables 0–2, push 3). A mesh stage writes each output vertex as a whole struct (Metal's rule; field-wise writes fail to compile for MSL). Don't use per-primitive outputs: Slang 2026.22 can't decorate the fragment input `PerPrimitiveEXT`, so Vulkan's interfaces wouldn't match (both pinned in `tests/compile.rs`).
 - Rust mirrors of shader structs are `#[repr(C)]` and checked with `check_layout` (Metal `float3` is 16 bytes, 16-byte aligned).
 
 ## How to test
@@ -32,10 +33,10 @@ Compiles Slang shaders to MSL or SPIR-V with the pinned toolchain (ADR-0045), ex
 - Don't call `slangc` outside `SlangcCompiler`.
 
 ## References
-- Slang user guide and reflection documentation (shader-slang.org); Metal Shading Language Specification 3.x.
+- Slang user guide and reflection documentation (shader-slang.org); Metal Shading Language Specification 3.x (object and mesh functions); Apple WWDC22 "Transform your geometry with Metal mesh shaders"; the Khronos `VK_EXT_mesh_shader` specification (per-primitive interface matching).
 
 ## Status
-M1 phase 1.3.
+M1 phase 1.3; mesh and amplification stages M4 4.1v(c) (SPIR-V) and 4.3b (MSL).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.
