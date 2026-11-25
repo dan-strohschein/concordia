@@ -90,6 +90,8 @@ impl NativeView {
         use winit::raw_window_handle::{RawDisplayHandle as D, RawWindowHandle as W};
         match (window, display) {
             (W::AppKit(w), _) => Some(Self::AppKit(w.ns_view)),
+            // `c_ulong` is 32-bit on some targets.
+            #[allow(clippy::useless_conversion)]
             (W::Xlib(w), D::Xlib(d)) => Some(Self::Xlib {
                 display: d.display?,
                 window: u64::from(w.window),
