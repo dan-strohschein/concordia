@@ -70,12 +70,14 @@ jobs:
             | jq -r 'select(.executable != null and .target.kind[0] == "test") | .executable')
           # GPU-assisted validation reports bad descriptor indices from inside shaders.
           gpu_av=VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT
-          for run in "strict $gpu_av" "strict -" "off -"; do
-            set -- $run; validation=$1; enables=$2; [ "$enables" = - ] && enables=
-            echo "::group::$test_name with CONCORDIA_VULKAN_VALIDATION=$validation ${enables:+(GPU-AV)}"
-            VK_LAYER_ENABLES=$enables VK_KHRONOS_VALIDATION_ENABLES=$enables \
+          # GALLIVM_PERF=nopt turns off lavapipe's LLVM optimisation passes.
+          for run in "strict $gpu_av -" "off - -" "off - nopt"; do
+            set -- $run; validation=$1; enables=$2; perf=$3
+            [ "$enables" = - ] && enables=; [ "$perf" = - ] && perf=
+            echo "::group::$test_name with CONCORDIA_VULKAN_VALIDATION=$validation ${enables:+(GPU-AV)} ${perf:+GALLIVM_PERF=$perf}"
+            GALLIVM_PERF=$perf VK_LAYER_ENABLES=$enables VK_KHRONOS_VALIDATION_ENABLES=$enables \
               CONCORDIA_VULKAN_VALIDATION=$validation gdb -q -batch -ex "set debuginfod enabled on" \
-              -ex "set pagination off" -ex run -ex "info registers rip" -ex "x/6i \$pc" \
+              -ex "set pagination off" -ex run -ex "info registers" -ex "x/40i \$pc-120" -ex "x/8i \$pc" \
               -ex "thread apply all bt 40" --args "$bin" "$test_name" --exact --test-threads=1 || true
             echo "::endgroup::"
           done
