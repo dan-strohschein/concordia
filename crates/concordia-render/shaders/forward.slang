@@ -182,9 +182,18 @@ float sun_shadow(Frame* frame, float3 world, float3 n, float3 to_light) {
 
 uint env_level(Frame* frame, uint i) { return i < 4 ? frame.env_a[i] : frame.env_b[i - 4]; }
 
+// The prefiltered level `level` in direction `dir`. Levels are separate textures and the level
+// varies per pixel (with roughness), so this loops over them with a uniform index and samples only
+// the pixel's own: lavapipe faults when one sample reads a different texture per pixel.
 float3 env_sample(Frame* frame, uint level, float3 dir) {
     float2 uv = float2(0.5 + atan2(dir.x, -dir.z) / (2.0 * PI), acos(clamp(dir.y, -1.0, 1.0)) / PI);
-    return g_textures.tex[NonUniformResourceIndex(in_table(env_level(frame, level)))].SampleLevel(g_textures.samplers[SAMPLER_LINEAR_REPEAT], uv, 0).rgb;
+    float3 color = float3(0.0);
+    for (uint k = 0; k < uint(frame.ibl.y); k++) {
+        if (k == level) {
+            color = g_textures.tex[in_table(env_level(frame, k))].SampleLevel(g_textures.samplers[SAMPLER_LINEAR_REPEAT], uv, 0).rgb;
+        }
+    }
+    return color;
 }
 
 float3 sh_irradiance(Frame* frame, float3 n) {
