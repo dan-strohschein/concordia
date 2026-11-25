@@ -74,7 +74,16 @@ struct VsOut {
     nointerpolation uint lod : LOD;
     // Hashed ids for the meshlets and triangles views: (meshlet or NO_ID off its path, triangle).
     nointerpolation uint2 ids : IDS;
+    // Clip position this frame and last frame, computed alike (motion vectors; equal when still).
+    float4 clip : CLIP;
+    float4 prev_clip : PREV_CLIP;
 };
+
+// What every forward-pass fragment shader writes: color and motion (UV units, y down).
+struct ForwardOut { float4 color : SV_Target0; float2 motion : SV_Target1; };
+
+// UV (y down) of a clip position.
+float2 clip_uv(float4 clip) { return clip.xy / clip.w * float2(0.5, -0.5) + 0.5; }
 
 static const uint NO_ID = 0xffffffff;
 
@@ -96,11 +105,14 @@ float3 read3(uint buffer, uint i) {
     return float3(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]);
 }
 
-// An object-space vertex placed by `inst` and seen by `frame`, as triangle corner `corner`.
-VsOut surface_vertex(Frame* frame, Instance* inst, float3 p, float3 n, float4 t, float2 uv, uint corner, uint2 ids) {
+// An object-space vertex (at `prev_p` last frame) placed by `inst` and seen by `frame`, as triangle
+// corner `corner`.
+VsOut surface_vertex(Frame* frame, Instance* inst, float3 p, float3 prev_p, float3 n, float4 t, float2 uv, uint corner, uint2 ids) {
     float4 world = xform(inst.model, float4(p, 1.0));
     VsOut o;
     o.position = xform(frame.view_proj, world);
+    o.clip = o.position;
+    o.prev_clip = xform(frame.prev_view_proj, xform(inst.prev_model, float4(prev_p, 1.0)));
     o.world = world.xyz;
     o.normal = xform(inst.normal, float4(n, 0.0)).xyz;
     o.tangent = float4(xform(inst.model, float4(t.xyz, 0.0)).xyz, t.w);
@@ -127,7 +139,7 @@ VsOut vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform DrawPush push
     }
     float2 uv = ((float2*)g_buffers.ptr[push.uvs])[v];
     uint2 ids = uint2(NO_ID, mix_id(push.instance + iid) ^ mix_id(vid / 3 + 0x9e3779b9));
-    return surface_vertex(frame, inst, p, n, t, uv, vid % 3, ids); // pulled per triangle corner
+    return surface_vertex(frame, inst, p, p, n, t, uv, vid % 3, ids); // pulled per triangle corner
 }
 
 // The `lod` view mode's color (linear; the output is sRGB): hue from the simulation LOD (white
@@ -241,12 +253,16 @@ SkyOut sky_vs(uint vid : SV_VertexID) {
 
 // The view ray through each pixel, from unprojecting it at two depths (perspective or ortho).
 [shader("fragment")]
-float4 sky_fs(SkyOut i, uniform SkyPush push) : SV_Target {
+ForwardOut sky_fs(SkyOut i, uniform SkyPush push) {
     Frame* frame = (Frame*)g_buffers.ptr[push.frame];
     float4 near = xform(frame.inv_view_proj, float4(i.ndc, 1.0, 1.0));
     float4 far = xform(frame.inv_view_proj, float4(i.ndc, 0.5, 1.0));
     float3 dir = normalize(far.xyz / far.w - near.xyz / near.w);
-    return float4(env_sample(frame, 0, dir) * frame.ibl.x, 1.0);
+    ForwardOut o;
+    o.color = float4(env_sample(frame, 0, dir) * frame.ibl.x, 1.0);
+    // The sky is infinitely far: only the camera's rotation moves it.
+    o.motion = clip_uv(xform(frame.view_proj, float4(dir, 0.0))) - clip_uv(xform(frame.prev_view_proj, float4(dir, 0.0)));
+    return o;
 }
 
 float4 sample_or(uint tex, float2 uv, float4 fallback) {
@@ -542,8 +558,8 @@ float4 finish(bool blend, float3 color, float alpha) {
     return blend ? float4(color, alpha) : float4(color, 1.0);
 }
 
-[shader("fragment")]
-float4 fs(VsOut i, bool front : SV_IsFrontFace, uniform DrawPush push) : SV_Target {
+// The forward fragment shader's color (`fs` adds the motion).
+float4 shade_pixel(VsOut i, bool front, DrawPush push) {
     Frame* frame = (Frame*)g_buffers.ptr[push.frame];
     uint4* rows = ((uint4*)g_buffers.ptr[push.materials]) + push.material;
     uint count = min(rows[0].x, MAX_CLOSURES);
@@ -625,6 +641,14 @@ float4 fs(VsOut i, bool front : SV_IsFrontFace, uniform DrawPush push) : SV_Targ
 // The editor's ground grid (ADR-0047): a quad on y = 0 under the eye, depth-tested against the
 // scene; antialiased lines every unit, brighter every ten, red X and blue Z axes, fading out.
 struct GridPush { uint frame; float extent; };
+[shader("fragment")]
+ForwardOut fs(VsOut i, bool front : SV_IsFrontFace, uniform DrawPush push) {
+    ForwardOut o;
+    o.color = shade_pixel(i, front, push);
+    o.motion = clip_uv(i.clip) - clip_uv(i.prev_clip);
+    return o;
+}
+
 struct GridOut { float4 position : SV_Position; float3 world : WORLD; };
 
 [shader("vertex")]
@@ -646,7 +670,7 @@ float grid_lines(float2 p, float spacing) {
 }
 
 [shader("fragment")]
-float4 grid_fs(GridOut i, uniform GridPush push) : SV_Target {
+ForwardOut grid_fs(GridOut i, uniform GridPush push) {
     Frame* frame = (Frame*)g_buffers.ptr[push.frame];
     float2 p = i.world.xz;
     float minor = grid_lines(p, 1.0) * 0.35;
@@ -660,5 +684,8 @@ float4 grid_fs(GridOut i, uniform GridPush push) : SV_Target {
     if (z_axis > 0.0) { color = lerp(color, float3(0.15, 0.3, 0.8), z_axis); alpha = max(alpha, z_axis); }
     float fade = 1.0 - smoothstep(push.extent * 0.4, push.extent, length(p - frame.eye.xz));
     alpha *= fade;
-    return float4(color * alpha, alpha);
+    ForwardOut o;
+    o.color = float4(color * alpha, alpha);
+    o.motion = float2(0.0, 0.0); // masked: the grid writes no motion
+    return o;
 }

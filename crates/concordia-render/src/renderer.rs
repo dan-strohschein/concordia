@@ -25,7 +25,7 @@ use crate::gpu::{GpuAssets, GpuMesh, SharedPool, Uploads};
 use crate::graph::{GraphTexture, PassContext, RenderGraph, Use};
 use crate::lighting::punctual_lights;
 use crate::meshlet_pass::{BucketKey, FrameTables, MeshletJob, RoutePipelines};
-use crate::pipelines::{DEPTH, Geometry, HDR, OUTPUT, Pipelines};
+use crate::pipelines::{DEPTH, Geometry, HDR, MOTION, OUTPUT, Pipelines};
 use crate::programs::Programs;
 use crate::shadow::{Cascade, CascadeSettings, fit_cascades};
 use crate::shadow_pass::{
@@ -59,6 +59,26 @@ pub struct RenderRequest {
     pub ui: concordia_api::UiDrawList,
 }
 
+/// A frame's motion vectors: per pixel, where its surface is now minus where it was last frame, in
+/// UV units (the image is 1 × 1, y down), rows top to bottom (M4 4.3b2).
+#[derive(Debug, Clone, PartialEq)]
+pub struct MotionImage {
+    /// Width.
+    pub width: u32,
+    /// Height.
+    pub height: u32,
+    /// Motion per pixel.
+    pub uv: Vec<[f32; 2]>,
+}
+
+impl MotionImage {
+    /// The motion at pixel (`x`, `y`), in pixels.
+    pub fn pixels(&self, x: u32, y: u32) -> [f32; 2] {
+        let [u, v] = self.uv[(y * self.width + x) as usize];
+        [u * self.width as f32, v * self.height as f32]
+    }
+}
+
 /// A rendered image: sRGB-encoded RGBA8, rows top to bottom.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Image {
@@ -81,6 +101,10 @@ pub struct Renderer {
     perf_mode: bool,
     /// Last frame's transforms, for motion vectors (4.3b2).
     motion: crate::motion::MotionHistory,
+    /// Read each readback frame's motion vectors (`set_motion_readback`).
+    motion_readback: bool,
+    /// The last one read.
+    last_motion: Option<MotionImage>,
     /// Draw static meshes with meshlets through the meshlet path (ADR-0100).
     meshlets: bool,
     /// A surface image acquired ahead of its frame (`acquire_ahead`), with its size.
@@ -233,10 +257,10 @@ enum Output {
 /// Window surfaces present sRGB BGRA (what `CAMetalLayer` offers).
 const SURFACE: concordia_rhi::Format = concordia_rhi::Format::Bgra8UnormSrgb;
 
-/// A side-effect pass copying `out` into a new readback buffer.
+/// A side-effect pass `name` copying `out` (4 bytes a pixel) into a new readback buffer.
 fn add_readback(
     graph: &mut RenderGraph,
-    out: GraphTexture,
+    (name, out): (&'static str, GraphTexture),
     frame: &mut FrameResources,
     device: &dyn Device,
     size: (NonZeroU32, NonZeroU32),
@@ -253,7 +277,7 @@ fn add_readback(
         },
     )?);
     graph.add_pass_recorded(
-        "readback",
+        name,
         |p| {
             p.uses(out, Use::CopySrc);
             p.side_effect();
@@ -344,6 +368,8 @@ impl Renderer {
             callbacks: FrameCallbacks::default(),
             perf_mode: false,
             motion: crate::motion::MotionHistory::default(),
+            motion_readback: false,
+            last_motion: None,
             meshlets: true,
             ahead: None,
             environments: EnvironmentCache::default(),
@@ -653,6 +679,20 @@ impl Renderer {
     /// Draws static meshes with meshlets through the meshlet path (on by default; ADR-0100).
     pub fn set_meshlets(&mut self, on: bool) {
         self.meshlets = on;
+    }
+
+    /// Reads each rendered frame's motion vectors back, for [`Renderer::read_motion`] (off by
+    /// default: one more copy per frame).
+    pub fn set_motion_readback(&mut self, on: bool) {
+        self.motion_readback = on;
+        if !on {
+            self.last_motion = None;
+        }
+    }
+
+    /// The last rendered frame's motion vectors, when readback is on.
+    pub fn read_motion(&self) -> Option<&MotionImage> {
+        self.last_motion.as_ref()
     }
 
     /// Forgets last frame's transforms, so the next frame has no motion: call it on camera cuts
@@ -1424,13 +1464,24 @@ impl Renderer {
         let readback = match output {
             Output::Readback => Some(add_readback(
                 &mut graph,
-                out,
+                ("readback", out),
                 frame,
                 device,
                 size,
                 &self.recycle,
             )?),
             Output::Surface { .. } => None,
+        };
+        let motion_readback = match (output, self.motion_readback) {
+            (Output::Readback, true) => Some(add_readback(
+                &mut graph,
+                ("motion readback", targets.motion),
+                frame,
+                device,
+                size,
+                &self.recycle,
+            )?),
+            _ => None,
         };
         let compiled =
             graph.compile(&|d: &TextureDesc| device.texture_heap_footprint(d).unwrap_or((0, 1)))?;
@@ -1507,6 +1558,14 @@ impl Renderer {
             }),
             None => None,
         };
+        if let Some(buffer) = motion_readback {
+            let bytes = device.read_buffer(buffer, 0, u64::from(w) * u64::from(h) * 4)?;
+            self.last_motion = Some(MotionImage {
+                width: w,
+                height: h,
+                uv: crate::motion::decode_rg16f(&bytes),
+            });
+        }
         Ok((
             image,
             Overflow::Read(read_overflow(device, overflow_rb, clusters)?),
@@ -1709,6 +1768,8 @@ fn desc(
 /// The forward pass's graph textures.
 struct ForwardTargets {
     hdr: GraphTexture,
+    /// Motion vectors, resolved (M4 4.3b2).
+    motion: GraphTexture,
 }
 
 /// Forward pass: draws into (multisampled) HDR + depth, resolving into single-sample HDR.
@@ -1748,14 +1809,31 @@ fn add_forward(
             "hdr_msaa",
         ))
     });
+    let motion = graph.create_texture(desc(
+        size,
+        MOTION,
+        SampleCount::X1,
+        TextureUsage::RENDER_TARGET | TextureUsage::SAMPLED | TextureUsage::COPY_SRC,
+        "motion",
+    ));
+    let motion_msaa = (samples != SampleCount::X1).then(|| {
+        graph.create_texture(desc(
+            size,
+            MOTION,
+            samples,
+            TextureUsage::RENDER_TARGET,
+            "motion_msaa",
+        ))
+    });
     let clear = view.camera.clear;
     graph.add_pass_recorded(
         "forward",
         |p| {
             p.uses(depth, Use::DepthWrite);
             p.uses(hdr, Use::ColorWrite);
-            if let Some(m) = msaa {
-                p.uses(m, Use::ColorWrite);
+            p.uses(motion, Use::ColorWrite);
+            for m in msaa.iter().chain(&motion_msaa) {
+                p.uses(*m, Use::ColorWrite);
             }
             for map in &shadow_maps {
                 p.uses(*map, Use::SampledRead);
@@ -1771,13 +1849,25 @@ fn add_forward(
             } else {
                 StoreOp::Store
             };
+            let (motion_target, motion_resolve) = match motion_msaa {
+                Some(m) => (ctx.texture(m), Some(ctx.texture(motion))),
+                None => (ctx.texture(motion), None),
+            };
             ctx.commands.push(Command::BeginRenderPass(RenderPassDesc {
-                colors: vec![ColorAttachment {
-                    texture: target,
-                    resolve,
-                    load: LoadOp::Clear(ClearValue::Color(clear)),
-                    store,
-                }],
+                colors: vec![
+                    ColorAttachment {
+                        texture: target,
+                        resolve,
+                        load: LoadOp::Clear(ClearValue::Color(clear)),
+                        store,
+                    },
+                    ColorAttachment {
+                        texture: motion_target,
+                        resolve: motion_resolve,
+                        load: LoadOp::Clear(ClearValue::Color([0.0; 4])),
+                        store,
+                    },
+                ],
                 depth: Some(DepthAttachment {
                     texture: ctx.texture(depth),
                     load: LoadOp::Clear(ClearValue::Depth(0.0)),
@@ -1823,7 +1913,7 @@ fn add_forward(
             Ok(())
         })),
     );
-    ForwardTargets { hdr }
+    ForwardTargets { hdr, motion }
 }
 
 /// What the meshlet path draws in the forward pass (`triangles`: its instances' source triangles).

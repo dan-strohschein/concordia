@@ -89,7 +89,7 @@ VsOut meshlet_surface(Frame* frame, Instance* inst, MeshletAt at, uint v, uint c
     float3 n = read3(at.row_a.z, v);
     float4 t = ((float4*)g_buffers.ptr[at.row_a.w])[v];
     float2 uv = ((float2*)g_buffers.ptr[at.row_b.x])[v];
-    return surface_vertex(frame, inst, position, n, t, uv, corner, ids);
+    return surface_vertex(frame, inst, position, position, n, t, uv, corner, ids);
 }
 
 // The meshlet view's id of an instance's meshlet.

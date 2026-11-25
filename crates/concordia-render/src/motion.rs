@@ -43,6 +43,32 @@ impl MotionHistory {
     }
 }
 
+/// `Rg16Float` texels (two little-endian halves each) as `f32` pairs.
+pub(crate) fn decode_rg16f(bytes: &[u8]) -> Vec<[f32; 2]> {
+    bytes
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|t| {
+            let half = |lo: u8, hi: u8| half_to_f32(u16::from_le_bytes([lo, hi]));
+            [half(t[0], t[1]), half(t[2], t[3])]
+        })
+        .collect()
+}
+
+/// An IEEE 754 half as `f32` (exact: every half is an `f32`).
+fn half_to_f32(h: u16) -> f32 {
+    let sign = if h & 0x8000 != 0 { -1.0 } else { 1.0 };
+    let exponent = i32::from((h >> 10) & 0x1f);
+    let mantissa = f32::from(h & 0x3ff);
+    sign * match exponent {
+        0 => mantissa * 2f32.powi(-24),
+        31 if mantissa == 0.0 => f32::INFINITY,
+        31 => f32::NAN,
+        e => (1.0 + mantissa / 1024.0) * 2f32.powi(e - 15),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,5 +118,20 @@ mod tests {
         h.reset();
         assert_eq!(h.previous_world(id(1), &at(5.0)), at(5.0));
         assert_eq!(h.previous_view_proj(&at(7.0)), at(7.0));
+    }
+
+    #[test]
+    fn halves_decode_exactly() {
+        let bytes = [
+            0x00, 0x38, 0x00, 0xB4, 0x00, 0x00, 0x00, 0x80, 0x01, 0x00, 0xFF, 0x7B,
+        ];
+        let got = decode_rg16f(&bytes);
+        assert_eq!(got[0], [0.5, -0.25]);
+        assert_eq!(got[1], [0.0, -0.0]);
+        assert_eq!(
+            got[2],
+            [2f32.powi(-24), 65504.0],
+            "smallest subnormal, largest half"
+        );
     }
 }
