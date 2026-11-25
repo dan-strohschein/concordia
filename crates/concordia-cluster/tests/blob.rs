@@ -91,6 +91,20 @@ fn decode_rejects_bad_magic_version_and_ranges() {
     assert!(is_decode_err(decode(
         &|b| b[48 + 12..48 + 16].copy_from_slice(&f32::NAN.to_le_bytes())
     )));
+    // One triangle: a 3-byte run, then one padding byte, which must be zero.
+    let tri = built(&Mesh {
+        positions: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        indices: vec![0, 1, 2],
+        materials: None,
+    });
+    let mut bytes = tri.encode().unwrap();
+    let pad = bytes.len() - 1;
+    assert!(MeshletMesh::decode(&bytes).is_ok());
+    bytes[pad] = 1;
+    assert!(
+        is_decode_err(MeshletMesh::decode(&bytes)),
+        "non-zero padding"
+    );
     assert!(MeshletMesh::decode(&good).is_ok());
 }
 

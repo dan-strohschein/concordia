@@ -5,6 +5,7 @@ The `concordia` command: `new` (project skeleton), `headless` (Engine API over s
 
 ## Public entry points
 - The `concordia` binary (`src/main.rs`); subcommands in `src/cmd/`.
+- `concordia cluster stats [--project <dir>] [--json] <file | asset:<id>[#mesh/...]>` (M4 4.2): a file is imported first; prints each mesh's meshlet statistics or why it has none; `--json` is the `asset.meshlet_stats` result.
 
 ## Invariants
 - No engine logic here; subcommands call library crates.

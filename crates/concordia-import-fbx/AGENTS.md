@@ -15,6 +15,7 @@ The FBX importer (`.fbx`, through `ufbx-sys`): meshes, materials (one `Slab` eac
 - Textures: embedded bytes, else the file next to the source through `read_relative` (sandboxed to the project). A missing file is skipped with a warning and the material keeps its factor; an undecodable image is an error.
 - Bad input (garbage, empty, truncated, corrupted) is an `AssetError::Import` starting `FBX: ` and never a panic. Only `src/ffi.rs` uses `unsafe`; it checks every pointer and copies data out while the scene lives.
 - Imports are deterministic.
+- Version 4 (M4 4.2): meshes carry `MeshletBlob` v1 in `MeshData::meshlets` as the `meshlets` setting says (per FBX mesh, across its material parts).
 
 ## How to test
 `cargo nextest run -p concordia-import-fbx` (fixtures in `tests/fixtures/fbx`, made by `tools/fixtures/make_fbx.py`; see its README).

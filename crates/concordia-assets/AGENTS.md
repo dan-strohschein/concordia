@@ -19,6 +19,8 @@ The asset pipeline: source files with `<file>.import.ron` sidecars holding stabl
 - `Sidecar`, `import_key`, `PLATFORM`; `AssetsModule` (EngineModule)
 - `TextureData::linear_rgba()` (as the GPU samples it: sRGB color decoded, alpha linear, R8 as (r, 0, 0, 1)); `linear_rgb()` is its RGB.
 - `AssetDb::set_setting_default(key, value)` fills an importer's null-declared settings (and the cache key) with the project's value; `AssetsModule::with_setting_default` (M4 4.1b4: `emissive_reference_ev100`, ADR-0102).
+- `ImportInput::derived` (`DerivedCache`: the DDC in an import, `NoDerivedCache` elsewhere) for sub-results keyed by their own inputs, and `ImportInput::jobs` (`import_jobs()`, one pool per process) (M4 4.2)
+- `AssetDb::meshlet_stats(&AssetRef)` → `Vec<MeshMeshlets>` (each mesh sub-asset's `MeshletStats`, or why it has none), and the method `asset.meshlet_stats {asset}` (`AssetMeshletStats`; read-only) (M4 4.2)
 
 ## Invariants
 - An asset's id lives in its sidecar: re-imports and moves (with the sidecar) keep it. Sub-asset ids are UUIDv5(parent, sub-path), recorded in the sidecar so they survive reordering.
@@ -35,6 +37,7 @@ The asset pipeline: source files with `<file>.import.ron` sidecars holding stabl
 
   Errors name the node (`AnimGraphError::node`). Clips are checked when `concordia-anim` binds the graph.
 - `asset.import` and `material.set` touch files, not the scene, so they are attributed in `log.tail` and not undoable (decision D9). `material.set` takes only `.material.ron` paths inside the project and never writes a material that fails `validate`.
+- A derived sub-result is keyed by what produces it, never by the import key, so it survives unrelated setting changes; a cached entry that doesn't validate is rebuilt by its user (M4 4.2).
 
 ## How to test
 `cargo nextest run -p concordia-assets`
