@@ -18,6 +18,7 @@ Dev-dependency-only test helpers: GPU test guards and golden images compared wit
 - FLIP is LDR (RGB, alpha ignored) at the default pixels-per-degree.
 - Tolerances live in text (M4 4.1a, D2): `tests/golden/<suite>/tolerances.ron` (`Tolerances { default, goldens: {name: (mean, p99)} }`, canonical RON, values in [0, 1]). A golden's tolerance is its entry, else the file's default; an optional `backends: {"vulkan": (default: Some(..), goldens: {..})}` overrides per backend, most specific first (the backend's entry, the shared entry, the backend's default, the shared default; M4 4.1v(b), D4); only a suite without a file falls back to `Tolerance::default()` (mean ≤ 0.01, p99 ≤ 0.25), the one tolerance in code. `repo_hygiene::golden_tolerances_live_in_text` forbids tolerance literals outside this crate; `every_tolerance_entry_names_an_existing_golden` keeps the files honest.
 - Golden names are `[A-Za-z0-9_@-]+` (no path escapes).
+- Keep mode (`CONCORDIA_GOLDEN_KEEP=1`) also writes `<name>.actual.png` for a missing golden, so new images are reviewed before blessing; it never blesses. (M4 4.3a)
 
 ## How to test
 `cargo nextest run -p concordia-testkit`

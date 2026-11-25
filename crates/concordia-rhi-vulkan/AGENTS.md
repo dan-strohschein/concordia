@@ -24,6 +24,7 @@ The Vulkan implementation of `concordia-rhi` (ADR-0088): `VulkanDevice` over `as
 - Timer scopes: a query pool per timed submission (query 0 opens the list, two per scope, the last closes it), `draw_boundary` granularity when the queue has timestamp bits; masked timestamps leave only the total.
 - Not built yet: mesh pipelines (4.3b) and ray queries (4.8); they are `Unsupported` and their caps are false. D4's spike (`src/spike`, test-only) shows lavapipe runs Slang's mesh, amplification and ray-query SPIR-V under validation.
 - All mutable state is behind one Mutex; the queue is used only while it is held.
+- M4 4.3a: viewports are flipped one by one (`flipped_viewport`) so Y stays up inside any rectangle; `CopyTexture` moves both textures to copy layouts and back (`General` within one texture); copy-only textures get no image views (`has_views`); a failed command closes an open render pass (`Recorder::abandon`) so the command buffer can end. The global barrier (`ALL_COMMANDS`, `MEMORY_*`) already covers indirect-argument reads.
 
 ## How to test
 - `cargo nextest run -p concordia-rhi-vulkan`: the pure tests run everywhere; the device and conformance tests skip without Vulkan.
@@ -50,7 +51,7 @@ The Vulkan implementation of `concordia-rhi` (ADR-0088): `VulkanDevice` over `as
 
 ## Status
 M4 phase 4.1v(a): device, memory, buffers, textures, samplers, bindless, compute and graphics pipelines, readback and timestamps. 4.1v(b): surfaces and swapchains, strict validation, the retire thread, non-uniform indexing, the SPIR-V pointer rule; the M1 renderer runs on lavapipe. 4.1v(c): the fallback texture in empty slots, the mesh/task SPIR-V models, and D4's spike.
-
+ M4 4.3a: indirect draws, viewports, scissors and image copies; tested on lavapipe through the `vulkan` workflow.
 ## Engineering rules
 These apply to every change, by humans and agents alike.
 1. **TDD on every phase.** Write the tests first, see them fail, implement, then refactor.
