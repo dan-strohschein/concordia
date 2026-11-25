@@ -1,5 +1,5 @@
 # ADR-0100: Meshlet geometry pipeline with GPU culling, drawn into Forward+
-- Status: Proposed (author's direction, 2026-11-19)
+- Status: Accepted (2026-11-25, M4 4.3a: the compute + indirect path renders on Metal and on lavapipe with its goldens passing); proposed 2026-11-19 by the author's direction
 - Date: 2026-11-19
 - Builds on: ADR-0040 (RHI design), ADR-0045 (Slang toolchain); replaces M4's planned virtualized-geometry architecture (cluster DAG, visibility buffer, software raster, page streaming)
 
@@ -38,7 +38,7 @@ The reference machine and first backend are Metal (the author's M3 Pro). The goa
 - **CPU per-object culling only.** Too coarse for dense scenes, and it leaves the GPU idle.
 
 ## Amendment (2026-11-25, M4 4.2): the meshlet format and its build cache
-Approved with 4.2's plan (Q1–Q5). The ADR stays Proposed until 4.3a lands.
+Approved with 4.2's plan (Q1–Q5).
 
 8. **The build** (`concordia-cluster`, safe Rust over `meshopt-sys`'s checked wrapper of vendored meshoptimizer v1.3):
    - One portable size, **128 triangles and 128 vertices**. It fits Metal (256 vertices, 512 primitives) and every `VK_EXT_mesh_shader` device (at least 256 and 256), and the compute fallback has no limit. `MeshletSize::for_limits` picks 64 only for a device that can't take 128; that build has its own cache key. The build needs no GPU.
