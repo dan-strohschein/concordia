@@ -1,6 +1,8 @@
 //! One window on winit's event loop, reporting engine-owned events.
 
+use std::ffi::c_void;
 use std::num::NonZeroU32;
+use std::ptr::NonNull;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -50,10 +52,60 @@ impl Default for WindowDesc {
     }
 }
 
-/// The window's native content view (on macOS an `NSView`), for attaching a GPU surface. Valid
-/// while the window is open; use it on the main thread.
+/// The window's native view, for attaching a GPU surface. Valid while the window is open; use it
+/// on the main thread.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NativeView(pub std::ptr::NonNull<std::ffi::c_void>);
+pub enum NativeView {
+    /// macOS: the content `NSView`.
+    AppKit(NonNull<c_void>),
+    /// X11 through Xlib: the `Display*` and the window id.
+    Xlib {
+        /// The `Display*`.
+        display: NonNull<c_void>,
+        /// The window id.
+        window: u64,
+    },
+    /// X11 through XCB: the `xcb_connection_t*` and the window id.
+    Xcb {
+        /// The `xcb_connection_t*`.
+        connection: NonNull<c_void>,
+        /// The window id.
+        window: u32,
+    },
+    /// Wayland: the `wl_display*` and the `wl_surface*`.
+    Wayland {
+        /// The `wl_display*`.
+        display: NonNull<c_void>,
+        /// The `wl_surface*`.
+        surface: NonNull<c_void>,
+    },
+}
+
+impl NativeView {
+    /// The view behind a window and display handle pair, if the platform has one.
+    pub fn from_raw(
+        window: winit::raw_window_handle::RawWindowHandle,
+        display: winit::raw_window_handle::RawDisplayHandle,
+    ) -> Option<Self> {
+        use winit::raw_window_handle::{RawDisplayHandle as D, RawWindowHandle as W};
+        match (window, display) {
+            (W::AppKit(w), _) => Some(Self::AppKit(w.ns_view)),
+            (W::Xlib(w), D::Xlib(d)) => Some(Self::Xlib {
+                display: d.display?,
+                window: u64::from(w.window),
+            }),
+            (W::Xcb(w), D::Xcb(d)) => Some(Self::Xcb {
+                connection: d.connection?,
+                window: w.window.get(),
+            }),
+            (W::Wayland(w), D::Wayland(d)) => Some(Self::Wayland {
+                display: d.display,
+                surface: w.surface,
+            }),
+            _ => None,
+        }
+    }
+}
 
 /// Something that happened to the window (engine-owned, not winit's).
 #[derive(Debug, Clone, PartialEq)]
@@ -264,11 +316,11 @@ impl ApplicationHandler for Runner<'_> {
 }
 
 fn native_view(window: &Window) -> Option<NativeView> {
-    use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
-    match window.window_handle().ok()?.as_raw() {
-        RawWindowHandle::AppKit(handle) => Some(NativeView(handle.ns_view)),
-        _ => None,
-    }
+    use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+    NativeView::from_raw(
+        window.window_handle().ok()?.as_raw(),
+        window.display_handle().ok()?.as_raw(),
+    )
 }
 
 fn convert(event: &winit::event::WindowEvent, scale: f64) -> Option<WindowEvent> {

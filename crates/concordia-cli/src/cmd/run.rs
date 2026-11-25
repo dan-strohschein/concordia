@@ -141,8 +141,11 @@ impl Viewer {
     /// Makes the window's content view the engine's viewport surface.
     #[cfg(target_os = "macos")]
     fn attach(&mut self, view: NativeView) -> Result<(), Failure> {
+        let NativeView::AppKit(view) = view else {
+            return Err(Failure::usage("a macOS window has an AppKit view"));
+        };
         // SAFETY: the view belongs to the open window; the layer is kept until the viewer drops.
-        let (layer, target) = unsafe { concordia_rhi_metal::layer_for_view(view.0) };
+        let (layer, target) = unsafe { concordia_rhi_metal::layer_for_view(view) };
         self.layer = Some(layer);
         let attached = self.runtime.block_on(
             self.handle

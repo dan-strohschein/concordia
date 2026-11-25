@@ -51,7 +51,11 @@ impl SurfaceEntry {
         target: SurfaceTarget,
         format: Format,
     ) -> Result<Self, RhiError> {
-        let SurfaceTarget::MetalLayer(ptr) = target;
+        let SurfaceTarget::MetalLayer(ptr) = target else {
+            return Err(RhiError::Unsupported(format!(
+                "Metal presents only into a CAMetalLayer, not {target:?}"
+            )));
+        };
         let pixel = pixel_format(format)?;
         // SAFETY: the caller guarantees a live CAMetalLayer; retaining keeps it alive with us.
         let layer = unsafe { Retained::retain(ptr.as_ptr().cast::<CAMetalLayer>()) }
