@@ -338,3 +338,181 @@ fn meshlet_and_triangle_view_modes_color_their_primitives() {
     common::golden_in("m4_meshlet", "view_meshlets", &meshlets);
     common::golden_in("m4_meshlet", "view_triangles", &triangles);
 }
+
+#[test]
+fn perf_mode_times_meshlet_expand_before_the_draws() {
+    let Some(mut r) = renderer() else { return };
+    r.set_perf_mode(true);
+    let mut s = scene();
+    let _ = common::render_timed(&mut r, &mut s, SIZE);
+    let names = r.stats().timed_passes;
+    let at = |n: &str| names.iter().position(|p| p == n);
+    let expand = at("meshlet.expand").unwrap_or_else(|| panic!("{names:?}"));
+    assert!(
+        expand < at("shadow 0").unwrap() && expand < at("forward").unwrap(),
+        "{names:?}"
+    );
+    r.set_meshlets(false);
+    let _ = common::render_timed(&mut r, &mut s, SIZE);
+    assert!(!r.stats().timed_passes.iter().any(|p| p == "meshlet.expand"));
+}
+
+/// Timings only (perf is deferred): 64 dense balls (590k triangles) at 1280×720, 150 frames
+/// after 30 warm-up frames, each path; prints the median of each pass. Run on the reference Mac:
+/// `cargo nextest run -p concordia-render --release --run-ignored only -E 'test(meshlet_path_timings)' --no-capture`.
+#[test]
+#[ignore = "timings for the As built, run by hand in release"]
+fn meshlet_path_timings() {
+    let Some(mut r) = renderer() else { return };
+    r.set_perf_mode(true);
+    let mut s = Scene::new();
+    environment(&mut s);
+    sun(&mut s, Vec3::new(-0.6, -1.0, -0.4));
+    let ball = s.assets.insert_mesh("ball", with_meshlets(sphere()));
+    let red = s.material("red", lit([0.8, 0.15, 0.1], 0.0, 0.45, false));
+    for i in 0..64 {
+        let at = Vec3::new((i % 8) as f32 * 2.5 - 8.75, 1.0, (i / 8) as f32 * -2.5);
+        place(&mut s, &ball, &red, at, 1.0);
+    }
+    s.camera(
+        Vec3::new(0.0, 6.0, 8.0),
+        Vec3::new(0.0, 0.0, -8.0),
+        camera(),
+    );
+    for meshlets in [false, true] {
+        r.set_meshlets(meshlets);
+        let mut samples: std::collections::BTreeMap<String, Vec<f64>> = Default::default();
+        for frame in 0..180 {
+            let (_, timing) = common::render_timed(&mut r, &mut s, (1280, 720));
+            if frame < 30 {
+                continue;
+            }
+            let names = r.stats().timed_passes;
+            for p in concordia_render::perf::pass_times(&names, &timing) {
+                samples.entry(p.name).or_default().push(p.gpu_ms);
+            }
+            let total = timing.total_ms.unwrap_or(f64::NAN);
+            samples.entry("frame".into()).or_default().push(total);
+        }
+        for (name, mut ms) in samples {
+            ms.sort_by(f64::total_cmp);
+            println!(
+                "meshlets={meshlets} {name}: median {:.3} ms",
+                ms[ms.len() / 2]
+            );
+        }
+    }
+}
+
+/// `count` small separate triangles in a grid facing +Z: a stray triangle between meshlet
+/// vertices would span the gaps, where nothing else draws.
+fn scattered(count: u32) -> MeshData {
+    let mut vertices = Vec::new();
+    for i in 0..count {
+        let (x, y) = ((i % 24) as f32 * 0.25 - 3.0, (i / 24) as f32 * 0.25 - 1.6);
+        for (dx, dy) in [(0.0, 0.0), (0.08, 0.0), (0.0, 0.08)] {
+            vertices.push((
+                [x + dx, y + dy, 0.0],
+                [0.0, 0.0, 1.0],
+                [1.0, 0.0, 0.0, 1.0],
+                [0.0, 0.0],
+            ));
+        }
+    }
+    shapes::mesh(vertices, (0..count * 3).collect())
+}
+
+#[test]
+fn meshlets_draw_exactly_their_triangles() {
+    let Some(mut r) = renderer() else { return };
+    let mut s = Scene::new();
+    // 301 triangles: two full meshlets and a partial one (45 triangles, a run with no padding).
+    let pieces = s
+        .assets
+        .insert_mesh("pieces", with_meshlets(scattered(301)));
+    let white = s.material("white", common::unlit([1.0; 4]));
+    place(&mut s, &pieces, &white, Vec3::ZERO, 1.0);
+    s.camera(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, camera());
+    let m1 = render(&mut r, &mut s, false);
+    let meshlets = render(&mut r, &mut s, true);
+    assert_eq!(r.stats().meshlets.triangles, 301);
+    let differing = m1
+        .rgba
+        .chunks(4)
+        .zip(meshlets.rgba.chunks(4))
+        .filter(|(a, b)| a != b)
+        .count();
+    assert!(differing <= 4, "{differing} pixels differ from the M1 path");
+}
+
+/// A blob built by hand: meshlet 0 draws triangle A four times (12 bytes, so no padding follows),
+/// meshlet 1 draws B. Read through meshlet 0's references, meshlet 1's first corners name C, a
+/// triangle in the vertex buffer that nothing draws; reading one triangle too far would show it.
+#[test]
+fn triangles_past_a_meshlets_count_are_never_drawn() {
+    use concordia_cluster::{Meshlet, MeshletBuildSettings, MeshletMesh, NormalCone, Sphere};
+    let Some(mut r) = renderer() else { return };
+    let tri = |x: f32, y: f32| {
+        [(0.0, 0.0), (0.6, 0.0), (0.0, 0.6)].map(|(dx, dy)| {
+            (
+                [x + dx, y + dy, 0.0],
+                [0.0, 0.0, 1.0],
+                [1.0, 0.0, 0.0, 1.0],
+                [0.0, 0.0],
+            )
+        })
+    };
+    // A at the left, B at the right, C (never indexed) at the top.
+    let vertices: Vec<_> = [tri(-2.0, -0.5), tri(1.4, -0.5), tri(-0.3, 1.2)].concat();
+    let mut mesh = shapes::mesh(vertices, vec![0, 1, 2, 3, 4, 5]);
+    let bounds = Sphere {
+        center: [0.0, 0.5, 0.0],
+        radius: 3.0,
+    };
+    let meshlet = |vertex_offset, triangle_offset, triangle_count| Meshlet {
+        bounds,
+        cone: NormalCone::default(),
+        material: 0,
+        vertex_offset,
+        vertex_count: 6,
+        triangle_offset,
+        triangle_count,
+    };
+    let blob = MeshletMesh {
+        meshlets: vec![meshlet(0, 0, 4), meshlet(6, 12, 1)],
+        // References: meshlet 0 is A then C, meshlet 1 is A then B.
+        vertices: vec![0, 1, 2, 6, 7, 8, 0, 1, 2, 3, 4, 5],
+        // Meshlet 0 draws its locals 0, 1, 2 (A) four times; meshlet 1 its locals 3, 4, 5 (B),
+        // which through meshlet 0's references are C.
+        triangles: vec![0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 3, 4, 5, 0],
+        source_triangles: 5,
+        source_vertices: 9,
+        settings: MeshletBuildSettings::default(),
+    };
+    mesh.meshlets = blob.encode().unwrap();
+    let (m1, meshlets, differing) = both_paths(&mut r, mesh);
+    assert!(m1.iter().any(|&b| b == 255), "A and B are drawn");
+    assert_eq!(m1, meshlets, "{differing} pixels differ from the M1 path");
+}
+
+/// Renders `mesh` unlit white on both paths: (M1 image, meshlet image, differing pixels).
+fn both_paths(r: &mut Renderer, mesh: MeshData) -> (Vec<u8>, Vec<u8>, usize) {
+    let mut s = Scene::new();
+    let mesh = s.assets.insert_mesh("pieces", mesh);
+    let white = s.material(
+        "white",
+        M1 {
+            double_sided: true,
+            ..common::unlit([1.0; 4])
+        },
+    );
+    place(&mut s, &mesh, &white, Vec3::ZERO, 1.0);
+    s.camera(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, camera());
+    let (m1, meshlets) = (render(r, &mut s, false).rgba, render(r, &mut s, true).rgba);
+    let differing = m1
+        .chunks(4)
+        .zip(meshlets.chunks(4))
+        .filter(|(a, b)| a != b)
+        .count();
+    (m1, meshlets, differing)
+}
