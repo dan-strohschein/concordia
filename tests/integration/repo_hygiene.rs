@@ -511,6 +511,15 @@ fn vulkan_workflow_runs_the_backend_on_lavapipe_on_demand() {
             "vulkan-validationlayers",
             "CONCORDIA_REQUIRE_VULKAN: \"1\"",
             "nextest run -p concordia-rhi-vulkan",
+            // 4.1v(b): the renderer and the M1 gate golden on Vulkan, failing on any
+            // validation error, with every golden comparison kept for review.
+            "CONCORDIA_BACKEND: vulkan",
+            "CONCORDIA_VULKAN_VALIDATION: strict",
+            "CONCORDIA_GOLDEN_KEEP: \"1\"",
+            "nextest run -p concordia-render",
+            "m1_physics_golden",
+            "gpu-probe --backend vulkan --require-m1",
+            "golden-vulkan",
         ],
     );
     let workflow =

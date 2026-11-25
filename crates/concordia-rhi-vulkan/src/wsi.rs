@@ -8,7 +8,7 @@ use concordia_rhi::{Format, RhiError, SurfaceTarget, Texture};
 
 use crate::convert::error;
 use crate::instance::Instance;
-use crate::swapchain::{Plan, SurfaceLimits};
+use crate::swapchain::{Plan, SurfaceChoice, SurfaceLimits};
 
 /// How long `acquire` waits for a free image before skipping the frame (Metal's `nextDrawable`
 /// waits up to a second too).
@@ -42,7 +42,7 @@ pub(crate) struct Acquired {
 pub(crate) struct VkSurface {
     pub raw: vk::SurfaceKHR,
     pub format: Format,
-    pub surface_format: vk::SurfaceFormatKHR,
+    pub choice: SurfaceChoice,
     pub chain: Option<Chain>,
     pub acquired: Option<Acquired>,
     /// Unsignalled acquire semaphores to reuse.
@@ -184,11 +184,14 @@ impl Wsi {
         old: vk::SwapchainKHR,
     ) -> Result<Chain, RhiError> {
         let [width, height] = plan.extent;
-        let info = vk::SwapchainCreateInfoKHR::default()
+        let choice = surface.choice;
+        let formats = [choice.surface.format, choice.view];
+        let mut list = vk::ImageFormatListCreateInfo::default().view_formats(&formats);
+        let mut info = vk::SwapchainCreateInfoKHR::default()
             .surface(surface.raw)
             .min_image_count(plan.images)
-            .image_format(surface.surface_format.format)
-            .image_color_space(surface.surface_format.color_space)
+            .image_format(choice.surface.format)
+            .image_color_space(choice.surface.color_space)
             .image_extent(vk::Extent2D { width, height })
             .image_array_layers(1)
             .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
@@ -198,6 +201,11 @@ impl Wsi {
             .present_mode(plan.present_mode)
             .clipped(true)
             .old_swapchain(old);
+        if choice.mutable {
+            info = info
+                .flags(vk::SwapchainCreateFlagsKHR::MUTABLE_FORMAT)
+                .push_next(&mut list);
+        }
         // SAFETY: the surface is live and supported by the device's queue family; `old` is null
         // or a retired swapchain of the same surface.
         let raw = unsafe { self.swapchain.create_swapchain(&info, None) }
@@ -209,7 +217,7 @@ impl Wsi {
             views: Vec::new(),
             rendered: Vec::new(),
         };
-        match self.fill(device, surface.surface_format.format, &mut chain) {
+        match self.fill(device, choice.view, &mut chain) {
             Ok(()) => Ok(chain),
             Err(e) => {
                 self.destroy(device, chain);

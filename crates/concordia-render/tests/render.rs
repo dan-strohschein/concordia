@@ -597,7 +597,6 @@ fn alpha_mask_discards_below_cutoff() {
     );
 }
 
-#[cfg(target_os = "macos")]
 #[test]
 fn renderer_presents_frames_to_a_window_surface() {
     let Some(mut r) = renderer() else { return };
@@ -609,14 +608,9 @@ fn renderer_presents_frames_to_a_window_surface() {
         Vec3::ZERO,
         clamp_camera(Projection::default(), Msaa::X4),
     );
-    let layer = objc2_quartz_core::CAMetalLayer::new();
+    let layer = common::test_surface();
     // SAFETY: the layer outlives the surface, which the renderer releases when dropped.
-    let surface = unsafe {
-        r.create_surface(concordia_rhi::SurfaceTarget::MetalLayer(
-            std::ptr::NonNull::from(&*layer).cast(),
-        ))
-    }
-    .unwrap();
+    let surface = unsafe { r.create_surface(layer.target) }.unwrap();
     let rw = RenderWorld::extract(&s.world);
     let request = RenderRequest {
         camera: None,
@@ -640,7 +634,6 @@ fn renderer_presents_frames_to_a_window_surface() {
     );
 }
 
-#[cfg(target_os = "macos")]
 #[test]
 fn presented_frames_overlap_the_gpu_and_retire_their_memory() {
     let Some(mut r) = renderer() else { return };
@@ -652,14 +645,9 @@ fn presented_frames_overlap_the_gpu_and_retire_their_memory() {
         Vec3::ZERO,
         clamp_camera(Projection::default(), Msaa::X4),
     );
-    let layer = objc2_quartz_core::CAMetalLayer::new();
+    let layer = common::test_surface();
     // SAFETY: the layer outlives the surface, which the renderer releases when dropped.
-    let surface = unsafe {
-        r.create_surface(concordia_rhi::SurfaceTarget::MetalLayer(
-            std::ptr::NonNull::from(&*layer).cast(),
-        ))
-    }
-    .unwrap();
+    let surface = unsafe { r.create_surface(layer.target) }.unwrap();
     let rw = RenderWorld::extract(&s.world);
     let request = RenderRequest {
         camera: None,
@@ -703,7 +691,6 @@ fn presented_frames_overlap_the_gpu_and_retire_their_memory() {
     assert_eq!(pixel(&image, 256, 256)[..3], [231, 89, 89][..]);
 }
 
-#[cfg(target_os = "macos")]
 #[test]
 fn frames_in_flight_can_be_lowered_for_latency() {
     let Some(mut r) = renderer() else { return };
@@ -718,14 +705,9 @@ fn frames_in_flight_can_be_lowered_for_latency() {
         Vec3::ZERO,
         clamp_camera(Projection::default(), Msaa::X4),
     );
-    let layer = objc2_quartz_core::CAMetalLayer::new();
+    let layer = common::test_surface();
     // SAFETY: the layer outlives the surface, which the renderer releases when dropped.
-    let surface = unsafe {
-        r.create_surface(concordia_rhi::SurfaceTarget::MetalLayer(
-            std::ptr::NonNull::from(&*layer).cast(),
-        ))
-    }
-    .unwrap();
+    let surface = unsafe { r.create_surface(layer.target) }.unwrap();
     let rw = RenderWorld::extract(&s.world);
     let request = RenderRequest {
         camera: None,
@@ -792,7 +774,6 @@ fn off_screen_meshes_are_culled_and_repeated_meshes_draw_as_one_instanced_call()
     assert_eq!(pixel(&image, 48, 32)[..3], [231, 89, 89][..]);
 }
 
-#[cfg(target_os = "macos")]
 #[test]
 fn warm_frames_reuse_their_gpu_memory_instead_of_allocating() {
     let Some(mut r) = renderer() else { return };
@@ -808,14 +789,9 @@ fn warm_frames_reuse_their_gpu_memory_instead_of_allocating() {
         Vec3::ZERO,
         clamp_camera(Projection::default(), Msaa::X4),
     );
-    let layer = objc2_quartz_core::CAMetalLayer::new();
+    let layer = common::test_surface();
     // SAFETY: the layer outlives the surface, which the renderer releases when dropped.
-    let surface = unsafe {
-        r.create_surface(concordia_rhi::SurfaceTarget::MetalLayer(
-            std::ptr::NonNull::from(&*layer).cast(),
-        ))
-    }
-    .unwrap();
+    let surface = unsafe { r.create_surface(layer.target) }.unwrap();
     let rw = RenderWorld::extract(&s.world);
     let request = RenderRequest {
         camera: None,
@@ -840,7 +816,6 @@ fn warm_frames_reuse_their_gpu_memory_instead_of_allocating() {
     }
 }
 
-#[cfg(target_os = "macos")]
 #[test]
 fn a_drawable_acquired_ahead_is_used_by_the_next_present() {
     let Some(mut r) = renderer() else { return };
@@ -852,14 +827,9 @@ fn a_drawable_acquired_ahead_is_used_by_the_next_present() {
         Vec3::ZERO,
         clamp_camera(Projection::default(), Msaa::X4),
     );
-    let layer = objc2_quartz_core::CAMetalLayer::new();
+    let layer = common::test_surface();
     // SAFETY: the layer outlives the surface, which the renderer releases when dropped.
-    let surface = unsafe {
-        r.create_surface(concordia_rhi::SurfaceTarget::MetalLayer(
-            std::ptr::NonNull::from(&*layer).cast(),
-        ))
-    }
-    .unwrap();
+    let surface = unsafe { r.create_surface(layer.target) }.unwrap();
     let rw = RenderWorld::extract(&s.world);
     let request = |w, h| RenderRequest {
         camera: None,

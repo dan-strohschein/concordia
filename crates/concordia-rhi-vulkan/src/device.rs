@@ -122,6 +122,8 @@ pub struct VulkanDevice {
     family: u32,
     /// Surface and swapchain functions (when the instance and device have the extensions).
     wsi: Option<Wsi>,
+    /// `VK_KHR_swapchain_mutable_format` is enabled (sRGB views of UNORM swapchains).
+    mutable_format: bool,
     /// Used only while `state` is locked (queues need external synchronization).
     queue: vk::Queue,
     /// Signalled to `State::submitted` by every submission.
@@ -169,7 +171,9 @@ impl VulkanDevice {
             )));
         }
         let presents = can_present(&instance, &chosen);
-        let device = create_logical(&chosen, &instance, presents)?;
+        let mutable_format =
+            presents && chosen.record.extensions.iter().any(|e| e == MUTABLE_FORMAT);
+        let device = create_logical(&chosen, &instance, presents, mutable_format)?;
         // SAFETY: the device was created with one queue in `chosen.family`.
         let queue = unsafe { device.get_device_queue(chosen.family, 0) };
         let wsi = presents.then(|| Wsi {
@@ -184,6 +188,7 @@ impl VulkanDevice {
             physical: chosen.physical,
             family: chosen.family,
             wsi,
+            mutable_format,
             queue,
             progress: vk::Semaphore::null(),
             strict: options.strict,
@@ -263,7 +268,7 @@ impl VulkanDevice {
         Ok(VkSurface {
             raw,
             format,
-            surface_format: crate::swapchain::surface_format(&offered, format)?,
+            choice: crate::swapchain::surface_format(&offered, format, self.mutable_format)?,
             chain: None,
             acquired: None,
             spare: Vec::new(),
@@ -890,6 +895,8 @@ impl Reports {
     }
 }
 
+const MUTABLE_FORMAT: &str = "VK_KHR_swapchain_mutable_format";
+
 /// Whether the instance can make surfaces and the device can present (`VK_KHR_swapchain`).
 fn can_present(instance: &Instance, chosen: &Candidate) -> bool {
     instance.has_surface(crate::instance::SURFACE)
@@ -956,6 +963,7 @@ fn create_logical(
     chosen: &Candidate,
     instance: &Instance,
     presents: bool,
+    mutable_format: bool,
 ) -> Result<ash::Device, RhiError> {
     let priorities = [1.0];
     let queues = [vk::DeviceQueueCreateInfo::default()
@@ -991,6 +999,7 @@ fn create_logical(
         .then_some(c"VK_KHR_portability_subset".as_ptr())
         .into_iter()
         .chain(presents.then_some(ash::khr::swapchain::NAME.as_ptr()))
+        .chain(mutable_format.then_some(ash::khr::swapchain_mutable_format::NAME.as_ptr()))
         .collect();
     let info = vk::DeviceCreateInfo::default()
         .queue_create_infos(&queues)

@@ -1,6 +1,8 @@
 //! `capture.screenshot` and `render.stats` through the Engine API (M1 phase 1.5; the closure
 //! budget, M2 2.3b; hot reload of materials, meshes and textures, 2.3c). GPU cases skip without a GPU unless CONCORDIA_REQUIRE_GPU=1.
 
+mod common;
+
 use std::sync::Arc;
 
 use base64::Engine as _;
@@ -11,7 +13,6 @@ use concordia_core::log::LogRing;
 use concordia_material::{ClosureBudget, fit_budget};
 use concordia_render::{CaptureScreenshot, DeviceFactory, RenderModule};
 use concordia_rhi::RhiError;
-use concordia_testkit::gpu_required;
 use serde_json::{Value, json};
 
 struct Harness {
@@ -51,7 +52,7 @@ impl Harness {
 
     /// A harness on the real GPU, or None (skip) without one unless required.
     fn gpu() -> Option<Self> {
-        has_gpu().then(|| Self::with(Arc::new(concordia_rhi_metal::new_headless)))
+        has_gpu().then(|| Self::with(Arc::new(common::open_device)))
     }
 
     fn call(&mut self, method: &str, params: Value) -> Result<Value, concordia_api::ApiError> {
@@ -83,14 +84,7 @@ impl Harness {
 
 /// Whether a GPU is present (failing when one is required but missing).
 fn has_gpu() -> bool {
-    if let Err(RhiError::NoDevice { reason }) = concordia_rhi_metal::new_headless() {
-        assert!(
-            !gpu_required(),
-            "CONCORDIA_REQUIRE_GPU=1 but no device: {reason}"
-        );
-        return false;
-    }
-    true
+    common::has_device()
 }
 
 fn png_size(result: &Value) -> (u32, u32) {
@@ -188,7 +182,7 @@ fn render_module_registers_components_and_the_method() {
     }));
     assert!(h.engine.methods().get("capture.screenshot").is_some());
     assert!(h.engine.registry().get_by_name("Camera").is_some());
-    let _ = RenderModule::new(Arc::new(concordia_rhi_metal::new_headless)).methods();
+    let _ = RenderModule::new(Arc::new(common::open_device)).methods();
 }
 
 #[test]
@@ -267,8 +261,7 @@ fn render_stats_reports_each_pass_in_perf_mode() {
     if !has_gpu() {
         return;
     }
-    let render =
-        RenderModule::new(Arc::new(concordia_rhi_metal::new_headless)).with_perf_mode(true);
+    let render = RenderModule::new(Arc::new(common::open_device)).with_perf_mode(true);
     let mut h = Harness::configured(render, None);
     h.cube_scene();
     h.ok("capture.screenshot", json!({"width": 320, "height": 180}));
@@ -413,7 +406,7 @@ fn closure_budget_downgrades_gracefully_and_reports_it() {
     ))
     .unwrap();
     let budget = ClosureBudget::new(1).unwrap();
-    let factory: DeviceFactory = Arc::new(concordia_rhi_metal::new_headless);
+    let factory: DeviceFactory = Arc::new(common::open_device);
     let mut h = Harness::configured(
         RenderModule::new(factory.clone()).with_closure_budget(Some(budget)),
         Some(ring),

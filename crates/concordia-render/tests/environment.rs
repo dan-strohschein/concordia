@@ -176,7 +176,6 @@ fn environment_with_a_missing_map_names_it() {
     );
 }
 
-#[cfg(target_os = "macos")]
 #[test]
 fn the_viewport_does_not_wait_for_an_environment_to_prefilter() {
     let Some(mut r) = renderer() else { return };
@@ -185,14 +184,9 @@ fn the_viewport_does_not_wait_for_an_environment_to_prefilter() {
     s.mesh("cube", grey, Vec3::ZERO, Quat::IDENTITY, Vec3::ONE);
     environment(&mut s, true);
     s.camera(Vec3::new(0.0, 0.0, 4.0), Vec3::ZERO, Camera::default());
-    let layer = objc2_quartz_core::CAMetalLayer::new();
+    let layer = common::test_surface();
     // SAFETY: the layer outlives the surface, which the renderer releases when dropped.
-    let surface = unsafe {
-        r.create_surface(concordia_rhi::SurfaceTarget::MetalLayer(
-            std::ptr::NonNull::from(&*layer).cast(),
-        ))
-    }
-    .unwrap();
+    let surface = unsafe { r.create_surface(layer.target) }.unwrap();
     let rw = RenderWorld::extract(&s.world);
     let request = RenderRequest {
         camera: None,

@@ -12,11 +12,12 @@ use crate::validation::{ValidationLog, callback};
 
 const VALIDATION_LAYER: &CStr = c"VK_LAYER_KHRONOS_validation";
 /// Device extensions the probe reports when present.
-const NOTED_EXTENSIONS: [&CStr; 4] = [
+const NOTED_EXTENSIONS: [&CStr; 5] = [
     c"VK_EXT_mesh_shader",
     c"VK_KHR_ray_query",
     c"VK_KHR_portability_subset",
     c"VK_KHR_swapchain",
+    c"VK_KHR_swapchain_mutable_format",
 ];
 /// `VK_KHR_surface`, which every platform surface extension needs.
 pub(crate) const SURFACE: &CStr = c"VK_KHR_surface";

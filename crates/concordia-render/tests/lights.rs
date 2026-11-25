@@ -4,27 +4,15 @@
 mod common;
 
 use std::f32::consts::FRAC_PI_2;
-use std::sync::Arc;
 
 use common::{M1, Scene, golden, pixel, renderer};
 use concordia_core::math::{EulerRot, Quat, Vec3};
 use concordia_render::cluster::{ClusterCuller, ClusterGrid, ClusterSettings, LightBounds};
 use concordia_render::{Camera, Msaa, PointLight, Projection, SpotLight, Tonemap};
 use concordia_shaders::{SlangToolchain, SlangcCompiler};
-use concordia_testkit::gpu_required;
 
 fn culler() -> Option<ClusterCuller> {
-    let device = match concordia_rhi_metal::new_headless() {
-        Ok(device) => Arc::<dyn concordia_rhi::Device>::from(device),
-        Err(concordia_rhi::RhiError::NoDevice { reason }) => {
-            assert!(
-                !gpu_required(),
-                "CONCORDIA_REQUIRE_GPU=1 but no device: {reason}"
-            );
-            return None;
-        }
-        Err(other) => panic!("{other}"),
-    };
+    let device = common::device()?;
     let compiler = SlangcCompiler::new(SlangToolchain::locate().expect("run `just slang-fetch`"));
     Some(ClusterCuller::new(device, &compiler).expect("culler"))
 }

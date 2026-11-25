@@ -1,6 +1,8 @@
 //! The render module's entity templates (M1 phase 1.13): each one created through `entity.create`
 //! shows up in the render extraction as what it claims to be. CPU only.
 
+mod common;
+
 use std::sync::Arc;
 
 use concordia_api::{Engine, EngineConfig, EngineModule, WorldSel};
@@ -13,9 +15,7 @@ fn engine() -> (tempfile::TempDir, Engine, concordia_core::id::SessionId) {
     let mut config = EngineConfig::new(dir.path());
     let modules: Vec<Arc<dyn EngineModule>> = vec![
         Arc::new(AssetsModule::new(dir.path())),
-        Arc::new(RenderModule::new(Arc::new(
-            concordia_rhi_metal::new_headless,
-        ))),
+        Arc::new(RenderModule::new(Arc::new(common::open_device))),
     ];
     config.modules = modules;
     let mut engine = Engine::new(config).unwrap();
@@ -110,9 +110,7 @@ fn templates_carry_a_representation() {
     let mut config = EngineConfig::new(dir.path());
     config.modules = vec![
         Arc::new(AssetsModule::new(dir.path())),
-        Arc::new(RenderModule::new(Arc::new(
-            concordia_rhi_metal::new_headless,
-        ))),
+        Arc::new(RenderModule::new(Arc::new(common::open_device))),
     ];
     let mut engine = Engine::new(config).unwrap();
     let s = engine.open_session();

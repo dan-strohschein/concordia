@@ -41,41 +41,73 @@ pub(crate) struct Plan {
 /// Images per swapchain when the surface allows (like Metal's two drawables: short latency).
 const IMAGES: u32 = 2;
 
-/// The surface format for `format`, from those the surface offers.
+/// The swapchain's surface format and the format its image views use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SurfaceChoice {
+    /// The swapchain's format and color space.
+    pub surface: vk::SurfaceFormatKHR,
+    /// The views' format (sRGB over a UNORM swapchain when `mutable`).
+    pub view: vk::Format,
+    /// The swapchain needs `MUTABLE_FORMAT` (`VK_KHR_swapchain_mutable_format`).
+    pub mutable: bool,
+}
+
+/// The surface format for `format`, from those the surface offers; `mutable_format` says whether
+/// the device can view a UNORM swapchain as sRGB.
 pub(crate) fn surface_format(
     offered: &[vk::SurfaceFormatKHR],
     format: Format,
-) -> Result<vk::SurfaceFormatKHR, RhiError> {
-    let (wanted, color_space) = match format {
+    mutable_format: bool,
+) -> Result<SurfaceChoice, RhiError> {
+    let srgb = Some(vk::ColorSpaceKHR::SRGB_NONLINEAR);
+    let (wanted, linear, color_space) = match format {
         Format::Bgra8UnormSrgb => (
             vk::Format::B8G8R8A8_SRGB,
-            Some(vk::ColorSpaceKHR::SRGB_NONLINEAR),
+            Some(vk::Format::B8G8R8A8_UNORM),
+            srgb,
         ),
-        Format::Bgra8Unorm => (
-            vk::Format::B8G8R8A8_UNORM,
-            Some(vk::ColorSpaceKHR::SRGB_NONLINEAR),
-        ),
-        Format::Rgba16Float => (vk::Format::R16G16B16A16_SFLOAT, None),
+        Format::Bgra8Unorm => (vk::Format::B8G8R8A8_UNORM, None, srgb),
+        Format::Rgba16Float => (vk::Format::R16G16B16A16_SFLOAT, None, None),
         other => {
             return Err(RhiError::Unsupported(format!(
                 "surfaces cannot present {other:?}; use Bgra8UnormSrgb, Bgra8Unorm or Rgba16Float"
             )));
         }
     };
-    offered
+    let find = |f: vk::Format| {
+        offered
+            .iter()
+            .find(|o| o.format == f && color_space.is_none_or(|c| o.color_space == c))
+            .copied()
+    };
+    if let Some(surface) = find(wanted) {
+        return Ok(SurfaceChoice {
+            surface,
+            view: wanted,
+            mutable: false,
+        });
+    }
+    if let Some(surface) = linear.filter(|_| mutable_format).and_then(find) {
+        return Ok(SurfaceChoice {
+            surface,
+            view: wanted,
+            mutable: true,
+        });
+    }
+    let names: Vec<String> = offered
         .iter()
-        .find(|f| f.format == wanted && color_space.is_none_or(|c| f.color_space == c))
-        .copied()
-        .ok_or_else(|| {
-            let names: Vec<String> = offered
-                .iter()
-                .map(|f| format!("{:?}/{:?}", f.format, f.color_space))
-                .collect();
-            RhiError::Unsupported(format!(
-                "the surface offers no {wanted:?} for {format:?} (it offers {})",
-                names.join(", ")
-            ))
-        })
+        .map(|f| format!("{:?}/{:?}", f.format, f.color_space))
+        .collect();
+    let hint = match linear {
+        Some(l) if !mutable_format => {
+            format!("; viewing its {l:?} as sRGB needs VK_KHR_swapchain_mutable_format")
+        }
+        _ => String::new(),
+    };
+    Err(RhiError::Unsupported(format!(
+        "the surface offers no {wanted:?} for {format:?} (it offers {}){hint}",
+        names.join(", ")
+    )))
 }
 
 /// The swapchain for a `width`×`height` image, or `None` when the surface has a fixed size that
@@ -249,51 +281,75 @@ mod tests {
         );
     }
 
-    #[test]
-    fn surface_formats_match_the_rhi_format_or_are_unsupported() {
-        let srgb = vk::ColorSpaceKHR::SRGB_NONLINEAR;
-        let f = |format, color_space| vk::SurfaceFormatKHR {
+    fn f(format: vk::Format, color_space: vk::ColorSpaceKHR) -> vk::SurfaceFormatKHR {
+        vk::SurfaceFormatKHR {
             format,
             color_space,
-        };
+        }
+    }
+
+    const SRGB: vk::ColorSpaceKHR = vk::ColorSpaceKHR::SRGB_NONLINEAR;
+
+    #[test]
+    fn surface_formats_match_the_rhi_format_or_are_unsupported() {
         let offered = [
-            f(vk::Format::B8G8R8A8_UNORM, srgb),
-            f(vk::Format::B8G8R8A8_SRGB, srgb),
+            f(vk::Format::B8G8R8A8_UNORM, SRGB),
+            f(vk::Format::B8G8R8A8_SRGB, SRGB),
             f(
                 vk::Format::R16G16B16A16_SFLOAT,
                 vk::ColorSpaceKHR::EXTENDED_SRGB_LINEAR_EXT,
             ),
         ];
-        assert_eq!(
-            surface_format(&offered, Format::Bgra8UnormSrgb).unwrap(),
-            offered[1]
-        );
-        assert_eq!(
-            surface_format(&offered, Format::Bgra8Unorm).unwrap(),
-            offered[0]
-        );
-        assert_eq!(
-            surface_format(&offered, Format::Rgba16Float).unwrap(),
-            offered[2]
-        );
-        let err = surface_format(&offered, Format::Rgba32Float).unwrap_err();
+        let choose = |format| surface_format(&offered, format, false).unwrap();
+        let exact = |surface: vk::SurfaceFormatKHR| SurfaceChoice {
+            surface,
+            view: surface.format,
+            mutable: false,
+        };
+        assert_eq!(choose(Format::Bgra8UnormSrgb), exact(offered[1]));
+        assert_eq!(choose(Format::Bgra8Unorm), exact(offered[0]));
+        assert_eq!(choose(Format::Rgba16Float), exact(offered[2]));
+        let err = surface_format(&offered, Format::Rgba32Float, true).unwrap_err();
         assert!(matches!(err, RhiError::Unsupported(_)), "{err}");
-        let err = surface_format(&offered[..1], Format::Bgra8UnormSrgb).unwrap_err();
-        assert!(
-            matches!(err, RhiError::Unsupported(_)),
-            "not offered: {err}"
-        );
-        assert!(
-            err.to_string().contains("B8G8R8A8_UNORM"),
-            "names what is offered: {err}"
-        );
         let wide = [f(
             vk::Format::B8G8R8A8_SRGB,
             vk::ColorSpaceKHR::DISPLAY_P3_NONLINEAR_EXT,
         )];
         assert!(
-            surface_format(&wide, Format::Bgra8UnormSrgb).is_err(),
+            surface_format(&wide, Format::Bgra8UnormSrgb, true).is_err(),
             "8-bit formats present in sRGB"
+        );
+    }
+
+    /// Mesa's headless surfaces offer only UNORM: an sRGB swapchain is then a UNORM one viewed
+    /// as sRGB, which needs `VK_KHR_swapchain_mutable_format`.
+    #[test]
+    fn srgb_views_of_unorm_surfaces_need_mutable_format() {
+        let unorm_only = [
+            f(vk::Format::R8G8B8A8_UNORM, SRGB),
+            f(vk::Format::B8G8R8A8_UNORM, SRGB),
+        ];
+        assert_eq!(
+            surface_format(&unorm_only, Format::Bgra8UnormSrgb, true).unwrap(),
+            SurfaceChoice {
+                surface: unorm_only[1],
+                view: vk::Format::B8G8R8A8_SRGB,
+                mutable: true,
+            }
+        );
+        let err = surface_format(&unorm_only, Format::Bgra8UnormSrgb, false).unwrap_err();
+        assert!(matches!(err, RhiError::Unsupported(_)), "{err}");
+        let text = err.to_string();
+        assert!(
+            text.contains("B8G8R8A8_UNORM") && text.contains("mutable"),
+            "{text}"
+        );
+        let srgb_too = [unorm_only[1], f(vk::Format::B8G8R8A8_SRGB, SRGB)];
+        assert!(
+            !surface_format(&srgb_too, Format::Bgra8UnormSrgb, true)
+                .unwrap()
+                .mutable,
+            "an offered sRGB format is used as is"
         );
     }
 }
