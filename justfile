@@ -169,9 +169,9 @@ ci: lint test deny
 mutants file workers="2":
     python3 -I tools/mutants/run.py {{file}} {{workers}}
 
-# The end-of-phase checklist with independent steps at once (tools/check.sh; logs in target/check/)
-check:
-    tools/check.sh
+# A phase's checks (affected tests only), or `just check full` at a milestone's end (tools/check.sh)
+check mode="affected":
+    tools/check.sh {{mode}}
 
 # Create a crate from tools/templates/crate
 new-crate name:
