@@ -1,5 +1,6 @@
 ---
 source: crates/concordia-render/tests/capture.rs
+assertion_line: 190
 expression: "params_schema(&MethodInfo::of::<CaptureScreenshot>())"
 ---
 {
@@ -185,6 +186,10 @@ expression: "params_schema(&MethodInfo::of::<CaptureScreenshot>())"
         {
           "const": "triangles",
           "description": "One color per triangle."
+        },
+        {
+          "const": "motion",
+          "description": "Motion vectors: black where still, hue by screen direction, brighter with length (full\nat 16 pixels)."
         }
       ],
       "title": "ViewMode",

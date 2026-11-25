@@ -42,6 +42,9 @@ pub enum ViewMode {
     meshlets,
     /// One color per triangle.
     triangles,
+    /// Motion vectors: black where still, hue by screen direction, brighter with length (full
+    /// at 16 pixels).
+    motion,
 }
 
 impl ViewMode {

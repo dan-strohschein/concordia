@@ -39,6 +39,7 @@ export const VIEW_MODES = [
   { id: "lod", label: "LOD" },
   { id: "meshlets", label: "Meshlets" },
   { id: "triangles", label: "Triangles" },
+  { id: "motion", label: "Motion Vectors" },
 ] as const;
 export type ViewModeId = (typeof VIEW_MODES)[number]["id"];
 

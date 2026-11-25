@@ -22,7 +22,8 @@
     "shader_draw_parameters": true,
     "sampler_anisotropy": true,
     "shader_sampled_image_array_non_uniform_indexing": true,
-    "shader_storage_image_array_non_uniform_indexing": true
+    "shader_storage_image_array_non_uniform_indexing": true,
+    "independent_blend": true
   },
   "msaa_sample_counts": [
     1,

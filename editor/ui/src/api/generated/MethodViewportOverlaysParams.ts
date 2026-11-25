@@ -28,7 +28,8 @@ export type ViewMode =
   | "thin_film"
   | "lod"
   | "meshlets"
-  | "triangles";
+  | "triangles"
+  | "motion";
 
 /**
  * What the engine draws over the viewport.

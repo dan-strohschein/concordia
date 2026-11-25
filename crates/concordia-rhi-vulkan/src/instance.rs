@@ -275,6 +275,7 @@ impl Instance {
             shader_storage_image_array_non_uniform_indexing: on(
                 v12.shader_storage_image_array_non_uniform_indexing
             ),
+            independent_blend: on(core.independent_blend),
         }
     }
 

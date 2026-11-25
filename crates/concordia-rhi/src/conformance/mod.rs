@@ -6,6 +6,7 @@ mod indirect;
 mod mesh;
 mod regions;
 mod surface;
+mod targets;
 mod util;
 
 pub use cases::*;
@@ -13,6 +14,7 @@ pub use indirect::*;
 pub use mesh::*;
 pub use regions::*;
 pub use surface::*;
+pub use targets::*;
 
 use std::path::PathBuf;
 
@@ -109,7 +111,9 @@ macro_rules! conformance_tests {
             object_payload_reaches_every_mesh_group,
             mesh_output_counts_below_the_declared_maximum_draw_only_those,
             mesh_and_vertex_draws_share_one_depth_buffer,
-            mesh_pipeline_misuse_is_reported
+            mesh_pipeline_misuse_is_reported,
+            rg16_float_renders_and_reads_back,
+            write_mask_leaves_a_target_untouched
         );
     };
     (@cases $make:expr, $golden:expr, $shaders:expr, $finish:expr; $($name:ident),+) => {$(

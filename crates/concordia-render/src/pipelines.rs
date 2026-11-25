@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use concordia_rhi::{
-    BlendMode, CompareOp, ComputePipelineDesc, CullMode, DepthState, Device, Format,
+    BlendMode, ColorWrites, CompareOp, ComputePipelineDesc, CullMode, DepthState, Device, Format,
     GraphicsPipelineDesc, MeshPipelineDesc, MeshStage, ObjectStage, Pipeline, RhiError,
     SampleCount, ShaderSource,
 };
@@ -18,6 +18,8 @@ use crate::shape::ProgramShape;
 pub(crate) const HDR: Format = Format::Rgba16Float;
 /// Depth (reverse-Z).
 pub(crate) const DEPTH: Format = Format::Depth32Float;
+/// Motion vectors (UV units, y down; M4 4.3b2), the forward pass's second color target.
+pub(crate) const MOTION: Format = Format::Rg16Float;
 /// Display output (sRGB-encoded on write).
 pub(crate) const OUTPUT: Format = Format::Rgba8UnormSrgb;
 
@@ -95,7 +97,14 @@ struct Raster {
     samples: SampleCount,
     cull: CullMode,
     blend: BlendMode,
+    color_writes: ColorWrites,
     label: String,
+}
+
+/// The forward pass's color target only (blended draws, debug views and the grid leave motion as
+/// the opaque surfaces wrote it).
+fn color_only() -> ColorWrites {
+    ColorWrites::only(&[0]).expect("target 0 exists")
 }
 
 /// Compiled shaders and lazily created pipelines.
@@ -167,6 +176,7 @@ impl Pipelines {
                 samples: SampleCount::X1,
                 cull: CullMode::None,
                 blend: BlendMode::Opaque,
+                color_writes: concordia_rhi::ColorWrites::ALL,
                 label: label.into(),
             })
         };
@@ -244,6 +254,7 @@ impl Pipelines {
             samples: SampleCount::X1,
             cull: CullMode::None,
             blend: BlendMode::Opaque,
+            color_writes: concordia_rhi::ColorWrites::ALL,
             label: format!("tonemap {format:?}"),
         })?;
         self.tonemaps.insert(key, pipeline);
@@ -268,6 +279,7 @@ impl Pipelines {
             samples: SampleCount::X1,
             cull: CullMode::None,
             blend: BlendMode::PremultipliedAlpha,
+            color_writes: concordia_rhi::ColorWrites::ALL,
             label: format!("overlay {format:?}"),
         })?;
         self.overlays.insert(key, pipeline);
@@ -292,6 +304,7 @@ impl Pipelines {
             samples: SampleCount::X1,
             cull: CullMode::None,
             blend: BlendMode::PremultipliedAlpha,
+            color_writes: concordia_rhi::ColorWrites::ALL,
             label: format!("ui {format:?}"),
         })?;
         self.uis.insert(key, pipeline);
@@ -310,7 +323,7 @@ impl Pipelines {
         let pipeline = device.create_graphics_pipeline(&GraphicsPipelineDesc {
             vertex: self.sky.0.clone(),
             fragment: Some(self.sky.1.clone()),
-            color_formats: vec![HDR],
+            color_formats: vec![HDR, MOTION],
             depth: Some(DepthState {
                 format: DEPTH,
                 compare: CompareOp::Always,
@@ -319,6 +332,7 @@ impl Pipelines {
             samples,
             cull: CullMode::None,
             blend: BlendMode::Opaque,
+            color_writes: concordia_rhi::ColorWrites::ALL,
             label: format!("sky x{}", samples.get()),
         })?;
         self.skies.insert(samples.get(), pipeline);
@@ -337,7 +351,7 @@ impl Pipelines {
         let pipeline = device.create_graphics_pipeline(&GraphicsPipelineDesc {
             vertex: self.grid.0.clone(),
             fragment: Some(self.grid.1.clone()),
-            color_formats: vec![HDR],
+            color_formats: vec![HDR, MOTION],
             depth: Some(DepthState {
                 format: DEPTH,
                 compare: CompareOp::GreaterEqual,
@@ -346,6 +360,7 @@ impl Pipelines {
             samples,
             cull: CullMode::None,
             blend: BlendMode::PremultipliedAlpha,
+            color_writes: color_only(),
             label: format!("grid x{}", samples.get()),
         })?;
         self.grids.insert(samples.get(), pipeline);
@@ -421,11 +436,12 @@ impl Pipelines {
                     object: Some(stages.object.clone()),
                     mesh: stages.mesh.clone(),
                     fragment: raster.fragment,
-                    color_formats: vec![HDR],
+                    color_formats: vec![HDR, MOTION],
                     depth: Some(raster.depth),
                     samples: raster.samples,
                     cull: raster.cull,
                     blend: raster.blend,
+                    color_writes: raster.color_writes,
                     label: raster.label,
                 })?);
             }
@@ -433,11 +449,12 @@ impl Pipelines {
         Ok(device.create_graphics_pipeline(&GraphicsPipelineDesc {
             vertex,
             fragment: raster.fragment,
-            color_formats: vec![HDR],
+            color_formats: vec![HDR, MOTION],
             depth: Some(raster.depth),
             samples: raster.samples,
             cull: raster.cull,
             blend: raster.blend,
+            color_writes: raster.color_writes,
             label: raster.label,
         })?)
     }
@@ -469,6 +486,7 @@ impl Pipelines {
             } else {
                 BlendMode::Opaque
             },
+            color_writes: color_only(),
             label: format!(
                 "forward x{} {} {geometry:?}",
                 samples.get(),
@@ -529,6 +547,11 @@ impl Pipelines {
             } else {
                 BlendMode::Opaque
             },
+            color_writes: if blend {
+                color_only()
+            } else {
+                ColorWrites::ALL
+            },
             label: format!(
                 "forward x{}{}{}{} {geometry:?}",
                 samples.get(),
@@ -585,6 +608,7 @@ fn mesh_stages(
         samples: SampleCount::X1,
         cull: CullMode::None,
         blend: BlendMode::Opaque,
+        color_writes: concordia_rhi::ColorWrites::ALL,
         label: "meshlet shadow depth (mesh)".into(),
     })?;
     Ok(MeshStages {

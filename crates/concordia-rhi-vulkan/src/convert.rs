@@ -19,6 +19,7 @@ pub(crate) fn format(format: Format) -> vk::Format {
         Format::Bgra8Unorm => vk::Format::B8G8R8A8_UNORM,
         Format::Bgra8UnormSrgb => vk::Format::B8G8R8A8_SRGB,
         Format::Rgba16Float => vk::Format::R16G16B16A16_SFLOAT,
+        Format::Rg16Float => vk::Format::R16G16_SFLOAT,
         Format::Rgba32Float => vk::Format::R32G32B32A32_SFLOAT,
         Format::R32Float => vk::Format::R32_SFLOAT,
         Format::R32Uint => vk::Format::R32_UINT,
@@ -253,13 +254,14 @@ pub(crate) fn error(what: &str, result: vk::Result) -> RhiError {
 mod tests {
     use super::*;
 
-    const FORMATS: [Format; 11] = [
+    const FORMATS: [Format; 12] = [
         Format::R8Unorm,
         Format::Rgba8Unorm,
         Format::Rgba8UnormSrgb,
         Format::Bgra8Unorm,
         Format::Bgra8UnormSrgb,
         Format::Rgba16Float,
+        Format::Rg16Float,
         Format::Rgba32Float,
         Format::R32Float,
         Format::R32Uint,
@@ -272,6 +274,7 @@ mod tests {
         let mapped: std::collections::BTreeSet<i32> =
             FORMATS.iter().map(|f| format(*f).as_raw()).collect();
         assert_eq!(mapped.len(), FORMATS.len());
+        assert!(!mapped.contains(&vk::Format::UNDEFINED.as_raw()));
         for f in FORMATS {
             assert_eq!(
                 aspect(f) == vk::ImageAspectFlags::DEPTH,

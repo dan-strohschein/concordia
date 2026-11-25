@@ -14,10 +14,10 @@ use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_foundation::NSString;
 use objc2_metal::{
-    MTLBuffer, MTLCommandBuffer, MTLCommandBufferStatus, MTLCommandQueue, MTLComputePipelineState,
-    MTLCullMode, MTLDepthStencilDescriptor, MTLDepthStencilState, MTLDevice, MTLEvent, MTLFunction,
-    MTLHazardTrackingMode, MTLHeap, MTLHeapDescriptor, MTLHeapType, MTLLibrary,
-    MTLMeshRenderPipelineDescriptor, MTLPipelineOption,
+    MTLBuffer, MTLColorWriteMask, MTLCommandBuffer, MTLCommandBufferStatus, MTLCommandQueue,
+    MTLComputePipelineState, MTLCullMode, MTLDepthStencilDescriptor, MTLDepthStencilState,
+    MTLDevice, MTLEvent, MTLFunction, MTLHazardTrackingMode, MTLHeap, MTLHeapDescriptor,
+    MTLHeapType, MTLLibrary, MTLMeshRenderPipelineDescriptor, MTLPipelineOption,
     MTLRenderPipelineColorAttachmentDescriptorArray, MTLRenderPipelineDescriptor,
     MTLRenderPipelineState, MTLResource, MTLSharedEvent, MTLSize, MTLTextureDescriptor,
     MTLTextureType,
@@ -260,16 +260,20 @@ impl MetalDevice {
             })
     }
 
-    /// Sets `formats` (≤ 8, validated) and `blend` on a pipeline's color attachments.
+    /// Sets `formats` (≤ 8, validated), the blend and the write mask on a pipeline's color
+    /// attachments.
     fn color_targets(
         attachments: &MTLRenderPipelineColorAttachmentDescriptorArray,
         formats: &[Format],
-        blend: concordia_rhi::BlendMode,
+        (blend, writes): (concordia_rhi::BlendMode, concordia_rhi::ColorWrites),
     ) -> Result<(), RhiError> {
         for (i, format) in formats.iter().enumerate() {
             // SAFETY: i < 8, within Metal's color attachment array.
             let attachment = unsafe { attachments.objectAtIndexedSubscript(i) };
             attachment.setPixelFormat(convert::pixel_format(*format)?);
+            if !writes.writes(i) {
+                attachment.setWriteMask(MTLColorWriteMask::None);
+            }
             if let Some((src, dst)) = convert::blend(blend) {
                 attachment.setBlendingEnabled(true);
                 attachment.setSourceRGBBlendFactor(src);
@@ -441,7 +445,11 @@ impl Device for MetalDevice {
             let fragment = Self::function(&inner, fragment, &desc.label)?;
             d.setFragmentFunction(Some(&*fragment));
         }
-        Self::color_targets(&d.colorAttachments(), &desc.color_formats, desc.blend)?;
+        Self::color_targets(
+            &d.colorAttachments(),
+            &desc.color_formats,
+            (desc.blend, desc.color_writes),
+        )?;
         if let Some(depth) = desc.depth {
             d.setDepthAttachmentPixelFormat(convert::pixel_format(depth.format)?);
         }
@@ -482,7 +490,11 @@ impl Device for MetalDevice {
             // SAFETY: a `[[fragment]]` function compiled for this device.
             unsafe { d.setFragmentFunction(Some(&*fragment)) };
         }
-        Self::color_targets(&d.colorAttachments(), &desc.color_formats, desc.blend)?;
+        Self::color_targets(
+            &d.colorAttachments(),
+            &desc.color_formats,
+            (desc.blend, desc.color_writes),
+        )?;
         if let Some(depth) = desc.depth {
             d.setDepthAttachmentPixelFormat(convert::pixel_format(depth.format)?);
         }

@@ -15,6 +15,8 @@ pub enum Format {
     Bgra8UnormSrgb,
     /// 16-bit float RGBA (HDR targets).
     Rgba16Float,
+    /// 16-bit float red and green (motion vectors).
+    Rg16Float,
     /// 32-bit float RGBA.
     Rgba32Float,
     /// 32-bit float red.
@@ -38,6 +40,7 @@ impl Format {
             | Self::Bgra8UnormSrgb
             | Self::R32Float
             | Self::R32Uint
+            | Self::Rg16Float
             | Self::Depth32Float => 4,
             Self::Rgba16Float | Self::R64Uint => 8,
             Self::Rgba32Float => 16,

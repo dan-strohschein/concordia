@@ -423,6 +423,10 @@ impl Worker {
             removed: Vec::new(),
         };
         let delta = std::mem::replace(&mut scene.delta, empty);
+        if matches!(delta, SceneDelta::Full(_)) {
+            // A new or re-sent scene: nothing on screen moved from last frame's.
+            self.renderer.reset_motion_history();
+        }
         match scene.tick {
             Some(dt) => {
                 self.scenes[scene.slot].apply_tick(delta);

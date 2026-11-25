@@ -19,6 +19,7 @@ pub(crate) fn pixel_format(format: Format) -> Result<MTLPixelFormat, RhiError> {
         Format::Rgba32Float => MTLPixelFormat::RGBA32Float,
         Format::R32Float => MTLPixelFormat::R32Float,
         Format::R32Uint => MTLPixelFormat::R32Uint,
+        Format::Rg16Float => MTLPixelFormat::RG16Float,
         Format::Depth32Float => MTLPixelFormat::Depth32Float,
         Format::R64Uint => {
             return Err(RhiError::Unsupported(

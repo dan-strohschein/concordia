@@ -56,6 +56,7 @@ fn desc() -> MeshPipelineDesc {
         samples: SampleCount::X4,
         cull: CullMode::Back,
         blend: BlendMode::Opaque,
+        color_writes: concordia_rhi::ColorWrites::ALL,
         label: "mesh".into(),
     }
 }

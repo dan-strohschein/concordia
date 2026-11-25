@@ -59,6 +59,7 @@ fn desc(h: &Harness<'_>, object: bool, depth: Option<DepthState>) -> MeshPipelin
         samples: SampleCount::X1,
         cull: CullMode::None,
         blend: BlendMode::Opaque,
+        color_writes: crate::pipeline::ColorWrites::ALL,
         label: "mesh".into(),
     }
 }

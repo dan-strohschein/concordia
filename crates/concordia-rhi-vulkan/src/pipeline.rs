@@ -5,8 +5,8 @@ use std::ffi::CString;
 
 use ash::vk;
 use concordia_rhi::{
-    BlendMode, ComputePipelineDesc, CullMode, DepthState, Format, GraphicsPipelineDesc,
-    MeshPipelineDesc, RhiCaps, RhiError, SampleCount, ShaderSource,
+    BlendMode, ColorWrites, ComputePipelineDesc, CullMode, DepthState, Format,
+    GraphicsPipelineDesc, MeshPipelineDesc, RhiCaps, RhiError, SampleCount, ShaderSource,
 };
 
 use crate::convert;
@@ -168,6 +168,7 @@ pub(crate) fn graphics(
         samples: desc.samples,
         cull: desc.cull,
         blend: desc.blend,
+        color_writes: desc.color_writes,
     };
     let raw = fixed.create(device, layout, &stages, true, &desc.label)?;
     Ok(VkPipeline {
@@ -220,6 +221,7 @@ pub(crate) fn mesh(
         samples: desc.samples,
         cull: desc.cull,
         blend: desc.blend,
+        color_writes: desc.color_writes,
     };
     let raw = fixed.create(device, layout, &stages, false, &desc.label)?;
     Ok(VkPipeline {
@@ -235,6 +237,7 @@ struct Fixed<'a> {
     samples: SampleCount,
     cull: CullMode,
     blend: BlendMode,
+    color_writes: ColorWrites,
 }
 
 impl Fixed<'_> {
@@ -280,7 +283,14 @@ impl Fixed<'_> {
                     .depth_write_enable(d.write)
                     .depth_compare_op(convert::compare(d.compare))
             });
-        let blends = vec![convert::blend(self.blend); formats.len()];
+        let blends: Vec<_> = (0..formats.len())
+            .map(|i| match self.color_writes.writes(i) {
+                true => convert::blend(self.blend),
+                false => {
+                    convert::blend(self.blend).color_write_mask(vk::ColorComponentFlags::empty())
+                }
+            })
+            .collect();
         let blend = vk::PipelineColorBlendStateCreateInfo::default().attachments(&blends);
         let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
         let dynamic = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);

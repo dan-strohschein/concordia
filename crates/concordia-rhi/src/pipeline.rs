@@ -84,6 +84,37 @@ pub enum BlendMode {
     Additive,
 }
 
+/// Which color targets a pipeline writes (bit `i`: target `i`); the others keep their contents.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ColorWrites(u8);
+
+impl ColorWrites {
+    /// Every target.
+    pub const ALL: Self = Self(u8::MAX);
+
+    /// Only `targets` (each below 8); an error names a target past the eighth.
+    pub fn only(targets: &[usize]) -> Result<Self, RhiError> {
+        targets.iter().try_fold(Self(0), |mask, &t| match t < 8 {
+            true => Ok(Self(mask.0 | 1 << t)),
+            false => Err(RhiError::invalid(
+                "color writes",
+                format!("target {t}: there are at most 8"),
+            )),
+        })
+    }
+
+    /// Whether target `target` is written.
+    pub fn writes(self, target: usize) -> bool {
+        target < 8 && self.0 & (1 << target) != 0
+    }
+}
+
+impl Default for ColorWrites {
+    fn default() -> Self {
+        Self::ALL
+    }
+}
+
 /// A graphics pipeline (vertex pulling: no vertex input layout).
 #[derive(Debug, Clone, PartialEq)]
 pub struct GraphicsPipelineDesc {
@@ -101,6 +132,8 @@ pub struct GraphicsPipelineDesc {
     pub cull: CullMode,
     /// Blending for every color target.
     pub blend: BlendMode,
+    /// The color targets it writes.
+    pub color_writes: ColorWrites,
     /// Debug label.
     pub label: String,
 }
@@ -154,6 +187,8 @@ pub struct MeshPipelineDesc {
     pub cull: CullMode,
     /// Blending for every color target.
     pub blend: BlendMode,
+    /// The color targets it writes.
+    pub color_writes: ColorWrites,
     /// Debug label.
     pub label: String,
 }
