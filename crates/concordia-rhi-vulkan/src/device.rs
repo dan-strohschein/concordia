@@ -184,9 +184,8 @@ impl VulkanDevice {
     }
 }
 
-/// Retires finished submissions until `stop`. It makes no Vulkan call outside the state lock
-/// (`retire` reads the timeline under it): the validation layers Ubuntu 24.04 ships crashed when it
-/// waited on the timeline while another thread submitted.
+/// Retires finished submissions until `stop`, polling the timeline under the state lock (`retire`)
+/// and making no Vulkan call outside it.
 fn retire_loop(inner: &Inner, stop: &AtomicBool) {
     while !stop.load(Ordering::Acquire) {
         let busy = inner.oldest_in_flight().is_some();

@@ -71,6 +71,11 @@ struct VsOut {
 
 float4 xform(float4 m[4], float4 v) { return m[0] * v.x + m[1] * v.y + m[2] * v.z + m[3] * v.w; }
 
+// A texture index inside the bindless table. A branch that skips a read (NO_TEXTURE) may still run
+// it for some lanes (lavapipe's non-uniform sampling loop does), and an index past the table faults
+// there; an empty slot reads as zero on every backend.
+uint in_table(uint index) { return min(index, BINDLESS_CAPACITY - 1); }
+
 float3 read3(uint buffer, uint i) {
     float* p = (float*)g_buffers.ptr[buffer];
     return float3(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]);
@@ -160,7 +165,7 @@ float sun_shadow(Frame* frame, float3 world, float3 n, float3 to_light) {
     float2 base = floor(st);
     float2 f = st - base;
     int k = int(frame.shadow.z);
-    Texture2D<float4> map = g_textures.tex[NonUniformResourceIndex(frame.shadow_tex[c])];
+    Texture2D<float4> map = g_textures.tex[NonUniformResourceIndex(in_table(frame.shadow_tex[c]))];
     float lit = 0.0;
     for (int dy = -k; dy <= k + 1; dy++) {
         float wy = dy == -k ? 1.0 - f.y : (dy == k + 1 ? f.y : 1.0);
@@ -179,7 +184,7 @@ uint env_level(Frame* frame, uint i) { return i < 4 ? frame.env_a[i] : frame.env
 
 float3 env_sample(Frame* frame, uint level, float3 dir) {
     float2 uv = float2(0.5 + atan2(dir.x, -dir.z) / (2.0 * PI), acos(clamp(dir.y, -1.0, 1.0)) / PI);
-    return g_textures.tex[NonUniformResourceIndex(env_level(frame, level))].SampleLevel(g_textures.samplers[SAMPLER_LINEAR_REPEAT], uv, 0).rgb;
+    return g_textures.tex[NonUniformResourceIndex(in_table(env_level(frame, level)))].SampleLevel(g_textures.samplers[SAMPLER_LINEAR_REPEAT], uv, 0).rgb;
 }
 
 float3 sh_irradiance(Frame* frame, float3 n) {
@@ -215,7 +220,7 @@ float4 sky_fs(SkyOut i, uniform SkyPush push) : SV_Target {
 
 float4 sample_or(uint tex, float2 uv, float4 fallback) {
     if (tex == NO_TEXTURE) { return fallback; }
-    return g_textures.tex[NonUniformResourceIndex(tex)].Sample(g_textures.samplers[SAMPLER_LINEAR_REPEAT], uv);
+    return g_textures.tex[NonUniformResourceIndex(in_table(tex))].Sample(g_textures.samplers[SAMPLER_LINEAR_REPEAT], uv);
 }
 
 
