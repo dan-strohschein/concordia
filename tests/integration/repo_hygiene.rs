@@ -520,6 +520,9 @@ fn vulkan_workflow_runs_the_backend_on_lavapipe_on_demand() {
             "m1_physics_golden",
             "gpu-probe --backend vulkan --require-m1",
             "golden-vulkan",
+            // A real X11 window on Vulkan: `concordia run` on Xvfb.
+            "xvfb-run",
+            "concordia-cli -- run",
         ],
     );
     let workflow =

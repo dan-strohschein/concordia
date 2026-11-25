@@ -68,6 +68,17 @@ jobs:
       - name: gpu-probe on Vulkan
         if: ${{ !cancelled() }}
         run: cargo run -q -p concordia-cli -- gpu-probe --backend vulkan --require-m1
+      - name: concordia run in an X11 window on Vulkan (Xvfb, the latency bench's frames)
+        if: ${{ !cancelled() }}
+        run: |
+          sudo apt-get install -y --no-install-recommends xvfb libxcursor1 libxrandr2 libxi6 libxkbcommon-x11-0
+          xvfb-run -a -s "-screen 0 1280x720x24" cargo run -q -p concordia-cli -- run \
+            --project examples/m1-physics-stack --bench-latency target/vulkan-window.json \
+            --bench-frames 20 --bench-hz 30 --exit-after-ms 120000 2>&1 | tee target/vulkan-window.log
+          test "$(jq '.frames | length' target/vulkan-window.json)" -ge 20
+          ! grep -i "validation" target/vulkan-window.log
+        env:
+          CONCORDIA_VULKAN_VALIDATION: strict
       - name: This runner's probe record (for fixtures)
         if: always()
         run: cargo nextest run -p concordia-rhi-vulkan --run-ignored only -E 'test(print_this_machines_probe_record)' --no-capture
@@ -75,5 +86,7 @@ jobs:
         if: always()
         with:
           name: golden-vulkan
-          path: target/golden-failures/
+          path: |
+            target/golden-failures/
+            target/vulkan-window.*
           if-no-files-found: ignore

@@ -856,3 +856,29 @@ fn viewport_present_from_a_scene_camera_redraws_after_each_tick() {
     assert!(after >= 1, "ticks redraw the scene camera's view: {after}");
     drop(h);
 }
+
+/// Hosts detach the viewport surface before its window goes away (4.1v(b): an X11 or Wayland
+/// window, unlike a retained `CAMetalLayer`, dies with its event loop). Afterwards nothing is
+/// drawn into it, `viewport.present` says no viewport is attached, and detaching again is fine.
+#[test]
+fn a_detached_viewport_surface_is_released_and_no_longer_drawn() {
+    let Some(mut h) = Harness::gpu() else { return };
+    h.two_cubes();
+    let layer = common::test_surface();
+    // SAFETY: the native object outlives the surface: it is detached before `layer` drops.
+    unsafe { concordia_render::attach_surface(&mut h.engine, layer.target) }.unwrap();
+    h.ok(
+        "viewport.present",
+        json!({"view": front_view(), "width": 64, "height": 48}),
+    );
+    concordia_render::detach_surface(&mut h.engine).unwrap();
+    drop(layer);
+    let err = h
+        .call(
+            "viewport.present",
+            json!({"view": front_view(), "width": 64, "height": 48}),
+        )
+        .unwrap_err();
+    assert!(err.message.contains("no native viewport"), "{err:?}");
+    concordia_render::detach_surface(&mut h.engine).expect("detaching twice is harmless");
+}

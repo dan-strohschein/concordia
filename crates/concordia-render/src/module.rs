@@ -730,7 +730,8 @@ fn check_view(view: &crate::View) -> Result<(), ApiError> {
 /// (in-process hosts only; run it on the engine thread, e.g. through `EngineHandle::run`).
 ///
 /// # Safety
-/// The native object behind `target` must outlive the engine.
+/// The native object behind `target` must stay alive until [`detach_surface`] returns or the
+/// engine is dropped.
 pub unsafe fn attach_surface(
     engine: &mut Engine,
     target: concordia_rhi::SurfaceTarget,
@@ -741,6 +742,18 @@ pub unsafe fn attach_surface(
         state.surface = true;
     }
     Ok(())
+}
+
+/// Releases the native viewport surface (before its window goes away); harmless without one.
+pub fn detach_surface(engine: &mut Engine) -> Result<(), ApiError> {
+    let state = engine
+        .state_mut::<RenderState>()
+        .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render module has no state"))?;
+    state.surface = false;
+    match &state.thread {
+        Some(thread) => thread.detach().map_err(api_error),
+        None => Ok(()),
+    }
 }
 
 /// Draw `view` into the editor's native viewport (needs a host-attached window surface; elsewhere use capture.screenshot).

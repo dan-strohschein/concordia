@@ -97,6 +97,7 @@ impl Player {
             WindowEvent::CloseRequested => {
                 api("sim.stop", json!({}))?;
             }
+            WindowEvent::Closing => {}
             WindowEvent::Input(input) => {
                 self.input(input, api)?;
                 self.sync_clipboard(api);

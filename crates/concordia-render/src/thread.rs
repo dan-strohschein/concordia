@@ -58,6 +58,10 @@ enum Job {
         target: SurfaceTarget,
         reply: mpsc::Sender<Result<(), RenderError>>,
     },
+    /// Release the viewport surface (its window is about to go).
+    Detach {
+        reply: mpsc::Sender<()>,
+    },
 }
 
 /// The render thread's handle; dropping it stops the thread after its queued work.
@@ -114,11 +118,19 @@ impl RenderThread {
     /// Makes `target` the viewport surface (replacing any earlier one).
     ///
     /// # Safety
-    /// The native object behind `target` must outlive the render thread.
+    /// The native object behind `target` must stay alive until [`RenderThread::detach`] returns
+    /// or the render thread ends.
     pub(crate) unsafe fn attach(&self, target: SurfaceTarget) -> Result<(), RenderError> {
         let (reply, answer) = mpsc::channel();
         self.send(Job::Attach { target, reply })?;
         answer.recv().map_err(|_| stopped())?
+    }
+
+    /// Releases the viewport surface and waits until it is gone.
+    pub(crate) fn detach(&self) -> Result<(), RenderError> {
+        let (reply, answer) = mpsc::channel();
+        self.send(Job::Detach { reply })?;
+        answer.recv().map_err(|_| stopped())
     }
 
     /// A handle that asks this thread for redraws from any thread.
@@ -391,6 +403,13 @@ impl Worker {
                 let _ = reply.send(self.attach(target));
                 latest
             }
+            Job::Detach { reply } => {
+                if let Some(old) = self.surface.take() {
+                    self.renderer.destroy_surface(old);
+                }
+                let _ = reply.send(());
+                latest
+            }
         }
     }
 
@@ -414,7 +433,8 @@ impl Worker {
     }
 
     fn attach(&mut self, target: SurfaceTarget) -> Result<(), RenderError> {
-        // SAFETY: `RenderThread::attach`'s caller guarantees the target outlives this thread.
+        // SAFETY: `RenderThread::attach`'s caller keeps the target alive until it is detached
+        // (`Job::Detach`) or this thread ends.
         let surface = unsafe { self.renderer.create_surface(target) }?;
         if let Some(old) = self.surface.replace(surface) {
             self.renderer.destroy_surface(old);

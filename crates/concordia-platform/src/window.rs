@@ -139,6 +139,9 @@ pub enum WindowEvent {
     Focused(bool),
     /// The user asked to close the window.
     CloseRequested,
+    /// The window is about to be destroyed (sent once, on every exit path): release anything that
+    /// refers to it, such as a GPU surface.
+    Closing,
     /// Keyboard, mouse or scroll input (pointer positions in logical pixels).
     Input(InputEvent),
 }
@@ -297,6 +300,12 @@ impl ApplicationHandler for Runner<'_> {
                 dy: dy as f32,
             };
             self.send(event_loop, WindowEvent::Input(motion));
+        }
+    }
+
+    fn exiting(&mut self, _: &ActiveEventLoop) {
+        if self.window.is_some() {
+            let _ = self.app.event(WindowEvent::Closing);
         }
     }
 
