@@ -142,8 +142,12 @@ pub struct ProbeRecord {
     /// `timestampPeriod` in nanoseconds per tick.
     pub timestamp_period_ns: f32,
     /// Device extensions of interest present (`VK_EXT_mesh_shader`, `VK_KHR_ray_query`,
-    /// `VK_KHR_portability_subset`), sorted.
+    /// `VK_KHR_portability_subset`, `VK_KHR_swapchain`), sorted.
     pub extensions: Vec<String>,
+    /// The instance's surface extensions (`VK_KHR_surface` and the platform ones), sorted; empty
+    /// in records made before 4.1v(b).
+    #[serde(default)]
+    pub surface_extensions: Vec<String>,
 }
 
 impl ProbeRecord {

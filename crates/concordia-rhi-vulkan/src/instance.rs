@@ -12,10 +12,21 @@ use crate::validation::{ValidationLog, callback};
 
 const VALIDATION_LAYER: &CStr = c"VK_LAYER_KHRONOS_validation";
 /// Device extensions the probe reports when present.
-const NOTED_EXTENSIONS: [&CStr; 3] = [
+const NOTED_EXTENSIONS: [&CStr; 4] = [
     c"VK_EXT_mesh_shader",
     c"VK_KHR_ray_query",
     c"VK_KHR_portability_subset",
+    c"VK_KHR_swapchain",
+];
+/// `VK_KHR_surface`, which every platform surface extension needs.
+pub(crate) const SURFACE: &CStr = c"VK_KHR_surface";
+/// Platform surface extensions, enabled when the loader has them (with `VK_KHR_surface`).
+pub(crate) const PLATFORM_SURFACES: [&CStr; 5] = [
+    c"VK_EXT_headless_surface",
+    c"VK_KHR_xlib_surface",
+    c"VK_KHR_xcb_surface",
+    c"VK_KHR_wayland_surface",
+    c"VK_EXT_metal_surface",
 ];
 const PORTABILITY_ENUMERATION: &CStr = c"VK_KHR_portability_enumeration";
 
@@ -36,6 +47,8 @@ pub(crate) struct Instance {
     pub debug: Option<(ash::ext::debug_utils::Instance, vk::DebugUtilsMessengerEXT)>,
     /// Kept alive while the messenger may call back into it.
     pub log: ValidationLog,
+    /// Surface extensions enabled on the instance.
+    pub surfaces: Vec<&'static CStr>,
 }
 
 fn no_device(reason: impl Into<String>) -> RhiError {
@@ -53,12 +66,14 @@ impl Instance {
         check_instance_version(&entry)?;
         let layer = choose_layer(&entry, validation)?;
         let portability = has_instance_extension(&entry, PORTABILITY_ENUMERATION);
-        let raw = create_instance(&entry, layer, portability)?;
+        let surfaces = surface_extensions(&entry);
+        let raw = create_instance(&entry, layer, portability, &surfaces)?;
         let mut instance = Self {
             entry,
             raw,
             debug: None,
             log,
+            surfaces,
         };
         if layer {
             instance.debug = Some(instance.messenger()?);
@@ -69,6 +84,11 @@ impl Instance {
     /// True when the validation layer is on.
     pub fn validating(&self) -> bool {
         self.debug.is_some()
+    }
+
+    /// True when surface extension `name` is enabled.
+    pub fn has_surface(&self, name: &CStr) -> bool {
+        self.surfaces.contains(&name)
     }
 
     fn messenger(
@@ -160,12 +180,23 @@ impl Instance {
             queue_timestamp_valid_bits: timestamp_bits,
             timestamp_period_ns: limits.timestamp_period,
             extensions: self.noted_extensions(physical)?,
+            surface_extensions: self.surface_names(),
         };
         Ok(Candidate {
             physical,
             family: family.unwrap_or(0),
             record,
         })
+    }
+
+    fn surface_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .surfaces
+            .iter()
+            .map(|n| n.to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
     }
 
     fn queue_family(&self, physical: vk::PhysicalDevice) -> (Option<u32>, u32) {
@@ -301,10 +332,25 @@ fn has_instance_extension(entry: &ash::Entry, name: &CStr) -> bool {
         .unwrap_or(false)
 }
 
+/// `VK_KHR_surface` and the platform surface extensions the loader has (none without it).
+fn surface_extensions(entry: &ash::Entry) -> Vec<&'static CStr> {
+    if !has_instance_extension(entry, SURFACE) {
+        return Vec::new();
+    }
+    std::iter::once(SURFACE)
+        .chain(
+            PLATFORM_SURFACES
+                .into_iter()
+                .filter(|name| has_instance_extension(entry, name)),
+        )
+        .collect()
+}
+
 fn create_instance(
     entry: &ash::Entry,
     layer: bool,
     portability: bool,
+    surfaces: &[&CStr],
 ) -> Result<ash::Instance, RhiError> {
     let app = vk::ApplicationInfo::default()
         .application_name(c"concordia")
@@ -314,7 +360,7 @@ fn create_instance(
         .then_some(VALIDATION_LAYER.as_ptr())
         .into_iter()
         .collect();
-    let mut extensions: Vec<*const c_char> = Vec::new();
+    let mut extensions: Vec<*const c_char> = surfaces.iter().map(|n| n.as_ptr()).collect();
     if layer {
         extensions.push(ash::ext::debug_utils::NAME.as_ptr());
     }

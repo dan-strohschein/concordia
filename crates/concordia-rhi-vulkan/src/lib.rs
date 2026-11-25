@@ -15,9 +15,11 @@ mod pipeline;
 pub mod record;
 mod resources;
 mod spirv;
+mod swapchain;
 mod timing;
 mod track;
 mod validation;
+mod wsi;
 
 use concordia_rhi::{CapsMask, Device, RhiCaps, RhiError};
 
