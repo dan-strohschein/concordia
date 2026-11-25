@@ -10,10 +10,10 @@ publish.workspace = true
 
 [features]
 # `golden::RhiGoldens`, the RHI conformance suite's golden check.
-rhi = ["dep:concordia-rhi"]
+rhi = ["concordia-rhi/conformance"]
 
 [dependencies]
-concordia-rhi = { workspace = true, features = ["conformance"], optional = true }
+concordia-rhi.workspace = true
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 nv-flip = "0.1.2"
 thiserror.workspace = true

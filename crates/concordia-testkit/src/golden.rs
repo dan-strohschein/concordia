@@ -1,11 +1,13 @@
 //! Golden images: `tests/golden/<suite>/<name>.png`, compared with LDR-FLIP; blessed with
 //! `CONCORDIA_BLESS=1` (`just bless`), never when `CI=true`. Failures leave
-//! `<name>.{actual,expected,flip}.png` under `target/golden-failures/<suite>/`.
+//! `<name>.{actual,expected,flip}.png` under `target/golden-failures/<suite>/` (`<suite>/<backend>/`
+//! for a backend's checks); `CONCORDIA_GOLDEN_KEEP=1` also keeps passing checks, with a score.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use concordia_reflect::Reflect;
+use concordia_rhi::Backend;
 use serde::{Deserialize, Serialize};
 
 /// An 8-bit RGBA image (sRGB-encoded, as captured).
@@ -122,6 +124,52 @@ pub struct Tolerances {
     pub default: Tolerance,
     /// By golden name.
     pub goldens: BTreeMap<String, Tolerance>,
+    /// Per-backend overrides, by backend name (D4: each backend has its own tolerance).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub backends: BTreeMap<String, BackendTolerances>,
+}
+
+/// One backend's overrides in a suite's `tolerances.ron`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct BackendTolerances {
+    /// For goldens with no entry here or in the shared `goldens` (None: the shared default).
+    pub default: Option<Tolerance>,
+    /// By golden name.
+    pub goldens: BTreeMap<String, Tolerance>,
+}
+
+impl Tolerances {
+    /// The tolerance for `name` on `backend`: the backend's entry, the shared entry, the
+    /// backend's default, then the shared default.
+    pub fn for_golden(&self, backend: Option<Backend>, name: &str) -> Tolerance {
+        let own = backend.and_then(|b| self.backends.get(b.as_str()));
+        own.and_then(|o| o.goldens.get(name))
+            .or_else(|| self.goldens.get(name))
+            .or_else(|| own.and_then(|o| o.default.as_ref()))
+            .copied()
+            .unwrap_or(self.default)
+    }
+
+    /// Checks every backend key names a backend.
+    pub fn validate(&self) -> Result<(), String> {
+        for key in self.backends.keys() {
+            key.parse::<Backend>().map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+}
+
+/// What a kept check measured (`<name>.score.ron`).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct KeptScore {
+    /// The comparison.
+    pub score: FlipScore,
+    /// The tolerance it was held to.
+    pub tolerance: Tolerance,
+    /// Whether it was within tolerance.
+    pub passed: bool,
 }
 
 impl Default for Tolerance {
@@ -168,6 +216,16 @@ pub enum GoldenError {
         tolerance: Tolerance,
         /// Where actual/expected/flip images were written.
         failures: String,
+    },
+    /// Blessing was requested on a backend other than Metal, whose images are the goldens.
+    #[error("refusing to bless {suite}/{name} on {backend}: goldens are blessed on Metal (D4)")]
+    BlessOnBackend {
+        /// The suite.
+        suite: String,
+        /// The golden.
+        name: String,
+        /// The backend.
+        backend: Backend,
     },
     /// Blessing was requested while `CI=true`.
     #[error("refusing to bless golden images in CI (CI=true); bless locally with `just bless`")]
@@ -230,6 +288,7 @@ pub struct Golden {
     failures: PathBuf,
     bless: bool,
     ci: bool,
+    keep: bool,
 }
 
 impl Golden {
@@ -240,7 +299,13 @@ impl Golden {
             failures,
             bless,
             ci,
+            keep: false,
         }
+    }
+
+    /// Also writes the comparison and its score for checks that pass.
+    pub fn with_keep(self, keep: bool) -> Self {
+        Self { keep, ..self }
     }
 
     /// The repository store: `tests/golden`, `target/golden-failures`, `CONCORDIA_BLESS=1`, `CI=true`.
@@ -252,11 +317,22 @@ impl Golden {
             std::env::var("CONCORDIA_BLESS").as_deref() == Ok("1"),
             std::env::var("CI").as_deref() == Ok("true"),
         )
+        .with_keep(std::env::var("CONCORDIA_GOLDEN_KEEP").as_deref() == Ok("1"))
     }
 
     /// The tolerance for golden `name` in `suite`: its entry in the suite's `tolerances.ron`, else
     /// the file's default, else [`Tolerance::default`] when the suite has no file.
     pub fn tolerance(&self, suite: &str, name: &str) -> Result<Tolerance, GoldenError> {
+        self.tolerance_on(None, suite, name)
+    }
+
+    /// [`Golden::tolerance`] on `backend` (see [`Tolerances::for_golden`]).
+    pub fn tolerance_on(
+        &self,
+        backend: Option<Backend>,
+        suite: &str,
+        name: &str,
+    ) -> Result<Tolerance, GoldenError> {
         let path = self.path(suite, name)?.with_file_name("tolerances.ron");
         let text = match std::fs::read_to_string(&path) {
             Ok(text) => text,
@@ -265,7 +341,8 @@ impl Golden {
         };
         let file: Tolerances =
             concordia_scene::read_document(&text).map_err(|e| tolerances_error(&path, e))?;
-        Ok(file.goldens.get(name).copied().unwrap_or(file.default))
+        file.validate().map_err(|e| tolerances_error(&path, e))?;
+        Ok(file.for_golden(backend, name))
     }
 
     /// Compares `image` with `<suite>/<name>.png` within its tolerance (or writes it when blessing).
@@ -275,9 +352,28 @@ impl Golden {
         name: &str,
         image: &RgbaImage,
     ) -> Result<FlipScore, GoldenError> {
+        self.check_on(None, suite, name, image)
+    }
+
+    /// [`Golden::check`] on `backend`: its tolerance, and its failures under `<suite>/<backend>/`.
+    /// Only Metal (or no backend) may bless.
+    pub fn check_on(
+        &self,
+        backend: Option<Backend>,
+        suite: &str,
+        name: &str,
+        image: &RgbaImage,
+    ) -> Result<FlipScore, GoldenError> {
         let path = self.path(suite, name)?;
-        let tolerance = self.tolerance(suite, name)?;
+        let tolerance = self.tolerance_on(backend, suite, name)?;
         if self.bless {
+            if let Some(backend) = backend.filter(|b| *b != Backend::Metal) {
+                return Err(GoldenError::BlessOnBackend {
+                    suite: suite.to_owned(),
+                    name: name.to_owned(),
+                    backend,
+                });
+            }
             if self.ci {
                 return Err(GoldenError::BlessInCi);
             }
@@ -292,10 +388,16 @@ impl Golden {
         }
         let expected = RgbaImage::load(&path)?;
         let score = flip_score(&expected, image)?;
-        if tolerance.accepts(&score) {
+        let passed = tolerance.accepts(&score);
+        let dir = self.comparison_dir(suite, backend);
+        if self.keep {
+            self.write_comparison_in(&dir, name, &expected, image)?;
+            write_score(&dir, name, score, tolerance, passed)?;
+        }
+        if passed {
             return Ok(score);
         }
-        let failures = self.write_comparison(suite, name, &expected, image)?;
+        let failures = self.write_comparison_in(&dir, name, &expected, image)?;
         Err(GoldenError::Mismatch {
             path,
             score,
@@ -333,7 +435,24 @@ impl Golden {
         expected: &RgbaImage,
         actual: &RgbaImage,
     ) -> Result<String, GoldenError> {
+        self.write_comparison_in(&self.comparison_dir(suite, None), name, expected, actual)
+    }
+
+    fn comparison_dir(&self, suite: &str, backend: Option<Backend>) -> PathBuf {
         let dir = self.failures.join(suite);
+        match backend {
+            Some(b) => dir.join(b.as_str()),
+            None => dir,
+        }
+    }
+
+    fn write_comparison_in(
+        &self,
+        dir: &Path,
+        name: &str,
+        expected: &RgbaImage,
+        actual: &RgbaImage,
+    ) -> Result<String, GoldenError> {
         actual.save(&dir.join(format!("{name}.actual.png")))?;
         expected.save(&dir.join(format!("{name}.expected.png")))?;
         let heat = flip_map(expected, actual).apply_color_lut(&nv_flip::magma_lut());
@@ -350,6 +469,24 @@ impl Golden {
     }
 }
 
+fn write_score(
+    dir: &Path,
+    name: &str,
+    score: FlipScore,
+    tolerance: Tolerance,
+    passed: bool,
+) -> Result<(), GoldenError> {
+    let kept = KeptScore {
+        score,
+        tolerance,
+        passed,
+    };
+    let text =
+        concordia_scene::write_document(&kept).map_err(|e| GoldenError::Io(e.to_string()))?;
+    let path = dir.join(format!("{name}.score.ron"));
+    std::fs::write(&path, text).map_err(|e| io(&path, e))
+}
+
 fn tolerances_error(path: &Path, e: impl std::fmt::Display) -> GoldenError {
     GoldenError::Tolerances {
         path: path.to_path_buf(),
@@ -359,20 +496,27 @@ fn tolerances_error(path: &Path, e: impl std::fmt::Display) -> GoldenError {
 
 /// Asserts `image` matches its golden under the repository store; panics with the reason.
 pub fn assert_golden(suite: &str, name: &str, image: &RgbaImage) {
-    if let Err(e) = Golden::from_env().check(suite, name, image) {
-        panic!("golden {suite}/{name}: {e}");
+    assert_golden_on(None, suite, name, image);
+}
+
+/// [`assert_golden`] rendered on `backend` (its own tolerance and failure folder).
+pub fn assert_golden_on(backend: Option<Backend>, suite: &str, name: &str, image: &RgbaImage) {
+    if let Err(e) = Golden::from_env().check_on(backend, suite, name, image) {
+        let on = backend.map_or_else(String::new, |b| format!(" on {b}"));
+        panic!("golden {suite}/{name}{on}: {e}");
     }
 }
 
-/// The RHI conformance suite's golden check: `name` in suite `rhi` (`tests/golden/rhi/`).
+/// The RHI conformance suite's golden check: `name` in suite `rhi` (`tests/golden/rhi/`), with
+/// the backend's tolerance.
 #[cfg(feature = "rhi")]
-#[derive(Debug, Clone, Copy, Default)]
-pub struct RhiGoldens;
+#[derive(Debug, Clone, Copy)]
+pub struct RhiGoldens(pub Backend);
 
 #[cfg(feature = "rhi")]
 impl concordia_rhi::conformance::GoldenCheck for RhiGoldens {
     fn check(&self, name: &str, width: u32, height: u32, rgba: &[u8]) {
         let image = RgbaImage::new(width, height, rgba.to_vec()).expect("well-formed capture");
-        assert_golden("rhi", name, &image);
+        assert_golden_on(Some(self.0), "rhi", name, &image);
     }
 }

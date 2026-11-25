@@ -12,6 +12,41 @@ pub enum Backend {
     Vulkan,
 }
 
+impl Backend {
+    /// Every backend.
+    pub const ALL: [Self; 2] = [Self::Metal, Self::Vulkan];
+
+    /// The lowercase name (as serialized).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Metal => "metal",
+            Self::Vulkan => "vulkan",
+        }
+    }
+}
+
+impl std::fmt::Display for Backend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// A name that is no backend.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("unknown backend {0:?}; expected one of: metal, vulkan")]
+pub struct UnknownBackend(pub String);
+
+impl std::str::FromStr for Backend {
+    type Err = UnknownBackend;
+
+    fn from_str(name: &str) -> Result<Self, Self::Err> {
+        Self::ALL
+            .into_iter()
+            .find(|b| b.as_str() == name)
+            .ok_or_else(|| UnknownBackend(name.to_owned()))
+    }
+}
+
 /// A valid MSAA sample count (1, 2, 4 or 8); serializes as the number.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(try_from = "u8", into = "u8")]

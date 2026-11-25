@@ -20,7 +20,11 @@ fn device() -> Option<Box<dyn Device>> {
     }
 }
 
-concordia_rhi::conformance_tests!(device, RhiGoldens, SlangShaders::new(Target::Msl));
+concordia_rhi::conformance_tests!(
+    device,
+    RhiGoldens(concordia_rhi::Backend::Metal),
+    SlangShaders::new(Target::Msl)
+);
 
 #[cfg(target_os = "macos")]
 #[test]

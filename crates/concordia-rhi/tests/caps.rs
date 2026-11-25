@@ -143,3 +143,27 @@ fn caps_mask_rejects_unknown_features() {
     let err = serde_json::from_value::<CapsMask>(serde_json::json!({"mesh_shader": true}));
     assert!(err.is_err());
 }
+
+#[test]
+fn backend_names_round_trip_and_match_serde() {
+    for backend in Backend::ALL {
+        let name = backend.as_str();
+        assert_eq!(name.parse::<Backend>().unwrap(), backend);
+        assert_eq!(
+            serde_json::to_string(&backend).unwrap(),
+            format!("\"{name}\"")
+        );
+        assert_eq!(backend.to_string(), name);
+    }
+    assert_eq!(Backend::ALL, [Backend::Metal, Backend::Vulkan]);
+}
+
+#[test]
+fn unknown_backend_names_list_the_choices() {
+    let err = "dx12".parse::<Backend>().unwrap_err().to_string();
+    assert!(
+        err.contains("dx12") && err.contains("metal") && err.contains("vulkan"),
+        "{err}"
+    );
+    assert!("Metal".parse::<Backend>().is_err(), "names are lowercase");
+}

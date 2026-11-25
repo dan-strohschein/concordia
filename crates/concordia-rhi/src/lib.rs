@@ -21,7 +21,9 @@ mod surface;
 pub mod conformance;
 
 pub use barrier::{Access, AccessFlags, BufferBarrier, Layout, Stages, TextureBarrier};
-pub use caps::{Backend, CapsMask, Requirement, RhiCaps, SampleCount, TimestampGranularity};
+pub use caps::{
+    Backend, CapsMask, Requirement, RhiCaps, SampleCount, TimestampGranularity, UnknownBackend,
+};
 pub use command::{
     ClearValue, ColorAttachment, Command, CommandList, DepthAttachment, LoadOp, MAX_PUSH_CONSTANTS,
     RenderPassDesc, StoreOp, TimerScope,

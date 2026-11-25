@@ -50,7 +50,7 @@ fn no_validation_errors(_: &dyn Device) {
 
 concordia_rhi::conformance_tests!(
     device,
-    RhiGoldens,
+    RhiGoldens(concordia_rhi::Backend::Vulkan),
     SlangShaders::new(Target::SpirV),
     finish = no_validation_errors
 );
