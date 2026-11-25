@@ -26,6 +26,8 @@ fn entry_points() -> Vec<(String, String, Stage)> {
                 "vertex" => Stage::Vertex,
                 "fragment" => Stage::Fragment,
                 "compute" => Stage::Compute,
+                "mesh" => Stage::Mesh,
+                "amplification" => Stage::Amplification,
                 other => panic!("{}: stage {other}", path.display()),
             };
             let signature = lines

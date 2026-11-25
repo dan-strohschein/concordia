@@ -10,10 +10,10 @@ export type MergedOperator = "horizontal" | "vertical";
  */
 export type PassTiming = "off" | "unsupported" | "measured";
 /**
- * How opaque static geometry reached the rasterizer: `forward`, or `compute_indirect` when
- * meshes with meshlets took the meshlet path (ADR-0100).
+ * How opaque static geometry reached the rasterizer: `forward`, or `compute_indirect` or
+ * `mesh_shader` when meshes with meshlets took a meshlet path (ADR-0100).
  */
-export type RasterPath = "forward" | "compute_indirect";
+export type RasterPath = "forward" | "compute_indirect" | "mesh_shader";
 /**
  * How it was drawn.
  */
@@ -159,13 +159,17 @@ export interface ClosureMergeStats {
  */
 export interface MeshletCounts {
   /**
-   * Indirect draws issued (one per pipeline and material).
+   * Indirect draws issued (one per pipeline and material, on the compute path).
    */
   indirect_draws: number;
   /**
    * Instances drawn through meshlets (in the camera's view).
    */
   instances: number;
+  /**
+   * Mesh-task draws issued (one per pipeline and material, on the mesh-shader path).
+   */
+  mesh_draws: number;
   /**
    * Meshlets drawn.
    */

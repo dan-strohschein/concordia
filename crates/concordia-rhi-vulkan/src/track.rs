@@ -563,11 +563,14 @@ mod tests {
                     dst,
                     mip: 0
                 }]),
-            (tex.clone(), any::<bool>()).prop_map(|(c, d)| vec![
+            (tex.clone(), any::<bool>(), any::<bool>()).prop_map(|(c, d, mesh)| vec![
                 pass(c, None, d.then_some(DEPTH)),
-                Command::Draw {
-                    vertices: 0..3,
-                    instances: 0..1
+                match mesh {
+                    true => Command::DrawMeshTasks { groups: [2, 1, 1] },
+                    false => Command::Draw {
+                        vertices: 0..3,
+                        instances: 0..1,
+                    },
                 },
                 Command::EndRenderPass
             ]),

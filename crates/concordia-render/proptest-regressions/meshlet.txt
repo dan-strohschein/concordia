@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 7da2b32ac5d6cc844176fcabf8db7a5f2ef2d693a3748dc3f023766a4ec2ff05 # shrinks to raw = [(1, None, true)]
+cc 3705d4332bd55dee6827fb86a2dffec8c9612e4916d6bbdfe2d2c5ad0803512b # shrinks to entries = 1, wide = true

@@ -56,7 +56,7 @@ pub use extract::{
 };
 pub use frame::DrawPush;
 pub use lighting::candela;
-pub use meshlet::{ExpandPush, MeshletPush};
+pub use meshlet::{ExpandPush, MeshletPush, TaskPush};
 pub use module::{
     CaptureScreenshot, CaptureScreenshotParams, CaptureScreenshotResult, DeviceFactory,
     RenderModule, ViewportControl, ViewportNavigateParams, attach_surface, detach_surface,

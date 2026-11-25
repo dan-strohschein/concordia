@@ -11,9 +11,10 @@ use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{
     MTLBlitCommandEncoder, MTLClearColor, MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue,
-    MTLComputeCommandEncoder, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPrimitiveType,
-    MTLRenderCommandEncoder, MTLRenderPassDescriptor, MTLRenderStages, MTLResource,
-    MTLResourceUsage, MTLScissorRect, MTLSize, MTLStoreAction, MTLViewport, MTLWinding,
+    MTLComputeCommandEncoder, MTLCullMode, MTLDepthStencilState, MTLIndexType, MTLLoadAction,
+    MTLOrigin, MTLPrimitiveType, MTLRenderCommandEncoder, MTLRenderPassDescriptor,
+    MTLRenderPipelineState, MTLRenderStages, MTLResource, MTLResourceUsage, MTLScissorRect,
+    MTLSize, MTLStoreAction, MTLViewport, MTLWinding,
 };
 
 use crate::bindless::{MtlBuffer, MtlTexture};
@@ -52,6 +53,18 @@ struct Recorder<'a> {
     timer: Option<TimerPlan>,
     /// The open render pass's target size (width, height).
     pass_size: Option<[NonZeroU32; 2]>,
+    /// What kind of pipeline the open render pass has bound.
+    bound: Bound,
+    /// The device has object and mesh stages (their tables and push constants are bound).
+    mesh_stages: bool,
+}
+
+/// The pipeline bound in a render pass: draws must match it.
+#[derive(Debug, Clone, Copy)]
+enum Bound {
+    None,
+    Vertex,
+    Mesh { object: MTLSize, mesh: MTLSize },
 }
 
 /// A recorded command buffer (not yet committed) and its timer scopes, if any are sampled.
@@ -65,6 +78,7 @@ pub(crate) fn record(
     inner: &Inner,
     submit: &Submit<'_>,
     timed: bool,
+    mesh_stages: bool,
 ) -> Result<Recorded, RhiError> {
     let cb = inner
         .queue
@@ -80,6 +94,8 @@ pub(crate) fn record(
         push: Vec::new(),
         timer: TimerPlan::for_list(&inner.device, submit.commands, timed),
         pass_size: None,
+        bound: Bound::None,
+        mesh_stages,
     };
     for command in &submit.commands.commands {
         if let Err(e) = recorder.command(command) {
@@ -119,6 +135,7 @@ impl Recorder<'_> {
             Command::BeginRenderPass(desc) => self.begin_pass(desc)?,
             Command::EndRenderPass => {
                 self.pass_size = None;
+                self.bound = Bound::None;
                 self.encoder.end();
             }
             Command::SetPipeline(pipeline) => self.set_pipeline(*pipeline)?,
@@ -129,14 +146,21 @@ impl Recorder<'_> {
             Command::Draw {
                 vertices,
                 instances,
-            } => self.draw(vertices.clone(), instances.clone()),
+            } => {
+                self.vertex_bound()?;
+                self.draw(vertices.clone(), instances.clone())
+            }
             Command::DrawIndexed {
                 indices,
                 offset,
                 count,
                 instances,
-            } => self.draw_indexed(*indices, *offset, *count, instances.clone())?,
+            } => {
+                self.vertex_bound()?;
+                self.draw_indexed(*indices, *offset, *count, instances.clone())?
+            }
             Command::Dispatch { groups } => self.dispatch(*groups)?,
+            Command::DrawMeshTasks { groups } => self.draw_mesh_tasks(*groups)?,
             Command::DispatchIndirect { buffer, offset } => {
                 self.dispatch_indirect(*buffer, *offset)?
             }
@@ -177,12 +201,18 @@ impl Recorder<'_> {
                     );
                 }
             }
-            Command::DrawIndirect { args, offset } => self.draw_indirect(None, *args, *offset)?,
+            Command::DrawIndirect { args, offset } => {
+                self.vertex_bound()?;
+                self.draw_indirect(None, *args, *offset)?
+            }
             Command::DrawIndexedIndirect {
                 indices,
                 args,
                 offset,
-            } => self.draw_indirect(Some(*indices), *args, *offset)?,
+            } => {
+                self.vertex_bound()?;
+                self.draw_indirect(Some(*indices), *args, *offset)?
+            }
             Command::SetViewport(viewport) => self.set_viewport(viewport)?,
             Command::SetScissor(rect) => self.set_scissor(rect)?,
             Command::CopyTexture {
@@ -326,13 +356,26 @@ impl Recorder<'_> {
                 };
                 e.setVertexBuffer_offset_atIndex(Some(table), 0, slot);
                 e.setFragmentBuffer_offset_atIndex(Some(table), 0, slot);
+                if self.mesh_stages {
+                    e.setObjectBuffer_offset_atIndex(Some(table), 0, slot);
+                    e.setMeshBuffer_offset_atIndex(Some(table), 0, slot);
+                }
             }
         }
+        let stages = match self.mesh_stages {
+            true => {
+                MTLRenderStages::Vertex
+                    | MTLRenderStages::Fragment
+                    | MTLRenderStages::Object
+                    | MTLRenderStages::Mesh
+            }
+            false => MTLRenderStages::Vertex | MTLRenderStages::Fragment,
+        };
         for resource in bindless_resources(self.inner) {
             e.useResource_usage_stages(
                 resource,
                 MTLResourceUsage::Read | MTLResourceUsage::Write,
-                MTLRenderStages::Vertex | MTLRenderStages::Fragment,
+                stages,
             );
         }
         self.encoder = Encoder::Render(e);
@@ -352,17 +395,33 @@ impl Recorder<'_> {
             })?;
         match (entry, &self.encoder) {
             (PipelineEntry::Graphics { state, depth, cull }, Encoder::Render(e)) => {
-                e.setRenderPipelineState(state);
-                if let Some(depth) = depth {
-                    e.setDepthStencilState(Some(depth));
-                }
-                e.setCullMode(*cull);
+                set_render_state(e, state, depth.as_deref(), *cull);
+                self.bound = Bound::Vertex;
                 Ok(())
             }
-            (PipelineEntry::Graphics { .. }, _) => Err(RhiError::invalid(
-                "command list",
-                "graphics pipeline set outside a render pass",
-            )),
+            (
+                PipelineEntry::Mesh {
+                    state,
+                    depth,
+                    cull,
+                    object_threads,
+                    mesh_threads,
+                },
+                Encoder::Render(e),
+            ) => {
+                set_render_state(e, state, depth.as_deref(), *cull);
+                self.bound = Bound::Mesh {
+                    object: *object_threads,
+                    mesh: *mesh_threads,
+                };
+                Ok(())
+            }
+            (PipelineEntry::Graphics { .. } | PipelineEntry::Mesh { .. }, _) => {
+                Err(RhiError::invalid(
+                    "command list",
+                    "graphics pipeline set outside a render pass",
+                ))
+            }
             (PipelineEntry::Compute { state, threads }, _) => {
                 let (e, _) = self.compute();
                 e.setComputePipelineState(state);
@@ -387,10 +446,49 @@ impl Recorder<'_> {
                 Encoder::Render(e) => {
                     e.setVertexBytes_length_atIndex(ptr, self.push.len(), slots::PUSH);
                     e.setFragmentBytes_length_atIndex(ptr, self.push.len(), slots::PUSH);
+                    if self.mesh_stages {
+                        e.setObjectBytes_length_atIndex(ptr, self.push.len(), slots::PUSH);
+                        e.setMeshBytes_length_atIndex(ptr, self.push.len(), slots::PUSH);
+                    }
                 }
                 Encoder::Blit(_) | Encoder::None => {}
             }
         }
+    }
+
+    /// Vertex draws need a vertex pipeline bound in the pass.
+    fn vertex_bound(&self) -> Result<(), RhiError> {
+        match self.bound {
+            Bound::Vertex => Ok(()),
+            Bound::None => Err(RhiError::invalid("command list", "draw without a pipeline")),
+            Bound::Mesh { .. } => Err(RhiError::invalid(
+                "command list",
+                "a vertex draw with a mesh pipeline bound",
+            )),
+        }
+    }
+
+    /// `groups` object (or mesh) threadgroups of the bound mesh pipeline.
+    fn draw_mesh_tasks(&self, groups: [u32; 3]) -> Result<(), RhiError> {
+        let Bound::Mesh { object, mesh } = self.bound else {
+            return Err(RhiError::invalid(
+                "command list",
+                "a mesh-task draw without a mesh pipeline bound",
+            ));
+        };
+        if let Encoder::Render(e) = &self.encoder {
+            let [x, y, z] = groups.map(|g| g as usize);
+            e.drawMeshThreadgroups_threadsPerObjectThreadgroup_threadsPerMeshThreadgroup(
+                MTLSize {
+                    width: x,
+                    height: y,
+                    depth: z,
+                },
+                object,
+                mesh,
+            );
+        }
+        Ok(())
     }
 
     fn draw(&self, vertices: std::ops::Range<u32>, instances: std::ops::Range<u32>) {
@@ -663,4 +761,18 @@ fn bindless_resources(inner: &Inner) -> impl Iterator<Item = &ProtocolObject<dyn
         .filter(|t| t.bindless.is_some())
         .map(|t| ProtocolObject::from_ref(&*t.raw));
     buffers.chain(textures)
+}
+
+/// Binds a render pipeline with its depth state and culling.
+fn set_render_state(
+    e: &RenderEncoder,
+    state: &ProtocolObject<dyn MTLRenderPipelineState>,
+    depth: Option<&ProtocolObject<dyn MTLDepthStencilState>>,
+    cull: MTLCullMode,
+) {
+    e.setRenderPipelineState(state);
+    if let Some(depth) = depth {
+        e.setDepthStencilState(Some(depth));
+    }
+    e.setCullMode(cull);
 }

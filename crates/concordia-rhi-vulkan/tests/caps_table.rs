@@ -2,7 +2,7 @@
 
 use concordia_rhi::{Backend, Requirement, SampleCount, TimestampGranularity};
 use concordia_rhi_vulkan::BINDLESS_CAPACITY;
-use concordia_rhi_vulkan::record::{DeviceType, ProbeRecord, caps_from_record, choose};
+use concordia_rhi_vulkan::record::{DeviceType, MeshRecord, ProbeRecord, caps_from_record, choose};
 
 fn lavapipe() -> ProbeRecord {
     serde_json::from_str(include_str!("fixtures/probes/lavapipe.probe.json"))
@@ -37,9 +37,71 @@ fn lavapipe_meets_m1_with_draw_boundary_timestamps() {
         ]
     );
     assert!(
-        !caps.mesh_shaders && !caps.ray_tracing && !caps.metalfx_temporal,
-        "not implemented in 4.1v(a)"
+        !caps.ray_tracing && !caps.metalfx_temporal,
+        "not implemented yet (ray queries arrive in 4.8)"
     );
+}
+
+#[test]
+fn vulkan_caps_from_record_read_mesh_shader_properties() {
+    let caps = caps_from_record(&lavapipe());
+    assert!(caps.mesh_shaders && caps.object_shaders, "{caps:?}");
+    assert_eq!(
+        (
+            caps.max_mesh_output_vertices,
+            caps.max_mesh_output_primitives
+        ),
+        (256, 256)
+    );
+    let mut mesh_only = lavapipe();
+    mesh_only.mesh.as_mut().unwrap().task_shader = false;
+    let caps = caps_from_record(&mesh_only);
+    assert!(caps.mesh_shaders && !caps.object_shaders);
+}
+
+#[test]
+fn records_without_mesh_properties_have_no_mesh_shaders() {
+    let mut record = lavapipe();
+    record.mesh = None;
+    let caps = caps_from_record(&record);
+    assert!(!caps.mesh_shaders && !caps.object_shaders);
+    assert_eq!(
+        (
+            caps.max_mesh_output_vertices,
+            caps.max_mesh_output_primitives
+        ),
+        (0, 0)
+    );
+    // A 4.3a record has no `mesh` field.
+    let mut json: serde_json::Value = serde_json::to_value(lavapipe()).unwrap();
+    json.as_object_mut().unwrap().remove("mesh");
+    let old: ProbeRecord = serde_json::from_value(json).unwrap();
+    assert_eq!(old.mesh, None);
+    let mut no_extension = lavapipe();
+    no_extension
+        .extensions
+        .retain(|e| e != "VK_EXT_mesh_shader");
+    assert!(!caps_from_record(&no_extension).mesh_shaders);
+    let mut no_feature = lavapipe();
+    no_feature.mesh.as_mut().unwrap().mesh_shader = false;
+    assert!(!caps_from_record(&no_feature).mesh_shaders);
+}
+
+#[test]
+fn mesh_limits_below_the_portable_minimum_withhold_mesh_shaders() {
+    let shrink: [fn(&mut MeshRecord); 6] = [
+        |m| m.max_payload_bytes = 16_383,
+        |m| m.max_mesh_invocations = 127,
+        |m| m.max_task_invocations = 127,
+        |m| m.max_task_groups[1] = 65_534,
+        |m| m.max_mesh_groups_total = (1 << 22) - 1,
+        |m| m.max_output_primitives = 0,
+    ];
+    for (i, change) in shrink.into_iter().enumerate() {
+        let mut record = lavapipe();
+        change(record.mesh.as_mut().unwrap());
+        assert!(!caps_from_record(&record).mesh_shaders, "change {i}");
+    }
 }
 
 #[test]

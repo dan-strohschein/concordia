@@ -3,12 +3,14 @@
 
 mod cases;
 mod indirect;
+mod mesh;
 mod regions;
 mod surface;
 mod util;
 
 pub use cases::*;
 pub use indirect::*;
+pub use mesh::*;
 pub use regions::*;
 pub use surface::*;
 
@@ -30,11 +32,15 @@ pub enum ShaderStage {
     Vertex,
     /// Fragment shader.
     Fragment,
+    /// Mesh shader.
+    Mesh,
+    /// Object (task/amplification) shader.
+    Object,
 }
 
 /// Compiles conformance shaders for the device under test (backends compile `shader_dir()/<name>.slang`).
 pub trait ShaderProvider {
-    /// The `entry` of conformance shader `name`, and its compute thread group size.
+    /// The `entry` of conformance shader `name`, and its thread group size (compute, mesh, object).
     fn shader(
         &self,
         name: &str,
@@ -98,7 +104,12 @@ macro_rules! conformance_tests {
             each_pass_starts_with_the_full_viewport,
             viewport_and_scissor_outside_the_target_are_errors,
             copy_texture_copies_a_region_between_mips_and_textures,
-            copy_texture_rejects_mismatched_formats_and_out_of_range_regions
+            copy_texture_rejects_mismatched_formats_and_out_of_range_regions,
+            mesh_stage_draws_without_an_object_stage,
+            object_payload_reaches_every_mesh_group,
+            mesh_output_counts_below_the_declared_maximum_draw_only_those,
+            mesh_and_vertex_draws_share_one_depth_buffer,
+            mesh_pipeline_misuse_is_reported
         );
     };
     (@cases $make:expr, $golden:expr, $shaders:expr, $finish:expr; $($name:ident),+) => {$(

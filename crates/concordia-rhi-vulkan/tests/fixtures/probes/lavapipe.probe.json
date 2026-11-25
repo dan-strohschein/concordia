@@ -48,5 +48,26 @@
     "VK_KHR_wayland_surface",
     "VK_KHR_xcb_surface",
     "VK_KHR_xlib_surface"
-  ]
+  ],
+  "mesh": {
+    "mesh_shader": true,
+    "task_shader": true,
+    "max_output_vertices": 256,
+    "max_output_primitives": 256,
+    "max_payload_bytes": 16384,
+    "max_mesh_invocations": 1024,
+    "max_task_invocations": 1024,
+    "max_mesh_groups": [
+      65536,
+      65536,
+      65536
+    ],
+    "max_mesh_groups_total": 4194304,
+    "max_task_groups": [
+      65536,
+      65536,
+      65536
+    ],
+    "max_task_groups_total": 4194304
+  }
 }

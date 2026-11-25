@@ -304,10 +304,18 @@ fn masked_caps_hide_features_from_render_paths() {
     };
     let mesh = masked.device().create_mesh_pipeline(&MeshPipelineDesc {
         object: None,
-        mesh: msl("mesh"),
-        fragment: msl("fragment"),
+        mesh: concordia_rhi::MeshStage {
+            shader: msl("mesh"),
+            threads_per_group: [1, 1, 1],
+            max_vertices: 3,
+            max_primitives: 1,
+        },
+        fragment: Some(msl("fragment")),
         color_formats: vec![Format::Rgba8Unorm],
         depth: None,
+        samples: concordia_rhi::SampleCount::X1,
+        cull: concordia_rhi::CullMode::None,
+        blend: concordia_rhi::BlendMode::Opaque,
         label: "masked".into(),
     });
     assert!(matches!(mesh, Err(RhiError::Unsupported(_))), "{mesh:?}");

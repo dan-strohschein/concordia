@@ -1,10 +1,13 @@
-//! Compute and graphics pipelines from SPIR-V, on the device's one pipeline layout, with dynamic
+//! Compute, graphics and mesh pipelines from SPIR-V, on the device's one pipeline layout, with dynamic
 //! rendering (no render pass objects).
 
 use std::ffi::CString;
 
 use ash::vk;
-use concordia_rhi::{ComputePipelineDesc, GraphicsPipelineDesc, RhiCaps, RhiError, ShaderSource};
+use concordia_rhi::{
+    BlendMode, ComputePipelineDesc, CullMode, DepthState, Format, GraphicsPipelineDesc,
+    MeshPipelineDesc, RhiCaps, RhiError, SampleCount, ShaderSource,
+};
 
 use crate::convert;
 use crate::spirv::{self, Model};
@@ -14,6 +17,7 @@ use crate::spirv::{self, Model};
 pub(crate) enum Kind {
     Compute,
     Graphics,
+    Mesh,
 }
 
 /// A live pipeline.
@@ -158,61 +162,148 @@ pub(crate) fn graphics(
             .as_ref()
             .map(|f| stage(f, vk::ShaderStageFlags::FRAGMENT)),
     );
-    let formats: Vec<vk::Format> = desc
-        .color_formats
-        .iter()
-        .map(|f| convert::format(*f))
-        .collect();
-    let depth_format = desc
-        .depth
-        .map_or(vk::Format::UNDEFINED, |d| convert::format(d.format));
-    let mut rendering = vk::PipelineRenderingCreateInfo::default()
-        .color_attachment_formats(&formats)
-        .depth_attachment_format(depth_format);
-    let vertex_input = vk::PipelineVertexInputStateCreateInfo::default();
-    let assembly = vk::PipelineInputAssemblyStateCreateInfo::default()
-        .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
-    let viewport = vk::PipelineViewportStateCreateInfo::default()
-        .viewport_count(1)
-        .scissor_count(1);
-    let raster = vk::PipelineRasterizationStateCreateInfo::default()
-        .polygon_mode(vk::PolygonMode::FILL)
-        .cull_mode(convert::cull(desc.cull))
-        .front_face(convert::FRONT_FACE)
-        .line_width(1.0);
-    let multisample = vk::PipelineMultisampleStateCreateInfo::default()
-        .rasterization_samples(convert::samples(desc.samples));
-    let depth = desc
-        .depth
-        .map_or_else(vk::PipelineDepthStencilStateCreateInfo::default, |d| {
-            vk::PipelineDepthStencilStateCreateInfo::default()
-                .depth_test_enable(true)
-                .depth_write_enable(d.write)
-                .depth_compare_op(convert::compare(d.compare))
-        });
-    let blends = vec![convert::blend(desc.blend); formats.len()];
-    let blend = vk::PipelineColorBlendStateCreateInfo::default().attachments(&blends);
-    let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-    let dynamic = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
-    let info = vk::GraphicsPipelineCreateInfo::default()
-        .stages(&stages)
-        .vertex_input_state(&vertex_input)
-        .input_assembly_state(&assembly)
-        .viewport_state(&viewport)
-        .rasterization_state(&raster)
-        .multisample_state(&multisample)
-        .depth_stencil_state(&depth)
-        .color_blend_state(&blend)
-        .dynamic_state(&dynamic)
-        .layout(layout)
-        .push_next(&mut rendering);
-    // SAFETY: the modules, layout and every state struct are live and valid for the call.
-    let made =
-        unsafe { device.create_graphics_pipelines(vk::PipelineCache::null(), &[info], None) };
-    let raw = made
-        .map_err(|(_, e)| compile_error(&desc.label, format!("vkCreateGraphicsPipelines: {e}")))?;
+    let fixed = Fixed {
+        color_formats: &desc.color_formats,
+        depth: desc.depth,
+        samples: desc.samples,
+        cull: desc.cull,
+        blend: desc.blend,
+    };
+    let raw = fixed.create(device, layout, &stages, true, &desc.label)?;
     Ok(VkPipeline {
-        raw: raw[0],
+        raw,
         kind: Kind::Graphics,
     })
+}
+
+/// A mesh pipeline: optional task stage, mesh stage, optional fragment stage, with the graphics
+/// pipelines' fixed-function state.
+pub(crate) fn mesh(
+    device: &ash::Device,
+    layout: vk::PipelineLayout,
+    desc: &MeshPipelineDesc,
+    caps: &RhiCaps,
+) -> Result<VkPipeline, RhiError> {
+    desc.validate(caps)?;
+    let task = desc
+        .object
+        .as_ref()
+        .map(|o| module(device, &o.shader, Model::Task, &desc.label))
+        .transpose()?;
+    let mesh = module(device, &desc.mesh.shader, Model::Mesh, &desc.label)?;
+    let fragment = desc
+        .fragment
+        .as_ref()
+        .map(|f| module(device, f, Model::Fragment, &desc.label))
+        .transpose()?;
+    let mut stages: Vec<_> = task
+        .as_ref()
+        .map(|t| stage(t, vk::ShaderStageFlags::TASK_EXT))
+        .into_iter()
+        .collect();
+    stages.push(stage(&mesh, vk::ShaderStageFlags::MESH_EXT));
+    stages.extend(
+        fragment
+            .as_ref()
+            .map(|f| stage(f, vk::ShaderStageFlags::FRAGMENT)),
+    );
+    if !caps.msaa_sample_counts.contains(&desc.samples) {
+        return Err(RhiError::Unsupported(format!(
+            "{}× MSAA on {}",
+            desc.samples.get(),
+            caps.device_name
+        )));
+    }
+    let fixed = Fixed {
+        color_formats: &desc.color_formats,
+        depth: desc.depth,
+        samples: desc.samples,
+        cull: desc.cull,
+        blend: desc.blend,
+    };
+    let raw = fixed.create(device, layout, &stages, false, &desc.label)?;
+    Ok(VkPipeline {
+        raw,
+        kind: Kind::Mesh,
+    })
+}
+
+/// The fixed-function state graphics and mesh pipelines share.
+struct Fixed<'a> {
+    color_formats: &'a [Format],
+    depth: Option<DepthState>,
+    samples: SampleCount,
+    cull: CullMode,
+    blend: BlendMode,
+}
+
+impl Fixed<'_> {
+    /// Creates the pipeline from `stages`; `vertex` adds the (empty) vertex input and the
+    /// triangle-list assembly a vertex stage needs (mesh pipelines must leave both out).
+    fn create(
+        &self,
+        device: &ash::Device,
+        layout: vk::PipelineLayout,
+        stages: &[vk::PipelineShaderStageCreateInfo<'_>],
+        vertex: bool,
+        label: &str,
+    ) -> Result<vk::Pipeline, RhiError> {
+        let formats: Vec<vk::Format> = self
+            .color_formats
+            .iter()
+            .map(|f| convert::format(*f))
+            .collect();
+        let depth_format = self
+            .depth
+            .map_or(vk::Format::UNDEFINED, |d| convert::format(d.format));
+        let mut rendering = vk::PipelineRenderingCreateInfo::default()
+            .color_attachment_formats(&formats)
+            .depth_attachment_format(depth_format);
+        let vertex_input = vk::PipelineVertexInputStateCreateInfo::default();
+        let assembly = vk::PipelineInputAssemblyStateCreateInfo::default()
+            .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
+        let viewport = vk::PipelineViewportStateCreateInfo::default()
+            .viewport_count(1)
+            .scissor_count(1);
+        let raster = vk::PipelineRasterizationStateCreateInfo::default()
+            .polygon_mode(vk::PolygonMode::FILL)
+            .cull_mode(convert::cull(self.cull))
+            .front_face(convert::FRONT_FACE)
+            .line_width(1.0);
+        let multisample = vk::PipelineMultisampleStateCreateInfo::default()
+            .rasterization_samples(convert::samples(self.samples));
+        let depth = self
+            .depth
+            .map_or_else(vk::PipelineDepthStencilStateCreateInfo::default, |d| {
+                vk::PipelineDepthStencilStateCreateInfo::default()
+                    .depth_test_enable(true)
+                    .depth_write_enable(d.write)
+                    .depth_compare_op(convert::compare(d.compare))
+            });
+        let blends = vec![convert::blend(self.blend); formats.len()];
+        let blend = vk::PipelineColorBlendStateCreateInfo::default().attachments(&blends);
+        let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+        let dynamic = vk::PipelineDynamicStateCreateInfo::default().dynamic_states(&dynamic_states);
+        let mut info = vk::GraphicsPipelineCreateInfo::default()
+            .stages(stages)
+            .viewport_state(&viewport)
+            .rasterization_state(&raster)
+            .multisample_state(&multisample)
+            .depth_stencil_state(&depth)
+            .color_blend_state(&blend)
+            .dynamic_state(&dynamic)
+            .layout(layout)
+            .push_next(&mut rendering);
+        if vertex {
+            info = info
+                .vertex_input_state(&vertex_input)
+                .input_assembly_state(&assembly);
+        }
+        // SAFETY: the modules, layout and every state struct are live and valid for the call.
+        let made =
+            unsafe { device.create_graphics_pipelines(vk::PipelineCache::null(), &[info], None) };
+        let raw =
+            made.map_err(|(_, e)| compile_error(label, format!("vkCreateGraphicsPipelines: {e}")))?;
+        Ok(raw[0])
+    }
 }

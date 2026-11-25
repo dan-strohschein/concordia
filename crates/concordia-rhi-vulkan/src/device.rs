@@ -137,6 +137,8 @@ pub struct Inner {
     wsi: Option<Wsi>,
     /// `VK_KHR_swapchain_mutable_format` is enabled (sRGB views of UNORM swapchains).
     mutable_format: bool,
+    /// `VK_EXT_mesh_shader`'s commands, when the (masked) caps have mesh shaders.
+    mesh: Option<ash::ext::mesh_shader::Device>,
     /// Used only while `state` is locked (queues need external synchronization).
     queue: vk::Queue,
     /// Signalled to `State::submitted` by every submission.
@@ -239,7 +241,10 @@ impl Inner {
         let presents = can_present(&instance, &chosen);
         let mutable_format =
             presents && chosen.record.extensions.iter().any(|e| e == MUTABLE_FORMAT);
-        let device = create_logical(&chosen, &instance, presents, mutable_format)?;
+        let device = create_logical(&chosen, &instance, (presents, mutable_format), &caps)?;
+        let mesh = caps
+            .mesh_shaders
+            .then(|| ash::ext::mesh_shader::Device::new(&instance.raw, &device));
         // SAFETY: the device was created with one queue in `chosen.family`.
         let queue = unsafe { device.get_device_queue(chosen.family, 0) };
         let wsi = presents.then(|| Wsi {
@@ -256,6 +261,7 @@ impl Inner {
             family: chosen.family,
             wsi,
             mutable_format,
+            mesh,
             queue,
             progress: vk::Semaphore::null(),
             strict: options.strict,
@@ -292,7 +298,8 @@ impl Inner {
             allocation_sizes: Default::default(),
         })
         .map_err(|e| RhiError::OutOfMemory(format!("the GPU allocator: {e}")))?;
-        let tables = Bindless::new(&self.device, &mut allocator, anisotropy);
+        let stages = crate::bindless::stages(self.caps.mesh_shaders, self.caps.object_shaders);
+        let tables = Bindless::new(&self.device, &mut allocator, anisotropy, stages);
         let state = self
             .state
             .get_mut()
@@ -884,7 +891,9 @@ impl Inner {
             device: &self.device,
             cb,
             layout: tables.pipeline_layout,
+            stages: tables.stages,
             sets: tables.sets,
+            mesh: self.mesh.as_ref(),
             queries,
         };
         let begin = vk::CommandBufferBeginInfo::default()
@@ -1071,11 +1080,13 @@ fn timeline_semaphore(device: &ash::Device, initial: u64) -> Result<vk::Semaphor
     unsafe { device.create_semaphore(&info, None) }.map_err(|e| error("vkCreateSemaphore", e))
 }
 
+/// The logical device: the required features, plus `VK_EXT_mesh_shader` when `caps` (masked) has
+/// mesh shaders, and the swapchain extensions when it `presents`.
 fn create_logical(
     chosen: &Candidate,
     instance: &Instance,
-    presents: bool,
-    mutable_format: bool,
+    (presents, mutable_format): (bool, bool),
+    caps: &RhiCaps,
 ) -> Result<ash::Device, RhiError> {
     let priorities = [1.0];
     let queues = [vk::DeviceQueueCreateInfo::default()
@@ -1099,11 +1110,17 @@ fn create_logical(
         .shader_storage_image_write_without_format(true)
         .shader_int64(true)
         .sampler_anisotropy(chosen.record.features.sampler_anisotropy);
+    let mut mesh = vk::PhysicalDeviceMeshShaderFeaturesEXT::default()
+        .mesh_shader(true)
+        .task_shader(caps.object_shaders);
     let mut features = vk::PhysicalDeviceFeatures2::default()
         .features(core)
         .push_next(&mut v11)
         .push_next(&mut v12)
         .push_next(&mut v13);
+    if caps.mesh_shaders {
+        features = features.push_next(&mut mesh);
+    }
     let portability = chosen
         .record
         .extensions
@@ -1114,13 +1131,18 @@ fn create_logical(
         .into_iter()
         .chain(presents.then_some(ash::khr::swapchain::NAME.as_ptr()))
         .chain(mutable_format.then_some(ash::khr::swapchain_mutable_format::NAME.as_ptr()))
+        .chain(
+            caps.mesh_shaders
+                .then_some(ash::ext::mesh_shader::NAME.as_ptr()),
+        )
         .collect();
     let info = vk::DeviceCreateInfo::default()
         .queue_create_infos(&queues)
         .enabled_extension_names(&extensions)
         .push_next(&mut features);
     // SAFETY: the physical device came from this instance and supports every enabled feature
-    // (`record::choose` checked them); `info` and its chain are valid for the call.
+    // (`record::choose` checked them; mesh and task shaders only when its record has them);
+    // `info` and its chain are valid for the call.
     unsafe { instance.raw.create_device(chosen.physical, &info, None) }
         .map_err(|e| error("vkCreateDevice", e))
 }
@@ -1398,10 +1420,16 @@ impl Device for VulkanDevice {
     }
 
     fn create_mesh_pipeline(&self, desc: &MeshPipelineDesc) -> Result<Pipeline, RhiError> {
-        Err(RhiError::Unsupported(format!(
-            "{:?}: mesh pipelines arrive on Vulkan in M4 4.3b",
-            desc.label
-        )))
+        desc.validate(&self.caps)?;
+        let mut state = self.lock()?;
+        let layout = state
+            .bindless
+            .as_ref()
+            .map(|b| b.pipeline_layout)
+            .ok_or_else(|| RhiError::DeviceLost("no layout".into()))?;
+        let made = pipeline::mesh(&self.device, layout, desc, &self.caps)?;
+        let (index, generation) = state.resources.pipelines.insert(made);
+        Ok(Pipeline::from_raw(index, generation))
     }
 
     fn write_buffer(&self, buffer: Buffer, offset: u64, data: &[u8]) -> Result<(), RhiError> {

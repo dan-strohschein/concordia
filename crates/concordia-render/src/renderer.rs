@@ -24,7 +24,7 @@ use crate::frame::{DrawPush, FrameParams, IblParams, frame_block, instance_block
 use crate::gpu::{GpuAssets, GpuMesh, SharedPool, Uploads};
 use crate::graph::{GraphTexture, PassContext, RenderGraph, Use};
 use crate::lighting::punctual_lights;
-use crate::meshlet_pass::{BucketKey, FrameTables, MeshletJob};
+use crate::meshlet_pass::{BucketKey, FrameTables, MeshletJob, RoutePipelines};
 use crate::pipelines::{DEPTH, Geometry, HDR, OUTPUT, Pipelines};
 use crate::programs::Programs;
 use crate::shadow::{Cascade, CascadeSettings, fit_cascades};
@@ -820,6 +820,11 @@ impl Renderer {
         let mesh_buf = frame.keep(up.buffer(device, &mesh_table, "meshlet meshes")?);
         let ui = self.ui_prepare(device, &mut up, frame, &ui)?;
         let (frame_i, inst_i, mat_i) = (index(frame_buf)?, index(inst_buf)?, index(mat_buf)?);
+        let route = crate::meshlet::route(device.caps(), view_mode);
+        let meshlet_geometry = match route {
+            crate::meshlet::Route::ComputeIndirect => Geometry::Meshlets,
+            crate::meshlet::Route::MeshTasks => Geometry::MeshTasks,
+        };
         let mut path_draws: Vec<crate::meshlet::PathDraw<BucketKey>> = Vec::new();
         let mut meshlet_triangles = 0u64;
         let mut draws: Vec<Draw> = Vec::with_capacity(order.len());
@@ -865,7 +870,7 @@ impl Renderer {
                             view_mode,
                             variant,
                             shape.as_ref(),
-                            Geometry::Meshlets,
+                            meshlet_geometry,
                         )?,
                         material_index,
                     )),
@@ -952,7 +957,15 @@ impl Renderer {
             materials: mat_i,
             meshes: index(mesh_buf)?,
         };
-        let pipelines = [self.pipelines.expand(), self.pipelines.meshlet_shadow()];
+        let pipelines = match (route, self.pipelines.meshlet_shadow_mesh()) {
+            (crate::meshlet::Route::MeshTasks, Some(shadow)) => {
+                RoutePipelines::MeshTasks { shadow }
+            }
+            _ => RoutePipelines::ComputeIndirect {
+                expand: self.pipelines.expand(),
+                shadow: self.pipelines.meshlet_shadow(),
+            },
+        };
         let meshlets = MeshletJob::prepare(
             device,
             &mut up,
@@ -967,14 +980,16 @@ impl Renderer {
         staging.into_iter().for_each(|b| {
             frame.keep(b);
         });
-        self.stats.meshlets = meshlet_counts(&path_draws, &meshlet_plan, meshlet_triangles);
-        self.stats.raster_path = match meshlets {
-            Some(_) => crate::RasterPath::compute_indirect,
+        self.stats.meshlets = meshlet_counts(&path_draws, &meshlet_plan, meshlet_triangles, route);
+        self.stats.raster_path = match meshlets.as_ref().map(|m| m.route) {
+            Some(crate::meshlet::Route::ComputeIndirect) => crate::RasterPath::compute_indirect,
+            Some(crate::meshlet::Route::MeshTasks) => crate::RasterPath::mesh_shader,
             None => crate::RasterPath::forward,
         };
         self.stats.draws = world.draws.len() - culled;
         self.stats.culled = culled;
-        self.stats.draw_calls = draws.len() + self.stats.meshlets.indirect_draws as usize;
+        self.stats.draw_calls = draws.len()
+            + (self.stats.meshlets.indirect_draws + self.stats.meshlets.mesh_draws) as usize;
         self.stats.triangles = draws
             .iter()
             .map(|d| u64::from(d.vertices / 3) * u64::from(d.instances))
@@ -1009,9 +1024,7 @@ impl Renderer {
                 resolution: settings.resolution,
                 pipeline: self.pipelines.shadow(),
                 casters,
-                meshlets: meshlets
-                    .as_ref()
-                    .and_then(|m| m.shadow.clone().map(|b| (m.args, b))),
+                meshlets: meshlets.as_ref().and_then(|m| m.shadow.clone()),
                 reuse,
             }
         });
@@ -1793,17 +1806,21 @@ fn meshlet_counts(
     draws: &[crate::meshlet::PathDraw<BucketKey>],
     plan: &crate::meshlet::MeshletPlan<BucketKey>,
     triangles: u64,
+    route: crate::meshlet::Route,
 ) -> crate::MeshletCounts {
     let forward = plan.buckets.iter().filter(|b| b.key.is_some());
+    let buckets = forward.clone().count() as u64;
+    let mesh = route == crate::meshlet::Route::MeshTasks;
     crate::MeshletCounts {
         instances: draws.iter().filter(|d| d.forward.is_some()).count() as u64,
-        meshlets: forward.clone().map(|b| u64::from(b.entries)).sum(),
+        meshlets: forward.map(|b| u64::from(b.entries)).sum(),
         triangles,
-        indirect_draws: forward.count() as u64,
+        indirect_draws: if mesh { 0 } else { buckets },
+        mesh_draws: if mesh { buckets } else { 0 },
     }
 }
 
-/// Records the meshlet buckets' indirect draws; returns the pipeline left bound.
+/// Records the meshlet buckets' draws; returns the pipeline left bound.
 fn draw_buckets(
     meshlets: Option<&MeshletJob>,
     commands: &mut Vec<Command>,
@@ -1817,7 +1834,7 @@ fn draw_buckets(
             commands.push(Command::SetPipeline(bucket.pipeline));
             bound = Some(bucket.pipeline);
         }
-        job.draw(bucket, commands);
+        commands.extend(bucket.commands(None));
     }
     bound
 }

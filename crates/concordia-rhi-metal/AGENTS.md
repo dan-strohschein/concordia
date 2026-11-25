@@ -17,6 +17,7 @@ The Metal implementation of `concordia-rhi` (ADR-0040): `MetalDevice` over `objc
 - Family table (`caps_from_record`): mesh and object shaders with `metal3` (Apple7+, Mac2), outputs ≤ 256 vertices and 512 primitives per threadgroup; the ray-tracing API from `supportsRaytracing`; hardware ray tracing from Apple9; MetalFX temporal scaling from `MTLFXTemporalScalerDescriptor.supportsDevice`; timestamps at stage boundaries when the timestamp counter set and that sampling point exist.
 - Timer scopes (4.1a): a scope ends the current encoder at both edges; every encoder opened inside it is created from a pass descriptor with sample attachments (render: vertex and fragment start and end; compute and blit: encoder start and end) into one shared-storage counter sample buffer per timed submission (≤ 4096 samples). The completion handler resolves it; zero and error samples are skipped; ticks become ms through a `sampleTimestamps` calibration taken at device creation and again at resolve. Untimed submissions never split encoders.
 - A command that fails while an encoder is open ends the encoder before the error returns (Metal aborts otherwise). Viewport, scissor and indirect-argument checks use the open pass's target size and the buffer's descriptor (`concordia_rhi::check`). (M4 4.3a)
+- Mesh pipelines (M4 4.3b): `MTLMeshRenderPipelineDescriptor` with the payload length; the entry keeps the object and mesh threads per group for `drawMeshThreadgroups`. On devices with mesh shaders the tables and push constants are bound to the object and mesh stages too, and bindless resources are used by them. The recorder tracks the bound pipeline's kind: a vertex draw with a mesh pipeline, or a mesh draw without one, is `Invalid`.
 
 ## How to test
 `CONCORDIA_REQUIRE_GPU=1 cargo nextest run -p concordia-rhi-metal` (conformance suite and goldens in `tests/golden/rhi/`). Without the variable, the tests skip when there is no device.
@@ -35,7 +36,7 @@ The Metal implementation of `concordia-rhi` (ADR-0040): `MetalDevice` over `objc
 
 ## Status
 M1 phase 1.2b (surfaces and presentation arrive with rendering in 1.5). M4 phase 4.1a: probe records and fixtures (`tests/fixtures/probes/`: apple9 recorded on the M3 Pro; apple7, apple8, apple10 hand-written from Apple's tables), masking, counter-sample-buffer timer scopes, the MetalFX probe.
- M4 4.3a: indirect draws, viewport, scissor and texture-to-texture blits.
+ M4 4.3a: indirect draws, viewport, scissor and texture-to-texture blits. M4 4.3b: mesh pipelines and `DrawMeshTasks` (Apple WWDC22 "Transform your geometry with Metal mesh shaders"; the Metal Shading Language Specification's object and mesh functions).
 ## Engineering rules
 These apply to every change, by humans and agents alike.
 1. **TDD on every phase.** Write the tests first, see them fail, implement, then refactor.

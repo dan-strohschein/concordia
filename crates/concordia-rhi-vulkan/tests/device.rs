@@ -257,17 +257,26 @@ fn wrong_shader_language_and_mesh_pipelines_are_errors() {
     ));
     let mesh = MeshPipelineDesc {
         object: None,
-        mesh: msl.clone(),
-        fragment: msl,
-        color_formats: vec![],
+        mesh: concordia_rhi::MeshStage {
+            shader: msl.clone(),
+            threads_per_group: [1, 1, 1],
+            max_vertices: 3,
+            max_primitives: 1,
+        },
+        fragment: Some(msl),
+        color_formats: vec![concordia_rhi::Format::Rgba8Unorm],
         depth: None,
+        samples: concordia_rhi::SampleCount::X1,
+        cull: concordia_rhi::CullMode::None,
+        blend: concordia_rhi::BlendMode::Opaque,
         label: "mesh".into(),
     };
-    assert!(matches!(
-        device.create_mesh_pipeline(&mesh),
-        Err(RhiError::Unsupported(_))
-    ));
-    assert!(!device.caps().mesh_shaders);
+    // With mesh shaders (lavapipe) MSL is refused like any other stage; without, the pipeline is.
+    let made = device.create_mesh_pipeline(&mesh);
+    match device.caps().mesh_shaders {
+        true => assert!(matches!(made, Err(RhiError::Invalid { .. })), "{made:?}"),
+        false => assert!(matches!(made, Err(RhiError::Unsupported(_))), "{made:?}"),
+    }
     assert_clean(&log);
 }
 

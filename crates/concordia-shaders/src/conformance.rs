@@ -42,6 +42,8 @@ impl SlangShaders {
                 ShaderStage::Compute => Stage::Compute,
                 ShaderStage::Vertex => Stage::Vertex,
                 ShaderStage::Fragment => Stage::Fragment,
+                ShaderStage::Mesh => Stage::Mesh,
+                ShaderStage::Object => Stage::Amplification,
             },
             target: self.target,
             defines: Default::default(),

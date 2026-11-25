@@ -27,8 +27,8 @@ pub use caps::{
 };
 pub use command::{
     ClearValue, ColorAttachment, Command, CommandList, DRAW_INDEXED_INDIRECT_BYTES,
-    DRAW_INDIRECT_BYTES, DepthAttachment, LoadOp, MAX_PUSH_CONSTANTS, Rect, RenderPassDesc,
-    StoreOp, TextureOrigin, TimerScope, Viewport,
+    DRAW_INDIRECT_BYTES, DepthAttachment, LoadOp, MAX_MESH_TASK_GROUPS, MAX_MESH_TASK_GROUPS_TOTAL,
+    MAX_PUSH_CONSTANTS, Rect, RenderPassDesc, StoreOp, TextureOrigin, TimerScope, Viewport,
 };
 pub use device::{Device, QueueKind, Submit};
 pub use error::RhiError;
@@ -36,7 +36,8 @@ pub use format::Format;
 pub use handle::{BindlessIndex, Buffer, Heap, Pipeline, Surface, Texture, Timeline};
 pub use pipeline::{
     BlendMode, CompareOp, ComputePipelineDesc, CullMode, DepthState, GraphicsPipelineDesc,
-    MeshPipelineDesc, ShaderSource, StaticSampler,
+    MAX_MESH_PAYLOAD_BYTES, MAX_MESH_STAGE_THREADS, MeshPipelineDesc, MeshStage, ObjectStage,
+    ShaderSource, StaticSampler,
 };
 pub use resource::{BufferDesc, BufferUsage, HeapDesc, MemoryLocation, TextureDesc, TextureUsage};
 pub use slots::Slots;

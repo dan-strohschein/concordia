@@ -14,6 +14,7 @@ Backend-neutral GPU vocabulary and the `Device` trait (ADR-0040): validated desc
 - `conformance` (feature `conformance`): `conformance_tests!(make, golden, shaders)`, `Harness`, `GoldenCheck`, `ShaderProvider`, `shader_dir()` (Slang sources in `conformance/*.slang`); `surface_conformance_tests!(make, surface)` with `TestSurface` (M4 4.1v(b): each backend supplies a test surface: a `CAMetalLayer`, or Vulkan's `Headless`)
 - `SurfaceTarget::{MetalLayer, Xlib, Xcb, Wayland, Headless}` (M4 4.1v(b)); `Backend::{ALL, as_str}`, `Display`, `FromStr` (`UnknownBackend`)
 - M4 4.3a (D5): `Command::{DrawIndirect, DrawIndexedIndirect}` (one draw each; `DRAW_INDIRECT_BYTES` 16, `DRAW_INDEXED_INDIRECT_BYTES` 20, the layout Metal and Vulkan share), `SetViewport(Viewport)` and `SetScissor(Rect)` (inside passes; each pass starts with the whole target), `CopyTexture` (one region, `TextureOrigin`, outside passes); `check::{indirect_args, texture_copy (CopySide), viewport_in, scissor_in}`, the checks every backend runs against its resources.
+- M4 4.3b: `MeshPipelineDesc` (`ObjectStage`, `MeshStage`, optional fragment, samples, cull, blend) with `validate(&RhiCaps)`: `Unsupported` without mesh (or, with an object stage, object) shaders; `Invalid` for output counts outside `1..=` the caps, stage groups outside `1..=MAX_MESH_STAGE_THREADS` (128) or payloads outside `1..=MAX_MESH_PAYLOAD_BYTES` (16 KB), the portable limits Metal and every `VK_EXT_mesh_shader` device take; never clamped. `Command::DrawMeshTasks { groups }` inside passes, each count `1..=MAX_MESH_TASK_GROUPS` (65,535) and at most `MAX_MESH_TASK_GROUPS_TOTAL` (2^22) in all; a mesh draw needs a mesh pipeline bound and vertex draws a vertex pipeline (checked by the backends). Conformance: `mesh.rs` (5 cases); devices without mesh shaders must refuse every mesh pipeline.
 
 ## Invariants
 - No graphics-API types here; backends translate.
@@ -42,7 +43,7 @@ Backend-neutral GPU vocabulary and the `Device` trait (ADR-0040): validated desc
 
 ## Status
 M1 phase 1.2b; conformance shaders in Slang since 1.3. M4 phase 4.1a: `RhiCaps` and masking, timer scopes (`timer_scopes_report_each_scope_once_in_order`).
- M4 4.3a: indirect draws, viewport and scissor, texture copies, `check`, and 11 conformance cases (`indirect.rs`, `regions.rs`).
+ M4 4.3a: indirect draws, viewport and scissor, texture copies, `check`, and 11 conformance cases (`indirect.rs`, `regions.rs`). M4 4.3b: mesh pipelines and mesh-task draws (`mesh.rs`, 5 cases).
 ## Engineering rules
 These apply to every change, by humans and agents alike.
 1. **TDD on every phase.** Write the tests first, see them fail, implement, then refactor.

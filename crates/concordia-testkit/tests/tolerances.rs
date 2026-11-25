@@ -127,8 +127,12 @@ fn every_tolerance_entry_names_an_existing_golden() {
         let tolerances: concordia_testkit::golden::Tolerances =
             concordia_scene::read_document(&text).unwrap();
         tolerances.validate().expect("backend keys name backends");
-        let backend_entries = tolerances.backends.values().flat_map(|b| b.goldens.keys());
-        for entry in tolerances.goldens.keys().chain(backend_entries) {
+        let backend_entries = tolerances
+            .backends
+            .values()
+            .flat_map(|b| b.goldens.keys().chain(b.paths.keys()));
+        let shared = tolerances.goldens.keys().chain(tolerances.paths.keys());
+        for entry in shared.chain(backend_entries) {
             assert!(
                 suite.join(format!("{entry}.png")).is_file(),
                 "{name}/tolerances.ron names {entry}, which has no PNG"
@@ -320,5 +324,64 @@ fn keep_writes_the_actual_image_of_a_missing_golden() {
     assert!(
         !dir.path().join("golden/s/new.png").exists(),
         "keep never blesses"
+    );
+}
+
+const WITH_PATHS: &str = r#"Tolerances(
+    default: (mean: 0.005, p99: 0.2),
+    goldens: {},
+    paths: {
+        "scene": (mean: 0.002, p99: 0.1),
+    },
+    backends: {
+        "vulkan": (
+            default: None,
+            goldens: {},
+            paths: {
+                "scene": (mean: 0.004, p99: 0.1),
+            },
+        ),
+    },
+)"#;
+
+/// Two draw paths of one golden's scene agree within its `paths` entry (M4 4.3b: the compute
+/// fallback against the mesh-shader path), per backend like golden entries; none without one.
+#[test]
+fn path_tolerances_are_read_per_golden_and_backend() {
+    let dir = tempfile::tempdir().unwrap();
+    write_tolerances(dir.path(), "s", WITH_PATHS);
+    let golden = store(dir.path());
+    let paths = |backend, name| golden.path_tolerance_on(backend, "s", name).unwrap();
+    assert_eq!(
+        paths(None, "scene"),
+        Some(Tolerance {
+            mean: 0.002,
+            p99: 0.1
+        })
+    );
+    assert_eq!(
+        paths(Some(concordia_rhi::Backend::Vulkan), "scene"),
+        Some(Tolerance {
+            mean: 0.004,
+            p99: 0.1
+        })
+    );
+    assert_eq!(
+        paths(Some(concordia_rhi::Backend::Metal), "scene"),
+        Some(Tolerance {
+            mean: 0.002,
+            p99: 0.1
+        })
+    );
+    assert_eq!(paths(None, "other"), None, "no entry, no path tolerance");
+    assert_eq!(
+        golden.path_tolerance_on(None, "no_file", "x").unwrap(),
+        None
+    );
+    // Files without `paths` still read.
+    write_tolerances(dir.path(), "old", FILE);
+    assert_eq!(
+        golden.path_tolerance_on(None, "old", "loose").unwrap(),
+        None
     );
 }

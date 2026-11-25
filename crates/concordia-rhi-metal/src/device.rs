@@ -17,8 +17,10 @@ use objc2_metal::{
     MTLBuffer, MTLCommandBuffer, MTLCommandBufferStatus, MTLCommandQueue, MTLComputePipelineState,
     MTLCullMode, MTLDepthStencilDescriptor, MTLDepthStencilState, MTLDevice, MTLEvent, MTLFunction,
     MTLHazardTrackingMode, MTLHeap, MTLHeapDescriptor, MTLHeapType, MTLLibrary,
-    MTLRenderPipelineDescriptor, MTLRenderPipelineState, MTLResource, MTLSharedEvent, MTLSize,
-    MTLTextureDescriptor, MTLTextureType,
+    MTLMeshRenderPipelineDescriptor, MTLPipelineOption,
+    MTLRenderPipelineColorAttachmentDescriptorArray, MTLRenderPipelineDescriptor,
+    MTLRenderPipelineState, MTLResource, MTLSharedEvent, MTLSize, MTLTextureDescriptor,
+    MTLTextureType,
 };
 use objc2_quartz_core::CAMetalDrawable;
 
@@ -55,6 +57,14 @@ pub(crate) enum PipelineEntry {
         state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
         depth: Option<Retained<ProtocolObject<dyn MTLDepthStencilState>>>,
         cull: MTLCullMode,
+    },
+    /// A mesh pipeline and its stages' thread counts (Metal needs them at draw time).
+    Mesh {
+        state: Retained<ProtocolObject<dyn MTLRenderPipelineState>>,
+        depth: Option<Retained<ProtocolObject<dyn MTLDepthStencilState>>>,
+        cull: MTLCullMode,
+        object_threads: MTLSize,
+        mesh_threads: MTLSize,
     },
 }
 
@@ -115,7 +125,7 @@ impl MetalDevice {
             }
             let mut inner = self.lock()?;
             let timed = self.caps.timestamp_granularity.times_passes() && on_gpu_time.is_some();
-            let recorded = crate::encode::record(&inner, &submit, timed)?;
+            let recorded = crate::encode::record(&inner, &submit, timed, self.caps.mesh_shaders)?;
             let command_buffer = recorded.cb.clone();
             if let Some(callback) = on_gpu_time {
                 crate::surface::on_gpu_time(&inner, recorded, callback);
@@ -250,11 +260,32 @@ impl MetalDevice {
             })
     }
 
+    /// Sets `formats` (≤ 8, validated) and `blend` on a pipeline's color attachments.
+    fn color_targets(
+        attachments: &MTLRenderPipelineColorAttachmentDescriptorArray,
+        formats: &[Format],
+        blend: concordia_rhi::BlendMode,
+    ) -> Result<(), RhiError> {
+        for (i, format) in formats.iter().enumerate() {
+            // SAFETY: i < 8, within Metal's color attachment array.
+            let attachment = unsafe { attachments.objectAtIndexedSubscript(i) };
+            attachment.setPixelFormat(convert::pixel_format(*format)?);
+            if let Some((src, dst)) = convert::blend(blend) {
+                attachment.setBlendingEnabled(true);
+                attachment.setSourceRGBBlendFactor(src);
+                attachment.setDestinationRGBBlendFactor(dst);
+                attachment.setSourceAlphaBlendFactor(src);
+                attachment.setDestinationAlphaBlendFactor(dst);
+            }
+        }
+        Ok(())
+    }
+
     fn depth_state(
         inner: &Inner,
-        desc: &GraphicsPipelineDesc,
+        state: Option<concordia_rhi::DepthState>,
     ) -> Option<Retained<ProtocolObject<dyn MTLDepthStencilState>>> {
-        let state = desc.depth?;
+        let state = state?;
         let d = MTLDepthStencilDescriptor::new();
         d.setDepthCompareFunction(convert::compare(state.compare));
         d.setDepthWriteEnabled(state.write);
@@ -410,18 +441,7 @@ impl Device for MetalDevice {
             let fragment = Self::function(&inner, fragment, &desc.label)?;
             d.setFragmentFunction(Some(&*fragment));
         }
-        for (i, format) in desc.color_formats.iter().enumerate() {
-            // SAFETY: i < 8, within Metal's color attachment array.
-            let attachment = unsafe { d.colorAttachments().objectAtIndexedSubscript(i) };
-            attachment.setPixelFormat(convert::pixel_format(*format)?);
-            if let Some((src, dst)) = convert::blend(desc.blend) {
-                attachment.setBlendingEnabled(true);
-                attachment.setSourceRGBBlendFactor(src);
-                attachment.setDestinationRGBBlendFactor(dst);
-                attachment.setSourceAlphaBlendFactor(src);
-                attachment.setDestinationAlphaBlendFactor(dst);
-            }
-        }
+        Self::color_targets(&d.colorAttachments(), &desc.color_formats, desc.blend)?;
         if let Some(depth) = desc.depth {
             d.setDepthAttachmentPixelFormat(convert::pixel_format(depth.format)?);
         }
@@ -433,7 +453,7 @@ impl Device for MetalDevice {
                 label: desc.label.clone(),
                 log: e.localizedDescription().to_string(),
             })?;
-        let depth = Self::depth_state(&inner, desc);
+        let depth = Self::depth_state(&inner, desc.depth);
         let entry = PipelineEntry::Graphics {
             state,
             depth,
@@ -444,10 +464,59 @@ impl Device for MetalDevice {
     }
 
     fn create_mesh_pipeline(&self, desc: &MeshPipelineDesc) -> Result<Pipeline, RhiError> {
-        Err(RhiError::Unsupported(format!(
-            "mesh pipeline {:?}: mesh shaders arrive with virtualized geometry (M4)",
-            desc.label
-        )))
+        desc.validate(&self.caps)?;
+        let mut inner = self.lock()?;
+        let d = MTLMeshRenderPipelineDescriptor::new();
+        d.setLabel(Some(&NSString::from_str(&desc.label)));
+        let mesh = Self::function(&inner, &desc.mesh.shader, &desc.label)?;
+        // SAFETY: the function is a `[[mesh]]` function compiled for this device.
+        unsafe { d.setMeshFunction(Some(&*mesh)) };
+        if let Some(object) = &desc.object {
+            let function = Self::function(&inner, &object.shader, &desc.label)?;
+            // SAFETY: an `[[object]]` function compiled for this device.
+            unsafe { d.setObjectFunction(Some(&*function)) };
+            d.setPayloadMemoryLength(object.payload_bytes as usize);
+        }
+        if let Some(fragment) = &desc.fragment {
+            let fragment = Self::function(&inner, fragment, &desc.label)?;
+            // SAFETY: a `[[fragment]]` function compiled for this device.
+            unsafe { d.setFragmentFunction(Some(&*fragment)) };
+        }
+        Self::color_targets(&d.colorAttachments(), &desc.color_formats, desc.blend)?;
+        if let Some(depth) = desc.depth {
+            d.setDepthAttachmentPixelFormat(convert::pixel_format(depth.format)?);
+        }
+        // SAFETY: the sample count is one the device supports (the targets were created with it).
+        unsafe { d.setRasterSampleCount(usize::from(desc.samples.get())) };
+        let state = inner
+            .device
+            .newRenderPipelineStateWithMeshDescriptor_options_reflection_error(
+                &d,
+                MTLPipelineOption::None,
+                None,
+            )
+            .map_err(|e| RhiError::PipelineCompile {
+                label: desc.label.clone(),
+                log: e.localizedDescription().to_string(),
+            })?;
+        let size = |[x, y, z]: [u32; 3]| MTLSize {
+            width: x as usize,
+            height: y as usize,
+            depth: z as usize,
+        };
+        let entry = PipelineEntry::Mesh {
+            state,
+            depth: Self::depth_state(&inner, desc.depth),
+            cull: convert::cull(desc.cull),
+            object_threads: size(
+                desc.object
+                    .as_ref()
+                    .map_or([1, 1, 1], |o| o.threads_per_group),
+            ),
+            mesh_threads: size(desc.mesh.threads_per_group),
+        };
+        let (index, generation) = inner.pipelines.insert(entry);
+        Ok(Pipeline::from_raw(index, generation))
     }
 
     fn write_buffer(&self, buffer: Buffer, offset: u64, data: &[u8]) -> Result<(), RhiError> {
@@ -662,7 +731,7 @@ impl Device for MetalDevice {
             };
             let timed =
                 self.caps.timestamp_granularity.times_passes() && present.on_gpu_time.is_some();
-            let recorded = crate::encode::record(&inner, &submit, timed);
+            let recorded = crate::encode::record(&inner, &submit, timed, self.caps.mesh_shaders);
             inner.textures.remove(texture.index(), texture.generation());
             let recorded = recorded?;
             let command_buffer = recorded.cb.clone();

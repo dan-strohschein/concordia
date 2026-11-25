@@ -36,4 +36,10 @@ Tolerances(
             p99: 0.25,
         ),
     },
+    paths: {
+        "meshlets_vs_forward": (
+            mean: 0.002,
+            p99: 0.25,
+        ),
+    },
 )
