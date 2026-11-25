@@ -186,23 +186,13 @@ fn m1_stack_scene_capture_shows_the_settled_stack() {
     use concordia_api::{Engine, EngineConfig};
     use serde_json::json;
 
-    let mesh_shaders = match concordia_rhi_metal::new_headless() {
-        Ok(device) => device.caps().mesh_shaders,
-        Err(concordia_rhi::RhiError::NoDevice { reason }) => {
-            assert!(
-                !concordia_testkit::gpu_required(),
-                "CONCORDIA_REQUIRE_GPU=1 but no device: {reason}"
-            );
-            return;
-        }
-        Err(other) => panic!("{other}"),
-    };
-    // Metal 3 devices draw meshlets with mesh shaders (4.3b), older ones through compute.
-    let on = if mesh_shaders {
-        "mesh_shader"
-    } else {
-        "compute_indirect"
-    };
+    if let Err(concordia_rhi::RhiError::NoDevice { reason }) = concordia_rhi_metal::new_headless() {
+        assert!(
+            !concordia_testkit::gpu_required(),
+            "CONCORDIA_REQUIRE_GPU=1 but no device: {reason}"
+        );
+        return;
+    }
     let root = examples().join("m1-physics-stack");
     let project = Project::load(&root).unwrap();
     let mut config = EngineConfig::new(&root);
@@ -436,23 +426,13 @@ fn the_projects_closure_budget_reaches_the_renderer() {
     use concordia_api::Engine;
     use serde_json::json;
 
-    let mesh_shaders = match concordia_rhi_metal::new_headless() {
-        Ok(device) => device.caps().mesh_shaders,
-        Err(concordia_rhi::RhiError::NoDevice { reason }) => {
-            assert!(
-                !concordia_testkit::gpu_required(),
-                "CONCORDIA_REQUIRE_GPU=1 but no device: {reason}"
-            );
-            return;
-        }
-        Err(other) => panic!("{other}"),
-    };
-    // Metal 3 devices draw meshlets with mesh shaders (4.3b), older ones through compute.
-    let on = if mesh_shaders {
-        "mesh_shader"
-    } else {
-        "compute_indirect"
-    };
+    if let Err(concordia_rhi::RhiError::NoDevice { reason }) = concordia_rhi_metal::new_headless() {
+        assert!(
+            !concordia_testkit::gpu_required(),
+            "CONCORDIA_REQUIRE_GPU=1 but no device: {reason}"
+        );
+        return;
+    }
     let (dir, project) = project_with("[render]\nclosure_budget = 2\n");
     let mut engine = Engine::new(project.unwrap().engine_config().unwrap()).unwrap();
     let s = engine.open_session();
@@ -478,23 +458,13 @@ fn the_projects_perf_mode_reaches_the_renderer() {
     use concordia_api::Engine;
     use serde_json::json;
 
-    let mesh_shaders = match concordia_rhi_metal::new_headless() {
-        Ok(device) => device.caps().mesh_shaders,
-        Err(concordia_rhi::RhiError::NoDevice { reason }) => {
-            assert!(
-                !concordia_testkit::gpu_required(),
-                "CONCORDIA_REQUIRE_GPU=1 but no device: {reason}"
-            );
-            return;
-        }
-        Err(other) => panic!("{other}"),
-    };
-    // Metal 3 devices draw meshlets with mesh shaders (4.3b), older ones through compute.
-    let on = if mesh_shaders {
-        "mesh_shader"
-    } else {
-        "compute_indirect"
-    };
+    if let Err(concordia_rhi::RhiError::NoDevice { reason }) = concordia_rhi_metal::new_headless() {
+        assert!(
+            !concordia_testkit::gpu_required(),
+            "CONCORDIA_REQUIRE_GPU=1 but no device: {reason}"
+        );
+        return;
+    }
     for (manifest, want) in [
         ("[render]\nperf_mode = true\n", "measured"),
         ("[render]\n", "off"),
