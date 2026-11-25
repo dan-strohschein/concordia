@@ -1,0 +1,61 @@
+name: vulkan
+
+# Builds the Vulkan backend and runs its device tests on Mesa's software Vulkan (lavapipe) under
+# the Khronos validation layers (ADR-0088), on demand only (Actions → vulkan → Run workflow, or
+# `gh workflow run vulkan --ref <branch>`; author decision 2026-11-25). ci.yml stays fast (ADR-0071).
+on:
+  workflow_dispatch:
+    inputs:
+      filter:
+        description: nextest filter expression for the backend's tests (all by default)
+        type: string
+        default: all()
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+
+jobs:
+  vulkan:
+    name: vulkan (lavapipe)
+    runs-on: ubuntu-24.04
+    env:
+      CONCORDIA_REQUIRE_VULKAN: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        with:
+          tool: just,cargo-nextest
+      - name: Vulkan (Mesa lavapipe, the Khronos validation layers, the loader)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers vulkan-validationlayers vulkan-tools
+      - name: Vulkan devices
+        run: vulkaninfo --summary
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/toolchain/slang
+          key: slang-${{ runner.os }}-${{ hashFiles('tools/slang/slang.toml') }}
+      - name: Slang toolchain
+        run: just slang-fetch
+      - name: Vulkan backend tests
+        run: cargo nextest run -p concordia-rhi-vulkan --profile ci --no-tests=fail -E "$FILTER"
+        env:
+          FILTER: ${{ inputs.filter }}
+      - name: This runner's probe record (for fixtures)
+        if: always()
+        run: cargo nextest run -p concordia-rhi-vulkan --run-ignored only -E 'test(print_this_machines_probe_record)' --no-capture
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: golden-failures-vulkan
+          path: target/golden-failures/
+          if-no-files-found: ignore

@@ -11,8 +11,10 @@ Compiles Slang shaders to MSL or SPIR-V with the pinned toolchain (ADR-0045), ex
 - `shader_struct!`, `ShaderStruct`, `check_layout`
 - `ShaderLibrary` (`load`, `get`, `on_files_changed` → `ReloadOutcome`)
 - `builtin_dir()` (`shaders/bindless.slang`)
+- `conformance::SlangShaders::new(Target)` (feature `conformance`): the RHI conformance suite's `ShaderProvider`, shared by every backend (M4 4.1v(a))
 
 ## Invariants
+- Every SPIR-V compile defines `CONCORDIA_SPIRV` (`SPIRV_DEFINE`); `bindless.slang` then declares the buffer table as a storage buffer of addresses at set 0 binding 0 (ADR-0088). MSL output is unchanged (`tests/bindless_spirv.rs`).
 - Shader ABI: `import bindless;`, no other globals, and push constants as the entry point's single `uniform push` parameter. On Metal: slots 0/1/2 are the tables and 3 is push (tested).
 - Cache keys cover the compiler version, target, stage, entry, defines and every dependency's contents; entries are written atomically in the DDC layout.
 - A failed reload never replaces a working module.

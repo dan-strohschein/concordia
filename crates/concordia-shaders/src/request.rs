@@ -29,6 +29,9 @@ impl Stage {
     }
 }
 
+/// Defined (as 1) in every SPIR-V compile; `bindless.slang` switches its buffer table on it.
+pub const SPIRV_DEFINE: &str = "CONCORDIA_SPIRV";
+
 /// Output language.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Target {

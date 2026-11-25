@@ -13,7 +13,7 @@ The top-level design is in [`../docs/design.md`](../docs/design.md). This folder
 | M1 See it | [M1-see-it.md](M1-see-it.md) | M0 | Ready to execute | Gate passed (2026-11-19) |
 | M2 Engine breadth (was Port begins; ADR-0048) | [M2-port-begins.md](M2-port-begins.md) | M1 | Refined (ADR-0067, approved 2026-11-19) | **Gate passed (2026-11-23)**: the author accepted M2 by playing the sample game Lamplight; the scripted CI gate (2.10d), deferred to M3, landed in M3 3.9a as `just gate-tests M2` |
 | M3 Closed loop & Studio v1 | [M3-closed-loop-and-studio.md](M3-closed-loop-and-studio.md) | M2 (Studio phases may start after M0) | Refined after M2 (2026-11-23: R1 two gates, R2 replay stills without restore) | **Gate passed, scripted and live (2026-11-24)**: every phase is done; `just gate-tests M3` is green, and `just gate-live M3` passed on its first attempt. the `regression` workflow is green on `main` (2026-11-24). It closes once the author has rechecked the windowed items; Studio phases 3.3–3.6, 3.8 run right after M1 (ADR-0049) |
-| M4 Unreal-class visuals | [M4-unreal-class-visuals.md](M4-unreal-class-visuals.md) | M1 (render), M2 (graphs) | Refined after M3 (2026-11-24: R1 Lamplight enemy, R2 rendering first, R3 Vulkan in M4, R4 `ash` unsafe fenced like Metal, R5 `meshopt-sys`; D1–D10 approved) | In progress (4.1a: caps, per-pass timing, the perf harness and golden tolerances in text) |
+| M4 Unreal-class visuals | [M4-unreal-class-visuals.md](M4-unreal-class-visuals.md) | M1 (render), M2 (graphs) | Refined after M3 (2026-11-24: R1 Lamplight enemy, R2 rendering first, R3 Vulkan in M4, R4 `ash` unsafe fenced like Metal, R5 `meshopt-sys`; D1–D10 approved) | In progress (4.1a caps and per-pass timing; 4.1b1–b4 path tracer and references; 4.1v(a) the Vulkan backend, device tests pending the author's re-test) |
 | M5 Bring your game | [M5-bring-your-game.md](M5-bring-your-game.md) | M2 (importer framework) | Needs refinement after M4 | Planned |
 | M6 Evolve (plugins) | [M6-evolve-plugins.md](M6-evolve-plugins.md) | M2 (parallel with M3) | Needs refinement after M2 | Planned |
 | M7 Terra (large-scale simulation) | [M7-terra.md](M7-terra.md) | M0 (Phase 7.0 rename, done); M1, M2, M4 (simulation features) | Needs refinement after M4 | In progress (Phase 7.0 done; rest after M4) |
@@ -92,7 +92,7 @@ examples/             # small sample projects used by tests and docs
 | `concordia-cli` | the `concordia` binary: `concordia new/run/headless/test/import/studio ...` | M0 |
 | `concordia-platform` | windowing and OS integration (winit), file watching | M1 |
 | `concordia-input` | input actions, bindings, input injection API; the viewport as input and `ConsumedActions` (M2 2.7b.2); typed text (M2 2.7b.3); `InputActions` for scripts (M2 2.10a) | M1 |
-| `concordia-rhi` | RHI traits and types; backends `concordia-rhi-metal` (M1), `concordia-rhi-vulkan` (M1 stretch / M2) | M1 |
+| `concordia-rhi` | RHI traits and types; backends `concordia-rhi-metal` (M1), `concordia-rhi-vulkan` (M4 4.1v, ADR-0088; `CONCORDIA_REQUIRE_VULKAN=1` requires it) | M1 |
 | `concordia-shaders` | Slang compilation, reflection, shader cache | M1 |
 | `concordia-render` | render graph, PBR clustered forward+, materials, cameras, capture; GPU skinning of posed characters (M2 2.4.2) | M1 |
 | `concordia-render-types` | the render vocabulary shared by the renderer and the path tracer: reflected render components, camera math, photometric units, CPU tone mapping; no GPU dependencies (ADR-0101) | M4 (4.1b1) |

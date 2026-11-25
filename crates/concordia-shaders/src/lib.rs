@@ -4,6 +4,8 @@
 //! Shaders `import bindless;` (in [`builtin_dir`]) to reach the RHI's bindless tables.
 
 mod cache;
+#[cfg(feature = "conformance")]
+pub mod conformance;
 mod deps;
 mod error;
 mod layout;
@@ -21,7 +23,7 @@ pub use error::{Diagnostic, ShaderError};
 pub use layout::{Layout, ShaderStruct, check_layout};
 pub use library::{ReloadOutcome, ShaderLibrary};
 pub use reflect::{Binding, FieldLayout, ShaderReflection, StructLayout};
-pub use request::{CompileRequest, ShaderCode, ShaderModule, Stage, Target};
+pub use request::{CompileRequest, SPIRV_DEFINE, ShaderCode, ShaderModule, Stage, Target};
 pub use slangc::SlangcCompiler;
 pub use toolchain::SlangToolchain;
 

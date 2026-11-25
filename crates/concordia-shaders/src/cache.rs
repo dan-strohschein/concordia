@@ -28,22 +28,15 @@ impl ShaderCache for Ddc {
     }
 }
 
-/// The cache key: blake3 of the compiler version, target, stage, entry, sorted defines, and the
+/// The cache key: blake3 of the compiler version, target, stage, entry, the target's compiler
+/// arguments, sorted defines, and the
 /// contents of the root file and every file it depends on.
 pub fn cache_key(request: &CompileRequest, version: &str) -> Result<String, ShaderError> {
     let mut hasher = blake3::Hasher::new();
     hasher.update(b"concordia-shader-v1\0");
-    for part in [
-        version,
-        request.target.slang(),
-        request.stage.slang(),
-        &request.entry,
-    ] {
+    for part in key_parts(request, version) {
         hasher.update(part.as_bytes());
         hasher.update(b"\0");
-    }
-    for (name, value) in &request.defines {
-        hasher.update(format!("{name}={value}\0").as_bytes());
     }
     let mut contents: Vec<[u8; 32]> = dependencies(&request.path, &request.include_dirs)?
         .iter()
@@ -58,6 +51,26 @@ pub fn cache_key(request: &CompileRequest, version: &str) -> Result<String, Shad
         hasher.update(h);
     });
     Ok(hasher.finalize().to_hex().to_string())
+}
+
+/// The request's hashed words: version, target, stage, entry, the target's arguments, defines.
+fn key_parts(request: &CompileRequest, version: &str) -> Vec<String> {
+    let mut parts: Vec<String> = [
+        version,
+        request.target.slang(),
+        request.stage.slang(),
+        &request.entry,
+    ]
+    .map(str::to_owned)
+    .into();
+    parts.extend(crate::slangc::target_args(request.target));
+    parts.extend(
+        request
+            .defines
+            .iter()
+            .map(|(name, value)| format!("{name}={value}")),
+    );
+    parts
 }
 
 /// A compiler that consults a cache first.
@@ -99,5 +112,28 @@ impl<C: ShaderCompiler, K: ShaderCache> ShaderCompiler for CachedCompiler<C, K> 
 
     fn version(&self) -> &str {
         self.inner.version()
+    }
+}
+
+#[cfg(test)]
+mod key_tests {
+    use super::*;
+
+    #[test]
+    fn keys_cover_the_targets_compiler_arguments() {
+        let parts = key_parts(
+            &CompileRequest {
+                path: "x.slang".into(),
+                entry: "main".into(),
+                stage: crate::Stage::Compute,
+                target: crate::Target::SpirV,
+                defines: Default::default(),
+                include_dirs: vec![],
+            },
+            "v",
+        );
+        for arg in crate::slangc::target_args(crate::Target::SpirV) {
+            assert!(parts.contains(&arg), "{arg} in {parts:?}");
+        }
     }
 }

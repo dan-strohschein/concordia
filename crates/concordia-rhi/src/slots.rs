@@ -59,6 +59,18 @@ impl<T> Slots<T> {
         slot.1.take()
     }
 
+    /// Removes every live value, in index order; their handles go stale.
+    pub fn drain(&mut self) -> Vec<T> {
+        let mut drained = Vec::new();
+        for (index, slot) in self.items.iter_mut().enumerate() {
+            if let Some(value) = slot.1.take() {
+                drained.push(value);
+                self.free.push(u32::try_from(index).unwrap_or(u32::MAX));
+            }
+        }
+        drained
+    }
+
     /// Live values in index order.
     pub fn values(&self) -> impl Iterator<Item = &T> {
         self.items.iter().filter_map(|(_, v)| v.as_ref())
@@ -84,5 +96,23 @@ mod tests {
             "stale handle cannot remove the new value"
         );
         assert_eq!(slots.values().collect::<Vec<_>>(), [&"b"]);
+    }
+
+    #[test]
+    fn drain_takes_every_live_value_and_stales_their_handles() {
+        let mut slots = Slots::default();
+        let (a, ga) = slots.insert("a");
+        let (b, gb) = slots.insert("b");
+        let (c, gc) = slots.insert("c");
+        slots.remove(b, gb);
+        assert_eq!(slots.drain(), ["a", "c"]);
+        assert_eq!((slots.get(a, ga), slots.get(c, gc)), (None, None));
+        assert!(slots.drain().is_empty());
+        let (d, gd) = slots.insert("d");
+        assert!(
+            d == a || d == c,
+            "drained slots are reused, not leaked: {d}"
+        );
+        assert_ne!((d, gd), (a, ga), "a drained slot's old handle stays stale");
     }
 }

@@ -795,3 +795,56 @@ pub fn timer_scopes_report_each_scope_once_in_order(device: &dyn Device, h: &Har
         "a 64k-thread dispatch takes measurable time: {timing:?}"
     );
 }
+
+/// Clip-space Y points up and `CullMode::Back` keeps counter-clockwise triangles: a CCW triangle
+/// high in clip space lands in the image's top half; a CW one low in clip space is culled.
+pub fn clip_space_y_is_up_and_back_faces_cull(device: &dyn Device, h: &Harness<'_>) {
+    use super::ShaderStage;
+    use crate::pipeline::{CullMode, GraphicsPipelineDesc};
+    let red = [1.0, 0.0, 0.0, 1.0];
+    let green = [0.0, 1.0, 0.0, 1.0];
+    let data = vertices(&[
+        ([-0.5, 0.2, 0.5, 1.0], red),
+        ([0.5, 0.2, 0.5, 1.0], red),
+        ([0.0, 0.9, 0.5, 1.0], red),
+        ([-0.5, -0.2, 0.5, 1.0], green),
+        ([0.5, -0.2, 0.5, 1.0], green),
+        ([0.0, -0.9, 0.5, 1.0], green),
+    ]);
+    let pipeline = device
+        .create_graphics_pipeline(&GraphicsPipelineDesc {
+            vertex: h.shaders.shader("triangle", "vs", ShaderStage::Vertex).0,
+            fragment: Some(h.shaders.shader("triangle", "fs", ShaderStage::Fragment).0),
+            color_formats: vec![Format::Rgba8Unorm],
+            depth: None,
+            samples: SampleCount::X1,
+            cull: CullMode::Back,
+            blend: BlendMode::Opaque,
+            label: "culled triangles".into(),
+        })
+        .expect("graphics pipeline");
+    let color = target(device, SIZE, SampleCount::X1);
+    let vb = upload(device, &data);
+    let index = device.buffer_index(vb).expect("bindless index").0;
+    let mut list = CommandList::new("culling");
+    list.push(pass(color, clear([0.0, 0.0, 0.0, 1.0]), None, None))
+        .push(Command::SetPipeline(pipeline))
+        .push(push(&[index, 0, 0, 0], &[1.0, 1.0, 1.0, 1.0]))
+        .push(Command::Draw {
+            vertices: 0..6,
+            instances: 0..1,
+        })
+        .push(Command::EndRenderPass);
+    run(device, &list);
+    let image = read_texture(device, color, SIZE);
+    assert_eq!(
+        pixel(&image, SIZE / 2, SIZE / 4),
+        [255, 0, 0, 255],
+        "CCW triangle at the top"
+    );
+    assert_eq!(
+        pixel(&image, SIZE / 2, SIZE * 3 / 4),
+        [0, 0, 0, 255],
+        "CW triangle culled"
+    );
+}

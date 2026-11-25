@@ -52,3 +52,4 @@ jobs:
         run: just deny
       - name: cargo deny (editor shell; named MPL-2.0 exceptions)
         run: cargo deny --manifest-path editor/src-tauri/Cargo.toml --config editor/src-tauri/deny.toml check
+

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::error::{Diagnostic, ShaderError, io};
-use crate::request::{CompileRequest, ShaderCode, ShaderModule, Target};
+use crate::request::{CompileRequest, SPIRV_DEFINE, ShaderCode, ShaderModule, Target};
 use crate::toolchain::SlangToolchain;
 use crate::{ShaderCompiler, reflect};
 
@@ -12,6 +12,18 @@ use crate::{ShaderCompiler, reflect};
 #[derive(Debug, Clone)]
 pub struct SlangcCompiler {
     toolchain: SlangToolchain,
+}
+
+/// Arguments every compile for `target` adds (part of the cache key). SPIR-V defines
+/// `CONCORDIA_SPIRV` (ADR-0088) and keeps source entry names (Slang otherwise names them `main`).
+pub(crate) fn target_args(target: Target) -> Vec<String> {
+    match target {
+        Target::Msl => Vec::new(),
+        Target::SpirV => vec![
+            format!("-D{SPIRV_DEFINE}=1"),
+            "-fvk-use-entrypoint-name".to_owned(),
+        ],
+    }
 }
 
 impl SlangcCompiler {
@@ -41,6 +53,7 @@ impl SlangcCompiler {
         for (name, value) in &request.defines {
             cmd.arg(format!("-D{name}={value}"));
         }
+        cmd.args(target_args(request.target));
         cmd
     }
 }
