@@ -20,9 +20,9 @@
     "shader_storage_image_write_without_format": true,
     "shader_int64": true,
     "shader_draw_parameters": true,
+    "sampler_anisotropy": true,
     "shader_sampled_image_array_non_uniform_indexing": true,
-    "shader_storage_image_array_non_uniform_indexing": true,
-    "sampler_anisotropy": true
+    "shader_storage_image_array_non_uniform_indexing": true
   },
   "msaa_sample_counts": [
     1,
@@ -38,6 +38,15 @@
   "timestamp_period_ns": 1.0,
   "extensions": [
     "VK_EXT_mesh_shader",
-    "VK_KHR_ray_query"
+    "VK_KHR_ray_query",
+    "VK_KHR_swapchain",
+    "VK_KHR_swapchain_mutable_format"
+  ],
+  "surface_extensions": [
+    "VK_EXT_headless_surface",
+    "VK_KHR_surface",
+    "VK_KHR_wayland_surface",
+    "VK_KHR_xcb_surface",
+    "VK_KHR_xlib_surface"
   ]
 }

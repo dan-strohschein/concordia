@@ -28,7 +28,13 @@ fn lavapipe_meets_m1_with_draw_boundary_timestamps() {
     );
     assert_eq!(
         caps.feature_sets,
-        ["VK_EXT_mesh_shader", "VK_KHR_ray_query", "vulkan1.4"]
+        [
+            "VK_EXT_mesh_shader",
+            "VK_KHR_ray_query",
+            "VK_KHR_swapchain",
+            "VK_KHR_swapchain_mutable_format",
+            "vulkan1.4"
+        ]
     );
     assert!(
         !caps.mesh_shaders && !caps.ray_tracing && !caps.metalfx_temporal,
@@ -155,19 +161,22 @@ fn slang_vertex_shaders_need_draw_parameters() {
 /// read, with none.
 #[test]
 fn records_list_surface_extensions_and_older_ones_still_read() {
-    let old = lavapipe();
+    let record = lavapipe();
     assert!(
-        old.surface_extensions.is_empty(),
-        "the 4.1v(a) fixture predates them"
+        record
+            .surface_extensions
+            .contains(&"VK_EXT_headless_surface".to_owned()),
+        "the fixture was recorded after 4.1v(b): {:?}",
+        record.surface_extensions
     );
-    let mut record = old.clone();
-    record.surface_extensions = vec!["VK_EXT_headless_surface".into(), "VK_KHR_surface".into()];
-    let json = serde_json::to_string(&record).unwrap();
-    assert!(json.contains("surface_extensions"), "{json}");
-    assert_eq!(serde_json::from_str::<ProbeRecord>(&json).unwrap(), record);
+    // A 4.1v(a) record has no `surface_extensions` field.
+    let mut json: serde_json::Value = serde_json::to_value(&record).unwrap();
+    json.as_object_mut().unwrap().remove("surface_extensions");
+    let old: ProbeRecord = serde_json::from_value(json).unwrap();
+    assert!(old.surface_extensions.is_empty());
     assert_eq!(
-        caps_from_record(&record),
         caps_from_record(&old),
+        caps_from_record(&record),
         "caps don't depend on them"
     );
 }
