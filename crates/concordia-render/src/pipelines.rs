@@ -167,6 +167,7 @@ impl Pipelines {
                 samples: SampleCount::X1,
                 cull: CullMode::None,
                 blend: BlendMode::Opaque,
+                color_writes: concordia_rhi::ColorWrites::ALL,
                 label: label.into(),
             })
         };
@@ -244,6 +245,7 @@ impl Pipelines {
             samples: SampleCount::X1,
             cull: CullMode::None,
             blend: BlendMode::Opaque,
+            color_writes: concordia_rhi::ColorWrites::ALL,
             label: format!("tonemap {format:?}"),
         })?;
         self.tonemaps.insert(key, pipeline);
@@ -268,6 +270,7 @@ impl Pipelines {
             samples: SampleCount::X1,
             cull: CullMode::None,
             blend: BlendMode::PremultipliedAlpha,
+            color_writes: concordia_rhi::ColorWrites::ALL,
             label: format!("overlay {format:?}"),
         })?;
         self.overlays.insert(key, pipeline);
@@ -292,6 +295,7 @@ impl Pipelines {
             samples: SampleCount::X1,
             cull: CullMode::None,
             blend: BlendMode::PremultipliedAlpha,
+            color_writes: concordia_rhi::ColorWrites::ALL,
             label: format!("ui {format:?}"),
         })?;
         self.uis.insert(key, pipeline);
@@ -319,6 +323,7 @@ impl Pipelines {
             samples,
             cull: CullMode::None,
             blend: BlendMode::Opaque,
+            color_writes: concordia_rhi::ColorWrites::ALL,
             label: format!("sky x{}", samples.get()),
         })?;
         self.skies.insert(samples.get(), pipeline);
@@ -346,6 +351,7 @@ impl Pipelines {
             samples,
             cull: CullMode::None,
             blend: BlendMode::PremultipliedAlpha,
+            color_writes: concordia_rhi::ColorWrites::ALL,
             label: format!("grid x{}", samples.get()),
         })?;
         self.grids.insert(samples.get(), pipeline);
@@ -426,6 +432,7 @@ impl Pipelines {
                     samples: raster.samples,
                     cull: raster.cull,
                     blend: raster.blend,
+                    color_writes: concordia_rhi::ColorWrites::ALL,
                     label: raster.label,
                 })?);
             }
@@ -438,6 +445,7 @@ impl Pipelines {
             samples: raster.samples,
             cull: raster.cull,
             blend: raster.blend,
+            color_writes: concordia_rhi::ColorWrites::ALL,
             label: raster.label,
         })?)
     }
@@ -585,6 +593,7 @@ fn mesh_stages(
         samples: SampleCount::X1,
         cull: CullMode::None,
         blend: BlendMode::Opaque,
+        color_writes: concordia_rhi::ColorWrites::ALL,
         label: "meshlet shadow depth (mesh)".into(),
     })?;
     Ok(MeshStages {

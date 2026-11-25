@@ -269,6 +269,7 @@ fn wrong_shader_language_and_mesh_pipelines_are_errors() {
         samples: concordia_rhi::SampleCount::X1,
         cull: concordia_rhi::CullMode::None,
         blend: concordia_rhi::BlendMode::Opaque,
+        color_writes: concordia_rhi::ColorWrites::ALL,
         label: "mesh".into(),
     };
     // With mesh shaders (lavapipe) MSL is refused like any other stage; without, the pipeline is.

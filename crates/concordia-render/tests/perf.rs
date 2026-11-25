@@ -316,6 +316,7 @@ fn masked_caps_hide_features_from_render_paths() {
         samples: concordia_rhi::SampleCount::X1,
         cull: concordia_rhi::CullMode::None,
         blend: concordia_rhi::BlendMode::Opaque,
+        color_writes: concordia_rhi::ColorWrites::ALL,
         label: "masked".into(),
     });
     assert!(matches!(mesh, Err(RhiError::Unsupported(_))), "{mesh:?}");

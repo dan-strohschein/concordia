@@ -35,9 +35,9 @@ pub use error::RhiError;
 pub use format::Format;
 pub use handle::{BindlessIndex, Buffer, Heap, Pipeline, Surface, Texture, Timeline};
 pub use pipeline::{
-    BlendMode, CompareOp, ComputePipelineDesc, CullMode, DepthState, GraphicsPipelineDesc,
-    MAX_MESH_PAYLOAD_BYTES, MAX_MESH_STAGE_THREADS, MeshPipelineDesc, MeshStage, ObjectStage,
-    ShaderSource, StaticSampler,
+    BlendMode, ColorWrites, CompareOp, ComputePipelineDesc, CullMode, DepthState,
+    GraphicsPipelineDesc, MAX_MESH_PAYLOAD_BYTES, MAX_MESH_STAGE_THREADS, MeshPipelineDesc,
+    MeshStage, ObjectStage, ShaderSource, StaticSampler,
 };
 pub use resource::{BufferDesc, BufferUsage, HeapDesc, MemoryLocation, TextureDesc, TextureUsage};
 pub use slots::Slots;

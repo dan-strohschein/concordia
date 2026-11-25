@@ -143,6 +143,7 @@ pub(crate) fn graphics_blended(
         samples,
         cull: CullMode::None,
         blend,
+        color_writes: crate::pipeline::ColorWrites::ALL,
         label: name.into(),
     };
     device

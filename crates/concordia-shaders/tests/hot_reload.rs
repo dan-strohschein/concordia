@@ -71,6 +71,7 @@ fn pipeline(device: &dyn Device, lib: &ShaderLibrary) -> concordia_rhi::Pipeline
         samples: SampleCount::X1,
         cull: CullMode::None,
         blend: BlendMode::Opaque,
+        color_writes: concordia_rhi::ColorWrites::ALL,
         label: "paint".into(),
     };
     device.create_graphics_pipeline(&desc).unwrap()

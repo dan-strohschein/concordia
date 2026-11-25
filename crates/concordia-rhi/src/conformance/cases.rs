@@ -859,6 +859,7 @@ pub fn clip_space_y_is_up_and_back_faces_cull(device: &dyn Device, h: &Harness<'
             samples: SampleCount::X1,
             cull: CullMode::Back,
             blend: BlendMode::Opaque,
+            color_writes: crate::pipeline::ColorWrites::ALL,
             label: "culled triangles".into(),
         })
         .expect("graphics pipeline");
