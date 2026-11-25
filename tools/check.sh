@@ -24,9 +24,11 @@ step() {
     return "$status"
 }
 
+# Beside the tests, with half the build jobs: its builds and the running tests share the memory.
 side() {
-    step lint env CARGO_TARGET_DIR=target/lint just lint
-    step tauri cargo clippy --manifest-path editor/src-tauri/Cargo.toml --all-targets -- -D warnings
+    local jobs=$(((CARGO_BUILD_JOBS + 1) / 2))
+    step lint env CARGO_TARGET_DIR=target/lint CARGO_BUILD_JOBS="$jobs" just lint
+    step tauri env CARGO_BUILD_JOBS="$jobs" cargo clippy --manifest-path editor/src-tauri/Cargo.toml --all-targets -- -D warnings
     step deny sh -c 'just deny && cargo deny --manifest-path editor/src-tauri/Cargo.toml --config editor/src-tauri/deny.toml check'
 }
 
