@@ -48,6 +48,40 @@ pub struct Options {
     pub mask: CapsMask,
     /// Where validation errors go (a fresh log when `None`).
     pub log: Option<ValidationLog>,
+    /// Any validation error makes the device's next submit, present, wait or read fail.
+    pub strict: bool,
+}
+
+/// Environment variable choosing validation for devices the engine opens: `off` (default),
+/// `auto` (the layer when installed), `on` (required) or `strict` (required, and errors fail).
+pub const VALIDATION_ENV: &str = "CONCORDIA_VULKAN_VALIDATION";
+
+impl Options {
+    /// Options from this process's `CONCORDIA_VULKAN_VALIDATION`.
+    pub fn from_env() -> Result<Self, RhiError> {
+        Self::from_env_value(std::env::var(VALIDATION_ENV).ok().as_deref())
+    }
+
+    /// Options for a `CONCORDIA_VULKAN_VALIDATION` value (empty is unset).
+    pub fn from_env_value(value: Option<&str>) -> Result<Self, RhiError> {
+        let (validation, strict) = match value.unwrap_or("") {
+            "" | "off" => (Validation::Off, false),
+            "auto" => (Validation::IfAvailable, false),
+            "on" => (Validation::Required, false),
+            "strict" => (Validation::Required, true),
+            other => {
+                return Err(RhiError::invalid(
+                    "options",
+                    format!("{VALIDATION_ENV}={other:?}; expected off, auto, on or strict"),
+                ));
+            }
+        };
+        Ok(Self {
+            validation,
+            strict,
+            ..Self::default()
+        })
+    }
 }
 
 /// Capabilities of the device [`new_headless`] would open.
@@ -60,9 +94,9 @@ pub fn probe_record() -> Result<record::ProbeRecord, RhiError> {
     device::probe_record(Validation::Off)
 }
 
-/// The best Vulkan device as an RHI device, without a window or validation.
+/// The best Vulkan device as an RHI device, validated as `CONCORDIA_VULKAN_VALIDATION` says.
 pub fn new_headless() -> Result<Box<dyn Device>, RhiError> {
-    new_headless_with(&Options::default())
+    new_headless_masked(&CapsMask::default())
 }
 
 /// [`new_headless`] with `mask`'s features hidden: its caps report them missing and the device
@@ -70,7 +104,7 @@ pub fn new_headless() -> Result<Box<dyn Device>, RhiError> {
 pub fn new_headless_masked(mask: &CapsMask) -> Result<Box<dyn Device>, RhiError> {
     new_headless_with(&Options {
         mask: *mask,
-        ..Options::default()
+        ..Options::from_env()?
     })
 }
 

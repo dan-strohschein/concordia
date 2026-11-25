@@ -126,6 +126,8 @@ pub struct VulkanDevice {
     queue: vk::Queue,
     /// Signalled to `State::submitted` by every submission.
     progress: vk::Semaphore,
+    /// Fail calls once the validation log has errors (`Options::strict`).
+    strict: bool,
     state: Mutex<State>,
     instance: Instance,
 }
@@ -184,6 +186,7 @@ impl VulkanDevice {
             wsi,
             queue,
             progress: vk::Semaphore::null(),
+            strict: options.strict,
             state: Mutex::new(State {
                 allocator: None,
                 bindless: None,
@@ -441,6 +444,25 @@ impl VulkanDevice {
         }
     }
 
+    /// In strict mode, an error naming the validation layer's errors so far.
+    fn checked(&self) -> Result<(), RhiError> {
+        if !self.strict {
+            return Ok(());
+        }
+        let errors = self.instance.log.errors();
+        match errors.is_empty() {
+            true => Ok(()),
+            false => Err(RhiError::invalid(
+                "validation",
+                format!(
+                    "the Khronos validation layer reported {} error(s):\n{}",
+                    errors.len(),
+                    errors.join("\n")
+                ),
+            )),
+        }
+    }
+
     fn lock(&self) -> Result<MutexGuard<'_, State>, RhiError> {
         self.state
             .lock()
@@ -651,7 +673,7 @@ impl VulkanDevice {
         if let Some(report) = now {
             report(GpuTiming::default());
         }
-        Ok(())
+        self.checked()
     }
 
     /// Records and submits under the lock; returns a timing callback to call (unlocked) at once
@@ -1165,7 +1187,10 @@ impl Device for VulkanDevice {
         let mut state = self.lock()?;
         let bytes = state.resources.buffer_mut(buffer)?.mapped()?;
         let range = byte_range(bytes.len(), offset, len)?;
-        Ok(bytes[range].to_vec())
+        let read = bytes[range].to_vec();
+        drop(state);
+        self.checked()?;
+        Ok(read)
     }
 
     fn buffer_index(&self, buffer: Buffer) -> Result<BindlessIndex, RhiError> {
@@ -1218,6 +1243,7 @@ impl Device for VulkanDevice {
         let raw = self.lock()?.resources.timeline(timeline)?.raw;
         let reached = self.wait_value(raw, value, timeout)?;
         self.retire();
+        self.checked()?;
         Ok(reached)
     }
 
@@ -1237,7 +1263,7 @@ impl Device for VulkanDevice {
         let target = self.lock()?.submitted;
         self.wait_value(self.progress, target, Duration::MAX)?;
         self.retire();
-        Ok(())
+        self.checked()
     }
 
     fn destroy_buffer(&self, buffer: Buffer) {
@@ -1400,7 +1426,8 @@ impl Device for VulkanDevice {
         if let Some(report) = now {
             report(GpuTiming::default());
         }
-        presented.map(|_| ())
+        presented?;
+        self.checked()
     }
 
     fn destroy_surface(&self, surface: Surface) {

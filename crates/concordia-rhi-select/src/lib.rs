@@ -99,7 +99,8 @@ pub fn new_headless(backend: Backend) -> Result<Box<dyn Device>, RhiError> {
     new_headless_masked(backend, &CapsMask::default())
 }
 
-/// [`new_headless`] with `mask`'s features hidden.
+/// [`new_headless`] with `mask`'s features hidden (Vulkan validates as
+/// `CONCORDIA_VULKAN_VALIDATION` says).
 pub fn new_headless_masked(backend: Backend, mask: &CapsMask) -> Result<Box<dyn Device>, RhiError> {
     match backend {
         Backend::Metal => concordia_rhi_metal::new_headless_masked(mask),
