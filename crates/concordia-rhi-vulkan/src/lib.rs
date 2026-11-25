@@ -14,6 +14,8 @@ mod instance;
 mod pipeline;
 pub mod record;
 mod resources;
+#[cfg(test)]
+mod spike;
 mod spirv;
 mod swapchain;
 mod timing;
