@@ -618,10 +618,22 @@ fn vulkan_workflow_runs_the_backend_on_lavapipe_on_demand() {
             "golden-vulkan",
             // A real X11 window on Vulkan: `concordia run` on Xvfb.
             "xvfb-run",
-            "just gltf-assets",
             "libasound2-dev",
             "M1 gate golden on Vulkan",
             "concordia-cli -- run",
+            // 2026-11-25: the lavapipe setup is one action; the render suite runs in shards.
+            "uses: ./.github/actions/lavapipe",
+            "--partition hash:${{ matrix.shard }}/3",
+        ],
+    );
+    assert_contains_all(
+        ".github/actions/lavapipe/action.yml",
+        &[
+            "mesa-vulkan-drivers",
+            "vulkan-validationlayers",
+            "just slang-fetch",
+            "just gltf-assets",
+            "cargo-nextest",
         ],
     );
     let workflow =

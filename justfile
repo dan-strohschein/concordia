@@ -145,11 +145,11 @@ perf *args: lamplight-build
 bench *args:
     cargo bench --workspace {{args}}
 
-# Download the pinned Slang toolchain into target/toolchain/slang/ (prints its directory)
 # Delete build outputs (stale variants pile up), keeping target/'s toolchains, fixtures and bench reports
 clean-builds:
-    rm -rf target/debug target/release editor/src-tauri/target
+    rm -rf target/debug target/release target/lint target/mutants editor/src-tauri/target
 
+# Download the pinned Slang toolchain into target/toolchain/slang/ (prints its directory)
 slang-fetch:
     tools/slang/fetch.sh
 
@@ -164,6 +164,14 @@ jolt-bindgen:
 
 # Everything CI runs
 ci: lint test deny
+
+# Mutation checks in parallel git worktrees (tools/mutants/run.py; 2 workers sharing CARGO_BUILD_JOBS)
+mutants file workers="2":
+    python3 -I tools/mutants/run.py {{file}} {{workers}}
+
+# A phase's checks (affected tests only), or `just check full` at a milestone's end (tools/check.sh)
+check mode="affected":
+    tools/check.sh {{mode}}
 
 # Create a crate from tools/templates/crate
 new-crate name:

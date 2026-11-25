@@ -1,0 +1,39 @@
+name: lavapipe setup
+description: >-
+  What every lavapipe job of the vulkan workflow needs before it builds: the pinned toolchain and
+  its cache, just and cargo-nextest, Mesa's lavapipe with the Khronos validation layers, Slang and
+  the glTF sample assets.
+runs:
+  using: composite
+  steps:
+    - name: Install pinned toolchain
+      shell: bash
+      run: rustup toolchain install
+    - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      with:
+        save-if: ${{ github.ref == 'refs/heads/main' }}
+    - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+      with:
+        tool: just,cargo-nextest
+    - name: Vulkan (Mesa lavapipe, the Khronos validation layers, the loader)
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers vulkan-validationlayers vulkan-tools libasound2-dev
+    - name: Vulkan devices
+      shell: bash
+      run: vulkaninfo --summary
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: target/toolchain/slang
+        key: slang-${{ runner.os }}-${{ hashFiles('tools/slang/slang.toml') }}
+    - name: Slang toolchain
+      shell: bash
+      run: just slang-fetch
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: target/gltf-sample-assets
+        key: gltf-${{ hashFiles('tests/fixtures/gltf-sample-assets/manifest.ron') }}
+    - name: glTF sample assets (the renderer's conformance goldens)
+      shell: bash
+      run: just gltf-assets
