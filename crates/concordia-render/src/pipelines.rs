@@ -6,7 +6,8 @@ use std::path::PathBuf;
 
 use concordia_rhi::{
     BlendMode, CompareOp, ComputePipelineDesc, CullMode, DepthState, Device, Format,
-    GraphicsPipelineDesc, Pipeline, SampleCount, ShaderSource,
+    GraphicsPipelineDesc, MeshPipelineDesc, MeshStage, ObjectStage, Pipeline, RhiError,
+    SampleCount, ShaderSource,
 };
 use concordia_shaders::{CompileRequest, ShaderCompiler, ShaderModule, Stage, Target};
 
@@ -75,6 +76,26 @@ pub(crate) enum Geometry {
     Mesh,
     /// Meshlet entries drawn indirectly (`meshlet_vs`, ADR-0100).
     Meshlets,
+    /// Meshlets drawn by the object and mesh stages (`meshlet_object`, `meshlet_mesh`; 4.3b).
+    MeshTasks,
+}
+
+/// The mesh-shader path's stages, compiled when the device takes the path (4.3b).
+struct MeshStages {
+    object: ObjectStage,
+    mesh: MeshStage,
+    /// Depth-only mesh pipeline for meshlet shadow casters (`meshlet_shadow_mesh`).
+    shadow: Pipeline,
+}
+
+/// What a forward-pass pipeline is, apart from where its vertices come from.
+struct Raster {
+    fragment: Option<ShaderSource>,
+    depth: DepthState,
+    samples: SampleCount,
+    cull: CullMode,
+    blend: BlendMode,
+    label: String,
 }
 
 /// Compiled shaders and lazily created pipelines.
@@ -95,6 +116,8 @@ pub(crate) struct Pipelines {
     shadow: Pipeline,
     meshlet_shadow: Pipeline,
     expand: Pipeline,
+    /// The mesh-shader path's stages, when the device takes it.
+    mesh_stages: Option<MeshStages>,
     sky: (ShaderSource, ShaderSource),
     skies: BTreeMap<u8, Pipeline>,
     grid: (ShaderSource, ShaderSource),
@@ -171,6 +194,10 @@ impl Pipelines {
             label: "meshlet.expand".into(),
         })?;
         let meshlet_vs = compile("meshlet.slang", "meshlet_vs", Stage::Vertex)?;
+        let mesh_stages = match crate::meshlet::route(device.caps(), crate::ViewMode::lit) {
+            crate::meshlet::Route::MeshTasks => Some(mesh_stages(device, compiler.as_ref())?),
+            crate::meshlet::Route::ComputeIndirect => None,
+        };
         let sky = (
             compile("forward.slang", "sky_vs", Stage::Vertex)?,
             compile("forward.slang", "sky_fs", Stage::Fragment)?,
@@ -185,6 +212,7 @@ impl Pipelines {
             shadow,
             meshlet_shadow,
             expand,
+            mesh_stages,
             sky,
             skies: BTreeMap::new(),
             overlay,
@@ -363,17 +391,55 @@ impl Pipelines {
         self.meshlet_shadow
     }
 
+    /// Depth-only mesh pipeline for meshlet shadow casters on the mesh-shader path, if the device
+    /// takes it.
+    pub(crate) fn meshlet_shadow_mesh(&self) -> Option<Pipeline> {
+        self.mesh_stages.as_ref().map(|m| m.shadow)
+    }
+
     /// The `meshlet.expand` compute pipeline.
     pub(crate) fn expand(&self) -> Pipeline {
         self.expand
     }
 
-    /// The vertex shader for `geometry`.
-    fn vertex(&self, geometry: Geometry) -> ShaderSource {
-        match geometry {
+    /// Creates `raster` with `geometry`'s vertex source: a vertex shader, or the object and mesh
+    /// stages (an error when the device doesn't take the mesh-shader path).
+    fn create(
+        &self,
+        device: &dyn Device,
+        geometry: Geometry,
+        raster: Raster,
+    ) -> Result<Pipeline, RenderError> {
+        let vertex = match geometry {
             Geometry::Mesh => self.forward.0.clone(),
             Geometry::Meshlets => self.meshlet_vs.clone(),
-        }
+            Geometry::MeshTasks => {
+                let stages = self.mesh_stages.as_ref().ok_or_else(|| {
+                    RhiError::Unsupported(format!("{}: no mesh-shader path", raster.label))
+                })?;
+                return Ok(device.create_mesh_pipeline(&MeshPipelineDesc {
+                    object: Some(stages.object.clone()),
+                    mesh: stages.mesh.clone(),
+                    fragment: raster.fragment,
+                    color_formats: vec![HDR],
+                    depth: Some(raster.depth),
+                    samples: raster.samples,
+                    cull: raster.cull,
+                    blend: raster.blend,
+                    label: raster.label,
+                })?);
+            }
+        };
+        Ok(device.create_graphics_pipeline(&GraphicsPipelineDesc {
+            vertex,
+            fragment: raster.fragment,
+            color_formats: vec![HDR],
+            depth: Some(raster.depth),
+            samples: raster.samples,
+            cull: raster.cull,
+            blend: raster.blend,
+            label: raster.label,
+        })?)
     }
 
     /// The forward pipeline for the wireframe (`additive` false) and overdraw (`additive` true) view
@@ -389,15 +455,13 @@ impl Pipelines {
         if let Some(p) = self.debug.get(&key) {
             return Ok(*p);
         }
-        let pipeline = device.create_graphics_pipeline(&GraphicsPipelineDesc {
-            vertex: self.vertex(geometry),
+        let raster = Raster {
             fragment: Some(self.forward.1.clone()),
-            color_formats: vec![HDR],
-            depth: Some(DepthState {
+            depth: DepthState {
                 format: DEPTH,
                 compare: CompareOp::Always,
                 write: false,
-            }),
+            },
             samples,
             cull: CullMode::None,
             blend: if additive {
@@ -410,7 +474,8 @@ impl Pipelines {
                 samples.get(),
                 if additive { "overdraw" } else { "wireframe" }
             ),
-        })?;
+        };
+        let pipeline = self.create(device, geometry, raster)?;
         self.debug.insert(key, pipeline);
         Ok(pipeline)
     }
@@ -446,15 +511,13 @@ impl Pipelines {
             return Ok(*p);
         }
         let fragment = self.fragment(device, shape)?;
-        let pipeline = device.create_graphics_pipeline(&GraphicsPipelineDesc {
-            vertex: self.vertex(geometry),
+        let raster = Raster {
             fragment: Some(fragment),
-            color_formats: vec![HDR],
-            depth: Some(DepthState {
+            depth: DepthState {
                 format: DEPTH,
                 compare: CompareOp::GreaterEqual,
                 write: !blend,
-            }),
+            },
             samples,
             cull: if double_sided {
                 CullMode::None
@@ -473,8 +536,60 @@ impl Pipelines {
                 if blend { " blended" } else { "" },
                 if shape.is_some() { " layered" } else { "" }
             ),
-        })?;
+        };
+        let pipeline = self.create(device, geometry, raster)?;
         self.variants.insert(key, pipeline);
         Ok(pipeline)
     }
+}
+
+/// Compiles the mesh-shader path's stages and creates its shadow pipeline (4.3b).
+fn mesh_stages(
+    device: &dyn Device,
+    compiler: &dyn ShaderCompiler,
+) -> Result<MeshStages, RenderError> {
+    let stage = |entry: &str, stage: Stage| -> Result<(ShaderSource, [u32; 3]), RenderError> {
+        let module = compile(device, compiler, "meshlet.slang", entry, stage)?;
+        let threads = module
+            .reflection
+            .threads_per_group
+            .ok_or_else(|| RenderError::Shader(format!("{entry}: no thread group size")))?;
+        Ok((module.source(), threads))
+    };
+    let (object, threads) = stage("meshlet_object", Stage::Amplification)?;
+    let object = ObjectStage {
+        shader: object,
+        threads_per_group: threads,
+        payload_bytes: crate::meshlet::OBJECT_ENTRIES * 8,
+    };
+    let mesh_stage = |entry: &str| -> Result<MeshStage, RenderError> {
+        let (shader, threads) = stage(entry, Stage::Mesh)?;
+        Ok(MeshStage {
+            shader,
+            threads_per_group: threads,
+            max_vertices: crate::meshlet::MESH_OUTPUTS,
+            max_primitives: crate::meshlet::MESH_OUTPUTS,
+        })
+    };
+    let mesh = mesh_stage("meshlet_mesh")?;
+    let shadow = device.create_mesh_pipeline(&MeshPipelineDesc {
+        object: Some(object.clone()),
+        mesh: mesh_stage("meshlet_shadow_mesh")?,
+        fragment: None,
+        color_formats: Vec::new(),
+        depth: Some(DepthState {
+            format: DEPTH,
+            compare: CompareOp::GreaterEqual,
+            write: true,
+        }),
+        samples: SampleCount::X1,
+        cull: CullMode::None,
+        blend: BlendMode::Opaque,
+        label: "meshlet shadow depth (mesh)".into(),
+    })?;
+    Ok(MeshStages {
+        object,
+        mesh,
+        shadow,
+    })
 }

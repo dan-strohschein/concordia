@@ -124,6 +124,10 @@ pub struct Tolerances {
     pub default: Tolerance,
     /// By golden name.
     pub goldens: BTreeMap<String, Tolerance>,
+    /// How closely two draw paths of a golden's scene agree (e.g. the compute fallback against
+    /// the mesh-shader path, M4 4.3b), by golden name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub paths: BTreeMap<String, Tolerance>,
     /// Per-backend overrides, by backend name (D4: each backend has its own tolerance).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub backends: BTreeMap<String, BackendTolerances>,
@@ -137,9 +141,22 @@ pub struct BackendTolerances {
     pub default: Option<Tolerance>,
     /// By golden name.
     pub goldens: BTreeMap<String, Tolerance>,
+    /// Path agreement by golden name (see [`Tolerances::paths`]).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub paths: BTreeMap<String, Tolerance>,
 }
 
 impl Tolerances {
+    /// How closely two draw paths of golden `name`'s scene must agree on `backend`: the
+    /// backend's `paths` entry, else the shared one; `None` without either.
+    pub fn for_paths(&self, backend: Option<Backend>, name: &str) -> Option<Tolerance> {
+        backend
+            .and_then(|b| self.backends.get(b.as_str()))
+            .and_then(|o| o.paths.get(name))
+            .or_else(|| self.paths.get(name))
+            .copied()
+    }
+
     /// The tolerance for `name` on `backend`: the backend's entry, the shared entry, the
     /// backend's default, then the shared default.
     pub fn for_golden(&self, backend: Option<Backend>, name: &str) -> Tolerance {
@@ -333,16 +350,35 @@ impl Golden {
         suite: &str,
         name: &str,
     ) -> Result<Tolerance, GoldenError> {
+        Ok(self
+            .tolerances_file(suite, name)?
+            .map_or_else(Tolerance::default, |file| file.for_golden(backend, name)))
+    }
+
+    /// [`Tolerances::for_paths`] from `<suite>/tolerances.ron` (`None` without the file).
+    pub fn path_tolerance_on(
+        &self,
+        backend: Option<Backend>,
+        suite: &str,
+        name: &str,
+    ) -> Result<Option<Tolerance>, GoldenError> {
+        Ok(self
+            .tolerances_file(suite, name)?
+            .and_then(|file| file.for_paths(backend, name)))
+    }
+
+    /// `<suite>/tolerances.ron`, validated; `None` without one.
+    fn tolerances_file(&self, suite: &str, name: &str) -> Result<Option<Tolerances>, GoldenError> {
         let path = self.path(suite, name)?.with_file_name("tolerances.ron");
         let text = match std::fs::read_to_string(&path) {
             Ok(text) => text,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Tolerance::default()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(tolerances_error(&path, e)),
         };
         let file: Tolerances =
             concordia_scene::read_document(&text).map_err(|e| tolerances_error(&path, e))?;
         file.validate().map_err(|e| tolerances_error(&path, e))?;
-        Ok(file.for_golden(backend, name))
+        Ok(Some(file))
     }
 
     /// Compares `image` with `<suite>/<name>.png` within its tolerance (or writes it when blessing).

@@ -122,8 +122,8 @@ pub(crate) struct ShadowJob {
     pub(crate) resolution: u32,
     pub(crate) pipeline: Pipeline,
     pub(crate) casters: Vec<ShadowDraw>,
-    /// The meshlet casters' bucket and the argument buffer its indirect draw reads.
-    pub(crate) meshlets: Option<(concordia_rhi::Buffer, crate::meshlet_pass::BucketDraw)>,
+    /// The meshlet casters' bucket.
+    pub(crate) meshlets: Option<crate::meshlet_pass::BucketDraw>,
     /// The maps already hold exactly these shadows: sample them, draw nothing.
     pub(crate) reuse: bool,
 }
@@ -179,17 +179,11 @@ pub(crate) fn add_shadow_passes(graph: &mut RenderGraph, job: ShadowJob) -> Vec<
                         instances: 0..draw.instances,
                     });
                 }
-                if let Some((args, bucket)) = meshlets.as_ref() {
-                    let push = crate::meshlet::MeshletPush {
-                        cascade: cascade as u32,
-                        ..bucket.push
-                    };
+                if let Some(bucket) = meshlets.as_ref() {
                     ctx.commands.push(Command::SetPipeline(bucket.pipeline));
-                    ctx.commands.push(Command::PushConstants(push.bytes()));
-                    ctx.commands.push(Command::DrawIndirect {
-                        args: *args,
-                        offset: bucket.offset,
-                    });
+                    ctx.commands
+                        .commands
+                        .extend(bucket.commands(Some(cascade as u32)));
                 }
                 ctx.commands.push(Command::EndRenderPass);
                 Ok(())

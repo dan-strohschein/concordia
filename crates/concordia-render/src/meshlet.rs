@@ -39,6 +39,50 @@ pub(crate) fn takes_path(
     enabled && !skinned && !blend && meshlets.is_some_and(|m| m.meshlets > 0)
 }
 
+/// How meshlet buckets reach the rasterizer this frame (ADR-0100).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum Route {
+    /// `meshlet.expand` then one indirect draw per bucket (`meshlet_vs`).
+    ComputeIndirect,
+    /// One mesh-task draw per bucket (`meshlet_object` and `meshlet_mesh`).
+    MeshTasks,
+}
+
+/// Vertices and triangles the mesh stage declares per group (`meshlet.slang`'s `meshlet_mesh`).
+pub(crate) const MESH_OUTPUTS: u32 = 128;
+/// Entries one object group takes (`meshlet_object`'s threads and payload).
+pub(crate) const OBJECT_ENTRIES: u32 = 32;
+/// Object groups per row of a mesh-task draw (the most a dimension allows everywhere).
+const TASK_ROW: u32 = concordia_rhi::MAX_MESH_TASK_GROUPS;
+
+/// The mesh path when the device has object and mesh shaders that take [`MESH_OUTPUTS`], and the
+/// view needs no per-triangle data (`wireframe` and `triangles` stay on the compute path: shared
+/// mesh-stage vertices can't carry it).
+pub(crate) fn route(caps: &concordia_rhi::RhiCaps, view_mode: crate::ViewMode) -> Route {
+    let mesh = caps.mesh_shaders
+        && caps.object_shaders
+        && caps.max_mesh_output_vertices >= MESH_OUTPUTS
+        && caps.max_mesh_output_primitives >= MESH_OUTPUTS;
+    let per_triangle = matches!(
+        view_mode,
+        crate::ViewMode::wireframe | crate::ViewMode::triangles
+    );
+    match mesh && !per_triangle {
+        true => Route::MeshTasks,
+        false => Route::ComputeIndirect,
+    }
+}
+
+/// The object groups of a mesh-task draw covering `entries` entries, [`OBJECT_ENTRIES`] each, in
+/// rows of at most [`TASK_ROW`] groups (`meshlet_object` numbers them `y * TASK_ROW + x`).
+pub(crate) fn task_groups(entries: u32) -> [u32; 3] {
+    let groups = entries.div_ceil(OBJECT_ENTRIES);
+    match groups <= TASK_ROW {
+        true => [groups, 1, 1],
+        false => [TASK_ROW, groups.div_ceil(TASK_ROW), 1],
+    }
+}
+
 /// Bindless indices of a mesh's vertex streams.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Streams {
@@ -92,9 +136,9 @@ concordia_shaders::shader_struct!(MeshletPush {
 });
 
 impl MeshletPush {
-    /// Little-endian bytes for `Command::PushConstants`.
-    pub fn bytes(&self) -> Vec<u8> {
-        words([
+    /// The block's words in layout order (the cascade last).
+    pub(crate) fn words(&self) -> [u32; 8] {
+        [
             self.frame,
             self.instances,
             self.entries,
@@ -103,7 +147,75 @@ impl MeshletPush {
             self.meshes,
             self.first,
             self.cascade,
-        ])
+        ]
+    }
+
+    /// Little-endian bytes for `Command::PushConstants`.
+    pub fn bytes(&self) -> Vec<u8> {
+        words(self.words())
+    }
+}
+
+/// Push constants of the mesh-shader bucket stages (mirrors `meshlet.slang`'s `TaskPush`);
+/// `frame`, `materials` and `material` sit where `DrawPush` has them, for `fs`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TaskPush {
+    /// Frame block buffer.
+    pub frame: u32,
+    /// Instance buffer.
+    pub instances: u32,
+    /// Work item buffer (instance, mesh row, first entry, bucket).
+    pub items: u32,
+    /// Material buffer.
+    pub materials: u32,
+    /// The bucket's material's first row.
+    pub material: u32,
+    /// Mesh table buffer.
+    pub meshes: u32,
+    /// The bucket's first entry.
+    pub first: u32,
+    /// The bucket's entries.
+    pub count: u32,
+    /// Work items in the buffer.
+    pub item_count: u32,
+    /// Shadow cascade (shadow draws only).
+    pub cascade: u32,
+}
+
+concordia_shaders::shader_struct!(TaskPush {
+    frame,
+    instances,
+    items,
+    materials,
+    material,
+    meshes,
+    first,
+    count,
+    item_count,
+    cascade
+});
+
+impl TaskPush {
+    /// The block's words in layout order (the cascade last).
+    pub(crate) fn words(&self) -> [u32; 10] {
+        [
+            self.frame,
+            self.instances,
+            self.items,
+            self.materials,
+            self.material,
+            self.meshes,
+            self.first,
+            self.count,
+            self.item_count,
+            self.cascade,
+        ]
+    }
+
+    /// Little-endian bytes for `Command::PushConstants`.
+    pub fn bytes(&self) -> Vec<u8> {
+        words(self.words())
     }
 }
 
@@ -429,7 +541,104 @@ mod tests {
         assert_eq!((p.items.len(), p.buckets.len(), p.entries), (0, 0, 0));
     }
 
+    fn caps() -> concordia_rhi::RhiCaps {
+        concordia_rhi::RhiCaps {
+            backend: concordia_rhi::Backend::Metal,
+            device_name: "test".into(),
+            unified_memory: true,
+            msaa_sample_counts: vec![concordia_rhi::SampleCount::X4],
+            bindless: true,
+            mesh_shaders: true,
+            object_shaders: true,
+            ray_tracing: false,
+            hw_ray_tracing: false,
+            metalfx_temporal: false,
+            timestamp_granularity: concordia_rhi::TimestampGranularity::StageBoundary,
+            max_mesh_output_vertices: 256,
+            max_mesh_output_primitives: 512,
+            max_buffer_bytes: 1 << 30,
+            max_bindless_textures: 16_384,
+            max_bindless_buffers: 16_384,
+            feature_sets: vec![],
+        }
+    }
+
+    #[test]
+    fn path_selection_follows_caps_and_view_mode() {
+        use crate::ViewMode;
+        assert_eq!(route(&caps(), ViewMode::lit), Route::MeshTasks);
+        assert_eq!(route(&caps(), ViewMode::overdraw), Route::MeshTasks);
+        assert_eq!(route(&caps(), ViewMode::meshlets), Route::MeshTasks);
+        let masked = caps().masked(&concordia_rhi::CapsMask {
+            mesh_shaders: true,
+            ..Default::default()
+        });
+        assert_eq!(route(&masked, ViewMode::lit), Route::ComputeIndirect);
+        let mut no_object = caps();
+        no_object.object_shaders = false;
+        assert_eq!(route(&no_object, ViewMode::lit), Route::ComputeIndirect);
+        for view in [ViewMode::wireframe, ViewMode::triangles] {
+            assert_eq!(route(&caps(), view), Route::ComputeIndirect, "{view:?}");
+        }
+    }
+
+    #[test]
+    fn devices_below_the_mesh_stages_outputs_take_the_compute_path() {
+        let mut small = caps();
+        small.max_mesh_output_vertices = MESH_OUTPUTS - 1;
+        assert_eq!(route(&small, crate::ViewMode::lit), Route::ComputeIndirect);
+        let mut small = caps();
+        small.max_mesh_output_primitives = MESH_OUTPUTS - 1;
+        assert_eq!(route(&small, crate::ViewMode::lit), Route::ComputeIndirect);
+        let mut exact = caps();
+        exact.max_mesh_output_vertices = MESH_OUTPUTS;
+        exact.max_mesh_output_primitives = MESH_OUTPUTS;
+        assert_eq!(route(&exact, crate::ViewMode::lit), Route::MeshTasks);
+    }
+
+    /// The entry slot `meshlet_object`'s lane `lane` of group (x, y) takes, if any (mirrors the
+    /// shader).
+    fn task_slot(x: u32, y: u32, lane: u32, entries: u32) -> Option<u32> {
+        let slot = (y * TASK_ROW + x) * OBJECT_ENTRIES + lane;
+        (slot < entries).then_some(slot)
+    }
+
+    #[test]
+    fn task_groups_fill_rows_first() {
+        assert_eq!(task_groups(1), [1, 1, 1]);
+        assert_eq!(task_groups(32), [1, 1, 1]);
+        assert_eq!(task_groups(33), [2, 1, 1]);
+        let row = TASK_ROW * OBJECT_ENTRIES;
+        assert_eq!(task_groups(row), [TASK_ROW, 1, 1]);
+        assert_eq!(task_groups(row + 1), [TASK_ROW, 2, 1]);
+    }
+
     proptest! {
+        #[test]
+        fn object_groups_cover_every_entry_once(entries in 1u32..200_000, wide in any::<bool>()) {
+            // `wide` jumps past one row of groups (2,097,120 entries) without iterating it all.
+            let entries = if wide { TASK_ROW * OBJECT_ENTRIES + entries } else { entries };
+            let [x, y, z] = task_groups(entries);
+            prop_assert_eq!(z, 1);
+            prop_assert!(x <= TASK_ROW && (y == 1 || x == TASK_ROW));
+            let groups = u64::from(x) * u64::from(y);
+            let needed = u64::from(entries.div_ceil(OBJECT_ENTRIES));
+            prop_assert!(groups <= concordia_rhi::MAX_MESH_TASK_GROUPS_TOTAL);
+            prop_assert!(groups >= needed, "every entry has a group");
+            prop_assert!(u64::from(y - 1) * u64::from(TASK_ROW) < needed, "no empty row");
+            prop_assert!(y > 1 || u64::from(x) == needed, "one row: exactly the groups needed");
+            // Slots are consecutive over the groups: the last needed group takes the last entry,
+            // and a group past it (in a partial last row) takes none.
+            let g = needed - 1;
+            let (gx, gy) = ((g % u64::from(TASK_ROW)) as u32, (g / u64::from(TASK_ROW)) as u32);
+            prop_assert_eq!(task_slot(gx, gy, (entries - 1) % OBJECT_ENTRIES, entries), Some(entries - 1));
+            if groups > needed {
+                let past = needed;
+                let (px, py) = ((past % u64::from(TASK_ROW)) as u32, (past / u64::from(TASK_ROW)) as u32);
+                prop_assert_eq!(task_slot(px, py, 0, entries), None);
+            }
+        }
+
         #[test]
         fn work_items_cover_every_meshlet_once(
             raw in prop::collection::vec((1u32..40, prop::option::of(0u32..4), any::<bool>()), 0..40)

@@ -43,8 +43,8 @@ pub struct FrameStats {
     pub draw_calls: u64,
     /// Triangles drawn (both paths).
     pub triangles: u64,
-    /// How opaque static geometry reached the rasterizer: `forward`, or `compute_indirect` when
-    /// meshes with meshlets took the meshlet path (ADR-0100).
+    /// How opaque static geometry reached the rasterizer: `forward`, or `compute_indirect` or
+    /// `mesh_shader` when meshes with meshlets took a meshlet path (ADR-0100).
     pub raster_path: RasterPath,
     /// What the meshlet path drew in the forward pass.
     pub meshlets: MeshletCounts,
@@ -69,6 +69,8 @@ pub enum RasterPath {
     forward,
     /// Meshlets were expanded by a compute pass and drawn with indirect draws.
     compute_indirect,
+    /// Meshlets were drawn by object and mesh shaders (mesh-task draws).
+    mesh_shader,
 }
 
 /// What the meshlet path drew in the frame's forward pass.
@@ -80,8 +82,10 @@ pub struct MeshletCounts {
     pub meshlets: u64,
     /// Triangles in those meshlets (not the padded draws).
     pub triangles: u64,
-    /// Indirect draws issued (one per pipeline and material).
+    /// Indirect draws issued (one per pipeline and material, on the compute path).
     pub indirect_draws: u64,
+    /// Mesh-task draws issued (one per pipeline and material, on the mesh-shader path).
+    pub mesh_draws: u64,
 }
 
 /// A material simplified to fit the closure budget.

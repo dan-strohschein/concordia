@@ -325,6 +325,25 @@ pub fn with_meshlets(mut mesh: concordia_assets::MeshData) -> concordia_assets::
     mesh
 }
 
+/// The path meshes with meshlets take on `renderer`'s device: mesh shaders where it has object and
+/// mesh stages (M4 4.3b), else the compute + indirect path.
+pub fn meshlet_path(renderer: &Renderer) -> concordia_render::RasterPath {
+    let caps = renderer.device().caps();
+    match caps.mesh_shaders && caps.object_shaders {
+        true => concordia_render::RasterPath::mesh_shader,
+        false => concordia_render::RasterPath::compute_indirect,
+    }
+}
+
+/// A renderer whose device hides mesh shaders, so meshlets take the compute path; None (skip) as
+/// [`renderer`].
+pub fn compute_renderer() -> Option<Renderer> {
+    renderer_masked(&concordia_rhi::CapsMask {
+        mesh_shaders: true,
+        ..Default::default()
+    })
+}
+
 /// The meshlet image against the M1 image of the same frame at golden `name`'s tolerance in
 /// `m4_meshlet`, then both against that golden (blessed from the M1 path on Metal).
 pub fn assert_same_as_m1(name: &str, m1: &Image, meshlets: &Image) {

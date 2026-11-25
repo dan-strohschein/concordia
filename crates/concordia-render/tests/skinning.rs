@@ -995,6 +995,7 @@ fn skinned_mesh_composites_with_meshlet_depth() {
     };
     let m1 = frame(false);
     let meshlets = frame(true);
+    assert_eq!(r.stats().raster_path, common::meshlet_path(&r));
     let stats = r.stats();
     assert_eq!(
         stats.meshlets.instances, 1,
@@ -1005,4 +1006,14 @@ fn skinned_mesh_composites_with_meshlet_depth() {
         "two arms, the sleeve, the ball and the pane"
     );
     common::assert_same_as_m1("skinned_composite", &m1, &meshlets);
+    if common::meshlet_path(&r) == concordia_render::RasterPath::mesh_shader {
+        let mut compute = common::compute_renderer().expect("the same device, masked");
+        compute.set_meshlets(true);
+        let image = s.render_mode(&mut compute, 256, 192, ViewMode::lit);
+        assert_eq!(
+            compute.stats().raster_path,
+            concordia_render::RasterPath::compute_indirect
+        );
+        common::assert_same_as_m1("skinned_composite", &m1, &image);
+    }
 }

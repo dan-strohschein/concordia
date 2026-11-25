@@ -1,6 +1,6 @@
 //! Rust mirrors of shader structs match Slang's reflected layout.
 
-use concordia_render::{DrawPush, ExpandPush, MeshletPush, ShadowPush, shader_dir};
+use concordia_render::{DrawPush, ExpandPush, MeshletPush, ShadowPush, TaskPush, shader_dir};
 use concordia_shaders::{
     CompileRequest, ShaderCompiler, ShaderStruct, SlangToolchain, SlangcCompiler, Stage, Target,
     check_layout,
@@ -45,6 +45,41 @@ fn meshlet_push_matches_meshlet_slang() {
     check_push_in::<MeshletPush>("meshlet.slang", "meshlet_vs", Stage::Vertex);
     check_push_in::<MeshletPush>("meshlet.slang", "meshlet_shadow_vs", Stage::Vertex);
     check_push_in::<ExpandPush>("meshlet.slang", "meshlet_expand", Stage::Compute);
+}
+
+#[test]
+fn task_push_matches_the_mesh_stages() {
+    check_push_in::<TaskPush>("meshlet.slang", "meshlet_object", Stage::Amplification);
+    check_push_in::<TaskPush>("meshlet.slang", "meshlet_mesh", Stage::Mesh);
+    check_push_in::<TaskPush>("meshlet.slang", "meshlet_shadow_mesh", Stage::Mesh);
+}
+
+/// `fs` reads its push constants as a `DrawPush` after the mesh stage too.
+#[test]
+fn task_push_keeps_the_fields_fs_reads_where_draw_push_has_them() {
+    let (draw, task) = (DrawPush::layout(), TaskPush::layout());
+    let offset = |l: &concordia_shaders::Layout, name: &str| {
+        l.fields.iter().find(|f| f.name == name).map(|f| f.offset)
+    };
+    for field in ["frame", "materials", "material"] {
+        assert_eq!(offset(&task, field), offset(&draw, field), "{field}");
+    }
+    let push = TaskPush {
+        frame: 1,
+        instances: 2,
+        items: 3,
+        materials: 4,
+        material: 5,
+        meshes: 6,
+        first: 7,
+        count: 8,
+        item_count: 9,
+        cascade: 10,
+    };
+    let words: Vec<u8> = (1u32..=10).flat_map(|w| w.to_le_bytes()).collect();
+    assert_eq!(push.bytes(), words);
+    assert_eq!(push.bytes().len(), TaskPush::layout().size);
+    assert!(push.bytes().len() <= concordia_rhi::MAX_PUSH_CONSTANTS);
 }
 
 /// `fs` reads its push constants as a `DrawPush` whichever vertex shader ran.

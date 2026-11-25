@@ -1,5 +1,6 @@
-//! GPU side of the meshlet path (ADR-0100, M4 4.3a): the frame's meshlet buffers, the
-//! `meshlet.expand` pass, and the arguments each bucket's indirect draw reads.
+//! GPU side of the meshlet path (ADR-0100): the frame's meshlet buffers and each bucket's draw,
+//! by the compute + indirect route (the `meshlet.expand` pass, M4 4.3a) or the mesh-shader route
+//! (one mesh-task draw per bucket, 4.3b).
 
 use std::num::NonZeroU64;
 
@@ -12,7 +13,7 @@ use crate::RenderError;
 use crate::frame::push_rows_u32;
 use crate::gpu::Uploads;
 use crate::graph::{PassContext, RenderGraph};
-use crate::meshlet::{ExpandPush, MeshletPlan, MeshletPush};
+use crate::meshlet::{ExpandPush, MeshletPlan, MeshletPush, Route, TaskPush, task_groups};
 
 /// A forward bucket's key: its pipeline and its material's first row.
 pub(crate) type BucketKey = (Pipeline, u32);
@@ -38,24 +39,54 @@ pub(crate) struct FrameTables {
     pub(crate) meshes: u32,
 }
 
-/// One bucket's indirect draw, ready to record.
+/// The pipelines a route draws with: forward pipelines come with the buckets' keys.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum RoutePipelines {
+    /// `meshlet.expand` and the vertex-shader shadow pipeline.
+    ComputeIndirect { expand: Pipeline, shadow: Pipeline },
+    /// The mesh-shader shadow pipeline.
+    MeshTasks { shadow: Pipeline },
+}
+
+/// One bucket's draw, ready to record: its pipeline, push words (the shadow cascade last, in both
+/// routes' layouts) and draw command.
 #[derive(Debug, Clone)]
 pub(crate) struct BucketDraw {
     pub(crate) pipeline: Pipeline,
-    pub(crate) push: MeshletPush,
-    /// Byte offset of its arguments in [`MeshletJob::args`].
-    pub(crate) offset: u64,
+    push: Vec<u32>,
+    draw: Command,
+}
+
+impl BucketDraw {
+    /// The push constants and draw (the pipeline is set by the caller), for `cascade` if a shadow.
+    pub(crate) fn commands(&self, cascade: Option<u32>) -> [Command; 2] {
+        let mut push = self.push.clone();
+        if let (Some(c), Some(last)) = (cascade, push.last_mut()) {
+            *last = c;
+        }
+        let bytes = push.iter().flat_map(|w| w.to_le_bytes()).collect();
+        [Command::PushConstants(bytes), self.draw.clone()]
+    }
+}
+
+/// `meshlet.expand`: its pipeline, push constants and dispatch, and the buffers it writes.
+#[derive(Debug, Clone)]
+struct Expand {
+    pipeline: Pipeline,
+    push: ExpandPush,
+    groups: [u32; 3],
+    entries: Buffer,
+    /// One `DrawIndirect` record per bucket.
+    args: Buffer,
 }
 
 /// The frame's meshlet work.
 #[derive(Debug, Clone)]
 pub(crate) struct MeshletJob {
-    expand: Pipeline,
-    push: ExpandPush,
-    groups: [u32; 3],
-    entries: Buffer,
-    /// One `DrawIndirect` record per bucket, written by `meshlet.expand`.
-    pub(crate) args: Buffer,
+    /// How the buckets reach the rasterizer.
+    pub(crate) route: Route,
+    /// The compute route's expand pass.
+    expand: Option<Expand>,
     /// Forward buckets, in plan order.
     pub(crate) forward: Vec<BucketDraw>,
     /// The shadow casters' bucket (cascade filled per pass).
@@ -63,22 +94,117 @@ pub(crate) struct MeshletJob {
 }
 
 impl MeshletJob {
-    /// Uploads `plan`'s work items and bucket table and allocates its entries and arguments;
-    /// `None` when nothing takes the path. Every buffer is returned in `keep` for the frame.
+    /// Uploads `plan`'s work items (and, on the compute route, its bucket table, entries and
+    /// arguments); `None` when nothing takes the path. Every buffer is returned in `keep`.
     pub(crate) fn prepare(
         device: &dyn Device,
         up: &mut Uploads,
         plan: &MeshletPlan<BucketKey>,
-        (tables, pipelines): (FrameTables, [Pipeline; 2]),
+        (tables, pipelines): (FrameTables, RoutePipelines),
         keep: &mut Vec<Buffer>,
     ) -> Result<Option<Self>, RenderError> {
         if plan.entries == 0 {
             return Ok(None);
         }
-        let [expand, shadow_pipeline] = pipelines;
-        let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
         let mut items = Vec::new();
         push_rows_u32(&mut items, &plan.items);
+        let items = up.buffer(device, &items, "meshlet work items")?;
+        keep.push(items);
+        let items = device.buffer_index(items)?.0;
+        let (route, expand, shadow_pipeline) = match pipelines {
+            RoutePipelines::ComputeIndirect { expand, shadow } => {
+                let job = Expand::prepare(device, up, plan, (items, expand), keep)?;
+                (Route::ComputeIndirect, Some(job), shadow)
+            }
+            RoutePipelines::MeshTasks { shadow } => (Route::MeshTasks, None, shadow),
+        };
+        let draw = |pipeline, material, i: usize| {
+            let bucket = &plan.buckets[i];
+            match &expand {
+                Some(e) => BucketDraw {
+                    pipeline,
+                    push: MeshletPush {
+                        frame: tables.frame,
+                        instances: tables.instances,
+                        entries: e.push.entries,
+                        materials: tables.materials,
+                        material,
+                        meshes: tables.meshes,
+                        first: bucket.first,
+                        cascade: 0,
+                    }
+                    .words()
+                    .to_vec(),
+                    draw: Command::DrawIndirect {
+                        args: e.args,
+                        offset: i as u64 * concordia_rhi::DRAW_INDIRECT_BYTES,
+                    },
+                },
+                None => BucketDraw {
+                    pipeline,
+                    push: TaskPush {
+                        frame: tables.frame,
+                        instances: tables.instances,
+                        items,
+                        materials: tables.materials,
+                        material,
+                        meshes: tables.meshes,
+                        first: bucket.first,
+                        count: bucket.entries,
+                        item_count: plan.items.len() as u32,
+                        cascade: 0,
+                    }
+                    .words()
+                    .to_vec(),
+                    draw: Command::DrawMeshTasks {
+                        groups: task_groups(bucket.entries),
+                    },
+                },
+            }
+        };
+        let mut forward = Vec::new();
+        let mut shadow = None;
+        for (i, bucket) in plan.buckets.iter().enumerate() {
+            match bucket.key {
+                Some((pipeline, material)) => forward.push(draw(pipeline, material, i)),
+                None => shadow = Some(draw(shadow_pipeline, 0, i)),
+            }
+        }
+        Ok(Some(Self {
+            route,
+            expand,
+            forward,
+            shadow,
+        }))
+    }
+
+    /// The `meshlet.expand` pass (compute route only).
+    pub(crate) fn add_pass(&self, graph: &mut RenderGraph) {
+        let Some(expand) = self.expand.clone() else {
+            return;
+        };
+        graph.add_pass_recorded(
+            "meshlet.expand",
+            |p| p.side_effect(),
+            Some(Box::new(move |ctx: &mut PassContext<'_>| {
+                ctx.commands.commands.extend(expand.commands());
+                Ok(())
+            })),
+        );
+    }
+}
+
+impl Expand {
+    /// Uploads the bucket table and allocates the entries and arguments `meshlet.expand` writes;
+    /// `items` is the work items' bindless index.
+    fn prepare(
+        device: &dyn Device,
+        up: &mut Uploads,
+        plan: &MeshletPlan<BucketKey>,
+        (items, pipeline): (u32, Pipeline),
+        keep: &mut Vec<Buffer>,
+    ) -> Result<Self, RenderError> {
+        let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
         let mut buckets = Vec::new();
         let rows: Vec<[u32; 4]> = plan
             .buckets
@@ -86,7 +212,6 @@ impl MeshletJob {
             .map(|b| [b.first, b.entries, b.vertices, 0])
             .collect();
         push_rows_u32(&mut buckets, &rows);
-        let items = up.buffer(device, &items, "meshlet work items")?;
         let bucket_table = up.buffer(device, &buckets, "meshlet buckets")?;
         let gpu = |bytes: u64, usage: BufferUsage, label: &str| {
             up.alloc(
@@ -112,65 +237,27 @@ impl MeshletJob {
             BufferUsage::INDIRECT,
             "meshlet arguments",
         )?;
-        keep.extend([items, bucket_table, entries, args]);
-        let push = ExpandPush {
-            items: index(items)?,
-            item_count: plan.items.len() as u32,
-            buckets: index(bucket_table)?,
-            entries: index(entries)?,
-            args: index(args)?,
-            total: plan.entries,
-        };
-        let draw = |pipeline, material, i: usize| BucketDraw {
+        keep.extend([bucket_table, entries, args]);
+        Ok(Self {
             pipeline,
-            push: MeshletPush {
-                frame: tables.frame,
-                instances: tables.instances,
-                entries: push.entries,
-                materials: tables.materials,
-                material,
-                meshes: tables.meshes,
-                first: plan.buckets[i].first,
-                cascade: 0,
+            push: ExpandPush {
+                items,
+                item_count: plan.items.len() as u32,
+                buckets: index(bucket_table)?,
+                entries: index(entries)?,
+                args: index(args)?,
+                total: plan.entries,
             },
-            offset: i as u64 * concordia_rhi::DRAW_INDIRECT_BYTES,
-        };
-        let mut forward = Vec::new();
-        let mut shadow = None;
-        for (i, bucket) in plan.buckets.iter().enumerate() {
-            match bucket.key {
-                Some((pipeline, material)) => forward.push(draw(pipeline, material, i)),
-                None => shadow = Some(draw(shadow_pipeline, 0, i)),
-            }
-        }
-        Ok(Some(Self {
-            expand,
-            push,
             groups: expand_groups(plan.entries),
             entries,
             args,
-            forward,
-            shadow,
-        }))
-    }
-
-    /// The `meshlet.expand` pass: one thread per entry, then a barrier for the draws.
-    pub(crate) fn add_pass(&self, graph: &mut RenderGraph) {
-        let job = self.clone();
-        graph.add_pass_recorded(
-            "meshlet.expand",
-            |p| p.side_effect(),
-            Some(Box::new(move |ctx: &mut PassContext<'_>| {
-                ctx.commands.commands.extend(job.expand_commands());
-                Ok(())
-            })),
-        );
+        })
     }
 
     /// The pass's commands: the dispatch and its barrier.
-    fn expand_commands(&self) -> [Command; 4] {
+    fn commands(&self) -> [Command; 4] {
         [
-            Command::SetPipeline(self.expand),
+            Command::SetPipeline(self.pipeline),
             Command::PushConstants(self.push.bytes()),
             Command::Dispatch {
                 groups: self.groups,
@@ -202,15 +289,6 @@ impl MeshletJob {
                 .collect(),
             textures: Vec::new(),
         }
-    }
-
-    /// The commands drawing `bucket` (pipeline already set when `set` is false).
-    pub(crate) fn draw(&self, bucket: &BucketDraw, out: &mut Vec<Command>) {
-        out.push(Command::PushConstants(bucket.push.bytes()));
-        out.push(Command::DrawIndirect {
-            args: self.args,
-            offset: bucket.offset,
-        });
     }
 }
 
@@ -320,18 +398,17 @@ mod tests {
             materials: 0,
             meshes: 0,
         };
-        let job = MeshletJob::prepare(
-            device,
-            &mut up,
-            &plan,
-            (tables, [expand, expand]),
-            &mut keep,
-        )
-        .unwrap()
-        .unwrap();
+        let pipelines = RoutePipelines::ComputeIndirect {
+            expand,
+            shadow: expand,
+        };
+        let job = MeshletJob::prepare(device, &mut up, &plan, (tables, pipelines), &mut keep)
+            .unwrap()
+            .unwrap();
         up.flush(device).unwrap();
+        let job = job.expand.expect("the compute route expands");
         let mut list = CommandList::new("expand");
-        job.expand_commands().into_iter().for_each(|c| {
+        job.commands().into_iter().for_each(|c| {
             list.push(c);
         });
         run(device, &list);
