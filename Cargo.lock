@@ -855,6 +855,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "concordia-cluster"
+version = "0.0.0"
+dependencies = [
+ "concordia-core",
+ "meshopt-sys",
+ "proptest",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "concordia-command"
 version = "0.0.0"
 dependencies = [
