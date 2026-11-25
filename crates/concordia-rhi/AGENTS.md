@@ -11,7 +11,8 @@ Backend-neutral GPU vocabulary and the `Device` trait (ADR-0040): validated desc
 - `Access`, `BufferBarrier`, `TextureBarrier`, `Format`, `Requirement`, `RhiError`
 - Capabilities (M4 4.1a, D10): `RhiCaps` (was `DeviceCaps`; adds `object_shaders`, `hw_ray_tracing`, `metalfx_temporal`, `timestamp_granularity`, `max_mesh_output_vertices` / `_primitives`), `TimestampGranularity` (`times_passes`), `CapsMask` and `RhiCaps::masked`
 - Timing (4.1a, ADR-0089): `Command::BeginTimer(TimerScope)` / `EndTimer`; `GpuTiming { total_ms, scopes }` and `ScopeTime` through `GpuTimeCallback` (`submit_timed`, `Present::on_gpu_time`)
-- `conformance` (feature `conformance`): `conformance_tests!(make, golden, shaders)`, `Harness`, `GoldenCheck`, `ShaderProvider`, `shader_dir()` (Slang sources in `conformance/*.slang`)
+- `conformance` (feature `conformance`): `conformance_tests!(make, golden, shaders)`, `Harness`, `GoldenCheck`, `ShaderProvider`, `shader_dir()` (Slang sources in `conformance/*.slang`); `surface_conformance_tests!(make, surface)` with `TestSurface` (M4 4.1v(b): each backend supplies a test surface: a `CAMetalLayer`, or Vulkan's `Headless`)
+- `SurfaceTarget::{MetalLayer, Xlib, Xcb, Wayland, Headless}` (M4 4.1v(b)); `Backend::{ALL, as_str}`, `Display`, `FromStr` (`UnknownBackend`)
 
 ## Invariants
 - No graphics-API types here; backends translate.

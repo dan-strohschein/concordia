@@ -40,6 +40,7 @@ concordia-import-gltf.workspace = true
 concordia-rhi = { workspace = true, features = ["conformance"] }
 concordia-rhi-metal.workspace = true
 concordia-rhi-select.workspace = true
+concordia-rhi-vulkan.workspace = true
 tempfile.workspace = true
 concordia-testkit.workspace = true
 insta.workspace = true

@@ -1173,6 +1173,7 @@ dependencies = [
  "concordia-rhi",
  "concordia-rhi-metal",
  "concordia-rhi-select",
+ "concordia-rhi-vulkan",
  "concordia-scene",
  "concordia-shaders",
  "concordia-terra",

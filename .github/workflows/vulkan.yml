@@ -42,7 +42,7 @@ jobs:
       - name: Vulkan (Mesa lavapipe, the Khronos validation layers, the loader)
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers vulkan-validationlayers vulkan-tools
+          sudo apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers vulkan-validationlayers vulkan-tools libasound2-dev
       - name: Vulkan devices
         run: vulkaninfo --summary
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -51,20 +51,31 @@ jobs:
           key: slang-${{ runner.os }}-${{ hashFiles('tools/slang/slang.toml') }}
       - name: Slang toolchain
         run: just slang-fetch
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/gltf-sample-assets
+          key: gltf-${{ hashFiles('tests/fixtures/gltf-sample-assets/manifest.ron') }}
+      - name: glTF sample assets (the renderer's conformance goldens)
+        run: just gltf-assets
       - name: Vulkan backend tests
         run: cargo nextest run -p concordia-rhi-vulkan --profile ci --no-tests=fail -E "$FILTER"
         env:
           FILTER: ${{ inputs.filter }}
-      - name: Renderer on Vulkan (the render suite and the M1 gate golden)
+      - name: Renderer on Vulkan (the render suite)
         if: ${{ !cancelled() }}
-        run: |
-          cargo nextest run -p concordia-render --profile ci --no-fail-fast -E "$RENDER_FILTER"
-          cargo nextest run -p concordia-tests --profile ci -E 'binary(m1_physics_golden)'
+        run: cargo nextest run -p concordia-render --profile ci --no-fail-fast -E "$RENDER_FILTER"
         env:
           CONCORDIA_BACKEND: vulkan
           CONCORDIA_VULKAN_VALIDATION: strict
           CONCORDIA_GOLDEN_KEEP: "1"
           RENDER_FILTER: ${{ inputs.render_filter }}
+      - name: M1 gate golden on Vulkan
+        if: ${{ !cancelled() }}
+        run: cargo nextest run -p concordia-tests --profile ci -E 'binary(m1_physics_golden)'
+        env:
+          CONCORDIA_BACKEND: vulkan
+          CONCORDIA_VULKAN_VALIDATION: strict
+          CONCORDIA_GOLDEN_KEEP: "1"
       - name: gpu-probe on Vulkan
         if: ${{ !cancelled() }}
         run: cargo run -q -p concordia-cli -- gpu-probe --backend vulkan --require-m1

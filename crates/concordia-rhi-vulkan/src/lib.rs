@@ -25,6 +25,7 @@ use concordia_rhi::{CapsMask, Device, RhiCaps, RhiError};
 
 pub use device::VulkanDevice;
 pub use record::BINDLESS_CAPACITY;
+pub use spirv::check_module as check_spirv_module;
 pub use validation::ValidationLog;
 
 /// Whether to run with the Khronos validation layer.

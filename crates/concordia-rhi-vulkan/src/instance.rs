@@ -260,6 +260,12 @@ impl Instance {
             shader_int64: on(core.shader_int64),
             shader_draw_parameters: on(v11.shader_draw_parameters),
             sampler_anisotropy: on(core.sampler_anisotropy),
+            shader_sampled_image_array_non_uniform_indexing: on(
+                v12.shader_sampled_image_array_non_uniform_indexing
+            ),
+            shader_storage_image_array_non_uniform_indexing: on(
+                v12.shader_storage_image_array_non_uniform_indexing
+            ),
         }
     }
 

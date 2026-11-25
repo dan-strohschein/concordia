@@ -221,21 +221,23 @@ float4 sample_or(uint tex, float2 uv, float4 fallback) {
 
 // ---- Albedo tables: (N·V, roughness) at texel centers, clamped, like `dfg::bilinear`. Half 0 holds
 // the split sum (A, B) and the direct lobe's (A, B); half 1 the sheen albedo.
-float4 albedo_tables(Frame* frame, uint half, float nov, float roughness) {
+float4 albedo_tables(uint table, uint half, float nov, float roughness) {
     float x = clamp(saturate(nov) * TABLE_SIZE - 0.5, 0.0, TABLE_SIZE - 1.0);
     float y = clamp(saturate(roughness) * TABLE_SIZE - 0.5, 0.0, TABLE_SIZE - 1.0);
     float2 uv = float2((x + 0.5 + float(half) * TABLE_SIZE) / (2.0 * TABLE_SIZE), (y + 0.5) / TABLE_SIZE);
-    return g_textures.tex[frame.env_b.z].SampleLevel(g_textures.samplers[SAMPLER_LINEAR_CLAMP], uv, 0);
+    return g_textures.tex[table].SampleLevel(g_textures.samplers[SAMPLER_LINEAR_CLAMP], uv, 0);
 }
 
-float2 split_sum(Frame* frame, float nov, float roughness) { return albedo_tables(frame, 0, nov, roughness).xy; }
-// The material module's albedo tables, read from the frame's table texture.
+float2 split_sum(Frame* frame, float nov, float roughness) { return albedo_tables(frame.env_b.z, 0, nov, roughness).xy; }
+// The material module's albedo tables, read from the frame's table texture. It holds the texture's
+// index, not the frame pointer: Slang spills a pointer field passed to a generic into an undecorated
+// SPIR-V variable, which Vulkan refuses (`tests/spirv.rs`).
 struct FrameTables : IAlbedoTables {
-    Frame* frame;
-    float2 direct_albedo(float nov, float roughness) { return albedo_tables(frame, 0, nov, roughness).zw; }
-    float sheen_albedo(float nov, float roughness) { return albedo_tables(frame, 1, nov, roughness).x; }
+    uint table;
+    float2 direct_albedo(float nov, float roughness) { return albedo_tables(table, 0, nov, roughness).zw; }
+    float sheen_albedo(float nov, float roughness) { return albedo_tables(table, 1, nov, roughness).x; }
 };
-FrameTables tables_of(Frame* frame) { FrameTables t; t.frame = frame; return t; }
+FrameTables tables_of(Frame* frame) { FrameTables t; t.table = frame.env_b.z; return t; }
 
 // ---- The program's shape (`shape.rs`). A pipeline variant per layered shape defines it, so the
 // interpreter unrolls and its stack, closures and feature branches resolve at compile time. Without

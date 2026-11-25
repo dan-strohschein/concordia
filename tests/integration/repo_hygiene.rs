@@ -522,6 +522,9 @@ fn vulkan_workflow_runs_the_backend_on_lavapipe_on_demand() {
             "golden-vulkan",
             // A real X11 window on Vulkan: `concordia run` on Xvfb.
             "xvfb-run",
+            "just gltf-assets",
+            "libasound2-dev",
+            "M1 gate golden on Vulkan",
             "concordia-cli -- run",
         ],
     );

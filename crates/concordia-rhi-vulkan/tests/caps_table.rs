@@ -171,3 +171,25 @@ fn records_list_surface_extensions_and_older_ones_still_read() {
         "caps don't depend on them"
     );
 }
+
+/// The renderer indexes bindless textures with per-pixel values (`NonUniformResourceIndex`), so
+/// SPIR-V declares `SampledImageArrayNonUniformIndexing` (and storage images likewise): both are
+/// required (4.1v(b), found on lavapipe under validation).
+#[test]
+fn bindless_textures_need_non_uniform_indexing() {
+    let mut record = lavapipe();
+    assert!(record.missing().is_empty(), "lavapipe has both");
+    record
+        .features
+        .shader_sampled_image_array_non_uniform_indexing = false;
+    record
+        .features
+        .shader_storage_image_array_non_uniform_indexing = false;
+    assert_eq!(
+        record.missing(),
+        [
+            "shaderSampledImageArrayNonUniformIndexing",
+            "shaderStorageImageArrayNonUniformIndexing"
+        ]
+    );
+}

@@ -1,9 +1,25 @@
 //! Checks a SPIR-V module before a driver sees it (pure): drivers may crash on malformed code.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 /// The SPIR-V magic number.
 const MAGIC: u32 = 0x0723_0203;
 /// `OpEntryPoint`.
 const OP_ENTRY_POINT: u32 = 15;
+/// `OpTypePointer`.
+const OP_TYPE_POINTER: u32 = 32;
+/// `OpVariable`.
+const OP_VARIABLE: u32 = 59;
+/// `OpDecorate`.
+const OP_DECORATE: u32 = 71;
+/// Storage class `Function`.
+const FUNCTION: u32 = 7;
+/// Storage class `PhysicalStorageBuffer`.
+const PHYSICAL_STORAGE_BUFFER: u32 = 5349;
+/// Decoration `RestrictPointer`.
+const RESTRICT_POINTER: u32 = 5355;
+/// Decoration `AliasedPointer`.
+const ALIASED_POINTER: u32 = 5356;
 /// Highest SPIR-V version Vulkan 1.3 consumes (1.6).
 const MAX_MINOR: u32 = 6;
 
@@ -18,16 +34,20 @@ pub(crate) enum Model {
     Compute = 5,
 }
 
-/// Ok if `words` is a SPIR-V module (≤ 1.6) with entry point `entry` for `model`; else the log.
+/// Ok if `words` is a SPIR-V module (≤ 1.6) with entry point `entry` for `model` and passes
+/// [`check_module`]; else the log.
 pub(crate) fn check(words: &[u32], entry: &str, model: Model) -> Result<(), String> {
-    let entries = entry_points(words)?;
-    if entries
+    let facts = scan(words)?;
+    facts.pointer_rule()?;
+    if facts
+        .entries
         .iter()
         .any(|(m, name)| *m == model as u32 && name == entry)
     {
         return Ok(());
     }
-    let found: Vec<String> = entries
+    let found: Vec<String> = facts
+        .entries
         .iter()
         .map(|(m, name)| format!("{name} (model {m})"))
         .collect();
@@ -41,10 +61,57 @@ pub(crate) fn check(words: &[u32], entry: &str, model: Model) -> Result<(), Stri
     ))
 }
 
-/// Every `(execution model, name)` the module declares, after checking its header and framing.
-fn entry_points(words: &[u32]) -> Result<Vec<(u32, String)>, String> {
+/// The module-wide rules [`check`] applies (header, framing, pointer decorations), for checking
+/// shaders without a device (render tests compile every entry point for SPIR-V).
+pub fn check_module(words: &[u32]) -> Result<(), String> {
+    scan(words)?.pointer_rule()
+}
+
+/// What one pass over the module finds.
+#[derive(Default)]
+struct Facts {
+    /// Every `(execution model, name)` declared.
+    entries: Vec<(u32, String)>,
+    /// `OpTypePointer` result ids: storage class and pointee.
+    pointers: BTreeMap<u32, (u32, u32)>,
+    /// Function-storage `OpVariable`s: result id and type.
+    function_variables: Vec<(u32, u32)>,
+    /// Ids decorated `AliasedPointer` or `RestrictPointer`.
+    pointer_decorated: BTreeSet<u32>,
+}
+
+impl Facts {
+    /// A function variable holding a physical-storage-buffer pointer must say how it aliases.
+    fn pointer_rule(&self) -> Result<(), String> {
+        let holds_physical = |ty: u32| {
+            self.pointers.get(&ty).is_some_and(|(_, pointee)| {
+                self.pointers
+                    .get(pointee)
+                    .is_some_and(|(class, _)| *class == PHYSICAL_STORAGE_BUFFER)
+            })
+        };
+        let bad: Vec<String> = self
+            .function_variables
+            .iter()
+            .filter(|(id, ty)| holds_physical(*ty) && !self.pointer_decorated.contains(id))
+            .map(|(id, _)| format!("%{id}"))
+            .collect();
+        match bad.is_empty() {
+            true => Ok(()),
+            false => Err(format!(
+                "function variables {} hold physical-storage-buffer pointers without \
+                 AliasedPointer or RestrictPointer (spirv-val, VUID-VkShaderModuleCreateInfo-pCode-08737); \
+                 initialise such pointers where they are declared",
+                bad.join(", ")
+            )),
+        }
+    }
+}
+
+/// Checks the header and framing and gathers [`Facts`].
+fn scan(words: &[u32]) -> Result<Facts, String> {
     header(words)?;
-    let mut entries = Vec::new();
+    let mut facts = Facts::default();
     let mut at = 5;
     while at < words.len() {
         let count = (words[at] >> 16) as usize;
@@ -52,14 +119,25 @@ fn entry_points(words: &[u32]) -> Result<Vec<(u32, String)>, String> {
         if count == 0 || at + count > words.len() {
             return Err(format!("instruction at word {at} has a bad length {count}"));
         }
-        if op == OP_ENTRY_POINT && count >= 4 {
-            let name = literal(&words[at + 3..at + count])
-                .ok_or_else(|| format!("entry point at word {at} has no terminated name"))?;
-            entries.push((words[at + 1], name));
+        let args = &words[at + 1..at + count];
+        match (op, args) {
+            (OP_ENTRY_POINT, [model, _, name @ ..]) if !name.is_empty() => {
+                let name = literal(name)
+                    .ok_or_else(|| format!("entry point at word {at} has no terminated name"))?;
+                facts.entries.push((*model, name));
+            }
+            (OP_TYPE_POINTER, [id, class, pointee]) => {
+                facts.pointers.insert(*id, (*class, *pointee));
+            }
+            (OP_VARIABLE, [ty, id, FUNCTION, ..]) => facts.function_variables.push((*id, *ty)),
+            (OP_DECORATE, [id, ALIASED_POINTER | RESTRICT_POINTER, ..]) => {
+                facts.pointer_decorated.insert(*id);
+            }
+            _ => {}
         }
         at += count;
     }
-    Ok(entries)
+    Ok(facts)
 }
 
 fn header(words: &[u32]) -> Result<(), String> {
@@ -163,5 +241,36 @@ mod tests {
                 .unwrap_err()
                 .contains("terminated")
         );
+    }
+
+    /// `OpTypePointer PhysicalStorageBuffer` %2 to %1, `OpTypePointer Function` %3 to %2, and
+    /// `OpVariable` %4 of type %3; `decoration` adds `OpDecorate %4 <decoration>`.
+    fn pointer_variable(decoration: Option<u32>) -> Vec<u32> {
+        let mut words = module(&[(Model::Fragment, "fs")]);
+        words.extend([4 << 16 | OP_TYPE_POINTER, 2, PHYSICAL_STORAGE_BUFFER, 1]);
+        words.extend([4 << 16 | OP_TYPE_POINTER, 3, FUNCTION, 2]);
+        if let Some(d) = decoration {
+            words.extend([3 << 16 | OP_DECORATE, 4, d]);
+        }
+        words.extend([4 << 16 | OP_VARIABLE, 3, 4, FUNCTION]);
+        words
+    }
+
+    /// spirv-val's rule (VUID-VkShaderModuleCreateInfo-pCode-08737): a function variable holding a
+    /// physical-storage-buffer pointer is `AliasedPointer` or `RestrictPointer`. Slang 2026.22
+    /// sometimes leaves it out; drivers may mis-handle it, so the backend refuses the module.
+    #[test]
+    fn undecorated_physical_pointer_variables_are_refused() {
+        let log = check(&pointer_variable(None), "fs", Model::Fragment).unwrap_err();
+        assert!(
+            log.contains("%4") && log.contains("AliasedPointer"),
+            "{log}"
+        );
+        for decoration in [ALIASED_POINTER, RESTRICT_POINTER] {
+            assert_eq!(
+                check(&pointer_variable(Some(decoration)), "fs", Model::Fragment),
+                Ok(())
+            );
+        }
     }
 }

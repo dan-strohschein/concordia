@@ -66,6 +66,10 @@ pub struct Features {
     pub shader_draw_parameters: bool,
     /// `samplerAnisotropy` (optional: without it `LinearRepeat` is not anisotropic).
     pub sampler_anisotropy: bool,
+    /// `shaderSampledImageArrayNonUniformIndexing` (per-pixel bindless texture indices).
+    pub shader_sampled_image_array_non_uniform_indexing: bool,
+    /// `shaderStorageImageArrayNonUniformIndexing`.
+    pub shader_storage_image_array_non_uniform_indexing: bool,
 }
 
 impl Features {
@@ -102,6 +106,14 @@ impl Features {
             ),
             (self.shader_int64, "shaderInt64"),
             (self.shader_draw_parameters, "shaderDrawParameters"),
+            (
+                self.shader_sampled_image_array_non_uniform_indexing,
+                "shaderSampledImageArrayNonUniformIndexing",
+            ),
+            (
+                self.shader_storage_image_array_non_uniform_indexing,
+                "shaderStorageImageArrayNonUniformIndexing",
+            ),
         ]
         .into_iter()
         .filter_map(|(present, name)| (!present).then_some(name))
