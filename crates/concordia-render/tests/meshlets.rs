@@ -491,7 +491,7 @@ fn triangles_past_a_meshlets_count_are_never_drawn() {
     };
     mesh.meshlets = blob.encode().unwrap();
     let (m1, meshlets, differing) = both_paths(&mut r, mesh);
-    assert!(m1.iter().any(|&b| b == 255), "A and B are drawn");
+    assert!(m1.contains(&255), "A and B are drawn");
     assert_eq!(m1, meshlets, "{differing} pixels differ from the M1 path");
 }
 
