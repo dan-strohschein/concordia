@@ -501,6 +501,23 @@ fn ci_workflow_runs_the_fast_checks_on_every_pr() {
 }
 
 #[test]
+fn vulkan_workflow_runs_the_backend_on_lavapipe_under_validation() {
+    assert_contains_all(
+        ".github/workflows/vulkan.yml",
+        &[
+            "pull_request",
+            "ubuntu-24.04",
+            "mesa-vulkan-drivers",
+            "vulkan-validationlayers",
+            "CONCORDIA_REQUIRE_VULKAN: \"1\"",
+            "nextest run -p concordia-rhi-vulkan",
+            "crates/concordia-rhi-vulkan/**",
+            "crates/concordia-shaders/**",
+        ],
+    );
+}
+
+#[test]
 fn regression_workflow_covers_the_full_suite_on_demand() {
     assert_contains_all(
         ".github/workflows/regression.yml",

@@ -1,7 +1,7 @@
 # concordia-rhi-vulkan: agent guide
 
 ## Purpose
-The Vulkan implementation of `concordia-rhi` (ADR-0088): `VulkanDevice` over `ash` on Vulkan 1.3 core (dynamic rendering, synchronization2, timeline semaphores, descriptor indexing, buffer device addresses), with `gpu-allocator` memory and backend-tracked hazards like Metal's.
+The Vulkan implementation of `concordia-rhi` (ADR-0088): `VulkanDevice` over `ash` on Vulkan 1.3 core (dynamic rendering, synchronization2, timeline semaphores, descriptor indexing, buffer device addresses, `shaderDrawParameters` for Slang vertex shaders), with `gpu-allocator` memory and backend-tracked hazards like Metal's.
 
 ## Public entry points
 - `new_headless()`, `new_headless_masked(&CapsMask)`, `new_headless_with(&Options)` → `Box<dyn Device>`; `VulkanDevice::new(&Options)`
@@ -23,7 +23,7 @@ The Vulkan implementation of `concordia-rhi` (ADR-0088): `VulkanDevice` over `as
 ## How to test
 - `cargo nextest run -p concordia-rhi-vulkan`: the pure tests run everywhere; the device and conformance tests skip without Vulkan.
 - `CONCORDIA_REQUIRE_VULKAN=1` (Linux CI, `vulkan (lavapipe)` job: `mesa-vulkan-drivers`, `vulkan-validationlayers`) makes a missing device or validation layer a failure, and any validation error fails a test. `CONCORDIA_REQUIRE_GPU` means Metal and does not affect these tests.
-- **Re-test pending (author decision 2026-11-24):** the device code was written before its tests, which have not yet run on a Vulkan device. The CI job is informational until the author's re-test on another machine.
+- The device code was written before its tests (author decision 2026-11-24). They pass on lavapipe in CI (64/64, no validation errors); real GPUs and MoltenVK are re-tested later, and the CI job stays informational until then.
 
 ## Common tasks
 - **Translate a new command:** add it to `track::plan` (is it a step? which layouts?) and `encode.rs`, then a conformance case.

@@ -1,5 +1,5 @@
 # ADR-0088: The Vulkan backend
-- Status: Proposed (M4 phase 4.1v(a), 2026-11-24; plan approved by the author on 2026-11-24, with device tests re-run on another machine later)
+- Status: Accepted (M4 phase 4.1v(a), 2026-11-24; plan approved by the author on 2026-11-24. The conformance suite passes on lavapipe in CI; real GPUs and MoltenVK are re-tested later)
 - Date: 2026-11-24
 - Builds on: ADR-0040 (RHI), ADR-0042 (GPU testing in CI), ADR-0045 (Slang), ADR-0089 (timer scopes); M4 refinement R3 and R4
 
@@ -17,7 +17,7 @@ Until M4 the engine rendered only on Metal. R3 brings Vulkan into M4, so every r
 5. **Memory through `gpu-allocator`** (MIT OR Apache-2.0). A heap is one dedicated allocation, and placed textures bind at an offset in it.
 6. **Hazards are the backend's job**, as Metal's tracked mode makes them on Metal:
    - Every texture has a home layout chosen from its usage, and each step (render pass, dispatch, copy) moves what it uses out of that layout and back.
-   - A global memory barrier separates consecutive steps.
+   - A global memory barrier separates consecutive steps. New textures move to their home layouts at the start of the next submission.
    - RHI barriers are still translated (aliasing discards from `Undefined`).
    - Making the render graph's barriers authoritative, and dropping the global barriers, is a later performance change.
 7. **Metal's conventions:**
@@ -26,8 +26,9 @@ Until M4 the engine rendered only on Metal. R3 brings Vulkan into M4, so every r
 8. **Timer scopes (ADR-0089)** use timestamp queries, one pool per timed submission. Granularity is `draw_boundary` when the queue has timestamp bits.
 9. **Tests:**
    - The RHI conformance suite runs unchanged, plus Vulkan-only cases.
-   - Linux CI runs them on Mesa's lavapipe with the Khronos validation layers in a `vulkan (lavapipe)` job, informational until the author's first re-test on another machine. Any error-severity validation message fails the test.
+   - Linux CI runs them on Mesa's lavapipe with the Khronos validation layers in a `vulkan (lavapipe)` job of its own workflow (`vulkan.yml`, keeping `ci.yml` fast per ADR-0071), informational until the author's first re-test on another machine. Any error-severity validation message fails the test.
    - `CONCORDIA_REQUIRE_VULKAN=1` turns a missing device or layer into a failure; `CONCORDIA_REQUIRE_GPU` keeps meaning Metal.
+   - Slang's SPIR-V keeps source entry names (`-fvk-use-entrypoint-name`), and Slang vertex shaders need `shaderDrawParameters`, which the backend requires.
    - RHI goldens are shared across backends, with one tolerance file.
 
 ## Consequences
