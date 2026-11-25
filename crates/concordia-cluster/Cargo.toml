@@ -17,4 +17,5 @@ meshopt-sys.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+meshopt-sys.workspace = true
 proptest.workspace = true

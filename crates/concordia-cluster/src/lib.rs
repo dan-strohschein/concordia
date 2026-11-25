@@ -10,7 +10,7 @@ mod input;
 mod meshlet;
 mod settings;
 
-pub use build::build;
+pub use build::{PILE_TRIANGLES, Pile, build, piles};
 pub use error::ClusterError;
 pub use input::ClusterInput;
 pub use meshlet::{Meshlet, MeshletMesh, NormalCone, Sphere};

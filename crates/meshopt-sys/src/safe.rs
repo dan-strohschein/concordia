@@ -131,21 +131,20 @@ fn check_limits(
     Ok(())
 }
 
-/// Every reference points at a position, and every position is finite.
+/// Every reference points at a finite position (only referenced positions are read).
 fn check_refs(indices: &[u32], positions: &[[f32; 3]]) -> Result<(), MeshoptError> {
-    if let Some(&index) = indices.iter().find(|&&i| i as usize >= positions.len()) {
-        return Err(MeshoptError::IndexRange {
-            index,
-            vertices: positions.len(),
-        });
+    for &index in indices {
+        let Some(p) = positions.get(index as usize) else {
+            return Err(MeshoptError::IndexRange {
+                index,
+                vertices: positions.len(),
+            });
+        };
+        if !p.iter().all(|c| c.is_finite()) {
+            return Err(MeshoptError::NonFinitePosition(index as usize));
+        }
     }
-    match positions
-        .iter()
-        .position(|p| !p.iter().all(|c| c.is_finite()))
-    {
-        Some(i) => Err(MeshoptError::NonFinitePosition(i)),
-        None => Ok(()),
-    }
+    Ok(())
 }
 
 fn check_meshlet(vertices: &[u32], triangles: &[u8]) -> Result<(), MeshoptError> {
