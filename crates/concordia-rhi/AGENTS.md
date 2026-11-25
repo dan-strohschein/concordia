@@ -43,7 +43,7 @@ Backend-neutral GPU vocabulary and the `Device` trait (ADR-0040): validated desc
 
 ## Status
 M1 phase 1.2b; conformance shaders in Slang since 1.3. M4 phase 4.1a: `RhiCaps` and masking, timer scopes (`timer_scopes_report_each_scope_once_in_order`).
- M4 4.3a: indirect draws, viewport and scissor, texture copies, `check`, and 11 conformance cases (`indirect.rs`, `regions.rs`). M4 4.3b: mesh pipelines and mesh-task draws (`mesh.rs`, 5 cases).
+ M4 4.3a: indirect draws, viewport and scissor, texture copies, `check`, and 11 conformance cases (`indirect.rs`, `regions.rs`). M4 4.3b: mesh pipelines and mesh-task draws (`mesh.rs`, 5 cases). M4 4.3b2: `Format::Rg16Float` and `ColorWrites` (per-target write masks on graphics and mesh pipelines; `targets.rs`, 2 cases).
 ## Engineering rules
 These apply to every change, by humans and agents alike.
 1. **TDD on every phase.** Write the tests first, see them fail, implement, then refactor.

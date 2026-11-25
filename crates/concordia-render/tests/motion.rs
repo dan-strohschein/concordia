@@ -85,6 +85,19 @@ fn view(eye: Vec3) -> View {
 
 /// Renders `scene` from `view` and returns its motion vectors.
 fn motion(r: &mut Renderer, scene: &mut Scene, view: &View) -> MotionImage {
+    motion_with(r, scene, view, (concordia_render::ViewMode::lit, None))
+}
+
+/// [`motion`] in `view_mode`, with editor `overlays`.
+fn motion_with(
+    r: &mut Renderer,
+    scene: &mut Scene,
+    view: &View,
+    (view_mode, overlays): (
+        concordia_render::ViewMode,
+        Option<concordia_render::Overlays>,
+    ),
+) -> MotionImage {
     r.set_motion_readback(true);
     r.set_meshlets(true);
     let rw = RenderWorld::extract(&scene.world);
@@ -93,8 +106,8 @@ fn motion(r: &mut Renderer, scene: &mut Scene, view: &View) -> MotionImage {
         view: Some(view.clone()),
         width: SIZE.0,
         height: SIZE.1,
-        overlays: None,
-        view_mode: concordia_render::ViewMode::lit,
+        overlays,
+        view_mode,
         debug: Vec::new(),
         ui: Default::default(),
     };
@@ -216,23 +229,146 @@ fn first_frame_and_reset_have_zero_motion() {
     }
 }
 
+/// A still translucent pane in front of a moving opaque quad leaves the quad's motion as it is:
+/// blended draws write no motion.
 #[test]
 fn blended_draws_leave_motion_untouched() {
     for mut r in renderers() {
-        let glass = M1 {
-            base_color: [0.3, 0.6, 1.0, 0.5],
-            alpha_mode: concordia_assets::AlphaMode::Blend,
-            ..common::unlit([1.0; 4])
+        let mut q = quads(common::unlit([1.0; 4]));
+        let glass = q.scene.material(
+            "glass",
+            M1 {
+                base_color: [0.3, 0.6, 1.0, 0.5],
+                alpha_mode: concordia_assets::AlphaMode::Blend,
+                ..common::unlit([1.0; 4])
+            },
+        );
+        let pane = q.scene.assets.insert_mesh("pane", grid(2));
+        let id = q
+            .scene
+            .entity(Vec3::new(0.0, 0.0, 0.5), Quat::IDENTITY, Vec3::splat(4.0));
+        let renderer = MeshRenderer {
+            mesh: pane,
+            material: glass,
+            cast_shadows: false,
         };
-        let mut q = quads(glass);
+        q.scene.world.insert(id, renderer).unwrap();
         let eye = view(Vec3::new(0.0, 0.0, 5.0));
         let _ = motion(&mut r, &mut q.scene, &eye);
-        move_to(&mut q.scene, q.m1, Vec3::new(-0.7, 0.0, 0.0));
+        let (from, to) = (Vec3::new(-0.8, 0.0, 0.0), Vec3::new(-0.7, 0.0, 0.0));
+        move_to(&mut q.scene, q.m1, to);
         let moved = motion(&mut r, &mut q.scene, &eye);
-        assert!(
-            moved.uv.iter().all(|m| *m == [0.0, 0.0]),
-            "a moving translucent quad writes no motion"
+        let ([x0, y0], [x1, y1]) = (project(&eye, from), project(&eye, to));
+        assert_motion(
+            &moved,
+            &inside(&eye, to),
+            [x1 - x0, y1 - y0],
+            "behind the pane",
         );
+        assert_eq!(moved.pixels(2, 2), [0.0, 0.0], "the pane itself is still");
+    }
+}
+
+/// Debug views write no motion: overdraw and wireframe draw every surface, hidden ones too.
+#[test]
+fn debug_views_write_no_motion() {
+    for mut r in renderers() {
+        let mut q = quads(common::unlit([1.0; 4]));
+        let eye = view(Vec3::new(0.0, 0.0, 5.0));
+        for mode in [
+            concordia_render::ViewMode::overdraw,
+            concordia_render::ViewMode::wireframe,
+        ] {
+            let _ = motion_with(&mut r, &mut q.scene, &eye, (mode, None));
+            move_to(&mut q.scene, q.m1, Vec3::new(-0.6, 0.1, 0.0));
+            let moved = motion_with(&mut r, &mut q.scene, &eye, (mode, None));
+            assert!(moved.uv.iter().all(|m| *m == [0.0, 0.0]), "{mode:?}");
+        }
+    }
+}
+
+/// An environment shown as the skybox.
+fn skybox(scene: &mut Scene) {
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/fixtures/hdri/kloofendal_48d_partly_cloudy_puresky_512.hdr"
+    ))
+    .unwrap();
+    let image = concordia_assets::ImageSettings::default();
+    let texture = concordia_assets::decode_image(&bytes, &image).unwrap();
+    let map = scene.assets.insert_texture("sky", texture);
+    let id = scene.entity(Vec3::ZERO, Quat::IDENTITY, Vec3::ONE);
+    let environment = concordia_render::Environment {
+        map,
+        intensity: 1.0,
+        skybox: true,
+    };
+    scene.world.insert(id, environment).unwrap();
+}
+
+/// The sky is infinitely far: the camera's rotation moves it, its translation doesn't.
+#[test]
+fn the_sky_moves_with_the_cameras_rotation_only() {
+    for mut r in renderers() {
+        let mut q = quads(common::unlit([1.0; 4]));
+        skybox(&mut q.scene);
+        let eye = Vec3::new(0.0, 0.0, 5.0);
+        let _ = motion(&mut r, &mut q.scene, &view(eye));
+        let shifted = view(eye + Vec3::new(0.3, 0.2, 0.0));
+        let moved = motion(&mut r, &mut q.scene, &shifted);
+        assert_eq!(moved.pixels(2, 2), [0.0, 0.0], "translation");
+        let turned = View {
+            eye: shifted.eye,
+            target: shifted.eye + Vec3::new(-0.4, 0.0, -5.0),
+            projection: Projection::default(),
+        };
+        let turning = motion(&mut r, &mut q.scene, &turned);
+        // A sky direction up and left of the quads; both views share the eye, so any point along
+        // it projects where the direction does.
+        let sky = shifted.eye + Vec3::new(-2.2, 1.1, -5.0);
+        let ([x0, y0], [x1, y1]) = (project(&shifted, sky), project(&turned, sky));
+        let want = [x1 - x0, y1 - y0];
+        assert!(want[0] > 5.0, "turning left moves the sky right: {want:?}");
+        let got = turning.pixels(x1 as u32, y1 as u32);
+        assert!(
+            (got[0] - want[0]).abs() < 0.3 && (got[1] - want[1]).abs() < 0.3,
+            "sky motion {got:?}, want {want:?}"
+        );
+    }
+}
+
+/// The editor grid writes no motion: a quad moving below it keeps its own, seen through the grid.
+#[test]
+fn the_editor_grid_leaves_motion_untouched() {
+    for mut r in renderers() {
+        let mut q = quads(common::unlit([1.0; 4]));
+        let flat = Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2);
+        let m1 = q.m1;
+        let lie = |scene: &mut Scene, x: f32| {
+            let t = Transform {
+                translation: Vec3::new(x, -0.5, 0.0),
+                rotation: flat,
+                scale: Vec3::splat(1.2),
+            };
+            scene.world.insert(m1, t).unwrap();
+        };
+        lie(&mut q.scene, -0.8);
+        let above = View {
+            eye: Vec3::new(0.0, 3.0, 3.0),
+            target: Vec3::new(0.0, -0.5, 0.0),
+            projection: Projection::default(),
+        };
+        let grid = concordia_render::Overlays {
+            grid: true,
+            ..Default::default()
+        };
+        let mode = concordia_render::ViewMode::lit;
+        let _ = motion_with(&mut r, &mut q.scene, &above, (mode, Some(grid.clone())));
+        lie(&mut q.scene, -0.6);
+        let moved = motion_with(&mut r, &mut q.scene, &above, (mode, Some(grid)));
+        let [x, y] = project(&above, Vec3::new(-0.6, -0.5, 0.0));
+        let [mx, _] = moved.pixels(x as u32, y as u32);
+        assert!(mx > 2.0, "the quad's motion under the grid: {mx}");
     }
 }
 

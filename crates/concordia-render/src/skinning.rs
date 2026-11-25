@@ -142,3 +142,56 @@ fn palette_rows(skins: &[SkinView], history: &MotionHistory) -> (Vec<u8>, Vec<(u
     }
     (rows, firsts)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use concordia_core::id::{DeterministicIdGen, EntityId, IdSource};
+
+    fn pose(entity: EntityId, joints: usize, x: f32) -> SkinView {
+        let joint = |i: usize| concordia_anim::Joint {
+            name: format!("j{i}"),
+            parent: i.checked_sub(1),
+            offset: Mat4::IDENTITY,
+            rest: Default::default(),
+            inverse_bind: Mat4::IDENTITY,
+        };
+        let skeleton = concordia_anim::Skeleton::new((0..joints).map(joint).collect()).unwrap();
+        SkinView {
+            entity,
+            world: Mat4::IDENTITY,
+            palette: vec![Mat4::from_translation(Vec3::new(x, 0.0, 0.0)); joints],
+            joints: Vec::new(),
+            skeleton: std::sync::Arc::new(skeleton),
+        }
+    }
+
+    #[test]
+    fn previous_palettes_follow_the_current_ones_when_their_length_matches() {
+        let mut ids = DeterministicIdGen::new(3);
+        let (a, b): (EntityId, EntityId) = (ids.next_id().unwrap(), ids.next_id().unwrap());
+        let mut history = MotionHistory::default();
+        let (_, firsts) = palette_rows(&[pose(a, 2, 1.0), pose(b, 3, 1.0)], &history);
+        assert_eq!(
+            firsts,
+            [(0, 0), (2, 2)],
+            "no last frame: the current palettes"
+        );
+        history.advance(
+            [],
+            [(a, vec![Mat4::IDENTITY; 2]), (b, vec![Mat4::IDENTITY; 4])],
+            Mat4::IDENTITY,
+        );
+        let (rows, firsts) = palette_rows(&[pose(a, 2, 1.0), pose(b, 3, 1.0)], &history);
+        assert_eq!(
+            firsts,
+            [(0, 5), (2, 2)],
+            "b's last palette had 4 joints, not 3"
+        );
+        assert_eq!(
+            rows.len(),
+            7 * 64,
+            "5 current matrices, then a's 2 previous"
+        );
+    }
+}
