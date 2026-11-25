@@ -154,6 +154,29 @@ impl Project {
             .and_then(|r| closure_budget(r).ok().flatten())
     }
 
+    /// The project's `[render] backend` (`auto` without one).
+    pub fn backend_choice(&self) -> concordia_rhi_select::BackendChoice {
+        self.manifest
+            .render
+            .as_ref()
+            .map(|r| r.backend)
+            .unwrap_or_default()
+    }
+
+    /// The GPU backend: `CONCORDIA_BACKEND`, then `[render] backend`, then the platform's.
+    pub fn render_backend(&self) -> Result<concordia_rhi::Backend, AppError> {
+        let env = std::env::var(concordia_rhi_select::BACKEND_ENV).ok();
+        self.render_backend_with(env.as_deref())
+    }
+
+    /// [`Project::render_backend`] for a given `CONCORDIA_BACKEND` value.
+    pub fn render_backend_with(
+        &self,
+        env: Option<&str>,
+    ) -> Result<concordia_rhi::Backend, AppError> {
+        Ok(concordia_rhi_select::choose(env, self.backend_choice())?)
+    }
+
     /// Engine modules after the core module, in order (only those the manifest configures).
     pub fn modules(&self) -> Result<Vec<Arc<dyn EngineModule>>, AppError> {
         self.modules_for(Playback::Headless)
@@ -205,14 +228,16 @@ impl Project {
             modules.push(Arc::new(ui));
         }
         if self.manifest.render.is_some() {
+            let backend = self.render_backend()?;
+            let device = move || concordia_rhi_select::new_headless(backend);
             modules.push(Arc::new(
-                RenderModule::new(Arc::new(concordia_rhi_metal::new_headless))
+                RenderModule::new(Arc::new(device))
                     .with_closure_budget(self.closure_budget())
                     .with_perf_mode(self.manifest.render.as_ref().is_some_and(|r| r.perf_mode)),
             ));
             // Reference renders with the path tracer (ADR-0090, ADR-0101): GPU by default.
             modules.push(Arc::new(concordia_pathtrace::PathTraceModule::new(Some(
-                Arc::new(concordia_rhi_metal::new_headless),
+                Arc::new(device),
             ))));
         }
         if let Some(studio) = &self.manifest.studio {

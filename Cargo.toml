@@ -63,6 +63,8 @@ concordia-render = { path = "crates/concordia-render" }
 concordia-render-types = { path = "crates/concordia-render-types" }
 concordia-rhi = { path = "crates/concordia-rhi" }
 concordia-rhi-metal = { path = "crates/concordia-rhi-metal" }
+concordia-rhi-select = { path = "crates/concordia-rhi-select" }
+concordia-rhi-vulkan = { path = "crates/concordia-rhi-vulkan" }
 concordia-testkit = { path = "crates/concordia-testkit" }
 jolt-sys = { path = "crates/jolt-sys" }
 ufbx-sys = { path = "crates/ufbx-sys" }
