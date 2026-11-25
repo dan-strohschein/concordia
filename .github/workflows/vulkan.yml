@@ -1,8 +1,8 @@
 name: vulkan
 
-# Builds the Vulkan backend and runs its device tests, the renderer's suite and the M1 gate golden
-# on Mesa's software Vulkan (lavapipe) under the Khronos validation layers (ADR-0088; any
-# validation error fails), on demand only (Actions → vulkan → Run workflow, or
+# Builds the Vulkan backend and runs its device tests, the renderer's suite (three shards at once)
+# and the M1 gate golden on Mesa's software Vulkan (lavapipe) under the Khronos validation layers
+# (ADR-0088; any validation error fails), on demand only (Actions → vulkan → Run workflow, or
 # `gh workflow run vulkan --ref <branch>`; author decision 2026-11-25). ci.yml stays fast (ADR-0071).
 on:
   workflow_dispatch:
@@ -30,37 +30,14 @@ env:
 jobs:
   vulkan:
     name: vulkan (lavapipe)
+    # The backend's tests, the M1 gate golden, gpu-probe, a window and the probe record; the
+    # renderer's suite runs beside it in `render`'s shards.
     runs-on: ubuntu-24.04
     env:
       CONCORDIA_REQUIRE_VULKAN: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install pinned toolchain
-        run: rustup toolchain install
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
-        with:
-          tool: just,cargo-nextest
-      - name: Vulkan (Mesa lavapipe, the Khronos validation layers, the loader)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers vulkan-validationlayers vulkan-tools libasound2-dev
-      - name: Vulkan devices
-        run: vulkaninfo --summary
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: target/toolchain/slang
-          key: slang-${{ runner.os }}-${{ hashFiles('tools/slang/slang.toml') }}
-      - name: Slang toolchain
-        run: just slang-fetch
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: target/gltf-sample-assets
-          key: gltf-${{ hashFiles('tests/fixtures/gltf-sample-assets/manifest.ron') }}
-      - name: glTF sample assets (the renderer's conformance goldens)
-        run: just gltf-assets
+      - uses: ./.github/actions/lavapipe
       - name: One renderer test under gdb (backtraces; GPU-assisted validation, strict, off)
         if: ${{ inputs.gdb != '' }}
         run: |
@@ -91,14 +68,6 @@ jobs:
         run: cargo nextest run -p concordia-rhi-vulkan --profile ci --no-tests=fail -E "$FILTER"
         env:
           FILTER: ${{ inputs.filter }}
-      - name: Renderer on Vulkan (the render suite)
-        if: ${{ !cancelled() && inputs.gdb == '' }}
-        run: cargo nextest run -p concordia-render --profile ci --no-fail-fast -E "$RENDER_FILTER"
-        env:
-          CONCORDIA_BACKEND: vulkan
-          CONCORDIA_VULKAN_VALIDATION: strict
-          CONCORDIA_GOLDEN_KEEP: "1"
-          RENDER_FILTER: ${{ inputs.render_filter }}
       - name: M1 gate golden on Vulkan
         if: ${{ !cancelled() && inputs.gdb == '' }}
         run: cargo nextest run -p concordia-tests --profile ci -E 'binary(m1_physics_golden)'
@@ -132,6 +101,36 @@ jobs:
           path: |
             target/golden-failures/
             target/vulkan-window.*
+          if-no-files-found: ignore
+
+  # The renderer's suite on lavapipe in three shards at once (the slowest part of the workflow).
+  render:
+    name: render (lavapipe, ${{ matrix.shard }}/3)
+    if: ${{ inputs.gdb == '' }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    env:
+      CONCORDIA_REQUIRE_VULKAN: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/lavapipe
+      - name: Renderer on Vulkan (shard ${{ matrix.shard }} of the render suite)
+        run: >-
+          cargo nextest run -p concordia-render --profile ci --no-fail-fast
+          --partition hash:${{ matrix.shard }}/3 -E "$RENDER_FILTER"
+        env:
+          CONCORDIA_BACKEND: vulkan
+          CONCORDIA_VULKAN_VALIDATION: strict
+          CONCORDIA_GOLDEN_KEEP: "1"
+          RENDER_FILTER: ${{ inputs.render_filter }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: golden-vulkan-render-${{ matrix.shard }}
+          path: target/golden-failures/
           if-no-files-found: ignore
 
   # The editor's native viewport on Vulkan (M4 4.1v(c)): the Tauri shell on WebKitGTK in Xvfb
