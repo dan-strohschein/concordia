@@ -1,5 +1,5 @@
 # M4: Unreal-class visuals
-Status: In progress (4.1a, 4.1b1–b4, 4.1v(a) done; 4.1v(b) in progress; 4.1v(a)'s device tests await the author's re-test) · Depends on: M1 (render), M2 (scripting host, graphs' WIT API), M3 (replay assertions, Studio) · Detail level: **Refined after M3 (2026-11-24; R1–R5 and D1–D10 approved by the author)** · Estimated effort: 32–45 agent-assisted engineer-weeks (two parallel tracks; see Effort estimate)
+Status: In progress (4.1a, 4.1b1–b4, 4.1v(a) and 4.1v(b) done; 4.1v(c) in progress; 4.1v(a)'s device tests await the author's re-test) · Depends on: M1 (render), M2 (scripting host, graphs' WIT API), M3 (replay assertions, Studio) · Detail level: **Refined after M3 (2026-11-24; R1–R5 and D1–D10 approved by the author)** · Estimated effort: 32–45 agent-assisted engineer-weeks (two parallel tracks; see Effort estimate)
 
 > This plan has full phase breakdowns and test lists. Its numbers (budgets, FLIP tolerances, page sizes, meshlet sizes) are **provisional** and must be recalibrated in the refinement pass after M3, using measurements from the M1–M3 renderer on the reference Mac. Every recalibrated number lands in a text file (`tests/perf/budgets/*.budget.ron`, per-test tolerances), never in code.
 
@@ -360,6 +360,48 @@ Steps, each a commit and a push:
 10. Mutation checks, docs, the checklist.
 
 Out of scope: the editor viewport on Vulkan and the rest of the D4 spike (4.1v(c)); exact present timing; Windows; mesh shaders; perf and budgets.
+
+**4.1v(c) plan** (`m4/4.1v-vulkan-c`, 2026-11-25; ADR-0088, amended. The author delegated this phase's decisions (2026-11-25: "I will take your recommendations"); the choices marked *(recommended, taken)* below were made on that basis and can be reversed. Vulkan device code is written first and tested after, as in 4.1v(a) and (b); everything else is test-first.):
+Scope: the editor's native viewport on Vulkan on Linux, and the rest of D4's spike (do Slang 2026.22's mesh-shader and ray-query SPIR-V compile, pass our checks and run on lavapipe under validation?). Out: production mesh pipelines (4.3b), acceleration structures (4.8), perf, explicit-barrier fast paths, making the `vulkan` workflow required, real-GPU re-tests.
+
+Step 0 closes 4.1v(b), whose PR merged before its step 10: the SIGSEGV fix confirmed on lavapipe, the goldens review page completed and `tolerances.ron` committed, the `vulkan` workflow green end to end, the lavapipe probe fixture refreshed from the printed record, 4.1v(b)'s mutation checks, its As built, ADR-0088 amended, `plans/README.md`, the crates' AGENTS/README, the top-level README, and the checklist.
+
+Facts found while planning (checked in code, 2026-11-25):
+- The editor's native viewport is macOS-only: `native.rs` puts an `NSView` with a `CAMetalLayer` under the transparent webview, and `slot_rect` returns an error elsewhere. The page drives orbit, pan and zoom itself in native mode (`viewport.navigate`); only the gizmo grab and the latency benches use the macOS event monitor.
+- The editor already calls `concordia_render::attach_surface` in one `unsafe` block, under `cfg(target_os = "macos")`.
+- Tauri on Linux is GTK 3 and WebKitGTK. `gtk` 0.18.2 and `x11rb` 0.13.2 are already in the editor's lock (through Tauri), so the Linux viewport adds no new licences.
+- `concordia-shaders::Stage` has only compute, vertex and fragment; the backend's SPIR-V check knows only those execution models.
+- The lavapipe probe record lists `VK_EXT_mesh_shader`, `VK_KHR_ray_query` and `VK_KHR_acceleration_structure`.
+
+Design:
+- **The Linux viewport is an X11 child window** *(recommended, taken)*, the twin of the macOS `NSView`: the editor opens its own XCB connection (x11rb's `XCBConnection`, safe API), creates an input-transparent child of the Tauri window at the page's slot, and attaches it as `SurfaceTarget::Xcb`. Moves and resizes follow `slot_rect` through a pure geometry function shared with nothing platform-specific.
+  - **No new `unsafe` in the editor:** `native::install` returns a `SurfaceTarget` on both platforms, and the existing `attach_surface` block covers both. (An analogy: one door with one lock, used from two corridors, instead of a second door.)
+  - **Detach before the window goes away:** GTK's `unrealize` signal on the Tauri window runs on the main thread before its X window is destroyed; the handler calls `concordia_render::detach_surface`, then destroys the child window and closes the connection.
+  - **Wayland is a gap** *(recommended, taken)*: embedding a Wayland subsurface would need GTK's `wl_display` through an `unsafe` foreign-display call in the editor, which needs the author's approval. On a Wayland session the editor reports that the native viewport needs X11 and the page renders the viewport (as when attached); `GDK_BACKEND=x11` (XWayland) gives the native one.
+  - The child window sits **above** the webview inside the slot (X11 children cover their parent's drawing), whereas on macOS the webview is on top. Page overlays inside the slot are hidden on Linux; recorded.
+  - Gizmo grabs: the page grabs the gizmo itself unless the shell does (`__CONCORDIA_NATIVE_INPUT__`, true only on macOS).
+- **The D4 spike** is test-only code in `concordia-rhi-vulkan` (`#[cfg(test)] mod spike`), reusing the crate's instance, validation log and SPIR-V checks, with its own small device that enables `VK_EXT_mesh_shader`, `VK_KHR_ray_query` and `VK_KHR_acceleration_structure`:
+  - a mesh shader (no task stage) and a fragment shader draw one triangle, checked by reading pixels back;
+  - a compute shader traces inline rays against a one-triangle BLAS/TLAS, checked by hit and miss counts;
+  - `Stage` gains `Mesh` and `Amplification` (production: 4.3b needs them), and the SPIR-V check gains `MeshEXT` and `TaskEXT`.
+  - The answer goes into D4 and ADR-0088, with any gap and the fallback D4 names (the compute meshlet path; the compute fallbacks for ray-query features).
+
+Testing:
+- Test-first: the slot-to-child geometry; the editor's init flags; the page's gizmo-grab rule (vitest); `Stage::Mesh`/`Amplification` names and cache keys; the SPIR-V check's new models; the spike shaders' Slang → SPIR-V → check on any OS with the toolchain.
+- Device code tested after: the spike's mesh and ray-query runs, and the editor's Linux viewport, on lavapipe in the `vulkan` workflow under `CONCORDIA_VULKAN_VALIDATION=strict`.
+- **Editor smoke on Xvfb:** a second job in the `vulkan` workflow builds the UI and the editor on Ubuntu 24.04 (WebKitGTK 4.1), runs `concordia-editor --smoke-test` under `xvfb-run` with `CONCORDIA_BACKEND=vulkan`, checks the smoke's frames and that no validation error was logged, the detach message, and uploads a screenshot of the Xvfb screen. If WebKitGTK cannot run there, the job is replaced by a smoke of the child-window path without the webview, and that is recorded.
+- On the Mac: the crates and the editor build; Vulkan tests skip without a loader.
+
+Steps, each a commit and a push:
+0. Close 4.1v(b) (above), in several commits.
+1. This plan.
+2. `Stage::Mesh`/`Amplification`, the SPIR-V models, the spike shaders compiled and checked.
+3. The spike's device runs on lavapipe; the answer recorded.
+4. The editor's Linux viewport (geometry, child window, detach, flags, page rule).
+5. The editor smoke on Xvfb in the `vulkan` workflow; fixes.
+6. Mutation checks, docs (As built, ADR-0088, `plans/README.md`, AGENTS/README, the top-level README), the checklist.
+
+Out of scope: Wayland embedding (needs `unsafe` in the editor), native gizmo grabs and latency benches on Linux, Windows, MoltenVK and real GPUs.
 
 ### Effort (re-estimated)
 - The plan's 32–45 weeks, plus **4.1v Vulkan at 6–10**, plus about 1 for D2, D6 and D9: **about 39–56 engineer-weeks**.
