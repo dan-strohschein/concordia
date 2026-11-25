@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc ac217b5cd3258ae30521de3fc2fe1db179f188bbc9a81c293ce03464d6fb70fb # shrinks to at = Index(0), value = 0
+cc 1b420435368c0ccb2ad6e6f7a54ddd2d32d012f50e739d48232d7d1f5e649842 # shrinks to mesh = Mesh { positions: [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], indices: [0, 0, 0], materials: None }

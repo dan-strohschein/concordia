@@ -4,12 +4,14 @@
 
 #![forbid(unsafe_code)]
 
+mod blob;
 mod build;
 mod error;
 mod input;
 mod meshlet;
 mod settings;
 
+pub use blob::{FORMAT_VERSION, cache_key};
 pub use build::{PILE_TRIANGLES, Pile, build, piles};
 pub use error::ClusterError;
 pub use input::ClusterInput;

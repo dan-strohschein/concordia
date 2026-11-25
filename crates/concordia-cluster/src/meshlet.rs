@@ -2,6 +2,8 @@
 
 use std::ops::Range;
 
+use crate::MeshletBuildSettings;
+
 /// A bounding sphere.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Sphere {
@@ -77,10 +79,15 @@ pub struct MeshletMesh {
     pub meshlets: Vec<Meshlet>,
     /// Vertex references into the source mesh.
     pub vertices: Vec<u32>,
-    /// Local corners (indices into a meshlet's vertex range), 3 per triangle.
+    /// Local corners (indices into a meshlet's vertex range), 3 per triangle; each meshlet's
+    /// run starts 4-byte aligned (zero padding between runs).
     pub triangles: Vec<u8>,
     /// Triangles in the source mesh.
     pub source_triangles: u32,
+    /// Vertices in the source mesh (every vertex reference is below it).
+    pub source_vertices: u32,
+    /// The settings it was built with.
+    pub settings: MeshletBuildSettings,
 }
 
 impl MeshletMesh {

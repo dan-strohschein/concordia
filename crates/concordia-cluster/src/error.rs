@@ -17,6 +17,9 @@ pub enum ClusterError {
         /// Maximum primitives per mesh-shader group.
         primitives: u32,
     },
+    /// Encoded meshlets are malformed or of another format version.
+    #[error("meshlet data: {0}")]
+    Decode(String),
     /// meshoptimizer refused the call.
     #[error(transparent)]
     Meshopt(#[from] meshopt_sys::MeshoptError),

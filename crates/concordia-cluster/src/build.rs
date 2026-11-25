@@ -115,6 +115,9 @@ pub fn build(
     });
     let mut out = MeshletMesh {
         source_triangles,
+        source_vertices: u32::try_from(input.positions().len())
+            .map_err(|_| ClusterError::Input("more than 2^32 vertices".into()))?,
+        settings: *settings,
         ..MeshletMesh::default()
     };
     for (_, result) in work {
@@ -132,7 +135,8 @@ fn pile_indices(input: &ClusterInput<'_>, triangles: &[u32]) -> Vec<u32> {
         .collect()
 }
 
-/// One material's meshlets, optimized and bounded, with offsets local to this part.
+/// One pile's meshlets, optimized, bounded and with 4-byte aligned triangle runs; offsets are
+/// local to this part.
 fn build_group(
     indices: &[u32],
     positions: &[[f32; 3]],
@@ -147,43 +151,55 @@ fn build_group(
         settings.cone_weight(),
     )?;
     let mut meshlets = Vec::with_capacity(built.meshlets.len());
+    let mut triangles = Vec::with_capacity(built.triangles.len() + 3 * built.meshlets.len());
     for m in &built.meshlets {
         let v = m.vertex_offset as usize..(m.vertex_offset + m.vertex_count) as usize;
         let t = m.triangle_offset as usize..(m.triangle_offset + 3 * m.triangle_count) as usize;
-        safe::optimize_meshlet(
-            &mut built.vertices[v.clone()],
-            &mut built.triangles[t.clone()],
-        )?;
-        let b = safe::meshlet_bounds(&built.vertices[v.clone()], &built.triangles[t], positions)?;
+        let (verts, tris) = (&mut built.vertices[v], &mut built.triangles[t]);
+        safe::optimize_meshlet(verts, tris)?;
         debug_assert!(m.vertex_count <= 128 && m.triangle_count <= 128);
-        let bounds = if b.radius == 0.0 && b.cone_cutoff_s8 == 0 {
-            // meshoptimizer zeroes the bounds when every triangle has zero area.
-            enclosing_sphere(&built.vertices[v], positions)
-        } else {
-            Sphere {
-                center: b.center,
-                radius: b.radius,
-            }
-        };
+        let (bounds, cone) = bounds_and_cone(verts, tris, positions)?;
         meshlets.push(Meshlet {
             bounds,
-            cone: NormalCone {
-                axis: b.cone_axis_s8,
-                cutoff: b.cone_cutoff_s8,
-            },
+            cone,
             material,
             vertex_offset: m.vertex_offset,
             vertex_count: m.vertex_count as u8,
-            triangle_offset: m.triangle_offset,
+            triangle_offset: triangles.len() as u32,
             triangle_count: m.triangle_count as u8,
         });
+        triangles.extend_from_slice(tris);
+        triangles.resize(triangles.len().next_multiple_of(4), 0);
     }
     Ok(MeshletMesh {
         meshlets,
         vertices: built.vertices,
-        triangles: built.triangles,
-        source_triangles: 0,
+        triangles,
+        ..MeshletMesh::default()
     })
+}
+
+/// A meshlet's sphere and cone from meshoptimizer, enclosing all-zero-area meshlets ourselves.
+fn bounds_and_cone(
+    vertices: &[u32],
+    triangles: &[u8],
+    positions: &[[f32; 3]],
+) -> Result<(Sphere, NormalCone), ClusterError> {
+    let b = safe::meshlet_bounds(vertices, triangles, positions)?;
+    let cone = NormalCone {
+        axis: b.cone_axis_s8,
+        cutoff: b.cone_cutoff_s8,
+    };
+    let bounds = if b.radius == 0.0 && b.cone_cutoff_s8 == 0 {
+        // meshoptimizer zeroes the bounds when every triangle has zero area.
+        enclosing_sphere(vertices, positions)
+    } else {
+        Sphere {
+            center: b.center,
+            radius: b.radius,
+        }
+    };
+    Ok((bounds, cone))
 }
 
 /// A sphere around `vertices` (the box's center, the farthest vertex's distance).

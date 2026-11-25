@@ -63,8 +63,16 @@ fn small_meshes_match_meshoptimizers_unsplit_output() {
         safe::optimize_meshlet(&mut direct.vertices[v], &mut direct.triangles[t]).unwrap();
     }
     assert_eq!(out.vertices, direct.vertices);
-    assert_eq!(out.triangles, direct.triangles);
     assert_eq!(out.meshlets.len(), direct.meshlets.len());
+    // Our triangle runs are padded to 4 bytes; their contents match meshoptimizer's.
+    for (ours, theirs) in out.meshlets.iter().zip(&direct.meshlets) {
+        let t = theirs.triangle_offset as usize;
+        let len = 3 * theirs.triangle_count as usize;
+        assert_eq!(
+            &out.triangles[ours.triangle_range()],
+            &direct.triangles[t..t + len]
+        );
+    }
 }
 
 /// Triangle `k` of the scrambled patch is the original patch's triangle `k·7919 mod T`.
