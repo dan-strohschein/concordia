@@ -5,6 +5,7 @@ Vendored permissively licensed C/C++ sources, each with its LICENSE file and a V
 | `JoltPhysics/` | jrouwe/JoltPhysics | v5.7.0 | MIT |
 | `ufbx/` | ufbx/ufbx | v0.23.1 | MIT (or Unlicense) |
 | `recastnavigation/` | recastnavigation/recastnavigation | v1.6.0 | zlib |
+| `meshoptimizer/` | zeux/meshoptimizer | v1.3 | MIT |
 
 Downloaded (not vendored) toolchains, pinned with SHA-256:
 

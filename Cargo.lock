@@ -3288,6 +3288,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "meshopt-sys"
+version = "0.0.0"
+dependencies = [
+ "blake3",
+ "cc",
+ "proptest",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "micromap"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
