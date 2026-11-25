@@ -17,6 +17,9 @@ pub struct ModelSettings {
     /// brightness at this exposure, converted to nits (ADR-0102). Null: the project's default.
     #[serde(default)]
     pub emissive_reference_ev100: Option<f32>,
+    /// Which static meshes get meshlets (`"auto"`, `true` or `false`; M4 4.2).
+    #[serde(default)]
+    pub meshlets: crate::MeshletMode,
 }
 
 impl ModelSettings {
@@ -33,7 +36,7 @@ impl ModelSettings {
 
     /// The settings every model importer declares (null: filled from the project's defaults).
     pub fn defaults() -> serde_json::Value {
-        serde_json::json!({ "emissive_reference_ev100": null })
+        serde_json::json!({ "emissive_reference_ev100": null, "meshlets": "auto" })
     }
 
     /// Nits per unit of imported emission: 1.2 · 2^EV at the reference exposure (EV 0 when unset).

@@ -303,6 +303,8 @@ impl AssetDb {
             settings: &self.effective_settings(importer, &sidecar.settings),
             read_relative: &read_relative,
             sub_ids: &mut sub_ids,
+            derived: &self.ddc,
+            jobs: crate::importer::import_jobs()?,
         })?;
         let ddc_err = |e: concordia_core::ddc::DdcError| AssetError::Io(e.to_string());
         for (sub, artifact) in &output.artifacts {

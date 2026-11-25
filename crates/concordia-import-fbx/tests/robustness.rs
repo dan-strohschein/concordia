@@ -29,6 +29,8 @@ fn import(bytes: &[u8]) -> Result<ImportOutput, AssetError> {
         settings: &serde_json::json!({}),
         read_relative: &read_relative,
         sub_ids: &mut sub_ids,
+        derived: &concordia_assets::NoDerivedCache,
+        jobs: concordia_assets::import_jobs().unwrap(),
     })
 }
 

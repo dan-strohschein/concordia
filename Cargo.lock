@@ -926,6 +926,7 @@ name = "concordia-import-fbx"
 version = "0.0.0"
 dependencies = [
  "concordia-assets",
+ "concordia-cluster",
  "concordia-core",
  "concordia-import-model",
  "concordia-scene",
@@ -943,6 +944,7 @@ version = "0.0.0"
 dependencies = [
  "base64 0.23.1",
  "concordia-assets",
+ "concordia-cluster",
  "concordia-command",
  "concordia-core",
  "concordia-import-model",
@@ -962,6 +964,7 @@ version = "0.0.0"
 dependencies = [
  "bevy_mikktspace",
  "concordia-assets",
+ "concordia-cluster",
  "concordia-core",
  "concordia-reflect",
  "concordia-scene",

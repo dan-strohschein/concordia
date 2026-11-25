@@ -3,7 +3,9 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use concordia_core::ddc::{Ddc, DdcKey};
 use concordia_core::id::{AssetId, TypedId};
+use concordia_core::jobs::JobSystem;
 use serde::{Deserialize, Serialize};
 
 use crate::error::AssetError;
@@ -103,6 +105,54 @@ pub struct ImportInput<'a> {
     pub read_relative: &'a dyn Fn(&str) -> Result<Vec<u8>, AssetError>,
     /// Sub-asset ids.
     pub sub_ids: &'a mut SubIds,
+    /// A cache for derived sub-results keyed by what produced them (meshlets), shared across
+    /// imports and settings.
+    pub derived: &'a dyn DerivedCache,
+    /// The import job pool (deterministic chunked parallelism).
+    pub jobs: &'a JobSystem,
+}
+
+/// Derived sub-results an importer can reuse across imports, keyed by their own inputs.
+pub trait DerivedCache: Sync {
+    /// The blob under `key`, if cached.
+    fn get(&self, key: &DdcKey) -> Result<Option<Vec<u8>>, AssetError>;
+    /// Caches `bytes` under `key`.
+    fn put(&self, key: &DdcKey, bytes: &[u8]) -> Result<(), AssetError>;
+}
+
+impl DerivedCache for Ddc {
+    fn get(&self, key: &DdcKey) -> Result<Option<Vec<u8>>, AssetError> {
+        Ddc::get(self, key).map_err(|e| AssetError::Io(e.to_string()))
+    }
+
+    fn put(&self, key: &DdcKey, bytes: &[u8]) -> Result<(), AssetError> {
+        Ddc::put(self, key, bytes).map_err(|e| AssetError::Io(e.to_string()))
+    }
+}
+
+/// A cache that never hits (direct importer calls in tests and tools).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoDerivedCache;
+
+impl DerivedCache for NoDerivedCache {
+    fn get(&self, _key: &DdcKey) -> Result<Option<Vec<u8>>, AssetError> {
+        Ok(None)
+    }
+
+    fn put(&self, _key: &DdcKey, _bytes: &[u8]) -> Result<(), AssetError> {
+        Ok(())
+    }
+}
+
+/// The process's import job pool, created on first use with one thread per core.
+pub fn import_jobs() -> Result<&'static JobSystem, AssetError> {
+    static JOBS: std::sync::OnceLock<JobSystem> = std::sync::OnceLock::new();
+    if let Some(jobs) = JOBS.get() {
+        return Ok(jobs);
+    }
+    let threads = std::thread::available_parallelism().unwrap_or(std::num::NonZeroUsize::MIN);
+    let jobs = JobSystem::new(threads).map_err(|e| AssetError::Io(e.to_string()))?;
+    Ok(JOBS.get_or_init(|| jobs))
 }
 
 /// Turns source files into derived data. Implement it for new formats and register it with `AssetDb`.

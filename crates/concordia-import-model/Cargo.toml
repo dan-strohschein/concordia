@@ -14,6 +14,7 @@ workspace = true
 [dependencies]
 bevy_mikktspace = "1.0.0"
 concordia-assets.workspace = true
+concordia-cluster.workspace = true
 concordia-core.workspace = true
 concordia-reflect.workspace = true
 concordia-scene.workspace = true

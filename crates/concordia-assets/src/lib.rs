@@ -38,7 +38,8 @@ pub use error::AssetError;
 pub use files::{FileKind, ProjectFile, ProjectFiles};
 pub use image_importer::{ColorSpace, ImageImporter, ImageSettings, decode as decode_image};
 pub use importer::{
-    Artifact, AssetKind, ImportInput, ImportOutput, Importer, SubIds, decode, encode,
+    Artifact, AssetKind, DerivedCache, ImportInput, ImportOutput, Importer, NoDerivedCache, SubIds,
+    decode, encode, import_jobs,
 };
 pub use key::{PLATFORM, import_key};
 pub use material::{

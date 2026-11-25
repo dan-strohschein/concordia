@@ -1,18 +1,21 @@
 //! Primitives → `MeshData` (`mesh/<mesh>/<primitive>`); missing streams are filled by `finish_mesh`.
 
 use concordia_assets::{Artifact, AssetKind, ImportOutput, MeshData, encode};
-use concordia_import_model::finish_mesh;
+use concordia_import_model::{MeshletContext, attach_meshlets, finish_mesh};
 
 use crate::names::Names;
 
-/// Imports every triangle primitive.
+/// Imports every triangle primitive, with meshlets per mesh as `meshlets` says.
 pub(crate) fn meshes(
     doc: &gltf::Document,
     buffers: &[Vec<u8>],
     names: &Names,
+    meshlets: &MeshletContext<'_>,
     out: &mut ImportOutput,
 ) -> Result<(), String> {
     for mesh in doc.meshes() {
+        let mut subs = Vec::new();
+        let mut parts = Vec::new();
         for (p, primitive) in mesh.primitives().enumerate() {
             let sub = format!("mesh/{}/{p}", names.meshes[mesh.index()]);
             if primitive.mode() != gltf::mesh::Mode::Triangles {
@@ -21,7 +24,12 @@ pub(crate) fn meshes(
                     primitive.mode()
                 ));
             }
-            let data = primitive_data(&primitive, buffers).map_err(|e| format!("{sub}: {e}"))?;
+            parts.push(primitive_data(&primitive, buffers).map_err(|e| format!("{sub}: {e}"))?);
+            subs.push(sub);
+        }
+        let name = &names.meshes[mesh.index()];
+        attach_meshlets(&mut parts, meshlets).map_err(|e| format!("mesh/{name}: {e}"))?;
+        for (sub, data) in subs.into_iter().zip(parts) {
             out.artifacts.insert(
                 sub,
                 Artifact {
