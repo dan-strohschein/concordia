@@ -21,6 +21,7 @@ mod material_rows;
 mod meshlet;
 mod meshlet_pass;
 mod module;
+mod motion;
 mod orbit;
 mod overlay;
 pub mod perf;

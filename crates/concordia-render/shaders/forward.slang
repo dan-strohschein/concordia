@@ -41,13 +41,17 @@ struct Frame {
     // 5 roughness/metallic, 6 overdraw, 7 shadow cascades, 8 light clusters, 9 closures, 10–13 the
     // feature views, 14 lod, 15 meshlets, 16 triangles); debug.y = the exposure as float bits (emission is in nits).
     uint4 debug;
+    // The camera's view-projection last frame (motion vectors; view_proj without one).
+    float4 prev_view_proj[4];
 };
 // Per light: position+range, direction, exposed radiance, spot (scale, offset).
 struct Light { float4 position_range; float4 direction; float4 radiance; float4 spot; };
 // skin = (first palette matrix, joint count, lod, meshlet mesh row + 1); a count of 0 is unskinned;
 // lod = simulation LOD level + 1 (0: none), plus 16 when drawn as its representation's cheaper
 // mesh; the mesh row is 0 off the meshlet path.
-struct Instance { float4 model[4]; float4 normal[4]; uint4 skin; };
+// prev_model = last frame's world matrix (motion vectors; model without one); motion = (first
+// previous palette matrix, 0, 0, 0).
+struct Instance { float4 model[4]; float4 normal[4]; uint4 skin; float4 prev_model[4]; uint4 motion; };
 // Materials are `uint4` rows (floats as bits; `material_rows.rs`): a header (closures, ops, flags,
 // mask cutoff), one row per op (kind, slab index or mix texture, parameter), then CLOSURE_ROWS
 // rows per closure: base color; emission, metallic; transmittance, specular; roughness, normal

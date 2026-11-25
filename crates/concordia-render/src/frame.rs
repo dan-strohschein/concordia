@@ -115,6 +115,8 @@ pub(crate) struct FrameParams<'a> {
     pub(crate) view_mode: u32,
     /// The camera's exposure (scales emission, which is luminance in nits; ADR-0102).
     pub(crate) exposure: f32,
+    /// The camera's view-projection last frame (motion vectors; `view_proj` without one).
+    pub(crate) prev_view_proj: Mat4,
 }
 
 /// The environment as the shader sees it.
@@ -159,6 +161,7 @@ pub(crate) fn frame_block(p: &FrameParams<'_>) -> Vec<u8> {
     ibl_rows(&mut out, p);
     let debug = [p.view_mode, p.exposure.to_bits(), 0, 0];
     out.extend(debug.iter().flat_map(|w| w.to_le_bytes()));
+    push_rows(&mut out, &columns(&p.prev_view_proj));
     out
 }
 
@@ -217,11 +220,73 @@ fn shadow_rows(out: &mut Vec<u8>, shadow: Option<(&[Cascade], &CascadeSettings, 
     out.extend(maps.iter().flat_map(|w| w.to_le_bytes()));
 }
 
-/// `Instance`: model matrix, normal matrix (inverse transpose) and the skin row (first palette
-/// matrix, joint count; a count of 0 is unskinned).
-pub(crate) fn instance_block(out: &mut Vec<u8>, model: &Mat4, skin: [u32; 4]) {
-    let normal = Mat4::from_mat3(Mat3::from_mat4(*model).inverse().transpose());
-    push_rows(out, &columns(model));
-    push_rows(out, &columns(&normal));
-    push_rows_u32(out, &[skin]);
+/// Bytes of one `Instance` row.
+pub(crate) const INSTANCE_BYTES: usize = 224;
+
+/// One `Instance` row (mirrors `forward.slang`).
+pub(crate) struct InstanceRow {
+    /// World matrix this frame.
+    pub(crate) model: Mat4,
+    /// World matrix last frame (motion vectors; `model` when it has no last frame).
+    pub(crate) previous: Mat4,
+    /// First palette matrix, joint count (0: unskinned), LOD code, meshlet mesh row + 1.
+    pub(crate) skin: [u32; 4],
+    /// First previous palette matrix, then zeros (motion vectors of skinned draws).
+    pub(crate) motion: [u32; 4],
+}
+
+impl InstanceRow {
+    /// Appends the row: model, normal (inverse transpose), skin, previous model, motion.
+    pub(crate) fn write(&self, out: &mut Vec<u8>) {
+        let normal = Mat4::from_mat3(Mat3::from_mat4(self.model).inverse().transpose());
+        push_rows(out, &columns(&self.model));
+        push_rows(out, &columns(&normal));
+        push_rows_u32(out, &[self.skin]);
+        push_rows(out, &columns(&self.previous));
+        push_rows_u32(out, &[self.motion]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use concordia_core::math::Vec3;
+
+    fn floats(bytes: &[u8]) -> Vec<f32> {
+        bytes
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|c| f32::from_le_bytes(*c))
+            .collect()
+    }
+
+    #[test]
+    fn instance_rows_hold_the_previous_model_and_motion_row() {
+        let row = InstanceRow {
+            model: Mat4::from_translation(Vec3::new(1.0, 2.0, 3.0)),
+            previous: Mat4::from_translation(Vec3::new(4.0, 5.0, 6.0)),
+            skin: [7, 8, 9, 10],
+            motion: [11, 0, 0, 0],
+        };
+        let mut out = Vec::new();
+        row.write(&mut out);
+        assert_eq!(out.len(), INSTANCE_BYTES);
+        assert_eq!(floats(&out[48..60]), [1.0, 2.0, 3.0], "model's translation");
+        let words = |at: usize| -> Vec<u32> {
+            out[at..at + 16]
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|c| u32::from_le_bytes(*c))
+                .collect()
+        };
+        assert_eq!(words(128), [7, 8, 9, 10], "skin");
+        assert_eq!(
+            floats(&out[144 + 48..144 + 60]),
+            [4.0, 5.0, 6.0],
+            "previous translation"
+        );
+        assert_eq!(words(208), [11, 0, 0, 0], "motion");
+    }
 }
