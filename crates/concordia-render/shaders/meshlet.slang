@@ -43,12 +43,13 @@ struct MeshletPush { uint frame; uint instances; uint entries; uint materials; u
 
 // One pulled vertex of a meshlet triangle; `valid` is false past the meshlet's triangles. It holds
 // indices, not pointers: SPIR-V needs pointers initialised where they are declared.
-struct Pulled { bool valid; uint instance; uint4 row_a; uint4 row_b; uint v; };
+struct Pulled { bool valid; uint instance; uint meshlet; uint4 row_a; uint4 row_b; uint v; };
 
 Pulled pull(MeshletPush push, uint vid, uint iid) {
     Pulled o;
     uint2 entry = ((uint2*)g_buffers.ptr[push.entries])[push.first + iid];
     o.instance = entry.x;
+    o.meshlet = entry.y;
     Instance* inst = ((Instance*)g_buffers.ptr[push.instances]) + entry.x;
     uint4* rows = (uint4*)g_buffers.ptr[push.meshes];
     uint row = inst.skin.w - 1;
@@ -77,7 +78,9 @@ VsOut meshlet_vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform Meshl
     float4 t = ((float4*)g_buffers.ptr[p.row_a.w])[p.v];
     float2 uv = ((float2*)g_buffers.ptr[p.row_b.x])[p.v];
     Instance* inst = ((Instance*)g_buffers.ptr[push.instances]) + p.instance;
-    VsOut o = surface_vertex(frame, inst, position, n, t, uv, vid % 3);
+    uint meshlet = mix_id(p.instance) ^ mix_id(p.meshlet + 0x632be5ab);
+    uint2 ids = uint2(meshlet, mix_id(meshlet) ^ mix_id(vid / 3 + 0x9e3779b9));
+    VsOut o = surface_vertex(frame, inst, position, n, t, uv, vid % 3, ids);
     if (!p.valid) { o.position = NOWHERE; }
     return o;
 }

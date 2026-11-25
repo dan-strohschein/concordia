@@ -41,8 +41,13 @@ pub struct FrameStats {
     pub culled: u64,
     /// Forward-pass draw calls (repeats are instanced).
     pub draw_calls: u64,
-    /// Triangles drawn.
+    /// Triangles drawn (both paths).
     pub triangles: u64,
+    /// How opaque static geometry reached the rasterizer: `forward`, or `compute_indirect` when
+    /// meshes with meshlets took the meshlet path (ADR-0100).
+    pub raster_path: RasterPath,
+    /// What the meshlet path drew in the forward pass.
+    pub meshlets: MeshletCounts,
     /// Point and spot lights in the world.
     pub punctual_lights: u64,
     /// The sun's shadow maps were reused from the previous frame.
@@ -165,6 +170,8 @@ pub(crate) fn record(
         culled: stats.culled as u64,
         draw_calls: stats.draw_calls as u64,
         triangles: stats.triangles,
+        raster_path: stats.raster_path,
+        meshlets: stats.meshlets,
         punctual_lights: stats.punctual_lights as u64,
         shadows_cached: stats.shadows_cached,
         memory_bytes: stats.memory_bytes,

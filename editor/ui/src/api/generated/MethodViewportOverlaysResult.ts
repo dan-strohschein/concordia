@@ -26,7 +26,9 @@ export type ViewMode =
   | "fuzz"
   | "subsurface"
   | "thin_film"
-  | "lod";
+  | "lod"
+  | "meshlets"
+  | "triangles";
 
 /**
  * `viewport.overlays` result.

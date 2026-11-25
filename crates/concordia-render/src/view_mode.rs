@@ -38,6 +38,10 @@ pub enum ViewMode {
     thin_film,
     /// Level of detail: hue by simulation LOD (white none; green to red for 0–3), instanced dimmed.
     lod,
+    /// One color per meshlet (ADR-0100); surfaces off the meshlet path are grey.
+    meshlets,
+    /// One color per triangle.
+    triangles,
 }
 
 impl ViewMode {

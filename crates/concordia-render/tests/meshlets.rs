@@ -7,7 +7,7 @@ use concordia_assets::{AssetRef, ImageSettings, MeshData, MeshRenderer, shapes};
 use concordia_core::math::{Quat, Vec3};
 use concordia_render::shadow::CascadeSettings;
 use concordia_render::{
-    Camera, DirectionalLight, Environment, Image, MeshletCounts, RasterPath, Renderer,
+    Camera, DirectionalLight, Environment, Image, MeshletCounts, RasterPath, Renderer, ViewMode,
 };
 
 const SIZE: (u32, u32) = (320, 180);
@@ -291,4 +291,50 @@ impl MeshletInfo {
             triangles: (mesh.indices.len() / 3) as u64,
         }
     }
+}
+
+/// Distinct colors among the pixels of `image` inside `rect` (x0, y0, x1, y1).
+fn colors(image: &Image, (x0, y0, x1, y1): (u32, u32, u32, u32)) -> usize {
+    let mut seen = std::collections::BTreeSet::new();
+    for y in y0..y1 {
+        for x in x0..x1 {
+            seen.insert(pixel(image, x, y));
+        }
+    }
+    seen.len()
+}
+
+#[test]
+fn meshlet_and_triangle_view_modes_color_their_primitives() {
+    let Some(mut r) = renderer() else { return };
+    let mut s = scene();
+    r.set_meshlets(true);
+    let meshlets = s.render_mode(&mut r, SIZE.0, SIZE.1, ViewMode::meshlets);
+    let triangles = s.render_mode(&mut r, SIZE.0, SIZE.1, ViewMode::triangles);
+    r.set_meshlets(false);
+    let m1_meshlets = s.render_mode(&mut r, SIZE.0, SIZE.1, ViewMode::meshlets);
+    let m1_triangles = s.render_mode(&mut r, SIZE.0, SIZE.1, ViewMode::triangles);
+    // The gold ball sits around (160, 62); the ground's front edge around (160, 170).
+    let ball = (148, 50, 172, 74);
+    assert!(
+        colors(&meshlets, ball) > 8,
+        "meshlets: one color per meshlet"
+    );
+    assert!(
+        colors(&triangles, ball) > colors(&meshlets, ball),
+        "triangles are finer"
+    );
+    assert!(
+        colors(&m1_triangles, ball) > 8,
+        "triangles: on the M1 path too"
+    );
+    let [r0, g0, b0, _] = pixel(&m1_meshlets, 160, 62);
+    assert!(
+        r0 == g0 && g0 == b0,
+        "the M1 path is grey in the meshlets view"
+    );
+    let [r1, g1, b1, _] = pixel(&meshlets, 160, 170);
+    assert!(r1 == g1 && g1 == b1, "the ground (M1 path) is grey");
+    common::golden_in("m4_meshlet", "view_meshlets", &meshlets);
+    common::golden_in("m4_meshlet", "view_triangles", &triangles);
 }

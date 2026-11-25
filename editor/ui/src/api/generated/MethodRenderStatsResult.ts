@@ -10,6 +10,11 @@ export type MergedOperator = "horizontal" | "vertical";
  */
 export type PassTiming = "off" | "unsupported" | "measured";
 /**
+ * How opaque static geometry reached the rasterizer: `forward`, or `compute_indirect` when
+ * meshes with meshlets took the meshlet path (ADR-0100).
+ */
+export type RasterPath = "forward" | "compute_indirect";
+/**
  * How it was drawn.
  */
 export type ViewMode =
@@ -27,7 +32,9 @@ export type ViewMode =
   | "fuzz"
   | "subsurface"
   | "thin_film"
-  | "lod";
+  | "lod"
+  | "meshlets"
+  | "triangles";
 
 /**
  * `render.stats` result.
@@ -82,6 +89,7 @@ export interface FrameStats {
    * GPU memory the device has allocated, in bytes (null if the device cannot tell).
    */
   memory_bytes?: null | number;
+  meshlets: MeshletCounts;
   pass_timing: PassTiming;
   /**
    * Each timed pass's GPU time, in order (empty unless `pass_timing` is `measured`, and until
@@ -92,12 +100,13 @@ export interface FrameStats {
    * Point and spot lights in the world.
    */
   punctual_lights: number;
+  raster_path: RasterPath;
   /**
    * The sun's shadow maps were reused from the previous frame.
    */
   shadows_cached: boolean;
   /**
-   * Triangles drawn.
+   * Triangles drawn (both paths).
    */
   triangles: number;
   view_mode: ViewMode;
@@ -144,6 +153,27 @@ export interface ClosureMergeStats {
    * The merged slabs: `[a, b]` or `[top, bottom]`.
    */
   slabs: string[];
+}
+/**
+ * What the meshlet path drew in the forward pass.
+ */
+export interface MeshletCounts {
+  /**
+   * Indirect draws issued (one per pipeline and material).
+   */
+  indirect_draws: number;
+  /**
+   * Instances drawn through meshlets (in the camera's view).
+   */
+  instances: number;
+  /**
+   * Meshlets drawn.
+   */
+  meshlets: number;
+  /**
+   * Triangles in those meshlets (not the padded draws).
+   */
+  triangles: number;
 }
 /**
  * One pass's GPU time.
