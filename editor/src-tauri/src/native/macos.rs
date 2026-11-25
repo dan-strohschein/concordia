@@ -1,4 +1,4 @@
-//! The native viewport (macOS, ADR-0043 as amended): an `NSView` with a `CAMetalLayer` ordered
+//! The native viewport on macOS (ADR-0043 as amended): an `NSView` with a `CAMetalLayer` ordered
 //! below the transparent webview and placed at the page's viewport slot. Main thread only.
 
 use std::cell::RefCell;
@@ -12,41 +12,7 @@ use objc2_foundation::{NSPoint, NSRect, NSSize};
 use objc2_quartz_core::CAMetalLayer;
 use tauri::WebviewWindow;
 
-/// The slot in CSS px from the page's top-left, the device pixel ratio and the page's viewport height.
-#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize)]
-pub struct SlotRect {
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub scale: f64,
-    pub viewport_height: f64,
-}
-
-impl SlotRect {
-    /// Finite, non-negative sizes and a positive scale.
-    pub fn validate(&self) -> Result<(), String> {
-        let finite = [
-            self.x,
-            self.y,
-            self.width,
-            self.height,
-            self.scale,
-            self.viewport_height,
-        ]
-        .iter()
-        .all(|v| v.is_finite());
-        match finite
-            && self.width >= 0.0
-            && self.height >= 0.0
-            && self.scale > 0.0
-            && self.viewport_height > 0.0
-        {
-            true => Ok(()),
-            false => Err(format!("invalid slot rect {self:?}")),
-        }
-    }
-}
+use super::SlotRect;
 
 struct Native {
     window: Retained<NSWindow>,

@@ -133,3 +133,83 @@ jobs:
             target/golden-failures/
             target/vulkan-window.*
           if-no-files-found: ignore
+
+  # The editor's native viewport on Vulkan (M4 4.1v(c)): the Tauri shell on WebKitGTK in Xvfb
+  # presents into an X11 child window on lavapipe, under strict validation.
+  editor:
+    name: editor viewport (lavapipe, Xvfb)
+    if: ${{ inputs.gdb == '' }}
+    runs-on: ubuntu-24.04
+    env:
+      CONCORDIA_REQUIRE_VULKAN: "1"
+      CONCORDIA_BACKEND: vulkan
+      CONCORDIA_VULKAN_VALIDATION: strict
+      # WebKitGTK without a GPU: no DMA-BUF renderer, software GL.
+      WEBKIT_DISABLE_DMABUF_RENDERER: "1"
+      LIBGL_ALWAYS_SOFTWARE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned toolchain
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: editor/src-tauri -> target
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        with:
+          tool: just
+      - name: Vulkan, WebKitGTK and Xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers \
+            vulkan-validationlayers libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev librsvg2-dev libxdo-dev libssl-dev libasound2-dev \
+            xvfb x11-apps imagemagick
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/toolchain/slang
+          key: slang-${{ runner.os }}-${{ hashFiles('tools/slang/slang.toml') }}
+      - name: Slang toolchain
+        run: just slang-fetch
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          package_json_file: editor/ui/package.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: editor/ui/pnpm-lock.yaml
+      - name: Build the UI
+        working-directory: editor/ui
+        run: pnpm install --frozen-lockfile --ignore-scripts && pnpm build
+      - name: Clippy (the shell on Linux)
+        run: cargo clippy --manifest-path editor/src-tauri/Cargo.toml --all-targets -- -D warnings
+      - name: Shell tests and the native viewport smoke test (Xvfb)
+        run: |
+          set -o pipefail
+          xvfb-run -a -s "-screen 0 1600x1000x24" \
+            cargo test --manifest-path editor/src-tauri/Cargo.toml -- --nocapture 2>&1 | tee target/editor-tests.log
+          ! grep -i "validation error\|VUID-" target/editor-tests.log
+      - name: A screenshot of the editor with its Vulkan viewport (Xvfb)
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p target/editor-shot
+          Xvfb :97 -screen 0 1600x1000x24 & sleep 2
+          export DISPLAY=:97
+          cp -r examples/m1-physics-stack target/editor-shot/project
+          editor/src-tauri/target/debug/concordia-editor --project target/editor-shot/project \
+            > target/editor-shot/editor.log 2>&1 & editor=$!
+          sleep 90
+          import -window root target/editor-shot/screen.png
+          kill $editor || true
+          cat target/editor-shot/editor.log
+          ! grep -i "validation error\|VUID-" target/editor-shot/editor.log
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: editor-vulkan
+          path: |
+            target/editor-tests.log
+            target/editor-shot/screen.png
+            target/editor-shot/editor.log
+          if-no-files-found: ignore
