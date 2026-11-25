@@ -17,6 +17,7 @@ mod resource;
 mod slots;
 mod surface;
 
+pub mod check;
 #[cfg(feature = "conformance")]
 pub mod conformance;
 
@@ -25,8 +26,9 @@ pub use caps::{
     Backend, CapsMask, Requirement, RhiCaps, SampleCount, TimestampGranularity, UnknownBackend,
 };
 pub use command::{
-    ClearValue, ColorAttachment, Command, CommandList, DepthAttachment, LoadOp, MAX_PUSH_CONSTANTS,
-    RenderPassDesc, StoreOp, TimerScope,
+    ClearValue, ColorAttachment, Command, CommandList, DRAW_INDEXED_INDIRECT_BYTES,
+    DRAW_INDIRECT_BYTES, DepthAttachment, LoadOp, MAX_PUSH_CONSTANTS, Rect, RenderPassDesc,
+    StoreOp, TextureOrigin, TimerScope, Viewport,
 };
 pub use device::{Device, QueueKind, Submit};
 pub use error::RhiError;

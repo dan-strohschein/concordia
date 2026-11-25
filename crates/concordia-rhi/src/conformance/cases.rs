@@ -21,9 +21,9 @@ use super::util::{
     texture_desc, upload, words,
 };
 
-const SIZE: u32 = 256;
+pub(super) const SIZE: u32 = 256;
 
-fn pass(
+pub(super) fn pass(
     texture: Texture,
     load: LoadOp,
     resolve: Option<Texture>,
@@ -44,12 +44,12 @@ fn pass(
     })
 }
 
-fn clear(rgba: [f32; 4]) -> LoadOp {
+pub(super) fn clear(rgba: [f32; 4]) -> LoadOp {
     LoadOp::Clear(ClearValue::Color(rgba))
 }
 
 /// Vertex data: per vertex a clip-space position then a color (float4 each).
-fn vertices(points: &[([f32; 4], [f32; 4])]) -> Vec<u8> {
+pub(super) fn vertices(points: &[([f32; 4], [f32; 4])]) -> Vec<u8> {
     points
         .iter()
         .flat_map(|(p, c)| p.iter().chain(c.iter()))
@@ -65,7 +65,7 @@ fn triangle(z: f32, color: [f32; 4]) -> Vec<([f32; 4], [f32; 4])> {
     ]
 }
 
-fn pixel(image: &[u8], x: u32, y: u32) -> [u8; 4] {
+pub(super) fn pixel(image: &[u8], x: u32, y: u32) -> [u8; 4] {
     let i = ((y * SIZE + x) * 4) as usize;
     [image[i], image[i + 1], image[i + 2], image[i + 3]]
 }

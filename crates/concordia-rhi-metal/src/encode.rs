@@ -77,7 +77,11 @@ pub(crate) fn record(
         timer: TimerPlan::for_list(&inner.device, submit.commands, timed),
     };
     for command in &submit.commands.commands {
-        recorder.command(command)?;
+        if let Err(e) = recorder.command(command) {
+            // Metal aborts if an encoder is released without ending it.
+            recorder.encoder.end();
+            return Err(e);
+        }
     }
     recorder.encoder.end();
     for (timeline, value) in submit.signal {
@@ -164,6 +168,15 @@ impl Recorder<'_> {
                         s, *offset as usize, *bytes_per_row as usize, rows, size, t, 0, *mip as usize, MTLOrigin { x: 0, y: 0, z: 0 },
                     );
                 }
+            }
+            Command::DrawIndirect { args, offset } => self.draw_indirect(None, *args, *offset)?,
+            Command::DrawIndexedIndirect {
+                indices,
+                args,
+                offset,
+            } => self.draw_indirect(Some(*indices), *args, *offset)?,
+            Command::SetViewport(_) | Command::SetScissor(_) | Command::CopyTexture { .. } => {
+                return Err(RhiError::Unsupported(format!("{command:?} on Metal")));
             }
             Command::CopyTextureToBuffer {
                 src,
@@ -399,6 +412,48 @@ impl Recorder<'_> {
         Ok(())
     }
 
+    /// One indirect draw, indexed when `indices` is given; the argument range is checked first.
+    fn draw_indirect(
+        &self,
+        indices: Option<Buffer>,
+        args: Buffer,
+        offset: u64,
+    ) -> Result<(), RhiError> {
+        let bytes = match indices {
+            Some(_) => concordia_rhi::DRAW_INDEXED_INDIRECT_BYTES,
+            None => concordia_rhi::DRAW_INDIRECT_BYTES,
+        };
+        let entry = buffer_entry(self.inner, args)?;
+        concordia_rhi::check::indirect_args(&entry.desc, offset, bytes)?;
+        let index_buffer = indices.map(|i| buffer(self.inner, i)).transpose()?;
+        let Encoder::Render(e) = &self.encoder else {
+            return Ok(());
+        };
+        match index_buffer {
+            // SAFETY: both buffers are live and the argument record lies inside `args` (checked);
+            // Metal tracks the hazard on `args` against earlier GPU writes.
+            Some(index_buffer) => unsafe {
+                e.drawIndexedPrimitives_indexType_indexBuffer_indexBufferOffset_indirectBuffer_indirectBufferOffset(
+                    MTLPrimitiveType::Triangle,
+                    MTLIndexType::UInt32,
+                    index_buffer,
+                    0,
+                    &entry.raw,
+                    offset as usize,
+                )
+            },
+            // SAFETY: as above; the pipeline pulls its vertices itself.
+            None => unsafe {
+                e.drawPrimitives_indirectBuffer_indirectBufferOffset(
+                    MTLPrimitiveType::Triangle,
+                    &entry.raw,
+                    offset as usize,
+                )
+            },
+        }
+        Ok(())
+    }
+
     fn dispatch(&mut self, groups: [u32; 3]) -> Result<(), RhiError> {
         let Encoder::Compute(e, threads) = &self.encoder else {
             return Err(RhiError::invalid(
@@ -444,10 +499,13 @@ fn load_action(load: LoadOp) -> (MTLLoadAction, Option<ClearValue>) {
 }
 
 fn buffer(inner: &Inner, handle: Buffer) -> Result<&MtlBuffer, RhiError> {
+    buffer_entry(inner, handle).map(|e| &*e.raw)
+}
+
+fn buffer_entry(inner: &Inner, handle: Buffer) -> Result<&crate::device::BufferEntry, RhiError> {
     inner
         .buffers
         .get(handle.index(), handle.generation())
-        .map(|e| &*e.raw)
         .ok_or_else(|| RhiError::StaleHandle {
             kind: "buffer",
             index: handle.index(),

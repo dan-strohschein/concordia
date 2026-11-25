@@ -292,6 +292,13 @@ impl Recorder<'_> {
                 self.timestamp(self.t.queries.zip(scope).and_then(|((_, q), s)| q.end(s)));
                 Ok(())
             }
+            Command::DrawIndirect { .. }
+            | Command::DrawIndexedIndirect { .. }
+            | Command::SetViewport(_)
+            | Command::SetScissor(_)
+            | Command::CopyTexture { .. } => Err(RhiError::Unsupported(format!(
+                "{command:?} on Vulkan (M4 4.3a step 4)"
+            ))),
         }
     }
 
