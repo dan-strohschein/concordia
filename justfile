@@ -165,8 +165,8 @@ jolt-bindgen:
 # Everything CI runs
 ci: lint test deny
 
-# Mutation checks in parallel git worktrees (tools/mutants/run.py; 3 workers by default)
-mutants file workers="3":
+# Mutation checks in parallel git worktrees (tools/mutants/run.py; 2 workers sharing CARGO_BUILD_JOBS)
+mutants file workers="2":
     python3 -I tools/mutants/run.py {{file}} {{workers}}
 
 # The end-of-phase checklist with independent steps at once (tools/check.sh; logs in target/check/)

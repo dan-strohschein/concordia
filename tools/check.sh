@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# The end-of-phase checklist with independent steps at once (`just check`; 2026-11-25).
-# Main lane, on target/debug: wasm and native fixtures, one workspace run (the gate binaries
-# included: their results are summarised from it), doc tests, then the editor's tests (they reuse
-# its CLI build). Side lane, beside it on its own target folders and without the GPU: lint
-# (target/lint), the Tauri clippy (the editor's target) and deny on every lock. Logs and exit
-# statuses go to target/check/. Exits non-zero if any step failed. CHECK_EDITOR=0 skips the
-# editor's tests; CARGO_BUILD_JOBS defaults to 10.
+# The end-of-phase checklist with independent steps overlapped (`just check`; 2026-11-25).
+# Builds are memory-bound (an 18 GB Mac; one build at CARGO_BUILD_JOBS=6 stays under the 10 GB cap
+# per command), so two builds never run at once: the fixtures and the workspace's test build come
+# first; then the side lane (lint on target/lint, the Tauri clippy on the editor's target, deny on
+# every lock) runs while the workspace tests (the gate binaries included: their results are
+# summarised from this run) and the doc tests execute; the editor's tests (they reuse the CLI
+# build) run last. Logs and exit statuses go to target/check/; exits non-zero if any step failed.
+# CHECK_EDITOR=0 skips the editor's tests.
 set -u
 out=target/check
 rm -rf "$out" && mkdir -p "$out"
-export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-10}"
+export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-6}"
 export CONCORDIA_REQUIRE_GPU="${CONCORDIA_REQUIRE_GPU:-1}"
 
 # Runs "$@" as step $1, logging to target/check/<step>.log and recording its exit status.
@@ -29,16 +30,19 @@ side() {
     step deny sh -c 'just deny && cargo deny --manifest-path editor/src-tauri/Cargo.toml --config editor/src-tauri/deny.toml check'
 }
 
-side &
-side_pid=$!
-if step fixtures sh -c 'just wasm && just native-fixtures'; then
+if step fixtures sh -c 'just wasm && just native-fixtures' &&
+    step build cargo nextest run --workspace --no-run; then
+    side &
+    side_pid=$!
     step workspace cargo nextest run --workspace --no-fail-fast
     step doc cargo test --workspace --doc
+    wait "$side_pid"
     if [ "${CHECK_EDITOR:-1}" = 1 ]; then
         step editor just editor-test
     fi
+else
+    side
 fi
-wait "$side_pid"
 
 failed=0
 for status in "$out"/*.status; do

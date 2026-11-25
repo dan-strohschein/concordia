@@ -1,4 +1,4 @@
-"""Mutation checks in parallel (`just mutants <file.json> [jobs]`; 2026-11-25).
+"""Mutation checks in parallel (`just mutants <file.json> [workers]`; 2026-11-25).
 
 Each mutant is `{"name", "file", "old", "new", "args"}`: `old` must occur exactly once in `file`
 (repo-relative), and `args` are what follows `cargo nextest run` (a mutant is killed when those
@@ -24,6 +24,9 @@ BASE = os.path.join(ROOT, "target", "mutants")
 BUILD_DIRS = {"debug", "release", "lint", "mutants", "check", "tmp", "doc", "criterion"}
 # A worker's debug build of the render or gate crates takes about this much disk.
 GB_PER_WORKER = 20
+# Compile jobs shared by all workers: builds are memory-bound (an 18 GB Mac under a 10 GB cap
+# per command), so workers split CARGO_BUILD_JOBS (default 6) rather than each taking it.
+TOTAL_JOBS = int(os.environ.get("CARGO_BUILD_JOBS", "6"))
 
 
 def git(*args, cwd=ROOT):
@@ -91,7 +94,7 @@ def main():
     if len(sys.argv) < 2:
         sys.exit("usage: run.py <mutants.json> [workers]")
     mutants = json.load(open(sys.argv[1]))
-    workers = int(sys.argv[2]) if len(sys.argv) > 2 else 3
+    workers = int(sys.argv[2]) if len(sys.argv) > 2 else 2
     if workers < 1:
         sys.exit("workers must be at least 1")
     if git("status", "--porcelain", "--untracked-files=no").strip():
@@ -103,7 +106,7 @@ def main():
     if free_gb < GB_PER_WORKER * workers + 25:
         sys.exit(f"{free_gb:.0f} GB free: {workers} workers need about "
                  f"{GB_PER_WORKER * workers + 25} GB (fewer workers, or `just clean-builds`)")
-    jobs = max(1, (os.cpu_count() or 4) // workers)
+    jobs = max(1, TOTAL_JOBS // workers)
     todo = queue.Queue()
     for m in mutants:
         todo.put(m)
