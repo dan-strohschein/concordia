@@ -765,7 +765,12 @@ impl Renderer {
         let mut resolved = crate::assets::resolve(world, assets, &|r| self.holds(r))?;
         let materials = self.load_assets(&resolved, &mut up)?;
         self.programs.fit(&materials)?;
-        let skinning = SkinFrame::new(world, &self.assets.meshes, &self.assets.joint_bounds);
+        let skinning = SkinFrame::new(
+            world,
+            &self.assets.meshes,
+            &self.assets.joint_bounds,
+            &self.motion,
+        );
         self.report_unskinnable(&skinning.refused);
         let device = self.device.clone();
         let device = device.as_ref();
@@ -1088,6 +1093,7 @@ impl Renderer {
                 .iter()
                 .zip(&skinning.placements)
                 .map(|(d, placed)| (d.entity, placed.world)),
+            world.skins.iter().map(|s| (s.entity, s.palette.clone())),
             view_proj,
         );
         let plan = FramePlan {
@@ -1300,7 +1306,7 @@ impl Renderer {
                 model: placed.world,
                 previous: self.motion.previous_world(draw.entity, &placed.world),
                 skin,
-                motion: [0; 4],
+                motion: [placed.prev_first, 0, 0, 0],
             }
             .write(&mut instances);
         });

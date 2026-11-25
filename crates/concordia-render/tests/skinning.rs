@@ -1017,3 +1017,71 @@ fn skinned_mesh_composites_with_meshlet_depth() {
         common::assert_same_as_m1("skinned_composite", &m1, &image);
     }
 }
+
+/// Motion vectors of skinned meshes (M4 4.3b2) follow the pose: a tip bent between frames moves by
+/// its CPU-posed displacement, the root and a held pose don't move.
+#[test]
+fn skinned_motion_follows_the_pose() {
+    let Some(mut r) = renderer() else { return };
+    r.set_motion_readback(true);
+    let mut s = Scene::new();
+    s.world.insert_resource(library());
+    let paint = lit_material(&mut s, "paint", [0.8, 0.3, 0.2]);
+    let arm = s.assets.insert_mesh("arm", column(0.12, 0.0, 2.0));
+    let rest = skeleton().rest_pose();
+    let id = spawn(&mut s, Vec3::ZERO, &arm, &paint, Some(skin()), Some(rest));
+    s.camera(
+        Vec3::new(0.0, 1.2, 3.2),
+        Vec3::new(0.0, 1.2, 0.0),
+        Camera::default(),
+    );
+    let view = concordia_render::View {
+        eye: Vec3::new(0.0, 1.2, 3.2),
+        target: Vec3::new(0.0, 1.2, 0.0),
+        projection: Projection::default(),
+    };
+    let (w, h) = (256u32, 192u32);
+    let frame = |s: &mut Scene, r: &mut Renderer| {
+        let rw = RenderWorld::extract(&s.world);
+        let request = RenderRequest {
+            camera: None,
+            view: Some(view.clone()),
+            width: w,
+            height: h,
+            overlays: None,
+            view_mode: ViewMode::lit,
+            debug: Vec::new(),
+            ui: Default::default(),
+        };
+        r.render(&rw, &mut s.assets, &request).expect("render");
+        r.read_motion().expect("readback on").clone()
+    };
+    let still = frame(&mut s, &mut r);
+    assert!(
+        still.uv.iter().all(|m| *m == [0.0, 0.0]),
+        "rest, first frame"
+    );
+    let angle = 0.6;
+    s.world.insert(id, bent(angle)).unwrap();
+    let moved = frame(&mut s, &mut r);
+    let project = |p: Vec3| view.project(p, w as f32, h as f32).unwrap();
+    // A point of the front face that only the tip drives, rotated about the tip joint (y = 1).
+    let bind = Vec3::new(0.0, 1.9, 0.12);
+    let posed = Quat::from_rotation_z(angle) * (bind - Vec3::Y) + Vec3::Y;
+    let ([x0, y0], [x1, y1]) = (project(bind), project(posed));
+    let got = moved.pixels(x1 as u32, y1 as u32);
+    let want = [x1 - x0, y1 - y0];
+    assert!(want[0] < -10.0, "the tip swings left: {want:?}");
+    assert!(
+        (got[0] - want[0]).abs() < 0.5 && (got[1] - want[1]).abs() < 0.5,
+        "tip motion {got:?}, want {want:?}"
+    );
+    let [rx, ry] = project(Vec3::new(0.0, 0.3, 0.12));
+    assert_eq!(
+        moved.pixels(rx as u32, ry as u32),
+        [0.0, 0.0],
+        "the root holds still"
+    );
+    let held = frame(&mut s, &mut r);
+    assert!(held.uv.iter().all(|m| *m == [0.0, 0.0]), "a held pose");
+}

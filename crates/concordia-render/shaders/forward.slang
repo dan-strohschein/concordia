@@ -131,7 +131,10 @@ VsOut vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform DrawPush push
     float3 p = read3(push.positions, v);
     float3 n = read3(push.normals, v);
     float4 t = ((float4*)g_buffers.ptr[push.tangents])[v];
+    float3 prev_p = p;
     if (inst.skin.y != 0) {
+        // Skinned twice: with this frame's palette, and with last frame's (motion vectors).
+        prev_p = skin_vertex(frame.buffers.w, inst.motion.x, push.joints, push.weights, v, p, n, t.xyz).position;
         SkinnedVertex s = skin_vertex(frame.buffers.w, inst.skin.x, push.joints, push.weights, v, p, n, t.xyz);
         p = s.position;
         n = s.normal;
@@ -139,7 +142,7 @@ VsOut vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform DrawPush push
     }
     float2 uv = ((float2*)g_buffers.ptr[push.uvs])[v];
     uint2 ids = uint2(NO_ID, mix_id(push.instance + iid) ^ mix_id(vid / 3 + 0x9e3779b9));
-    return surface_vertex(frame, inst, p, p, n, t, uv, vid % 3, ids); // pulled per triangle corner
+    return surface_vertex(frame, inst, p, prev_p, n, t, uv, vid % 3, ids); // pulled per triangle corner
 }
 
 // The `lod` view mode's color (linear; the output is sRGB): hue from the simulation LOD (white

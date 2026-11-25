@@ -11,6 +11,8 @@ use concordia_core::math::Mat4;
 #[derive(Debug, Default)]
 pub(crate) struct MotionHistory {
     worlds: HashMap<EntityId, Mat4>,
+    /// Joint palettes by pose owner.
+    palettes: HashMap<EntityId, Vec<Mat4>>,
     view_proj: Option<Mat4>,
 }
 
@@ -20,18 +22,25 @@ impl MotionHistory {
         self.worlds.get(&entity).copied().unwrap_or(*current)
     }
 
+    /// The joint palette pose owner `entity` had last frame, if it was drawn then.
+    pub(crate) fn previous_palette(&self, entity: EntityId) -> Option<&[Mat4]> {
+        self.palettes.get(&entity).map(Vec::as_slice)
+    }
+
     /// The camera's view-projection last frame, or `current` on the first frame.
     pub(crate) fn previous_view_proj(&self, current: &Mat4) -> Mat4 {
         self.view_proj.unwrap_or(*current)
     }
 
-    /// Makes this frame's `worlds` and `view_proj` the previous frame's (entities not drawn now
-    /// are forgotten).
+    /// Makes this frame's `worlds`, `palettes` and `view_proj` the previous frame's (entities not
+    /// drawn now are forgotten).
     pub(crate) fn advance(
         &mut self,
         worlds: impl IntoIterator<Item = (EntityId, Mat4)>,
+        palettes: impl IntoIterator<Item = (EntityId, Vec<Mat4>)>,
         view_proj: Mat4,
     ) {
+        self.palettes = palettes.into_iter().collect();
         self.worlds = worlds.into_iter().collect();
         self.view_proj = Some(view_proj);
     }
@@ -39,6 +48,7 @@ impl MotionHistory {
     /// Forgets everything: the next frame has no motion (camera cuts, scene loads).
     pub(crate) fn reset(&mut self) {
         self.worlds.clear();
+        self.palettes.clear();
         self.view_proj = None;
     }
 }
@@ -90,7 +100,7 @@ mod tests {
     fn motion_history_keeps_previous_worlds_by_entity() {
         let mut h = MotionHistory::default();
         assert_eq!(h.previous_world(id(1), &at(5.0)), at(5.0), "first frame");
-        h.advance([(id(1), at(1.0)), (id(2), at(2.0))], at(9.0));
+        h.advance([(id(1), at(1.0)), (id(2), at(2.0))], [], at(9.0));
         assert_eq!(h.previous_world(id(1), &at(5.0)), at(1.0));
         assert_eq!(h.previous_world(id(2), &at(5.0)), at(2.0));
         assert_eq!(h.previous_world(id(3), &at(5.0)), at(5.0), "new entity");
@@ -100,8 +110,8 @@ mod tests {
     #[test]
     fn entities_missing_a_frame_start_without_history() {
         let mut h = MotionHistory::default();
-        h.advance([(id(1), at(1.0)), (id(2), at(2.0))], at(0.0));
-        h.advance([(id(2), at(3.0))], at(0.0));
+        h.advance([(id(1), at(1.0)), (id(2), at(2.0))], [], at(0.0));
+        h.advance([(id(2), at(3.0))], [], at(0.0));
         assert_eq!(
             h.previous_world(id(1), &at(5.0)),
             at(5.0),
@@ -114,10 +124,22 @@ mod tests {
     fn first_frame_and_reset_have_no_history() {
         let mut h = MotionHistory::default();
         assert_eq!(h.previous_view_proj(&at(7.0)), at(7.0), "first frame");
-        h.advance([(id(1), at(1.0))], at(9.0));
+        h.advance([(id(1), at(1.0))], [(id(1), vec![at(2.0)])], at(9.0));
         h.reset();
         assert_eq!(h.previous_world(id(1), &at(5.0)), at(5.0));
+        assert_eq!(h.previous_palette(id(1)), None);
         assert_eq!(h.previous_view_proj(&at(7.0)), at(7.0));
+    }
+
+    #[test]
+    fn previous_palettes_follow_their_pose_owner() {
+        let mut h = MotionHistory::default();
+        assert_eq!(h.previous_palette(id(1)), None, "first frame");
+        h.advance([], [(id(1), vec![at(1.0), at(2.0)])], at(0.0));
+        assert_eq!(h.previous_palette(id(1)), Some(&[at(1.0), at(2.0)][..]));
+        assert_eq!(h.previous_palette(id(2)), None);
+        h.advance([], [(id(2), vec![at(3.0)])], at(0.0));
+        assert_eq!(h.previous_palette(id(1)), None, "not posed last frame");
     }
 
     #[test]
