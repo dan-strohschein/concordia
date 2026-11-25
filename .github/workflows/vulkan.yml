@@ -82,6 +82,7 @@ jobs:
       - name: concordia run in an X11 window on Vulkan (Xvfb, the latency bench's frames)
         if: ${{ !cancelled() }}
         run: |
+          set -o pipefail
           sudo apt-get install -y --no-install-recommends xvfb libxcursor1 libxrandr2 libxi6 libxkbcommon-x11-0
           xvfb-run -a -s "-screen 0 1280x720x24" cargo run -q -p concordia-cli -- run \
             --project examples/m1-physics-stack --bench-latency target/vulkan-window.json \

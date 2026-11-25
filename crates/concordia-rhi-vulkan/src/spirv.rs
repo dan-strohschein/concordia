@@ -61,8 +61,8 @@ pub(crate) fn check(words: &[u32], entry: &str, model: Model) -> Result<(), Stri
     ))
 }
 
-/// The module-wide rules [`check`] applies (header, framing, pointer decorations), for checking
-/// shaders without a device (render tests compile every entry point for SPIR-V).
+/// The module-wide rules pipeline creation applies (header, framing, pointer decorations), for
+/// checking shaders without a device (render tests compile every entry point for SPIR-V).
 pub fn check_module(words: &[u32]) -> Result<(), String> {
     scan(words)?.pointer_rule()
 }

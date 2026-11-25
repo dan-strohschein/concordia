@@ -110,7 +110,8 @@ macro_rules! surface_conformance_tests {
             present_signals_timelines_and_reports_presentation,
             present_reports_the_gpu_time_of_its_commands,
             acquire_follows_the_requested_size,
-            destroying_a_surface_releases_its_acquired_image
+            destroying_a_surface_releases_its_acquired_image,
+            reports_arrive_without_another_device_call
         );
     };
     (@cases $make:expr, $surface:expr, $finish:expr; $($name:ident),+) => {$(

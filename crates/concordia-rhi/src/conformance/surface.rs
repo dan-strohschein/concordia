@@ -187,3 +187,25 @@ pub fn destroying_a_surface_releases_its_acquired_image(
     );
     device.wait_idle().unwrap();
 }
+
+/// A presented frame reports its GPU time and presentation on its own, with no further device
+/// call (a viewport going idle still gets its last frame's numbers).
+pub fn reports_arrive_without_another_device_call(device: &dyn Device, make: SurfaceMaker<'_>) {
+    let native = make();
+    let surface = create(device, &native, Format::Bgra8UnormSrgb).unwrap();
+    let texture = device.acquire(surface, 32, 32).unwrap().expect("an image");
+    let (timed, timing) = std::sync::mpsc::channel();
+    let (shown, presented) = std::sync::mpsc::channel();
+    let commands = clear(texture);
+    let mut present = Present::new(&commands);
+    present.on_gpu_time = Some(Box::new(move |t| timed.send(t).unwrap()));
+    present.on_presented = Some(Box::new(move |at| shown.send(at).unwrap()));
+    device.present(surface, present).unwrap();
+    timing
+        .recv_timeout(WAIT)
+        .expect("GPU time arrives by itself");
+    presented
+        .recv_timeout(WAIT)
+        .expect("presentation is reported by itself");
+    device.destroy_surface(surface);
+}

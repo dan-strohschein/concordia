@@ -2,7 +2,9 @@
 //! finished submissions are retired lazily (on the next submit, wait or destroy).
 
 use std::collections::{BTreeMap, VecDeque};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::thread::JoinHandle;
 use std::time::Duration;
 
 use ash::vk;
@@ -111,8 +113,17 @@ struct State {
     lost: bool,
 }
 
-/// A Vulkan 1.3 device (ADR-0088).
+/// A Vulkan 1.3 device (ADR-0088): the device state, shared with a retire thread that fires
+/// timing and presentation callbacks as the GPU finishes (as Metal's completion handlers do).
 pub struct VulkanDevice {
+    inner: Arc<Inner>,
+    retirer: Option<(Arc<AtomicBool>, JoinHandle<()>)>,
+}
+
+/// A [`VulkanDevice`]'s state (reached through `Deref`).
+pub struct Inner {
+    /// Wakes the retire thread when work is submitted.
+    waker: OnceLock<std::thread::Thread>,
     caps: RhiCaps,
     timestamp_period_ns: f32,
     timestamp_bits: u32,
@@ -142,6 +153,63 @@ impl std::fmt::Debug for VulkanDevice {
     }
 }
 
+impl std::ops::Deref for VulkanDevice {
+    type Target = Inner;
+
+    fn deref(&self) -> &Inner {
+        &self.inner
+    }
+}
+
+/// How long the retire thread waits on the GPU, or sleeps with nothing in flight, per round.
+const RETIRE_POLL: Duration = Duration::from_millis(20);
+
+impl VulkanDevice {
+    /// Opens the best Vulkan 1.3 device with `options`.
+    pub fn new(options: &Options) -> Result<Self, RhiError> {
+        let inner = Arc::new(Inner::new(options)?);
+        let stop = Arc::new(AtomicBool::new(false));
+        let (shared, stopping) = (inner.clone(), stop.clone());
+        let thread = std::thread::Builder::new()
+            .name("concordia-vulkan-retire".into())
+            .spawn(move || retire_loop(&shared, &stopping))
+            .map_err(|e| RhiError::invalid("retire thread", e.to_string()))?;
+        let _ = inner.waker.set(thread.thread().clone());
+        Ok(Self {
+            inner,
+            retirer: Some((stop, thread)),
+        })
+    }
+}
+
+/// Retires finished submissions until `stop`: waits on the oldest one, or sleeps when idle.
+fn retire_loop(inner: &Inner, stop: &AtomicBool) {
+    while !stop.load(Ordering::Acquire) {
+        match inner.oldest_in_flight() {
+            Some(value) => {
+                if inner
+                    .wait_value(inner.progress, value, RETIRE_POLL)
+                    .is_err()
+                {
+                    std::thread::park_timeout(RETIRE_POLL);
+                }
+                inner.retire();
+            }
+            None => std::thread::park_timeout(RETIRE_POLL),
+        }
+    }
+}
+
+impl Drop for VulkanDevice {
+    fn drop(&mut self) {
+        if let Some((stop, thread)) = self.retirer.take() {
+            stop.store(true, Ordering::Release);
+            thread.thread().unpark();
+            let _ = thread.join();
+        }
+    }
+}
+
 fn no_device(reason: impl Into<String>) -> RhiError {
     RhiError::NoDevice {
         reason: reason.into(),
@@ -156,9 +224,9 @@ pub(crate) fn choose(instance: &Instance) -> Result<Candidate, RhiError> {
     Ok(candidates.swap_remove(index))
 }
 
-impl VulkanDevice {
+impl Inner {
     /// Opens the best Vulkan 1.3 device with `options`.
-    pub fn new(options: &Options) -> Result<Self, RhiError> {
+    fn new(options: &Options) -> Result<Self, RhiError> {
         let instance = Instance::new(options.validation, options.log.clone().unwrap_or_default())?;
         let chosen = choose(&instance)?;
         let caps = record::caps_from_record(&chosen.record).masked(&options.mask);
@@ -181,6 +249,7 @@ impl VulkanDevice {
             swapchain: ash::khr::swapchain::Device::new(&instance.raw, &device),
         });
         let mut made = Self {
+            waker: OnceLock::new(),
             caps,
             timestamp_period_ns: chosen.record.timestamp_period_ns,
             timestamp_bits: chosen.record.queue_timestamp_valid_bits,
@@ -468,6 +537,11 @@ impl VulkanDevice {
         }
     }
 
+    /// The oldest submission the GPU may still be running.
+    fn oldest_in_flight(&self) -> Option<u64> {
+        self.state.lock().ok()?.in_flight.front().map(|f| f.value)
+    }
+
     fn lock(&self) -> Result<MutexGuard<'_, State>, RhiError> {
         self.state
             .lock()
@@ -749,6 +823,9 @@ impl VulkanDevice {
             callback,
             presented: None,
         });
+        if let Some(retirer) = self.waker.get() {
+            retirer.unpark();
+        }
         Ok(now)
     }
 
@@ -1469,7 +1546,7 @@ fn byte_range(available: usize, offset: u64, len: u64) -> Result<std::ops::Range
     }
 }
 
-impl Drop for VulkanDevice {
+impl Drop for Inner {
     fn drop(&mut self) {
         // SAFETY: waiting for the device to go idle before destroying anything it may use.
         unsafe {
