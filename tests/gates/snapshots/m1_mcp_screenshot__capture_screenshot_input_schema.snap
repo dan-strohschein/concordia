@@ -1,5 +1,6 @@
 ---
 source: tests/gates/m1_mcp_screenshot.rs
+assertion_line: 60
 expression: capture.input_schema.as_ref()
 ---
 {
@@ -185,6 +186,10 @@ expression: capture.input_schema.as_ref()
         {
           "const": "triangles",
           "description": "One color per triangle."
+        },
+        {
+          "const": "motion",
+          "description": "Motion vectors: black where still, hue by screen direction, brighter with length (full\nat 16 pixels)."
         }
       ],
       "title": "ViewMode",

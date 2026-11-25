@@ -34,7 +34,8 @@ export type ViewMode =
   | "thin_film"
   | "lod"
   | "meshlets"
-  | "triangles";
+  | "triangles"
+  | "motion";
 
 /**
  * `render.stats` result.

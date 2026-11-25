@@ -56,7 +56,8 @@ export type ViewMode =
   | "thin_film"
   | "lod"
   | "meshlets"
-  | "triangles";
+  | "triangles"
+  | "motion";
 /**
  * Which world: the scene being edited or the running simulation.
  */

@@ -235,3 +235,57 @@ fn blended_draws_leave_motion_untouched() {
         );
     }
 }
+
+/// The `motion` view: still pixels black, moving ones bright, hued by direction (4.3b2). Golden
+/// `m4_motion/view_motion`: the quads moving apart.
+#[test]
+fn motion_view_colors_moving_pixels_by_direction() {
+    let Some(mut r) = renderer() else { return };
+    let mut q = quads(common::unlit([1.0; 4]));
+    let eye = view(Vec3::new(0.0, 0.0, 5.0));
+    let frame = |r: &mut Renderer, q: &mut Quads| {
+        let rw = RenderWorld::extract(&q.scene.world);
+        let request = RenderRequest {
+            camera: None,
+            view: Some(eye.clone()),
+            width: SIZE.0,
+            height: SIZE.1,
+            overlays: None,
+            view_mode: concordia_render::ViewMode::motion,
+            debug: Vec::new(),
+            ui: Default::default(),
+        };
+        r.render(&rw, &mut q.scene.assets, &request)
+            .expect("render")
+    };
+    let still = frame(&mut r, &mut q);
+    let [cx, cy] = project(&eye, Vec3::new(-0.8, 0.0, 0.0));
+    assert_eq!(
+        common::pixel(&still, cx as u32, cy as u32)[..3],
+        [0, 0, 0],
+        "still"
+    );
+    move_to(&mut q.scene, q.m1, Vec3::new(-1.0, 0.0, 0.0));
+    move_to(&mut q.scene, q.meshlets, Vec3::new(1.0, 0.0, 0.0));
+    let moving = frame(&mut r, &mut q);
+    let at = |x: f32| {
+        let [px, py] = project(&eye, Vec3::new(x, 0.0, 0.0));
+        common::pixel(&moving, px as u32, py as u32)
+    };
+    let (left, right) = (at(-1.0), at(1.0));
+    // About 7 pixels of motion each: under half brightness, cyan going left, red going right.
+    assert!(
+        left[0] < 20 && left[1] > 100 && left[2] > 100,
+        "left: {left:?}"
+    );
+    assert!(
+        right[0] > 100 && right[1] < 20 && right[2] < 20,
+        "right: {right:?}"
+    );
+    assert_eq!(
+        common::pixel(&moving, 2, 2)[..3],
+        [0, 0, 0],
+        "the background is still"
+    );
+    common::golden_in("m4_motion", "view_motion", &moving);
+}

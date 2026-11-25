@@ -39,7 +39,7 @@ struct Frame {
     uint4 env_a; uint4 env_b;
     // debug.x = view mode (ViewMode order: 0 lit, 1 unlit, 2 wireframe, 3 normals, 4 albedo,
     // 5 roughness/metallic, 6 overdraw, 7 shadow cascades, 8 light clusters, 9 closures, 10–13 the
-    // feature views, 14 lod, 15 meshlets, 16 triangles); debug.y = the exposure as float bits (emission is in nits).
+    // feature views, 14 lod, 15 meshlets, 16 triangles, 17 motion); debug.y = the exposure as float bits (emission is in nits).
     uint4 debug;
     // The camera's view-projection last frame (motion vectors; view_proj without one).
     float4 prev_view_proj[4];
@@ -644,11 +644,27 @@ float4 shade_pixel(VsOut i, bool front, DrawPush push) {
 // The editor's ground grid (ADR-0047): a quad on y = 0 under the eye, depth-tested against the
 // scene; antialiased lines every unit, brighter every ten, red X and blue Z axes, fading out.
 struct GridPush { uint frame; float extent; };
+// The `motion` view's color of a motion of `px` pixels: black when still, hue by direction (right
+// red, up green-yellow, left cyan, down blue-violet), full brightness from 16 pixels.
+float3 motion_color(float2 px) {
+    float len = length(px);
+    if (len == 0.0) { return float3(0.0, 0.0, 0.0); }
+    float hue = atan2(-px.y, px.x) / (2.0 * 3.14159265) + 1.0;
+    float3 rgb = saturate(abs(frac(hue + float3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0);
+    return rgb * min(len / 16.0, 1.0);
+}
+
+static const uint MODE_MOTION = 17;
+
 [shader("fragment")]
 ForwardOut fs(VsOut i, bool front : SV_IsFrontFace, uniform DrawPush push) {
     ForwardOut o;
     o.color = shade_pixel(i, front, push);
     o.motion = clip_uv(i.clip) - clip_uv(i.prev_clip);
+    Frame* frame = (Frame*)g_buffers.ptr[push.frame];
+    if (frame.debug.x == MODE_MOTION) {
+        o.color = float4(motion_color(o.motion * frame.screen.xy), 1.0);
+    }
     return o;
 }
 
