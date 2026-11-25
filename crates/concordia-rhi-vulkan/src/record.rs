@@ -66,6 +66,10 @@ pub struct Features {
     pub shader_draw_parameters: bool,
     /// `samplerAnisotropy` (optional: without it `LinearRepeat` is not anisotropic).
     pub sampler_anisotropy: bool,
+    /// `shaderSampledImageArrayNonUniformIndexing` (per-pixel bindless texture indices).
+    pub shader_sampled_image_array_non_uniform_indexing: bool,
+    /// `shaderStorageImageArrayNonUniformIndexing`.
+    pub shader_storage_image_array_non_uniform_indexing: bool,
 }
 
 impl Features {
@@ -102,6 +106,14 @@ impl Features {
             ),
             (self.shader_int64, "shaderInt64"),
             (self.shader_draw_parameters, "shaderDrawParameters"),
+            (
+                self.shader_sampled_image_array_non_uniform_indexing,
+                "shaderSampledImageArrayNonUniformIndexing",
+            ),
+            (
+                self.shader_storage_image_array_non_uniform_indexing,
+                "shaderStorageImageArrayNonUniformIndexing",
+            ),
         ]
         .into_iter()
         .filter_map(|(present, name)| (!present).then_some(name))
@@ -142,8 +154,12 @@ pub struct ProbeRecord {
     /// `timestampPeriod` in nanoseconds per tick.
     pub timestamp_period_ns: f32,
     /// Device extensions of interest present (`VK_EXT_mesh_shader`, `VK_KHR_ray_query`,
-    /// `VK_KHR_portability_subset`), sorted.
+    /// `VK_KHR_portability_subset`, `VK_KHR_swapchain`), sorted.
     pub extensions: Vec<String>,
+    /// The instance's surface extensions (`VK_KHR_surface` and the platform ones), sorted; empty
+    /// in records made before 4.1v(b).
+    #[serde(default)]
+    pub surface_extensions: Vec<String>,
 }
 
 impl ProbeRecord {

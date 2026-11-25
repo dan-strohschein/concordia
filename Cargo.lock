@@ -735,6 +735,7 @@ dependencies = [
  "concordia-replay",
  "concordia-rhi",
  "concordia-rhi-metal",
+ "concordia-rhi-select",
  "concordia-scene",
  "concordia-scripting",
  "concordia-studio",
@@ -840,6 +841,7 @@ dependencies = [
  "concordia-replay",
  "concordia-rhi",
  "concordia-rhi-metal",
+ "concordia-rhi-select",
  "concordia-scene",
  "concordia-studio",
  "concordia-testkit",
@@ -1170,6 +1172,8 @@ dependencies = [
  "concordia-render-types",
  "concordia-rhi",
  "concordia-rhi-metal",
+ "concordia-rhi-select",
+ "concordia-rhi-vulkan",
  "concordia-scene",
  "concordia-shaders",
  "concordia-terra",
@@ -1250,6 +1254,19 @@ dependencies = [
  "objc2-quartz-core 0.3.2",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "concordia-rhi-select"
+version = "0.0.0"
+dependencies = [
+ "concordia-rhi",
+ "concordia-rhi-metal",
+ "concordia-rhi-vulkan",
+ "concordia-testkit",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1538,7 +1555,9 @@ dependencies = [
  "concordia-reflect",
  "concordia-render",
  "concordia-replay",
+ "concordia-rhi",
  "concordia-rhi-metal",
+ "concordia-rhi-select",
  "concordia-scene",
  "concordia-studio",
  "concordia-testkit",

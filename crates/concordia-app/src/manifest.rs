@@ -167,6 +167,9 @@ pub struct RenderSection {
     pub closure_budget: Option<u8>,
     /// Time each pass of every frame (`render.stats` `passes`; `concordia perf run` sets it).
     pub perf_mode: bool,
+    /// GPU backend: `auto` (Metal on macOS, Vulkan elsewhere), `metal` or `vulkan`;
+    /// `CONCORDIA_BACKEND` overrides it.
+    pub backend: concordia_rhi_select::BackendChoice,
 }
 
 /// `[assets]` (no settings yet).

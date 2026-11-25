@@ -29,3 +29,25 @@ pub fn vulkan_required() -> bool {
 pub fn vulkan_required_from(value: Option<&str>) -> bool {
     gpu_required_from(value)
 }
+
+/// True if this run must have a `backend` device: Metal by `CONCORDIA_REQUIRE_GPU=1`, Vulkan by
+/// `CONCORDIA_REQUIRE_VULKAN=1`.
+pub fn device_required(backend: concordia_rhi::Backend) -> bool {
+    device_required_from(
+        backend,
+        std::env::var(REQUIRE_GPU_ENV).ok().as_deref(),
+        std::env::var(REQUIRE_VULKAN_ENV).ok().as_deref(),
+    )
+}
+
+/// [`device_required`] for given values of the two variables.
+pub fn device_required_from(
+    backend: concordia_rhi::Backend,
+    gpu: Option<&str>,
+    vulkan: Option<&str>,
+) -> bool {
+    match backend {
+        concordia_rhi::Backend::Metal => gpu_required_from(gpu),
+        concordia_rhi::Backend::Vulkan => vulkan_required_from(vulkan),
+    }
+}

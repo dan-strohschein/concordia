@@ -24,6 +24,9 @@ pub enum AppError {
         /// What is wrong.
         message: String,
     },
+    /// `CONCORDIA_BACKEND` names no backend.
+    #[error("{0}")]
+    Backend(#[from] concordia_rhi_select::SelectError),
     /// The engine could not start.
     #[error("engine: {0}")]
     Engine(#[from] ApiError),

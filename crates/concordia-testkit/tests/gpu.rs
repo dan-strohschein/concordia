@@ -19,3 +19,14 @@ fn vulkan_is_required_only_when_its_env_is_exactly_one() {
         assert!(!vulkan_required_from(value), "{value:?}");
     }
 }
+
+#[test]
+fn each_backend_is_required_by_its_own_env() {
+    use concordia_rhi::Backend;
+    use concordia_testkit::device_required_from;
+    assert!(device_required_from(Backend::Metal, Some("1"), None));
+    assert!(!device_required_from(Backend::Metal, None, Some("1")));
+    assert!(device_required_from(Backend::Vulkan, None, Some("1")));
+    assert!(!device_required_from(Backend::Vulkan, Some("1"), None));
+    assert!(!device_required_from(Backend::Vulkan, None, Some("true")));
+}

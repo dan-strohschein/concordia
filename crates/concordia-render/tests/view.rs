@@ -1,14 +1,14 @@
 //! The editor's own view: `capture.screenshot` with a `view` override and `viewport.pick`
 //! (M1 phase 1.9). Picking is CPU-only; the capture cases skip without a GPU unless required.
 
+mod common;
+
 use std::sync::Arc;
 
 use concordia_api::{Engine, EngineConfig, EngineModule};
 use concordia_assets::AssetsModule;
 use concordia_core::id::SessionId;
 use concordia_render::{RenderModule, View};
-use concordia_rhi::RhiError;
-use concordia_testkit::gpu_required;
 use serde_json::{Value, json};
 
 struct Harness {
@@ -23,9 +23,7 @@ impl Harness {
         let mut config = EngineConfig::new(dir.path());
         let modules: Vec<Arc<dyn EngineModule>> = vec![
             Arc::new(AssetsModule::new(dir.path())),
-            Arc::new(RenderModule::new(Arc::new(
-                concordia_rhi_metal::new_headless,
-            ))),
+            Arc::new(RenderModule::new(Arc::new(common::open_device))),
         ];
         config.modules = modules;
         let mut engine = Engine::new(config).unwrap();
@@ -67,14 +65,7 @@ impl Harness {
     }
 
     fn gpu() -> Option<Self> {
-        if let Err(RhiError::NoDevice { reason }) = concordia_rhi_metal::new_headless() {
-            assert!(
-                !gpu_required(),
-                "CONCORDIA_REQUIRE_GPU=1 but no device: {reason}"
-            );
-            return None;
-        }
-        Some(Self::new())
+        common::has_device().then(Self::new)
     }
 }
 
@@ -220,13 +211,12 @@ fn viewport_present_needs_an_attached_surface() {
     );
 }
 
-#[cfg(target_os = "macos")]
 #[test]
 fn viewport_present_draws_into_the_attached_layer() {
     let Some(mut h) = Harness::gpu() else { return };
     h.two_cubes();
-    let layer = objc2_quartz_core::CAMetalLayer::new();
-    let target = concordia_rhi::SurfaceTarget::MetalLayer(std::ptr::NonNull::from(&*layer).cast());
+    let layer = common::test_surface();
+    let target = layer.target;
     // SAFETY: the layer outlives the engine (dropped at the end of the test, after `h`).
     unsafe { concordia_render::attach_surface(&mut h.engine, target) }.unwrap();
     let presented = (0..5)
@@ -242,13 +232,12 @@ fn viewport_present_draws_into_the_attached_layer() {
     drop(h);
 }
 
-#[cfg(target_os = "macos")]
 #[test]
 fn viewport_stats_record_each_presented_frame_with_its_input_tag() {
     let Some(mut h) = Harness::gpu() else { return };
     h.two_cubes();
-    let layer = objc2_quartz_core::CAMetalLayer::new();
-    let target = concordia_rhi::SurfaceTarget::MetalLayer(std::ptr::NonNull::from(&*layer).cast());
+    let layer = common::test_surface();
+    let target = layer.target;
     // SAFETY: the layer outlives the engine (dropped after `h`).
     unsafe { concordia_render::attach_surface(&mut h.engine, target) }.unwrap();
     let now_ms = std::time::SystemTime::now()
@@ -291,13 +280,12 @@ fn viewport_stats_record_each_presented_frame_with_its_input_tag() {
     drop(h);
 }
 
-#[cfg(target_os = "macos")]
 #[test]
 fn queued_viewport_frames_coalesce_to_the_newest_view() {
     let Some(mut h) = Harness::gpu() else { return };
     h.two_cubes();
-    let layer = objc2_quartz_core::CAMetalLayer::new();
-    let target = concordia_rhi::SurfaceTarget::MetalLayer(std::ptr::NonNull::from(&*layer).cast());
+    let layer = common::test_surface();
+    let target = layer.target;
     // SAFETY: the layer outlives the engine (dropped after `h`).
     unsafe { concordia_render::attach_surface(&mut h.engine, target) }.unwrap();
     h.ok(
@@ -341,7 +329,6 @@ fn queued_viewport_frames_coalesce_to_the_newest_view() {
 }
 
 /// Polls `viewport.stats` until frame `seq` has been rendered and submitted (up to 10 s).
-#[cfg(target_os = "macos")]
 fn wait_until_submitted(h: &mut Harness, seq: u64) {
     for _ in 0..200 {
         let stats = h.ok("viewport.stats", json!({}));
@@ -380,13 +367,12 @@ fn viewport_navigate_moves_the_engine_side_editor_camera() {
     assert_eq!(err.kind, concordia_api::ApiErrorKind::InvalidParams);
 }
 
-#[cfg(target_os = "macos")]
 #[test]
 fn a_playing_viewport_redraws_on_each_simulation_tick_without_being_asked() {
     let Some(mut h) = Harness::gpu() else { return };
     h.two_cubes();
-    let layer = objc2_quartz_core::CAMetalLayer::new();
-    let target = concordia_rhi::SurfaceTarget::MetalLayer(std::ptr::NonNull::from(&*layer).cast());
+    let layer = common::test_surface();
+    let target = layer.target;
     // SAFETY: the layer outlives the engine (dropped after `h`).
     unsafe { concordia_render::attach_surface(&mut h.engine, target) }.unwrap();
     h.ok("sim.play", json!({}));
@@ -406,7 +392,6 @@ fn a_playing_viewport_redraws_on_each_simulation_tick_without_being_asked() {
 }
 
 /// Polls `viewport.stats` until at least `n` frames have rendered (up to 10 s).
-#[cfg(target_os = "macos")]
 fn wait_until_rendered(h: &mut Harness, n: usize) {
     for _ in 0..200 {
         let stats = h.ok("viewport.stats", json!({}));
@@ -558,13 +543,12 @@ fn viewport_gizmo_rotates_and_scales_as_one_undo_step_each() {
     );
 }
 
-#[cfg(target_os = "macos")]
 #[test]
 fn camera_moves_through_the_viewport_control_skip_the_engine_thread() {
     let Some(mut h) = Harness::gpu() else { return };
     h.two_cubes();
-    let layer = objc2_quartz_core::CAMetalLayer::new();
-    let target = concordia_rhi::SurfaceTarget::MetalLayer(std::ptr::NonNull::from(&*layer).cast());
+    let layer = common::test_surface();
+    let target = layer.target;
     // SAFETY: the layer outlives the engine (dropped after `h`).
     unsafe { concordia_render::attach_surface(&mut h.engine, target) }.unwrap();
     h.ok(
@@ -597,13 +581,12 @@ fn camera_moves_through_the_viewport_control_skip_the_engine_thread() {
     );
 }
 
-#[cfg(target_os = "macos")]
 #[test]
 fn an_idle_viewport_renders_nothing() {
     let Some(mut h) = Harness::gpu() else { return };
     h.two_cubes();
-    let layer = objc2_quartz_core::CAMetalLayer::new();
-    let target = concordia_rhi::SurfaceTarget::MetalLayer(std::ptr::NonNull::from(&*layer).cast());
+    let layer = common::test_surface();
+    let target = layer.target;
     // SAFETY: the layer outlives the engine (dropped after `h`).
     unsafe { concordia_render::attach_surface(&mut h.engine, target) }.unwrap();
     h.ok(
@@ -838,14 +821,13 @@ fn viewport_present_takes_a_view_or_a_scene_camera() {
     }
 }
 
-#[cfg(target_os = "macos")]
 #[test]
 fn viewport_present_from_a_scene_camera_redraws_after_each_tick() {
     let Some(mut h) = Harness::gpu() else { return };
     h.two_cubes();
     scene_camera(&mut h, 0);
-    let layer = objc2_quartz_core::CAMetalLayer::new();
-    let target = concordia_rhi::SurfaceTarget::MetalLayer(std::ptr::NonNull::from(&*layer).cast());
+    let layer = common::test_surface();
+    let target = layer.target;
     // SAFETY: the layer outlives the engine (dropped after `h`).
     unsafe { concordia_render::attach_surface(&mut h.engine, target) }.unwrap();
     h.ok("sim.step", json!({"ticks": 1}));
@@ -873,4 +855,30 @@ fn viewport_present_from_a_scene_camera_redraws_after_each_tick() {
         .len();
     assert!(after >= 1, "ticks redraw the scene camera's view: {after}");
     drop(h);
+}
+
+/// Hosts detach the viewport surface before its window goes away (4.1v(b): an X11 or Wayland
+/// window, unlike a retained `CAMetalLayer`, dies with its event loop). Afterwards nothing is
+/// drawn into it, `viewport.present` says no viewport is attached, and detaching again is fine.
+#[test]
+fn a_detached_viewport_surface_is_released_and_no_longer_drawn() {
+    let Some(mut h) = Harness::gpu() else { return };
+    h.two_cubes();
+    let layer = common::test_surface();
+    // SAFETY: the native object outlives the surface: it is detached before `layer` drops.
+    unsafe { concordia_render::attach_surface(&mut h.engine, layer.target) }.unwrap();
+    h.ok(
+        "viewport.present",
+        json!({"view": front_view(), "width": 64, "height": 48}),
+    );
+    concordia_render::detach_surface(&mut h.engine).unwrap();
+    drop(layer);
+    let err = h
+        .call(
+            "viewport.present",
+            json!({"view": front_view(), "width": 64, "height": 48}),
+        )
+        .unwrap_err();
+    assert!(err.message.contains("no native viewport"), "{err:?}");
+    concordia_render::detach_surface(&mut h.engine).expect("detaching twice is harmless");
 }

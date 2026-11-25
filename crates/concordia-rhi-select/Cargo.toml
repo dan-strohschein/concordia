@@ -1,0 +1,23 @@
+[package]
+name = "concordia-rhi-select"
+description = "Concordia backend selection: auto, Metal or Vulkan, from the environment and the project."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+concordia-rhi.workspace = true
+concordia-rhi-metal.workspace = true
+concordia-rhi-vulkan.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+concordia-testkit.workspace = true

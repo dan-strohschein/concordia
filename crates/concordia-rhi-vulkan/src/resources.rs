@@ -31,6 +31,8 @@ pub(crate) struct VkTexture {
     pub state: TexState,
     /// Its slot in the texture tables.
     pub bindless: Option<u32>,
+    /// A swapchain image: the swapchain owns the image and its view, so freeing skips them.
+    pub swapchain: bool,
 }
 
 /// Memory for placed textures.
@@ -234,6 +236,7 @@ pub(crate) fn create_texture(
         desc: desc.clone(),
         state,
         bindless: None,
+        swapchain: false,
     })
 }
 
@@ -391,6 +394,7 @@ pub(crate) fn create_heap(
 pub(crate) fn free(ctx: &mut Ctx<'_>, dead: Dead) {
     match dead {
         Dead::Buffer(b) => free_buffer_parts(ctx, b.raw, b.allocation),
+        Dead::Texture(t) if t.swapchain => {}
         Dead::Texture(t) => {
             // SAFETY: the GPU has finished with the texture (retired) and its views.
             unsafe {

@@ -647,26 +647,15 @@ mod readback {
     use concordia_core::math::{Mat4, Vec3};
     use concordia_rhi::{
         Access, AccessFlags, Backend, Buffer, BufferBarrier, BufferDesc, BufferUsage, Command,
-        CommandList, ComputePipelineDesc, Device, Layout, MemoryLocation, QueueKind, RhiError,
-        Stages, Submit,
+        CommandList, ComputePipelineDesc, Device, Layout, MemoryLocation, QueueKind, Stages,
+        Submit,
     };
     use concordia_shaders::{
         CompileRequest, ShaderCompiler, SlangToolchain, SlangcCompiler, Stage, Target,
     };
-    use concordia_testkit::gpu_required;
 
     pub fn device() -> Option<Arc<dyn Device>> {
-        match concordia_rhi_metal::new_headless() {
-            Ok(device) => Some(Arc::<dyn Device>::from(device)),
-            Err(RhiError::NoDevice { reason }) => {
-                assert!(
-                    !gpu_required(),
-                    "CONCORDIA_REQUIRE_GPU=1 but no device: {reason}"
-                );
-                None
-            }
-            Err(other) => panic!("unexpected device error: {other}"),
-        }
+        crate::common::device()
     }
 
     fn floats(values: impl IntoIterator<Item = f32>) -> Vec<u8> {

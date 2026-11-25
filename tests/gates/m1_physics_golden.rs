@@ -1,6 +1,7 @@
 //! M1 gate: the physics stack scene simulates, settles and renders the same way every time, all
-//! through the in-process Engine API. Image checks need a GPU (required with
-//! `CONCORDIA_REQUIRE_GPU=1`); the physics checks run everywhere.
+//! through the in-process Engine API. Image checks need a GPU on the chosen backend
+//! (`CONCORDIA_BACKEND`, else the platform's; required with `CONCORDIA_REQUIRE_GPU=1` on Metal,
+//! `CONCORDIA_REQUIRE_VULKAN=1` on Vulkan); the physics checks run everywhere.
 
 use std::collections::BTreeMap;
 
@@ -9,11 +10,16 @@ use concordia_api::{ApiErrorKind, Engine, EngineConfig};
 use concordia_core::id::SessionId;
 use concordia_core::math::{Quat, Vec3};
 use concordia_render::{Projection, View};
-use concordia_testkit::golden::{RgbaImage, assert_golden};
-use concordia_testkit::gpu_required;
+use concordia_testkit::device_required;
+use concordia_testkit::golden::{RgbaImage, assert_golden_on};
 use serde_json::{Value, json};
 
 const TICKS: u64 = 180;
+
+/// The backend the gate renders on.
+fn backend() -> concordia_rhi::Backend {
+    concordia_rhi_select::choose_from_env(Default::default()).expect("a valid CONCORDIA_BACKEND")
+}
 const WIDTH: u32 = 1280;
 const HEIGHT: u32 = 720;
 const DROPPED: [&str; 3] = ["Dropped 0", "Dropped 1", "Dropped 2"];
@@ -123,7 +129,7 @@ impl Gate {
                     .decode(shot["image"]["data_base64"].as_str().unwrap())
                     .unwrap(),
             ),
-            Err(e) if e.kind == ApiErrorKind::GpuUnavailable && !gpu_required() => None,
+            Err(e) if e.kind == ApiErrorKind::GpuUnavailable && !device_required(backend()) => None,
             Err(e) => panic!("capture.screenshot: {e:?}"),
         }
     }
@@ -227,7 +233,7 @@ fn m1_gate_physics_scene_golden() {
     let Some(png) = gate.capture() else { return };
     let image = RgbaImage::from_png(&png).unwrap();
     assert_eq!((image.width(), image.height()), (WIDTH, HEIGHT));
-    assert_golden("gates", "m1_physics_stack", &image);
+    assert_golden_on(Some(backend()), "gates", "m1_physics_stack", &image);
     assert_not_degenerate(&mut gate, &image);
 
     let mut again = Gate::new();

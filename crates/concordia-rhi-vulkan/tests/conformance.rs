@@ -50,7 +50,17 @@ fn no_validation_errors(_: &dyn Device) {
 
 concordia_rhi::conformance_tests!(
     device,
-    RhiGoldens,
+    RhiGoldens(concordia_rhi::Backend::Vulkan),
     SlangShaders::new(Target::SpirV),
     finish = no_validation_errors
 );
+
+/// The shared surface cases on a headless surface (`VK_EXT_headless_surface`: lavapipe in CI).
+fn headless() -> concordia_rhi::conformance::TestSurface {
+    concordia_rhi::conformance::TestSurface {
+        target: concordia_rhi::SurfaceTarget::Headless,
+        keep: Box::new(()),
+    }
+}
+
+concordia_rhi::surface_conformance_tests!(device, headless, finish = no_validation_errors);

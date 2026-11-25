@@ -3,15 +3,38 @@
 use std::ffi::c_void;
 use std::ptr::NonNull;
 
-/// The native object a surface wraps.
+/// The native object a surface wraps; the caller keeps it alive while the surface exists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SurfaceTarget {
-    /// A `CAMetalLayer` (macOS); the caller keeps it alive while the surface exists.
+    /// A `CAMetalLayer` (macOS: Metal, or Vulkan through MoltenVK).
     MetalLayer(NonNull<c_void>),
+    /// An X11 window through Xlib: its `Display*` and `Window` id (Vulkan).
+    Xlib {
+        /// The `Display*`.
+        display: NonNull<c_void>,
+        /// The window id.
+        window: u64,
+    },
+    /// An X11 window through XCB: its `xcb_connection_t*` and window id (Vulkan).
+    Xcb {
+        /// The `xcb_connection_t*`.
+        connection: NonNull<c_void>,
+        /// The window id.
+        window: u32,
+    },
+    /// A Wayland surface: its `wl_display*` and `wl_surface*` (Vulkan).
+    Wayland {
+        /// The `wl_display*`.
+        display: NonNull<c_void>,
+        /// The `wl_surface*`.
+        surface: NonNull<c_void>,
+    },
+    /// No window: images are presented into nothing (Vulkan's `VK_EXT_headless_surface`; tests).
+    Headless,
 }
 
-// SAFETY: the pointer is only dereferenced by the device, under its lock, while the caller
-// guarantees the layer is alive (see `Device::create_surface`).
+// SAFETY: the pointers are only dereferenced by the device, under its lock, while the caller
+// guarantees the native objects are alive (see `Device::create_surface`).
 unsafe impl Send for SurfaceTarget {}
 
 /// When a presented image reached the display (wall-clock time), or `None` if it never did

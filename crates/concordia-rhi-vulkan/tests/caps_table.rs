@@ -150,3 +150,46 @@ fn slang_vertex_shaders_need_draw_parameters() {
     record.features.shader_draw_parameters = false;
     assert_eq!(record.missing(), ["shaderDrawParameters"]);
 }
+
+/// Records list the instance's surface extensions (4.1v(b)); records made before they did still
+/// read, with none.
+#[test]
+fn records_list_surface_extensions_and_older_ones_still_read() {
+    let old = lavapipe();
+    assert!(
+        old.surface_extensions.is_empty(),
+        "the 4.1v(a) fixture predates them"
+    );
+    let mut record = old.clone();
+    record.surface_extensions = vec!["VK_EXT_headless_surface".into(), "VK_KHR_surface".into()];
+    let json = serde_json::to_string(&record).unwrap();
+    assert!(json.contains("surface_extensions"), "{json}");
+    assert_eq!(serde_json::from_str::<ProbeRecord>(&json).unwrap(), record);
+    assert_eq!(
+        caps_from_record(&record),
+        caps_from_record(&old),
+        "caps don't depend on them"
+    );
+}
+
+/// The renderer indexes bindless textures with per-pixel values (`NonUniformResourceIndex`), so
+/// SPIR-V declares `SampledImageArrayNonUniformIndexing` (and storage images likewise): both are
+/// required (4.1v(b), found on lavapipe under validation).
+#[test]
+fn bindless_textures_need_non_uniform_indexing() {
+    let mut record = lavapipe();
+    assert!(record.missing().is_empty(), "lavapipe has both");
+    record
+        .features
+        .shader_sampled_image_array_non_uniform_indexing = false;
+    record
+        .features
+        .shader_storage_image_array_non_uniform_indexing = false;
+    assert_eq!(
+        record.missing(),
+        [
+            "shaderSampledImageArrayNonUniformIndexing",
+            "shaderStorageImageArrayNonUniformIndexing"
+        ]
+    );
+}

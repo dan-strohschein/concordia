@@ -112,3 +112,78 @@ fn key_presses_become_typed_text() {
     assert_eq!(text_from_key(KeyCode::Escape, Some("\u{1b}"), none), None);
     assert_eq!(text_from_key(KeyCode::F1, None, none), None);
 }
+
+/// Window handles become native views for the GPU surface: AppKit on macOS, Xlib, XCB and
+/// Wayland on Linux (M4 4.1v(b)); others (or missing displays) have none.
+#[test]
+fn window_handles_become_native_views_per_platform() {
+    use concordia_platform::NativeView;
+    use std::ffi::c_void;
+    use std::num::{NonZeroIsize, NonZeroU32};
+    use std::ptr::NonNull;
+    use winit::raw_window_handle as rwh;
+    let a = NonNull::<c_void>::dangling();
+    let b = NonNull::new(8usize as *mut c_void).unwrap();
+    let view = |w, d| NativeView::from_raw(w, d);
+    assert_eq!(
+        view(
+            rwh::RawWindowHandle::AppKit(rwh::AppKitWindowHandle::new(a)),
+            rwh::RawDisplayHandle::AppKit(rwh::AppKitDisplayHandle::new()),
+        ),
+        Some(NativeView::AppKit(a))
+    );
+    assert_eq!(
+        view(
+            rwh::RawWindowHandle::Xlib(rwh::XlibWindowHandle::new(42)),
+            rwh::RawDisplayHandle::Xlib(rwh::XlibDisplayHandle::new(Some(b), 0)),
+        ),
+        Some(NativeView::Xlib {
+            display: b,
+            window: 42
+        })
+    );
+    assert_eq!(
+        view(
+            rwh::RawWindowHandle::Xcb(rwh::XcbWindowHandle::new(NonZeroU32::new(7).unwrap())),
+            rwh::RawDisplayHandle::Xcb(rwh::XcbDisplayHandle::new(Some(b), 0)),
+        ),
+        Some(NativeView::Xcb {
+            connection: b,
+            window: 7
+        })
+    );
+    assert_eq!(
+        view(
+            rwh::RawWindowHandle::Wayland(rwh::WaylandWindowHandle::new(a)),
+            rwh::RawDisplayHandle::Wayland(rwh::WaylandDisplayHandle::new(b)),
+        ),
+        Some(NativeView::Wayland {
+            display: b,
+            surface: a
+        })
+    );
+    assert_eq!(
+        view(
+            rwh::RawWindowHandle::Xlib(rwh::XlibWindowHandle::new(42)),
+            rwh::RawDisplayHandle::Xlib(rwh::XlibDisplayHandle::new(None, 0)),
+        ),
+        None,
+        "an Xlib window without its display can't make a surface"
+    );
+    assert_eq!(
+        view(
+            rwh::RawWindowHandle::Xlib(rwh::XlibWindowHandle::new(42)),
+            rwh::RawDisplayHandle::Wayland(rwh::WaylandDisplayHandle::new(b)),
+        ),
+        None,
+        "mismatched window and display"
+    );
+    assert_eq!(
+        view(
+            rwh::RawWindowHandle::Win32(rwh::Win32WindowHandle::new(NonZeroIsize::new(1).unwrap())),
+            rwh::RawDisplayHandle::Windows(rwh::WindowsDisplayHandle::new()),
+        ),
+        None,
+        "no Windows surfaces yet"
+    );
+}

@@ -2,14 +2,17 @@
 //! finished submissions are retired lazily (on the next submit, wait or destroy).
 
 use std::collections::{BTreeMap, VecDeque};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::thread::JoinHandle;
 use std::time::Duration;
 
 use ash::vk;
 use concordia_rhi::{
     BindlessIndex, Buffer, BufferDesc, BufferUsage, ComputePipelineDesc, Device, GpuTimeCallback,
-    GpuTiming, GraphicsPipelineDesc, Heap, HeapDesc, MeshPipelineDesc, Pipeline, RhiCaps, RhiError,
-    SampleCount, Slots, Submit, Texture, TextureDesc, TextureUsage, Timeline, TimestampGranularity,
+    GpuTiming, GraphicsPipelineDesc, Heap, HeapDesc, Layout, MeshPipelineDesc, Pipeline,
+    PresentedCallback, RhiCaps, RhiError, SampleCount, Slots, Submit, Surface, SurfaceTarget,
+    Texture, TextureDesc, TextureUsage, Timeline, TimestampGranularity,
 };
 use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
 
@@ -23,6 +26,7 @@ use crate::resources::{self, Ctx, Dead, Placement, VkBuffer, VkHeap, VkTexture};
 use crate::timing::Queries;
 use crate::track::TexState;
 use crate::validation::ValidationLog;
+use crate::wsi::{self, Acquired, VkSurface, Wsi};
 use crate::{Options, Validation};
 
 /// A timeline and the highest value any submission will signal on it.
@@ -79,6 +83,16 @@ struct InFlight {
     cb: vk::CommandBuffer,
     queries: Option<(vk::QueryPool, Queries)>,
     callback: Option<GpuTimeCallback>,
+    /// Called when the frame presented with this submission retires.
+    presented: Option<PresentedCallback>,
+}
+
+/// What a present adds to a submission: the acquired image's init, and its semaphores.
+#[derive(Default)]
+struct Extra {
+    inits: Vec<Texture>,
+    waits: Vec<vk::SemaphoreSubmitInfo<'static>>,
+    signals: Vec<vk::SemaphoreSubmitInfo<'static>>,
 }
 
 struct State {
@@ -95,20 +109,38 @@ struct State {
     /// New textures to move to their home layouts at the start of the next submission.
     inits: Vec<Texture>,
     heap_memory_types: Option<u32>,
+    surfaces: Slots<VkSurface>,
     lost: bool,
 }
 
-/// A Vulkan 1.3 device (ADR-0088).
+/// A Vulkan 1.3 device (ADR-0088): the device state, shared with a retire thread that fires
+/// timing and presentation callbacks as the GPU finishes (as Metal's completion handlers do).
 pub struct VulkanDevice {
+    inner: Arc<Inner>,
+    retirer: Option<(Arc<AtomicBool>, JoinHandle<()>)>,
+}
+
+/// A [`VulkanDevice`]'s state (reached through `Deref`).
+pub struct Inner {
+    /// Wakes the retire thread when work is submitted.
+    waker: OnceLock<std::thread::Thread>,
     caps: RhiCaps,
     timestamp_period_ns: f32,
     timestamp_bits: u32,
     device: ash::Device,
     physical: vk::PhysicalDevice,
+    /// The universal queue's family.
+    family: u32,
+    /// Surface and swapchain functions (when the instance and device have the extensions).
+    wsi: Option<Wsi>,
+    /// `VK_KHR_swapchain_mutable_format` is enabled (sRGB views of UNORM swapchains).
+    mutable_format: bool,
     /// Used only while `state` is locked (queues need external synchronization).
     queue: vk::Queue,
     /// Signalled to `State::submitted` by every submission.
     progress: vk::Semaphore,
+    /// Fail calls once the validation log has errors (`Options::strict`).
+    strict: bool,
     state: Mutex<State>,
     instance: Instance,
 }
@@ -118,6 +150,60 @@ impl std::fmt::Debug for VulkanDevice {
         f.debug_struct("VulkanDevice")
             .field("caps", &self.caps)
             .finish_non_exhaustive()
+    }
+}
+
+impl std::ops::Deref for VulkanDevice {
+    type Target = Inner;
+
+    fn deref(&self) -> &Inner {
+        &self.inner
+    }
+}
+
+/// How often the retire thread looks at the progress timeline while work is in flight.
+const RETIRE_BUSY: Duration = Duration::from_millis(1);
+/// How long it sleeps with nothing in flight (a submission wakes it).
+const RETIRE_IDLE: Duration = Duration::from_millis(50);
+
+impl VulkanDevice {
+    /// Opens the best Vulkan 1.3 device with `options`.
+    pub fn new(options: &Options) -> Result<Self, RhiError> {
+        let inner = Arc::new(Inner::new(options)?);
+        let stop = Arc::new(AtomicBool::new(false));
+        let (shared, stopping) = (inner.clone(), stop.clone());
+        let thread = std::thread::Builder::new()
+            .name("concordia-vulkan-retire".into())
+            .spawn(move || retire_loop(&shared, &stopping))
+            .map_err(|e| RhiError::invalid("retire thread", e.to_string()))?;
+        let _ = inner.waker.set(thread.thread().clone());
+        Ok(Self {
+            inner,
+            retirer: Some((stop, thread)),
+        })
+    }
+}
+
+/// Retires finished submissions until `stop`. It makes no Vulkan call outside the state lock
+/// (`retire` reads the timeline under it): the validation layers Ubuntu 24.04 ships crashed when it
+/// waited on the timeline while another thread submitted.
+fn retire_loop(inner: &Inner, stop: &AtomicBool) {
+    while !stop.load(Ordering::Acquire) {
+        let busy = inner.oldest_in_flight().is_some();
+        std::thread::park_timeout(if busy { RETIRE_BUSY } else { RETIRE_IDLE });
+        if busy {
+            inner.retire();
+        }
+    }
+}
+
+impl Drop for VulkanDevice {
+    fn drop(&mut self) {
+        if let Some((stop, thread)) = self.retirer.take() {
+            stop.store(true, Ordering::Release);
+            thread.thread().unpark();
+            let _ = thread.join();
+        }
     }
 }
 
@@ -135,9 +221,9 @@ pub(crate) fn choose(instance: &Instance) -> Result<Candidate, RhiError> {
     Ok(candidates.swap_remove(index))
 }
 
-impl VulkanDevice {
+impl Inner {
     /// Opens the best Vulkan 1.3 device with `options`.
-    pub fn new(options: &Options) -> Result<Self, RhiError> {
+    fn new(options: &Options) -> Result<Self, RhiError> {
         let instance = Instance::new(options.validation, options.log.clone().unwrap_or_default())?;
         let chosen = choose(&instance)?;
         let caps = record::caps_from_record(&chosen.record).masked(&options.mask);
@@ -149,17 +235,29 @@ impl VulkanDevice {
                 record::BINDLESS_CAPACITY
             )));
         }
-        let device = create_logical(&instance, &chosen)?;
+        let presents = can_present(&instance, &chosen);
+        let mutable_format =
+            presents && chosen.record.extensions.iter().any(|e| e == MUTABLE_FORMAT);
+        let device = create_logical(&chosen, &instance, presents, mutable_format)?;
         // SAFETY: the device was created with one queue in `chosen.family`.
         let queue = unsafe { device.get_device_queue(chosen.family, 0) };
+        let wsi = presents.then(|| Wsi {
+            surface: ash::khr::surface::Instance::new(&instance.entry, &instance.raw),
+            swapchain: ash::khr::swapchain::Device::new(&instance.raw, &device),
+        });
         let mut made = Self {
+            waker: OnceLock::new(),
             caps,
             timestamp_period_ns: chosen.record.timestamp_period_ns,
             timestamp_bits: chosen.record.queue_timestamp_valid_bits,
             device,
             physical: chosen.physical,
+            family: chosen.family,
+            wsi,
+            mutable_format,
             queue,
             progress: vk::Semaphore::null(),
+            strict: options.strict,
             state: Mutex::new(State {
                 allocator: None,
                 bindless: None,
@@ -171,6 +269,7 @@ impl VulkanDevice {
                 graveyard: Vec::new(),
                 inits: Vec::new(),
                 heap_memory_types: None,
+                surfaces: Slots::default(),
                 lost: false,
             }),
             instance,
@@ -208,6 +307,196 @@ impl VulkanDevice {
         Ok(())
     }
 
+    fn wsi(&self) -> Result<&Wsi, RhiError> {
+        self.wsi.as_ref().ok_or_else(|| {
+            RhiError::Unsupported(format!(
+                "{} can't present: the loader lacks VK_KHR_surface or the device VK_KHR_swapchain",
+                self.caps.device_name
+            ))
+        })
+    }
+
+    /// A surface entry for `raw` after checking the queue can present to it in `format`.
+    fn surface_entry(
+        &self,
+        wsi: &Wsi,
+        raw: vk::SurfaceKHR,
+        format: concordia_rhi::Format,
+        target: &SurfaceTarget,
+    ) -> Result<VkSurface, RhiError> {
+        if !wsi.supports(self.physical, self.family, raw)? {
+            return Err(RhiError::Unsupported(format!(
+                "{}'s queue can't present to {target:?}",
+                self.caps.device_name
+            )));
+        }
+        let offered = wsi.formats(self.physical, raw)?;
+        Ok(VkSurface {
+            raw,
+            format,
+            choice: crate::swapchain::surface_format(&offered, format, self.mutable_format)?,
+            chain: None,
+            acquired: None,
+            spare: Vec::new(),
+            stale: false,
+        })
+    }
+
+    /// Rebuilds `entry`'s swapchain when it has none, its size changed or it went stale. Called
+    /// with the state locked (the queue is waited on).
+    fn ensure_chain(
+        &self,
+        wsi: &Wsi,
+        entry: &mut VkSurface,
+        plan: &crate::swapchain::Plan,
+    ) -> Result<(), RhiError> {
+        if !entry.stale
+            && entry
+                .chain
+                .as_ref()
+                .is_some_and(|c| c.extent == plan.extent)
+        {
+            return Ok(());
+        }
+        // SAFETY: the queue is used only under the state lock, which the caller holds.
+        unsafe { self.device.queue_wait_idle(self.queue) }
+            .map_err(|e| error("vkQueueWaitIdle", e))?;
+        let transform = wsi.transform(self.physical, entry.raw)?;
+        let old = entry.chain.take();
+        let old_raw = old.as_ref().map_or(vk::SwapchainKHR::null(), |c| c.raw);
+        let built = wsi.build(&self.device, entry, plan, transform, old_raw);
+        if let Some(old) = old {
+            wsi.destroy(&self.device, old);
+        }
+        entry.chain = Some(built?);
+        entry.stale = false;
+        Ok(())
+    }
+
+    /// Acquires the chain's next image as a texture, or `None` (no image in time, or out of date:
+    /// then `entry.stale` is set).
+    fn next_image(
+        &self,
+        wsi: &Wsi,
+        entry: &mut VkSurface,
+        resources: &mut Resources,
+    ) -> Result<Option<Acquired>, RhiError> {
+        let chain = entry
+            .chain
+            .as_ref()
+            .ok_or_else(|| RhiError::invalid("acquire", "the surface has no swapchain"))?;
+        let semaphore = match entry.spare.pop() {
+            Some(s) => s,
+            None => wsi::binary_semaphore(&self.device)?,
+        };
+        // SAFETY: the swapchain is live and the semaphore unsignalled with no pending operation.
+        let next = unsafe {
+            wsi.swapchain.acquire_next_image(
+                chain.raw,
+                wsi::ACQUIRE_TIMEOUT_NS,
+                semaphore,
+                vk::Fence::null(),
+            )
+        };
+        let (index, suboptimal) = match next {
+            Ok(next) => next,
+            Err(vk::Result::TIMEOUT | vk::Result::NOT_READY) => {
+                entry.spare.push(semaphore);
+                return Ok(None);
+            }
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                entry.spare.push(semaphore);
+                entry.stale = true;
+                return Ok(None);
+            }
+            Err(e) => {
+                entry.spare.push(semaphore);
+                return Err(error("vkAcquireNextImageKHR", e));
+            }
+        };
+        entry.stale |= suboptimal;
+        let i = index as usize;
+        let [width, height] = chain.extent;
+        let side = |n| std::num::NonZeroU32::new(n).unwrap_or(std::num::NonZeroU32::MIN);
+        let texture = VkTexture {
+            raw: chain.images[i],
+            view: chain.views[i],
+            mip0: chain.views[i],
+            allocation: None,
+            desc: TextureDesc {
+                width: side(width),
+                height: side(height),
+                mip_levels: std::num::NonZeroU32::MIN,
+                samples: SampleCount::X1,
+                format: entry.format,
+                usage: TextureUsage::RENDER_TARGET,
+                label: "surface image".into(),
+            },
+            // Moved from `Undefined` to `Present` at the start of the frame's submission.
+            state: TexState {
+                home: Layout::Present,
+                defined: true,
+            },
+            bindless: None,
+            swapchain: true,
+        };
+        let (slot, generation) = resources.textures.insert(texture);
+        Ok(Some(Acquired {
+            index,
+            texture: Texture::from_raw(slot, generation),
+            semaphore,
+        }))
+    }
+
+    /// Queues the image for presentation; `Ok(true)` when the swapchain should be rebuilt.
+    fn queue_present(
+        &self,
+        wsi: &Wsi,
+        swapchain: vk::SwapchainKHR,
+        index: u32,
+        rendered: vk::Semaphore,
+    ) -> Result<bool, RhiError> {
+        let (waits, swapchains, indices) = ([rendered], [swapchain], [index]);
+        let info = vk::PresentInfoKHR::default()
+            .wait_semaphores(&waits)
+            .swapchains(&swapchains)
+            .image_indices(&indices);
+        // SAFETY: the queue is used under the state lock (held by the caller); the image was
+        // acquired from this swapchain and the frame's submission signals `rendered`.
+        match unsafe { wsi.swapchain.queue_present(self.queue, &info) } {
+            Ok(suboptimal) => Ok(suboptimal),
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => Ok(true),
+            Err(e) => Err(error("vkQueuePresentKHR", e)),
+        }
+    }
+
+    fn mark_stale(&self, state: &mut State, surface: Surface, stale: bool) {
+        if let Some(entry) = state
+            .surfaces
+            .get_mut(surface.index(), surface.generation())
+        {
+            entry.stale |= stale;
+        }
+    }
+
+    /// Waits for the surface's work (and a pending acquire) to finish, then destroys it. Called
+    /// with the state locked.
+    fn release_surface(&self, wsi: &Wsi, entry: VkSurface) {
+        if let Some(acquired) = &entry.acquired {
+            // A no-op batch consumes the acquire's signal, so the semaphore can be destroyed.
+            let waits = [binary_info(acquired.semaphore)];
+            let info = vk::SubmitInfo2::default().wait_semaphore_infos(&waits);
+            // SAFETY: the queue is used under the state lock; the semaphore is live.
+            let _ = unsafe {
+                self.device
+                    .queue_submit2(self.queue, &[info], vk::Fence::null())
+            };
+        }
+        // SAFETY: as above.
+        let _ = unsafe { self.device.queue_wait_idle(self.queue) };
+        wsi.destroy_surface(&self.device, entry);
+    }
+
     /// True when the Khronos validation layer is on.
     pub fn validation_enabled(&self) -> bool {
         self.instance.validating()
@@ -226,6 +515,30 @@ impl VulkanDevice {
         }
     }
 
+    /// In strict mode, an error naming the validation layer's errors so far.
+    fn checked(&self) -> Result<(), RhiError> {
+        if !self.strict {
+            return Ok(());
+        }
+        let errors = self.instance.log.errors();
+        match errors.is_empty() {
+            true => Ok(()),
+            false => Err(RhiError::invalid(
+                "validation",
+                format!(
+                    "the Khronos validation layer reported {} error(s):\n{}",
+                    errors.len(),
+                    errors.join("\n")
+                ),
+            )),
+        }
+    }
+
+    /// The oldest submission the GPU may still be running.
+    fn oldest_in_flight(&self) -> Option<u64> {
+        self.state.lock().ok()?.in_flight.front().map(|f| f.value)
+    }
+
     fn lock(&self) -> Result<MutexGuard<'_, State>, RhiError> {
         self.state
             .lock()
@@ -234,7 +547,7 @@ impl VulkanDevice {
 
     /// Frees what finished submissions held and reports their timing.
     fn retire(&self) {
-        let mut reports = Vec::new();
+        let mut reports = Reports::default();
         if let Ok(mut state) = self.state.lock() {
             // SAFETY: the progress semaphore is live.
             match unsafe { self.device.get_semaphore_counter_value(self.progress) } {
@@ -243,17 +556,10 @@ impl VulkanDevice {
                 Err(_) => {}
             }
         }
-        for (callback, timing) in reports {
-            callback(timing);
-        }
+        reports.fire();
     }
 
-    fn retire_to(
-        &self,
-        state: &mut State,
-        done: u64,
-        reports: &mut Vec<(GpuTimeCallback, GpuTiming)>,
-    ) {
+    fn retire_to(&self, state: &mut State, done: u64, reports: &mut Reports) {
         while state.in_flight.front().is_some_and(|f| f.value <= done) {
             let Some(finished) = state.in_flight.pop_front() else {
                 break;
@@ -274,8 +580,9 @@ impl VulkanDevice {
                 state.spare.push(finished.cb);
             }
             if let Some(callback) = finished.callback {
-                reports.push((callback, timing.unwrap_or_default()));
+                reports.timings.push((callback, timing.unwrap_or_default()));
             }
+            reports.presented.extend(finished.presented);
         }
         let (ready, waiting): (Vec<_>, Vec<_>) = std::mem::take(&mut state.graveyard)
             .into_iter()
@@ -437,14 +744,32 @@ impl VulkanDevice {
         submit.commands.validate()?;
         self.retire();
         let mut guard = self.lock()?;
-        let state = &mut *guard;
+        let now = self.submit_locked(&mut guard, &submit, on_time, Extra::default())?;
+        drop(guard);
+        if let Some(report) = now {
+            report(GpuTiming::default());
+        }
+        self.checked()
+    }
+
+    /// Records and submits under the lock; returns a timing callback to call (unlocked) at once
+    /// when the submission can't be timed.
+    fn submit_locked(
+        &self,
+        state: &mut State,
+        submit: &Submit<'_>,
+        on_time: Option<GpuTimeCallback>,
+        extra: Extra,
+    ) -> Result<Option<GpuTimeCallback>, RhiError> {
         if state.lost {
             return Err(RhiError::DeviceLost(
                 "an earlier submission lost the device".into(),
             ));
         }
-        let waits = waits(state, submit.wait)?;
-        let signals = signals(state, submit.signal)?;
+        let mut waits = waits(state, submit.wait)?;
+        waits.extend(extra.waits);
+        let mut signals = signals(state, submit.signal)?;
+        signals.extend(extra.signals);
         let queries = match (&on_time, self.caps.timestamp_granularity) {
             (Some(_), TimestampGranularity::None) | (None, _) => None,
             (Some(_), granularity) => Some(Queries::plan(
@@ -461,9 +786,9 @@ impl VulkanDevice {
             state,
             cb,
             pool.zip(queries.as_ref()),
-            &submit,
-            &waits,
-            &signals,
+            submit,
+            (&waits, &signals),
+            &extra.inits,
         );
         let states = match recorded {
             Ok(states) => states,
@@ -493,12 +818,12 @@ impl VulkanDevice {
             cb,
             queries: pool.zip(queries),
             callback,
+            presented: None,
         });
-        drop(guard);
-        if let Some(report) = now {
-            report(GpuTiming::default());
+        if let Some(retirer) = self.waker.get() {
+            retirer.unpark();
         }
-        Ok(())
+        Ok(now)
     }
 
     fn record_and_submit(
@@ -507,8 +832,11 @@ impl VulkanDevice {
         cb: vk::CommandBuffer,
         queries: Option<(vk::QueryPool, &Queries)>,
         submit: &Submit<'_>,
-        waits: &[vk::SemaphoreSubmitInfo<'static>],
-        signals: &[vk::SemaphoreSubmitInfo<'static>],
+        (waits, signals): (
+            &[vk::SemaphoreSubmitInfo<'static>],
+            &[vk::SemaphoreSubmitInfo<'static>],
+        ),
+        extra_inits: &[Texture],
     ) -> Result<BTreeMap<Texture, TexState>, RhiError> {
         let tables = state
             .bindless
@@ -526,12 +854,8 @@ impl VulkanDevice {
         // SAFETY: `cb` is a reset, unused command buffer from the locked pool.
         unsafe { self.device.begin_command_buffer(cb, &begin) }
             .map_err(|e| error("vkBeginCommandBuffer", e))?;
-        let recorded = encode::record(
-            &target,
-            &state.resources,
-            &submit.commands.commands,
-            &state.inits,
-        );
+        let inits: Vec<Texture> = state.inits.iter().chain(extra_inits).copied().collect();
+        let recorded = encode::record(&target, &state.resources, &submit.commands.commands, &inits);
         // SAFETY: `cb` is recording (ended even after an encoding error so it can be reset).
         let ended = unsafe { self.device.end_command_buffer(cb) };
         let states = recorded?;
@@ -624,6 +948,44 @@ impl VulkanDevice {
     }
 }
 
+/// Callbacks collected under the lock and fired after it.
+#[derive(Default)]
+struct Reports {
+    timings: Vec<(GpuTimeCallback, GpuTiming)>,
+    presented: Vec<PresentedCallback>,
+}
+
+impl Reports {
+    fn fire(self) {
+        for (callback, timing) in self.timings {
+            callback(timing);
+        }
+        // The frame's GPU work has finished; Vulkan can't say when it reached the display
+        // (`VK_KHR_present_wait` later), so this is the time it retired.
+        let now = std::time::SystemTime::now();
+        for callback in self.presented {
+            callback(Some(now));
+        }
+    }
+}
+
+const MUTABLE_FORMAT: &str = "VK_KHR_swapchain_mutable_format";
+
+/// Whether the instance can make surfaces and the device can present (`VK_KHR_swapchain`).
+fn can_present(instance: &Instance, chosen: &Candidate) -> bool {
+    instance.has_surface(crate::instance::SURFACE)
+        && chosen
+            .record
+            .extensions
+            .iter()
+            .any(|e| e == "VK_KHR_swapchain")
+}
+
+/// A binary semaphore in a submission (waited on or signalled by all commands).
+fn binary_info(semaphore: vk::Semaphore) -> vk::SemaphoreSubmitInfo<'static> {
+    semaphore_info(semaphore, 0)
+}
+
 fn semaphore_info(semaphore: vk::Semaphore, value: u64) -> vk::SemaphoreSubmitInfo<'static> {
     vk::SemaphoreSubmitInfo::default()
         .semaphore(semaphore)
@@ -671,7 +1033,12 @@ fn timeline_semaphore(device: &ash::Device, initial: u64) -> Result<vk::Semaphor
     unsafe { device.create_semaphore(&info, None) }.map_err(|e| error("vkCreateSemaphore", e))
 }
 
-fn create_logical(instance: &Instance, chosen: &Candidate) -> Result<ash::Device, RhiError> {
+fn create_logical(
+    chosen: &Candidate,
+    instance: &Instance,
+    presents: bool,
+    mutable_format: bool,
+) -> Result<ash::Device, RhiError> {
     let priorities = [1.0];
     let queues = [vk::DeviceQueueCreateInfo::default()
         .queue_family_index(chosen.family)
@@ -683,7 +1050,9 @@ fn create_logical(instance: &Instance, chosen: &Candidate) -> Result<ash::Device
         .descriptor_binding_partially_bound(true)
         .descriptor_binding_sampled_image_update_after_bind(true)
         .descriptor_binding_storage_image_update_after_bind(true)
-        .descriptor_binding_update_unused_while_pending(true);
+        .descriptor_binding_update_unused_while_pending(true)
+        .shader_sampled_image_array_non_uniform_indexing(true)
+        .shader_storage_image_array_non_uniform_indexing(true);
     let mut v13 = vk::PhysicalDeviceVulkan13Features::default()
         .dynamic_rendering(true)
         .synchronization2(true);
@@ -705,6 +1074,8 @@ fn create_logical(instance: &Instance, chosen: &Candidate) -> Result<ash::Device
     let extensions: Vec<*const std::ffi::c_char> = portability
         .then_some(c"VK_KHR_portability_subset".as_ptr())
         .into_iter()
+        .chain(presents.then_some(ash::khr::swapchain::NAME.as_ptr()))
+        .chain(mutable_format.then_some(ash::khr::swapchain_mutable_format::NAME.as_ptr()))
         .collect();
     let info = vk::DeviceCreateInfo::default()
         .queue_create_infos(&queues)
@@ -901,7 +1272,10 @@ impl Device for VulkanDevice {
         let mut state = self.lock()?;
         let bytes = state.resources.buffer_mut(buffer)?.mapped()?;
         let range = byte_range(bytes.len(), offset, len)?;
-        Ok(bytes[range].to_vec())
+        let read = bytes[range].to_vec();
+        drop(state);
+        self.checked()?;
+        Ok(read)
     }
 
     fn buffer_index(&self, buffer: Buffer) -> Result<BindlessIndex, RhiError> {
@@ -954,6 +1328,7 @@ impl Device for VulkanDevice {
         let raw = self.lock()?.resources.timeline(timeline)?.raw;
         let reached = self.wait_value(raw, value, timeout)?;
         self.retire();
+        self.checked()?;
         Ok(reached)
     }
 
@@ -973,7 +1348,7 @@ impl Device for VulkanDevice {
         let target = self.lock()?.submitted;
         self.wait_value(self.progress, target, Duration::MAX)?;
         self.retire();
-        Ok(())
+        self.checked()
     }
 
     fn destroy_buffer(&self, buffer: Buffer) {
@@ -989,6 +1364,9 @@ impl Device for VulkanDevice {
 
     fn destroy_texture(&self, texture: Texture) {
         let removed = self.state.lock().ok().and_then(|mut s| {
+            if s.resources.texture(texture).is_ok_and(|t| t.swapchain) {
+                return None; // the surface releases its images (present, destroy_surface)
+            }
             s.inits.retain(|t| *t != texture);
             s.resources
                 .textures
@@ -1012,36 +1390,144 @@ impl Device for VulkanDevice {
 
     unsafe fn create_surface(
         &self,
-        target: concordia_rhi::SurfaceTarget,
-        _: concordia_rhi::Format,
-    ) -> Result<concordia_rhi::Surface, RhiError> {
-        Err(RhiError::Unsupported(format!(
-            "{target:?}: Vulkan surfaces arrive in M4 4.1v(b)"
-        )))
+        target: SurfaceTarget,
+        format: concordia_rhi::Format,
+    ) -> Result<Surface, RhiError> {
+        let wsi = self.wsi()?;
+        // SAFETY: forwarded from the caller (the native objects outlive the surface).
+        let raw = unsafe { wsi::create_raw(&self.instance, target)? };
+        let made = self
+            .surface_entry(wsi, raw, format, &target)
+            .and_then(|entry| {
+                let (index, generation) = self.lock()?.surfaces.insert(entry);
+                Ok(Surface::from_raw(index, generation))
+            });
+        if made.is_err() {
+            // SAFETY: the surface was just created and nothing uses it.
+            unsafe { wsi.surface.destroy_surface(raw, None) };
+        }
+        made
     }
 
     fn acquire(
         &self,
-        _: concordia_rhi::Surface,
-        _: u32,
-        _: u32,
+        surface: Surface,
+        width: u32,
+        height: u32,
     ) -> Result<Option<Texture>, RhiError> {
-        Err(RhiError::Unsupported(
-            "Vulkan surfaces arrive in M4 4.1v(b)".into(),
-        ))
+        let wsi = self.wsi()?;
+        self.retire();
+        let mut guard = self.lock()?;
+        let State {
+            surfaces,
+            resources,
+            ..
+        } = &mut *guard;
+        let entry = surfaces
+            .get_mut(surface.index(), surface.generation())
+            .ok_or_else(|| stale("surface", surface.index(), surface.generation()))?;
+        if entry.acquired.is_some() {
+            return Err(RhiError::invalid(
+                "acquire",
+                "present the acquired image before acquiring another",
+            ));
+        }
+        // A second try after the swapchain went out of date and was rebuilt.
+        for _ in 0..2 {
+            let limits = wsi.limits(self.physical, entry.raw)?;
+            let Some(plan) = crate::swapchain::plan(&limits, width, height)? else {
+                return Ok(None);
+            };
+            self.ensure_chain(wsi, entry, &plan)?;
+            if let Some(acquired) = self.next_image(wsi, entry, resources)? {
+                let texture = acquired.texture;
+                entry.acquired = Some(acquired);
+                return Ok(Some(texture));
+            }
+            if !entry.stale {
+                return Ok(None);
+            }
+        }
+        Ok(None)
     }
 
     fn present(
         &self,
-        _: concordia_rhi::Surface,
-        _: concordia_rhi::Present<'_>,
+        surface: Surface,
+        present: concordia_rhi::Present<'_>,
     ) -> Result<(), RhiError> {
-        Err(RhiError::Unsupported(
-            "Vulkan surfaces arrive in M4 4.1v(b)".into(),
-        ))
+        present.commands.validate()?;
+        let wsi = self.wsi()?;
+        self.retire();
+        let mut guard = self.lock()?;
+        let state = &mut *guard;
+        let entry = state
+            .surfaces
+            .get_mut(surface.index(), surface.generation())
+            .ok_or_else(|| stale("surface", surface.index(), surface.generation()))?;
+        let acquired = entry.acquired.take().ok_or_else(|| {
+            RhiError::invalid("present", "acquire an image from the surface first")
+        })?;
+        let chain = entry
+            .chain
+            .as_ref()
+            .ok_or_else(|| RhiError::invalid("present", "the surface has no swapchain"))?;
+        let (swapchain, rendered) = (chain.raw, chain.rendered[acquired.index as usize]);
+        let extra = Extra {
+            inits: vec![acquired.texture],
+            waits: vec![binary_info(acquired.semaphore)],
+            signals: vec![binary_info(rendered)],
+        };
+        let submit = Submit {
+            queue: concordia_rhi::QueueKind::Graphics,
+            commands: present.commands,
+            wait: &[],
+            signal: present.signal,
+        };
+        let submitted = self.submit_locked(state, &submit, present.on_gpu_time, extra);
+        let texture = acquired.texture;
+        state
+            .resources
+            .textures
+            .remove(texture.index(), texture.generation());
+        let value = state.submitted;
+        state
+            .graveyard
+            .push((value, Dead::Semaphore(acquired.semaphore)));
+        let now = match submitted {
+            Ok(now) => now,
+            Err(e) => {
+                // The image stays acquired and unpresented: rebuild the swapchain next time.
+                self.mark_stale(state, surface, true);
+                return Err(e);
+            }
+        };
+        if let (Some(callback), Some(last)) = (present.on_presented, state.in_flight.back_mut()) {
+            last.presented = Some(callback);
+        }
+        let presented = self.queue_present(wsi, swapchain, acquired.index, rendered);
+        self.mark_stale(state, surface, presented.as_ref().is_ok_and(|s| *s));
+        drop(guard);
+        if let Some(report) = now {
+            report(GpuTiming::default());
+        }
+        presented?;
+        self.checked()
     }
 
-    fn destroy_surface(&self, _: concordia_rhi::Surface) {}
+    fn destroy_surface(&self, surface: Surface) {
+        let Some(wsi) = self.wsi.as_ref() else { return };
+        let Ok(mut guard) = self.lock() else { return };
+        let state = &mut *guard;
+        let Some(entry) = state.surfaces.remove(surface.index(), surface.generation()) else {
+            return;
+        };
+        if let Some(acquired) = &entry.acquired {
+            let t = acquired.texture;
+            state.resources.textures.remove(t.index(), t.generation());
+        }
+        self.release_surface(wsi, entry);
+    }
 }
 
 fn byte_range(available: usize, offset: u64, len: u64) -> Result<std::ops::Range<usize>, RhiError> {
@@ -1057,7 +1543,7 @@ fn byte_range(available: usize, offset: u64, len: u64) -> Result<std::ops::Range
     }
 }
 
-impl Drop for VulkanDevice {
+impl Drop for Inner {
     fn drop(&mut self) {
         // SAFETY: waiting for the device to go idle before destroying anything it may use.
         unsafe {
@@ -1068,6 +1554,11 @@ impl Drop for VulkanDevice {
             Ok(s) => s,
             Err(poisoned) => poisoned.into_inner(),
         };
+        if let Some(wsi) = &self.wsi {
+            for entry in state.surfaces.drain() {
+                wsi.destroy_surface(&self.device, entry);
+            }
+        }
         let mut dead: Vec<Dead> = std::mem::take(&mut state.graveyard)
             .into_iter()
             .map(|(_, d)| d)

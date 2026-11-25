@@ -2,9 +2,11 @@
 //! [`conformance_tests!`](crate::conformance_tests) in its `tests/conformance.rs`.
 
 mod cases;
+mod surface;
 mod util;
 
 pub use cases::*;
+pub use surface::*;
 
 use std::path::PathBuf;
 
@@ -89,6 +91,34 @@ macro_rules! conformance_tests {
             let Some(device) = ($make)() else { return };
             let harness = $crate::conformance::Harness { golden: &$golden, shaders: &$shaders };
             $crate::conformance::$name(&*device, &harness);
+            ($finish)(&*device);
+        }
+    )+};
+}
+
+/// One `#[test]` per surface conformance case. `$make` returns `Option<Box<dyn Device>>` (`None`
+/// skips) and `$surface` a [`TestSurface`]; `finish` runs after each case as above.
+#[macro_export]
+macro_rules! surface_conformance_tests {
+    ($make:expr, $surface:expr) => {
+        $crate::surface_conformance_tests!($make, $surface, finish = |_: &dyn $crate::Device| {});
+    };
+    ($make:expr, $surface:expr, finish = $finish:expr) => {
+        $crate::surface_conformance_tests!(@cases $make, $surface, $finish;
+            acquire_clear_present_cycles_without_leaking_handles,
+            surface_misuse_is_reported,
+            present_signals_timelines_and_reports_presentation,
+            present_reports_the_gpu_time_of_its_commands,
+            acquire_follows_the_requested_size,
+            destroying_a_surface_releases_its_acquired_image,
+            reports_arrive_without_another_device_call
+        );
+    };
+    (@cases $make:expr, $surface:expr, $finish:expr; $($name:ident),+) => {$(
+        #[test]
+        fn $name() {
+            let Some(device) = ($make)() else { return };
+            $crate::conformance::$name(&*device, &$surface);
             ($finish)(&*device);
         }
     )+};

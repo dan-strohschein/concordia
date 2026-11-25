@@ -523,3 +523,35 @@ fn the_default_emission_reference_is_the_main_cameras_ev() {
         "priority 5 wins; of the two, the lower id"
     );
 }
+
+/// `[render] backend` (auto, metal or vulkan) picks the GPU backend; `CONCORDIA_BACKEND` beats it
+/// (ADR-0088, M4 4.1v(b)).
+#[test]
+fn render_backend_comes_from_the_env_then_the_project_then_auto() {
+    use concordia_rhi::Backend;
+    use concordia_rhi_select::BackendChoice;
+    let (_dir, project) = project_with("[render]\nbackend = \"vulkan\"\n");
+    let project = project.unwrap();
+    assert_eq!(project.backend_choice(), BackendChoice::Vulkan);
+    assert_eq!(project.render_backend_with(None).unwrap(), Backend::Vulkan);
+    assert_eq!(
+        project.render_backend_with(Some("metal")).unwrap(),
+        Backend::Metal
+    );
+    let err = project.render_backend_with(Some("dx12")).unwrap_err();
+    assert!(matches!(err, AppError::Backend(_)), "{err}");
+    assert!(err.to_string().contains("CONCORDIA_BACKEND"), "{err}");
+    for manifest in ["[render]\n", ""] {
+        let (_dir, project) = project_with(manifest);
+        assert_eq!(
+            project.unwrap().backend_choice(),
+            BackendChoice::Auto,
+            "{manifest:?}"
+        );
+    }
+    let (_dir, project) = project_with("[render]\nbackend = \"dx12\"\n");
+    let err = project.unwrap_err();
+    assert!(matches!(err, AppError::Manifest { .. }), "{err}");
+    let text = err.to_string();
+    assert!(text.contains("dx12") && text.contains("vulkan"), "{text}");
+}

@@ -1,5 +1,6 @@
-//! Shared helpers for GPU render tests: a device (skipped without one unless required), the
-//! renderer, and small scene builders.
+//! Shared helpers for GPU render tests: a device on the chosen backend (`CONCORDIA_BACKEND`, else
+//! the platform's; skipped without one unless required), the renderer, a test surface, goldens
+//! with the backend's tolerance, and small scene builders.
 #![allow(dead_code)]
 
 use std::sync::Arc;
@@ -12,12 +13,13 @@ use concordia_core::math::{Quat, Vec3};
 use concordia_render::{
     Camera, DirectionalLight, Image, MemoryAssets, RenderRequest, RenderWorld, Renderer,
 };
+use concordia_rhi::Backend;
 use concordia_rhi::RhiError;
 use concordia_scene::builtin::Transform;
 use concordia_shaders::{SlangToolchain, SlangcCompiler};
 use concordia_terra::World;
-use concordia_testkit::golden::{RgbaImage, assert_golden};
-use concordia_testkit::gpu_required;
+use concordia_testkit::device_required;
+use concordia_testkit::golden::{RgbaImage, assert_golden_on};
 
 /// A renderer on the default device, or None (skip) when there is no GPU and none is required.
 pub fn renderer() -> Option<Renderer> {
@@ -36,17 +38,54 @@ pub fn device() -> Option<Arc<dyn concordia_rhi::Device>> {
     device_masked(&concordia_rhi::CapsMask::default())
 }
 
+/// The backend under test: `CONCORDIA_BACKEND`, else the platform's.
+pub fn backend() -> Backend {
+    concordia_rhi_select::choose_from_env(Default::default()).expect("a valid CONCORDIA_BACKEND")
+}
+
+/// A headless device on [`backend`] (a `DeviceFactory` for render modules).
+pub fn open_device() -> Result<Box<dyn concordia_rhi::Device>, RhiError> {
+    concordia_rhi_select::new_headless(backend())
+}
+
+/// Whether [`backend`] has a device (failing when one is required but missing).
+pub fn has_device() -> bool {
+    device().is_some()
+}
+
 fn device_masked(mask: &concordia_rhi::CapsMask) -> Option<Arc<dyn concordia_rhi::Device>> {
-    match concordia_rhi_metal::new_headless_masked(mask) {
+    let backend = backend();
+    match concordia_rhi_select::new_headless_masked(backend, mask) {
         Ok(device) => Some(Arc::<dyn concordia_rhi::Device>::from(device)),
         Err(RhiError::NoDevice { reason }) => {
             assert!(
-                !gpu_required(),
-                "CONCORDIA_REQUIRE_GPU=1 but no device: {reason}"
+                !device_required(backend),
+                "a {backend} device is required but missing: {reason}"
             );
             None
         }
         Err(other) => panic!("unexpected device error: {other}"),
+    }
+}
+
+/// A surface target for [`backend`]: a standalone `CAMetalLayer` on Metal, a headless surface on
+/// Vulkan. Keep it alive while the surface exists.
+pub fn test_surface() -> concordia_rhi::conformance::TestSurface {
+    match backend() {
+        #[cfg(target_os = "macos")]
+        Backend::Metal => {
+            let layer = objc2_quartz_core::CAMetalLayer::new();
+            concordia_rhi::conformance::TestSurface {
+                target: concordia_rhi::SurfaceTarget::MetalLayer(
+                    std::ptr::NonNull::from(&*layer).cast(),
+                ),
+                keep: Box::new(layer),
+            }
+        }
+        _ => concordia_rhi::conformance::TestSurface {
+            target: concordia_rhi::SurfaceTarget::Headless,
+            keep: Box::new(()),
+        },
     }
 }
 
@@ -254,5 +293,15 @@ pub fn pixel(image: &Image, x: u32, y: u32) -> [u8; 4] {
 pub fn golden(name: &str, image: &Image) {
     let rgba =
         RgbaImage::new(image.width, image.height, image.rgba.clone()).expect("well-formed image");
-    assert_golden("render", name, &rgba);
+    assert_golden_on(Some(backend()), "render", name, &rgba);
+}
+
+/// [`golden`] as a result, so a test can check several images before failing.
+pub fn check_golden(name: &str, image: &Image) -> Result<(), String> {
+    let rgba =
+        RgbaImage::new(image.width, image.height, image.rgba.clone()).expect("well-formed image");
+    concordia_testkit::golden::Golden::from_env()
+        .check_on(Some(backend()), "render", name, &rgba)
+        .map(|_| ())
+        .map_err(|e| format!("golden render/{name} on {}: {e}", backend()))
 }

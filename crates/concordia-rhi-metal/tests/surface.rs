@@ -1,5 +1,6 @@
-//! Presenting to a window surface (`CAMetalLayer`), M1 phase 1.9c. Uses a standalone layer, so no
-//! window is needed. Skips without a GPU unless CONCORDIA_REQUIRE_GPU=1.
+//! Presenting to a window surface (`CAMetalLayer`), M1 phase 1.9c: the shared surface conformance
+//! cases (M4 4.1v(b)) plus Metal's own. Uses a standalone layer, so no window is needed. Skips
+//! without a GPU unless CONCORDIA_REQUIRE_GPU=1.
 #![cfg(target_os = "macos")]
 
 use std::ptr::NonNull;
@@ -34,6 +35,16 @@ fn target(layer: &CAMetalLayer) -> SurfaceTarget {
     SurfaceTarget::MetalLayer(NonNull::from(layer).cast())
 }
 
+fn test_surface() -> concordia_rhi::conformance::TestSurface {
+    let layer = layer();
+    concordia_rhi::conformance::TestSurface {
+        target: target(&layer),
+        keep: Box::new(layer),
+    }
+}
+
+concordia_rhi::surface_conformance_tests!(device, test_surface);
+
 fn clear(texture: concordia_rhi::Texture) -> CommandList {
     let mut list = CommandList::new("clear surface");
     list.push(Command::BeginRenderPass(RenderPassDesc {
@@ -47,101 +58,6 @@ fn clear(texture: concordia_rhi::Texture) -> CommandList {
     }))
     .push(Command::EndRenderPass);
     list
-}
-
-#[test]
-fn acquire_clear_present_cycles_without_leaking_handles() {
-    let Some(device) = device() else { return };
-    let layer = layer();
-    // SAFETY: the layer outlives the surface (destroyed below).
-    let surface = unsafe { device.create_surface(target(&layer), Format::Bgra8UnormSrgb) }.unwrap();
-    let mut last = None;
-    for _ in 0..12 {
-        let texture = device
-            .acquire(surface, 64, 48)
-            .unwrap()
-            .expect("a drawable");
-        device
-            .present(surface, Present::new(&clear(texture)))
-            .unwrap();
-        assert!(
-            device.texture_index(texture).is_err(),
-            "the drawable's handle is released after present"
-        );
-        last = Some(texture);
-    }
-    device.wait_idle().unwrap();
-    assert!(last.is_some());
-    device.destroy_surface(surface);
-    assert!(
-        device.acquire(surface, 64, 48).is_err(),
-        "a destroyed surface is stale"
-    );
-}
-
-#[test]
-fn surface_misuse_is_reported() {
-    let Some(device) = device() else { return };
-    let layer = layer();
-    // SAFETY: as above.
-    let surface = unsafe { device.create_surface(target(&layer), Format::Bgra8UnormSrgb) }.unwrap();
-    assert!(matches!(
-        device.present(surface, Present::new(&CommandList::new("nothing acquired"))),
-        Err(RhiError::Invalid { .. })
-    ));
-    assert!(matches!(
-        device.acquire(surface, 0, 10),
-        Err(RhiError::Invalid { .. })
-    ));
-    // SAFETY: as above.
-    let rgba = unsafe { device.create_surface(target(&layer), Format::Rgba32Float) };
-    assert!(
-        matches!(rgba, Err(RhiError::Unsupported(_))),
-        "layers only take BGRA8 (sRGB or not) or RGBA16F"
-    );
-    device.destroy_surface(surface);
-}
-
-#[test]
-fn present_signals_timelines_and_reports_presentation() {
-    let Some(device) = device() else { return };
-    let layer = layer();
-    // SAFETY: the layer outlives the surface (destroyed below).
-    let surface = unsafe { device.create_surface(target(&layer), Format::Bgra8UnormSrgb) }.unwrap();
-    let timeline = device.create_timeline(0).unwrap();
-    let (tx, rx) = std::sync::mpsc::channel();
-    let texture = device
-        .acquire(surface, 32, 32)
-        .unwrap()
-        .expect("a drawable");
-    let present = Present {
-        commands: &clear(texture),
-        signal: &[(timeline, 7)],
-        on_presented: Some(Box::new(move |at| tx.send(at).unwrap())),
-        on_gpu_time: None,
-    };
-    device.present(surface, present).unwrap();
-    device
-        .wait_timeline(timeline, 7, std::time::Duration::from_secs(5))
-        .unwrap();
-    assert_eq!(
-        device.timeline_value(timeline).unwrap(),
-        7,
-        "the frame's timeline signal fires"
-    );
-    let at = rx
-        .recv_timeout(std::time::Duration::from_secs(5))
-        .expect("the presented callback runs");
-    if let Some(time) = at {
-        let age = std::time::SystemTime::now()
-            .duration_since(time)
-            .unwrap_or_default();
-        assert!(
-            age < std::time::Duration::from_secs(5),
-            "presentation time is recent wall-clock time: {age:?}"
-        );
-    }
-    device.destroy_surface(surface);
 }
 
 /// The engine renders on a long-lived thread: per-frame Metal objects must not pile up in a
@@ -198,25 +114,31 @@ fn window_surfaces_keep_a_short_drawable_queue_for_low_latency() {
     device.destroy_surface(surface);
 }
 
+/// Metal presents only into `CAMetalLayer`s; other platforms' targets are `Unsupported`.
 #[test]
-fn present_reports_the_gpu_time_of_its_commands() {
+fn metal_refuses_other_platforms_surface_targets() {
     let Some(device) = device() else { return };
-    let layer = layer();
-    // SAFETY: the layer outlives the surface (destroyed below).
-    let surface = unsafe { device.create_surface(target(&layer), Format::Bgra8UnormSrgb) }.unwrap();
-    let (tx, rx) = std::sync::mpsc::channel();
-    let texture = device
-        .acquire(surface, 64, 64)
-        .unwrap()
-        .expect("a drawable");
-    let commands = clear(texture);
-    let mut present = Present::new(&commands);
-    present.on_gpu_time = Some(Box::new(move |ms| tx.send(ms).unwrap()));
-    device.present(surface, present).unwrap();
-    let ms = rx
-        .recv_timeout(std::time::Duration::from_secs(5))
-        .expect("GPU time reported");
-    let ms = ms.total_ms.expect("Metal measures command buffers");
-    assert!((0.0..1000.0).contains(&ms), "{ms} ms");
-    device.destroy_surface(surface);
+    let a = NonNull::<std::ffi::c_void>::dangling();
+    for target in [
+        SurfaceTarget::Xlib {
+            display: a,
+            window: 1,
+        },
+        SurfaceTarget::Xcb {
+            connection: a,
+            window: 1,
+        },
+        SurfaceTarget::Wayland {
+            display: a,
+            surface: a,
+        },
+        SurfaceTarget::Headless,
+    ] {
+        // SAFETY: refused before anything behind the pointers is touched.
+        let made = unsafe { device.create_surface(target, Format::Bgra8UnormSrgb) };
+        assert!(
+            matches!(made, Err(RhiError::Unsupported(_))),
+            "{target:?}: {made:?}"
+        );
+    }
 }

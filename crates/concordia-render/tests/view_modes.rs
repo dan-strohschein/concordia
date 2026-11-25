@@ -3,7 +3,7 @@
 
 mod common;
 
-use common::{M1, Scene, golden, pixel, renderer};
+use common::{M1, Scene, check_golden, pixel, renderer};
 use concordia_core::math::{Quat, Vec3};
 use concordia_render::shadow::CascadeSettings;
 use concordia_render::{Camera, DirectionalLight, Image, PointLight, Renderer, View, ViewMode};
@@ -124,10 +124,14 @@ const MODES: [(ViewMode, &str); 9] = [
 fn every_view_mode_matches_its_golden() {
     let Some(mut r) = renderer() else { return };
     let mut s = scene();
-    for (mode, name) in MODES {
-        let image = render(&mut r, &mut s, mode);
-        golden(&format!("view_mode_{name}"), &image);
-    }
+    let failed: Vec<String> = MODES
+        .into_iter()
+        .filter_map(|(mode, name)| {
+            let image = render(&mut r, &mut s, mode);
+            check_golden(&format!("view_mode_{name}"), &image).err()
+        })
+        .collect();
+    assert!(failed.is_empty(), "{}", failed.join("\n"));
 }
 
 #[test]

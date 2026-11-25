@@ -56,8 +56,8 @@ pub use frame::DrawPush;
 pub use lighting::candela;
 pub use module::{
     CaptureScreenshot, CaptureScreenshotParams, CaptureScreenshotResult, DeviceFactory,
-    RenderModule, ViewportControl, ViewportNavigateParams, attach_surface, navigate,
-    viewport_control,
+    RenderModule, ViewportControl, ViewportNavigateParams, attach_surface, detach_surface,
+    navigate, viewport_control,
 };
 pub use orbit::{OrbitCamera, Preset};
 pub use overlay::{

@@ -21,6 +21,7 @@ fn open(mask: CapsMask) -> Option<(VulkanDevice, ValidationLog)> {
         },
         mask,
         log: Some(log.clone()),
+        strict: false,
     };
     match VulkanDevice::new(&options) {
         Ok(device) => Some((device, log)),
@@ -108,6 +109,35 @@ fn validation_errors_reach_the_log() {
         errors.iter().any(|e| e.contains("deliberate test error")),
         "{errors:?}"
     );
+}
+
+/// Strict mode (`CONCORDIA_VULKAN_VALIDATION=strict`): once the layer reports an error, the next
+/// submit, wait or read fails with it, so tests that never see the device still fail.
+#[test]
+fn strict_validation_fails_the_next_call() {
+    let Some((_, _)) = open(CapsMask::default()) else {
+        return;
+    };
+    let log = ValidationLog::new();
+    let options = Options {
+        validation: Validation::IfAvailable,
+        log: Some(log.clone()),
+        strict: true,
+        ..Options::default()
+    };
+    let device = VulkanDevice::new(&options).expect("a device (one opened above)");
+    if !device.validation_enabled() {
+        assert!(!vulkan_required(), "CI has the layer");
+        return;
+    }
+    let empty = CommandList::new("empty");
+    run(&device, &empty).expect("clean before any error");
+    device.report_validation_error_for_tests("deliberate strict error");
+    let err = run(&device, &empty).expect_err("strict mode fails the next call");
+    assert!(matches!(err, RhiError::Invalid { .. }), "{err}");
+    assert!(err.to_string().contains("deliberate strict error"), "{err}");
+    assert!(device.wait_idle().is_err(), "and every call after it");
+    log.take();
 }
 
 #[test]
@@ -208,7 +238,7 @@ fn timeline_signals_must_grow() {
 }
 
 #[test]
-fn wrong_shader_language_mesh_pipelines_and_surfaces_are_errors() {
+fn wrong_shader_language_and_mesh_pipelines_are_errors() {
     let Some((device, log)) = open(CapsMask::default()) else {
         return;
     };

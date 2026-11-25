@@ -20,6 +20,8 @@
     "shader_storage_image_write_without_format": true,
     "shader_int64": true,
     "shader_draw_parameters": true,
+    "shader_sampled_image_array_non_uniform_indexing": true,
+    "shader_storage_image_array_non_uniform_indexing": true,
     "sampler_anisotropy": true
   },
   "msaa_sample_counts": [

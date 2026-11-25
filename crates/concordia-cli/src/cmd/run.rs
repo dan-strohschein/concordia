@@ -141,8 +141,11 @@ impl Viewer {
     /// Makes the window's content view the engine's viewport surface.
     #[cfg(target_os = "macos")]
     fn attach(&mut self, view: NativeView) -> Result<(), Failure> {
+        let NativeView::AppKit(view) = view else {
+            return Err(Failure::usage("a macOS window has an AppKit view"));
+        };
         // SAFETY: the view belongs to the open window; the layer is kept until the viewer drops.
-        let (layer, target) = unsafe { concordia_rhi_metal::layer_for_view(view.0) };
+        let (layer, target) = unsafe { concordia_rhi_metal::layer_for_view(view) };
         self.layer = Some(layer);
         let attached = self.runtime.block_on(
             self.handle
@@ -154,11 +157,39 @@ impl Viewer {
             .map_err(|e| api_failure(&e))
     }
 
+    /// Makes the window (X11 or Wayland) the engine's viewport surface, on Vulkan.
     #[cfg(not(target_os = "macos"))]
-    fn attach(&mut self, _: NativeView) -> Result<(), Failure> {
-        Err(Failure::usage(
-            "drawing into the window needs Metal (macOS) in M1",
-        ))
+    fn attach(&mut self, view: NativeView) -> Result<(), Failure> {
+        let target = vulkan_target(view).ok_or_else(|| {
+            Failure::usage("this window has no X11 or Wayland handle to draw into")
+        })?;
+        let attached = self.runtime.block_on(
+            self.handle
+                // SAFETY: the window outlives the surface: the viewer detaches it on
+                // `WindowEvent::Closing`, which the platform sends before destroying the window.
+                .run(move |engine| unsafe { concordia_render::attach_surface(engine, target) }),
+        );
+        attached
+            .map_err(|e| api_failure(&e))?
+            .map_err(|e| api_failure(&e))?;
+        self.layer = Some(());
+        Ok(())
+    }
+
+    /// Releases the viewport surface before the platform destroys the window.
+    fn detach(&mut self) {
+        if self.layer.take().is_none() {
+            return;
+        }
+        let detached = self
+            .runtime
+            .block_on(self.handle.run(concordia_render::detach_surface));
+        if let Err(e) = detached
+            .map_err(|e| e.message)
+            .and_then(|r| r.map_err(|e| e.message))
+        {
+            eprintln!("concordia run: detaching the window surface failed: {e}");
+        }
     }
 
     /// Draws the scene from the editor camera at the window's size.
@@ -216,6 +247,10 @@ impl Viewer {
 
 impl WindowApp for Viewer {
     fn event(&mut self, event: WindowEvent) -> Flow {
+        if event == WindowEvent::Closing {
+            self.detach();
+            return Flow::Exit;
+        }
         if self.player.is_some() {
             let opened = match &event {
                 WindowEvent::Opened {
@@ -263,6 +298,19 @@ impl WindowApp for Viewer {
         self.player
             .as_ref()
             .map_or(CursorIcon::Arrow, concordia_app::Player::cursor)
+    }
+}
+
+/// The Vulkan surface target for a Linux window (`None` for an AppKit view, which Metal draws
+/// into through its own layer).
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+fn vulkan_target(view: NativeView) -> Option<concordia_rhi::SurfaceTarget> {
+    use concordia_rhi::SurfaceTarget as T;
+    match view {
+        NativeView::AppKit(_) => None,
+        NativeView::Xlib { display, window } => Some(T::Xlib { display, window }),
+        NativeView::Xcb { connection, window } => Some(T::Xcb { connection, window }),
+        NativeView::Wayland { display, surface } => Some(T::Wayland { display, surface }),
     }
 }
 
@@ -360,4 +408,51 @@ fn unix_ms() -> f64 {
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .map_or(0.0, |d| d.as_secs_f64() * 1000.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use concordia_rhi::SurfaceTarget;
+    use std::ptr::NonNull;
+
+    /// Linux windows become Vulkan surface targets; AppKit views go through a Metal layer instead.
+    #[test]
+    fn linux_native_views_become_vulkan_surface_targets() {
+        let (a, b) = (
+            NonNull::<std::ffi::c_void>::dangling(),
+            NonNull::new(8usize as *mut std::ffi::c_void).unwrap(),
+        );
+        assert_eq!(
+            vulkan_target(NativeView::Xlib {
+                display: a,
+                window: 9
+            }),
+            Some(SurfaceTarget::Xlib {
+                display: a,
+                window: 9
+            })
+        );
+        assert_eq!(
+            vulkan_target(NativeView::Xcb {
+                connection: a,
+                window: 9
+            }),
+            Some(SurfaceTarget::Xcb {
+                connection: a,
+                window: 9
+            })
+        );
+        assert_eq!(
+            vulkan_target(NativeView::Wayland {
+                display: a,
+                surface: b
+            }),
+            Some(SurfaceTarget::Wayland {
+                display: a,
+                surface: b
+            })
+        );
+        assert_eq!(vulkan_target(NativeView::AppKit(a)), None);
+    }
 }

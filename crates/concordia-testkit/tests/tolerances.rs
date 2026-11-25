@@ -126,7 +126,9 @@ fn every_tolerance_entry_names_an_existing_golden() {
         let text = std::fs::read_to_string(&file).unwrap();
         let tolerances: concordia_testkit::golden::Tolerances =
             concordia_scene::read_document(&text).unwrap();
-        for entry in tolerances.goldens.keys() {
+        tolerances.validate().expect("backend keys name backends");
+        let backend_entries = tolerances.backends.values().flat_map(|b| b.goldens.keys());
+        for entry in tolerances.goldens.keys().chain(backend_entries) {
             assert!(
                 suite.join(format!("{entry}.png")).is_file(),
                 "{name}/tolerances.ron names {entry}, which has no PNG"
@@ -138,4 +140,151 @@ fn every_tolerance_entry_names_an_existing_golden() {
             "{name}/tolerances.ron is canonical"
         );
     }
+}
+
+const WITH_BACKENDS: &str = r#"Tolerances(
+    default: (mean: 0.005, p99: 0.2),
+    goldens: {
+        "loose": (mean: 0.02, p99: 0.3),
+        "shared": (mean: 0.03, p99: 0.3),
+    },
+    backends: {
+        "vulkan": (
+            default: Some((mean: 0.008, p99: 0.2)),
+            goldens: {
+                "loose": (mean: 0.04, p99: 0.35),
+            },
+        ),
+    },
+)"#;
+
+#[test]
+fn backend_tolerances_apply_most_specific_first() {
+    use concordia_rhi::Backend::{Metal, Vulkan};
+    let dir = tempfile::tempdir().unwrap();
+    write_tolerances(dir.path(), "s", WITH_BACKENDS);
+    let golden = store(dir.path());
+    let t = |backend, name| golden.tolerance_on(Some(backend), "s", name).unwrap();
+    let tol = |mean, p99| Tolerance { mean, p99 };
+    assert_eq!(
+        t(Vulkan, "loose"),
+        tol(0.04, 0.35),
+        "the backend's own entry"
+    );
+    assert_eq!(
+        t(Vulkan, "shared"),
+        tol(0.03, 0.3),
+        "the shared entry beats the backend default"
+    );
+    assert_eq!(t(Vulkan, "other"), tol(0.008, 0.2), "the backend's default");
+    assert_eq!(t(Metal, "loose"), tol(0.02, 0.3), "Metal has no overrides");
+    assert_eq!(t(Metal, "other"), tol(0.005, 0.2));
+    assert_eq!(
+        golden.tolerance("s", "loose").unwrap(),
+        tol(0.02, 0.3),
+        "no backend: the shared rules"
+    );
+}
+
+#[test]
+fn backend_tolerances_round_trip_canonically() {
+    use concordia_testkit::golden::Tolerances;
+    let file: Tolerances = concordia_scene::read_document(WITH_BACKENDS).unwrap();
+    let canonical = concordia_scene::write_document(&file).unwrap();
+    assert_eq!(
+        concordia_scene::read_document::<Tolerances>(&canonical).unwrap(),
+        file
+    );
+    assert!(canonical.contains("backends:"), "{canonical}");
+    let plain: Tolerances = concordia_scene::read_document(FILE).unwrap();
+    assert!(plain.backends.is_empty());
+    assert!(
+        !concordia_scene::write_document(&plain)
+            .unwrap()
+            .contains("backends"),
+        "files without backends stay as they are"
+    );
+}
+
+#[test]
+fn unknown_backends_are_rejected() {
+    let dir = tempfile::tempdir().unwrap();
+    write_tolerances(
+        dir.path(),
+        "s",
+        &WITH_BACKENDS.replace("\"vulkan\"", "\"dx12\""),
+    );
+    let err = store(dir.path())
+        .tolerance_on(Some(concordia_rhi::Backend::Vulkan), "s", "loose")
+        .expect_err("dx12 is no backend");
+    assert!(err.to_string().contains("dx12"), "{err}");
+}
+
+#[test]
+fn backend_failures_are_written_under_the_backend() {
+    let dir = tempfile::tempdir().unwrap();
+    let (base, nudged) = images();
+    Golden::new(dir.path().join("golden"), dir.path().join("f"), true, false)
+        .check("s", "loose", &base)
+        .unwrap();
+    let err = Golden::new(
+        dir.path().join("golden"),
+        dir.path().join("f"),
+        false,
+        false,
+    )
+    .check_on(Some(concordia_rhi::Backend::Vulkan), "s", "loose", &nudged)
+    .expect_err("outside the default tolerance");
+    assert!(matches!(err, GoldenError::Mismatch { .. }), "{err}");
+    let out = dir.path().join("f/s/vulkan");
+    for file in ["loose.actual.png", "loose.expected.png", "loose.flip.png"] {
+        assert!(out.join(file).is_file(), "{file} under {}", out.display());
+    }
+}
+
+#[test]
+fn keep_writes_comparisons_and_scores_for_passing_checks() {
+    let dir = tempfile::tempdir().unwrap();
+    let (base, _) = images();
+    Golden::new(dir.path().join("golden"), dir.path().join("f"), true, false)
+        .check("s", "kept", &base)
+        .unwrap();
+    let quiet = Golden::new(
+        dir.path().join("golden"),
+        dir.path().join("q"),
+        false,
+        false,
+    );
+    quiet.check("s", "kept", &base).unwrap();
+    assert!(
+        !dir.path().join("q").exists(),
+        "passing checks write nothing by default"
+    );
+    Golden::new(
+        dir.path().join("golden"),
+        dir.path().join("f"),
+        false,
+        false,
+    )
+    .with_keep(true)
+    .check_on(Some(concordia_rhi::Backend::Vulkan), "s", "kept", &base)
+    .unwrap();
+    let out = dir.path().join("f/s/vulkan");
+    assert!(out.join("kept.actual.png").is_file());
+    let score = std::fs::read_to_string(out.join("kept.score.ron")).unwrap();
+    assert!(
+        score.contains("passed: true") && score.contains("mean: 0.0"),
+        "{score}"
+    );
+}
+
+#[test]
+fn blessing_is_refused_on_vulkan() {
+    let dir = tempfile::tempdir().unwrap();
+    let (base, _) = images();
+    let err = Golden::new(dir.path().join("golden"), dir.path().join("f"), true, false)
+        .check_on(Some(concordia_rhi::Backend::Vulkan), "s", "x", &base)
+        .expect_err("Vulkan compares against Metal's blessed images (D4)");
+    assert!(matches!(err, GoldenError::BlessOnBackend { .. }), "{err}");
+    assert!(!dir.path().join("golden/s/x.png").exists());
 }
