@@ -271,7 +271,9 @@ pub(crate) struct GpuMesh {
     pub(crate) count: u32,
     /// Object-space bounds (min, max).
     pub(crate) aabb: (Vec3, Vec3),
-    buffers: [Option<Buffer>; 7],
+    /// The `MeshletBlob` v1 buffer's bindless index and counts, when the mesh has valid meshlets.
+    pub(crate) meshlets: Option<(u32, crate::meshlet::MeshletInfo)>,
+    buffers: [Option<Buffer>; 8],
 }
 
 impl GpuMesh {
@@ -308,6 +310,10 @@ impl GpuMesh {
             false => None,
         };
         let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
+        let blob = match meshlet_info(mesh, label) {
+            Some(info) => Some((up.buffer(device, &mesh.meshlets, label)?, info)),
+            None => None,
+        };
         let joint_count = match skin {
             Some(_) => mesh
                 .joints
@@ -328,6 +334,10 @@ impl GpuMesh {
             joint_count,
             count: mesh.indices.len() as u32,
             aabb: (Vec3::from_array(mesh.aabb.0), Vec3::from_array(mesh.aabb.1)),
+            meshlets: match blob {
+                Some((b, info)) => Some((index(b)?, info)),
+                None => None,
+            },
             buffers: [
                 Some(indices),
                 Some(positions),
@@ -336,6 +346,7 @@ impl GpuMesh {
                 Some(uvs),
                 skin.map(|(j, _)| j),
                 skin.map(|(_, w)| w),
+                blob.map(|(b, _)| b),
             ],
         })
     }
@@ -347,6 +358,17 @@ impl GpuMesh {
     /// The mesh's buffers.
     pub(crate) fn buffers(&self) -> impl Iterator<Item = Buffer> + '_ {
         self.buffers.iter().flatten().copied()
+    }
+}
+
+/// The counts of `mesh`'s meshlets; an invalid blob is logged and the mesh drawn on the M1 path.
+fn meshlet_info(mesh: &MeshData, label: &str) -> Option<crate::meshlet::MeshletInfo> {
+    match crate::meshlet::MeshletInfo::of(&mesh.meshlets) {
+        Ok(info) => info,
+        Err(error) => {
+            tracing::warn!(target: "concordia::render", mesh = label, %error, "invalid meshlets ignored; drawn without them");
+            None
+        }
     }
 }
 

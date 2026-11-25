@@ -177,6 +177,14 @@ expression: "params_schema(&MethodInfo::of::<CaptureScreenshot>())"
         {
           "const": "lod",
           "description": "Level of detail: hue by simulation LOD (white none; green to red for 0–3), instanced dimmed."
+        },
+        {
+          "const": "meshlets",
+          "description": "One color per meshlet (ADR-0100); surfaces off the meshlet path are grey."
+        },
+        {
+          "const": "triangles",
+          "description": "One color per triangle."
         }
       ],
       "title": "ViewMode",

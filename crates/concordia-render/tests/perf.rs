@@ -12,9 +12,7 @@ use common::{M1, Scene};
 use concordia_core::math::{Quat, Vec3};
 use concordia_render::graph::{RenderGraph, Use};
 use concordia_render::perf::{PassTimer, PassTiming, pass_times};
-use concordia_render::{
-    Camera, FrameCallbacks, PointLight, RenderRequest, RenderWorld, Renderer, ViewMode,
-};
+use concordia_render::{Camera, PointLight, Renderer};
 use concordia_rhi::{
     CapsMask, ClearValue, ColorAttachment, Command, CommandList, Format, GpuTiming, Layout, LoadOp,
     MeshPipelineDesc, QueueKind, RenderPassDesc, RhiError, SampleCount, ScopeTime, ShaderSource,
@@ -233,35 +231,6 @@ fn busy_scene(lights: usize, cubes: i32) -> Scene {
     s
 }
 
-/// Renders `scene` once at `size`, returning the image and its GPU timing.
-fn render_timed(
-    renderer: &mut Renderer,
-    scene: &mut Scene,
-    size: (u32, u32),
-) -> (concordia_render::Image, GpuTiming) {
-    let (tx, rx) = mpsc::channel();
-    let rw = RenderWorld::extract(&scene.world);
-    let request = RenderRequest {
-        camera: None,
-        view: None,
-        width: size.0,
-        height: size.1,
-        overlays: None,
-        view_mode: ViewMode::lit,
-        debug: Vec::new(),
-        ui: Default::default(),
-    };
-    let callbacks = FrameCallbacks {
-        presented: None,
-        gpu_time: Some(Box::new(move |t| tx.send(t).unwrap())),
-    };
-    let image = renderer
-        .render_with(&rw, &mut scene.assets, &request, callbacks)
-        .expect("render");
-    let timing = rx.recv_timeout(Duration::from_secs(5)).expect("timing");
-    (image, timing)
-}
-
 #[test]
 fn perf_mode_times_every_frame_pass() {
     let Some(mut r) = common::renderer() else {
@@ -269,7 +238,7 @@ fn perf_mode_times_every_frame_pass() {
     };
     r.set_perf_mode(true);
     let mut scene = busy_scene(16, 4);
-    let (_, timing) = render_timed(&mut r, &mut scene, (320, 180));
+    let (_, timing) = common::render_timed(&mut r, &mut scene, (320, 180));
     let stats = r.stats();
     assert_eq!(stats.pass_timing, PassTiming::measured);
     assert_eq!(
@@ -301,7 +270,7 @@ fn perf_mode_off_times_no_passes() {
     };
     assert!(!r.perf_mode(), "off by default");
     let mut scene = busy_scene(4, 2);
-    let (_, timing) = render_timed(&mut r, &mut scene, (160, 90));
+    let (_, timing) = common::render_timed(&mut r, &mut scene, (160, 90));
     let stats = r.stats();
     assert_eq!(stats.pass_timing, PassTiming::off);
     assert!(stats.timed_passes.is_empty());
@@ -346,8 +315,8 @@ fn masked_caps_hide_features_from_render_paths() {
     masked.set_perf_mode(true);
     full.set_perf_mode(true);
     let mut scene = busy_scene(8, 2);
-    let (masked_image, timing) = render_timed(&mut masked, &mut scene, (160, 90));
-    let (full_image, _) = render_timed(&mut full, &mut scene, (160, 90));
+    let (masked_image, timing) = common::render_timed(&mut masked, &mut scene, (160, 90));
+    let (full_image, _) = common::render_timed(&mut full, &mut scene, (160, 90));
     let stats = masked.stats();
     assert_eq!(stats.pass_timing, PassTiming::unsupported);
     assert!(stats.timed_passes.is_empty() && timing.scopes.is_empty());
@@ -372,11 +341,14 @@ fn pass_timer_overhead_under_2_percent() {
     let mut scene = busy_scene(256, 12);
     let size = (1280, 720);
     for _ in 0..10 {
-        render_timed(&mut r, &mut scene, size);
+        common::render_timed(&mut r, &mut scene, size);
     }
     let mut frame = |r: &mut Renderer, perf: bool| {
         r.set_perf_mode(perf);
-        render_timed(r, &mut scene, size).1.total_ms.unwrap()
+        common::render_timed(r, &mut scene, size)
+            .1
+            .total_ms
+            .unwrap()
     };
     let mut ratios: Vec<f64> = (0..150)
         .map(|pair| {

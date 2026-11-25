@@ -39,13 +39,14 @@ struct Frame {
     uint4 env_a; uint4 env_b;
     // debug.x = view mode (ViewMode order: 0 lit, 1 unlit, 2 wireframe, 3 normals, 4 albedo,
     // 5 roughness/metallic, 6 overdraw, 7 shadow cascades, 8 light clusters, 9 closures, 10–13 the
-    // feature views, 14 lod); debug.y = the exposure as float bits (emission is in nits).
+    // feature views, 14 lod, 15 meshlets, 16 triangles); debug.y = the exposure as float bits (emission is in nits).
     uint4 debug;
 };
 // Per light: position+range, direction, exposed radiance, spot (scale, offset).
 struct Light { float4 position_range; float4 direction; float4 radiance; float4 spot; };
-// skin = (first palette matrix, joint count, lod, 0); a count of 0 is unskinned; lod = simulation
-// LOD level + 1 (0: none), plus 16 when drawn as its representation's cheaper mesh.
+// skin = (first palette matrix, joint count, lod, meshlet mesh row + 1); a count of 0 is unskinned;
+// lod = simulation LOD level + 1 (0: none), plus 16 when drawn as its representation's cheaper
+// mesh; the mesh row is 0 off the meshlet path.
 struct Instance { float4 model[4]; float4 normal[4]; uint4 skin; };
 // Materials are `uint4` rows (floats as bits; `material_rows.rs`): a header (closures, ops, flags,
 // mask cutoff), one row per op (kind, slab index or mix texture, parameter), then CLOSURE_ROWS
@@ -67,7 +68,17 @@ struct VsOut {
     float2 uv : UV;
     float3 bary : BARY;
     nointerpolation uint lod : LOD;
+    // Hashed ids for the meshlets and triangles views: (meshlet or NO_ID off its path, triangle).
+    nointerpolation uint2 ids : IDS;
 };
+
+static const uint NO_ID = 0xffffffff;
+
+// A well-mixed hash of `x` (for id colors).
+uint mix_id(uint x) {
+    x ^= x >> 16; x *= 0x7feb352d; x ^= x >> 15; x *= 0x846ca68b; x ^= x >> 16;
+    return x;
+}
 
 float4 xform(float4 m[4], float4 v) { return m[0] * v.x + m[1] * v.y + m[2] * v.z + m[3] * v.w; }
 
@@ -79,6 +90,21 @@ uint in_table(uint index) { return min(index, BINDLESS_CAPACITY - 1); }
 float3 read3(uint buffer, uint i) {
     float* p = (float*)g_buffers.ptr[buffer];
     return float3(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]);
+}
+
+// An object-space vertex placed by `inst` and seen by `frame`, as triangle corner `corner`.
+VsOut surface_vertex(Frame* frame, Instance* inst, float3 p, float3 n, float4 t, float2 uv, uint corner, uint2 ids) {
+    float4 world = xform(inst.model, float4(p, 1.0));
+    VsOut o;
+    o.position = xform(frame.view_proj, world);
+    o.world = world.xyz;
+    o.normal = xform(inst.normal, float4(n, 0.0)).xyz;
+    o.tangent = float4(xform(inst.model, float4(t.xyz, 0.0)).xyz, t.w);
+    o.uv = uv;
+    o.bary = float3(corner == 0 ? 1.0 : 0.0, corner == 1 ? 1.0 : 0.0, corner == 2 ? 1.0 : 0.0);
+    o.lod = inst.skin.z;
+    o.ids = ids;
+    return o;
 }
 
 [shader("vertex")]
@@ -95,17 +121,9 @@ VsOut vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform DrawPush push
         n = s.normal;
         t.xyz = s.tangent;
     }
-    float4 world = xform(inst.model, float4(p, 1.0));
-    VsOut o;
-    o.position = xform(frame.view_proj, world);
-    o.world = world.xyz;
-    o.normal = xform(inst.normal, float4(n, 0.0)).xyz;
-    o.tangent = float4(xform(inst.model, float4(t.xyz, 0.0)).xyz, t.w);
-    o.uv = ((float2*)g_buffers.ptr[push.uvs])[v];
-    uint corner = vid % 3; // vertices are pulled per triangle corner
-    o.bary = float3(corner == 0 ? 1.0 : 0.0, corner == 1 ? 1.0 : 0.0, corner == 2 ? 1.0 : 0.0);
-    o.lod = inst.skin.z;
-    return o;
+    float2 uv = ((float2*)g_buffers.ptr[push.uvs])[v];
+    uint2 ids = uint2(NO_ID, mix_id(push.instance + iid) ^ mix_id(vid / 3 + 0x9e3779b9));
+    return surface_vertex(frame, inst, p, n, t, uv, vid % 3, ids); // pulled per triangle corner
 }
 
 // The `lod` view mode's color (linear; the output is sRGB): hue from the simulation LOD (white
@@ -560,6 +578,13 @@ float4 fs(VsOut i, bool front : SV_IsFrontFace, uniform DrawPush push) : SV_Targ
     if (mode == 3) { return float4(c0.n * 0.5 + 0.5, 1.0); }
     if (mode == 5) { return float4(0.0, c0.roughness, c0.metallic, 1.0); }
     if (mode == 9) { return float4(heat(float(count), 1.0, 4.0, 8.0), 1.0); }
+    if (mode == 15 || mode == 16) {
+        uint id = mode == 15 ? i.ids.x : i.ids.y;
+        float facing = saturate(dot(normalize(i.normal) * (front ? 1.0 : -1.0), v));
+        uint h = mix_id(id);
+        float3 hue = float3(h & 255, (h >> 8) & 255, (h >> 16) & 255) / 255.0 * 0.8 + 0.2;
+        return float4((id == NO_ID ? float3(0.3) : hue) * (0.55 + 0.45 * facing), 1.0);
+    }
     if (mode == 14) {
         float facing = saturate(dot(normalize(i.normal) * (front ? 1.0 : -1.0), v));
         return float4(lod_color(i.lod) * (0.55 + 0.45 * facing), 1.0);

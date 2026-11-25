@@ -1182,6 +1182,7 @@ dependencies = [
  "concordia-anim",
  "concordia-api",
  "concordia-assets",
+ "concordia-cluster",
  "concordia-command",
  "concordia-core",
  "concordia-import-fbx",

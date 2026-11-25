@@ -1,5 +1,5 @@
 # ADR-0100: Meshlet geometry pipeline with GPU culling, drawn into Forward+
-- Status: Proposed (author's direction, 2026-11-19)
+- Status: Accepted (2026-11-25, M4 4.3a: the compute + indirect path renders on Metal and on lavapipe with its goldens passing); proposed 2026-11-19 by the author's direction
 - Date: 2026-11-19
 - Builds on: ADR-0040 (RHI design), ADR-0045 (Slang toolchain); replaces M4's planned virtualized-geometry architecture (cluster DAG, visibility buffer, software raster, page streaming)
 
@@ -38,7 +38,7 @@ The reference machine and first backend are Metal (the author's M3 Pro). The goa
 - **CPU per-object culling only.** Too coarse for dense scenes, and it leaves the GPU idle.
 
 ## Amendment (2026-11-25, M4 4.2): the meshlet format and its build cache
-Approved with 4.2's plan (Q1–Q5). The ADR stays Proposed until 4.3a lands.
+Approved with 4.2's plan (Q1–Q5).
 
 8. **The build** (`concordia-cluster`, safe Rust over `meshopt-sys`'s checked wrapper of vendored meshoptimizer v1.3):
    - One portable size, **128 triangles and 128 vertices**. It fits Metal (256 vertices, 512 primitives) and every `VK_EXT_mesh_shader` device (at least 256 and 256), and the compute fallback has no limit. `MeshletSize::for_limits` picks 64 only for a device that can't take 128; that build has its own cache key. The build needs no GPU.
@@ -63,3 +63,11 @@ Approved with 4.2's plan (Q1–Q5). The ADR stays Proposed until 4.3a lands.
 12. **Inspection.** `asset.meshlet_stats` (MCP `asset_meshlet_stats`, for the modeler and tech-artist roles) and `concordia cluster stats` report each mesh's meshlet count, triangles and vertices per meshlet, sphere radii, normal-cone coverage and encoded size, or why the mesh has none.
 
 The vertex and index codecs (compression) are left out of v1; they would bump the format version when DDC size calls for them.
+
+## Amendment (2026-11-25, M4 4.3a): indirect draws, the scene buffers and the compute + indirect path
+Approved with 4.3a's plan (Q1–Q10), with the changes recorded in its As built.
+
+13. **RHI (D5).** `DrawIndirect` and `DrawIndexedIndirect` draw one record each, in the layout Metal and Vulkan share; there are no count buffers or multi-draws yet, so the CPU decides how many draws and the GPU how large each is (GPU-decided counts are later work). `SetViewport` / `SetScissor` act inside a pass, which starts with its whole target; `CopyTexture` copies one region between single-sample textures of one format. Both backends run the same checks (`concordia_rhi::check`) and the same conformance cases.
+14. **Scene buffers.** The per-frame instance table is shared by both paths; its spare word names the instance's mesh-table row. The mesh table (32 bytes a mesh: the blob and the vertex streams, the meshlet count, triangles per meshlet) is rebuilt each frame. `MeshletBlob` v1 is uploaded unchanged, once per mesh, beside the mesh's streams. The previous transform arrives with motion vectors (4.3b).
+15. **The compute + indirect path.** Draws whose meshes have meshlets and are neither skinned nor blended take it (`[render] meshlets`, on by default). They are grouped as the M1 path batches them (pipeline and material), plus one shadow-caster bucket. `meshlet_expand` writes one entry (instance, meshlet) per meshlet in fixed slots, and the thread of each bucket's first entry writes its `DrawIndirect` record, with no atomics; 4.4's culling decides how entries are compacted. Each bucket is one indirect draw of 3 × max triangles vertices per meshlet instance; `meshlet_vs` pulls vertices through the blob and feeds Forward+'s fragment shader unchanged, and `meshlet_shadow_vs` draws the casters into every cascade. Buckets draw in the forward pass after the M1 opaque draws and before blended ones, sharing the depth buffer.
+16. **Observability.** `render.stats` reports `raster_path` (`forward`, `compute_indirect`; `mesh_shader` in 4.3b) and `meshlets` (instances, meshlets, triangles, indirect draws); perf mode times `meshlet.expand`. The `meshlets` and `triangles` view modes come through `view_mode`; there is no separate `render.set_debug_view`.

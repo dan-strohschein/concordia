@@ -1,9 +1,11 @@
 //! Translates a validated `CommandList` into one Metal command buffer. Hazards are tracked by Metal
 //! (tracked resources plus `useResource` for bindless ones), so RHI barriers only end the current encoder.
 
+use std::num::NonZeroU32;
+
 use concordia_rhi::{
-    Buffer, ClearValue, Command, LoadOp, Pipeline, RenderPassDesc, RhiError, StoreOp, Submit,
-    Texture, Timeline,
+    Buffer, ClearValue, Command, LoadOp, Pipeline, Rect, RenderPassDesc, RhiError, StoreOp, Submit,
+    Texture, TextureOrigin, Timeline, Viewport,
 };
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
@@ -11,7 +13,7 @@ use objc2_metal::{
     MTLBlitCommandEncoder, MTLClearColor, MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue,
     MTLComputeCommandEncoder, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPrimitiveType,
     MTLRenderCommandEncoder, MTLRenderPassDescriptor, MTLRenderStages, MTLResource,
-    MTLResourceUsage, MTLSize, MTLStoreAction, MTLWinding,
+    MTLResourceUsage, MTLScissorRect, MTLSize, MTLStoreAction, MTLViewport, MTLWinding,
 };
 
 use crate::bindless::{MtlBuffer, MtlTexture};
@@ -48,6 +50,8 @@ struct Recorder<'a> {
     encoder: Encoder,
     push: Vec<u8>,
     timer: Option<TimerPlan>,
+    /// The open render pass's target size (width, height).
+    pass_size: Option<[NonZeroU32; 2]>,
 }
 
 /// A recorded command buffer (not yet committed) and its timer scopes, if any are sampled.
@@ -75,9 +79,14 @@ pub(crate) fn record(
         encoder: Encoder::None,
         push: Vec::new(),
         timer: TimerPlan::for_list(&inner.device, submit.commands, timed),
+        pass_size: None,
     };
     for command in &submit.commands.commands {
-        recorder.command(command)?;
+        if let Err(e) = recorder.command(command) {
+            // Metal aborts if an encoder is released without ending it.
+            recorder.encoder.end();
+            return Err(e);
+        }
     }
     recorder.encoder.end();
     for (timeline, value) in submit.signal {
@@ -108,7 +117,10 @@ impl Recorder<'_> {
                 }
             }
             Command::BeginRenderPass(desc) => self.begin_pass(desc)?,
-            Command::EndRenderPass => self.encoder.end(),
+            Command::EndRenderPass => {
+                self.pass_size = None;
+                self.encoder.end();
+            }
             Command::SetPipeline(pipeline) => self.set_pipeline(*pipeline)?,
             Command::PushConstants(bytes) => {
                 self.push.clone_from(bytes);
@@ -165,6 +177,21 @@ impl Recorder<'_> {
                     );
                 }
             }
+            Command::DrawIndirect { args, offset } => self.draw_indirect(None, *args, *offset)?,
+            Command::DrawIndexedIndirect {
+                indices,
+                args,
+                offset,
+            } => self.draw_indirect(Some(*indices), *args, *offset)?,
+            Command::SetViewport(viewport) => self.set_viewport(viewport)?,
+            Command::SetScissor(rect) => self.set_scissor(rect)?,
+            Command::CopyTexture {
+                src,
+                src_origin,
+                dst,
+                dst_origin,
+                extent,
+            } => self.copy_texture((*src, *src_origin), (*dst, *dst_origin), *extent)?,
             Command::CopyTextureToBuffer {
                 src,
                 mip,
@@ -235,6 +262,14 @@ impl Recorder<'_> {
 
     fn begin_pass(&mut self, desc: &RenderPassDesc) -> Result<(), RhiError> {
         self.encoder.end();
+        let first = desc
+            .colors
+            .first()
+            .map(|c| c.texture)
+            .or(desc.depth.as_ref().map(|d| d.texture));
+        self.pass_size = first
+            .map(|t| texture_entry(self.inner, t).map(|e| [e.desc.width, e.desc.height]))
+            .transpose()?;
         let rp = MTLRenderPassDescriptor::renderPassDescriptor();
         for (i, color) in desc.colors.iter().enumerate() {
             // SAFETY: at most 8 attachments (validated).
@@ -399,6 +434,123 @@ impl Recorder<'_> {
         Ok(())
     }
 
+    /// One indirect draw, indexed when `indices` is given; the argument range is checked first.
+    fn draw_indirect(
+        &self,
+        indices: Option<Buffer>,
+        args: Buffer,
+        offset: u64,
+    ) -> Result<(), RhiError> {
+        let bytes = match indices {
+            Some(_) => concordia_rhi::DRAW_INDEXED_INDIRECT_BYTES,
+            None => concordia_rhi::DRAW_INDIRECT_BYTES,
+        };
+        let entry = buffer_entry(self.inner, args)?;
+        concordia_rhi::check::indirect_args(&entry.desc, offset, bytes)?;
+        let index_buffer = indices.map(|i| buffer(self.inner, i)).transpose()?;
+        let Encoder::Render(e) = &self.encoder else {
+            return Ok(());
+        };
+        match index_buffer {
+            // SAFETY: both buffers are live and the argument record lies inside `args` (checked);
+            // Metal tracks the hazard on `args` against earlier GPU writes.
+            Some(index_buffer) => unsafe {
+                e.drawIndexedPrimitives_indexType_indexBuffer_indexBufferOffset_indirectBuffer_indirectBufferOffset(
+                    MTLPrimitiveType::Triangle,
+                    MTLIndexType::UInt32,
+                    index_buffer,
+                    0,
+                    &entry.raw,
+                    offset as usize,
+                )
+            },
+            // SAFETY: as above; the pipeline pulls its vertices itself.
+            None => unsafe {
+                e.drawPrimitives_indirectBuffer_indirectBufferOffset(
+                    MTLPrimitiveType::Triangle,
+                    &entry.raw,
+                    offset as usize,
+                )
+            },
+        }
+        Ok(())
+    }
+
+    fn pass_size(&self) -> Result<[NonZeroU32; 2], RhiError> {
+        self.pass_size
+            .ok_or_else(|| RhiError::invalid("command list", "no render pass is open"))
+    }
+
+    /// Maps clip space into `viewport` (y down from the top-left, as Metal's).
+    fn set_viewport(&self, viewport: &Viewport) -> Result<(), RhiError> {
+        concordia_rhi::check::viewport_in(viewport, self.pass_size()?)?;
+        if let Encoder::Render(e) = &self.encoder {
+            e.setViewport(MTLViewport {
+                originX: viewport.x.into(),
+                originY: viewport.y.into(),
+                width: viewport.width.into(),
+                height: viewport.height.into(),
+                znear: viewport.min_depth.into(),
+                zfar: viewport.max_depth.into(),
+            });
+        }
+        Ok(())
+    }
+
+    fn set_scissor(&self, rect: &Rect) -> Result<(), RhiError> {
+        concordia_rhi::check::scissor_in(rect, self.pass_size()?)?;
+        if let Encoder::Render(e) = &self.encoder {
+            e.setScissorRect(MTLScissorRect {
+                x: rect.x as usize,
+                y: rect.y as usize,
+                width: rect.width.get() as usize,
+                height: rect.height.get() as usize,
+            });
+        }
+        Ok(())
+    }
+
+    /// Copies one region between textures after the shared checks.
+    fn copy_texture(
+        &mut self,
+        (src, from): (Texture, TextureOrigin),
+        (dst, to): (Texture, TextureOrigin),
+        extent: [NonZeroU32; 2],
+    ) -> Result<(), RhiError> {
+        let (s, d) = (
+            texture_entry(self.inner, src)?,
+            texture_entry(self.inner, dst)?,
+        );
+        let side = |texture, desc, origin| concordia_rhi::check::CopySide {
+            texture,
+            desc,
+            origin,
+        };
+        concordia_rhi::check::texture_copy(
+            side(src, &s.desc, from),
+            side(dst, &d.desc, to),
+            extent,
+        )?;
+        let origin = |o: TextureOrigin| MTLOrigin {
+            x: o.x as usize,
+            y: o.y as usize,
+            z: 0,
+        };
+        let size = MTLSize {
+            width: extent[0].get() as usize,
+            height: extent[1].get() as usize,
+            depth: 1,
+        };
+        let blit = self.blit();
+        // SAFETY: both textures are live, and both regions lie inside their mips (checked).
+        unsafe {
+            blit.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
+                &s.raw, 0, from.mip as usize, origin(from), size, &d.raw, 0, to.mip as usize, origin(to),
+            );
+        }
+        Ok(())
+    }
+
     fn dispatch(&mut self, groups: [u32; 3]) -> Result<(), RhiError> {
         let Encoder::Compute(e, threads) = &self.encoder else {
             return Err(RhiError::invalid(
@@ -444,10 +596,13 @@ fn load_action(load: LoadOp) -> (MTLLoadAction, Option<ClearValue>) {
 }
 
 fn buffer(inner: &Inner, handle: Buffer) -> Result<&MtlBuffer, RhiError> {
+    buffer_entry(inner, handle).map(|e| &*e.raw)
+}
+
+fn buffer_entry(inner: &Inner, handle: Buffer) -> Result<&crate::device::BufferEntry, RhiError> {
     inner
         .buffers
         .get(handle.index(), handle.generation())
-        .map(|e| &*e.raw)
         .ok_or_else(|| RhiError::StaleHandle {
             kind: "buffer",
             index: handle.index(),
@@ -457,14 +612,7 @@ fn buffer(inner: &Inner, handle: Buffer) -> Result<&MtlBuffer, RhiError> {
 
 /// The texture and the size of one of its mips.
 fn texture(inner: &Inner, handle: Texture, mip: u32) -> Result<(&MtlTexture, MTLSize), RhiError> {
-    let entry = inner
-        .textures
-        .get(handle.index(), handle.generation())
-        .ok_or_else(|| RhiError::StaleHandle {
-            kind: "texture",
-            index: handle.index(),
-            generation: handle.generation(),
-        })?;
+    let entry = texture_entry(inner, handle)?;
     if mip >= entry.desc.mip_levels.get() {
         return Err(RhiError::invalid(
             "copy",
@@ -477,6 +625,17 @@ fn texture(inner: &Inner, handle: Texture, mip: u32) -> Result<(&MtlTexture, MTL
         depth: 1,
     };
     Ok((&entry.raw, size))
+}
+
+fn texture_entry(inner: &Inner, handle: Texture) -> Result<&crate::device::TextureEntry, RhiError> {
+    inner
+        .textures
+        .get(handle.index(), handle.generation())
+        .ok_or_else(|| RhiError::StaleHandle {
+            kind: "texture",
+            index: handle.index(),
+            generation: handle.generation(),
+        })
 }
 
 fn event(inner: &Inner, timeline: Timeline) -> Result<&crate::device::MtlEvent, RhiError> {

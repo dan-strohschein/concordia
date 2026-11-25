@@ -38,6 +38,8 @@ pub struct RenderModule {
     closure_budget: Option<crate::ClosureBudget>,
     /// Time each pass of every frame (`render.stats` `passes`).
     perf_mode: bool,
+    /// Draw meshes with meshlets through the meshlet path (ADR-0100).
+    meshlets: bool,
 }
 
 impl std::fmt::Debug for RenderModule {
@@ -53,7 +55,13 @@ impl RenderModule {
             factory,
             closure_budget: None,
             perf_mode: false,
+            meshlets: true,
         }
+    }
+
+    /// Turns the meshlet path on (the default) or off (`[render] meshlets`).
+    pub fn with_meshlets(self, meshlets: bool) -> Self {
+        Self { meshlets, ..self }
     }
 
     /// Turns perf mode on: every frame's passes are timed (`concordia perf run`, perf tests).
@@ -76,6 +84,7 @@ pub(crate) struct RenderState {
     factory: DeviceFactory,
     closure_budget: Option<crate::ClosureBudget>,
     perf_mode: bool,
+    meshlets: bool,
     thread: Option<RenderThread>,
     /// Whether a host attached the editor's native viewport.
     surface: bool,
@@ -167,6 +176,7 @@ impl EngineModule for RenderModule {
             factory: self.factory.clone(),
             closure_budget: self.closure_budget,
             perf_mode: self.perf_mode,
+            meshlets: self.meshlets,
             thread: None,
             surface: false,
             shipped: BTreeSet::new(),
@@ -409,11 +419,11 @@ fn render_thread(engine: &mut Engine) -> Result<&RenderThread, ApiError> {
         .state_mut::<RenderState>()
         .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render module has no state"))?;
     if state.thread.is_none() {
-        let (factory, budget, perf) =
-            (state.factory.clone(), state.closure_budget, state.perf_mode);
+        let (factory, budget) = (state.factory.clone(), state.closure_budget);
+        let switches = (state.perf_mode, state.meshlets);
         let last = state.last.clone();
         state.thread = Some(
-            RenderThread::spawn(move || make_renderer(&factory, ddc, budget, perf), last)
+            RenderThread::spawn(move || make_renderer(&factory, ddc, budget, switches), last)
                 .map_err(api_error)?,
         );
     }
@@ -429,7 +439,7 @@ fn make_renderer(
     factory: &DeviceFactory,
     ddc: std::path::PathBuf,
     closure_budget: Option<crate::ClosureBudget>,
-    perf_mode: bool,
+    (perf_mode, meshlets): (bool, bool),
 ) -> Result<Renderer, RenderError> {
     let device = factory().map_err(RenderError::Gpu)?;
     let toolchain = SlangToolchain::locate().map_err(|e| RenderError::Shader(e.to_string()))?;
@@ -440,6 +450,7 @@ fn make_renderer(
     let mut renderer = Renderer::new(Arc::from(device), Box::new(compiler))?;
     renderer.set_closure_budget(closure_budget);
     renderer.set_perf_mode(perf_mode);
+    renderer.set_meshlets(meshlets);
     Ok(renderer)
 }
 

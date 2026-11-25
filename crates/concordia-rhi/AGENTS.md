@@ -13,6 +13,7 @@ Backend-neutral GPU vocabulary and the `Device` trait (ADR-0040): validated desc
 - Timing (4.1a, ADR-0089): `Command::BeginTimer(TimerScope)` / `EndTimer`; `GpuTiming { total_ms, scopes }` and `ScopeTime` through `GpuTimeCallback` (`submit_timed`, `Present::on_gpu_time`)
 - `conformance` (feature `conformance`): `conformance_tests!(make, golden, shaders)`, `Harness`, `GoldenCheck`, `ShaderProvider`, `shader_dir()` (Slang sources in `conformance/*.slang`); `surface_conformance_tests!(make, surface)` with `TestSurface` (M4 4.1v(b): each backend supplies a test surface: a `CAMetalLayer`, or Vulkan's `Headless`)
 - `SurfaceTarget::{MetalLayer, Xlib, Xcb, Wayland, Headless}` (M4 4.1v(b)); `Backend::{ALL, as_str}`, `Display`, `FromStr` (`UnknownBackend`)
+- M4 4.3a (D5): `Command::{DrawIndirect, DrawIndexedIndirect}` (one draw each; `DRAW_INDIRECT_BYTES` 16, `DRAW_INDEXED_INDIRECT_BYTES` 20, the layout Metal and Vulkan share), `SetViewport(Viewport)` and `SetScissor(Rect)` (inside passes; each pass starts with the whole target), `CopyTexture` (one region, `TextureOrigin`, outside passes); `check::{indirect_args, texture_copy (CopySide), viewport_in, scissor_in}`, the checks every backend runs against its resources.
 
 ## Invariants
 - No graphics-API types here; backends translate.
@@ -22,6 +23,7 @@ Backend-neutral GPU vocabulary and the `Device` trait (ADR-0040): validated desc
 - `RhiCaps::feature_sets` is sorted; `SampleCount` holds only 1/2/4/8.
 - `masked` only ever removes capabilities: mesh shaders take object shaders and the mesh output limits with them, the ray-tracing API takes hardware ray tracing, and masked timestamps leave at most `command_buffer`.
 - Timer scopes are paired, not nested, unique per list and outside render passes (`CommandList::validate`). A backend whose caps don't `times_passes()` ignores them and reports no scopes; one that does reports each scope once, in command order, in ms from the submission's first sample.
+- Indirect draws read one record; GPU-decided draw counts (count buffers, indirect command buffers) are later work (`later-backlog.md` §12). Our shaders take their bases from push constants and keep the records' first vertex and instance at 0. Viewports and scissors must lie inside the pass's targets; copies are single-sample, same format, not depth, inside both mips, and never overlap within one mip.
 
 ## How to test
 `cargo nextest run -p concordia-rhi` (GPU-free unit tests). The conformance cases run in each backend's `tests/conformance.rs`.
@@ -40,7 +42,7 @@ Backend-neutral GPU vocabulary and the `Device` trait (ADR-0040): validated desc
 
 ## Status
 M1 phase 1.2b; conformance shaders in Slang since 1.3. M4 phase 4.1a: `RhiCaps` and masking, timer scopes (`timer_scopes_report_each_scope_once_in_order`).
-
+ M4 4.3a: indirect draws, viewport and scissor, texture copies, `check`, and 11 conformance cases (`indirect.rs`, `regions.rs`).
 ## Engineering rules
 These apply to every change, by humans and agents alike.
 1. **TDD on every phase.** Write the tests first, see them fail, implement, then refactor.

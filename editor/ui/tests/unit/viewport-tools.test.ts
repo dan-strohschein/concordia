@@ -20,9 +20,19 @@ test("only the transform tools show a gizmo", () => {
 test("view modes list every engine mode once, lit first", () => {
   const ids = VIEW_MODES.map((m) => m.id);
   expect(ids[0]).toBe("lit");
-  expect(ids).toHaveLength(15);
-  expect(new Set(ids).size).toBe(15);
-  for (const id of ["light_clusters", "closures", "haze", "fuzz", "subsurface", "thin_film", "lod"]) {
+  expect(ids).toHaveLength(17);
+  expect(new Set(ids).size).toBe(17);
+  for (const id of [
+    "light_clusters",
+    "closures",
+    "haze",
+    "fuzz",
+    "subsurface",
+    "thin_film",
+    "lod",
+    "meshlets",
+    "triangles",
+  ]) {
     expect(ids).toContain(id);
   }
 });

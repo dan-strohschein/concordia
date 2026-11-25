@@ -555,3 +555,70 @@ fn render_backend_comes_from_the_env_then_the_project_then_auto() {
     let text = err.to_string();
     assert!(text.contains("dx12") && text.contains("vulkan"), "{text}");
 }
+
+/// `[render] meshlets` (on by default) draws imported dense meshes through the meshlet path, and
+/// `render.stats` says so; `false` keeps everything on the M1 path.
+#[test]
+fn the_projects_meshlets_setting_reaches_the_renderer() {
+    use concordia_api::Engine;
+    use serde_json::json;
+
+    if let Err(concordia_rhi::RhiError::NoDevice { reason }) = concordia_rhi_metal::new_headless() {
+        assert!(
+            !concordia_testkit::gpu_required(),
+            "CONCORDIA_REQUIRE_GPU=1 but no device: {reason}"
+        );
+        return;
+    }
+    // 9,216 triangles: over `auto`'s 8,192, so the import builds meshlets.
+    let glb =
+        concordia_gen::glb::write_glb(&concordia_assets::shapes::sphere(1.0, 96, 48)).unwrap();
+    for (manifest, path, instances) in [
+        ("[assets]\n[render]\n", "compute_indirect", 1),
+        ("[assets]\n[render]\nmeshlets = false\n", "forward", 0),
+    ] {
+        let (dir, project) = project_with(manifest);
+        std::fs::write(dir.path().join("ball.glb"), &glb).unwrap();
+        let mut engine = Engine::new(project.unwrap().engine_config().unwrap()).unwrap();
+        let s = engine.open_session();
+        let scene = json!({"path": "scenes/a.scene.ron", "name": "A", "actor": "agent:test"});
+        engine.call(s, "scene.new", scene).unwrap();
+        let id = engine
+            .call(
+                s,
+                "asset.import",
+                json!({"path": "ball.glb", "actor": "agent:test"}),
+            )
+            .unwrap()["id"]
+            .clone();
+        let mesh = format!("asset:{}#mesh/mesh/0", id.as_str().unwrap());
+        for components in [
+            json!({
+                "Transform": {"translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]},
+                "MeshRenderer": {"mesh": mesh, "material": "builtin:material/default"},
+            }),
+            json!({
+                "Transform": {"translation": [0.0, 0.0, 3.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]},
+                "Camera": {},
+            }),
+        ] {
+            engine
+                .call(
+                    s,
+                    "entity.spawn",
+                    json!({"actor": "agent:test", "components": components}),
+                )
+                .unwrap();
+        }
+        engine
+            .call(s, "capture.screenshot", json!({"width": 32, "height": 32}))
+            .unwrap();
+        let frame = engine.call(s, "render.stats", json!({})).unwrap()["frame"].clone();
+        assert_eq!(frame["raster_path"], path, "{manifest}: {frame}");
+        assert_eq!(
+            frame["meshlets"]["instances"], instances,
+            "{manifest}: {frame}"
+        );
+        drop(dir);
+    }
+}

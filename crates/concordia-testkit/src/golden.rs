@@ -383,13 +383,16 @@ impl Golden {
                 p99: 0.0,
             });
         }
+        let dir = self.comparison_dir(suite, backend);
         if !path.exists() {
+            if self.keep {
+                image.save(&dir.join(format!("{name}.actual.png")))?;
+            }
             return Err(GoldenError::Missing { path });
         }
         let expected = RgbaImage::load(&path)?;
         let score = flip_score(&expected, image)?;
         let passed = tolerance.accepts(&score);
-        let dir = self.comparison_dir(suite, backend);
         if self.keep {
             self.write_comparison_in(&dir, name, &expected, image)?;
             write_score(&dir, name, score, tolerance, passed)?;

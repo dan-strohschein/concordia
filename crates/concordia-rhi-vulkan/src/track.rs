@@ -102,6 +102,15 @@ impl Planner<'_> {
                 let needed = self.copy_layout(*src, Layout::CopySrc)?;
                 self.step(at, &[(*src, needed)])
             }
+            // One image can't be in two layouts, so a copy within a texture uses `General`.
+            Command::CopyTexture { src, dst, .. } if src == dst => {
+                self.step(at, &[(*src, Layout::General)])
+            }
+            Command::CopyTexture { src, dst, .. } => {
+                let from = self.copy_layout(*src, Layout::CopySrc)?;
+                let to = self.copy_layout(*dst, Layout::CopyDst)?;
+                self.step(at, &[(*src, from), (*dst, to)])
+            }
             Command::Barrier { textures, .. } => {
                 for barrier in textures.iter().filter(|b| b.aliasing.is_some()) {
                     self.state(barrier.texture)?.defined = false;
@@ -465,6 +474,76 @@ mod tests {
         );
     }
 
+    fn copy(src: Texture, src_mip: u32, dst: Texture, dst_mip: u32) -> Command {
+        Command::CopyTexture {
+            src,
+            src_origin: concordia_rhi::TextureOrigin {
+                mip: src_mip,
+                x: 0,
+                y: 0,
+            },
+            dst,
+            dst_origin: concordia_rhi::TextureOrigin {
+                mip: dst_mip,
+                x: 0,
+                y: 0,
+            },
+            extent: [std::num::NonZeroU32::MIN; 2],
+        }
+    }
+
+    #[test]
+    fn indirect_draw_after_compute_waits_for_shader_writes() {
+        let list = [
+            Command::Dispatch { groups: [1, 1, 1] },
+            pass(RT_ONLY, None, None),
+            Command::DrawIndirect {
+                args: BUF,
+                offset: 0,
+            },
+            Command::EndRenderPass,
+        ];
+        let ops = plan(&list, &mut textures()).unwrap();
+        let between = ops
+            .iter()
+            .position(|o| *o == Op::Command(0))
+            .and_then(|i| ops.get(i + 1));
+        assert_eq!(
+            between,
+            Some(&Op::Barrier(vec![])),
+            "a global barrier between the dispatch and the pass: {ops:?}"
+        );
+    }
+
+    #[test]
+    fn copy_texture_moves_both_textures_and_returns_them() {
+        let list = [copy(SAMPLED_RT, 0, RT_ONLY, 0)];
+        let ops = plan(&list, &mut textures()).unwrap();
+        assert_eq!(
+            ops,
+            [
+                Op::Barrier(vec![
+                    t(SAMPLED_RT, Layout::ShaderRead, Layout::CopySrc),
+                    t(RT_ONLY, Layout::ColorAttachment, Layout::CopyDst),
+                ]),
+                Op::Command(0),
+                Op::Barrier(vec![
+                    t(SAMPLED_RT, Layout::CopySrc, Layout::ShaderRead),
+                    t(RT_ONLY, Layout::CopyDst, Layout::ColorAttachment),
+                ]),
+            ]
+        );
+    }
+
+    #[test]
+    fn copy_within_one_texture_uses_general() {
+        let ops = plan(&[copy(SAMPLED_RT, 1, SAMPLED_RT, 0)], &mut textures()).unwrap();
+        assert_eq!(
+            ops[0],
+            Op::Barrier(vec![t(SAMPLED_RT, Layout::ShaderRead, Layout::General)])
+        );
+    }
+
     #[test]
     fn unknown_textures_are_reported() {
         let ghost = Texture::from_raw(99, 0);
@@ -492,6 +571,7 @@ mod tests {
                 },
                 Command::EndRenderPass
             ]),
+            (tex.clone(), tex.clone()).prop_map(|(s, d)| vec![copy(s, 0, d, 0)]),
             tex.prop_map(|t| {
                 let none = Access {
                     stages: Stages::empty(),
@@ -536,6 +616,13 @@ mod tests {
             }
             Command::CopyTextureToBuffer { src, .. } => vec![(*src, copy(*src, Layout::CopySrc))],
             Command::CopyBufferToTexture { dst, .. } => vec![(*dst, copy(*dst, Layout::CopyDst))],
+            Command::CopyTexture { src, dst, .. } if src == dst => {
+                vec![(*src, vec![Layout::General])]
+            }
+            Command::CopyTexture { src, dst, .. } => vec![
+                (*src, copy(*src, Layout::CopySrc)),
+                (*dst, copy(*dst, Layout::CopyDst)),
+            ],
             _ => vec![],
         }
     }

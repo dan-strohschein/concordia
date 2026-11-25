@@ -1,5 +1,6 @@
 //! Commands recorded as data and translated by a backend at submit.
 
+use std::num::NonZeroU32;
 use std::ops::Range;
 
 use crate::barrier::{BufferBarrier, TextureBarrier};
@@ -69,6 +70,81 @@ pub struct RenderPassDesc {
     pub colors: Vec<ColorAttachment>,
     /// Optional depth attachment.
     pub depth: Option<DepthAttachment>,
+}
+
+/// Bytes of one [`Command::DrawIndirect`] record: vertex count, instance count, first vertex, first
+/// instance (`u32` each; Metal and Vulkan share the layout).
+pub const DRAW_INDIRECT_BYTES: u64 = 16;
+/// Bytes of one [`Command::DrawIndexedIndirect`] record: index count, instance count, first index,
+/// vertex offset (`i32`), first instance.
+pub const DRAW_INDEXED_INDIRECT_BYTES: u64 = 20;
+
+/// The region of the targets a draw maps clip space into, in pixels (y down from the top-left).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Viewport {
+    /// Left edge.
+    pub x: f32,
+    /// Top edge.
+    pub y: f32,
+    /// Width (> 0).
+    pub width: f32,
+    /// Height (> 0).
+    pub height: f32,
+    /// Depth that clip z = 0 maps to (0..=1).
+    pub min_depth: f32,
+    /// Depth that clip z = 1 maps to (`min_depth..=1`).
+    pub max_depth: f32,
+}
+
+impl Viewport {
+    /// Finite, non-negative corner, positive size, depths ordered within 0..=1.
+    fn validate(&self) -> Result<(), String> {
+        let finite = [
+            self.x,
+            self.y,
+            self.width,
+            self.height,
+            self.min_depth,
+            self.max_depth,
+        ]
+        .iter()
+        .all(|v| v.is_finite());
+        let ok = finite
+            && self.x >= 0.0
+            && self.y >= 0.0
+            && self.width > 0.0
+            && self.height > 0.0
+            && (0.0..=1.0).contains(&self.min_depth)
+            && (self.min_depth..=1.0).contains(&self.max_depth);
+        match ok {
+            true => Ok(()),
+            false => Err(format!("invalid viewport {self:?}")),
+        }
+    }
+}
+
+/// A pixel rectangle (y down from the top-left).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Rect {
+    /// Left edge.
+    pub x: u32,
+    /// Top edge.
+    pub y: u32,
+    /// Width.
+    pub width: NonZeroU32,
+    /// Height.
+    pub height: NonZeroU32,
+}
+
+/// A texel of one mip, the corner of a copied region.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextureOrigin {
+    /// Mip level.
+    pub mip: u32,
+    /// Column.
+    pub x: u32,
+    /// Row.
+    pub y: u32,
 }
 
 /// One recorded command.
@@ -145,6 +221,43 @@ pub enum Command {
         count: u32,
         /// Instance range.
         instances: Range<u32>,
+    },
+    /// One draw (vertex pulling) whose [`DRAW_INDIRECT_BYTES`] arguments are read from `args` at
+    /// draw time; `args` needs `BufferUsage::INDIRECT` and `offset` is a multiple of 4.
+    DrawIndirect {
+        /// Argument buffer.
+        args: Buffer,
+        /// Byte offset of the record.
+        offset: u64,
+    },
+    /// One draw with 32-bit indices whose [`DRAW_INDEXED_INDIRECT_BYTES`] arguments are read from
+    /// `args` at draw time.
+    DrawIndexedIndirect {
+        /// Index buffer.
+        indices: Buffer,
+        /// Argument buffer.
+        args: Buffer,
+        /// Byte offset of the record.
+        offset: u64,
+    },
+    /// Maps clip space into a region of the pass's targets for the following draws (each pass
+    /// starts with the whole target).
+    SetViewport(Viewport),
+    /// Discards fragments outside a rectangle for the following draws (each pass starts with the
+    /// whole target).
+    SetScissor(Rect),
+    /// Copies a region between single-sample textures of the same format (not depth).
+    CopyTexture {
+        /// Source.
+        src: Texture,
+        /// Source corner and mip.
+        src_origin: TextureOrigin,
+        /// Destination.
+        dst: Texture,
+        /// Destination corner and mip.
+        dst_origin: TextureOrigin,
+        /// Width and height of the region.
+        extent: [NonZeroU32; 2],
     },
     /// Dispatch compute thread groups.
     Dispatch {
@@ -248,14 +361,31 @@ impl Structure {
                 self.in_pass = false;
                 Ok(())
             }
-            Command::Draw { .. } | Command::DrawIndexed { .. } if !self.in_pass => {
+            Command::Draw { .. }
+            | Command::DrawIndexed { .. }
+            | Command::DrawIndirect { .. }
+            | Command::DrawIndexedIndirect { .. }
+                if !self.in_pass =>
+            {
                 Err("draws must be inside a render pass".into())
             }
+            Command::SetViewport(_) | Command::SetScissor(_) if !self.in_pass => {
+                Err("viewports and scissors are set inside a render pass".into())
+            }
+            Command::DrawIndirect { offset, .. } | Command::DrawIndexedIndirect { offset, .. }
+                if offset % 4 != 0 =>
+            {
+                Err(format!(
+                    "indirect argument offset {offset} is not a multiple of 4"
+                ))
+            }
+            Command::SetViewport(viewport) => viewport.validate(),
             Command::Dispatch { .. }
             | Command::DispatchIndirect { .. }
             | Command::CopyBuffer { .. }
             | Command::CopyBufferToTexture { .. }
             | Command::CopyTextureToBuffer { .. }
+            | Command::CopyTexture { .. }
             | Command::Barrier { .. }
                 if self.in_pass =>
             {

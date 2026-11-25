@@ -41,8 +41,13 @@ pub struct FrameStats {
     pub culled: u64,
     /// Forward-pass draw calls (repeats are instanced).
     pub draw_calls: u64,
-    /// Triangles drawn.
+    /// Triangles drawn (both paths).
     pub triangles: u64,
+    /// How opaque static geometry reached the rasterizer: `forward`, or `compute_indirect` when
+    /// meshes with meshlets took the meshlet path (ADR-0100).
+    pub raster_path: RasterPath,
+    /// What the meshlet path drew in the forward pass.
+    pub meshlets: MeshletCounts,
     /// Point and spot lights in the world.
     pub punctual_lights: u64,
     /// The sun's shadow maps were reused from the previous frame.
@@ -53,6 +58,30 @@ pub struct FrameStats {
     pub closure_budget: u8,
     /// This frame's materials that were simplified to fit the closure budget.
     pub downgraded_materials: Vec<MaterialDowngrade>,
+}
+
+/// How the frame's opaque static geometry reached the rasterizer (ADR-0100).
+#[allow(non_camel_case_types)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect)]
+pub enum RasterPath {
+    /// Every draw went through the M1 forward path (no draw took the meshlet path).
+    #[default]
+    forward,
+    /// Meshlets were expanded by a compute pass and drawn with indirect draws.
+    compute_indirect,
+}
+
+/// What the meshlet path drew in the frame's forward pass.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect)]
+pub struct MeshletCounts {
+    /// Instances drawn through meshlets (in the camera's view).
+    pub instances: u64,
+    /// Meshlets drawn.
+    pub meshlets: u64,
+    /// Triangles in those meshlets (not the padded draws).
+    pub triangles: u64,
+    /// Indirect draws issued (one per pipeline and material).
+    pub indirect_draws: u64,
 }
 
 /// A material simplified to fit the closure budget.
@@ -141,6 +170,8 @@ pub(crate) fn record(
         culled: stats.culled as u64,
         draw_calls: stats.draw_calls as u64,
         triangles: stats.triangles,
+        raster_path: stats.raster_path,
+        meshlets: stats.meshlets,
         punctual_lights: stats.punctual_lights as u64,
         shadows_cached: stats.shadows_cached,
         memory_bytes: stats.memory_bytes,

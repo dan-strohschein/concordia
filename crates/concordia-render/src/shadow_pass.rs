@@ -122,6 +122,8 @@ pub(crate) struct ShadowJob {
     pub(crate) resolution: u32,
     pub(crate) pipeline: Pipeline,
     pub(crate) casters: Vec<ShadowDraw>,
+    /// The meshlet casters' bucket and the argument buffer its indirect draw reads.
+    pub(crate) meshlets: Option<(concordia_rhi::Buffer, crate::meshlet_pass::BucketDraw)>,
     /// The maps already hold exactly these shadows: sample them, draw nothing.
     pub(crate) reuse: bool,
 }
@@ -130,6 +132,7 @@ pub(crate) struct ShadowJob {
 pub(crate) fn add_shadow_passes(graph: &mut RenderGraph, job: ShadowJob) -> Vec<GraphTexture> {
     let side = NonZeroU32::new(job.resolution).unwrap_or(NonZeroU32::MIN);
     let casters = std::sync::Arc::new(job.casters);
+    let meshlets = std::sync::Arc::new(job.meshlets);
     let mut textures = Vec::with_capacity(job.maps.len());
     for (cascade, (texture, _)) in job.maps.iter().enumerate() {
         let desc = TextureDesc {
@@ -151,7 +154,7 @@ pub(crate) fn add_shadow_passes(graph: &mut RenderGraph, job: ShadowJob) -> Vec<
             textures.push(map);
             continue;
         }
-        let (casters, pipeline) = (casters.clone(), job.pipeline);
+        let (casters, meshlets, pipeline) = (casters.clone(), meshlets.clone(), job.pipeline);
         graph.add_pass_recorded(
             &format!("shadow {cascade}"),
             |p| p.uses(map, Use::DepthWrite),
@@ -174,6 +177,18 @@ pub(crate) fn add_shadow_passes(graph: &mut RenderGraph, job: ShadowJob) -> Vec<
                     ctx.commands.push(Command::Draw {
                         vertices: 0..draw.vertices,
                         instances: 0..draw.instances,
+                    });
+                }
+                if let Some((args, bucket)) = meshlets.as_ref() {
+                    let push = crate::meshlet::MeshletPush {
+                        cascade: cascade as u32,
+                        ..bucket.push
+                    };
+                    ctx.commands.push(Command::SetPipeline(bucket.pipeline));
+                    ctx.commands.push(Command::PushConstants(push.bytes()));
+                    ctx.commands.push(Command::DrawIndirect {
+                        args: *args,
+                        offset: bucket.offset,
                     });
                 }
                 ctx.commands.push(Command::EndRenderPass);

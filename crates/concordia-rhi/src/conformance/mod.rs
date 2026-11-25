@@ -2,10 +2,14 @@
 //! [`conformance_tests!`](crate::conformance_tests) in its `tests/conformance.rs`.
 
 mod cases;
+mod indirect;
+mod regions;
 mod surface;
 mod util;
 
 pub use cases::*;
+pub use indirect::*;
+pub use regions::*;
 pub use surface::*;
 
 use std::path::PathBuf;
@@ -83,7 +87,18 @@ macro_rules! conformance_tests {
             submit_timed_reports_the_gpu_time_once,
             timer_scopes_report_each_scope_once_in_order,
             clip_space_y_is_up_and_back_faces_cull,
-            unwritten_and_freed_texture_slots_read_zero
+            unwritten_and_freed_texture_slots_read_zero,
+            draw_indirect_reads_its_arguments_from_a_buffer,
+            draw_indexed_indirect_reads_its_arguments_from_a_buffer,
+            compute_written_arguments_drive_an_indirect_draw,
+            indirect_draws_see_vertex_and_instance_ids_from_zero,
+            indirect_arguments_out_of_range_are_errors,
+            viewport_maps_clip_space_into_its_rectangle,
+            scissor_discards_outside_its_rectangle,
+            each_pass_starts_with_the_full_viewport,
+            viewport_and_scissor_outside_the_target_are_errors,
+            copy_texture_copies_a_region_between_mips_and_textures,
+            copy_texture_rejects_mismatched_formats_and_out_of_range_regions
         );
     };
     (@cases $make:expr, $golden:expr, $shaders:expr, $finish:expr; $($name:ident),+) => {$(

@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use concordia_rhi::{
-    BlendMode, CompareOp, CullMode, DepthState, Device, Format, GraphicsPipelineDesc, Pipeline,
-    SampleCount, ShaderSource,
+    BlendMode, CompareOp, ComputePipelineDesc, CullMode, DepthState, Device, Format,
+    GraphicsPipelineDesc, Pipeline, SampleCount, ShaderSource,
 };
 use concordia_shaders::{CompileRequest, ShaderCompiler, ShaderModule, Stage, Target};
 
@@ -68,11 +68,22 @@ fn compile_with(
         .map_err(|e| RenderError::Shader(e.to_string()))
 }
 
+/// Where a forward draw's vertices come from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum Geometry {
+    /// The mesh's index and vertex streams (`vs`, the M1 path).
+    Mesh,
+    /// Meshlet entries drawn indirectly (`meshlet_vs`, ADR-0100).
+    Meshlets,
+}
+
 /// Compiled shaders and lazily created pipelines.
 pub(crate) struct Pipelines {
     /// Kept to compile a forward fragment variant per program shape on first use.
     compiler: Box<dyn ShaderCompiler>,
     forward: (ShaderSource, ShaderSource),
+    /// `meshlet_vs`, paired with the forward fragment shaders.
+    meshlet_vs: ShaderSource,
     /// The forward fragment shader specialized to each layered program shape seen.
     shaped: BTreeMap<ProgramShape, ShaderSource>,
     tonemap: (ShaderSource, ShaderSource),
@@ -82,12 +93,14 @@ pub(crate) struct Pipelines {
     ui: (ShaderSource, ShaderSource),
     uis: BTreeMap<u8, Pipeline>,
     shadow: Pipeline,
+    meshlet_shadow: Pipeline,
+    expand: Pipeline,
     sky: (ShaderSource, ShaderSource),
     skies: BTreeMap<u8, Pipeline>,
     grid: (ShaderSource, ShaderSource),
     grids: BTreeMap<u8, Pipeline>,
-    variants: BTreeMap<(u8, bool, bool, Option<ProgramShape>), Pipeline>,
-    debug: BTreeMap<(u8, bool), Pipeline>,
+    variants: BTreeMap<(u8, bool, bool, Option<ProgramShape>, Geometry), Pipeline>,
+    debug: BTreeMap<(u8, bool, Geometry), Pipeline>,
 }
 
 impl Pipelines {
@@ -118,20 +131,46 @@ impl Pipelines {
             compile("tonemap.slang", "fullscreen", Stage::Vertex)?,
             compile("tonemap.slang", "tonemap", Stage::Fragment)?,
         );
-        let shadow = device.create_graphics_pipeline(&GraphicsPipelineDesc {
-            vertex: compile("forward.slang", "shadow_vs", Stage::Vertex)?,
-            fragment: None,
-            color_formats: Vec::new(),
-            depth: Some(DepthState {
-                format: DEPTH,
-                compare: CompareOp::GreaterEqual,
-                write: true,
-            }),
-            samples: SampleCount::X1,
-            cull: CullMode::None,
-            blend: BlendMode::Opaque,
-            label: "shadow depth".into(),
+        let shadow_depth = |vertex: ShaderSource, label: &str| {
+            device.create_graphics_pipeline(&GraphicsPipelineDesc {
+                vertex,
+                fragment: None,
+                color_formats: Vec::new(),
+                depth: Some(DepthState {
+                    format: DEPTH,
+                    compare: CompareOp::GreaterEqual,
+                    write: true,
+                }),
+                samples: SampleCount::X1,
+                cull: CullMode::None,
+                blend: BlendMode::Opaque,
+                label: label.into(),
+            })
+        };
+        let shadow = shadow_depth(
+            compile("forward.slang", "shadow_vs", Stage::Vertex)?,
+            "shadow depth",
+        )?;
+        let meshlet_shadow = shadow_depth(
+            compile("meshlet.slang", "meshlet_shadow_vs", Stage::Vertex)?,
+            "meshlet shadow depth",
+        )?;
+        let expand_module = compile_with(
+            device,
+            compiler.as_ref(),
+            "meshlet.slang",
+            "meshlet_expand",
+            Stage::Compute,
+            BTreeMap::new(),
+        )?;
+        let expand = device.create_compute_pipeline(&ComputePipelineDesc {
+            shader: expand_module.source(),
+            threads_per_group: expand_module.reflection.threads_per_group.ok_or_else(|| {
+                RenderError::Shader("meshlet.expand: no thread group size".into())
+            })?,
+            label: "meshlet.expand".into(),
         })?;
+        let meshlet_vs = compile("meshlet.slang", "meshlet_vs", Stage::Vertex)?;
         let sky = (
             compile("forward.slang", "sky_vs", Stage::Vertex)?,
             compile("forward.slang", "sky_fs", Stage::Fragment)?,
@@ -139,10 +178,13 @@ impl Pipelines {
         Ok(Self {
             compiler,
             forward,
+            meshlet_vs,
             shaped: BTreeMap::new(),
             tonemap,
             tonemaps: BTreeMap::new(),
             shadow,
+            meshlet_shadow,
+            expand,
             sky,
             skies: BTreeMap::new(),
             overlay,
@@ -316,6 +358,24 @@ impl Pipelines {
         self.shadow
     }
 
+    /// Depth-only pipeline for meshlet shadow casters (`meshlet_shadow_vs`).
+    pub(crate) fn meshlet_shadow(&self) -> Pipeline {
+        self.meshlet_shadow
+    }
+
+    /// The `meshlet.expand` compute pipeline.
+    pub(crate) fn expand(&self) -> Pipeline {
+        self.expand
+    }
+
+    /// The vertex shader for `geometry`.
+    fn vertex(&self, geometry: Geometry) -> ShaderSource {
+        match geometry {
+            Geometry::Mesh => self.forward.0.clone(),
+            Geometry::Meshlets => self.meshlet_vs.clone(),
+        }
+    }
+
     /// The forward pipeline for the wireframe (`additive` false) and overdraw (`additive` true) view
     /// modes: every face of every surface, no depth test or write.
     pub(crate) fn debug(
@@ -323,13 +383,14 @@ impl Pipelines {
         device: &dyn Device,
         samples: SampleCount,
         additive: bool,
+        geometry: Geometry,
     ) -> Result<Pipeline, RenderError> {
-        let key = (samples.get(), additive);
+        let key = (samples.get(), additive, geometry);
         if let Some(p) = self.debug.get(&key) {
             return Ok(*p);
         }
         let pipeline = device.create_graphics_pipeline(&GraphicsPipelineDesc {
-            vertex: self.forward.0.clone(),
+            vertex: self.vertex(geometry),
             fragment: Some(self.forward.1.clone()),
             color_formats: vec![HDR],
             depth: Some(DepthState {
@@ -345,7 +406,7 @@ impl Pipelines {
                 BlendMode::Opaque
             },
             label: format!(
-                "forward x{} {}",
+                "forward x{} {} {geometry:?}",
                 samples.get(),
                 if additive { "overdraw" } else { "wireframe" }
             ),
@@ -354,23 +415,39 @@ impl Pipelines {
         Ok(pipeline)
     }
 
+    /// The pipeline a draw uses in `view_mode`: the debug pipelines for wireframe and overdraw,
+    /// else the forward variant.
+    pub(crate) fn for_view(
+        &mut self,
+        device: &dyn Device,
+        view_mode: crate::ViewMode,
+        variant: (SampleCount, bool, bool),
+        shape: Option<&ProgramShape>,
+        geometry: Geometry,
+    ) -> Result<Pipeline, RenderError> {
+        match view_mode {
+            crate::ViewMode::wireframe => self.debug(device, variant.0, false, geometry),
+            crate::ViewMode::overdraw => self.debug(device, variant.0, true, geometry),
+            _ => self.forward(device, variant, shape, geometry),
+        }
+    }
+
     /// The forward pipeline for a sample count, face culling, blending (premultiplied alpha, no
-    /// depth write) and program shape.
+    /// depth write), program shape and vertex source.
     pub(crate) fn forward(
         &mut self,
         device: &dyn Device,
-        samples: SampleCount,
-        double_sided: bool,
-        blend: bool,
+        (samples, double_sided, blend): (SampleCount, bool, bool),
         shape: Option<&ProgramShape>,
+        geometry: Geometry,
     ) -> Result<Pipeline, RenderError> {
-        let key = (samples.get(), double_sided, blend, shape.cloned());
+        let key = (samples.get(), double_sided, blend, shape.cloned(), geometry);
         if let Some(p) = self.variants.get(&key) {
             return Ok(*p);
         }
         let fragment = self.fragment(device, shape)?;
         let pipeline = device.create_graphics_pipeline(&GraphicsPipelineDesc {
-            vertex: self.forward.0.clone(),
+            vertex: self.vertex(geometry),
             fragment: Some(fragment),
             color_formats: vec![HDR],
             depth: Some(DepthState {
@@ -390,7 +467,7 @@ impl Pipelines {
                 BlendMode::Opaque
             },
             label: format!(
-                "forward x{}{}{}{}",
+                "forward x{}{}{}{} {geometry:?}",
                 samples.get(),
                 if double_sided { " double-sided" } else { "" },
                 if blend { " blended" } else { "" },

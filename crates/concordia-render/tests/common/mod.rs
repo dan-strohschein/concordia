@@ -291,9 +291,14 @@ pub fn pixel(image: &Image, x: u32, y: u32) -> [u8; 4] {
 }
 
 pub fn golden(name: &str, image: &Image) {
+    golden_in("render", name, image);
+}
+
+/// [`golden`] in another suite (`tests/golden/<suite>/`).
+pub fn golden_in(suite: &str, name: &str, image: &Image) {
     let rgba =
         RgbaImage::new(image.width, image.height, image.rgba.clone()).expect("well-formed image");
-    assert_golden_on(Some(backend()), "render", name, &rgba);
+    assert_golden_on(Some(backend()), suite, name, &rgba);
 }
 
 /// [`golden`] as a result, so a test can check several images before failing.
@@ -304,4 +309,66 @@ pub fn check_golden(name: &str, image: &Image) -> Result<(), String> {
         .check_on(Some(backend()), "render", name, &rgba)
         .map(|_| ())
         .map_err(|e| format!("golden render/{name} on {}: {e}", backend()))
+}
+
+/// `mesh` with its meshlets built (128 triangles each), as the importers attach them.
+pub fn with_meshlets(mut mesh: concordia_assets::MeshData) -> concordia_assets::MeshData {
+    use concordia_cluster::{ClusterInput, MeshletBuildSettings, MeshletSize};
+    let input = ClusterInput::new(&mesh.positions, &mesh.indices, None).unwrap();
+    let settings = MeshletBuildSettings::for_size(MeshletSize::S128);
+    let jobs =
+        concordia_core::jobs::JobSystem::new(std::num::NonZeroUsize::new(2).unwrap()).unwrap();
+    mesh.meshlets = concordia_cluster::build(&input, &settings, &jobs)
+        .unwrap()
+        .encode()
+        .unwrap();
+    mesh
+}
+
+/// The meshlet image against the M1 image of the same frame at golden `name`'s tolerance in
+/// `m4_meshlet`, then both against that golden (blessed from the M1 path on Metal).
+pub fn assert_same_as_m1(name: &str, m1: &Image, meshlets: &Image) {
+    use concordia_testkit::golden::{Golden, flip_score};
+    let rgba = |i: &Image| RgbaImage::new(i.width, i.height, i.rgba.clone()).unwrap();
+    let tolerance = Golden::from_env()
+        .tolerance_on(Some(backend()), "m4_meshlet", name)
+        .unwrap();
+    let score = flip_score(&rgba(m1), &rgba(meshlets)).unwrap();
+    assert!(
+        tolerance.accepts(&score),
+        "{name}: meshlets vs M1 FLIP {score:?} > {tolerance:?}"
+    );
+    golden_in("m4_meshlet", name, m1);
+    golden_in("m4_meshlet", name, meshlets);
+}
+
+/// Renders `scene` once at `size`, returning the image and its GPU timing.
+pub fn render_timed(
+    renderer: &mut Renderer,
+    scene: &mut Scene,
+    size: (u32, u32),
+) -> (concordia_render::Image, concordia_rhi::GpuTiming) {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let rw = RenderWorld::extract(&scene.world);
+    let request = RenderRequest {
+        camera: None,
+        view: None,
+        width: size.0,
+        height: size.1,
+        overlays: None,
+        view_mode: concordia_render::ViewMode::lit,
+        debug: Vec::new(),
+        ui: Default::default(),
+    };
+    let callbacks = concordia_render::FrameCallbacks {
+        presented: None,
+        gpu_time: Some(Box::new(move |t| tx.send(t).unwrap())),
+    };
+    let image = renderer
+        .render_with(&rw, &mut scene.assets, &request, callbacks)
+        .expect("render");
+    let timing = rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("timing");
+    (image, timing)
 }

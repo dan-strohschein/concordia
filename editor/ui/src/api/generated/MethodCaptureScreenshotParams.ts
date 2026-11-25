@@ -54,7 +54,9 @@ export type ViewMode =
   | "fuzz"
   | "subsurface"
   | "thin_film"
-  | "lod";
+  | "lod"
+  | "meshlets"
+  | "triangles";
 /**
  * Which world: the scene being edited or the running simulation.
  */

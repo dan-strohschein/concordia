@@ -160,7 +160,7 @@ impl Default for StudioSection {
 }
 
 /// `[render]` (the device is created on the first capture).
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct RenderSection {
     /// Closures a pixel may evaluate, 1..=8; only lowers the platform's budget (ADR-0068).
@@ -170,6 +170,19 @@ pub struct RenderSection {
     /// GPU backend: `auto` (Metal on macOS, Vulkan elsewhere), `metal` or `vulkan`;
     /// `CONCORDIA_BACKEND` overrides it.
     pub backend: concordia_rhi_select::BackendChoice,
+    /// Draw static meshes with meshlets through the meshlet path (ADR-0100); on by default.
+    pub meshlets: bool,
+}
+
+impl Default for RenderSection {
+    fn default() -> Self {
+        Self {
+            closure_budget: None,
+            perf_mode: false,
+            backend: Default::default(),
+            meshlets: true,
+        }
+    }
 }
 
 /// `[assets]` (no settings yet).

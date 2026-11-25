@@ -24,7 +24,8 @@ use crate::frame::{DrawPush, FrameParams, IblParams, frame_block, instance_block
 use crate::gpu::{GpuAssets, GpuMesh, SharedPool, Uploads};
 use crate::graph::{GraphTexture, PassContext, RenderGraph, Use};
 use crate::lighting::punctual_lights;
-use crate::pipelines::{DEPTH, HDR, OUTPUT, Pipelines};
+use crate::meshlet_pass::{BucketKey, FrameTables, MeshletJob};
+use crate::pipelines::{DEPTH, Geometry, HDR, OUTPUT, Pipelines};
 use crate::programs::Programs;
 use crate::shadow::{Cascade, CascadeSettings, fit_cascades};
 use crate::shadow_pass::{
@@ -78,6 +79,8 @@ pub struct Renderer {
     /// Called when the frame being rendered reaches the display (set by `present_with`).
     callbacks: FrameCallbacks,
     perf_mode: bool,
+    /// Draw static meshes with meshlets through the meshlet path (ADR-0100).
+    meshlets: bool,
     /// A surface image acquired ahead of its frame (`acquire_ahead`), with its size.
     ahead: Option<(Surface, Texture, (u32, u32))>,
     environments: EnvironmentCache,
@@ -150,18 +153,24 @@ struct DrawOrder {
     blend: bool,
     /// Inside the camera's view.
     visible: bool,
+    /// Its mesh's mesh-table row, when it takes the meshlet path.
+    meshlet_row: Option<u32>,
 }
 
-/// Per-frame instance and material bytes, and the draw order.
+/// Per-frame instance, material and mesh-table bytes, and the draw order.
 struct FrameBlocks {
     instances: Vec<u8>,
     materials: Vec<u8>,
+    /// The meshlet path's mesh table (two `uint4` per mesh; see `meshlet::mesh_row`).
+    meshes: Vec<u8>,
     order: Vec<DrawOrder>,
 }
 
 /// Everything `execute` records for one frame.
 struct FramePlan<'a> {
     draws: Vec<Draw>,
+    /// The meshlet path's work, when anything takes it.
+    meshlets: Option<MeshletJob>,
     samples: SampleCount,
     size: (NonZeroU32, NonZeroU32),
     cluster: ClusterJob<'a>,
@@ -297,6 +306,10 @@ pub struct RenderStats {
     pub pass_timing: crate::perf::PassTiming,
     /// The timed passes, in timer-scope order (scope `i` is `timed_passes[i]`).
     pub timed_passes: Vec<String>,
+    /// How opaque static geometry was drawn (ADR-0100).
+    pub raster_path: crate::RasterPath,
+    /// What the meshlet path drew in the forward pass.
+    pub meshlets: crate::MeshletCounts,
 }
 
 /// One draw call, ready to record: `instances` consecutive instances of one mesh and material.
@@ -308,6 +321,8 @@ struct Draw {
     /// What may share the call: the pipeline, material and mesh streams.
     batch: (Pipeline, u32, u32),
     first: u32,
+    /// Blended (drawn after the meshlet buckets).
+    blend: bool,
 }
 
 impl Renderer {
@@ -326,6 +341,7 @@ impl Renderer {
             surfaces: Vec::new(),
             callbacks: FrameCallbacks::default(),
             perf_mode: false,
+            meshlets: true,
             ahead: None,
             environments: EnvironmentCache::default(),
             shadow_maps: ShadowMaps::default(),
@@ -631,6 +647,16 @@ impl Renderer {
         self.perf_mode
     }
 
+    /// Draws static meshes with meshlets through the meshlet path (on by default; ADR-0100).
+    pub fn set_meshlets(&mut self, on: bool) {
+        self.meshlets = on;
+    }
+
+    /// Whether the meshlet path is on.
+    pub fn meshlets(&self) -> bool {
+        self.meshlets
+    }
+
     /// Sets the project's closure budget (None: the platform's); it can only lower the platform's.
     /// Returns the budget now in effect.
     pub fn set_closure_budget(&mut self, project: Option<ClosureBudget>) -> ClosureBudget {
@@ -780,6 +806,7 @@ impl Renderer {
         let FrameBlocks {
             instances,
             materials: material_bytes,
+            meshes: mesh_table,
             order,
         } = self.instance_data(
             world,
@@ -790,12 +817,11 @@ impl Renderer {
         )?;
         let inst_buf = frame.keep(up.buffer(device, &instances, "instances")?);
         let mat_buf = frame.keep(up.buffer(device, &material_bytes, "materials")?);
+        let mesh_buf = frame.keep(up.buffer(device, &mesh_table, "meshlet meshes")?);
         let ui = self.ui_prepare(device, &mut up, frame, &ui)?;
-        let (uploads, staging) = up.into_commands();
-        staging.into_iter().for_each(|b| {
-            frame.keep(b);
-        });
         let (frame_i, inst_i, mat_i) = (index(frame_buf)?, index(inst_buf)?, index(mat_buf)?);
+        let mut path_draws: Vec<crate::meshlet::PathDraw<BucketKey>> = Vec::new();
+        let mut meshlet_triangles = 0u64;
         let mut draws: Vec<Draw> = Vec::with_capacity(order.len());
         let mut casters: Vec<ShadowDraw> = Vec::new();
         let culled = order.iter().filter(|d| !d.visible).count();
@@ -808,13 +834,15 @@ impl Renderer {
                 double_sided,
                 blend,
                 visible,
+                meshlet_row,
             },
         ) in order.into_iter().enumerate()
         {
             let instance = instance as u32;
             let mesh = self.assets.meshes[&world.draws[item].mesh];
             let placed = &skinning.placements[item];
-            if world.draws[item].cast_shadows {
+            let casts = world.draws[item].cast_shadows;
+            if casts {
                 std::hash::Hash::hash(&mesh.indices, &mut casting);
                 hash_matrix(&placed.world, &mut casting);
                 if let Some(pose) = placed.pose {
@@ -823,6 +851,36 @@ impl Renderer {
                         .iter()
                         .for_each(|m| hash_matrix(m, &mut casting));
                 }
+            }
+            let shape = self.programs.shape(&world.draws[item].material).cloned();
+            let variant = (samples, double_sided, blend);
+            if let (Some(mesh_row), Some((_, info))) = (meshlet_row, mesh.meshlets) {
+                if visible {
+                    meshlet_triangles += u64::from(mesh.count / 3);
+                }
+                let forward = match visible {
+                    true => Some((
+                        self.pipelines.for_view(
+                            device,
+                            view_mode,
+                            variant,
+                            shape.as_ref(),
+                            Geometry::Meshlets,
+                        )?,
+                        material_index,
+                    )),
+                    false => None,
+                };
+                path_draws.push(crate::meshlet::PathDraw {
+                    instance,
+                    mesh_row,
+                    info,
+                    forward,
+                    casts,
+                });
+                continue;
+            }
+            if casts {
                 match casters.last_mut() {
                     Some(c)
                         if c.push.indices == mesh.indices
@@ -863,17 +921,13 @@ impl Renderer {
                 joints: mesh.joints,
                 weights: mesh.weights,
             };
-            let pipeline = match view_mode {
-                crate::ViewMode::wireframe => self.pipelines.debug(device, samples, false)?,
-                crate::ViewMode::overdraw => self.pipelines.debug(device, samples, true)?,
-                _ => self.pipelines.forward(
-                    device,
-                    samples,
-                    double_sided,
-                    blend,
-                    self.programs.shape(&world.draws[item].material),
-                )?,
-            };
+            let pipeline = self.pipelines.for_view(
+                device,
+                view_mode,
+                variant,
+                shape.as_ref(),
+                Geometry::Mesh,
+            )?;
             let batch = (pipeline, material_index, mesh.indices);
             match draws.last_mut() {
                 Some(d) if d.batch == batch && d.first + d.instances == instance => {
@@ -886,16 +940,46 @@ impl Renderer {
                     instances: 1,
                     batch,
                     first: instance,
+                    blend,
                 }),
             }
         }
+        let meshlet_plan = crate::meshlet::plan(&path_draws);
+        let mut kept = Vec::new();
+        let tables = FrameTables {
+            frame: frame_i,
+            instances: inst_i,
+            materials: mat_i,
+            meshes: index(mesh_buf)?,
+        };
+        let pipelines = [self.pipelines.expand(), self.pipelines.meshlet_shadow()];
+        let meshlets = MeshletJob::prepare(
+            device,
+            &mut up,
+            &meshlet_plan,
+            (tables, pipelines),
+            &mut kept,
+        )?;
+        kept.into_iter().for_each(|b| {
+            frame.keep(b);
+        });
+        let (uploads, staging) = up.into_commands();
+        staging.into_iter().for_each(|b| {
+            frame.keep(b);
+        });
+        self.stats.meshlets = meshlet_counts(&path_draws, &meshlet_plan, meshlet_triangles);
+        self.stats.raster_path = match meshlets {
+            Some(_) => crate::RasterPath::compute_indirect,
+            None => crate::RasterPath::forward,
+        };
         self.stats.draws = world.draws.len() - culled;
         self.stats.culled = culled;
-        self.stats.draw_calls = draws.len();
+        self.stats.draw_calls = draws.len() + self.stats.meshlets.indirect_draws as usize;
         self.stats.triangles = draws
             .iter()
             .map(|d| u64::from(d.vertices / 3) * u64::from(d.instances))
-            .sum();
+            .sum::<u64>()
+            + meshlet_triangles;
         self.stats.memory_bytes = device.allocated_bytes();
         let job = ClusterJob {
             buffers: &cluster,
@@ -925,6 +1009,9 @@ impl Renderer {
                 resolution: settings.resolution,
                 pipeline: self.pipelines.shadow(),
                 casters,
+                meshlets: meshlets
+                    .as_ref()
+                    .and_then(|m| m.shadow.clone().map(|b| (m.args, b))),
                 reuse,
             }
         });
@@ -934,6 +1021,7 @@ impl Renderer {
         }
         let plan = FramePlan {
             draws,
+            meshlets,
             samples,
             size: (width, height),
             cluster: job,
@@ -1104,6 +1192,7 @@ impl Renderer {
                     let (lo, hi) = placements[item].bounds;
                     frustum.sees(&placements[item].world, lo, hi)
                 },
+                meshlet_row: None,
             })
             .collect();
         let depth = |d: &DrawOrder| {
@@ -1128,19 +1217,59 @@ impl Renderer {
             (true, true) => depth(a).total_cmp(&depth(b)).then(a.item.cmp(&b.item)),
             (x, y) => x.cmp(&y),
         });
+        let meshes = self.assign_mesh_rows(world, placements, &mut order);
         let mut instances = Vec::new();
         order.iter().for_each(|d| {
             let placed = &placements[d.item];
             let draw = &world.draws[d.item];
             let mut skin = placed.skin;
             skin[2] = lod_code(draw.sim_lod, draw.instanced);
+            skin[3] = d.meshlet_row.map_or(0, |row| row + 1);
             instance_block(&mut instances, &placed.world, skin);
         });
         Ok(FrameBlocks {
             instances,
             materials: material_bytes,
+            meshes,
             order,
         })
+    }
+
+    /// Gives each draw taking the meshlet path its mesh's row, and returns the mesh table.
+    fn assign_mesh_rows(
+        &self,
+        world: &RenderWorld,
+        placements: &[Placement],
+        order: &mut [DrawOrder],
+    ) -> Vec<u8> {
+        let mut rows: BTreeMap<&AssetRef, u32> = BTreeMap::new();
+        let mut table = Vec::new();
+        for d in order.iter_mut() {
+            let reference = &world.draws[d.item].mesh;
+            let mesh = &self.assets.meshes[reference];
+            let skinned = placements[d.item].pose.is_some() || mesh.joint_count > 0;
+            let info = mesh.meshlets.map(|(_, info)| info);
+            if !crate::meshlet::takes_path(self.meshlets, info, skinned, d.blend) {
+                continue;
+            }
+            let next = rows.len() as u32;
+            let row = *rows.entry(reference).or_insert_with(|| {
+                let (blob, info) = mesh.meshlets.unwrap_or_default();
+                let streams = crate::meshlet::Streams {
+                    positions: mesh.positions,
+                    normals: mesh.normals,
+                    tangents: mesh.tangents,
+                    uvs: mesh.uvs,
+                };
+                crate::frame::push_rows_u32(
+                    &mut table,
+                    &crate::meshlet::mesh_row(blob, streams, info),
+                );
+                next
+            });
+            d.meshlet_row = Some(row);
+        }
+        table
     }
 
     /// Builds the frame graph, places transients, records, then reads back or presents.
@@ -1152,6 +1281,7 @@ impl Renderer {
     ) -> Result<(Option<Image>, Overflow), RenderError> {
         let FramePlan {
             draws,
+            meshlets,
             samples,
             size,
             cluster: job,
@@ -1211,13 +1341,16 @@ impl Renderer {
             Layout::Undefined,
             Some(final_layout),
         );
+        if let Some(m) = &meshlets {
+            m.add_pass(&mut graph);
+        }
         let shadow_maps = shadow
             .map(|s| add_shadow_passes(&mut graph, s))
             .unwrap_or_default();
         let targets = add_forward(
             &mut graph,
             view,
-            draws,
+            (draws, meshlets),
             samples,
             size,
             &shadow_maps,
@@ -1547,7 +1680,7 @@ type FullDraw = Option<(Pipeline, Vec<u8>)>;
 fn add_forward(
     graph: &mut RenderGraph,
     view: &CameraView,
-    draws: Vec<Draw>,
+    (draws, meshlets): (Vec<Draw>, Option<MeshletJob>),
     samples: SampleCount,
     size: (NonZeroU32, NonZeroU32),
     shadow_maps: &[GraphTexture],
@@ -1622,7 +1755,11 @@ fn add_forward(
                 });
             }
             let mut bound = None;
-            for draw in &draws {
+            let opaque = draws.iter().take_while(|d| !d.blend).count();
+            for (i, draw) in draws.iter().enumerate() {
+                if i == opaque {
+                    bound = draw_buckets(meshlets.as_ref(), &mut ctx.commands.commands, bound);
+                }
                 if bound != Some(draw.pipeline) {
                     ctx.commands.push(Command::SetPipeline(draw.pipeline));
                     bound = Some(draw.pipeline);
@@ -1632,6 +1769,9 @@ fn add_forward(
                     vertices: 0..draw.vertices,
                     instances: 0..draw.instances,
                 });
+            }
+            if opaque == draws.len() {
+                draw_buckets(meshlets.as_ref(), &mut ctx.commands.commands, bound);
             }
             if let Some((pipeline, push)) = &grid {
                 ctx.commands.push(Command::SetPipeline(*pipeline));
@@ -1646,6 +1786,40 @@ fn add_forward(
         })),
     );
     ForwardTargets { hdr }
+}
+
+/// What the meshlet path draws in the forward pass (`triangles`: its instances' source triangles).
+fn meshlet_counts(
+    draws: &[crate::meshlet::PathDraw<BucketKey>],
+    plan: &crate::meshlet::MeshletPlan<BucketKey>,
+    triangles: u64,
+) -> crate::MeshletCounts {
+    let forward = plan.buckets.iter().filter(|b| b.key.is_some());
+    crate::MeshletCounts {
+        instances: draws.iter().filter(|d| d.forward.is_some()).count() as u64,
+        meshlets: forward.clone().map(|b| u64::from(b.entries)).sum(),
+        triangles,
+        indirect_draws: forward.count() as u64,
+    }
+}
+
+/// Records the meshlet buckets' indirect draws; returns the pipeline left bound.
+fn draw_buckets(
+    meshlets: Option<&MeshletJob>,
+    commands: &mut Vec<Command>,
+    mut bound: Option<Pipeline>,
+) -> Option<Pipeline> {
+    let Some(job) = meshlets else {
+        return bound;
+    };
+    for bucket in &job.forward {
+        if bound != Some(bucket.pipeline) {
+            commands.push(Command::SetPipeline(bucket.pipeline));
+            bound = Some(bucket.pipeline);
+        }
+        job.draw(bucket, commands);
+    }
+    bound
 }
 
 /// Tonemap pass: HDR (read by bindless index) → sRGB output.

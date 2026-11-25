@@ -87,7 +87,17 @@ pub(crate) fn read_texture(device: &dyn Device, texture: Texture, size: u32) -> 
 }
 
 pub(crate) fn compute(device: &dyn Device, h: &Harness<'_>, name: &str) -> Pipeline {
-    let (shader, threads) = h.shaders.shader(name, name, ShaderStage::Compute);
+    compute_entry(device, h, name, name)
+}
+
+/// The compute pipeline of `entry` in conformance shader `name`.
+pub(crate) fn compute_entry(
+    device: &dyn Device,
+    h: &Harness<'_>,
+    name: &str,
+    entry: &str,
+) -> Pipeline {
+    let (shader, threads) = h.shaders.shader(name, entry, ShaderStage::Compute);
     let desc = ComputePipelineDesc {
         shader,
         threads_per_group: threads.expect("compute shaders report their thread group size"),
@@ -149,6 +159,11 @@ pub(crate) fn push(words: &[u32], floats: &[f32]) -> Command {
 
 /// A bindless buffer filled with `data` through a staging upload.
 pub(crate) fn upload(device: &dyn Device, data: &[u8]) -> Buffer {
+    upload_with(device, data, BufferUsage::empty())
+}
+
+/// [`upload`] with `extra` usages (e.g. `INDIRECT`, `INDEX`).
+pub(crate) fn upload_with(device: &dyn Device, data: &[u8], extra: BufferUsage) -> Buffer {
     let size = data.len() as u64;
     let staging = buffer(device, size, BufferUsage::COPY_SRC, MemoryLocation::Upload);
     device
@@ -157,7 +172,8 @@ pub(crate) fn upload(device: &dyn Device, data: &[u8]) -> Buffer {
     let usage = BufferUsage::STORAGE
         | BufferUsage::BINDLESS
         | BufferUsage::COPY_DST
-        | BufferUsage::COPY_SRC;
+        | BufferUsage::COPY_SRC
+        | extra;
     let gpu = buffer(device, size, usage, MemoryLocation::GpuOnly);
     let mut list = CommandList::new("upload");
     list.push(Command::CopyBuffer {

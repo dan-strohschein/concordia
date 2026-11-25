@@ -315,11 +315,20 @@ fn check_placement(
     }
 }
 
+/// Whether a texture of `usage` gets image views (copy-only textures may not have any).
+pub(crate) fn has_views(usage: concordia_rhi::TextureUsage) -> bool {
+    use concordia_rhi::TextureUsage as U;
+    usage.intersects(U::SAMPLED | U::STORAGE | U::RENDER_TARGET)
+}
+
 fn create_views(
     device: &ash::Device,
     raw: vk::Image,
     desc: &TextureDesc,
 ) -> Result<(vk::ImageView, vk::ImageView), RhiError> {
+    if !has_views(desc.usage) {
+        return Ok((vk::ImageView::null(), vk::ImageView::null()));
+    }
     let view = create_view(device, raw, desc, desc.mip_levels.get())?;
     if desc.mip_levels.get() == 1 {
         return Ok((view, view));
@@ -429,5 +438,31 @@ pub(crate) fn bindless_texture(usage: TextureUsage) -> Result<bool, RhiError> {
             "texture desc",
             "BINDLESS textures must be SAMPLED or STORAGE",
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use concordia_rhi::TextureUsage;
+
+    #[test]
+    fn only_viewable_usages_get_image_views() {
+        for usage in [
+            TextureUsage::SAMPLED,
+            TextureUsage::STORAGE,
+            TextureUsage::RENDER_TARGET,
+            TextureUsage::RENDER_TARGET | TextureUsage::COPY_SRC,
+            TextureUsage::SAMPLED | TextureUsage::COPY_DST | TextureUsage::BINDLESS,
+        ] {
+            assert!(has_views(usage), "{usage:?}");
+        }
+        for usage in [
+            TextureUsage::COPY_SRC,
+            TextureUsage::COPY_DST,
+            TextureUsage::COPY_SRC | TextureUsage::COPY_DST,
+        ] {
+            assert!(!has_views(usage), "{usage:?}");
+        }
     }
 }
