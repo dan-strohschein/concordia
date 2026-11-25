@@ -601,6 +601,45 @@ fn black_white_texture(device: &dyn Device) -> u32 {
     device.texture_index(texture).expect("bindless index").0
 }
 
+/// A bindless texture slot that was never written, or whose texture was destroyed, reads as zero
+/// (black, alpha 0 or 1) instead of faulting: Metal's nil entries, Vulkan's null descriptors.
+pub fn unwritten_and_freed_texture_slots_read_zero(device: &dyn Device, h: &Harness<'_>) {
+    let usage = TextureUsage::SAMPLED | TextureUsage::COPY_DST | TextureUsage::BINDLESS;
+    let texture = device
+        .create_texture(&texture_desc(2, Format::Rgba8Unorm, SampleCount::X1, usage))
+        .expect("create texture");
+    let freed = device.texture_index(texture).expect("bindless index").0;
+    device.destroy_texture(texture);
+    device.wait_idle().expect("wait idle");
+    let unwritten = device.caps().max_bindless_textures.min(16_384) - 1;
+    let reader = graphics(
+        device,
+        h,
+        "sample_texture",
+        ("fullscreen", "sample_texture"),
+        SampleCount::X1,
+        None,
+    );
+    for (name, index) in [("freed", freed), ("never written", unwritten)] {
+        let color = target(device, SIZE, SampleCount::X1);
+        let mut list = CommandList::new("read an empty slot");
+        list.push(pass(color, clear([1.0, 0.0, 1.0, 1.0]), None, None))
+            .push(Command::SetPipeline(reader))
+            .push(push(&[index, 0, 0, 0], &[0.0; 4]))
+            .push(Command::Draw {
+                vertices: 0..3,
+                instances: 0..1,
+            })
+            .push(Command::EndRenderPass);
+        run(device, &list);
+        let got = pixel(&read_texture(device, color, SIZE), 100, 100);
+        assert!(
+            got[..3] == [0, 0, 0] && (got[3] == 0 || got[3] == 255),
+            "{name} slot {index} read {got:?}"
+        );
+    }
+}
+
 /// Every static sampler filters and addresses as named (and buffer-to-texture uploads land).
 pub fn static_samplers_filter_and_address_as_named(device: &dyn Device, h: &Harness<'_>) {
     let source = black_white_texture(device);

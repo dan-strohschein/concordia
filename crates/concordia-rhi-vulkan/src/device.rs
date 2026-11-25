@@ -238,7 +238,14 @@ impl Inner {
         let presents = can_present(&instance, &chosen);
         let mutable_format =
             presents && chosen.record.extensions.iter().any(|e| e == MUTABLE_FORMAT);
-        let device = create_logical(&chosen, &instance, presents, mutable_format)?;
+        let null_descriptors = instance.null_descriptors(chosen.physical);
+        let device = create_logical(
+            &chosen,
+            &instance,
+            presents,
+            mutable_format,
+            null_descriptors,
+        )?;
         // SAFETY: the device was created with one queue in `chosen.family`.
         let queue = unsafe { device.get_device_queue(chosen.family, 0) };
         let wsi = presents.then(|| Wsi {
@@ -274,13 +281,17 @@ impl Inner {
             }),
             instance,
         };
-        made.init(chosen.family, chosen.record.features.sampler_anisotropy)?;
+        made.init(
+            chosen.family,
+            chosen.record.features.sampler_anisotropy,
+            null_descriptors,
+        )?;
         Ok(made)
     }
 
     /// Creates the allocator, bindless tables, command pool and progress timeline (`Drop` undoes a
     /// partial init).
-    fn init(&mut self, family: u32, anisotropy: bool) -> Result<(), RhiError> {
+    fn init(&mut self, family: u32, anisotropy: bool, nulls: bool) -> Result<(), RhiError> {
         let mut allocator = Allocator::new(&AllocatorCreateDesc {
             instance: self.instance.raw.clone(),
             device: self.device.clone(),
@@ -290,7 +301,7 @@ impl Inner {
             allocation_sizes: Default::default(),
         })
         .map_err(|e| RhiError::OutOfMemory(format!("the GPU allocator: {e}")))?;
-        let tables = Bindless::new(&self.device, &mut allocator, anisotropy);
+        let tables = Bindless::new(&self.device, &mut allocator, anisotropy, nulls);
         let state = self
             .state
             .get_mut()
@@ -604,6 +615,7 @@ impl Inner {
                 }
                 Dead::Texture(t) => {
                     if let Some(slot) = t.bindless {
+                        tables.clear_texture(&self.device, slot);
                         tables.texture_slots.give_back(slot);
                     }
                 }
@@ -1038,6 +1050,7 @@ fn create_logical(
     instance: &Instance,
     presents: bool,
     mutable_format: bool,
+    null_descriptors: bool,
 ) -> Result<ash::Device, RhiError> {
     let priorities = [1.0];
     let queues = [vk::DeviceQueueCreateInfo::default()
@@ -1061,11 +1074,15 @@ fn create_logical(
         .shader_storage_image_write_without_format(true)
         .shader_int64(true)
         .sampler_anisotropy(chosen.record.features.sampler_anisotropy);
+    let mut robustness = vk::PhysicalDeviceRobustness2FeaturesEXT::default().null_descriptor(true);
     let mut features = vk::PhysicalDeviceFeatures2::default()
         .features(core)
         .push_next(&mut v11)
         .push_next(&mut v12)
         .push_next(&mut v13);
+    if null_descriptors {
+        features = features.push_next(&mut robustness);
+    }
     let portability = chosen
         .record
         .extensions
@@ -1076,6 +1093,7 @@ fn create_logical(
         .into_iter()
         .chain(presents.then_some(ash::khr::swapchain::NAME.as_ptr()))
         .chain(mutable_format.then_some(ash::khr::swapchain_mutable_format::NAME.as_ptr()))
+        .chain(null_descriptors.then_some(ash::ext::robustness2::NAME.as_ptr()))
         .collect();
     let info = vk::DeviceCreateInfo::default()
         .queue_create_infos(&queues)
