@@ -289,6 +289,9 @@ impl Recorder<'_> {
                 count,
                 instances,
             } => self.draw_indexed(*indices, *offset, *count, instances.clone()),
+            Command::DrawMeshTasks { .. } => Err(RhiError::Unsupported(
+                "mesh-task draws arrive on Vulkan in M4 4.3b step 4".into(),
+            )),
             Command::Dispatch { groups } => {
                 self.require(Kind::Compute)?;
                 // SAFETY: a compute pipeline is bound outside a render pass.

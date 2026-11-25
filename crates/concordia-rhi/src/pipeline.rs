@@ -1,6 +1,7 @@
 //! Pipeline descriptors.
 
-use crate::caps::SampleCount;
+use crate::caps::{RhiCaps, SampleCount};
+use crate::error::RhiError;
 use crate::format::Format;
 
 /// Shader code for a backend.
@@ -104,21 +105,125 @@ pub struct GraphicsPipelineDesc {
     pub label: String,
 }
 
-/// A mesh-shader pipeline (object + mesh + fragment); needs `RhiCaps::mesh_shaders`.
+/// Most threads in one object or mesh threadgroup on every backend (Vulkan's guaranteed minimum).
+pub const MAX_MESH_STAGE_THREADS: u32 = 128;
+/// Largest object-to-mesh payload in bytes on every backend (Metal's limit, Vulkan's minimum).
+pub const MAX_MESH_PAYLOAD_BYTES: u32 = 16 * 1024;
+
+/// The object (task/amplification) stage of a mesh pipeline; needs `RhiCaps::object_shaders`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ObjectStage {
+    /// The shader.
+    pub shader: ShaderSource,
+    /// Threads per group (from the shader's numthreads; Metal needs it at draw time).
+    pub threads_per_group: [u32; 3],
+    /// Bytes of the payload it passes to its mesh groups (1..=[`MAX_MESH_PAYLOAD_BYTES`]).
+    pub payload_bytes: u32,
+}
+
+/// The mesh stage of a mesh pipeline.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MeshStage {
+    /// The shader.
+    pub shader: ShaderSource,
+    /// Threads per group (from the shader's numthreads; Metal needs it at draw time).
+    pub threads_per_group: [u32; 3],
+    /// Most vertices the shader declares per group (≤ `RhiCaps::max_mesh_output_vertices`).
+    pub max_vertices: u32,
+    /// Most triangles the shader declares per group (≤ `RhiCaps::max_mesh_output_primitives`).
+    pub max_primitives: u32,
+}
+
+/// A mesh-shader pipeline (optional object stage, mesh stage, optional fragment stage); needs
+/// `RhiCaps::mesh_shaders`. Drawn with `Command::DrawMeshTasks`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MeshPipelineDesc {
-    /// Object (task) shader.
-    pub object: Option<ShaderSource>,
-    /// Mesh shader.
-    pub mesh: ShaderSource,
-    /// Fragment shader.
-    pub fragment: ShaderSource,
+    /// Object (task) stage.
+    pub object: Option<ObjectStage>,
+    /// Mesh stage.
+    pub mesh: MeshStage,
+    /// Fragment shader (none for depth-only).
+    pub fragment: Option<ShaderSource>,
     /// Color target formats.
     pub color_formats: Vec<Format>,
     /// Depth state.
     pub depth: Option<DepthState>,
+    /// MSAA samples of the targets.
+    pub samples: SampleCount,
+    /// Culling.
+    pub cull: CullMode,
+    /// Blending for every color target.
+    pub blend: BlendMode,
     /// Debug label.
     pub label: String,
+}
+
+impl MeshPipelineDesc {
+    /// Checks the stages against `caps` and the portable limits: `Unsupported` without mesh (or
+    /// object) shaders, `Invalid` for anything out of range. Never clamps.
+    pub fn validate(&self, caps: &RhiCaps) -> Result<(), RhiError> {
+        self.supported(caps)?;
+        let invalid =
+            |why: String| RhiError::invalid("mesh pipeline", format!("{:?}: {why}", self.label));
+        if self.color_formats.is_empty() && self.depth.is_none() || self.color_formats.len() > 8 {
+            return Err(invalid(
+                "needs 1..=8 color targets or a depth target".into(),
+            ));
+        }
+        stage_threads("mesh", self.mesh.threads_per_group).map_err(invalid)?;
+        outputs(&self.mesh, caps).map_err(invalid)?;
+        if let Some(object) = &self.object {
+            stage_threads("object", object.threads_per_group).map_err(invalid)?;
+            if !(1..=MAX_MESH_PAYLOAD_BYTES).contains(&object.payload_bytes) {
+                return Err(invalid(format!(
+                    "payload of {} bytes; 1..={MAX_MESH_PAYLOAD_BYTES} allowed",
+                    object.payload_bytes
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    /// `Unsupported` unless the device has mesh shaders, and object shaders if there is a stage.
+    fn supported(&self, caps: &RhiCaps) -> Result<(), RhiError> {
+        let missing = match (caps.mesh_shaders, caps.object_shaders, &self.object) {
+            (false, _, _) => "mesh shaders",
+            (true, false, Some(_)) => "object shaders",
+            _ => return Ok(()),
+        };
+        Err(RhiError::Unsupported(format!(
+            "mesh pipeline {:?}: the device has no {missing}",
+            self.label
+        )))
+    }
+}
+
+/// A stage's group is non-empty and within [`MAX_MESH_STAGE_THREADS`].
+fn stage_threads(stage: &str, threads: [u32; 3]) -> Result<(), String> {
+    let total = threads.iter().map(|&t| u64::from(t)).product::<u64>();
+    match (1..=u64::from(MAX_MESH_STAGE_THREADS)).contains(&total) {
+        true => Ok(()),
+        false => Err(format!(
+            "{stage} threads {threads:?}: 1..={MAX_MESH_STAGE_THREADS} in total allowed"
+        )),
+    }
+}
+
+/// The mesh stage's declared outputs are non-zero and within the device's caps.
+fn outputs(mesh: &MeshStage, caps: &RhiCaps) -> Result<(), String> {
+    let within = |n: u32, cap: u32| (1..=cap).contains(&n);
+    match within(mesh.max_vertices, caps.max_mesh_output_vertices)
+        && within(mesh.max_primitives, caps.max_mesh_output_primitives)
+    {
+        true => Ok(()),
+        false => Err(format!(
+            "outputs {} vertices / {} primitives; the device allows 1..={} / 1..={}",
+            mesh.max_vertices,
+            mesh.max_primitives,
+            caps.max_mesh_output_vertices,
+            caps.max_mesh_output_primitives
+        )),
+    }
 }
 
 /// The fixed sampler set every backend provides after the bindless textures (ADR-0040);

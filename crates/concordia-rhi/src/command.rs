@@ -79,6 +79,11 @@ pub const DRAW_INDIRECT_BYTES: u64 = 16;
 /// vertex offset (`i32`), first instance.
 pub const DRAW_INDEXED_INDIRECT_BYTES: u64 = 20;
 
+/// Most mesh-task groups per dimension of one draw on every backend (Vulkan's minimum).
+pub const MAX_MESH_TASK_GROUPS: u32 = 65_535;
+/// Most mesh-task groups in one draw on every backend (Vulkan's minimum).
+pub const MAX_MESH_TASK_GROUPS_TOTAL: u64 = 1 << 22;
+
 /// The region of the targets a draw maps clip space into, in pixels (y down from the top-left).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Viewport {
@@ -259,6 +264,13 @@ pub enum Command {
         /// Width and height of the region.
         extent: [NonZeroU32; 2],
     },
+    /// Draws `groups` object groups (or mesh groups, without an object stage) with the bound mesh
+    /// pipeline; each count is 1..=[`MAX_MESH_TASK_GROUPS`] and their product at most
+    /// [`MAX_MESH_TASK_GROUPS_TOTAL`].
+    DrawMeshTasks {
+        /// Group counts.
+        groups: [u32; 3],
+    },
     /// Dispatch compute thread groups.
     Dispatch {
         /// Group counts.
@@ -323,6 +335,21 @@ impl CommandList {
     }
 }
 
+/// Each count is 1..=[`MAX_MESH_TASK_GROUPS`] and the product at most [`MAX_MESH_TASK_GROUPS_TOTAL`].
+fn mesh_task_groups(groups: [u32; 3]) -> Result<(), String> {
+    let each = groups
+        .iter()
+        .all(|g| (1..=MAX_MESH_TASK_GROUPS).contains(g));
+    let total = groups.iter().map(|&g| u64::from(g)).product::<u64>();
+    match each && total <= MAX_MESH_TASK_GROUPS_TOTAL {
+        true => Ok(()),
+        false => Err(format!(
+            "mesh-task groups {groups:?}: each 1..={MAX_MESH_TASK_GROUPS}, at most \
+             {MAX_MESH_TASK_GROUPS_TOTAL} in total"
+        )),
+    }
+}
+
 /// Where validation is in a command list: inside a render pass, inside a timer, scopes seen.
 #[derive(Default)]
 struct Structure {
@@ -365,6 +392,7 @@ impl Structure {
             | Command::DrawIndexed { .. }
             | Command::DrawIndirect { .. }
             | Command::DrawIndexedIndirect { .. }
+            | Command::DrawMeshTasks { .. }
                 if !self.in_pass =>
             {
                 Err("draws must be inside a render pass".into())
@@ -380,6 +408,7 @@ impl Structure {
                 ))
             }
             Command::SetViewport(viewport) => viewport.validate(),
+            Command::DrawMeshTasks { groups } => mesh_task_groups(*groups),
             Command::Dispatch { .. }
             | Command::DispatchIndirect { .. }
             | Command::CopyBuffer { .. }
