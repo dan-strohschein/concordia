@@ -179,3 +179,77 @@ pub fn scissor_in(rect: &Rect, size: [NonZeroU32; 2]) -> Result<(), RhiError> {
         )),
     }
 }
+
+/// A temporal scale's textures, as their descriptors.
+#[derive(Debug, Clone, Copy)]
+pub struct TemporalTextures<'a> {
+    /// This frame's color.
+    pub color: &'a TextureDesc,
+    /// This frame's depth.
+    pub depth: &'a TextureDesc,
+    /// Motion vectors.
+    pub motion: &'a TextureDesc,
+    /// The reactive mask.
+    pub reactive: Option<&'a TextureDesc>,
+    /// The result.
+    pub output: &'a TextureDesc,
+}
+
+/// Each texture is single-sample, of the scaler's size and format; inputs are `SAMPLED` and the
+/// output `STORAGE`; a reactive mask is given exactly when the scaler reads one.
+pub fn temporal_scale(
+    desc: &crate::TemporalScalerDesc,
+    textures: &TemporalTextures<'_>,
+) -> Result<(), RhiError> {
+    let bad = |reason: String| Err(RhiError::invalid("temporal scale", reason));
+    match (desc.reactive, textures.reactive) {
+        (Some(_), None) => return bad("the scaler reads a reactive mask; none was given".into()),
+        (None, Some(_)) => return bad("the scaler has no reactive mask; one was given".into()),
+        _ => {}
+    }
+    let (input, output) = (desc.input, desc.output);
+    let read = TextureUsage::SAMPLED;
+    let sides = [
+        ("color", Some(textures.color), input, Some(desc.color), read),
+        ("depth", Some(textures.depth), input, Some(desc.depth), read),
+        (
+            "motion",
+            Some(textures.motion),
+            input,
+            Some(desc.motion),
+            read,
+        ),
+        ("reactive", textures.reactive, input, desc.reactive, read),
+        (
+            "output",
+            Some(textures.output),
+            output,
+            Some(desc.output_format),
+            TextureUsage::STORAGE,
+        ),
+    ];
+    for (name, texture, size, format, usage) in sides {
+        let (Some(t), Some(format)) = (texture, format) else {
+            continue;
+        };
+        if t.samples != SampleCount::X1 {
+            return bad(format!("{name} {:?} must be single-sample", t.label));
+        }
+        if [t.width, t.height] != size {
+            return bad(format!(
+                "{name} {:?} is {}×{}; the scaler takes {}×{}",
+                t.label, t.width, t.height, size[0], size[1]
+            ));
+        }
+        if t.format != format {
+            return bad(format!(
+                "{name} {:?} is {:?}; the scaler takes {format:?}",
+                t.label, t.format
+            ));
+        }
+        if !t.usage.contains(usage) {
+            return bad(format!("{name} {:?} needs {usage:?} usage", t.label));
+        }
+    }
+    Ok(())
+}

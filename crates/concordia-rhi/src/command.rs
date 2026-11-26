@@ -301,6 +301,8 @@ pub enum Command {
         /// Byte offset.
         offset: u64,
     },
+    /// Upscales one frame with a device-provided temporal scaler (outside render passes).
+    TemporalScale(crate::temporal::TemporalScale),
     /// Start timing the commands up to the next [`Command::EndTimer`] (outside render passes; no
     /// nesting). Backends without per-pass timestamps ignore it (`RhiCaps::timestamp_granularity`).
     BeginTimer(TimerScope),
@@ -438,6 +440,10 @@ impl Structure {
             {
                 Err("dispatches, copies and barriers must be outside render passes".into())
             }
+            Command::TemporalScale(_) if self.in_pass => {
+                Err("a temporal scale must be outside render passes".into())
+            }
+            Command::TemporalScale(scale) => scale.validate(),
             Command::PushConstants(bytes) if bytes.len() > MAX_PUSH_CONSTANTS => Err(format!(
                 "{} push-constant bytes; the limit is {MAX_PUSH_CONSTANTS}",
                 bytes.len()

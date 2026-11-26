@@ -12,6 +12,8 @@ mod device;
 #[cfg(target_os = "macos")]
 mod encode;
 #[cfg(target_os = "macos")]
+mod metalfx;
+#[cfg(target_os = "macos")]
 mod probe;
 pub mod record;
 #[cfg(target_os = "macos")]

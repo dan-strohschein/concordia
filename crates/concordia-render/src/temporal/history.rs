@@ -12,6 +12,16 @@ use crate::renderer::desc;
 /// relative, well inside the 1 % gap) and motion length.
 pub(crate) const KEPT: concordia_rhi::Format = concordia_rhi::Format::Rg16Float;
 
+/// MetalFX's reactive mask format.
+pub(crate) const REACTIVE: concordia_rhi::Format = concordia_rhi::Format::R8Unorm;
+
+/// A view's GPU objects to free once the GPU is done with them.
+#[derive(Debug, Default)]
+pub(crate) struct Freed {
+    pub(crate) textures: Vec<Texture>,
+    pub(crate) scaler: Option<concordia_rhi::TemporalScaler>,
+}
+
 /// Which view a history belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HistoryKey {
@@ -28,6 +38,8 @@ pub(crate) struct HistoryTextures {
     pub(crate) history: [Texture; 2],
     /// Linear depth and motion length in pixels ([`KEPT`], internal size).
     pub(crate) depth: [Texture; 2],
+    /// MetalFX's reactive mask (`R8Unorm`, internal size; the `metalfx` backend only).
+    pub(crate) reactive: Option<Texture>,
     /// Which of each pair holds last frame's.
     pub(crate) read: usize,
     /// Whether last frame's were written (their layout is `ShaderRead`).
@@ -43,6 +55,8 @@ pub(crate) struct ViewHistory {
     /// The settings and sizes the textures were made for (output, internal).
     shape: Option<Shape>,
     pub(crate) textures: Option<HistoryTextures>,
+    /// MetalFX's scaler (it keeps its own history; the `metalfx` backend only).
+    pub(crate) scaler: Option<concordia_rhi::TemporalScaler>,
     /// Frames accumulated since the last reset (the jitter index).
     pub(crate) frames: u64,
     pub(crate) exposure: Option<FrameExposure>,
@@ -59,6 +73,7 @@ impl ViewHistory {
             key,
             shape: None,
             textures: None,
+            scaler: None,
             frames: 0,
             exposure: None,
             last_used: 0,
@@ -81,29 +96,38 @@ impl ViewHistory {
         }
     }
 
-    /// The textures, for freeing once the GPU is done with them.
-    pub(crate) fn take_textures(&mut self) -> Vec<Texture> {
+    /// The textures and scaler, for freeing once the GPU is done with them.
+    pub(crate) fn take_textures(&mut self) -> Freed {
         self.shape = None;
-        self.textures
-            .take()
-            .map_or_else(Vec::new, |t| t.history.into_iter().chain(t.depth).collect())
+        let textures = self.textures.take().map_or_else(Vec::new, |t| {
+            t.history
+                .into_iter()
+                .chain(t.depth)
+                .chain(t.reactive)
+                .collect()
+        });
+        Freed {
+            textures,
+            scaler: self.scaler.take(),
+        }
     }
 
-    /// Makes the textures fit `temporal` at `output` from `internal`, resetting on any change;
-    /// returns textures to free.
+    /// Makes the textures (and MetalFX's scaler, for `metalfx`) fit `temporal` at `output` from
+    /// `internal`, resetting on any change; returns what to free.
     pub(crate) fn fit(
         &mut self,
         device: &dyn Device,
         temporal: Temporal,
         output: (u32, u32),
         internal: (u32, u32),
-    ) -> Result<Vec<Texture>, RenderError> {
+    ) -> Result<Freed, RenderError> {
         let shape = Some((temporal, output, internal));
         if self.shape == shape && self.textures.is_some() {
-            return Ok(Vec::new());
+            return Ok(Freed::default());
         }
         self.pause();
         let freed = self.take_textures();
+        let metalfx = temporal.backend == super::TemporalBackend::metalfx;
         let usage = TextureUsage::SAMPLED | TextureUsage::STORAGE | TextureUsage::BINDLESS;
         let size = |(w, h): (u32, u32)| {
             (
@@ -112,20 +136,37 @@ impl ViewHistory {
             )
         };
         let one = concordia_rhi::SampleCount::X1;
-        let make = |s, format, label: &str| {
+        let make_with = |s, format, usage, label: &str| {
             device.create_texture(&desc(size(s), format, one, usage, label))
         };
+        let make = |s, format, label: &str| make_with(s, format, usage, label);
+        // MetalFX writes its output as a render target too.
+        let out = match metalfx {
+            true => usage | TextureUsage::RENDER_TARGET,
+            false => usage,
+        };
         let history = [
-            make(output, HDR, "temporal history a")?,
-            make(output, HDR, "temporal history b")?,
+            make_with(output, HDR, out, "temporal history a")?,
+            make_with(output, HDR, out, "temporal history b")?,
         ];
         let depth = [
             make(internal, KEPT, "temporal depth a")?,
             make(internal, KEPT, "temporal depth b")?,
         ];
+        let reactive = match metalfx {
+            true => Some(make(internal, REACTIVE, "temporal reactive")?),
+            false => None,
+        };
+        if metalfx {
+            self.scaler = Some(device.create_temporal_scaler(&super::metalfx::scaler_desc(
+                size(internal),
+                size(output),
+            ))?);
+        }
         self.textures = Some(HistoryTextures {
             history,
             depth,
+            reactive,
             read: 0,
             written: false,
         });

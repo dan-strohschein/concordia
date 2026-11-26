@@ -192,3 +192,15 @@ void taa_keep_depth(uint3 id : SV_DispatchThreadID, uniform KeepPush push) {
     float2 m = g_textures.tex[push.motion].Load(int3(int2(id.xy), 0)).xy * float2(push.width, push.height);
     g_storage.tex[push.out][id.xy] = float4(linear_depth(push.depth_terms, d), length(m), 0.0, 0.0);
 }
+
+// The reactive mask MetalFX reads (4.6b): this frame's HDR alpha (the blended coverage) into an
+// R8Unorm texture of the internal size.
+struct ReactivePush { uint color; uint out; uint width; uint height; };
+
+[shader("compute")]
+[numthreads(8, 8, 1)]
+void taa_reactive_mask(uint3 id : SV_DispatchThreadID, uniform ReactivePush push) {
+    if (id.x >= push.width || id.y >= push.height) { return; }
+    float a = g_textures.tex[push.color].Load(int3(int2(id.xy), 0)).a;
+    g_storage.tex[push.out][id.xy] = float4(saturate(a), 0.0, 0.0, 0.0);
+}

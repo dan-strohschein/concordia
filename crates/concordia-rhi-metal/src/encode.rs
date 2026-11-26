@@ -137,6 +137,7 @@ impl Recorder<'_> {
                 }
             }
             Command::BeginRenderPass(desc) => self.begin_pass(desc)?,
+            Command::TemporalScale(scale) => self.temporal_scale(scale)?,
             Command::EndRenderPass => {
                 self.pass_size = None;
                 self.bound = Bound::None;
@@ -661,6 +662,46 @@ impl Recorder<'_> {
                 &s.raw, 0, from.mip as usize, origin(from), size, &d.raw, 0, to.mip as usize, origin(to),
             );
         }
+        Ok(())
+    }
+
+    /// Ends the open encoder and lets MetalFX encode the scale after the shared checks.
+    fn temporal_scale(&mut self, scale: &concordia_rhi::TemporalScale) -> Result<(), RhiError> {
+        let scaler = self
+            .inner
+            .scalers
+            .get(scale.scaler.index(), scale.scaler.generation())
+            .ok_or_else(|| RhiError::StaleHandle {
+                kind: "temporal scaler",
+                index: scale.scaler.index(),
+                generation: scale.scaler.generation(),
+            })?;
+        let entry = |t| texture_entry(self.inner, t);
+        let (color, depth, motion, output) = (
+            entry(scale.color)?,
+            entry(scale.depth)?,
+            entry(scale.motion)?,
+            entry(scale.output)?,
+        );
+        let reactive = scale.reactive.map(entry).transpose()?;
+        let textures = check::TemporalTextures {
+            color: &color.desc,
+            depth: &depth.desc,
+            motion: &motion.desc,
+            reactive: reactive.map(|r| &r.desc),
+            output: &output.desc,
+        };
+        check::temporal_scale(&scaler.desc, &textures)?;
+        let raw = crate::metalfx::Textures {
+            color: &color.raw,
+            depth: &depth.raw,
+            motion: &motion.raw,
+            reactive: reactive.map(|r| &*r.raw),
+            output: &output.raw,
+        };
+        crate::metalfx::check_usage(&scaler.raw, &raw)?;
+        self.encoder.end();
+        crate::metalfx::encode(&scaler.raw, &self.cb, &raw, scale);
         Ok(())
     }
 

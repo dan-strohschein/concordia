@@ -5,7 +5,7 @@ use std::time::Duration;
 use crate::caps::RhiCaps;
 use crate::command::CommandList;
 use crate::error::RhiError;
-use crate::handle::{BindlessIndex, Buffer, Heap, Pipeline, Texture, Timeline};
+use crate::handle::{BindlessIndex, Buffer, Heap, Pipeline, TemporalScaler, Texture, Timeline};
 use crate::pipeline::{ComputePipelineDesc, GraphicsPipelineDesc, MeshPipelineDesc};
 use crate::resource::{BufferDesc, HeapDesc, TextureDesc};
 
@@ -94,6 +94,19 @@ pub trait Device: Send + Sync {
         on_gpu_time(crate::GpuTiming::default());
         Ok(())
     }
+    /// Creates a temporal scaler, or `Unsupported` unless the device has one
+    /// (`caps().metalfx_temporal` on Metal).
+    fn create_temporal_scaler(
+        &self,
+        desc: &crate::TemporalScalerDesc,
+    ) -> Result<TemporalScaler, RhiError> {
+        desc.validate()?;
+        Err(RhiError::Unsupported(
+            "this device has no temporal scaler".into(),
+        ))
+    }
+    /// Releases a temporal scaler once the GPU is done with it.
+    fn destroy_temporal_scaler(&self, _scaler: TemporalScaler) {}
     /// Blocks until all submitted work finished.
     fn wait_idle(&self) -> Result<(), RhiError>;
     /// Releases a buffer once the GPU is done with it.

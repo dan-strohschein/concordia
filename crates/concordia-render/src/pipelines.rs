@@ -237,6 +237,7 @@ impl Pipelines {
         let temporal = crate::temporal::own::OwnPipelines {
             resolve: kernel("temporal.slang", "taa_resolve")?,
             keep_depth: kernel("temporal.slang", "taa_keep_depth")?,
+            reactive_mask: kernel("temporal.slang", "taa_reactive_mask")?,
         };
         let meshlet_vs = compile("meshlet.slang", "meshlet_vs", Stage::Vertex)?;
         let mesh_stages = match crate::meshlet::route(device.caps(), crate::ViewMode::lit) {

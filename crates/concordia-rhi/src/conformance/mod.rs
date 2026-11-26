@@ -8,6 +8,7 @@ mod mesh;
 mod regions;
 mod surface;
 mod targets;
+mod temporal;
 mod util;
 
 pub use cases::*;
@@ -17,6 +18,7 @@ pub use mesh::*;
 pub use regions::*;
 pub use surface::*;
 pub use targets::*;
+pub use temporal::*;
 
 use std::path::PathBuf;
 
@@ -116,7 +118,8 @@ macro_rules! conformance_tests {
             mesh_pipeline_misuse_is_reported,
             rg16_float_renders_and_reads_back,
             write_mask_leaves_a_target_untouched,
-            depth_resolve_min_keeps_the_farthest_sample
+            depth_resolve_min_keeps_the_farthest_sample,
+            temporal_scaler_upscales_a_frame
         );
     };
     (@cases $make:expr, $golden:expr, $shaders:expr, $finish:expr; $($name:ident),+) => {$(

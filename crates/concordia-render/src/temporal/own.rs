@@ -22,6 +22,8 @@ const REACTIVE: u32 = 4;
 pub(crate) struct OwnPipelines {
     pub(crate) resolve: Pipeline,
     pub(crate) keep_depth: Pipeline,
+    /// The HDR alpha into MetalFX's reactive mask (4.6b).
+    pub(crate) reactive_mask: Pipeline,
 }
 
 /// The engine's own temporal resolve.
@@ -172,7 +174,7 @@ impl TemporalUpscaler for OwnTaau {
 }
 
 /// One 8 × 8 group per tile of `size`.
-fn dispatch(size: (std::num::NonZeroU32, std::num::NonZeroU32)) -> Command {
+pub(crate) fn dispatch(size: (std::num::NonZeroU32, std::num::NonZeroU32)) -> Command {
     Command::Dispatch {
         groups: [size.0.get().div_ceil(8), size.1.get().div_ceil(8), 1],
     }

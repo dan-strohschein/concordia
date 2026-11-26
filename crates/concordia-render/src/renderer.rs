@@ -46,6 +46,10 @@ const CAPTURE_VIEW: u64 = u64::MAX;
 
 /// A frame's temporal resolve: the view's textures and this frame's parameters (M4 4.6).
 struct TemporalJob {
+    /// The backend that runs (`own` or `metalfx`; never `off`).
+    backend: crate::temporal::TemporalBackend,
+    /// MetalFX's scaler, for `metalfx`.
+    scaler: Option<concordia_rhi::TemporalScaler>,
     textures: crate::temporal::history::HistoryTextures,
     has_history: bool,
     /// Frames since the history started.
@@ -1456,7 +1460,7 @@ impl Renderer {
         let resolved = plan.temporal.is_some();
         self.stats.temporal = match &plan.temporal {
             Some(t) => crate::temporal::TemporalStats {
-                backend: crate::temporal::TemporalBackend::own,
+                backend: t.backend,
                 internal: [t.internal.0.get(), t.internal.1.get()],
                 output: [t.output.0.get(), t.output.1.get()],
                 phase: t.phase,
@@ -2086,11 +2090,22 @@ impl Renderer {
         job: &TemporalJob,
     ) -> Result<GraphTexture, RenderError> {
         use crate::temporal::TemporalUpscaler;
-        let upscaler = crate::temporal::own::OwnTaau {
+        let own = crate::temporal::own::OwnTaau {
             pipelines: self.pipelines.temporal(),
             device: self.device.clone(),
             disocclusion: self.temporal_switches.disocclusion,
             reactive: self.temporal_switches.reactive,
+        };
+        let metalfx = job
+            .scaler
+            .map(|scaler| crate::temporal::metalfx::MetalFxTemporal {
+                pipelines: self.pipelines.temporal(),
+                device: self.device.clone(),
+                scaler,
+            });
+        let upscaler: &dyn TemporalUpscaler = match (job.backend, &metalfx) {
+            (crate::temporal::TemporalBackend::metalfx, Some(m)) => m,
+            _ => &own,
         };
         let inputs = crate::temporal::TemporalInputs {
             color: targets.hdr,
@@ -2124,14 +2139,20 @@ impl Renderer {
             view.pause();
             return Ok(None);
         }
-        if settings.backend == crate::temporal::TemporalBackend::metalfx && !self.metalfx_noted {
-            self.metalfx_noted = true;
-            tracing::warn!(target: "concordia::render", "MetalFX isn't available here yet: the own temporal resolve runs");
+        let mut settings = settings;
+        let wants_metalfx = settings.backend == crate::temporal::TemporalBackend::metalfx;
+        if wants_metalfx && !self.device.caps().metalfx_temporal {
+            settings.backend = crate::temporal::TemporalBackend::own;
+            if !self.metalfx_noted {
+                self.metalfx_noted = true;
+                tracing::warn!(target: "concordia::render", "this device has no MetalFX temporal scaler: the own temporal resolve runs");
+            }
         }
         let internal = internal_size(output, settings.upscale);
         let size = |(w, h): (NonZeroU32, NonZeroU32)| (w.get(), h.get());
         let freed = view.fit(self.device.as_ref(), settings, size(output), size(internal))?;
-        self.retired.textures.extend(freed);
+        self.retired.textures.extend(freed.textures);
+        self.retired.scalers.extend(freed.scaler);
         let has_history = view.has_history();
         let exposure = match (view.exposure, has_history) {
             (Some(e), true) => e.next(exposure),
@@ -2147,6 +2168,8 @@ impl Renderer {
             return Ok(None);
         };
         Ok(Some(TemporalJob {
+            backend: settings.backend,
+            scaler: view.scaler,
             textures,
             has_history,
             phase: view.frames,
@@ -2188,7 +2211,9 @@ impl Renderer {
             .partition(|h| now.saturating_sub(h.last_used) > HISTORY_IDLE_FRAMES);
         self.histories = kept;
         for mut view in idle {
-            self.retired.textures.extend(view.take_textures());
+            let freed = view.take_textures();
+            self.retired.textures.extend(freed.textures);
+            self.retired.scalers.extend(freed.scaler);
         }
     }
 
@@ -2407,6 +2432,7 @@ fn add_tonemap(
 struct FrameResources {
     buffers: Vec<Buffer>,
     textures: Vec<Texture>,
+    scalers: Vec<concordia_rhi::TemporalScaler>,
     heap: Option<HeapEntry>,
 }
 
@@ -2416,6 +2442,7 @@ impl FrameResources {
         debug_assert!(other.heap.is_none(), "only frames own heaps");
         self.buffers.extend(other.buffers);
         self.textures.extend(other.textures);
+        self.scalers.extend(other.scalers);
     }
 
     fn keep(&mut self, buffer: Buffer) -> Buffer {
@@ -2489,6 +2516,9 @@ impl FrameResources {
         self.textures
             .into_iter()
             .for_each(|t| device.destroy_texture(t));
+        self.scalers
+            .into_iter()
+            .for_each(|s| device.destroy_temporal_scaler(s));
         for buffer in self.buffers {
             let pooled = recycle
                 .pool

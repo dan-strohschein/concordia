@@ -254,6 +254,9 @@ impl Recorder<'_> {
     fn command(&mut self, command: &Command) -> Result<(), RhiError> {
         match command {
             Command::Barrier { .. } => Ok(()),
+            Command::TemporalScale(_) => Err(RhiError::Unsupported(
+                "Vulkan has no temporal scaler (use the own resolve)".into(),
+            )),
             Command::CopyBuffer {
                 src,
                 src_offset,
