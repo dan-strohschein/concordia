@@ -683,6 +683,21 @@ fn the_projects_meshlets_setting_reaches_the_renderer() {
     }
 }
 
+/// `[render] temporal` and `upscale` reach the renderer: `render.stats` reports the own resolve at
+/// the internal size (M4 4.6); off by default.
+#[test]
+fn the_projects_temporal_setting_reaches_the_renderer() {
+    if mesh_shaders().is_none() {
+        return;
+    }
+    let on =
+        ball_frame("[assets]\n[render]\ntemporal = \"own\"\nupscale = 2.0\n")["temporal"].clone();
+    assert_eq!(on["backend"], "own", "{on}");
+    assert_eq!(on["internal"], serde_json::json!([16, 16]), "{on}");
+    let off = ball_frame("[assets]\n[render]\n")["temporal"].clone();
+    assert_eq!(off["backend"], "off", "{off}");
+}
+
 /// `[render] culling` (on by default) culls the ball's far side on the GPU (M4 4.4); `false`
 /// draws every candidate meshlet.
 #[test]

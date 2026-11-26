@@ -292,6 +292,21 @@ expression: "params_schema(&MethodInfo::of::<CaptureScreenshot>())"
       ],
       "description": "Draw every posed skeleton's bones on top (play world), whatever the editor overlays are."
     },
+    "temporal_frames": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        }
+      ],
+      "description": "With temporal on, frames rendered at this pose before reading back (default: a whole\njitter cycle, so the image is converged; 1: one frame).",
+      "maximum": 256.0,
+      "minimum": 1.0
+    },
     "ui": {
       "anyOf": [
         {

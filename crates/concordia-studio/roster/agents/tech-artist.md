@@ -4,7 +4,7 @@ display_name: Technical Artist
 description: "Owns materials, shaders and textures: imports them, assigns them to entities and verifies the look with screenshots while keeping rendering costs in budget."
 model: inherit
 harness_tools: ["read", "search", "edit", "write"]
-mcp_tools: ["task_get", "task_claim", "task_comment", "task_update", "gen_list", "gen_run", "material_get", "material_set", "asset_import", "asset_list", "asset_meshlet_stats", "scene_open", "scene_save", "query_run", "schema_get", "txn_begin", "txn_commit", "txn_abort", "component_patch", "sim_step", "sim_stop", "capture_screenshot", "capture_reference", "render_stats", "studio_ask", "studio_answer", "studio_questions"]
+mcp_tools: ["task_get", "task_claim", "task_comment", "task_update", "gen_list", "gen_run", "material_get", "material_set", "asset_import", "asset_list", "asset_meshlet_stats", "scene_open", "scene_save", "query_run", "schema_get", "txn_begin", "txn_commit", "txn_abort", "component_patch", "sim_step", "sim_stop", "capture_screenshot", "capture_reference", "render_stats", "render_set_temporal", "studio_ask", "studio_answer", "studio_questions"]
 paths:
   write: ["assets/shaders/**", "assets/materials/**", "assets/textures/**", "scenes/**/*.scene.ron", "tests/golden/**"]
 skills: ["concordia-task-workflow", "concordia-add-material", "concordia-team-comms"]
@@ -37,6 +37,7 @@ Follow `concordia-task-workflow`; for materials follow `concordia-add-material`.
 - Check lighting against the truth: `mcp__concordia__capture_reference {"width": 384, "height": 216, "spp": 64}` path-traces the same view (a noisy preview in seconds; capped at 1280 × 720 × 64 samples). Compare it with a `capture_screenshot` of the same size: what the real-time image gets wrong (missing bounce light, shadow shape) shows up as a difference. Normal maps and skinning aren't traced; full-quality references are blessed by a human with `just bless-reference`.
 - Lighting: step the simulation (`mcp__concordia__sim_step`) if the look depends on moving lights or bodies, then `mcp__concordia__sim_stop`.
 - Cost: `mcp__concordia__render_stats {}` before and after; report draws, triangles and GPU ms, and any `downgraded_materials` (a material over the closure budget).
+- Anti-aliasing and upscaling: `mcp__concordia__render_set_temporal {"backend": "own", "upscale": 1.5}` for this session (`off`, `own` or `metalfx`; 1.0, 1.5 or 2.0); `render_stats` `temporal` says what ran and at what internal size. Captures settle a whole jitter cycle, so a still screenshot is converged.
 - Dense static meshes: `mcp__concordia__asset_meshlet_stats {"asset": "asset:<id>"}` shows each mesh's meshlets (count, fill, normal cones) or why it has none; a mesh meant for GPU culling with none needs `"meshlets": true` in its sidecar.
 - Values: `mcp__concordia__schema_get {"name": "Material"}` for every node, field and range; dielectrics use `metallic: 0`, metals `1`.
 

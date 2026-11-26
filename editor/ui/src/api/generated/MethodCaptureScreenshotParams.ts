@@ -94,6 +94,11 @@ export interface MethodCaptureScreenshotParams {
    */
   skeleton?: null | boolean;
   /**
+   * With temporal on, frames rendered at this pose before reading back (default: a whole
+   * jitter cycle, so the image is converged; 1: one frame).
+   */
+  temporal_frames?: null | number;
+  /**
    * Draw the in-game UI (default true).
    */
   ui?: null | boolean;

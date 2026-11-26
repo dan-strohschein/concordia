@@ -42,6 +42,8 @@ pub struct RenderModule {
     meshlets: bool,
     /// The meshlet path's GPU culling (M4 4.4).
     culling: crate::Culling,
+    /// The temporal resolve (M4 4.6; `[render] temporal`, `upscale`).
+    temporal: crate::temporal::Temporal,
 }
 
 impl std::fmt::Debug for RenderModule {
@@ -59,7 +61,13 @@ impl RenderModule {
             perf_mode: false,
             meshlets: true,
             culling: crate::Culling::default(),
+            temporal: Default::default(),
         }
+    }
+
+    /// Sets the temporal resolve (`[render] temporal`, `upscale`; off by default).
+    pub fn with_temporal(self, temporal: crate::temporal::Temporal) -> Self {
+        Self { temporal, ..self }
     }
 
     /// Turns the meshlet path's GPU culling on (the default) or off (`[render] culling`).
@@ -98,6 +106,8 @@ pub(crate) struct RenderState {
     perf_mode: bool,
     meshlets: bool,
     culling: crate::Culling,
+    /// The temporal resolve, as set by the project or `render.set_temporal`.
+    temporal: crate::temporal::Temporal,
     thread: Option<RenderThread>,
     /// Whether a host attached the editor's native viewport.
     surface: bool,
@@ -156,6 +166,7 @@ impl EngineModule for RenderModule {
             MethodInfo::of::<ViewportOverlays>(),
             MethodInfo::of::<crate::gizmo::ViewportGizmo>(),
             MethodInfo::of::<crate::stats::RenderStatsGet>(),
+            MethodInfo::of::<crate::temporal::RenderSetTemporal>(),
         ]
     }
 
@@ -191,6 +202,7 @@ impl EngineModule for RenderModule {
             perf_mode: self.perf_mode,
             meshlets: self.meshlets,
             culling: self.culling,
+            temporal: self.temporal,
             thread: None,
             surface: false,
             shipped: BTreeSet::new(),
@@ -257,6 +269,11 @@ pub struct CaptureScreenshotParams {
     #[serde(default)]
     #[reflect(range(min = 0.25, max = 8.0))]
     pub ui_scale: Option<f32>,
+    /// With temporal on, frames rendered at this pose before reading back (default: a whole
+    /// jitter cycle, so the image is converged; 1: one frame).
+    #[serde(default)]
+    #[reflect(range(min = 1.0, max = 256.0))]
+    pub temporal_frames: Option<u32>,
 }
 
 fn default_width() -> u32 {
@@ -407,8 +424,10 @@ impl Method for CaptureScreenshot {
         };
         let scene = scene_update(engine, p.world.unwrap_or_default(), None)?;
         let slot = scene.slot;
-        let captured =
-            render_thread(engine).and_then(|t| t.capture(scene, request).map_err(api_error));
+        let captured = render_thread(engine).and_then(|t| {
+            t.capture(scene, request, p.temporal_frames)
+                .map_err(api_error)
+        });
         let (image, frame) = captured.inspect_err(|_| forget_scene(engine, slot))?;
         let actor = ctx
             .actor
@@ -426,6 +445,21 @@ impl Method for CaptureScreenshot {
     }
 }
 
+/// Sets the renderer's temporal resolve for the rest of the session (`render.set_temporal`).
+pub(crate) fn set_temporal(
+    engine: &mut Engine,
+    temporal: crate::temporal::Temporal,
+) -> Result<(), ApiError> {
+    let state = engine
+        .state_mut::<RenderState>()
+        .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render module has no state"))?;
+    state.temporal = temporal;
+    match &state.thread {
+        Some(thread) => thread.set_temporal(temporal).map_err(api_error),
+        None => Ok(()),
+    }
+}
+
 /// The render thread, started on first use (with its device and renderer).
 fn render_thread(engine: &mut Engine) -> Result<&RenderThread, ApiError> {
     let ddc = engine.project().join(".concordia/ddc");
@@ -434,7 +468,12 @@ fn render_thread(engine: &mut Engine) -> Result<&RenderThread, ApiError> {
         .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render module has no state"))?;
     if state.thread.is_none() {
         let (factory, budget) = (state.factory.clone(), state.closure_budget);
-        let switches = (state.perf_mode, state.meshlets, state.culling);
+        let switches = (
+            state.perf_mode,
+            state.meshlets,
+            state.culling,
+            state.temporal,
+        );
         let last = state.last.clone();
         state.thread = Some(
             RenderThread::spawn(move || make_renderer(&factory, ddc, budget, switches), last)
@@ -453,7 +492,12 @@ fn make_renderer(
     factory: &DeviceFactory,
     ddc: std::path::PathBuf,
     closure_budget: Option<crate::ClosureBudget>,
-    (perf_mode, meshlets, culling): (bool, bool, crate::Culling),
+    (perf_mode, meshlets, culling, temporal): (
+        bool,
+        bool,
+        crate::Culling,
+        crate::temporal::Temporal,
+    ),
 ) -> Result<Renderer, RenderError> {
     let device = factory().map_err(RenderError::Gpu)?;
     let toolchain = SlangToolchain::locate().map_err(|e| RenderError::Shader(e.to_string()))?;
@@ -466,6 +510,7 @@ fn make_renderer(
     renderer.set_perf_mode(perf_mode);
     renderer.set_meshlets(meshlets);
     renderer.set_culling(culling);
+    renderer.set_temporal(temporal);
     Ok(renderer)
 }
 

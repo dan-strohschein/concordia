@@ -52,8 +52,12 @@ enum Job {
     Capture {
         scene: SceneUpdate,
         request: RenderRequest,
+        /// With temporal on, frames to render before reading back (None: a jitter cycle).
+        settle: Option<u32>,
         reply: mpsc::Sender<Captured>,
     },
+    /// Switch the temporal resolve (`render.set_temporal`).
+    Temporal(crate::temporal::Temporal),
     Attach {
         target: SurfaceTarget,
         reply: mpsc::Sender<Result<(), RenderError>>,
@@ -105,14 +109,28 @@ impl RenderThread {
     }
 
     /// Renders offscreen and waits for the image.
-    pub(crate) fn capture(&self, scene: SceneUpdate, request: RenderRequest) -> Captured {
+    pub(crate) fn capture(
+        &self,
+        scene: SceneUpdate,
+        request: RenderRequest,
+        settle: Option<u32>,
+    ) -> Captured {
         let (reply, answer) = mpsc::channel();
         self.send(Job::Capture {
             scene,
             request,
+            settle,
             reply,
         })?;
         answer.recv().map_err(|_| stopped())?
+    }
+
+    /// Switches the temporal resolve; returns at once.
+    pub(crate) fn set_temporal(
+        &self,
+        temporal: crate::temporal::Temporal,
+    ) -> Result<(), RenderError> {
+        self.send(Job::Temporal(temporal))
     }
 
     /// Makes `target` the viewport surface (replacing any earlier one).
@@ -347,19 +365,24 @@ impl Worker {
             Job::Capture {
                 mut scene,
                 request,
+                settle,
                 reply,
             } => {
                 self.update(&mut scene);
                 let world = self.scenes[scene.slot].world();
-                let number = self.renderer.frames() + 1;
+                let settling = u64::from(self.renderer.settle_frames(&request, settle));
+                let number = self.renderer.frames() + settling;
                 let start = Instant::now();
                 let callbacks = FrameCallbacks {
                     presented: None,
                     gpu_time: Some(stats::gpu_callback(self.last_frame.clone(), number)),
                 };
-                let image = self
-                    .renderer
-                    .render_with(world, &mut self.store, &request, callbacks);
+                let image = self.renderer.render_settled(
+                    world,
+                    &mut self.store,
+                    &request,
+                    (settle, callbacks),
+                );
                 if image.is_ok() {
                     let cpu_ms = start.elapsed().as_secs_f64() * 1000.0;
                     let frame_stats = self.renderer.stats();
@@ -401,6 +424,10 @@ impl Worker {
             }
             Job::Attach { target, reply } => {
                 let _ = reply.send(self.attach(target));
+                latest
+            }
+            Job::Temporal(temporal) => {
+                self.renderer.set_temporal(temporal);
                 latest
             }
             Job::Detach { reply } => {

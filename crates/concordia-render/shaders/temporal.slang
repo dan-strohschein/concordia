@@ -18,8 +18,8 @@ struct TaaPush {
     float4 depth_terms;
 };
 
-// depth: the internal depth; out: a linear-depth storage texture of the same size.
-struct KeepPush { uint depth; uint out; uint width; uint height; float4 depth_terms; };
+// depth and motion: the internal targets; out: their size, (linear depth, motion in pixels).
+struct KeepPush { uint depth; uint motion; uint out; uint width; uint height; uint pad0; uint pad1; uint pad2; float4 depth_terms; };
 
 static const uint HAS_HISTORY = 1;
 static const uint DISOCCLUSION = 2;
@@ -94,9 +94,9 @@ void taa_resolve(uint3 id : SV_DispatchThreadID, uniform TaaPush push) {
     // pixel i's sample shows the scene at i + 0.5 − jitter.
     float2 ip = uv * push.input_size;
     int2 nearest = int2(floor(ip + push.jitter));
-    float3 current = 0.0; float best = -1.0;
+    float3 current = 0.0; float best = -1.0; bool bad = false;
     float3 m1 = 0.0; float3 m2 = 0.0;
-    float closest = -1.0; int2 front = nearest;
+    float closest = -1.0; int2 front = nearest; float farthest = 2.0;
     float reactive = 0.0;
     [ForceUnroll]
     for (int k = 0; k < 9; k++) {
@@ -105,11 +105,12 @@ void taa_resolve(uint3 id : SV_DispatchThreadID, uniform TaaPush push) {
         float3 c = finite3(s.rgb) ? compress(max(s.rgb, 0.0)) : 0.0;
         float2 d = float2(p) + 0.5 - push.jitter - ip;
         float w = exp(-KERNEL * dot(d, d));
-        if (w > best) { best = w; current = c; }
+        if (w > best) { best = w; current = c; bad = !finite3(s.rgb); }
         float3 y = to_ycocg(c);
         m1 += y; m2 += y * y;
         float depth = load(push.depth, p, push.input_size).r;
         if (depth > closest) { closest = depth; front = p; }
+        farthest = min(farthest, depth);
         reactive = max(reactive, s.a);
     }
     float3 mean = m1 / 9.0;
@@ -119,6 +120,7 @@ void taa_resolve(uint3 id : SV_DispatchThreadID, uniform TaaPush push) {
     float2 prev = uv - motion;
     float count = 0.0;
     float3 history = current;
+    float stale = 0.0;
     bool on_screen = all(prev >= 0.0) && all(prev <= 1.0);
     if ((push.flags & HAS_HISTORY) != 0 && on_screen) {
         float4 h = g_textures.tex[NonUniformResourceIndex(push.history)].Load(int3(clamp_px(int2(prev * push.output_size), push.output_size), 0));
@@ -126,21 +128,45 @@ void taa_resolve(uint3 id : SV_DispatchThreadID, uniform TaaPush push) {
         count = finite3(hc) && h.a == h.a ? h.a : 0.0;
         history = compress(finite3(hc) ? hc : 0.0);
         if ((push.flags & DISOCCLUSION) != 0) {
-            float z = linear_depth(push.depth_terms, closest);
-            // The farthest of last frame's 3 × 3 there: thin features that jitter on and off a
-            // pixel aren't occluders; only something covering the whole neighbourhood is.
+            // Last frame's 3 × 3 around the reprojected spot: its farthest linear depth, and its
+            // largest motion (pixels).
+            // Its 5 × 5 farthest too, and this frame's: a jitter shift of up to a pixel can't move
+            // a depth from one 3 × 3 out of the other's 5 × 5.
             int2 at = int2(prev * push.input_size);
-            float then = 0.0;
+            float then_far = 0.0; float then_moving = 0.0; float then_far5 = 0.0;
             [ForceUnroll]
-            for (int j = 0; j < 9; j++) { then = max(then, load(push.prev_depth, at + int2(j % 3 - 1, j / 3 - 1), push.input_size).r); }
+            for (int j = 0; j < 25; j++) {
+                int2 o = int2(j % 5 - 2, j / 5 - 2);
+                float2 kept = load(push.prev_depth, at + o, push.input_size).rg;
+                then_far5 = max(then_far5, kept.r);
+                if (all(abs(o) <= 1)) { then_far = max(then_far, kept.r); then_moving = max(then_moving, kept.g); }
+            }
+            float farthest5 = farthest;
+            [ForceUnroll]
+            for (int j = 0; j < 25; j++) {
+                int2 o = int2(j % 5 - 2, j / 5 - 2);
+                if (any(abs(o) > 1)) { farthest5 = min(farthest5, load(push.depth, nearest + o, push.input_size).r); }
+            }
+            float near = linear_depth(push.depth_terms, closest);
+            float far = linear_depth(push.depth_terms, farthest);
             float pixels = length(motion * push.input_size);
-            if (z - then > z * (DEPTH_GAP + DEPTH_GAP_PER_PIXEL * pixels)) { count = 0.0; }
+            float gap = near * (DEPTH_GAP + DEPTH_GAP_PER_PIXEL * pixels);
+            // Disoccluded: even the farthest surface here last frame was in front of this one (a
+            // thin feature that jitters on and off a pixel isn't an occluder).
+            if (near - then_far > gap) { count = 0.0; }
+            // Stale: something here moved last frame, or the background changed (what was behind
+            // a thin feature in front of a passing object): a farthest depth now beyond anything
+            // in last frame's 5 × 5, or the reverse. Clip what's left of it.
+            float far5 = linear_depth(push.depth_terms, farthest5);
+            float tolerance = far * (DEPTH_GAP + DEPTH_GAP_PER_PIXEL * pixels);
+            bool behind = far - then_far5 > tolerance || then_far - far5 > tolerance;
+            stale = max(saturate(then_moving / STILL_PIXELS), behind ? 1.0 : 0.0);
         }
         // Clipping erases sub-pixel features (a thin wire the jitter misses this frame leaves an
         // empty neighbourhood), so a still pixel keeps its history: only motion makes it stale
         // (disocclusion and the reactive mask cover the rest). Full clipping from STILL_PIXELS.
         float3 clipped = from_ycocg(clip_to_box(to_ycocg(history), mean - GAMMA * sigma, mean + GAMMA * sigma));
-        float moving = saturate(length(motion * push.output_size) / STILL_PIXELS);
+        float moving = max(saturate(length(motion * push.output_size) / STILL_PIXELS), stale);
         history = lerp(history, clipped, moving);
     }
     // Blend: 1 / (n + 1), at least 1 / phases; a far sample (upscaling) counts for less.
@@ -150,7 +176,11 @@ void taa_resolve(uint3 id : SV_DispatchThreadID, uniform TaaPush push) {
     float r = (push.flags & REACTIVE) != 0 ? saturate(reactive) : 0.0;
     blend = max(blend, r);
     float3 result = expand(lerp(history, current, blend));
-    float next = min(count + best, push.max_count) * (1.0 - r);
+    // Squared, so a pixel mostly covered by a translucent draw keeps almost no history once it
+    // leaves (its trail fades in a frame or two).
+    float next = min(count + best, push.max_count) * (1.0 - r) * (1.0 - r);
+    // A non-finite sample is skipped: the history stands (black where there is none).
+    if (bad) { result = count > 0.0 ? expand(history) : 0.0; next = count; }
     g_storage.tex[push.out][id.xy] = float4(result, next);
 }
 
@@ -159,5 +189,6 @@ void taa_resolve(uint3 id : SV_DispatchThreadID, uniform TaaPush push) {
 void taa_keep_depth(uint3 id : SV_DispatchThreadID, uniform KeepPush push) {
     if (id.x >= push.width || id.y >= push.height) { return; }
     float d = g_textures.tex[push.depth].Load(int3(int2(id.xy), 0)).r;
-    g_storage.tex[push.out][id.xy] = float4(linear_depth(push.depth_terms, d), 0.0, 0.0, 0.0);
+    float2 m = g_textures.tex[push.motion].Load(int3(int2(id.xy), 0)).xy * float2(push.width, push.height);
+    g_storage.tex[push.out][id.xy] = float4(linear_depth(push.depth_terms, d), length(m), 0.0, 0.0);
 }

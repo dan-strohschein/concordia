@@ -41,10 +41,15 @@ pub const MAX_SIZE: u32 = 8192;
 /// A view's temporal history is freed after this many renderer frames without it.
 const HISTORY_IDLE_FRAMES: u64 = 120;
 
+/// The offscreen view still captures settle in (`render_settled`).
+const CAPTURE_VIEW: u64 = u64::MAX;
+
 /// A frame's temporal resolve: the view's textures and this frame's parameters (M4 4.6).
 struct TemporalJob {
     textures: crate::temporal::history::HistoryTextures,
     has_history: bool,
+    /// Frames since the history started.
+    phase: u64,
     internal: (NonZeroU32, NonZeroU32),
     output: (NonZeroU32, NonZeroU32),
     /// In input pixels.
@@ -131,12 +136,16 @@ pub struct Renderer {
     subpixel: Option<crate::temporal::SubpixelOverride>,
     /// The temporal resolve and its ratio (`[render] temporal`, `upscale`).
     temporal: crate::temporal::Temporal,
+    /// Parts of the own resolve that are on (both, unless a test switches one off).
+    temporal_switches: crate::temporal::TemporalSwitches,
     /// Each view's temporal state and motion history (M4 4.6 plan Q6).
     histories: Vec<crate::temporal::history::ViewHistory>,
     /// The view the frame being rendered belongs to (taken from `histories`).
     current: Option<crate::temporal::history::ViewHistory>,
     /// The offscreen view `render` draws into (`select_history`).
     offscreen: u64,
+    /// The MetalFX fallback was logged.
+    metalfx_noted: bool,
     /// Keep each read-back frame's per-meshlet cull records (`set_cull_readback`).
     cull_readback: bool,
     /// The last ones kept.
@@ -392,6 +401,8 @@ pub struct RenderStats {
     pub raster_path: crate::RasterPath,
     /// What the meshlet path drew in the forward pass.
     pub meshlets: crate::MeshletCounts,
+    /// What the temporal resolve did (M4 4.6).
+    pub temporal: crate::temporal::TemporalStats,
 }
 
 impl Renderer {
@@ -417,9 +428,11 @@ impl Renderer {
             culling: crate::Culling::default(),
             subpixel: None,
             temporal: Default::default(),
+            temporal_switches: Default::default(),
             histories: Vec::new(),
             current: None,
             offscreen: 0,
+            metalfx_noted: false,
             cull_readback: false,
             last_culling: None,
             visibility: Default::default(),
@@ -493,6 +506,47 @@ impl Renderer {
                     "no image was read back",
                 ))
             })
+    }
+
+    /// [`Renderer::render_with`] for a still capture: with temporal on (and the lit view), renders
+    /// the pose `frames` times (default: a whole jitter cycle) from a fresh history of its own and
+    /// returns the last, so the image is converged; otherwise one frame.
+    pub fn render_settled(
+        &mut self,
+        world: &RenderWorld,
+        assets: &mut dyn AssetSource,
+        request: &RenderRequest,
+        (frames, callbacks): (Option<u32>, FrameCallbacks),
+    ) -> Result<Image, RenderError> {
+        let frames = self.settle_frames(request, frames);
+        if frames == 1 && !self.temporal.is_on() {
+            return self.render_with(world, assets, request, callbacks);
+        }
+        let selected = std::mem::replace(&mut self.offscreen, CAPTURE_VIEW);
+        self.forget_history(CAPTURE_VIEW);
+        let settled = (1..frames)
+            .try_for_each(|_| self.render(world, assets, request).map(drop))
+            .and_then(|()| self.render_with(world, assets, request, callbacks));
+        self.offscreen = selected;
+        settled
+    }
+
+    /// How many frames [`Renderer::render_settled`] renders for `request` (`frames`, or a jitter
+    /// cycle, with temporal on and the lit view; else 1).
+    pub fn settle_frames(&self, request: &RenderRequest, frames: Option<u32>) -> u32 {
+        match self.temporal.is_on() && request.view_mode == crate::ViewMode::lit {
+            true => frames.unwrap_or(self.temporal.upscale.phases()).max(1),
+            false => 1,
+        }
+    }
+
+    /// Forgets offscreen view `view`'s temporal history and motion (its next frame starts fresh).
+    pub fn forget_history(&mut self, view: u64) {
+        let key = crate::temporal::history::HistoryKey::Offscreen(view);
+        self.histories
+            .iter_mut()
+            .filter(|h| h.key == key)
+            .for_each(|h| h.forget());
     }
 
     /// [`Renderer::render`], reporting the frame's GPU time through `callbacks.gpu_time`.
@@ -778,6 +832,11 @@ impl Renderer {
     /// The temporal settings, as set.
     pub fn temporal(&self) -> crate::temporal::Temporal {
         self.temporal
+    }
+
+    /// Switches parts of the own resolve off (tests; both on by default).
+    pub fn set_temporal_switches(&mut self, switches: crate::temporal::TemporalSwitches) {
+        self.temporal_switches = switches;
     }
 
     /// Chooses the view `render` draws into: each keeps its own temporal history and motion
@@ -1395,6 +1454,20 @@ impl Renderer {
             ui,
         };
         let resolved = plan.temporal.is_some();
+        self.stats.temporal = match &plan.temporal {
+            Some(t) => crate::temporal::TemporalStats {
+                backend: crate::temporal::TemporalBackend::own,
+                internal: [t.internal.0.get(), t.internal.1.get()],
+                output: [t.output.0.get(), t.output.1.get()],
+                phase: t.phase,
+                reset: !t.has_history,
+            },
+            None => crate::temporal::TemporalStats {
+                internal: [width.get(), height.get()],
+                output: [width.get(), height.get()],
+                ..Default::default()
+            },
+        };
         let (image, overflow) = self.execute(view, plan, frame)?;
         if let (true, Some(v)) = (resolved, self.current.as_mut()) {
             v.advance();
@@ -2016,8 +2089,8 @@ impl Renderer {
         let upscaler = crate::temporal::own::OwnTaau {
             pipelines: self.pipelines.temporal(),
             device: self.device.clone(),
-            disocclusion: true,
-            reactive: true,
+            disocclusion: self.temporal_switches.disocclusion,
+            reactive: self.temporal_switches.reactive,
         };
         let inputs = crate::temporal::TemporalInputs {
             color: targets.hdr,
@@ -2051,6 +2124,10 @@ impl Renderer {
             view.pause();
             return Ok(None);
         }
+        if settings.backend == crate::temporal::TemporalBackend::metalfx && !self.metalfx_noted {
+            self.metalfx_noted = true;
+            tracing::warn!(target: "concordia::render", "MetalFX isn't available here yet: the own temporal resolve runs");
+        }
         let internal = internal_size(output, settings.upscale);
         let size = |(w, h): (NonZeroU32, NonZeroU32)| (w.get(), h.get());
         let freed = view.fit(self.device.as_ref(), settings, size(output), size(internal))?;
@@ -2072,6 +2149,7 @@ impl Renderer {
         Ok(Some(TemporalJob {
             textures,
             has_history,
+            phase: view.frames,
             internal,
             output,
             jitter,

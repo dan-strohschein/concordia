@@ -57,7 +57,7 @@ impl TemporalUpscaler for OwnTaau {
                 Some(Layout::ShaderRead),
             )
         };
-        let r32 = concordia_rhi::Format::R32Float;
+        let kept = super::history::KEPT;
         let history = import(
             graph,
             "temporal history",
@@ -79,7 +79,7 @@ impl TemporalUpscaler for OwnTaau {
             "temporal depth",
             textures.depth[read],
             inputs.internal,
-            r32,
+            kept,
             before,
         );
         let next_depth = import(
@@ -87,7 +87,7 @@ impl TemporalUpscaler for OwnTaau {
             "temporal next depth",
             textures.depth[write],
             inputs.internal,
-            r32,
+            kept,
             Layout::Undefined,
         );
         let mut flags = if has_history { HAS_HISTORY } else { 0 };
@@ -142,6 +142,7 @@ impl TemporalUpscaler for OwnTaau {
             "temporal.keep_depth",
             |p| {
                 p.uses(i.depth, Use::SampledRead);
+                p.uses(i.motion, Use::SampledRead);
                 p.uses(next_depth, Use::StorageWrite);
                 p.side_effect();
             },
@@ -149,9 +150,13 @@ impl TemporalUpscaler for OwnTaau {
                 let index = |t| device.texture_index(ctx.texture(t)).map(|i| i.0);
                 let words = [
                     index(i.depth)?,
+                    index(i.motion)?,
                     index(next_depth)?,
                     i.internal.0.get(),
                     i.internal.1.get(),
+                    0,
+                    0,
+                    0,
                 ];
                 let mut push: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
                 push.extend(i.depth_terms.iter().flat_map(|f| f.to_le_bytes()));

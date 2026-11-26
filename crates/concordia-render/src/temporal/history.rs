@@ -8,6 +8,10 @@ use crate::RenderError;
 use crate::pipelines::HDR;
 use crate::renderer::desc;
 
+/// What a frame keeps for the next one's disocclusion test: linear depth (half float is 0.05 %
+/// relative, well inside the 1 % gap) and motion length.
+pub(crate) const KEPT: concordia_rhi::Format = concordia_rhi::Format::Rg16Float;
+
 /// Which view a history belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HistoryKey {
@@ -22,7 +26,7 @@ pub(crate) enum HistoryKey {
 pub(crate) struct HistoryTextures {
     /// History (`Rgba16Float`, output size; alpha: accumulated samples).
     pub(crate) history: [Texture; 2],
-    /// Linear depth (`R32Float`, internal size).
+    /// Linear depth and motion length in pixels ([`KEPT`], internal size).
     pub(crate) depth: [Texture; 2],
     /// Which of each pair holds last frame's.
     pub(crate) read: usize,
@@ -116,16 +120,8 @@ impl ViewHistory {
             make(output, HDR, "temporal history b")?,
         ];
         let depth = [
-            make(
-                internal,
-                concordia_rhi::Format::R32Float,
-                "temporal depth a",
-            )?,
-            make(
-                internal,
-                concordia_rhi::Format::R32Float,
-                "temporal depth b",
-            )?,
+            make(internal, KEPT, "temporal depth a")?,
+            make(internal, KEPT, "temporal depth b")?,
         ];
         self.textures = Some(HistoryTextures {
             history,

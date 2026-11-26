@@ -1,6 +1,7 @@
 //! Temporal anti-aliasing and upscaling (M4 4.6, ADR-0103): the settings, the internal size, the
 //! jitter sequence, the mip bias and the exposure record.
 
+mod api;
 mod exposure;
 pub(crate) mod history;
 mod jitter;
@@ -9,9 +10,13 @@ mod settings;
 
 use std::num::NonZeroU32;
 
+use concordia_reflect::Reflect;
+use serde::{Deserialize, Serialize};
+
 use crate::RenderError;
 use crate::graph::{GraphTexture, RenderGraph};
 
+pub use api::{RenderSetTemporal, RenderSetTemporalParams, RenderSetTemporalResult};
 pub use exposure::FrameExposure;
 pub use jitter::{halton, jitter, ndc_offset};
 pub use settings::{
@@ -64,4 +69,37 @@ pub(crate) trait TemporalUpscaler {
 pub(crate) fn depth_terms(proj: &concordia_core::math::Mat4) -> [f32; 4] {
     let inv = proj.inverse();
     [inv.z_axis.z, inv.w_axis.z, inv.z_axis.w, inv.w_axis.w]
+}
+
+/// Parts of the own resolve that can be switched off (tests show what each prevents).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TemporalSwitches {
+    /// Reset history where last frame's depth says the surface was hidden.
+    pub disocclusion: bool,
+    /// Trust this frame where translucent draws cover (the HDR alpha).
+    pub reactive: bool,
+}
+
+impl Default for TemporalSwitches {
+    fn default() -> Self {
+        Self {
+            disocclusion: true,
+            reactive: true,
+        }
+    }
+}
+
+/// What the temporal resolve did in a frame (`render.stats` `temporal`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect)]
+pub struct TemporalStats {
+    /// What ran: `off` (temporal off, or a debug view), `own` or `metalfx`.
+    pub backend: TemporalBackend,
+    /// The scene's size (the output's with temporal off).
+    pub internal: [u32; 2],
+    /// The image's size.
+    pub output: [u32; 2],
+    /// The jitter phase (frames since the history started).
+    pub phase: u64,
+    /// No history was reprojected (the first frame, or after a change or reset).
+    pub reset: bool,
 }
