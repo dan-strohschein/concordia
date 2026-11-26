@@ -197,6 +197,10 @@ pub struct TaskPush {
     pub cull: u32,
     /// Shadow cascade (shadow draws only).
     pub cascade: u32,
+    /// Which culling pass draws (`meshlet::PASS_*`).
+    pub pass: u32,
+    /// Visibility buffer (one word per meshlet of each instance; two-pass occlusion).
+    pub visibility: u32,
 }
 
 concordia_shaders::shader_struct!(TaskPush {
@@ -212,12 +216,14 @@ concordia_shaders::shader_struct!(TaskPush {
     views,
     codes,
     cull,
-    cascade
+    cascade,
+    pass,
+    visibility
 });
 
 impl TaskPush {
-    /// The block's words in layout order (the cascade last).
-    pub(crate) fn words(&self) -> [u32; 13] {
+    /// The block's words in layout order.
+    pub(crate) fn words(&self) -> [u32; 15] {
         [
             self.frame,
             self.instances,
@@ -232,6 +238,8 @@ impl TaskPush {
             self.codes,
             self.cull,
             self.cascade,
+            self.pass,
+            self.visibility,
         ]
     }
 
@@ -244,6 +252,13 @@ impl TaskPush {
 fn words<const N: usize>(values: [u32; N]) -> Vec<u8> {
     values.iter().flat_map(|w| w.to_le_bytes()).collect()
 }
+
+/// The one culling pass of a frame without two-pass occlusion (mirrors `meshlet.slang`).
+pub(crate) const PASS_SINGLE: u32 = 0;
+/// Pass 1 of two-pass occlusion: what was visible last frame, without the HZB.
+pub(crate) const PASS_EARLY: u32 = 1;
+/// Pass 2: every candidate against this frame's HZB, drawing what pass 1 didn't.
+pub(crate) const PASS_LATE: u32 = 2;
 
 /// Push constants of `meshlet_cull` (mirrors `meshlet.slang`).
 #[repr(C)]
@@ -267,6 +282,10 @@ pub struct CullPush {
     pub drawn: u32,
     /// Entries in all buckets.
     pub total: u32,
+    /// Which culling pass this is (`meshlet::PASS_*`).
+    pub pass: u32,
+    /// Visibility buffer (one word per meshlet of each instance; two-pass occlusion).
+    pub visibility: u32,
 }
 
 concordia_shaders::shader_struct!(CullPush {
@@ -278,7 +297,9 @@ concordia_shaders::shader_struct!(CullPush {
     meshes,
     codes,
     drawn,
-    total
+    total,
+    pass,
+    visibility
 });
 
 impl CullPush {
@@ -294,6 +315,8 @@ impl CullPush {
             self.codes,
             self.drawn,
             self.total,
+            self.pass,
+            self.visibility,
         ])
     }
 }

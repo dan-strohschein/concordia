@@ -144,6 +144,8 @@ pub(crate) struct Pipelines {
     shadow: Pipeline,
     meshlet_shadow: Pipeline,
     cull: crate::meshlet_pass::CullPipelines,
+    /// The HZB build (`hzb.slang`; two-pass occlusion).
+    hzb: Pipeline,
     /// The mesh-shader path's stages, when the device takes it.
     mesh_stages: Option<MeshStages>,
     sky: (ShaderSource, ShaderSource),
@@ -217,6 +219,7 @@ impl Pipelines {
                 add: kernel("scan.slang", "scan_add")?,
             },
         };
+        let hzb = kernel("hzb.slang", "hzb_build")?;
         let meshlet_vs = compile("meshlet.slang", "meshlet_vs", Stage::Vertex)?;
         let mesh_stages = match crate::meshlet::route(device.caps(), crate::ViewMode::lit) {
             crate::meshlet::Route::MeshTasks => Some(mesh_stages(device, compiler.as_ref())?),
@@ -236,6 +239,7 @@ impl Pipelines {
             shadow,
             meshlet_shadow,
             cull,
+            hzb,
             mesh_stages,
             sky,
             skies: BTreeMap::new(),
@@ -424,6 +428,11 @@ impl Pipelines {
     /// takes it.
     pub(crate) fn meshlet_shadow_mesh(&self) -> Option<Pipeline> {
         self.mesh_stages.as_ref().map(|m| m.shadow)
+    }
+
+    /// The HZB build's compute pipeline.
+    pub(crate) fn hzb(&self) -> Pipeline {
+        self.hzb
     }
 
     /// The `meshlet.cull` pass's compute pipelines.

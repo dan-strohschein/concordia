@@ -4,7 +4,31 @@ Tolerances(
             mean: 0.001,
             p99: 0.05,
         ),
+        "camera_cut": (
+            mean: 0.001,
+            p99: 0.05,
+        ),
         "culling_row": (
+            mean: 0.001,
+            p99: 0.05,
+        ),
+        "moving_occluder": (
+            mean: 0.001,
+            p99: 0.05,
+        ),
+        "moving_occluder_000": (
+            mean: 0.001,
+            p99: 0.05,
+        ),
+        "moving_occluder_060": (
+            mean: 0.001,
+            p99: 0.05,
+        ),
+        "moving_occluder_119": (
+            mean: 0.001,
+            p99: 0.05,
+        ),
+        "occluded_city": (
             mean: 0.001,
             p99: 0.05,
         ),

@@ -10,9 +10,8 @@ use concordia_core::id::EntityId;
 use concordia_core::math::{Mat4, Quat, Vec3};
 use concordia_render::shadow::CascadeSettings;
 use concordia_render::{
-    Camera, CullCode, CullView, CulledMeshlet, Culling, DirectionalLight, Image, Renderer,
+    Camera, CullCode, CullView, CulledMeshlet, Culling, DirectionalLight, Renderer,
 };
-use concordia_testkit::golden::{Comparison, Golden, RgbaImage, flip_score};
 
 const SUITE: &str = "m4_culling";
 
@@ -153,10 +152,6 @@ fn row(eye: Vec3, target: Vec3) -> Culled {
     c
 }
 
-fn rgba(image: &Image) -> RgbaImage {
-    RgbaImage::new(image.width, image.height, image.rgba.clone()).unwrap()
-}
-
 /// Renders `c` with `on` and with culling off on `r`: the culled image agrees with the unculled
 /// one within golden `name`'s `culling` entry, and the unculled one with the golden.
 fn assert_culling_keeps_the_image(
@@ -170,33 +165,18 @@ fn assert_culling_keeps_the_image(
     let off = c.scene.render(r, size.0, size.1);
     r.set_culling(on);
     let culled = c.scene.render(r, size.0, size.1);
-    let tolerance = Golden::from_env()
-        .comparison_tolerance_on(Some(common::backend()), SUITE, name, Comparison::Culling)
-        .unwrap()
-        .unwrap_or_else(|| panic!("a culling entry for {name}"));
-    let score = flip_score(&rgba(&off), &rgba(&culled)).unwrap();
+    let score = common::assert_culling_agrees(SUITE, name, (&off, &culled), "culling on vs off");
     println!(
         "{name} ({:?}): culling on vs off FLIP {score:?}; {:?}",
         r.stats().raster_path,
         r.stats().meshlets
-    );
-    assert!(
-        tolerance.accepts(&score),
-        "{name}: culling on vs off FLIP {score:?} > {tolerance:?}"
     );
     golden_in(SUITE, name, &off);
 }
 
 /// Every device path: the device's own, and the compute path of a masked device.
 fn renderers() -> Vec<Renderer> {
-    let Some(r) = renderer() else {
-        return Vec::new();
-    };
-    let mut out = vec![r];
-    if common::meshlet_path(&out[0]) == concordia_render::RasterPath::mesh_shader {
-        out.extend(compute_renderer());
-    }
-    out
+    common::meshlet_renderers()
 }
 
 const ROW_SIZE: (u32, u32) = (320, 180);
@@ -405,6 +385,11 @@ fn gpu_culling_matches_cpu_reference() {
     let size = (200, 120);
     for mut r in renderers() {
         r.set_cull_readback(true);
+        // The CPU reference has no HZB: occlusion is off (as the plan says).
+        r.set_culling(Culling {
+            occlusion: false,
+            ..Culling::default()
+        });
         let (mut exact, mut total) = (0, 0);
         for (eye, target) in reference_views() {
             let mut c = row(eye, target);

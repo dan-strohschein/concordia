@@ -11,15 +11,12 @@ mod cull_stats;
 mod environment;
 mod error;
 mod extract;
+mod forward_pass;
 mod frame;
 mod frame_log;
 mod gizmo;
 mod gpu;
 pub mod graph;
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the two-pass culling uses it (4.4b steps 3–4)")
-)]
 mod hzb;
 pub mod ibl;
 mod lighting;
@@ -51,6 +48,7 @@ pub mod tonemap;
 mod ui_pass;
 mod view;
 mod view_mode;
+mod visibility;
 
 pub use assets::{AssetSource, MemoryAssets, resolve};
 pub use budget::{effective_closure_budget, platform_closure_budget};

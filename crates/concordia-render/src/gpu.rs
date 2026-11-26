@@ -158,16 +158,30 @@ impl Uploads {
                 label: label.into(),
             },
         )?;
-        let src = self.stage(device, bytes)?;
         self.buffers.push(gpu);
+        self.write_into(device, gpu, bytes)?;
+        Ok(gpu)
+    }
+
+    /// Copies `bytes` into the start of the existing buffer `dst` (it needs `COPY_DST` usage).
+    pub(crate) fn write_into(
+        &mut self,
+        device: &dyn Device,
+        dst: Buffer,
+        bytes: &[u8],
+    ) -> Result<(), RhiError> {
+        if bytes.is_empty() {
+            return Ok(());
+        }
+        let src = self.stage(device, bytes)?;
         self.list.push(Command::CopyBuffer {
             src,
             src_offset: 0,
-            dst: gpu,
+            dst,
             dst_offset: 0,
             size: bytes.len() as u64,
         });
-        Ok(gpu)
+        Ok(())
     }
 
     /// A sampled bindless texture with every mip of `data`.

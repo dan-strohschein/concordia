@@ -101,16 +101,27 @@ pub enum CullCode {
     Frustum = 2,
     /// Every triangle faces away from the eye.
     Cone = 3,
-    /// Drawn.
+    /// Hidden behind this frame's HZB (two-pass occlusion, M4 4.4b).
+    Occluded = 4,
+    /// Drawn (in pass 1 with two-pass occlusion).
     Drawn = 5,
+    /// Drawn in pass 2 (two-pass occlusion).
+    DrawnLate = 6,
 }
 
 impl CullCode {
     /// The code the GPU wrote, if it is one.
     pub(crate) fn from_u32(code: u32) -> Option<Self> {
-        [Self::Instance, Self::Frustum, Self::Cone, Self::Drawn]
-            .into_iter()
-            .find(|c| *c as u32 == code)
+        [
+            Self::Instance,
+            Self::Frustum,
+            Self::Cone,
+            Self::Occluded,
+            Self::Drawn,
+            Self::DrawnLate,
+        ]
+        .into_iter()
+        .find(|c| *c as u32 == code)
     }
 }
 
@@ -118,9 +129,22 @@ impl CullCode {
 pub(crate) const VIEW_FRUSTUM: u32 = 1;
 pub(crate) const VIEW_CONE: u32 = 2;
 pub(crate) const VIEW_NEAR: u32 = 4;
+pub(crate) const VIEW_OCCLUSION: u32 = 8;
+pub(crate) const VIEW_ORTHO: u32 = 16;
 
 /// `uint4` rows per view in the cull view table.
-pub(crate) const VIEW_ROWS: usize = 8;
+pub(crate) const VIEW_ROWS: usize = 13;
+
+/// What a camera view's occlusion test reads: its view and projection, and this frame's HZB.
+#[derive(Debug, Clone, Copy)]
+struct Occlusion {
+    view: Mat4,
+    terms: SphereProjection,
+    /// The HZB buffer's bindless index.
+    hzb: u32,
+    /// The depth's size in pixels.
+    screen: [u32; 2],
+}
 
 /// One view the meshlet path culls for: the camera or a shadow cascade. Its tests are the CPU
 /// reference of the GPU's (`meshlet.slang`'s `cull`).
@@ -132,6 +156,8 @@ pub struct CullView {
     /// Test the near plane (cascades don't: casters toward the light must still cast).
     near: bool,
     tests: Culling,
+    /// Two-pass occlusion against this frame's HZB (the camera, when the frame splits).
+    occlusion: Option<Occlusion>,
 }
 
 impl CullView {
@@ -142,7 +168,30 @@ impl CullView {
             eye: perspective.then_some(eye),
             near: true,
             tests,
+            occlusion: None,
         }
+    }
+
+    /// This view with two-pass occlusion against the HZB `hzb` (bindless index) over a `screen`
+    /// depth, seen through `view` and `proj`; unchanged for projections the test can't take.
+    pub(crate) fn with_occlusion(
+        self,
+        (view, proj): (Mat4, Mat4),
+        hzb: u32,
+        screen: [u32; 2],
+    ) -> Self {
+        let occlusion = SphereProjection::new(proj).map(|terms| Occlusion {
+            view,
+            terms,
+            hzb,
+            screen,
+        });
+        Self { occlusion, ..self }
+    }
+
+    /// True if the view tests occlusion (it has an HZB and the test is on).
+    pub(crate) fn occludes(&self) -> bool {
+        self.tests.occlusion && self.occlusion.is_some()
     }
 
     /// A shadow cascade's view: frustum only, without the near plane.
@@ -152,6 +201,7 @@ impl CullView {
             eye: None,
             near: false,
             tests,
+            occlusion: None,
         }
     }
 
@@ -167,10 +217,18 @@ impl CullView {
         if self.near {
             flags |= VIEW_NEAR;
         }
+        if self.occludes() {
+            flags |= VIEW_OCCLUSION;
+        }
+        if self.occlusion.is_some_and(|o| !o.terms.perspective) {
+            flags |= VIEW_ORTHO;
+        }
         flags
     }
 
-    /// The view's rows for the GPU: six planes, the eye, the flags.
+    /// The view's rows for the GPU: six planes, the eye, the flags (and the near plane); then for
+    /// occlusion the view matrix's first three rows, the projection terms and the HZB (buffer,
+    /// width, height).
     pub(crate) fn rows(&self) -> [[u32; 4]; VIEW_ROWS] {
         let bits = |v: Vec4| v.to_array().map(f32::to_bits);
         let mut rows = [[0u32; 4]; VIEW_ROWS];
@@ -178,7 +236,17 @@ impl CullView {
             *row = bits(plane);
         }
         rows[6] = bits(self.eye.unwrap_or(Vec3::ZERO).extend(0.0));
-        rows[7] = [self.flags(), 0, 0, 0];
+        let near = self.occlusion.map_or(0.0, |o| o.terms.near);
+        rows[7] = [self.flags(), near.to_bits(), 0, 0];
+        if let Some(o) = self.occlusion {
+            for (k, row) in rows[8..11].iter_mut().enumerate() {
+                *row = bits(o.view.row(k));
+            }
+            let [sx, sy] = o.terms.scale;
+            let [p22, p32] = o.terms.depth;
+            rows[11] = bits(Vec4::new(sx, sy, p22, p32));
+            rows[12] = [o.hzb, o.screen[0], o.screen[1], 0];
+        }
         rows
     }
 
@@ -231,10 +299,6 @@ impl CullView {
 /// A view's projection terms for the occlusion test: a symmetric perspective or orthographic
 /// projection with reverse-Z depth (Mara & McGuire 2013's projected sphere, for both).
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the two-pass culling uses it (4.4b steps 3–4)")
-)]
 pub(crate) struct SphereProjection {
     /// `proj[0][0]` and `proj[1][1]`: view-space x and y to clip.
     pub(crate) scale: [f32; 2],
@@ -246,12 +310,9 @@ pub(crate) struct SphereProjection {
     pub(crate) near: f32,
 }
 
+#[cfg(test)] // The CPU reference of `meshlet.slang`'s `occluded`.
 /// A sphere on the screen: its rectangle in UV (y down) and its nearest depth.
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the two-pass culling uses it (4.4b steps 3–4)")
-)]
 pub(crate) struct ProjectedSphere {
     /// Top-left corner.
     pub(crate) lo: [f32; 2],
@@ -261,10 +322,6 @@ pub(crate) struct ProjectedSphere {
     pub(crate) depth: f32,
 }
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the two-pass culling uses it (4.4b steps 3–4)")
-)]
 impl SphereProjection {
     /// The terms of `proj`; `None` for an off-centre or otherwise unsupported projection.
     pub(crate) fn new(proj: Mat4) -> Option<Self> {
@@ -295,6 +352,7 @@ impl SphereProjection {
         })
     }
 
+    #[cfg(test)] // The CPU reference of `meshlet.slang`'s `occluded`.
     /// Where the view-space sphere (`center`, `radius`) lands; `None` unless it lies wholly
     /// beyond the near plane.
     pub(crate) fn project(&self, center: Vec3, radius: f32) -> Option<ProjectedSphere> {
@@ -322,12 +380,9 @@ impl SphereProjection {
     }
 }
 
+#[cfg(test)] // The CPU reference of `meshlet.slang`'s `occluded`.
 /// The slopes (offset over distance) of the two lines from the eye tangent to a circle at offset
 /// `a` and distance `z` > `r` with radius `r`, in one axis's plane (Mara & McGuire 2013).
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the two-pass culling uses it (4.4b steps 3–4)")
-)]
 fn tangents(a: f32, z: f32, r: f32) -> [f32; 2] {
     let t = (a * a + z * z - r * r).sqrt();
     [
@@ -641,12 +696,64 @@ mod tests {
             CullCode::Instance,
             CullCode::Frustum,
             CullCode::Cone,
+            CullCode::Occluded,
             CullCode::Drawn,
+            CullCode::DrawnLate,
         ] {
             assert_eq!(CullCode::from_u32(c as u32), Some(c));
         }
         assert_eq!(CullCode::from_u32(0), None);
-        assert_eq!(CullCode::from_u32(4), None, "occlusion is 4.4b");
+        assert_eq!(CullCode::from_u32(7), None);
+    }
+
+    /// A camera with an HZB adds the occlusion rows: the view's first three rows, the projection
+    /// terms, the HZB and the near plane; with the test off, or for a cascade, it has none.
+    #[test]
+    fn occlusion_rows_carry_the_view_projection_and_hzb() {
+        let proj = directx::perspective(1.0, 16.0 / 9.0, 1000.0, 0.1);
+        let eye = Vec3::new(0.0, 0.0, 5.0);
+        let view_m = Mat4::from_translation(-eye);
+        let v = CullView::camera(proj * view_m, eye, true, Culling::default()).with_occlusion(
+            (view_m, proj),
+            42,
+            [320, 180],
+        );
+        assert!(v.occludes());
+        let rows = v.rows();
+        assert_eq!(
+            rows[7][0],
+            VIEW_FRUSTUM | VIEW_CONE | VIEW_NEAR | VIEW_OCCLUSION
+        );
+        assert!((f32::from_bits(rows[7][1]) - 0.1).abs() < 1e-6);
+        assert_eq!(rows[8], view_m.row(0).to_array().map(f32::to_bits));
+        assert_eq!(rows[10], view_m.row(2).to_array().map(f32::to_bits));
+        let p = [proj.x_axis.x, proj.y_axis.y, proj.z_axis.z, proj.w_axis.z];
+        assert_eq!(rows[11], p.map(f32::to_bits));
+        assert_eq!(rows[12], [42, 320, 180, 0]);
+        let off = Culling {
+            occlusion: false,
+            ..Culling::default()
+        };
+        let no_test = CullView::camera(proj * view_m, eye, true, off).with_occlusion(
+            (view_m, proj),
+            42,
+            [320, 180],
+        );
+        assert!(!no_test.occludes());
+        assert_eq!(no_test.rows()[7][0] & VIEW_OCCLUSION, 0);
+        let ortho = directx::orthographic(-4.0, 4.0, -2.0, 2.0, 100.0, 0.5);
+        let o = CullView::camera(ortho * view_m, eye, false, Culling::default()).with_occlusion(
+            (view_m, ortho),
+            1,
+            [8, 8],
+        );
+        assert_eq!(
+            o.rows()[7][0] & (VIEW_ORTHO | VIEW_OCCLUSION),
+            VIEW_ORTHO | VIEW_OCCLUSION
+        );
+        let cascade = CullView::cascade(proj * view_m, Culling::default());
+        assert!(!cascade.occludes());
+        assert_eq!(cascade.rows()[12], [0; 4]);
     }
 
     /// A reverse-Z projection for the projected-sphere tests: perspective or orthographic.

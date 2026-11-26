@@ -61,6 +61,7 @@ impl HzbLayout {
         self.levels.iter().map(|[w, h]| w * h).sum()
     }
 
+    #[cfg(test)] // The CPU reference of `meshlet.slang`'s level choice.
     /// The finest level at which the pixel rectangle `lo..=hi` spans at most 2 × 2 texels.
     pub(crate) fn level_for(&self, lo: [u32; 2], hi: [u32; 2]) -> usize {
         debug_assert!(lo[0] <= hi[0] && lo[1] <= hi[1], "{lo:?}..={hi:?}");
@@ -126,22 +127,19 @@ impl HzbPush {
     }
 }
 
-/// A prepared HZB build: its buffer and one dispatch per level.
+/// A frame's HZB: its buffer and layout.
 #[derive(Debug, Clone)]
 pub(crate) struct Hzb {
     pub(crate) buffer: Buffer,
     pub(crate) layout: HzbLayout,
-    commands: Vec<Command>,
 }
 
 impl Hzb {
-    /// Allocates the HZB over `layout` (returned in `keep`) and records its build from the
-    /// bindless single-sample depth texture `depth`.
+    /// Allocates the HZB over `layout` (returned in `keep`).
     pub(crate) fn prepare(
         device: &dyn Device,
         up: &Uploads,
-        pipeline: Pipeline,
-        (depth, layout): (u32, HzbLayout),
+        layout: HzbLayout,
         keep: &mut Vec<Buffer>,
     ) -> Result<Self, RenderError> {
         let buffer = up.alloc(
@@ -154,7 +152,14 @@ impl Hzb {
             },
         )?;
         keep.push(buffer);
-        let hzb = device.buffer_index(buffer)?.0;
+        Ok(Self { buffer, layout })
+    }
+
+    /// The build from the bindless single-sample depth texture `depth`, `hzb` being the buffer's
+    /// bindless index: one dispatch per level, each followed by a barrier, so the buffer is ready
+    /// for compute reads after them.
+    pub(crate) fn commands(&self, pipeline: Pipeline, (depth, hzb): (u32, u32)) -> Vec<Command> {
+        let layout = &self.layout;
         let mut commands = Vec::with_capacity(layout.levels.len() * 4);
         let mut src = (0, layout.screen);
         for (level, &[w, h]) in layout.levels.iter().enumerate() {
@@ -175,20 +180,11 @@ impl Hzb {
                 Command::Dispatch {
                     groups: [w.div_ceil(GROUP), h.div_ceil(GROUP), 1],
                 },
-                compute_barrier(&[buffer]),
+                compute_barrier(&[self.buffer]),
             ]);
             src = (layout.offsets[level], [w, h]);
         }
-        Ok(Self {
-            buffer,
-            layout,
-            commands,
-        })
-    }
-
-    /// The build's dispatches and barriers; the buffer is ready for compute reads after them.
-    pub(crate) fn commands(&self) -> &[Command] {
-        &self.commands
+        commands
     }
 }
 
@@ -286,15 +282,9 @@ mod tests {
         let layout = HzbLayout::new(nz(w), nz(h));
         let mut keep = Vec::new();
         let index = device.texture_index(texture).unwrap().0;
-        let hzb = Hzb::prepare(
-            device,
-            &Uploads::new(),
-            pipeline,
-            (index, layout.clone()),
-            &mut keep,
-        )
-        .unwrap();
-        test_gpu::run_commands(device, hzb.commands().iter().cloned());
+        let hzb = Hzb::prepare(device, &Uploads::new(), layout.clone(), &mut keep).unwrap();
+        let buffer = device.buffer_index(hzb.buffer).unwrap().0;
+        test_gpu::run_commands(device, hzb.commands(pipeline, (index, buffer)));
         let words = test_gpu::download(device, hzb.buffer, u64::from(hzb.layout.texels()) * 4);
         device.destroy_texture(texture);
         words.into_iter().map(f32::from_bits).collect()

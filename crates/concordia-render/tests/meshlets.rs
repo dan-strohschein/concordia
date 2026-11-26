@@ -317,6 +317,9 @@ fn render_stats_report_the_meshlet_path() {
                 after_instance_frustum: all,
                 after_frustum: all,
                 after_cone: all,
+                after_occlusion: all,
+                drawn_early: all,
+                drawn_late: 0,
                 shadow_meshlets: cascades * all,
             },
             "red (two balls), gold and teal"
@@ -359,7 +362,9 @@ fn render_stats_report_each_cull_stage() {
             m.after_cone >= bowl.meshlets,
             "the double-sided bowl keeps all"
         );
-        assert_eq!(m.meshlets, m.after_cone, "nothing else culls in 4.4a");
+        assert!(m.after_occlusion <= m.after_cone, "{m:?}");
+        assert_eq!(m.meshlets, m.after_occlusion, "occlusion is the last test");
+        assert_eq!(m.meshlets, m.drawn_early + m.drawn_late);
         assert!(m.triangles < 3 * ball.triangles + bowl.triangles);
         assert_eq!(m.instances, 4);
         assert_eq!(stats.draws, 5, "four meshlet instances and the ground");

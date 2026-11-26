@@ -278,7 +278,9 @@ impl RenderGraph {
         }
     }
 
-    /// Writers of a texture run in insertion order; readers run after every writer.
+    /// Writers of a texture run in insertion order. A reader added after some of them runs after
+    /// those and before the later ones (it reads that version); one added before all of them runs
+    /// after every writer.
     fn edges(&self, needed: &BTreeSet<usize>) -> BTreeMap<usize, BTreeSet<usize>> {
         let mut deps: BTreeMap<usize, BTreeSet<usize>> =
             needed.iter().map(|&p| (p, BTreeSet::new())).collect();
@@ -303,7 +305,16 @@ impl RenderGraph {
                     .iter()
                     .any(|(x, u)| *x == t && !u.is_write());
                 if reads && !writers.contains(&p) {
-                    deps.entry(p).or_default().extend(writers.iter().copied());
+                    let before: Vec<usize> = writers.iter().copied().filter(|&w| w < p).collect();
+                    match before.is_empty() {
+                        true => deps.entry(p).or_default().extend(writers.iter().copied()),
+                        false => {
+                            deps.entry(p).or_default().extend(before);
+                            for &w in writers.iter().filter(|&&w| w > p) {
+                                deps.entry(w).or_default().insert(p);
+                            }
+                        }
+                    }
                 }
             }
         }

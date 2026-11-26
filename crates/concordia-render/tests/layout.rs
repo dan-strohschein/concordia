@@ -89,8 +89,10 @@ fn task_push_keeps_the_fields_fs_reads_where_draw_push_has_them() {
         codes: 11,
         cull: 12,
         cascade: 13,
+        pass: 14,
+        visibility: 15,
     };
-    let words: Vec<u8> = (1u32..=13).flat_map(|w| w.to_le_bytes()).collect();
+    let words: Vec<u8> = (1u32..=15).flat_map(|w| w.to_le_bytes()).collect();
     assert_eq!(push.bytes(), words);
     assert_eq!(push.bytes().len(), TaskPush::layout().size);
     assert!(push.bytes().len() <= concordia_rhi::MAX_PUSH_CONSTANTS);
@@ -136,9 +138,11 @@ fn meshlet_push_bytes_follow_the_layout() {
         codes: 7,
         drawn: 8,
         total: 9,
+        pass: 10,
+        visibility: 11,
     };
-    let nine: Vec<u8> = (1u32..=9).flat_map(|w| w.to_le_bytes()).collect();
-    assert_eq!(cull.bytes(), nine);
+    let eleven: Vec<u8> = (1u32..=11).flat_map(|w| w.to_le_bytes()).collect();
+    assert_eq!(cull.bytes(), eleven);
     assert_eq!(cull.bytes().len(), CullPush::layout().size);
     let compact = CompactPush {
         items: 1,

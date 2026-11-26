@@ -149,15 +149,19 @@ impl Scene {
     }
 
     pub fn camera(&mut self, eye: Vec3, target: Vec3, camera: Camera) -> EntityId {
-        let forward = (target - eye).normalize();
-        let rotation = Quat::from_mat3(&concordia_core::math::Mat3::from_cols(
-            forward.cross(Vec3::Y).normalize(),
-            forward.cross(Vec3::Y).normalize().cross(forward),
-            -forward,
-        ));
-        let id = self.entity(eye, rotation, Vec3::ONE);
+        let id = self.entity(eye, look_rotation(eye, target), Vec3::ONE);
         self.world.insert(id, camera).unwrap();
         id
+    }
+
+    /// Moves `camera` (or any entity) to `eye`, looking at `target`.
+    pub fn aim(&mut self, camera: EntityId, eye: Vec3, target: Vec3) {
+        let t = Transform {
+            translation: eye,
+            rotation: look_rotation(eye, target),
+            scale: Vec3::ONE,
+        };
+        self.world.insert(camera, t).unwrap();
     }
 
     pub fn sun(&mut self, direction: Vec3, lux: f32) -> EntityId {
@@ -205,6 +209,59 @@ impl Scene {
             )
             .expect("render")
     }
+}
+
+/// The rotation of a camera at `eye` looking at `target`, y up.
+pub fn look_rotation(eye: Vec3, target: Vec3) -> Quat {
+    let forward = (target - eye).normalize();
+    Quat::from_mat3(&concordia_core::math::Mat3::from_cols(
+        forward.cross(Vec3::Y).normalize(),
+        forward.cross(Vec3::Y).normalize().cross(forward),
+        -forward,
+    ))
+}
+
+/// Renderers for every meshlet draw path of the device with `mask`'s features hidden: its own,
+/// and the compute path of the same device where its own is mesh shaders.
+pub fn meshlet_renderers_masked(mask: &concordia_rhi::CapsMask) -> Vec<Renderer> {
+    let Some(r) = renderer_masked(mask) else {
+        return Vec::new();
+    };
+    let mut out = vec![r];
+    if meshlet_path(&out[0]) == concordia_render::RasterPath::mesh_shader {
+        out.extend(renderer_masked(&concordia_rhi::CapsMask {
+            mesh_shaders: true,
+            ..*mask
+        }));
+    }
+    out
+}
+
+/// [`meshlet_renderers_masked`] with nothing hidden.
+pub fn meshlet_renderers() -> Vec<Renderer> {
+    meshlet_renderers_masked(&concordia_rhi::CapsMask::default())
+}
+
+/// `got` agrees with `want` within golden `name`'s `culling` entry in `suite` on this backend;
+/// returns the score.
+pub fn assert_culling_agrees(
+    suite: &str,
+    name: &str,
+    (want, got): (&Image, &Image),
+    what: &str,
+) -> concordia_testkit::golden::FlipScore {
+    use concordia_testkit::golden::{Comparison, Golden, flip_score};
+    let tolerance = Golden::from_env()
+        .comparison_tolerance_on(Some(backend()), suite, name, Comparison::Culling)
+        .unwrap()
+        .unwrap_or_else(|| panic!("a culling entry for {name}"));
+    let rgba = |i: &Image| RgbaImage::new(i.width, i.height, i.rgba.clone()).unwrap();
+    let score = flip_score(&rgba(want), &rgba(got)).unwrap();
+    assert!(
+        tolerance.accepts(&score),
+        "{name}: {what}: FLIP {score:?} > {tolerance:?}"
+    );
+    score
 }
 
 pub fn unlit(color: [f32; 4]) -> M1 {
