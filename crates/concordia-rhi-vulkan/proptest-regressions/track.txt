@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 7026facf5f80eb60fead38536a6fee99b442e84bad4fc27c6ae6c22a986d9c3f # shrinks to steps = [[CopyTexture { src: Texture { index: 0, generation: 0 }, src_origin: TextureOrigin { mip: 0, x: 0, y: 0 }, dst: Texture { index: 0, generation: 0 }, dst_origin: TextureOrigin { mip: 0, x: 0, y: 0 }, extent: [1, 1] }]]
+cc a77b8eb5615d26c4b9efd516228b3f7d36d39082e6d2e5e6376c80ceec9f7835 # shrinks to steps = [[BeginRenderPass(RenderPassDesc { colors: [ColorAttachment { texture: Texture { index: 0, generation: 0 }, resolve: None, load: Load, store: Store }], depth: Some(DepthAttachment { texture: Texture { index: 3, generation: 0 }, resolve: Some(DepthResolveTarget { texture: Texture { index: 5, generation: 0 }, filter: Min }), load: Load, store: Store }) }), Draw { vertices: 0..3, instances: 0..1 }, EndRenderPass]]

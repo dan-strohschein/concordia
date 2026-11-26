@@ -1,7 +1,10 @@
 //! GPU side of the meshlet path (ADR-0100): the frame's meshlet buffers and each bucket's draw,
 //! by the compute + indirect route (the `meshlet.cull` pass: cull, scan and compact, M4 4.3a and
 //! 4.4) or the mesh-shader route (one mesh-task draw per bucket that culls in its object stage,
-//! 4.3b and 4.4). Both routes write one cull code per entry.
+//! 4.3b and 4.4). Both routes write one cull code per entry. With two-pass occlusion (4.4b) the
+//! buckets draw twice: pass 1's survivors in `forward`, pass 2's in `forward_late`, culled by
+//! `meshlet.cull` and `meshlet.cull_late` on the compute route, in each draw's object stage on the
+//! mesh-shader route.
 
 use std::num::NonZeroU64;
 
@@ -15,7 +18,8 @@ use crate::frame::push_rows_u32;
 use crate::gpu::Uploads;
 use crate::graph::{PassContext, RenderGraph};
 use crate::meshlet::{
-    CompactPush, CullPush, MeshletPlan, MeshletPush, Route, TaskPush, task_groups,
+    CompactPush, CullPush, MeshletPlan, MeshletPush, PASS_EARLY, PASS_LATE, PASS_SINGLE, Route,
+    TaskPush, task_groups,
 };
 use crate::scan::{Scan, ScanPipelines, compute_barrier};
 
@@ -65,6 +69,25 @@ pub(crate) enum RoutePipelines {
     MeshTasks { shadow: Pipeline },
 }
 
+/// How a frame culls the meshlet path: in one pass, or in two around this frame's HZB.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Passes {
+    /// One pass, without occlusion.
+    Single,
+    /// Two-pass occlusion, with the visibility buffer's bindless index.
+    Two { visibility: u32 },
+}
+
+impl Passes {
+    /// The first (or only) pass's `PASS_*` and the visibility buffer.
+    fn first(self) -> (u32, u32) {
+        match self {
+            Self::Single => (PASS_SINGLE, 0),
+            Self::Two { visibility } => (PASS_EARLY, visibility),
+        }
+    }
+}
+
 /// One bucket's draw, ready to record: its pipeline, push constants and draw command.
 #[derive(Debug, Clone)]
 pub(crate) struct BucketDraw {
@@ -99,10 +122,14 @@ struct Compute {
 pub(crate) struct MeshletJob {
     /// How the buckets reach the rasterizer.
     pub(crate) route: Route,
-    /// The compute route's cull pass.
+    /// The compute route's cull pass (pass 1 with two-pass occlusion).
     compute: Option<Compute>,
-    /// Forward buckets, in plan order.
+    /// The compute route's pass 2.
+    late: Option<Compute>,
+    /// Forward buckets, in plan order (pass 1's survivors with two-pass occlusion).
     pub(crate) forward: Vec<BucketDraw>,
+    /// Pass 2's forward buckets (none without two-pass occlusion).
+    pub(crate) forward_late: Vec<BucketDraw>,
     /// The shadow casters' bucket per cascade, in cascade order.
     pub(crate) shadows: Vec<BucketDraw>,
     /// One cull code per entry, written by either route.
@@ -136,7 +163,7 @@ impl MeshletJob {
         device: &dyn Device,
         up: &mut Uploads,
         plan: &MeshletPlan<BucketKey>,
-        (tables, pipelines): (FrameTables, RoutePipelines),
+        (tables, pipelines, passes): (FrameTables, RoutePipelines, Passes),
         keep: &mut Vec<Buffer>,
     ) -> Result<Option<Self>, RenderError> {
         if plan.entries == 0 {
@@ -163,18 +190,31 @@ impl MeshletJob {
         )?;
         keep.extend([items, buckets, codes]);
         let (items, buckets_i, codes_i) = (index(items)?, index(buckets)?, index(codes)?);
-        let (route, compute, shadow_pipeline) = match pipelines {
+        let (pass, visibility) = passes.first();
+        let (route, compute, late, shadow_pipeline) = match pipelines {
             RoutePipelines::ComputeIndirect { cull, shadow } => {
                 let refs = (items, buckets_i, codes);
-                let job = Compute::prepare(device, up, plan, (tables, refs, cull), keep)?;
-                (Route::ComputeIndirect, Some(job), shadow)
+                let mut cull_pass = |pass| {
+                    let push = (pass, visibility);
+                    Compute::prepare(device, up, plan, (tables, refs, cull, push), keep)
+                };
+                let job = cull_pass(pass)?;
+                let late = match passes {
+                    Passes::Two { .. } => Some(cull_pass(PASS_LATE)?),
+                    Passes::Single => None,
+                };
+                (Route::ComputeIndirect, Some(job), late, shadow)
             }
-            RoutePipelines::MeshTasks { shadow } => (Route::MeshTasks, None, shadow),
+            RoutePipelines::MeshTasks { shadow } => (Route::MeshTasks, None, None, shadow),
         };
-        let draw = |pipeline, material, i: usize| -> Result<BucketDraw, RenderError> {
+        let draw = |pipeline, material, i: usize, pass| -> Result<BucketDraw, RenderError> {
             let bucket = &plan.buckets[i];
             let cascade = bucket.view.saturating_sub(1);
-            Ok(match &compute {
+            let compute = match pass {
+                PASS_LATE => &late,
+                _ => &compute,
+            };
+            Ok(match compute {
                 Some(c) => BucketDraw {
                     pipeline,
                     push: MeshletPush {
@@ -186,6 +226,7 @@ impl MeshletJob {
                         meshes: tables.meshes,
                         first: bucket.first,
                         cascade,
+                        pass,
                     }
                     .bytes(),
                     draw: Command::DrawIndirect {
@@ -209,6 +250,8 @@ impl MeshletJob {
                         codes: codes_i,
                         cull: bucket.cull_word(),
                         cascade,
+                        pass,
+                        visibility,
                     }
                     .bytes(),
                     draw: Command::DrawMeshTasks {
@@ -218,17 +261,26 @@ impl MeshletJob {
             })
         };
         let mut forward = Vec::new();
+        let mut forward_late = Vec::new();
         let mut shadows = Vec::new();
         for (i, bucket) in plan.buckets.iter().enumerate() {
             match bucket.key {
-                Some((pipeline, material)) => forward.push(draw(pipeline, material, i)?),
-                None => shadows.push(draw(shadow_pipeline, 0, i)?),
+                Some((pipeline, material)) => {
+                    forward.push(draw(pipeline, material, i, pass)?);
+                    if let Passes::Two { .. } = passes {
+                        forward_late.push(draw(pipeline, material, i, PASS_LATE)?);
+                    }
+                }
+                // Shadows are culled once, in the first pass, without the HZB.
+                None => shadows.push(draw(shadow_pipeline, 0, i, pass)?),
             }
         }
         Ok(Some(Self {
             route,
             compute,
+            late,
             forward,
+            forward_late,
             shadows,
             codes,
         }))
@@ -236,31 +288,48 @@ impl MeshletJob {
 
     /// The `meshlet.cull` pass (compute route only).
     pub(crate) fn add_pass(&self, graph: &mut RenderGraph) {
-        let Some(compute) = self.compute.clone() else {
-            return;
-        };
-        graph.add_pass_recorded(
-            "meshlet.cull",
-            |p| p.side_effect(),
-            Some(Box::new(move |ctx: &mut PassContext<'_>| {
-                ctx.commands.commands.extend(compute.commands());
-                Ok(())
-            })),
-        );
+        add_cull_pass(graph, "meshlet.cull", self.compute.clone());
     }
+
+    /// The `meshlet.cull_late` pass (compute route with two-pass occlusion only).
+    pub(crate) fn add_late_pass(&self, graph: &mut RenderGraph) {
+        add_cull_pass(graph, "meshlet.cull_late", self.late.clone());
+    }
+}
+
+/// A compute cull pass named `name`, if there is one.
+fn add_cull_pass(graph: &mut RenderGraph, name: &str, compute: Option<Compute>) {
+    let Some(compute) = compute else {
+        return;
+    };
+    graph.add_pass_recorded(
+        name,
+        |p| p.side_effect(),
+        Some(Box::new(move |ctx: &mut PassContext<'_>| {
+            ctx.commands.commands.extend(compute.commands());
+            Ok(())
+        })),
+    );
 }
 
 impl Compute {
     /// Allocates the drawn flags, their sums, the entries and the arguments, and prepares the
-    /// scan; `refs` are the work items' and bucket table's bindless indices and the code buffer.
+    /// scan; `refs` are the work items' and bucket table's bindless indices and the code buffer,
+    /// `push` the pass (`PASS_*`) and the visibility buffer.
     fn prepare(
         device: &dyn Device,
         up: &Uploads,
         plan: &MeshletPlan<BucketKey>,
-        (tables, refs, pipelines): (FrameTables, (u32, u32, Buffer), CullPipelines),
+        (tables, refs, pipelines, push): (
+            FrameTables,
+            (u32, u32, Buffer),
+            CullPipelines,
+            (u32, u32),
+        ),
         keep: &mut Vec<Buffer>,
     ) -> Result<Self, RenderError> {
         let (items, buckets, codes) = refs;
+        let (pass, visibility) = push;
         let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
         let total = plan.entries;
         let words = |n: u32| u64::from(n) * 4;
@@ -308,6 +377,8 @@ impl Compute {
                     codes: index(codes)?,
                     drawn: index(drawn)?,
                     total,
+                    pass,
+                    visibility,
                 },
             ),
             compact: (
@@ -496,9 +567,15 @@ mod tests {
             cull: cull_pipelines(device),
             shadow: Pipeline::from_raw(0, 0),
         };
-        let job = MeshletJob::prepare(device, &mut up, &plan, (tables, pipelines), &mut keep)
-            .unwrap()
-            .unwrap();
+        let job = MeshletJob::prepare(
+            device,
+            &mut up,
+            &plan,
+            (tables, pipelines, Passes::Single),
+            &mut keep,
+        )
+        .unwrap()
+        .unwrap();
         up.flush(device).unwrap();
         assert_eq!(job.shadows.len(), 2, "one shadow draw per cascade");
         let compute = job.compute.expect("the compute route culls");
@@ -582,9 +659,15 @@ mod tests {
             cull: cull_pipelines(device),
             shadow: Pipeline::from_raw(0, 0),
         };
-        let job = MeshletJob::prepare(device, &mut up, &plan, (tables, pipelines), &mut keep)
-            .unwrap()
-            .unwrap();
+        let job = MeshletJob::prepare(
+            device,
+            &mut up,
+            &plan,
+            (tables, pipelines, Passes::Single),
+            &mut keep,
+        )
+        .unwrap()
+        .unwrap();
         up.flush(device).unwrap();
         let compute = job.compute.expect("the compute route culls");
         run_commands(device, compute.commands());
@@ -697,9 +780,15 @@ mod tests {
             cull: cull_pipelines(device),
             shadow: Pipeline::from_raw(0, 0),
         };
-        let job = MeshletJob::prepare(device, &mut up, &plan, (tables, pipelines), &mut keep)
-            .unwrap()
-            .unwrap();
+        let job = MeshletJob::prepare(
+            device,
+            &mut up,
+            &plan,
+            (tables, pipelines, Passes::Single),
+            &mut keep,
+        )
+        .unwrap()
+        .unwrap();
         up.flush(device).unwrap();
         run_commands(device, job.compute.as_ref().unwrap().commands());
         let codes = download(device, job.codes, u64::from(plan.entries) * 4);

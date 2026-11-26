@@ -29,7 +29,9 @@ export type ViewMode =
   | "lod"
   | "meshlets"
   | "triangles"
-  | "motion";
+  | "motion"
+  | "occlusion"
+  | "hzb";
 
 /**
  * What the engine draws over the viewport.

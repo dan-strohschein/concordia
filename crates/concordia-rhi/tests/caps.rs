@@ -14,6 +14,7 @@ fn metal_caps() -> RhiCaps {
         ray_tracing: true,
         hw_ray_tracing: true,
         metalfx_temporal: true,
+        depth_resolve_min: true,
         timestamp_granularity: TimestampGranularity::StageBoundary,
         max_mesh_output_vertices: 256,
         max_mesh_output_primitives: 512,
@@ -136,6 +137,32 @@ fn masking_timestamps_keeps_whole_submission_timing_only() {
         TimestampGranularity::None,
         "masking never adds a capability"
     );
+}
+
+/// Masking min depth resolves (M4 4.4b) lets one machine test the renderer without occlusion
+/// culling; caps recorded before 4.4b read as having none.
+#[test]
+fn masking_depth_resolve_min_hides_it() {
+    let caps = metal_caps();
+    assert!(caps.depth_resolve_min);
+    let mask = CapsMask {
+        depth_resolve_min: true,
+        ..CapsMask::default()
+    };
+    let masked = caps.masked(&mask);
+    assert!(!masked.depth_resolve_min);
+    assert_eq!(
+        RhiCaps {
+            depth_resolve_min: caps.depth_resolve_min,
+            ..masked
+        },
+        caps,
+        "nothing else changes"
+    );
+    let mut json = serde_json::to_value(&caps).unwrap();
+    json.as_object_mut().unwrap().remove("depth_resolve_min");
+    let old: RhiCaps = serde_json::from_value(json).unwrap();
+    assert!(!old.depth_resolve_min);
 }
 
 #[test]

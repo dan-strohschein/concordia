@@ -51,7 +51,7 @@ The Vulkan implementation of `concordia-rhi` (ADR-0088): `VulkanDevice` over `as
 
 ## Status
 M4 phase 4.1v(a): device, memory, buffers, textures, samplers, bindless, compute and graphics pipelines, readback and timestamps. 4.1v(b): surfaces and swapchains, strict validation, the retire thread, non-uniform indexing, the SPIR-V pointer rule; the M1 renderer runs on lavapipe. 4.1v(c): the fallback texture in empty slots, the mesh/task SPIR-V models, and D4's spike.
- M4 4.3a: indirect draws, viewports, scissors and image copies; tested on lavapipe through the `vulkan` workflow. M4 4.3b2: `R16G16_SFLOAT` and per-attachment `colorWriteMask`s. M4 4.3b: mesh pipelines and mesh-task draws (the Khronos `VK_EXT_mesh_shader` specification), written first and tested on lavapipe.
+ M4 4.3a: indirect draws, viewports, scissors and image copies; tested on lavapipe through the `vulkan` workflow. M4 4.3b2: `R16G16_SFLOAT` and per-attachment `colorWriteMask`s. M4 4.3b: mesh pipelines and mesh-task draws (the Khronos `VK_EXT_mesh_shader` specification), written first and tested on lavapipe. M4 4.4b: depth resolves with `VK_RESOLVE_MODE_MIN_BIT` (`VK_KHR_depth_stencil_resolve`, core in 1.2), `supportedDepthResolveModes` in the probe record, and the planner's layout for resolve targets; written first, tested on lavapipe at M4's end (the fixture predates the field and is re-recorded then).
 ## Engineering rules
 These apply to every change, by humans and agents alike.
 1. **TDD on every phase.** Write the tests first, see them fail, implement, then refactor.

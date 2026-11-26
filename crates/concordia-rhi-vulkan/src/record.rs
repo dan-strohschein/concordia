@@ -174,6 +174,20 @@ impl MeshRecord {
     }
 }
 
+/// One `VkResolveModeFlagBits` mode, as the probe reports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResolveMode {
+    /// `SAMPLE_ZERO`.
+    SampleZero,
+    /// `AVERAGE`.
+    Average,
+    /// `MIN`.
+    Min,
+    /// `MAX`.
+    Max,
+}
+
 /// The raw facts a Vulkan probe reads from a physical device.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -217,6 +231,9 @@ pub struct ProbeRecord {
     /// and in records made before 4.3b.
     #[serde(default)]
     pub mesh: Option<MeshRecord>,
+    /// `supportedDepthResolveModes`, ascending; empty in records made before 4.4b.
+    #[serde(default)]
+    pub depth_resolve_modes: Vec<ResolveMode>,
 }
 
 impl ProbeRecord {
@@ -274,6 +291,7 @@ pub fn caps_from_record(record: &ProbeRecord) -> RhiCaps {
         ray_tracing: false,
         hw_ray_tracing: false,
         metalfx_temporal: false,
+        depth_resolve_min: usable && record.depth_resolve_modes.contains(&ResolveMode::Min),
         timestamp_granularity: match record.queue_timestamp_valid_bits {
             0 => TimestampGranularity::None,
             _ => TimestampGranularity::DrawBoundary,

@@ -115,6 +115,8 @@ pub(crate) struct FrameParams<'a> {
     pub(crate) view_mode: u32,
     /// The camera's exposure (scales emission, which is luminance in nits; ADR-0102).
     pub(crate) exposure: f32,
+    /// The frame's HZB for the `hzb` view: its bindless index and its finest level's width.
+    pub(crate) hzb: Option<(u32, u32)>,
     /// The camera's view-projection last frame (motion vectors; `view_proj` without one).
     pub(crate) prev_view_proj: Mat4,
 }
@@ -159,7 +161,8 @@ pub(crate) fn frame_block(p: &FrameParams<'_>) -> Vec<u8> {
     out.extend(words.iter().flat_map(|w| w.to_le_bytes()));
     shadow_rows(&mut out, p.shadow);
     ibl_rows(&mut out, p);
-    let debug = [p.view_mode, p.exposure.to_bits(), 0, 0];
+    let (hzb, hzb_width) = p.hzb.map_or((0, 0), |(index, width)| (index + 1, width));
+    let debug = [p.view_mode, p.exposure.to_bits(), hzb, hzb_width];
     out.extend(debug.iter().flat_map(|w| w.to_le_bytes()));
     push_rows(&mut out, &columns(&p.prev_view_proj));
     out

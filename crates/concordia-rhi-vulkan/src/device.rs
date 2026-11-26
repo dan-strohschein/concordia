@@ -895,6 +895,7 @@ impl Inner {
             sets: tables.sets,
             mesh: self.mesh.as_ref(),
             queries,
+            depth_resolve_min: self.caps.depth_resolve_min,
         };
         let begin = vk::CommandBufferBeginInfo::default()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);

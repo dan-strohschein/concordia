@@ -45,6 +45,11 @@ pub enum ViewMode {
     /// Motion vectors: black where still, hue by screen direction, brighter with length (full
     /// at 16 pixels).
     motion,
+    /// Meshlets tinted by the culling pass that drew them: pass 1 green, pass 2 orange (two-pass
+    /// occlusion, M4 4.4b); M1 draws grey.
+    occlusion,
+    /// The HZB's finest level as grey depth (brighter: nearer); black when the frame has no HZB.
+    hzb,
 }
 
 impl ViewMode {

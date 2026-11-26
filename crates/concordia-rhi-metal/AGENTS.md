@@ -36,7 +36,7 @@ The Metal implementation of `concordia-rhi` (ADR-0040): `MetalDevice` over `objc
 
 ## Status
 M1 phase 1.2b (surfaces and presentation arrive with rendering in 1.5). M4 phase 4.1a: probe records and fixtures (`tests/fixtures/probes/`: apple9 recorded on the M3 Pro; apple7, apple8, apple10 hand-written from Apple's tables), masking, counter-sample-buffer timer scopes, the MetalFX probe.
- M4 4.3a: indirect draws, viewport, scissor and texture-to-texture blits. M4 4.3b2: `RG16Float` and per-attachment write masks. M4 4.3b: mesh pipelines and `DrawMeshTasks` (Apple WWDC22 "Transform your geometry with Metal mesh shaders"; the Metal Shading Language Specification's object and mesh functions).
+ M4 4.3a: indirect draws, viewport, scissor and texture-to-texture blits. M4 4.3b2: `RG16Float` and per-attachment write masks. M4 4.4b: depth resolves with `MTLMultisampleDepthResolveFilterMin` (Apple's `MTLRenderPassDepthAttachmentDescriptor` documentation; the feature-set table's depth resolve filters, Apple3+ and Mac2). M4 4.3b: mesh pipelines and `DrawMeshTasks` (Apple WWDC22 "Transform your geometry with Metal mesh shaders"; the Metal Shading Language Specification's object and mesh functions).
 ## Engineering rules
 These apply to every change, by humans and agents alike.
 1. **TDD on every phase.** Write the tests first, see them fail, implement, then refactor.

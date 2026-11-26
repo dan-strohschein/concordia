@@ -92,6 +92,7 @@ fn mesh_push(values: u32, count: u32, depth: f32) -> Command {
 fn render(device: &dyn Device, depth: bool, commands: &[Command]) -> Vec<u8> {
     let color = target(device, SIZE, SampleCount::X1);
     let depth = depth.then(|| DepthAttachment {
+        resolve: None,
         texture: device
             .create_texture(&texture_desc(
                 SIZE,

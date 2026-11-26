@@ -4,17 +4,17 @@
 use std::num::NonZeroU32;
 
 use concordia_rhi::{
-    Buffer, ClearValue, Command, LoadOp, Pipeline, Rect, RenderPassDesc, RhiError, StoreOp, Submit,
-    Texture, TextureOrigin, Timeline, Viewport,
+    Buffer, ClearValue, Command, DepthResolve, LoadOp, Pipeline, Rect, RenderPassDesc, RhiCaps,
+    RhiError, StoreOp, Submit, Texture, TextureOrigin, Timeline, Viewport, check,
 };
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2_metal::{
     MTLBlitCommandEncoder, MTLClearColor, MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue,
     MTLComputeCommandEncoder, MTLCullMode, MTLDepthStencilState, MTLIndexType, MTLLoadAction,
-    MTLOrigin, MTLPrimitiveType, MTLRenderCommandEncoder, MTLRenderPassDescriptor,
-    MTLRenderPipelineState, MTLRenderStages, MTLResource, MTLResourceUsage, MTLScissorRect,
-    MTLSize, MTLStoreAction, MTLViewport, MTLWinding,
+    MTLMultisampleDepthResolveFilter, MTLOrigin, MTLPrimitiveType, MTLRenderCommandEncoder,
+    MTLRenderPassDescriptor, MTLRenderPipelineState, MTLRenderStages, MTLResource,
+    MTLResourceUsage, MTLScissorRect, MTLSize, MTLStoreAction, MTLViewport, MTLWinding,
 };
 
 use crate::bindless::{MtlBuffer, MtlTexture};
@@ -57,6 +57,8 @@ struct Recorder<'a> {
     bound: Bound,
     /// The device has object and mesh stages (their tables and push constants are bound).
     mesh_stages: bool,
+    /// The device resolves depth with the min filter.
+    depth_resolve_min: bool,
 }
 
 /// The pipeline bound in a render pass: draws must match it.
@@ -73,12 +75,13 @@ pub(crate) struct Recorded {
     pub(crate) timer: Option<TimerPlan>,
 }
 
-/// Records `submit` into a new command buffer; `timed` samples its timer scopes.
+/// Records `submit` into a new command buffer for a device with `caps`; `timed` samples its timer
+/// scopes.
 pub(crate) fn record(
     inner: &Inner,
     submit: &Submit<'_>,
     timed: bool,
-    mesh_stages: bool,
+    caps: &RhiCaps,
 ) -> Result<Recorded, RhiError> {
     let cb = inner
         .queue
@@ -95,7 +98,8 @@ pub(crate) fn record(
         timer: TimerPlan::for_list(&inner.device, submit.commands, timed),
         pass_size: None,
         bound: Bound::None,
-        mesh_stages,
+        mesh_stages: caps.mesh_shaders,
+        depth_resolve_min: caps.depth_resolve_min,
     };
     for command in &submit.commands.commands {
         if let Err(e) = recorder.command(command) {
@@ -333,9 +337,20 @@ impl Recorder<'_> {
             if let Some(ClearValue::Depth(d)) = clear {
                 a.setClearDepth(d.into());
             }
-            a.setStoreAction(match depth.store {
-                StoreOp::Store => MTLStoreAction::Store,
-                StoreOp::DontCare => MTLStoreAction::DontCare,
+            if let Some(resolve) = depth.resolve {
+                let source = &texture_entry(self.inner, depth.texture)?.desc;
+                let target = &texture_entry(self.inner, resolve.texture)?.desc;
+                check::depth_resolve(source, target, self.depth_resolve_min)?;
+                a.setResolveTexture(Some(texture(self.inner, resolve.texture, 0)?.0));
+                a.setDepthResolveFilter(match resolve.filter {
+                    DepthResolve::Min => MTLMultisampleDepthResolveFilter::Min,
+                });
+            }
+            a.setStoreAction(match (depth.resolve.is_some(), depth.store) {
+                (true, StoreOp::Store) => MTLStoreAction::StoreAndMultisampleResolve,
+                (true, StoreOp::DontCare) => MTLStoreAction::MultisampleResolve,
+                (false, StoreOp::Store) => MTLStoreAction::Store,
+                (false, StoreOp::DontCare) => MTLStoreAction::DontCare,
             });
         }
         if let Some(timer) = &mut self.timer {

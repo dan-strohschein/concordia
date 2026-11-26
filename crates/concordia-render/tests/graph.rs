@@ -77,6 +77,30 @@ fn passes_are_ordered_by_dependencies_not_insertion() {
     assert_eq!(compile(&g).pass_names(), ["shadow", "forward", "tonemap"]);
 }
 
+/// A texture written by two passes with a read between them (M4 4.4b: pass 1's depth, the HZB
+/// build, pass 2): the read sees the first write and runs before the second, which waits for it.
+#[test]
+fn a_read_between_two_writes_runs_between_them() {
+    let mut g = RenderGraph::new();
+    let out = swapchain(&mut g);
+    let depth = g.create_texture(desc("depth"));
+    g.add_pass("early", |p| p.uses(depth, Use::DepthWrite));
+    g.add_pass("hzb", |p| {
+        p.uses(depth, Use::SampledRead);
+        p.side_effect();
+    });
+    g.add_pass("late", |p| {
+        p.uses(depth, Use::DepthWrite);
+        p.uses(out, Use::ColorWrite);
+    });
+    assert_eq!(compile(&g).pass_names(), ["early", "hzb", "late"]);
+    let barriers = compile(&g).barriers_before("late");
+    assert!(
+        barriers.iter().any(|b| b.texture == depth),
+        "the depth goes back to an attachment: {barriers:?}"
+    );
+}
+
 #[test]
 fn write_then_read_inserts_one_barrier_with_correct_access() {
     let mut g = RenderGraph::new();

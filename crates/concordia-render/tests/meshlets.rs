@@ -317,6 +317,9 @@ fn render_stats_report_the_meshlet_path() {
                 after_instance_frustum: all,
                 after_frustum: all,
                 after_cone: all,
+                after_occlusion: all,
+                drawn_early: all,
+                drawn_late: 0,
                 shadow_meshlets: cascades * all,
             },
             "red (two balls), gold and teal"
@@ -359,7 +362,9 @@ fn render_stats_report_each_cull_stage() {
             m.after_cone >= bowl.meshlets,
             "the double-sided bowl keeps all"
         );
-        assert_eq!(m.meshlets, m.after_cone, "nothing else culls in 4.4a");
+        assert!(m.after_occlusion <= m.after_cone, "{m:?}");
+        assert_eq!(m.meshlets, m.after_occlusion, "occlusion is the last test");
+        assert_eq!(m.meshlets, m.drawn_early + m.drawn_late);
         assert!(m.triangles < 3 * ball.triangles + bowl.triangles);
         assert_eq!(m.instances, 4);
         assert_eq!(stats.draws, 5, "four meshlet instances and the ground");
@@ -505,7 +510,9 @@ fn perf_mode_times_meshlet_cull_before_the_draws() {
 }
 
 /// Timings only (perf is deferred): 64 dense balls (590k triangles) at 1280×720, 150 frames
-/// after 30 warm-up frames, on the M1, compute and mesh-shader paths, each with GPU culling off and on (M4 4.4); prints each pass's median. Run on the reference Mac:
+/// after 30 warm-up frames, on the M1, compute and mesh-shader paths, each with GPU culling off,
+/// on without occlusion (M4 4.4a) and on with two-pass occlusion (4.4b); prints each pass's
+/// median. Run on the reference Mac:
 /// `cargo nextest run -p concordia-render --release --run-ignored only -E 'test(meshlet_path_timings)' --no-capture`.
 #[test]
 #[ignore = "timings for the As built, run by hand in release"]
@@ -529,12 +536,18 @@ fn meshlet_path_timings() {
     let mut compute = compute_renderer().expect("the same device, masked");
     compute.set_perf_mode(true);
     let mesh = meshlet_path(&r) == RasterPath::mesh_shader;
+    let no_occlusion = Culling {
+        occlusion: false,
+        ..Culling::default()
+    };
     let runs = [
         ("m1", false, false, Culling::OFF),
         ("compute (culling off)", true, true, Culling::OFF),
-        ("compute (culling on)", true, true, Culling::default()),
+        ("compute (no occlusion)", true, true, no_occlusion),
+        ("compute (occlusion)", true, true, Culling::default()),
         ("mesh (culling off)", true, false, Culling::OFF),
-        ("mesh (culling on)", true, false, Culling::default()),
+        ("mesh (no occlusion)", true, false, no_occlusion),
+        ("mesh (occlusion)", true, false, Culling::default()),
     ];
     for (label, meshlets, masked, culling) in runs {
         if label.starts_with("mesh") && !mesh {
@@ -543,22 +556,8 @@ fn meshlet_path_timings() {
         let r = if masked { &mut compute } else { &mut r };
         r.set_meshlets(meshlets);
         r.set_culling(culling);
-        let mut samples: std::collections::BTreeMap<String, Vec<f64>> = Default::default();
-        for frame in 0..180 {
-            let (_, timing) = common::render_timed(r, &mut s, (1280, 720));
-            if frame < 30 {
-                continue;
-            }
-            let names = r.stats().timed_passes;
-            for p in concordia_render::perf::pass_times(&names, &timing) {
-                samples.entry(p.name).or_default().push(p.gpu_ms);
-            }
-            let total = timing.total_ms.unwrap_or(f64::NAN);
-            samples.entry("frame".into()).or_default().push(total);
-        }
-        for (name, mut ms) in samples {
-            ms.sort_by(f64::total_cmp);
-            println!("{label} {name}: median {:.3} ms", ms[ms.len() / 2]);
+        for (name, ms) in common::median_pass_times(r, &mut s, (1280, 720), 150) {
+            println!("{label} {name}: median {ms:.3} ms");
         }
         println!("{label} meshlets: {:?}", r.stats().meshlets);
     }

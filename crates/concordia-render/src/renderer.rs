@@ -9,10 +9,10 @@ use concordia_core::id::EntityId;
 use concordia_core::math::{Mat4, Vec3};
 use concordia_material::{ClosureBudget, ClosureReport};
 use concordia_rhi::{
-    Access, AccessFlags, Buffer, BufferDesc, BufferUsage, ClearValue, ColorAttachment, Command,
-    CommandList, DepthAttachment, Device, HeapDesc, Layout, LoadOp, MemoryLocation, Pipeline,
-    QueueKind, RenderPassDesc, SampleCount, Stages, StoreOp, Submit, Surface, SurfaceTarget,
-    Texture, TextureDesc, TextureUsage,
+    Access, AccessFlags, Buffer, BufferDesc, BufferUsage, ColorAttachment, Command, CommandList,
+    Device, HeapDesc, Layout, LoadOp, MemoryLocation, Pipeline, QueueKind, RenderPassDesc,
+    SampleCount, Stages, StoreOp, Submit, Surface, SurfaceTarget, Texture, TextureDesc,
+    TextureUsage,
 };
 use concordia_shaders::ShaderCompiler;
 
@@ -20,12 +20,13 @@ use crate::assets::{AssetSource, MemoryAssets};
 use crate::camera::{eye, view_matrix};
 use crate::cluster::{ClusterBuffers, ClusterCuller, ClusterGrid, ClusterSettings};
 use crate::environment::EnvironmentCache;
+use crate::forward_pass::{Draw, add_forward};
 use crate::frame::{DrawPush, FrameParams, IblParams, frame_block};
 use crate::gpu::{GpuAssets, GpuMesh, SharedPool, Uploads};
 use crate::graph::{GraphTexture, PassContext, RenderGraph, Use};
 use crate::lighting::punctual_lights;
 use crate::meshlet_pass::{BucketKey, FrameTables, MeshletJob, RoutePipelines};
-use crate::pipelines::{DEPTH, Geometry, HDR, MOTION, OUTPUT, Pipelines};
+use crate::pipelines::{Geometry, OUTPUT, Pipelines};
 use crate::programs::Programs;
 use crate::shadow::{Cascade, CascadeSettings, fit_cascades};
 use crate::shadow_pass::{
@@ -113,6 +114,10 @@ pub struct Renderer {
     cull_readback: bool,
     /// The last ones kept.
     last_culling: Option<Vec<crate::CulledMeshlet>>,
+    /// The visibility runs of meshlet-path instances (two-pass occlusion, M4 4.4b).
+    visibility: crate::visibility::Visibility<crate::visibility::VisKey>,
+    /// The GPU buffer they live in.
+    visibility_buffer: crate::visibility::VisibilityBuffer,
     /// A surface image acquired ahead of its frame (`acquire_ahead`), with its size.
     ahead: Option<(Surface, Texture, (u32, u32))>,
     environments: EnvironmentCache,
@@ -210,6 +215,10 @@ struct FramePlan<'a> {
         crate::cull_stats::CullLayout,
         crate::cull_stats::CpuCounts,
     )>,
+    /// This frame's HZB, when it splits for two-pass occlusion (M4 4.4b).
+    hzb: Option<crate::hzb::Hzb>,
+    /// The `hzb` view's full-screen draw, in that view of a split frame.
+    hzb_view: Option<(Pipeline, Vec<u8>)>,
     /// The meshlet path's work, when anything takes it.
     meshlets: Option<MeshletJob>,
     samples: SampleCount,
@@ -353,19 +362,6 @@ pub struct RenderStats {
     pub meshlets: crate::MeshletCounts,
 }
 
-/// One draw call, ready to record: `instances` consecutive instances of one mesh and material.
-struct Draw {
-    pipeline: Pipeline,
-    push: Vec<u8>,
-    vertices: u32,
-    instances: u32,
-    /// What may share the call: the pipeline, material and mesh streams.
-    batch: (Pipeline, u32, u32),
-    first: u32,
-    /// Blended (drawn after the meshlet buckets).
-    blend: bool,
-}
-
 impl Renderer {
     /// Compiles the shaders and creates the pipelines.
     pub fn new(
@@ -389,6 +385,8 @@ impl Renderer {
             culling: crate::Culling::default(),
             cull_readback: false,
             last_culling: None,
+            visibility: Default::default(),
+            visibility_buffer: Default::default(),
             ahead: None,
             environments: EnvironmentCache::default(),
             shadow_maps: ShadowMaps::default(),
@@ -791,6 +789,9 @@ impl Renderer {
         m.after_instance_frustum = gpu.after_instance_frustum;
         m.after_frustum = gpu.after_frustum;
         m.after_cone = gpu.after_cone;
+        m.after_occlusion = gpu.after_occlusion;
+        m.drawn_early = gpu.drawn - gpu.drawn_late;
+        m.drawn_late = gpu.drawn_late;
         m.shadow_meshlets = gpu.shadow_drawn;
     }
 
@@ -918,6 +919,43 @@ impl Renderer {
                 .for_each(|(i, (_, m))| indices[i] = *m);
             (cascades.as_slice(), settings, indices)
         });
+        let mut visibility = std::mem::take(&mut self.visibility);
+        let blocks = self.instance_data(
+            world,
+            &skinning.placements,
+            &materials,
+            &view_m,
+            &crate::cull::Frustum::new(view_proj),
+            &mut visibility,
+        );
+        self.visibility = visibility;
+        let FrameBlocks {
+            instances,
+            materials: material_bytes,
+            meshes: mesh_table,
+            order,
+        } = blocks?;
+        let visibility_buf = self.visibility_buffer.ensure(
+            device,
+            &mut up,
+            self.visibility.words(),
+            &mut |old| {
+                frame.keep(old);
+            },
+        )?;
+        // The frame splits for two-pass occlusion when something takes the meshlet path (M4 4.4b).
+        let mut kept = Vec::new();
+        let proj = view.camera.projection.matrix(aspect)?;
+        let on_path = order.iter().any(|d| d.meshlet_row.is_some());
+        let hzb = match self.splits(samples, on_path, proj) {
+            true => Some(crate::hzb::Hzb::prepare(
+                device,
+                &up,
+                crate::hzb::HzbLayout::new(width, height),
+                &mut kept,
+            )?),
+            false => None,
+        };
         let block = frame_block(&FrameParams {
             view_proj,
             view: view_m,
@@ -944,20 +982,12 @@ impl Renderer {
             view_mode: view_mode.shader_index(),
             exposure,
             prev_view_proj: self.motion.previous_view_proj(&view_proj),
+            hzb: match &hzb {
+                Some(h) => Some((index(h.buffer)?, h.layout.levels[0][0])),
+                None => None,
+            },
         });
         let frame_buf = frame.keep(up.buffer(device, &block, "frame")?);
-        let FrameBlocks {
-            instances,
-            materials: material_bytes,
-            meshes: mesh_table,
-            order,
-        } = self.instance_data(
-            world,
-            &skinning.placements,
-            &materials,
-            &view_m,
-            &crate::cull::Frustum::new(view_proj),
-        )?;
         let inst_buf = frame.keep(up.buffer(device, &instances, "instances")?);
         let mat_buf = frame.keep(up.buffer(device, &material_bytes, "materials")?);
         let mesh_buf = frame.keep(up.buffer(device, &mesh_table, "meshlet meshes")?);
@@ -1110,21 +1140,32 @@ impl Renderer {
             false => shadows.as_ref().map_or(&[][..], |(c, _, _)| c.as_slice()),
         };
         let meshlet_plan = crate::meshlet::plan(&path_draws, cascades.len() as u32);
-        let views = crate::cull::view_table(
-            crate::cull::CullView::camera(
-                view_proj,
-                eye(&view.world),
-                matches!(
-                    view.camera.projection,
-                    concordia_render_types::Projection::Perspective { .. }
-                ),
-                self.culling,
+        let camera = crate::cull::CullView::camera(
+            view_proj,
+            eye(&view.world),
+            matches!(
+                view.camera.projection,
+                concordia_render_types::Projection::Perspective { .. }
             ),
-            cascades.iter().map(|c| c.view_proj),
             self.culling,
         );
+        let camera = match &hzb {
+            Some(h) => camera.with_occlusion(
+                (view_m, proj),
+                index(h.buffer)?,
+                [width.get(), height.get()],
+            ),
+            None => camera,
+        };
+        let views =
+            crate::cull::view_table(camera, cascades.iter().map(|c| c.view_proj), self.culling);
         let views_buf = frame.keep(up.buffer(device, &views, "cull views")?);
-        let mut kept = Vec::new();
+        let passes = match hzb {
+            Some(_) => crate::meshlet_pass::Passes::Two {
+                visibility: index(visibility_buf)?,
+            },
+            None => crate::meshlet_pass::Passes::Single,
+        };
         let tables = FrameTables {
             frame: frame_i,
             instances: inst_i,
@@ -1145,7 +1186,7 @@ impl Renderer {
             device,
             &mut up,
             &meshlet_plan,
-            (tables, pipelines),
+            (tables, pipelines, passes),
             &mut kept,
         )?;
         kept.into_iter().for_each(|b| {
@@ -1214,9 +1255,18 @@ impl Renderer {
             world.skins.iter().map(|s| (s.entity, s.palette.clone())),
             view_proj,
         );
+        let hzb_view = match (view_mode, &hzb) {
+            (crate::ViewMode::hzb, Some(_)) => Some((
+                self.pipelines.hzb_view(device, samples)?,
+                frame_i.to_le_bytes().to_vec(),
+            )),
+            _ => None,
+        };
         let plan = FramePlan {
             draws,
             cull,
+            hzb,
+            hzb_view,
             meshlets,
             samples,
             size: (width, height),
@@ -1372,6 +1422,7 @@ impl Renderer {
         materials: &BTreeMap<AssetRef, Material>,
         view: &Mat4,
         frustum: &crate::cull::Frustum,
+        visibility: &mut crate::visibility::Visibility<crate::visibility::VisKey>,
     ) -> Result<FrameBlocks, RenderError> {
         let texture = |r: &AssetRef| self.assets.textures.get(r).map(|(_, i)| *i);
         let (material_bytes, indices) = self.programs.buffer(materials.keys(), &texture)?;
@@ -1414,8 +1465,9 @@ impl Renderer {
             (x, y) => x.cmp(&y),
         });
         let meshes = self.assign_mesh_rows(world, placements, &mut order);
+        let bases = self.visibility_bases(world, &order, visibility);
         let mut instances = Vec::new();
-        order.iter().for_each(|d| {
+        order.iter().zip(&bases).for_each(|(d, base)| {
             let placed = &placements[d.item];
             let draw = &world.draws[d.item];
             let mut skin = placed.skin;
@@ -1425,7 +1477,7 @@ impl Renderer {
                 model: placed.world,
                 previous: self.motion.previous_world(draw.entity, &placed.world),
                 skin,
-                motion: [placed.prev_first, 0, 0, 0],
+                motion: [placed.prev_first, *base, 0, 0],
             }
             .write(&mut instances);
         });
@@ -1436,6 +1488,53 @@ impl Renderer {
             meshes,
             order,
         })
+    }
+
+    /// Each draw's visibility base (0 off the meshlet path): the run its key (entity, mesh,
+    /// occurrence) holds in `visibility`, whose other keys are pruned.
+    fn visibility_bases(
+        &self,
+        world: &RenderWorld,
+        order: &[DrawOrder],
+        visibility: &mut crate::visibility::Visibility<crate::visibility::VisKey>,
+    ) -> Vec<u32> {
+        let mut seen: BTreeMap<(EntityId, &AssetRef), u32> = BTreeMap::new();
+        let occurrence: Vec<u32> = world
+            .draws
+            .iter()
+            .map(|d| {
+                let n = seen.entry((d.entity, &d.mesh)).or_insert(0);
+                *n += 1;
+                *n - 1
+            })
+            .collect();
+        let mut at = Vec::new();
+        let mut wanted = Vec::new();
+        for (i, d) in order.iter().enumerate() {
+            let draw = &world.draws[d.item];
+            let meshlets = self.assets.meshes[&draw.mesh].meshlets;
+            if let (Some(_), Some((_, info))) = (d.meshlet_row, meshlets) {
+                let key = (draw.entity, draw.mesh.clone(), occurrence[d.item]);
+                wanted.push((key, info.meshlets));
+                at.push(i);
+            }
+        }
+        let mut bases = vec![0; order.len()];
+        for (i, base) in at.into_iter().zip(visibility.assign(&wanted)) {
+            bases[i] = base;
+        }
+        bases
+    }
+
+    /// True if the frame splits for two-pass occlusion: the test is on, something takes the
+    /// meshlet path, the HZB can come from the depth (single-sample, or resolved with min), and
+    /// the occlusion test takes the projection.
+    fn splits(&self, samples: SampleCount, meshlets: bool, proj: Mat4) -> bool {
+        let depth = samples == SampleCount::X1 || self.device.caps().depth_resolve_min;
+        self.culling.occlusion
+            && meshlets
+            && depth
+            && crate::cull::SphereProjection::new(proj).is_some()
     }
 
     /// Gives each draw taking the meshlet path its mesh's row, and returns the mesh table.
@@ -1485,6 +1584,8 @@ impl Renderer {
         let FramePlan {
             draws,
             cull,
+            hzb,
+            hzb_view,
             meshlets,
             samples,
             size,
@@ -1551,14 +1652,20 @@ impl Renderer {
         let shadow_maps = shadow
             .map(|s| add_shadow_passes(&mut graph, s))
             .unwrap_or_default();
+        let split = hzb.map(|hzb| crate::forward_pass::Split {
+            hzb,
+            pipeline: self.pipelines.hzb(),
+            device: self.device.clone(),
+            view: hzb_view,
+        });
         let targets = add_forward(
             &mut graph,
             view,
             (draws, meshlets),
-            samples,
-            size,
+            (samples, size),
             &shadow_maps,
             (sky, grid),
+            split,
         );
         let tonemap = self.pipelines.tonemap(device, format)?;
         let overlay = match overlay.is_empty() {
@@ -1866,6 +1973,7 @@ impl Drop for Renderer {
         self.ui_textures.destroy(self.device.as_ref());
         self.shadow_maps.destroy(self.device.as_ref());
         self.environments.destroy(self.device.as_ref());
+        self.visibility_buffer.destroy(self.device.as_ref());
         self.surfaces
             .drain(..)
             .for_each(|s| self.device.destroy_surface(s));
@@ -1908,7 +2016,8 @@ fn check_size(request: &RenderRequest) -> Result<(NonZeroU32, NonZeroU32), Rende
     ))
 }
 
-fn desc(
+/// A single-mip texture description.
+pub(crate) fn desc(
     size: (NonZeroU32, NonZeroU32),
     format: concordia_rhi::Format,
     samples: SampleCount,
@@ -1926,157 +2035,6 @@ fn desc(
     }
 }
 
-/// The forward pass's graph textures.
-struct ForwardTargets {
-    hdr: GraphTexture,
-    /// Motion vectors, resolved (M4 4.3b2).
-    motion: GraphTexture,
-}
-
-/// Forward pass: draws into (multisampled) HDR + depth, resolving into single-sample HDR.
-/// A pipeline and its push constants, for a one-call draw (the sky, the grid).
-type FullDraw = Option<(Pipeline, Vec<u8>)>;
-
-fn add_forward(
-    graph: &mut RenderGraph,
-    view: &CameraView,
-    (draws, meshlets): (Vec<Draw>, Option<MeshletJob>),
-    samples: SampleCount,
-    size: (NonZeroU32, NonZeroU32),
-    shadow_maps: &[GraphTexture],
-    (sky, grid): (FullDraw, FullDraw),
-) -> ForwardTargets {
-    let shadow_maps = shadow_maps.to_vec();
-    let hdr = graph.create_texture(desc(
-        size,
-        HDR,
-        SampleCount::X1,
-        TextureUsage::RENDER_TARGET | TextureUsage::SAMPLED | TextureUsage::BINDLESS,
-        "hdr",
-    ));
-    let depth = graph.create_texture(desc(
-        size,
-        DEPTH,
-        samples,
-        TextureUsage::RENDER_TARGET,
-        "depth",
-    ));
-    let msaa = (samples != SampleCount::X1).then(|| {
-        graph.create_texture(desc(
-            size,
-            HDR,
-            samples,
-            TextureUsage::RENDER_TARGET,
-            "hdr_msaa",
-        ))
-    });
-    let motion = graph.create_texture(desc(
-        size,
-        MOTION,
-        SampleCount::X1,
-        TextureUsage::RENDER_TARGET | TextureUsage::SAMPLED | TextureUsage::COPY_SRC,
-        "motion",
-    ));
-    let motion_msaa = (samples != SampleCount::X1).then(|| {
-        graph.create_texture(desc(
-            size,
-            MOTION,
-            samples,
-            TextureUsage::RENDER_TARGET,
-            "motion_msaa",
-        ))
-    });
-    let clear = view.camera.clear;
-    graph.add_pass_recorded(
-        "forward",
-        |p| {
-            p.uses(depth, Use::DepthWrite);
-            p.uses(hdr, Use::ColorWrite);
-            p.uses(motion, Use::ColorWrite);
-            for m in msaa.iter().chain(&motion_msaa) {
-                p.uses(*m, Use::ColorWrite);
-            }
-            for map in &shadow_maps {
-                p.uses(*map, Use::SampledRead);
-            }
-        },
-        Some(Box::new(move |ctx: &mut PassContext<'_>| {
-            let (target, resolve) = match msaa {
-                Some(m) => (ctx.texture(m), Some(ctx.texture(hdr))),
-                None => (ctx.texture(hdr), None),
-            };
-            let store = if resolve.is_some() {
-                StoreOp::DontCare
-            } else {
-                StoreOp::Store
-            };
-            let (motion_target, motion_resolve) = match motion_msaa {
-                Some(m) => (ctx.texture(m), Some(ctx.texture(motion))),
-                None => (ctx.texture(motion), None),
-            };
-            ctx.commands.push(Command::BeginRenderPass(RenderPassDesc {
-                colors: vec![
-                    ColorAttachment {
-                        texture: target,
-                        resolve,
-                        load: LoadOp::Clear(ClearValue::Color(clear)),
-                        store,
-                    },
-                    ColorAttachment {
-                        texture: motion_target,
-                        resolve: motion_resolve,
-                        load: LoadOp::Clear(ClearValue::Color([0.0; 4])),
-                        store,
-                    },
-                ],
-                depth: Some(DepthAttachment {
-                    texture: ctx.texture(depth),
-                    load: LoadOp::Clear(ClearValue::Depth(0.0)),
-                    store: StoreOp::DontCare,
-                }),
-            }));
-            if let Some((pipeline, push)) = &sky {
-                ctx.commands.push(Command::SetPipeline(*pipeline));
-                ctx.commands.push(Command::PushConstants(push.clone()));
-                ctx.commands.push(Command::Draw {
-                    vertices: 0..3,
-                    instances: 0..1,
-                });
-            }
-            let mut bound = None;
-            let opaque = draws.iter().take_while(|d| !d.blend).count();
-            for (i, draw) in draws.iter().enumerate() {
-                if i == opaque {
-                    bound = draw_buckets(meshlets.as_ref(), &mut ctx.commands.commands, bound);
-                }
-                if bound != Some(draw.pipeline) {
-                    ctx.commands.push(Command::SetPipeline(draw.pipeline));
-                    bound = Some(draw.pipeline);
-                }
-                ctx.commands.push(Command::PushConstants(draw.push.clone()));
-                ctx.commands.push(Command::Draw {
-                    vertices: 0..draw.vertices,
-                    instances: 0..draw.instances,
-                });
-            }
-            if opaque == draws.len() {
-                draw_buckets(meshlets.as_ref(), &mut ctx.commands.commands, bound);
-            }
-            if let Some((pipeline, push)) = &grid {
-                ctx.commands.push(Command::SetPipeline(*pipeline));
-                ctx.commands.push(Command::PushConstants(push.clone()));
-                ctx.commands.push(Command::Draw {
-                    vertices: 0..6,
-                    instances: 0..1,
-                });
-            }
-            ctx.commands.push(Command::EndRenderPass);
-            Ok(())
-        })),
-    );
-    ForwardTargets { hdr, motion }
-}
-
 /// The meshlet path's draw calls this frame; the GPU's counts arrive with the cull codes.
 fn meshlet_counts(
     plan: &crate::meshlet::MeshletPlan<BucketKey>,
@@ -2089,25 +2047,6 @@ fn meshlet_counts(
         mesh_draws: if mesh { buckets } else { 0 },
         ..crate::MeshletCounts::default()
     }
-}
-
-/// Records the meshlet buckets' draws; returns the pipeline left bound.
-fn draw_buckets(
-    meshlets: Option<&MeshletJob>,
-    commands: &mut Vec<Command>,
-    mut bound: Option<Pipeline>,
-) -> Option<Pipeline> {
-    let Some(job) = meshlets else {
-        return bound;
-    };
-    for bucket in &job.forward {
-        if bound != Some(bucket.pipeline) {
-            commands.push(Command::SetPipeline(bucket.pipeline));
-            bound = Some(bucket.pipeline);
-        }
-        commands.extend(bucket.commands());
-    }
-    bound
 }
 
 /// Tonemap pass: HDR (read by bindless index) → sRGB output.

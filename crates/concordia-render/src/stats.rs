@@ -96,6 +96,12 @@ pub struct MeshletCounts {
     pub after_frustum: u64,
     /// Those with a triangle that may face the camera (the normal-cone test).
     pub after_cone: u64,
+    /// Those not hidden behind the HZB (two-pass occlusion; `after_cone` without it).
+    pub after_occlusion: u64,
+    /// Meshlets drawn in pass 1 (all of them without two-pass occlusion).
+    pub drawn_early: u64,
+    /// Meshlets drawn in pass 2 (two-pass occlusion).
+    pub drawn_late: u64,
     /// Meshlets drawn into the sun's shadow cascades (each culled for its cascade).
     pub shadow_meshlets: u64,
 }

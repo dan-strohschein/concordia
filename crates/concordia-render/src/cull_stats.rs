@@ -46,8 +46,12 @@ pub(crate) struct CullTally {
     pub(crate) after_instance_frustum: u64,
     pub(crate) after_frustum: u64,
     pub(crate) after_cone: u64,
-    /// Camera meshlets drawn, and their triangles.
+    /// Not hidden by the HZB (two-pass occlusion; `after_cone` without it).
+    pub(crate) after_occlusion: u64,
+    /// Camera meshlets drawn (in either pass), and their triangles.
     pub(crate) drawn: u64,
+    /// Those drawn in pass 2 of two-pass occlusion.
+    pub(crate) drawn_late: u64,
     pub(crate) triangles: u64,
     /// Camera instances with at least one meshlet drawn, and with none.
     pub(crate) instances: u64,
@@ -121,10 +125,12 @@ pub(crate) fn tally(words: &[u32], layout: &CullLayout) -> CullTally {
             t.after_instance_frustum += u64::from(reached(CullCode::Instance));
             t.after_frustum += u64::from(reached(CullCode::Frustum));
             t.after_cone += u64::from(reached(CullCode::Cone));
-            if code == Some(CullCode::Drawn) {
+            t.after_occlusion += u64::from(reached(CullCode::Occluded));
+            if reached(CullCode::Occluded) {
                 drawn_here += 1;
                 t.triangles += u64::from(triangles);
             }
+            t.drawn_late += u64::from(code == Some(CullCode::DrawnLate));
         }
         t.candidates += u64::from(span.meshlets);
         t.drawn += drawn_here;
@@ -221,8 +227,35 @@ mod tests {
                 instances: 1,
                 instances_culled: 1,
                 shadow_drawn: 2,
+                after_occlusion: 2,
+                drawn_late: 0,
             }
         );
+    }
+
+    /// Two-pass codes: occluded meshlets passed the cone test but aren't drawn; pass 1's and pass
+    /// 2's draws are both drawn, and pass 2's counted apart.
+    #[test]
+    fn tally_counts_occluded_and_both_passes() {
+        let (layout, _) = layout();
+        use CullCode::*;
+        let words = [
+            word(Drawn, 100),
+            word(Occluded, 90),
+            word(DrawnLate, 28),
+            word(Occluded, 128),
+            word(DrawnLate, 64),
+            word(Drawn, 100),
+            word(Frustum, 90),
+            word(Drawn, 28),
+        ];
+        let t = tally(&words, &layout);
+        assert_eq!(
+            (t.after_cone, t.after_occlusion, t.drawn, t.drawn_late),
+            (5, 3, 3, 2)
+        );
+        assert_eq!((t.triangles, t.instances, t.instances_culled), (192, 2, 0));
+        assert_eq!(t.shadow_drawn, 2);
     }
 
     #[test]

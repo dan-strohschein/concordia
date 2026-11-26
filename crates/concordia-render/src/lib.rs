@@ -11,11 +11,13 @@ mod cull_stats;
 mod environment;
 mod error;
 mod extract;
+mod forward_pass;
 mod frame;
 mod frame_log;
 mod gizmo;
 mod gpu;
 pub mod graph;
+mod hzb;
 pub mod ibl;
 mod lighting;
 mod material_rows;
@@ -46,6 +48,7 @@ pub mod tonemap;
 mod ui_pass;
 mod view;
 mod view_mode;
+mod visibility;
 
 pub use assets::{AssetSource, MemoryAssets, resolve};
 pub use budget::{effective_closure_budget, platform_closure_budget};
@@ -62,6 +65,7 @@ pub use extract::{
     RenderWorld, SkinView,
 };
 pub use frame::DrawPush;
+pub use hzb::HzbPush;
 pub use lighting::candela;
 pub use meshlet::{CompactPush, CullPush, MeshletPush, TaskPush};
 pub use module::{

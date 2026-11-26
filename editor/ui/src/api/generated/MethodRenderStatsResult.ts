@@ -35,7 +35,9 @@ export type ViewMode =
   | "lod"
   | "meshlets"
   | "triangles"
-  | "motion";
+  | "motion"
+  | "occlusion"
+  | "hzb";
 
 /**
  * `render.stats` result.
@@ -172,9 +174,21 @@ export interface MeshletCounts {
    */
   after_instance_frustum: number;
   /**
+   * Those not hidden behind the HZB (two-pass occlusion; `after_cone` without it).
+   */
+  after_occlusion: number;
+  /**
    * Meshlets of every instance in the camera's buckets, before culling.
    */
   candidates: number;
+  /**
+   * Meshlets drawn in pass 1 (all of them without two-pass occlusion).
+   */
+  drawn_early: number;
+  /**
+   * Meshlets drawn in pass 2 (two-pass occlusion).
+   */
+  drawn_late: number;
   /**
    * Indirect draws issued (one per pipeline and material, on the compute path).
    */

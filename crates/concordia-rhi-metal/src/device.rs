@@ -125,7 +125,7 @@ impl MetalDevice {
             }
             let mut inner = self.lock()?;
             let timed = self.caps.timestamp_granularity.times_passes() && on_gpu_time.is_some();
-            let recorded = crate::encode::record(&inner, &submit, timed, self.caps.mesh_shaders)?;
+            let recorded = crate::encode::record(&inner, &submit, timed, &self.caps)?;
             let command_buffer = recorded.cb.clone();
             if let Some(callback) = on_gpu_time {
                 crate::surface::on_gpu_time(&inner, recorded, callback);
@@ -743,7 +743,7 @@ impl Device for MetalDevice {
             };
             let timed =
                 self.caps.timestamp_granularity.times_passes() && present.on_gpu_time.is_some();
-            let recorded = crate::encode::record(&inner, &submit, timed, self.caps.mesh_shaders);
+            let recorded = crate::encode::record(&inner, &submit, timed, &self.caps);
             inner.textures.remove(texture.index(), texture.generation());
             let recorded = recorded?;
             let command_buffer = recorded.cb.clone();

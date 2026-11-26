@@ -162,6 +162,7 @@ pub(crate) fn add_shadow_passes(graph: &mut RenderGraph, job: ShadowJob) -> Vec<
                 ctx.commands.push(Command::BeginRenderPass(RenderPassDesc {
                     colors: Vec::new(),
                     depth: Some(DepthAttachment {
+                        resolve: None,
                         texture: ctx.texture(map),
                         load: LoadOp::Clear(ClearValue::Depth(0.0)),
                         store: StoreOp::Store,

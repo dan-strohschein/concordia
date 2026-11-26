@@ -113,6 +113,9 @@ pub struct RhiCaps {
     pub hw_ray_tracing: bool,
     /// A temporal upscaler (Metal: MetalFX's temporal scaler).
     pub metalfx_temporal: bool,
+    /// Multisampled depth resolves to the smallest sample ([`crate::DepthResolve::Min`]; M4 4.4b).
+    #[serde(default)]
+    pub depth_resolve_min: bool,
     /// The finest point at which GPU timestamps can be sampled.
     pub timestamp_granularity: TimestampGranularity,
     /// Most vertices one mesh-shader threadgroup may output (0 without mesh shaders).
@@ -164,6 +167,8 @@ pub struct CapsMask {
     pub metalfx_temporal: bool,
     /// Hide per-pass timestamps (whole-submission timing stays).
     pub timestamps: bool,
+    /// Hide min depth resolves (and so occlusion culling with MSAA).
+    pub depth_resolve_min: bool,
 }
 
 /// A capability bar a milestone needs.
@@ -191,6 +196,9 @@ impl RhiCaps {
         }
         if mask.metalfx_temporal {
             caps.metalfx_temporal = false;
+        }
+        if mask.depth_resolve_min {
+            caps.depth_resolve_min = false;
         }
         if mask.timestamps {
             caps.timestamp_granularity = caps

@@ -57,7 +57,7 @@ pub(super) fn vertices(points: &[([f32; 4], [f32; 4])]) -> Vec<u8> {
         .collect()
 }
 
-fn triangle(z: f32, color: [f32; 4]) -> Vec<([f32; 4], [f32; 4])> {
+pub(super) fn triangle(z: f32, color: [f32; 4]) -> Vec<([f32; 4], [f32; 4])> {
     vec![
         ([-0.8, -0.8, z, 1.0], color),
         ([0.8, -0.8, z, 1.0], color),
@@ -222,6 +222,7 @@ pub fn depth_test_orders_overlapping_triangles(device: &dyn Device, h: &Harness<
         let first = upload(device, &vertices(order[0]));
         let second = upload(device, &vertices(order[1]));
         let depth_attachment = DepthAttachment {
+            resolve: None,
             texture: depth,
             load: LoadOp::Clear(ClearValue::Depth(0.0)),
             store: StoreOp::DontCare,

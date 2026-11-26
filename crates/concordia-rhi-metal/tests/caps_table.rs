@@ -124,6 +124,24 @@ fn timestamp_granularity_follows_counter_support() {
     );
 }
 
+/// Min depth resolves (M4 4.4b) follow Apple's feature-set table: every Apple family from Apple3
+/// and Mac2 has the min and max depth resolve filters.
+#[test]
+fn depth_resolve_min_follows_the_family_table() {
+    for row in &TABLE {
+        assert!(
+            caps_from_record(&fixture(row.fixture)).depth_resolve_min,
+            "{}",
+            row.fixture
+        );
+    }
+    let mut record = fixture("apple9-m3-pro");
+    record.families = vec!["common3".into()];
+    assert!(!caps_from_record(&record).depth_resolve_min);
+    record.families = vec!["mac2".into()];
+    assert!(caps_from_record(&record).depth_resolve_min);
+}
+
 #[test]
 fn bindless_needs_argument_buffers_tier_2() {
     let mut record = fixture("apple9-m3-pro");

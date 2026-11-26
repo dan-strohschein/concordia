@@ -9,6 +9,10 @@
 // `meshlet_shadow_mesh` emit a meshlet's (≤ 128) shared vertices and triangles, written as whole
 // structs (Metal's rule). Both pull vertices through the mesh's `MeshletBlob` v1 and its streams,
 // and `fs` shades them unchanged. No atomics: survivors keep their slot order on both paths.
+// Two-pass occlusion (4.4b; `decide`): pass 1 draws the camera's meshlets that were visible last
+// frame (one visibility word per meshlet, at the instance's `motion.y`) and pass the frustum and
+// cone tests; pass 2 tests every candidate against the HZB built from pass 1's depth (the
+// projected sphere, Mara & McGuire 2013), draws what pass 1 didn't, and writes next frame's words.
 import bindless;
 import forward;
 
@@ -27,21 +31,33 @@ static const uint MESH_ROWS = 4;
 static const uint CULL_INSTANCE = 1;
 static const uint CULL_FRUSTUM = 2;
 static const uint CULL_CONE = 3;
+static const uint CULL_OCCLUDED = 4;
 static const uint CULL_DRAWN = 5;
+static const uint CULL_DRAWN_LATE = 6;
+// Culling passes (`meshlet.rs`'s `PASS_*`).
+static const uint PASS_SINGLE = 0;
+static const uint PASS_EARLY = 1;
+static const uint PASS_LATE = 2;
 // View flags (`cull.rs`): test the planes, test the cone, test the near plane (index 5).
 static const uint VIEW_FRUSTUM = 1;
 static const uint VIEW_CONE = 2;
 static const uint VIEW_NEAR = 4;
+// Test occlusion against the view's HZB (pass 2); its projection is orthographic.
+static const uint VIEW_OCCLUSION = 8;
+static const uint VIEW_ORTHO = 16;
 // A bucket's cull word: its view in bits 0–7; this bit for double-sided materials (no cone).
 static const uint BUCKET_NO_CONE = 0x100;
 
-// One view (`cull::CullView::rows`): inward planes (unnormalized), the perspective eye, flags.
-struct CullView { float4 planes[6]; float4 eye; uint4 flags; };
+// One view (`cull::CullView::rows`): inward planes (unnormalized), the perspective eye, flags (and
+// the near plane's distance in .y); for occlusion the view matrix's first three rows, the
+// projection terms (x and y scale, depth p22 and p32) and the HZB (buffer, width, height).
+struct CullView { float4 planes[6]; float4 eye; uint4 flags; float4 view[3]; float4 proj; uint4 hzb; };
 
 // items: (instance, mesh row, first entry, bucket) per work item, ordered by first entry;
 // buckets: (first entry, entries, vertices per instance, cull word); entries: (instance, meshlet);
 // args: one `DrawIndirect` record (16 bytes) per bucket; codes and drawn: one word per entry.
-struct CullPush { uint items; uint item_count; uint buckets; uint views; uint instances; uint meshes; uint codes; uint drawn; uint total; };
+// pass: `PASS_*`; visibility: one word per meshlet of each instance (two-pass occlusion).
+struct CullPush { uint items; uint item_count; uint buckets; uint views; uint instances; uint meshes; uint codes; uint drawn; uint total; uint pass; uint visibility; };
 struct CompactPush { uint items; uint item_count; uint buckets; uint drawn; uint sums; uint entries; uint args; uint total; };
 
 // The work item (instance, mesh row, first entry, bucket) whose entries hold slot `t`, from the
@@ -106,14 +122,102 @@ bool cone_rejects(float4 model[4], float3 eye, float4 sphere, uint cone) {
     return dot(d, axis) >= float(cutoff) / 127.0 * length(d) + sphere.w;
 }
 
-// The code word of `meshlet` of `inst` (mesh row in `meshes`) for its bucket's cull word `word`:
-// the cull code in bits 0–7, the meshlet's triangles in bits 8–15 (`cull_stats.rs`).
-uint cull(uint views, uint word, Instance* inst, uint meshes, uint meshlet) {
+// The slopes of the two tangents from the eye to a circle at offset `a` and distance `z` > `r`
+// (`cull::tangents`).
+float2 tangents(float a, float z, float r) {
+    float t = sqrt(a * a + z * z - r * r);
+    return float2((t * a - r * z) / (t * z + r * a), (t * a + r * z) / (t * z - r * a));
+}
+
+// Whether the world-space sphere (`c`, `r`) lies wholly behind the view's HZB: its projected
+// rectangle (`cull::SphereProjection::project`), one pixel wider each side, is read at the level
+// where it spans at most 2 × 2 texels (`hzb::HzbLayout::level_for`), and its nearest depth must be
+// nearer than none of them (reverse-Z: smaller than their min). Spheres reaching the near plane
+// are never occluded.
+bool occluded(CullView view, float3 c, float r) {
+    float4 p = float4(c, 1.0);
+    float3 v = float3(dot(view.view[0], p), dot(view.view[1], p), dot(view.view[2], p));
+    float distance = -v.z;
+    if (distance - r <= asfloat(view.flags.y)) { return false; }
+    float2 lo;
+    float2 hi;
+    float nearest = v.z + r;
+    float depth = view.proj.z * nearest + view.proj.w;
+    if ((view.flags.x & VIEW_ORTHO) != 0) {
+        lo = v.xy - r;
+        hi = v.xy + r;
+    } else {
+        float2 x = tangents(v.x, distance, r);
+        float2 y = tangents(v.y, distance, r);
+        lo = float2(x.x, y.x);
+        hi = float2(x.y, y.y);
+        depth /= -nearest;
+    }
+    float2 size = float2(view.hzb.y, view.hzb.z);
+    float2 uv_lo = float2(lo.x * view.proj.x * 0.5 + 0.5, 0.5 - hi.y * view.proj.y * 0.5);
+    float2 uv_hi = float2(hi.x * view.proj.x * 0.5 + 0.5, 0.5 - lo.y * view.proj.y * 0.5);
+    uint2 p0 = uint2(clamp(floor(uv_lo * size) - 1.0, float2(0.0, 0.0), size - 1.0));
+    uint2 p1 = uint2(clamp(floor(uv_hi * size) + 1.0, float2(0.0, 0.0), size - 1.0));
+    uint2 level_size = (view.hzb.yz + 1) / 2;
+    uint offset = 0;
+    uint shift = 1;
+    while (any((p1 >> shift) - (p0 >> shift) > 1) && any(level_size > 1)) {
+        offset += level_size.x * level_size.y;
+        level_size = (level_size + 1) / 2;
+        shift += 1;
+    }
+    uint2 t0 = p0 >> shift;
+    uint2 t1 = p1 >> shift;
+    uint* hzb = g_buffers.ptr[view.hzb.x];
+    float farthest = min(min(asfloat(hzb[offset + t0.y * level_size.x + t0.x]), asfloat(hzb[offset + t0.y * level_size.x + t1.x])),
+                         min(asfloat(hzb[offset + t1.y * level_size.x + t0.x]), asfloat(hzb[offset + t1.y * level_size.x + t1.x])));
+    return depth < farthest;
+}
+
+// The world-space bounding sphere of `meshlet` of `inst` (mesh row in `meshes`).
+float4 world_sphere(Instance* inst, uint meshes, uint meshlet) {
     uint4* rows = (uint4*)g_buffers.ptr[meshes];
     uint* blob = g_buffers.ptr[rows[(inst.skin.w - 1) * MESH_ROWS].x];
-    uint triangles = (blob[HEADER_WORDS + meshlet * RECORD_WORDS + 7] >> 8) & 0xff;
-    return cull_code(views, word, inst, meshes, meshlet) | (triangles << 8);
+    uint record = HEADER_WORDS + meshlet * RECORD_WORDS;
+    float3 c = float3(asfloat(blob[record]), asfloat(blob[record + 1]), asfloat(blob[record + 2]));
+    return float4(xform(inst.model, float4(c, 1.0)).xyz, asfloat(blob[record + 3]) * max_scale(inst.model));
 }
+
+// The code word of entry `t` (`meshlet` of `inst`, mesh row in `meshes`) for its bucket's cull
+// word `word` in culling pass `pass`: the cull code in bits 0–7, the meshlet's triangles in bits
+// 8–15 (`cull_stats.rs`). Without occlusion every pass is the single one. With it, pass 1 holds
+// back what wasn't visible last frame (`CULL_OCCLUDED` until pass 2 decides); pass 2 leaves pass 1's
+// draws drawn, tests the rest against the HZB, and writes every meshlet's visibility for next
+// frame (a pass-1 draw now hidden drops out). Pass 2 leaves other views' codes as they are.
+uint decide(uint pass, uint views, uint word, Instance* inst, uint meshes, uint meshlet, uint visibility, uint codes, uint t) {
+    CullView view = ((CullView*)g_buffers.ptr[views])[word & 0xff];
+    bool occlusion = (view.flags.x & VIEW_OCCLUSION) != 0;
+    uint* code_words = g_buffers.ptr[codes];
+    if (pass == PASS_LATE && !occlusion) { return code_words[t]; }
+    uint4* rows = (uint4*)g_buffers.ptr[meshes];
+    uint* blob = g_buffers.ptr[rows[(inst.skin.w - 1) * MESH_ROWS].x];
+    uint triangles = ((blob[HEADER_WORDS + meshlet * RECORD_WORDS + 7] >> 8) & 0xff) << 8;
+    uint code = cull_code(views, word, inst, meshes, meshlet);
+    if (pass == PASS_SINGLE || !occlusion) { return code | triangles; }
+    uint* seen = g_buffers.ptr[visibility] + inst.motion.y;
+    if (pass == PASS_EARLY) {
+        return (code == CULL_DRAWN && seen[meshlet] == 0 ? CULL_OCCLUDED : code) | triangles;
+    }
+    bool early = (code_words[t] & 0xff) == CULL_DRAWN;
+    if (code == CULL_DRAWN) {
+        float4 sphere = world_sphere(inst, meshes, meshlet);
+        if (occluded(view, sphere.xyz, sphere.w)) { code = CULL_OCCLUDED; }
+    }
+    seen[meshlet] = code == CULL_DRAWN ? 1 : 0;
+    if (early) { return CULL_DRAWN | triangles; }
+    return (code == CULL_DRAWN ? CULL_DRAWN_LATE : code) | triangles;
+}
+
+// `VsOut.pass` for a draw in culling pass `pass`: 1 the first (or only) pass, 2 pass 2.
+uint drawing_pass(uint pass) { return pass == PASS_LATE ? 2 : 1; }
+
+// True if code word `code` is drawn in culling pass `pass`.
+bool drawn_in(uint pass, uint code) { return (code & 0xff) == (pass == PASS_LATE ? CULL_DRAWN_LATE : CULL_DRAWN); }
 
 // The cull code alone (`cull`).
 uint cull_code(uint views, uint word, Instance* inst, uint meshes, uint meshlet) {
@@ -141,9 +245,9 @@ void meshlet_cull(uint3 id : SV_DispatchThreadID, uniform CullPush push) {
     uint4 item = find_item(push.items, push.item_count, t);
     uint4 bucket = ((uint4*)g_buffers.ptr[push.buckets])[item.w];
     Instance* inst = ((Instance*)g_buffers.ptr[push.instances]) + item.x;
-    uint code = cull(push.views, bucket.w, inst, push.meshes, t - item.z);
+    uint code = decide(push.pass, push.views, bucket.w, inst, push.meshes, t - item.z, push.visibility, push.codes, t);
     g_buffers.ptr[push.codes][t] = code;
-    g_buffers.ptr[push.drawn][t] = (code & 0xff) == CULL_DRAWN ? 1 : 0;
+    g_buffers.ptr[push.drawn][t] = drawn_in(push.pass, code) ? 1 : 0;
 }
 
 // Survivors to their bucket's region in slot order (`sums`: the exclusive sums of `drawn`); the
@@ -166,7 +270,8 @@ void meshlet_compact(uint3 id : SV_DispatchThreadID, uniform CompactPush push) {
 }
 
 // Shared with `DrawPush` where `fs` reads it: frame at 0, materials at 12, material at 16.
-struct MeshletPush { uint frame; uint instances; uint entries; uint materials; uint material; uint meshes; uint first; uint cascade; };
+// pass: the culling pass drawing the bucket (`PASS_*`; the `occlusion` view).
+struct MeshletPush { uint frame; uint instances; uint entries; uint materials; uint material; uint meshes; uint first; uint cascade; uint pass; };
 
 // Where an instance's meshlet lives: its mesh's table rows and, in the blob (`row_a.x`), its
 // record and the first vertex reference. Indices, not pointers: SPIR-V needs pointers initialised
@@ -239,6 +344,7 @@ VsOut meshlet_vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform Meshl
     uint meshlet = meshlet_id(p.instance, p.meshlet);
     uint2 ids = uint2(meshlet, mix_id(meshlet) ^ mix_id(vid / 3 + 0x9e3779b9));
     VsOut o = meshlet_surface(frame, inst, p.at, p.v, vid % 3, ids);
+    o.pass = drawing_pass(push.pass);
     if (!p.valid) { o.position = NOWHERE; }
     return o;
 }
@@ -255,7 +361,8 @@ float4 meshlet_shadow_vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, unifo
 // Mesh-shader buckets (4.3b). Shared with `DrawPush` where `fs` reads it: frame at 0, materials
 // at 12, material at 16. `first` and `count` are the bucket's entry slots; `items` the work items;
 // `views`, `codes` and `cull` (the bucket's cull word) the culling (4.4).
-struct TaskPush { uint frame; uint instances; uint items; uint materials; uint material; uint meshes; uint first; uint count; uint item_count; uint views; uint codes; uint cull; uint cascade; };
+// `pass` and `visibility` as in `CullPush`.
+struct TaskPush { uint frame; uint instances; uint items; uint materials; uint material; uint meshes; uint first; uint count; uint item_count; uint views; uint codes; uint cull; uint cascade; uint pass; uint visibility; };
 
 // Entries per object group, and object groups per row of a draw (`meshlet.rs`).
 static const uint OBJECT_ENTRIES = 32;
@@ -281,9 +388,9 @@ void meshlet_object(uint lane : SV_GroupThreadID, uint3 group : SV_GroupID, unif
         uint4 item = find_item(push.items, push.item_count, t);
         entry = uint2(item.x, t - item.z);
         Instance* inst = ((Instance*)g_buffers.ptr[push.instances]) + item.x;
-        uint code = cull(push.views, push.cull, inst, push.meshes, entry.y);
+        uint code = decide(push.pass, push.views, push.cull, inst, push.meshes, entry.y, push.visibility, push.codes, t);
         g_buffers.ptr[push.codes][t] = code;
-        drawn = (code & 0xff) == CULL_DRAWN;
+        drawn = drawn_in(push.pass, code);
     }
     s_drawn[lane] = drawn ? 1 : 0;
     GroupMemoryBarrierWithGroupSync();
@@ -313,7 +420,9 @@ void meshlet_mesh(uint lane : SV_GroupThreadID, uint group : SV_GroupID, in payl
     // Shared vertices carry no triangle id (the `triangles` view takes the compute path).
     uint meshlet = meshlet_id(entry.x, entry.y);
     if (lane < vertex_count) {
-        vertices[lane] = meshlet_surface(frame, inst, at, mesh_vertex(at, lane), 0, uint2(meshlet, meshlet));
+        VsOut v = meshlet_surface(frame, inst, at, mesh_vertex(at, lane), 0, uint2(meshlet, meshlet));
+        v.pass = drawing_pass(push.pass);
+        vertices[lane] = v;
     }
     if (lane < triangle_count) {
         triangles[lane] = uint3(local_corner(at, lane * 3), local_corner(at, lane * 3 + 1), local_corner(at, lane * 3 + 2));
