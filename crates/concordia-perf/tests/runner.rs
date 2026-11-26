@@ -99,6 +99,33 @@ fn runner_measures_each_pass_and_judges_on_the_reference() {
     );
 }
 
+/// A perf scene's temporal setting reaches the renderer: the own resolve is a timed pass (4.6
+/// plan Q13).
+#[test]
+fn runner_measures_with_the_scenes_temporal_setting() {
+    let Ok(caps) = concordia_rhi_metal::probe() else {
+        assert!(!concordia_testkit::gpu_required(), "no Metal device");
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let scene = perf_folder(dir.path(), &SystemProbe.host(&caps));
+    let text = std::fs::read_to_string(&scene).unwrap();
+    let text = text.replace(
+        "fov_y: 0.9,",
+        "fov_y: 0.9, temporal: Some((backend: own, upscale: 2.0)),",
+    );
+    std::fs::write(&scene, text).unwrap();
+    let options = RunOptions {
+        warmup_frames: None,
+        frames: Some(4),
+    };
+    let run = run(&scene, &options, &SystemProbe).expect("a run");
+    let names: Vec<&str> = run.report.passes.keys().map(String::as_str).collect();
+    for pass in ["temporal.resolve", "temporal.keep_depth", "tonemap"] {
+        assert!(names.contains(&pass), "{pass} in {names:?}");
+    }
+}
+
 /// Copies `from` into `to`, leaving out the derived data (`.concordia/`).
 fn copy_project(from: &Path, to: &Path) {
     for entry in std::fs::read_dir(from).unwrap().flatten() {

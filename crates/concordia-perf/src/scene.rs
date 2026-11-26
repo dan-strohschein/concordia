@@ -2,6 +2,7 @@
 //! and a camera path.
 
 use concordia_reflect::Reflect;
+use concordia_render::temporal::{TemporalBackend, Upscale};
 use serde::{Deserialize, Serialize};
 
 use crate::PerfError;
@@ -14,6 +15,16 @@ pub struct CameraKey {
     pub eye: [f32; 3],
     /// Point looked at.
     pub target: [f32; 3],
+}
+
+/// The temporal resolve a perf scene measures with (`render.set_temporal`'s parameters).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct PerfTemporal {
+    /// Which resolve runs.
+    pub backend: TemporalBackend,
+    /// Output over internal size: 1.0, 1.5 or 2.0.
+    pub upscale: f32,
 }
 
 /// A scene to measure.
@@ -36,6 +47,9 @@ pub struct PerfScene {
     pub fov_y: f32,
     /// Poses the measured frames move through, evenly and linearly (warm-up holds the first).
     pub path: Vec<CameraKey>,
+    /// The temporal resolve to measure with (absent: the project's setting).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temporal: Option<PerfTemporal>,
 }
 
 impl PerfScene {
@@ -47,7 +61,8 @@ impl PerfScene {
         Ok(scene)
     }
 
-    /// At least one frame and one key, a drawable size and a field of view in (0, π).
+    /// At least one frame and one key, a drawable size, a field of view in (0, π) and a supported
+    /// upscale.
     pub fn validate(&self) -> Result<(), PerfError> {
         let fail = |m: String| Err(PerfError::Invalid(m));
         if self.frames == 0 {
@@ -61,6 +76,10 @@ impl PerfScene {
         }
         if self.path.is_empty() {
             return fail("path needs at least one camera key".into());
+        }
+        if let Some(t) = self.temporal {
+            Upscale::try_from(f64::from(t.upscale))
+                .map_err(|e| PerfError::Invalid(e.to_string()))?;
         }
         Ok(())
     }

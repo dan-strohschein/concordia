@@ -15,6 +15,7 @@ workspace = true
 concordia-api.workspace = true
 concordia-app.workspace = true
 concordia-reflect.workspace = true
+concordia-render.workspace = true
 concordia-core.workspace = true
 concordia-rhi.workspace = true
 concordia-rhi-metal.workspace = true

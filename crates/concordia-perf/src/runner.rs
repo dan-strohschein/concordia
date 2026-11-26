@@ -166,6 +166,10 @@ impl Session {
     ) -> Result<Vec<FrameSample>, PerfError> {
         let warmup = options.warmup_frames.unwrap_or(scene.warmup_frames);
         let frames = options.frames.unwrap_or(scene.frames).max(1);
+        if let Some(t) = scene.temporal {
+            let params = json!({"backend": t.backend, "upscale": t.upscale});
+            self.call("render.set_temporal", params)?;
+        }
         for _ in 0..warmup {
             self.frame(scene, scene.pose(0, frames))?;
         }
@@ -178,9 +182,12 @@ impl Session {
     fn frame(&mut self, scene: &PerfScene, pose: CameraKey) -> Result<FrameSample, PerfError> {
         let view = json!({"eye": pose.eye, "target": pose.target, "projection": {"Perspective": {
             "fov_y": scene.fov_y, "near": NEAR, "far": FAR}}});
+        // A capture starts its temporal history afresh: two frames, so the measured one resolves
+        // against history (a whole jitter cycle per frame would only slow the run).
         let shot = self.call(
             "capture.screenshot",
-            json!({"view": view, "width": scene.width, "height": scene.height, "ui": false}),
+            json!({"view": view, "width": scene.width, "height": scene.height, "ui": false,
+                "temporal_frames": 2}),
         )?;
         let number = shot["frame"].as_u64();
         let deadline = Instant::now() + STATS_TIMEOUT;

@@ -209,32 +209,63 @@ fn spawn_camera(b: &mut Builder, key: CameraKey) -> Result<()> {
     Ok(())
 }
 
-/// `m4-canyon-ground.perf.ron` and `m4-canyon-overhead.perf.ron`.
+/// `m4-canyon-ground.perf.ron` and `m4-canyon-overhead.perf.ron` at 1280 × 720, and their `-taau`
+/// twins at 2560 × 1440 with the own TAAU at 1.5× (M4 4.6).
 fn write_perf_scenes(dir: &Path, canyon: &Canyon) -> Result<()> {
-    for (name, fov_y, path) in [
+    let taau = concordia_perf::PerfTemporal {
+        backend: concordia_render::temporal::TemporalBackend::own,
+        upscale: 1.5,
+    };
+    let paths = [
         ("m4-canyon-ground", 0.9, canyon.ground_path()),
         ("m4-canyon-overhead", 0.5, canyon.overhead_path()),
-    ] {
-        let scene = concordia_perf::PerfScene {
-            project: "../../../examples/m4-canyon".into(),
-            scene: SCENE.into(),
-            width: 1280,
-            height: 720,
-            warmup_frames: 120,
-            frames: 300,
-            fov_y,
-            path: path
-                .iter()
-                .map(|k| concordia_perf::CameraKey {
-                    eye: k.eye,
-                    target: k.target,
-                })
-                .collect(),
-        };
-        scene.validate()?;
-        let file: PathBuf = dir.join(format!("{name}.perf.ron"));
-        std::fs::write(&file, concordia_scene::write_document(&scene)?)?;
-        println!("wrote {}", file.display());
+    ];
+    for (name, fov_y, path) in paths {
+        for (suffix, (width, height), temporal) in
+            [("", (1280, 720), None), ("-taau", (2560, 1440), Some(taau))]
+        {
+            write_perf_scene(
+                dir,
+                &format!("{name}{suffix}"),
+                fov_y,
+                &path,
+                (width, height),
+                temporal,
+            )?;
+        }
     }
+    Ok(())
+}
+
+/// One perf scene of the canyon along `path`.
+fn write_perf_scene(
+    dir: &Path,
+    name: &str,
+    fov_y: f32,
+    path: &[CameraKey],
+    (width, height): (u32, u32),
+    temporal: Option<concordia_perf::PerfTemporal>,
+) -> Result<()> {
+    let scene = concordia_perf::PerfScene {
+        project: "../../../examples/m4-canyon".into(),
+        scene: SCENE.into(),
+        width,
+        height,
+        warmup_frames: 120,
+        frames: 300,
+        fov_y,
+        path: path
+            .iter()
+            .map(|k| concordia_perf::CameraKey {
+                eye: k.eye,
+                target: k.target,
+            })
+            .collect(),
+        temporal,
+    };
+    scene.validate()?;
+    let file: PathBuf = dir.join(format!("{name}.perf.ron"));
+    std::fs::write(&file, concordia_scene::write_document(&scene)?)?;
+    println!("wrote {}", file.display());
     Ok(())
 }

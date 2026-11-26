@@ -174,6 +174,10 @@ pub struct RenderSection {
     pub meshlets: bool,
     /// Cull the meshlet path's instances and meshlets on the GPU (M4 4.4); on by default.
     pub culling: bool,
+    /// The temporal resolve: `off` (the default), `own` or `metalfx` (M4 4.6).
+    pub temporal: concordia_render::temporal::TemporalBackend,
+    /// Output over internal size while `temporal` is on: 1.0 (the default), 1.5 or 2.0.
+    pub upscale: concordia_render::temporal::Upscale,
 }
 
 impl Default for RenderSection {
@@ -184,6 +188,8 @@ impl Default for RenderSection {
             backend: Default::default(),
             meshlets: true,
             culling: true,
+            temporal: Default::default(),
+            upscale: Default::default(),
         }
     }
 }

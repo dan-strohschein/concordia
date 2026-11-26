@@ -235,7 +235,14 @@ impl Project {
                     .with_closure_budget(self.closure_budget())
                     .with_perf_mode(self.manifest.render.as_ref().is_some_and(|r| r.perf_mode))
                     .with_meshlets(self.manifest.render.as_ref().is_none_or(|r| r.meshlets))
-                    .with_culling(self.manifest.render.as_ref().is_none_or(|r| r.culling)),
+                    .with_culling(self.manifest.render.as_ref().is_none_or(|r| r.culling))
+                    .with_temporal(self.manifest.render.as_ref().map_or_else(
+                        Default::default,
+                        |r| concordia_render::temporal::Temporal {
+                            backend: r.temporal,
+                            upscale: r.upscale,
+                        },
+                    )),
             ));
             // Reference renders with the path tracer (ADR-0090, ADR-0101): GPU by default.
             modules.push(Arc::new(concordia_pathtrace::PathTraceModule::new(Some(

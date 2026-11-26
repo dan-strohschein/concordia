@@ -34,7 +34,8 @@ pub fn project() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/m4-canyon")
 }
 
-/// `tests/perf/scenes/<name>.perf.ron` (`m4-canyon-ground` or `m4-canyon-overhead`).
+/// `tests/perf/scenes/<name>.perf.ron` (`m4-canyon-ground` or `m4-canyon-overhead`, or their
+/// `-taau` twins).
 pub fn perf_scene(name: &str) -> PerfScene {
     let file = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("perf/scenes/{name}.perf.ron"));
     let text = std::fs::read_to_string(&file).unwrap_or_else(|e| panic!("{}: {e}", file.display()));
@@ -142,13 +143,24 @@ impl Canyon {
         census
     }
 
-    /// Renders the view at `pose` of `scene` (a frame of `frames`) at [`SIZE`].
+    /// Renders `view` at [`SIZE`].
     pub fn render(&mut self, r: &mut Renderer, world: &RenderWorld, view: View) -> Image {
+        self.render_sized(r, world, view, SIZE)
+    }
+
+    /// Renders `view` at `size`.
+    pub fn render_sized(
+        &mut self,
+        r: &mut Renderer,
+        world: &RenderWorld,
+        view: View,
+        size: (u32, u32),
+    ) -> Image {
         let request = RenderRequest {
             camera: None,
             view: Some(view),
-            width: SIZE.0,
-            height: SIZE.1,
+            width: size.0,
+            height: size.1,
             overlays: None,
             view_mode: ViewMode::lit,
             debug: Vec::new(),
@@ -156,6 +168,51 @@ impl Canyon {
         };
         r.render(world, &mut self.assets, &request)
             .expect("a frame")
+    }
+
+    /// Each timed pass's GPU times (and the whole frame's, as `frame`) over `frames` frames of
+    /// still `view` at `size`, after 30 warm-up frames; `r` must be in perf mode.
+    pub fn pass_samples(
+        &mut self,
+        r: &mut Renderer,
+        world: &RenderWorld,
+        view: View,
+        size: (u32, u32),
+        frames: usize,
+    ) -> BTreeMap<String, Vec<f64>> {
+        let request = RenderRequest {
+            camera: None,
+            view: Some(view),
+            width: size.0,
+            height: size.1,
+            overlays: None,
+            view_mode: ViewMode::lit,
+            debug: Vec::new(),
+            ui: Default::default(),
+        };
+        let mut samples: BTreeMap<String, Vec<f64>> = BTreeMap::new();
+        for frame in 0..frames + 30 {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let callbacks = concordia_render::FrameCallbacks {
+                presented: None,
+                gpu_time: Some(Box::new(move |t| tx.send(t).unwrap())),
+            };
+            r.render_with(world, &mut self.assets, &request, callbacks)
+                .expect("a frame");
+            let timing = rx
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .expect("GPU timing");
+            if frame < 30 {
+                continue;
+            }
+            let names = r.stats().timed_passes;
+            for p in concordia_render::perf::pass_times(&names, &timing) {
+                samples.entry(p.name).or_default().push(p.gpu_ms);
+            }
+            let total = timing.total_ms.unwrap_or(f64::NAN);
+            samples.entry("frame".into()).or_default().push(total);
+        }
+        samples
     }
 
     /// Draws `frames` consecutive frames along `scene`'s path on `r`, keeping each frame's meshlet
@@ -208,6 +265,19 @@ pub struct Ride {
     pub counts: Vec<MeshletCounts>,
     /// The kept frames' images.
     pub images: BTreeMap<u32, Image>,
+}
+
+/// Keeps frame `i` of sequence `name` for a review page when `CONCORDIA_REVIEW_DIR` is set
+/// (binary PPM; `ffmpeg` turns a sequence into a video).
+pub fn keep_for_review(name: &str, i: u32, image: &Image) {
+    let Ok(dir) = std::env::var("CONCORDIA_REVIEW_DIR") else {
+        return;
+    };
+    let dir = std::path::Path::new(&dir).join(name);
+    std::fs::create_dir_all(&dir).expect("a review folder");
+    let mut ppm = format!("P6 {} {} 255\n", image.width, image.height).into_bytes();
+    image.rgba.chunks(4).for_each(|p| ppm.extend(&p[..3]));
+    std::fs::write(dir.join(format!("{i:03}.ppm")), ppm).expect("a review frame");
 }
 
 /// The view for frame `i` of `frames` along `scene`'s path.

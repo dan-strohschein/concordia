@@ -600,3 +600,66 @@ fn a_reimported_mesh_redraws_with_its_new_geometry() {
     fresh.mesh_scene(&mesh, "builtin:material/default");
     assert_eq!(narrow, fresh.capture(), "drawn as a fresh engine draws it");
 }
+
+/// `render.set_temporal` (session-scoped, M4 4.6) switches the temporal resolve: `render.stats`
+/// reports what ran; a ratio other than 1.0, 1.5 or 2.0 is refused naming `/upscale`.
+#[test]
+fn render_set_temporal_switches_the_resolve_and_validates() {
+    let Some(mut h) = Harness::gpu() else { return };
+    h.cube_scene();
+    let err = h
+        .call(
+            "render.set_temporal",
+            json!({"backend": "own", "upscale": 1.3}),
+        )
+        .unwrap_err();
+    assert_eq!(
+        err.kind,
+        concordia_api::ApiErrorKind::InvalidParams,
+        "{err:?}"
+    );
+    assert_eq!(err.data.pointer.as_deref(), Some("/upscale"), "{err:?}");
+    let set = h.ok(
+        "render.set_temporal",
+        json!({"backend": "own", "upscale": 1.5}),
+    );
+    assert_eq!(set, json!({"backend": "own", "upscale": 1.5}));
+    h.ok("capture.screenshot", json!({"width": 300, "height": 180}));
+    let temporal = h.ok("render.stats", json!({}))["frame"]["temporal"].clone();
+    assert_eq!(temporal["backend"], "own", "{temporal}");
+    assert_eq!(temporal["internal"], json!([200, 120]), "{temporal}");
+    assert_eq!(temporal["output"], json!([300, 180]), "{temporal}");
+    h.ok("render.set_temporal", json!({"backend": "off"}));
+    h.ok("capture.screenshot", json!({"width": 300, "height": 180}));
+    let temporal = h.ok("render.stats", json!({}))["frame"]["temporal"].clone();
+    assert_eq!(temporal["backend"], "off", "{temporal}");
+}
+
+/// With temporal on, a capture renders its still pose a whole jitter cycle from a fresh history
+/// (its own), so it is converged and repeatable; `temporal_frames: 1` is one aliased frame.
+#[test]
+fn capture_screenshot_settles_temporal_history() {
+    let Some(mut h) = Harness::gpu() else { return };
+    h.cube_scene();
+    h.ok(
+        "render.set_temporal",
+        json!({"backend": "own", "upscale": 1.0}),
+    );
+    let size = json!({"width": 160, "height": 90});
+    let first = h.ok("capture.screenshot", size.clone())["image"].clone();
+    let frame = h.ok("render.stats", json!({}))["frame"]["temporal"].clone();
+    assert_eq!(frame["phase"], 7, "eight frames at 1.0×: {frame}");
+    let again = h.ok("capture.screenshot", size)["image"].clone();
+    assert_eq!(first, again, "a settled capture repeats");
+    let single = h.ok(
+        "capture.screenshot",
+        json!({"width": 160, "height": 90, "temporal_frames": 1}),
+    )["image"]
+        .clone();
+    assert_ne!(first, single, "one frame isn't converged");
+    let frame = h.ok("render.stats", json!({}))["frame"]["temporal"].clone();
+    assert_eq!(
+        (frame["phase"].clone(), frame["reset"].clone()),
+        (json!(0), json!(true))
+    );
+}

@@ -15,6 +15,10 @@ export type PassTiming = "off" | "unsupported" | "measured";
  */
 export type RasterPath = "forward" | "compute_indirect" | "mesh_shader";
 /**
+ * What ran: `off` (temporal off, or a debug view), `own` or `metalfx`.
+ */
+export type TemporalBackend = "off" | "own" | "metalfx";
+/**
  * How it was drawn.
  */
 export type ViewMode =
@@ -108,6 +112,7 @@ export interface FrameStats {
    * The sun's shadow maps were reused from the previous frame.
    */
   shadows_cached: boolean;
+  temporal: TemporalStats;
   /**
    * Triangles drawn (both paths).
    */
@@ -230,4 +235,33 @@ export interface PassTime {
    * When it started, in ms from the frame's first timed pass.
    */
   start_ms: number;
+}
+/**
+ * What the temporal resolve did: the backend that ran, the internal and output sizes, the
+ * jitter phase, and whether history started fresh (M4 4.6).
+ */
+export interface TemporalStats {
+  backend: TemporalBackend;
+  /**
+   * The scene's size (the output's with temporal off).
+   *
+   * @minItems 2
+   * @maxItems 2
+   */
+  internal: [number, number];
+  /**
+   * The image's size.
+   *
+   * @minItems 2
+   * @maxItems 2
+   */
+  output: [number, number];
+  /**
+   * The jitter phase (frames since the history started).
+   */
+  phase: number;
+  /**
+   * No history was reprojected (the first frame, or after a change or reset).
+   */
+  reset: boolean;
 }

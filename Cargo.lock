@@ -1100,6 +1100,7 @@ dependencies = [
  "concordia-app",
  "concordia-core",
  "concordia-reflect",
+ "concordia-render",
  "concordia-rhi",
  "concordia-rhi-metal",
  "concordia-scene",

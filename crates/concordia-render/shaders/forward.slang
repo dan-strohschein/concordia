@@ -44,6 +44,9 @@ struct Frame {
     uint4 debug;
     // The camera's view-projection last frame (motion vectors; view_proj without one).
     float4 prev_view_proj[4];
+    // temporal = (sub-pixel jitter as a clip-space offset per unit w (x, y), material texture mip
+    // bias, 0) (M4 4.6).
+    float4 temporal;
 };
 // Per light: position+range, direction, exposed radiance, spot (scale, offset).
 struct Light { float4 position_range; float4 direction; float4 radiance; float4 spot; };
@@ -102,6 +105,13 @@ uint mix_id(uint x) {
 
 float4 xform(float4 m[4], float4 v) { return m[0] * v.x + m[1] * v.y + m[2] * v.z + m[3] * v.w; }
 
+// Where the camera rasterizes clip position `clip`: moved by the frame's sub-pixel jitter. Motion
+// vectors use the unjittered position, so a still surface stays exactly zero (M4 4.6).
+float4 jittered(Frame* frame, float4 clip) { return clip + float4(frame.temporal.xy * clip.w, 0.0, 0.0); }
+
+// The material texture mip bias of the pixel being shaded (`shade_pixel` sets it; 0 elsewhere).
+static float g_mip_bias = 0.0;
+
 // A texture index inside the bindless table. A branch that skips a read (NO_TEXTURE) may still run
 // it for some lanes (lavapipe's non-uniform sampling loop does), and an index past the table faults
 // there; an empty slot reads as zero on every backend.
@@ -117,8 +127,8 @@ float3 read3(uint buffer, uint i) {
 VsOut surface_vertex(Frame* frame, Instance* inst, float3 p, float3 prev_p, float3 n, float4 t, float2 uv, uint corner, uint2 ids) {
     float4 world = xform(inst.model, float4(p, 1.0));
     VsOut o;
-    o.position = xform(frame.view_proj, world);
-    o.clip = o.position;
+    o.clip = xform(frame.view_proj, world);
+    o.position = jittered(frame, o.clip);
     o.prev_clip = xform(frame.prev_view_proj, xform(inst.prev_model, float4(prev_p, 1.0)));
     o.world = world.xyz;
     o.normal = xform(inst.normal, float4(n, 0.0)).xyz;
@@ -270,7 +280,7 @@ ForwardOut sky_fs(SkyOut i, uniform SkyPush push) {
     float4 far = xform(frame.inv_view_proj, float4(i.ndc, 0.5, 1.0));
     float3 dir = normalize(far.xyz / far.w - near.xyz / near.w);
     ForwardOut o;
-    o.color = float4(env_sample(frame, 0, dir) * frame.ibl.x, 1.0);
+    o.color = float4(env_sample(frame, 0, dir) * frame.ibl.x, 0.0); // alpha: not reactive
     // The sky is infinitely far: only the camera's rotation moves it.
     o.motion = clip_uv(xform(frame.view_proj, float4(dir, 0.0))) - clip_uv(xform(frame.prev_view_proj, float4(dir, 0.0)));
     return o;
@@ -294,7 +304,7 @@ ForwardOut hzb_view_fs(SkyOut i, uniform SkyPush push) {
 
 float4 sample_or(uint tex, float2 uv, float4 fallback) {
     if (tex == NO_TEXTURE) { return fallback; }
-    return g_textures.tex[NonUniformResourceIndex(in_table(tex))].Sample(g_textures.samplers[SAMPLER_LINEAR_REPEAT], uv);
+    return g_textures.tex[NonUniformResourceIndex(in_table(tex))].SampleBias(g_textures.samplers[SAMPLER_LINEAR_REPEAT], uv, g_mip_bias);
 }
 
 
@@ -588,6 +598,7 @@ float4 finish(bool blend, float3 color, float alpha) {
 // The forward fragment shader's color (`fs` adds the motion).
 float4 shade_pixel(VsOut i, bool front, DrawPush push) {
     Frame* frame = (Frame*)g_buffers.ptr[push.frame];
+    g_mip_bias = frame.temporal.z;
     uint4* rows = ((uint4*)g_buffers.ptr[push.materials]) + push.material;
     uint count = min(rows[0].x, MAX_CLOSURES);
     uint flags = rows[0].z;
@@ -692,6 +703,9 @@ static const uint MODE_MOTION = 17;
 ForwardOut fs(VsOut i, bool front : SV_IsFrontFace, uniform DrawPush push) {
     ForwardOut o;
     o.color = shade_pixel(i, front, push);
+    // HDR alpha is the reactive mask (M4 4.6): blended draws add their coverage, opaque ones none.
+    uint flags = (((uint4*)g_buffers.ptr[push.materials]) + push.material)[0].z;
+    if ((flags & FLAG_BLEND) == 0) { o.color.a = 0.0; }
     o.motion = clip_uv(i.clip) - clip_uv(i.prev_clip);
     Frame* frame = (Frame*)g_buffers.ptr[push.frame];
     if (frame.debug.x == MODE_MOTION) {
@@ -709,7 +723,7 @@ GridOut grid_vs(uint vid : SV_VertexID, uniform GridPush push) {
     float2 c = corners[vid] * push.extent + frame.eye.xz;
     GridOut o;
     o.world = float3(c.x, 0.0, c.y);
-    o.position = xform(frame.view_proj, float4(o.world, 1.0));
+    o.position = jittered(frame, xform(frame.view_proj, float4(o.world, 1.0)));
     return o;
 }
 

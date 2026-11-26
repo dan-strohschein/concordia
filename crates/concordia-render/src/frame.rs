@@ -119,6 +119,10 @@ pub(crate) struct FrameParams<'a> {
     pub(crate) hzb: Option<(u32, u32)>,
     /// The camera's view-projection last frame (motion vectors; `view_proj` without one).
     pub(crate) prev_view_proj: Mat4,
+    /// The camera's sub-pixel jitter as a clip-space offset per unit `w` (M4 4.6).
+    pub(crate) jitter: [f32; 2],
+    /// Added to material textures' mip levels.
+    pub(crate) mip_bias: f32,
 }
 
 /// The environment as the shader sees it.
@@ -165,6 +169,10 @@ pub(crate) fn frame_block(p: &FrameParams<'_>) -> Vec<u8> {
     let debug = [p.view_mode, p.exposure.to_bits(), hzb, hzb_width];
     out.extend(debug.iter().flat_map(|w| w.to_le_bytes()));
     push_rows(&mut out, &columns(&p.prev_view_proj));
+    push_rows(
+        &mut out,
+        &[Vec4::new(p.jitter[0], p.jitter[1], p.mip_bias, 0.0)],
+    );
     out
 }
 

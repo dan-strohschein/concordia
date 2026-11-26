@@ -58,6 +58,9 @@ pub struct FrameStats {
     pub closure_budget: u8,
     /// This frame's materials that were simplified to fit the closure budget.
     pub downgraded_materials: Vec<MaterialDowngrade>,
+    /// What the temporal resolve did: the backend that ran, the internal and output sizes, the
+    /// jitter phase, and whether history started fresh (M4 4.6).
+    pub temporal: crate::temporal::TemporalStats,
 }
 
 /// How the frame's opaque static geometry reached the rasterizer (ADR-0100).
@@ -203,6 +206,7 @@ pub(crate) fn record(
             .iter()
             .map(|(material, report)| downgrade(material, report))
             .collect(),
+        temporal: stats.temporal,
     });
     if let Some(timing) = early {
         last.apply(&timing);
