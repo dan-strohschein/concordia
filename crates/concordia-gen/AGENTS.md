@@ -6,11 +6,13 @@ Generated content without APIs: the `ContentProvider` interface and registry, th
 ## Public entry points
 - `ContentProvider` (`id`, `kind`, `version`, `extensions`, `request_schema`, `procedural`, `generate(request, seed, &GenContext) -> Generated`), `GenContext { project }`, `GenKind`, `inputs_hash` (provider, version, request, seed and input files)
 - `ProviderRegistry::procedural()` (the `mesh` provider), `with(provider)`
-- `GenModule::new(&GenConfig)` (`[gen]`): `GenList` / `GenRun` (`GenRunParams { provider, request, seed, path, actor }`)
+- `GenModule::new(&GenConfig)` (`[gen]`): `GenList` / `GenRun` (`GenRunParams { provider, request, seed, path, actor }`) / `GenRestore` (`GenRestoreParams { actor }` → `restored`, `unchanged`, `skipped`)
+- `restore::{restore, regenerate, output_hash, RestoreReport}`: remake generated files from their sidecars' recipes, checked against `Provenance::output` (M4 4.4c)
+- `canyon::{Canyon, CanyonAsset, Placement, CameraKey, Family, LENGTH, WIDTH, TILES}`: `Canyon::M4`'s `height`, `centre`, `floor_half_width`, `wall_height`, `assets`, `layout`, `ground_path`, `overhead_path` (M4 4.4c)
 - `GenConfig { blender: Option<BlenderConfig { path }>, plugin: Vec<PluginConfig { id, kind, extensions, command, timeout_s }> }`
 - `blender::{BlenderProvider, BlenderRequest { script, timeout_s }, locate, parse_version, check_version, MINIMUM}`: runs `tools/blender-bridge/bridge.py` (embedded) in Blender ≥ 4.2
 - `PluginProvider`: a `[[gen.plugin]]` program; JSON `{request, seed, out}` on stdin, `{"info": …}` on stdout
-- `mesh::{MeshRequest, SdfShape, build, MeshProvider}`: box and sphere (shared with `concordia_assets::shapes`), capsule, cylinder, torus, extrude, lathe, heightfield, SDF surface nets
+- `mesh::{MeshRequest, SdfShape, build, MeshProvider}`: box and sphere (shared with `concordia_assets::shapes`), capsule, cylinder, torus, extrude, lathe, heightfield, SDF surface nets, `Rock {size, detail, roughness, strata, lumps}` and `CanyonTile {tile, of, cells}` (M4 4.4c; their sidecars get `meshlets: true`)
 - `glb::write_glb(&MeshData)`
 - `sfx::{SfxRequest, SfxPreset, SfxProvider}` (presets `pickup`, `hit`, `jump`, `explosion`, `ui_click`; `duration_ms`, `pitch_sweep`, `base_hz`), mono 16-bit 48 kHz WAV at −1 dBFS
 - `music::{Score, Track, Note, Instrument, MusicProvider}` (one mixed WAV; `loop_from_bar`; loop points into the sidecar's sound settings)
@@ -18,7 +20,10 @@ Generated content without APIs: the `ContentProvider` interface and registry, th
 - `Generated::settings`: import settings `gen.run` merges into the sidecar before re-importing; `Generated::inputs`: files the output depends on (a Blender script's path and BLAKE3), folded into `inputs_hash`
 
 ## Invariants
-- Same provider, version, request and seed give the same bytes; `inputs_hash` (BLAKE3 of the four) is in the sidecar's `Provenance`, so a file can be made again.
+- Same provider, version, request and seed give the same bytes; `inputs_hash` (BLAKE3 of the four) and `output` (BLAKE3 of the bytes) are in the sidecar's `Provenance`, so a file can be made again and checked. `gen.restore` never runs a non-procedural provider and refuses a recipe whose bytes changed.
+- The mesh generators use only `+ − × ÷`, `sqrt`, `floor` and integer hashing (no `sin`, `cos`, `exp`, `pow`, whose last bits differ between platform maths libraries), so rocks, canyon strips and the canyon's layout pin the same bytes on macOS and Linux (`generators_use_no_platform_maths`). The existing sweeps use `sin_cos` and are not pinned across platforms.
+- Surface nets output is closed and consistently wound for any field: ambiguous faces (corners alternating in and out) are resolved by moving the corner nearest zero across it, and quads are wound by the sign along their grid edge, not by vertex normals. A rock's noise is evaluated only within a band of the lumps' surface (plus three cells), where it can change the sign; outside, the mesh is identical (`narrow_band_mesh_equals_full_grid_mesh`).
+- Canyon strips compute vertex positions from global grid indices, so neighbouring strips share their edge bit for bit.
 - `gen.run` needs an actor, checks the path's extension and the request before writing anything, writes atomically, then imports through `asset.import` (the same log and events) and records provenance. Studio holds its `path` to the role's write paths (`concordia-mcp`).
 - Closed shapes are watertight with outward winding (`Builder::triangle` turns each triangle to agree with its vertices' normals); no degenerate triangles on the axis.
 - Sounds peak at −1 dBFS; noise comes from a seeded xorshift, so seeds make variations. Notes past a score's end wrap to its top, so loops are seamless. Noise lattices wrap at the texture's edge, so textures tile.
@@ -29,11 +34,12 @@ Generated content without APIs: the `ContentProvider` interface and registry, th
 - No `unsafe`; providers never panic on bad input.
 
 ## How to test
-`cargo nextest run -p concordia-gen`. The Blender tests run when Blender is found (`BLENDER_PATH` or the default install) and skip with a message otherwise; `CONCORDIA_REQUIRE_BLENDER=1` makes a missing Blender a failure. The plugin test needs `python3`.
+`cargo nextest run -p concordia-gen` (`tests/canyon.rs` covers the canyon spec; the example itself is tested by `concordia-tests`' `canyon` binary). The Blender tests run when Blender is found (`BLENDER_PATH` or the default install) and skip with a message otherwise; `CONCORDIA_REQUIRE_BLENDER=1` makes a missing Blender a failure. The plugin test needs `python3`.
 
 ## Common tasks
 - **Add a provider:** implement `ContentProvider`, register it in `ProviderRegistry::procedural()` (or run it as a `[[gen.plugin]]` program), give its request a `Reflect` type for `gen.list`'s schema, and test determinism and validation.
 - **Add a mesh shape:** a `MeshRequest` variant, a builder in `mesh/` using `Builder`, and a case in `generated_mesh_is_watertight_and_has_consistent_winding` with its hand-derived volume.
+- **Change the canyon:** edit `canyon.rs` (or a rock family), run `just canyon-build` (it regenerates `examples/m4-canyon` and its perf scenes through the Engine API), update the pins in `tests/canyon.rs`, and re-review the `m4_culling/canyon_*` goldens.
 
 ## Don'ts
 - Don't link or call model APIs: model providers are opt-in plugins only (ADR-0002).
@@ -44,13 +50,17 @@ Generated content without APIs: the `ContentProvider` interface and registry, th
 - Surface nets: S. Gibson, "Constrained Elastic Surface Nets" (1998).
 - Signed distance functions and the polynomial smooth minimum: Íñigo Quílez's published articles.
 - Ear clipping: D. Eberly, "Triangulation by Ear Clipping" (Geometric Tools).
+- Ambiguous faces in cube-based isosurfaces: G. Nielson and B. Hamann, "The Asymptotic Decider" (IEEE Visualization 1991), and Lorensen and Cline, "Marching Cubes" (SIGGRAPH 1987), for why alternating faces split a surface; resolved here by the simpler corner move described above.
+- Ellipsoid distance bound and rounded boxes: Íñigo Quílez's articles on distance functions.
+- SplitMix64: G. Steele, D. Lea and C. Flood, "Fast Splittable Pseudorandom Number Generators" (OOPSLA 2014).
+- Fractal sums of value noise (fBm): K. Perlin, "An Image Synthesizer" (SIGGRAPH 1985), and Ebert et al., *Texturing and Modeling: A Procedural Approach*.
 - Value noise with smoothstep interpolation (standard; integer hashing of lattice points); Worley, "A Cellular Texture Basis Function" (SIGGRAPH 1996).
 - sfxr's public design notes (oscillator, sweep, envelope, filter), reimplemented, not copied.
 - MIDI pitch to frequency (A4 = 440 Hz, 12-tone equal temperament).
 - Blender manual: command-line arguments, `bpy` and the glTF 2.0 exporter options; the GNU GPL FAQ on separate programs (ADR-0085).
 
 ## Status
-M3 phase 3.7a (provider interface, `[gen]`, meshes), 3.7b (sfx, music, textures) and 3.7c (Blender bridge, plugins).
+M3 phase 3.7a (provider interface, `[gen]`, meshes), 3.7b (sfx, music, textures) and 3.7c (Blender bridge, plugins). M4 phase 4.4c: 3D noise and fBm, the shared surface-nets mesher, rocks, canyon strips, the canyon spec, `Provenance::output` and `gen.restore` (ADR-0085 amendment).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

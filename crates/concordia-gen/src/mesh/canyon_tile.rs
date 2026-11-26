@@ -40,8 +40,9 @@ pub(crate) fn tile(
     for j in 0..cz {
         for i in 0..cx {
             let a = j * width + i;
+            // Rows run toward −Z, so (right, down) is counter-clockwise seen from +Y.
             let (right, down) = (a + 1, a + width);
-            b.wound_triangles(&[a, down + 1, right, a, down, down + 1]);
+            b.wound_triangles(&[a, right, down + 1, a, down + 1, down]);
         }
     }
     Ok(b.finish())

@@ -1,6 +1,7 @@
 //! Shared helpers for Concordia's cross-crate and gate tests.
 
 pub mod bins;
+pub mod canyon;
 pub mod m3_checker;
 pub mod m3_fixture;
 pub mod mcp_client;

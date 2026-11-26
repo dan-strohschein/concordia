@@ -7,10 +7,11 @@ mesh is static, opaque and has meshlets, so this scene exercises the meshlet pat
 - **Ground:** 8 heightfield strips (`MeshRequest::CanyonTile`), 76,800 triangles each.
 - **Rocks:** 12 seeded SDF rocks (`MeshRequest::Rock`), four each of cliff blocks, boulders and
   stones, placed 312 times with seeded yaws and uniform scales.
+- **Light:** a low sun with three shadow cascades, and a generated 64 × 64 neutral ambient map as the environment (no skybox), so shaded walls are lit.
 - **Cameras:** `tests/perf/scenes/m4-canyon-ground.perf.ron` (a ground-level fly-through) and
   `m4-canyon-overhead.perf.ron` (a generic three-quarter view from above).
 
-The `.glb` files are not in git. Each sidecar records its recipe (provider, version, request,
+The `.glb` and `.png` files are not in git. Each sidecar records its recipe (provider, version, request,
 seed) and the BLAKE3 of the bytes it makes; `gen.restore` (and `concordia perf run`, and the
 canyon tests) remake missing files and check them against that hash.
 

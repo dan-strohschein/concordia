@@ -4,7 +4,7 @@ Sidecar(
     importer_version: 5,
     provenance: Some((
         inputs_hash: "a33b8fdeb5a339d98e34391db9e6b1a708c21e2b20698894da3e5fe4704197e4",
-        output: Some("08da953a31df4a90810532bdd1478a0a8362a3424d310ced2154dffd369cb993"),
+        output: Some("1a8c4a68a3460d3dc08b44020050204a971ec5cb9fd338255639a3e8e840a2cc"),
         provider: "mesh",
         provider_version: 1,
         request: {

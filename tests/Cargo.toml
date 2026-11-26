@@ -21,13 +21,16 @@ concordia-core.workspace = true
 # The canyon (M4 4.4c): its builder, and src/canyon.rs, which the canyon tests and the M4 gate
 # share (restore, load the example, render its paths on each draw path).
 concordia-assets.workspace = true
+concordia-cluster.workspace = true
 concordia-gen.workspace = true
 concordia-perf.workspace = true
+concordia-reflect.workspace = true
 concordia-render.workspace = true
 concordia-rhi.workspace = true
 concordia-rhi-select.workspace = true
 concordia-scene.workspace = true
 concordia-shaders.workspace = true
+concordia-terra.workspace = true
 concordia-replay.workspace = true
 concordia-studio.workspace = true
 rmcp.workspace = true
@@ -40,7 +43,6 @@ toml.workspace = true
 concordia-audio.workspace = true
 concordia-input.workspace = true
 concordia-mcp.workspace = true
-concordia-reflect.workspace = true
 concordia-rhi-metal.workspace = true
 concordia-ui.workspace = true
 insta.workspace = true
@@ -54,6 +56,10 @@ wasmtime-wasi.workspace = true
 [[bin]]
 name = "canyon_build"
 path = "tools/canyon_build.rs"
+
+[[test]]
+name = "canyon"
+path = "integration/canyon.rs"
 
 [[test]]
 name = "reference_blessing"

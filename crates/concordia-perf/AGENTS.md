@@ -16,6 +16,7 @@ Perf testing on reference hardware (ADR-0089): per-scene budgets as text, the re
 - Summaries: median (mean of the middle two for even counts) and nearest-rank p95; any non-finite sample makes the series invalid.
 - Every perf file is canonical RON through `concordia-scene` (`tests/repo_files.rs` checks the repository's).
 - The runner turns on `[render] perf_mode` in memory only; it never edits the project.
+- Before opening the scene, the runner calls `gen.restore` when the project has `[gen]` (M4 4.4c), so generated files kept out of git (the canyon's meshes) are remade and checked first.
 - The perf folder layout is fixed: `reference.ron`, `scenes/<name>.perf.ron`, `budgets/<name>.budget.ron`.
 
 ## How to test
@@ -34,7 +35,7 @@ Perf testing on reference hardware (ADR-0089): per-scene budgets as text, the re
 - Apple, "Sampling GPU data into counter sample buffers" (Metal documentation) and *Metal Feature Set Tables*; nearest-rank percentile (NIST/SEMATECH e-Handbook of Statistical Methods). No engine source consulted.
 
 ## Status
-M4 phase 4.1a: budgets, the reference machine, reports, verdicts, `concordia perf run`; scenes `m1-gate` and `lamplight-night`.
+M4 phase 4.1a: budgets, the reference machine, reports, verdicts, `concordia perf run`; scenes `m1-gate` and `lamplight-night`. M4 phase 4.4c: the runner restores generated files first (`gen.restore`); scenes `m4-canyon-ground` and `m4-canyon-overhead` (no budgets yet).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

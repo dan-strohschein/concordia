@@ -8,6 +8,12 @@ slow-timeout = { period = "30s", terminate-after = 4 }
 filter = "test(=derive_rejects_unsupported_input) | binary(m0_headless_mcp) | binary(m1_mcp_screenshot) | binary(m1_mcp_coverage) | binary(/^m3_/)"
 slow-timeout = { period = "60s", terminate-after = 10 }
 
+# The canyon (M4 4.4c) restores and imports 2 M unique triangles on a cold run, then rides two camera
+# paths on both draw paths at 22 M source triangles.
+[[profile.default.overrides]]
+filter = "binary(canyon)"
+slow-timeout = { period = "60s", terminate-after = 10 }
+
 # The M2 gate plays and replays whole Lamplight nights in debug builds: about 5 minutes on a
 # fast machine, over 10 on CI runners.
 [[profile.default.overrides]]

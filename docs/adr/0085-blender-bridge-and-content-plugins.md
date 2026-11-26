@@ -32,3 +32,9 @@ Agents need meshes and clips beyond what procedural shapes can make. Blender doe
 ## References
 - Blender's command-line arguments and the glTF 2.0 exporter options (Blender manual).
 - The GNU GPL FAQ on separate programs communicating through files and pipes.
+
+## Amendment (2026-11-25, M4 4.4c): output hashes and `gen.restore`
+- **`Provenance.output`:** `gen.run` records the BLAKE3 of the bytes it wrote beside the inputs hash (optional, so older sidecars still read). A sidecar is then a complete, checkable recipe: provider, version, request, seed and the expected output.
+- **`gen.restore {actor}`:** remakes every generated file under `[assets]` that is missing, or whose bytes differ from `output`, from its recorded recipe; checks the inputs hash and the output hash before writing (atomically, through a file unique to the process, so concurrent restores never clash); and lists the files `restored`, `unchanged` and `skipped`. Non-procedural providers (Blender, plugins) are never run by a restore: a missing file of theirs is reported as skipped. A recipe that no longer makes its recorded bytes (a changed provider) is an error naming the file. Each file is made on one thread, so the bytes don't depend on the thread count.
+- **Large generated content may stay out of git:** a project can ignore its generated files and commit only their sidecars. `examples/m4-canyon` does this for its 20 meshes (≈ 60 MB of `.glb`) and its sky map. `concordia perf run` restores before opening a scene, and the canyon tests restore before loading.
+- **No Studio role gets `gen.restore` yet:** it is an Engine API method (MCP lists it for clients without a roster), but no role's `mcp_tools` includes it, since it may write many paths at once and the per-path write check applies to one `path`. A role that needs it can be given it with a check over every restored path.

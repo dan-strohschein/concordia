@@ -289,8 +289,8 @@ impl Canyon {
             .collect()
     }
 
-    /// A generic three-quarter view from above (60 m up, about 70 m out at 45°) on a point
-    /// sliding down the centreline: 6 keys.
+    /// A generic three-quarter view from above (90 m up, about 64 m out at 45°: looking down at
+    /// about 55°) on a point sliding down the centreline: 6 keys.
     pub fn overhead_path(&self) -> Vec<CameraKey> {
         (0..6)
             .map(|k| {
@@ -298,7 +298,7 @@ impl Canyon {
                 let x = self.centre(z);
                 let target = [x, self.height(x, z), z];
                 CameraKey {
-                    eye: [target[0] - 49.5, target[1] + 60.0, target[2] + 49.5],
+                    eye: [target[0] - 45.0, target[1] + 90.0, target[2] + 45.0],
                     target,
                 }
             })

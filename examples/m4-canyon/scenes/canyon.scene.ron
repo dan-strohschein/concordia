@@ -1,11 +1,11 @@
 // Concordia scene, format 1. Canonical form: `concordia fmt` rewrites this file.
 Scene(
     format: 1,
-    id: "01a215f9-3ad6-70fa-956b-6636de9a454c",
+    id: "01a21608-d9db-7259-827d-d543ad1175ee",
     name: "Canyon",
     entities: [
         Entity(
-            id: "01a215f9-3ad6-70fa-956b-6637deb2eb9d",
+            id: "01a21608-d9dc-74d9-8ba9-b82cb81100bc",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -21,7 +21,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ad9-7583-abf0-49bedce37327",
+            id: "01a21608-d9e6-750b-b7fb-e4d19d99cee4",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -37,7 +37,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3add-7338-af20-36452aaf9ca7",
+            id: "01a21608-d9f0-76f9-9cd0-a9ba91b0e774",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -53,7 +53,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ae0-74da-b45f-99838853c4ee",
+            id: "01a21608-d9f5-7536-91c5-37854be15cf5",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -69,7 +69,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ae2-767b-a5fd-10a78e4b129e",
+            id: "01a21608-d9fc-727a-8fac-0bd22525bba2",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -85,7 +85,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ae5-76d8-88d0-e58db30716e9",
+            id: "01a21608-d9ff-70f0-bae7-569a6ceb1b6e",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -101,7 +101,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ae8-723f-af67-3da88e964c84",
+            id: "01a21608-da02-73b6-8c80-787c2b5681db",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -117,7 +117,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3aeb-7005-a5bb-c7088bbb884e",
+            id: "01a21608-da05-708a-8323-3fedb23c9e70",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -133,7 +133,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3aee-77df-8728-add4b870ca41",
+            id: "01a21608-da08-779d-b8d0-6c1efea3e6e0",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -149,7 +149,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3af1-705a-9958-d50140502025",
+            id: "01a21608-da0c-7206-a7b5-06f89e843102",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -165,7 +165,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3af4-7134-9692-31a5e905311d",
+            id: "01a21608-da0f-7474-b9d7-464802128498",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -181,7 +181,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3af7-73b2-80e4-d87c70ef530d",
+            id: "01a21608-da12-7331-b2c9-dd11c126c3dd",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -197,7 +197,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3afb-7163-a455-4ce4f2f325ac",
+            id: "01a21608-da15-70e5-9be6-cbb7f98c3157",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -213,7 +213,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3afe-762a-80d1-af0f9a048ded",
+            id: "01a21608-da18-705c-91cf-544d700333a9",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -229,7 +229,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b02-7797-a955-5315f53d5657",
+            id: "01a21608-da1c-77a4-b549-9bc5b6946938",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -245,7 +245,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b05-7743-9dad-08067eef3bd5",
+            id: "01a21608-da1f-709e-827d-c602e0bff53d",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -261,7 +261,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b08-7417-ae14-ced0d5af97ae",
+            id: "01a21608-da22-7530-93ab-972a3af12fba",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -277,7 +277,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b0b-765b-94f9-470b575b1da3",
+            id: "01a21608-da26-70fb-8acd-2b08851fd33b",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -293,7 +293,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b0c-719c-9941-ac0f7382ad66",
+            id: "01a21608-da2a-7092-91e0-fde66307730f",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -309,7 +309,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b10-75bf-b6fc-f3a42a17f1cf",
+            id: "01a21608-da2e-73a6-9006-4fae4d1e7eb8",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -325,7 +325,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b13-7780-9e64-d11f33fb5102",
+            id: "01a21608-da32-74d0-84b7-7939ca3e2c89",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -341,7 +341,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b14-7159-94e4-17fb0499aad5",
+            id: "01a21608-da34-7090-865c-51b2f18443c9",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -357,7 +357,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b18-77fc-92e2-d1113cac1401",
+            id: "01a21608-da36-70b2-ab20-a517ec47292d",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -373,7 +373,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b1c-77a4-a2c0-a662fd97d5a1",
+            id: "01a21608-da39-722b-bc86-81271c32f37c",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -389,7 +389,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b1e-7341-ba45-29f986d0e1d7",
+            id: "01a21608-da3c-757a-b7b1-914ed8053a5b",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -405,7 +405,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b22-74c1-be1f-0296809f0960",
+            id: "01a21608-da40-754a-811d-b4db73b89246",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -421,7 +421,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b26-7528-a38d-fe0c4c0bddc8",
+            id: "01a21608-da43-7084-8db1-21123ef68cdf",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -437,7 +437,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b2a-72ce-83f4-92a2153d42ff",
+            id: "01a21608-da47-771a-9dfa-7590a0889cdf",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -453,7 +453,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b2e-72e5-a981-81b19d02e935",
+            id: "01a21608-da4b-720b-b763-0d627ef49ac4",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -469,7 +469,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b30-727b-9e7f-35e09cca81b5",
+            id: "01a21608-da4e-7192-b60e-0bda0a618143",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -485,7 +485,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b34-7391-8271-5c99328b9f67",
+            id: "01a21608-da52-74e9-b3a8-4b3c1c09e282",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -501,7 +501,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b37-7105-9ee3-2be229df0680",
+            id: "01a21608-da56-73bf-8e70-247ee7775525",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -517,7 +517,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b3b-779c-afc8-872910ef391e",
+            id: "01a21608-da5a-77e3-ba34-7203e666a432",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -533,7 +533,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b3f-73b6-a202-a739532d4d88",
+            id: "01a21608-da5d-770d-951a-306362e7661c",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -549,7 +549,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b43-767d-b1ee-052615220d31",
+            id: "01a21608-da60-754e-aaa9-f3c0ab539515",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -565,7 +565,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b45-752f-96fe-d518f7f419c9",
+            id: "01a21608-da64-7467-9348-e65dca6b4361",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -581,7 +581,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b47-75a4-aad2-e452be5f3aaf",
+            id: "01a21608-da67-756e-adf2-125913964b77",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -597,7 +597,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b4b-735a-991f-80373bf99366",
+            id: "01a21608-da6a-72a2-8c79-25ef9f1b5bcc",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -613,7 +613,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b4f-7046-9b43-ff3b5b94b4c9",
+            id: "01a21608-da6e-74f1-bf78-77853c602224",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -629,7 +629,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b51-7426-bc01-456d5185d0db",
+            id: "01a21608-da71-75f4-8db9-142f5610b09c",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -645,7 +645,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b53-7592-94fd-571ba164db9a",
+            id: "01a21608-da73-716e-8f10-c2b51383bb53",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -661,7 +661,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b56-7319-9011-d8c3a79bd992",
+            id: "01a21608-da75-7459-a392-2dc4357796a8",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -677,7 +677,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b5a-7269-969e-ba56ba8cbb8f",
+            id: "01a21608-da79-76cd-8e8e-3dbc0fcdaa96",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -693,7 +693,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b5d-7383-9b91-05c1d7f88549",
+            id: "01a21608-da7d-7005-ab37-f246f94da2df",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -709,7 +709,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b61-7447-ae86-acb20057d0f1",
+            id: "01a21608-da81-72ae-9200-ad93856456e3",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -725,7 +725,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b65-764a-a3fa-67cb5554ad25",
+            id: "01a21608-da85-72ca-aefc-8215083c853a",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -741,7 +741,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b69-7418-950b-f51fc201a620",
+            id: "01a21608-da89-717d-8d2d-88ed6e77c952",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -757,7 +757,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b6b-735e-8a00-fb6b55fa4659",
+            id: "01a21608-da8d-7633-a0df-9265a2e63e73",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -773,7 +773,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b6f-7639-99a8-ba6ac4b4cdac",
+            id: "01a21608-da91-7522-be30-da57cffa2b06",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -789,7 +789,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b73-7739-ac18-b22e11f2ef75",
+            id: "01a21608-da95-74bc-a2f0-ec5ed65c64d6",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -805,7 +805,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b77-76e5-906e-8a7d63a8a046",
+            id: "01a21608-da99-722f-9352-28ee5fe365fb",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -821,7 +821,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b7b-70a1-a84f-cdff2ac6bda3",
+            id: "01a21608-da9c-73e9-9cf7-6099e04121c8",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -837,7 +837,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b7f-76bf-8b60-6836d18fb708",
+            id: "01a21608-da9f-769b-9481-5af891e98953",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -853,7 +853,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b83-76a9-b635-6856a2f5d55e",
+            id: "01a21608-daa3-75a5-95ea-e5c8f6ba2e8d",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -869,7 +869,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b85-77b3-a795-8c6140bb8d15",
+            id: "01a21608-daa7-7266-8059-da2181571d9d",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -885,7 +885,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b89-7664-bc23-02db1ba52145",
+            id: "01a21608-daab-764c-b2f9-958dc491e915",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -901,7 +901,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b8d-77ad-912f-dc9fff2a394f",
+            id: "01a21608-daaf-777c-b001-311da29e6452",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -917,7 +917,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b8f-770a-95d8-8b5764640509",
+            id: "01a21608-dab2-77dc-a7ce-98bbed375d61",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -933,7 +933,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b91-75c8-87da-462e7c049050",
+            id: "01a21608-dab4-75c8-b206-c5a230d9ebd9",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -949,7 +949,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b95-7022-9506-6b28e28ae8b7",
+            id: "01a21608-dab6-732a-8b4c-f22d6672e681",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -965,7 +965,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b99-73ec-b766-992835411cba",
+            id: "01a21608-daba-7420-9b03-2197de7c9cb0",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -981,7 +981,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3b9d-72c3-8067-289d400e1527",
+            id: "01a21608-dabe-728a-ab47-ac07aea4dfac",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -997,7 +997,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ba1-72a4-9042-a01c8f40357c",
+            id: "01a21608-dac2-77dc-ab07-d258e4c955e3",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1013,7 +1013,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ba5-74dc-8a30-e075560837e8",
+            id: "01a21608-dac6-75fc-a9fb-cc70a6ceeb88",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1029,7 +1029,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ba9-708b-93c5-b577d7677731",
+            id: "01a21608-daca-71f2-bae5-f6bb84472c01",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1045,7 +1045,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3bab-7414-b739-0b970d12d619",
+            id: "01a21608-dace-727d-9ed9-16f5e73281fe",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1061,7 +1061,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3baf-71b5-a32c-2f029c479640",
+            id: "01a21608-dad2-74e5-9949-c5f0471ff127",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1077,7 +1077,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3bb3-7769-b8a0-54d7392d8202",
+            id: "01a21608-dad6-7613-bd67-df038bd64a16",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1093,7 +1093,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3bb7-7794-b64a-3a2b421aa4ff",
+            id: "01a21608-dada-7466-b3b9-26eec189b16c",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1109,7 +1109,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3bbb-7082-824f-1bd33e458ba3",
+            id: "01a21608-dadd-70f5-a113-dffbe35840c1",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1125,7 +1125,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3bbf-720b-be5b-f3756b58f27f",
+            id: "01a21608-dae1-728d-8303-8e58f1927ca5",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1141,7 +1141,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3bc3-7556-8160-0d142a9e7cf6",
+            id: "01a21608-dae5-7059-8fd2-09a31a83674b",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1157,7 +1157,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3bc5-7307-baee-987a3c733065",
+            id: "01a21608-dae9-70fe-a8e0-52d13d810e32",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1173,7 +1173,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3bc9-75ea-b6ad-237041cceeb4",
+            id: "01a21608-daed-75cf-ab2f-2cae6a4c3965",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1189,7 +1189,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3bcd-75a7-a88e-a299d687d123",
+            id: "01a21608-daf1-733e-a5d5-f9c9806b985c",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1205,7 +1205,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3bcf-7510-b6ef-31ccf0af1202",
+            id: "01a21608-daf4-73d5-acf9-2907988ef794",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1221,7 +1221,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3bd2-7028-8e6b-56b0b3444aa4",
+            id: "01a21608-daf6-72f8-8714-67d14fa3b197",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1237,7 +1237,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3bd6-77ba-8fd4-3b68042ed820",
+            id: "01a21608-daf9-71d0-a968-4dae16f79719",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1253,7 +1253,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3bda-7730-91c9-c171625260a7",
+            id: "01a21608-dafd-70f6-97a6-7764ced59a76",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1269,7 +1269,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3bde-7441-8ee4-89ee2b9c0800",
+            id: "01a21608-db01-705f-a7bb-23ed86f965ee",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1285,7 +1285,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3be2-70b6-a9f9-04245f617abc",
+            id: "01a21608-db05-733d-b27b-744c566d6056",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1301,7 +1301,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3be6-71d8-9019-c211ab7c63c0",
+            id: "01a21608-db09-71aa-bb57-64b7e3391554",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1317,7 +1317,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3bea-77d5-a531-3b6170f15d7b",
+            id: "01a21608-db0d-70da-92e2-f1320b872148",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1333,7 +1333,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3bed-710a-a12b-b43c778734b4",
+            id: "01a21608-db11-77a7-8dcc-7caceccf7f40",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1349,7 +1349,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3bf1-76ac-955b-c84f5c053d9f",
+            id: "01a21608-db15-75e6-a5d0-bc54cb42f649",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1365,7 +1365,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3bf5-70a2-8944-879bfb50e11e",
+            id: "01a21608-db19-77f8-9832-001fb3a79cad",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1381,7 +1381,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3bf9-7702-b173-6f14cb96b160",
+            id: "01a21608-db1d-71f0-8fa0-444911be6657",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1397,7 +1397,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3bfd-7259-a70c-b317e73f946d",
+            id: "01a21608-db20-74ee-a74f-194d5fc796a0",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1413,7 +1413,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c01-7724-af8e-8760e2544152",
+            id: "01a21608-db24-7576-b6af-fd03ead93507",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1429,7 +1429,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c05-77c4-906c-d73fa5c5f7ac",
+            id: "01a21608-db28-723c-9fda-cb0cf2ad5909",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1445,7 +1445,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c07-70f6-9361-b94ba7e97da3",
+            id: "01a21608-db2c-722e-85ce-c14cfb4b0a2b",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1461,7 +1461,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c0c-7743-9184-86e80371ed29",
+            id: "01a21608-db30-7199-a574-6be4d5d6c919",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1477,7 +1477,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c10-75f2-b33e-bb37b0c0f082",
+            id: "01a21608-db34-7227-a858-72eb5b9b70dc",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1493,7 +1493,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c12-731a-9c79-997f61c26d97",
+            id: "01a21608-db37-715f-bf0f-eba59d4487c9",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1509,7 +1509,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c15-7172-87bf-67579e2017ed",
+            id: "01a21608-db3a-776a-bfbd-37ef271edf4e",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1525,7 +1525,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c19-7738-9e4a-7c8f8ba29801",
+            id: "01a21608-db3e-71a6-9b6e-08dd251799c8",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1541,7 +1541,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c1d-7056-a70b-c1a78de2b653",
+            id: "01a21608-db42-7649-a672-a5046bba2132",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1557,7 +1557,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c21-75a4-88eb-60c2cea11aae",
+            id: "01a21608-db46-7416-b0cc-8567b15538d1",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1573,7 +1573,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c25-771b-a8f8-7736dafb0382",
+            id: "01a21608-db4a-724c-a833-b75d957fa3cb",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1589,7 +1589,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c29-72e0-914f-252401ab9656",
+            id: "01a21608-db4d-70f4-8772-86eb5e856da4",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1605,7 +1605,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c2d-7172-84a2-420353393a3d",
+            id: "01a21608-db51-717e-88b9-31182ba02bbf",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1621,7 +1621,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c30-756a-ba43-72f2c8d8cc3b",
+            id: "01a21608-db55-7279-a3a4-6def3bb91429",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1637,7 +1637,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c34-7162-9ab0-f5a6f1bc290f",
+            id: "01a21608-db59-7458-9ea5-0813d823af9f",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1653,7 +1653,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c38-733d-a2f3-5cb4060b909d",
+            id: "01a21608-db5d-7702-a227-31404f4ce782",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1669,7 +1669,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c3c-76a6-ad62-ff5582cfac50",
+            id: "01a21608-db61-7680-8a8f-95f1eac0ba21",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1685,7 +1685,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c40-75c1-bb1c-e0026bd22a8b",
+            id: "01a21608-db65-76c3-bbf2-6cd01548ea6f",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1701,7 +1701,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c44-7096-ab98-01a90f735bd8",
+            id: "01a21608-db69-76e1-9155-16da7d2565d7",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1717,7 +1717,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c48-7726-b2f8-3bd4186ecd84",
+            id: "01a21608-db6d-753f-a533-892aeb07817e",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1733,7 +1733,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c4a-7588-bf70-3d81082fa9bf",
+            id: "01a21608-db71-7022-9d48-5dec665f5a5c",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1749,7 +1749,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c4f-7448-946f-e35829412f12",
+            id: "01a21608-db75-7189-baac-f1b992a7aec8",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1765,7 +1765,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c53-7562-8907-ae799f308a5d",
+            id: "01a21608-db78-706b-b19d-c947db7dfe12",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1781,7 +1781,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c55-7094-abfb-e5d345031e4a",
+            id: "01a21608-db7b-7216-a599-73b860eb3562",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1797,7 +1797,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c58-73fc-a853-33e61739767c",
+            id: "01a21608-db7e-71bb-b02e-588411cf2387",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1813,7 +1813,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c5d-740e-b780-f8553e1d49c7",
+            id: "01a21608-db81-72f6-a23a-3e1dbc0bc5d7",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1829,7 +1829,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c61-7549-b8a7-35766fce0130",
+            id: "01a21608-db85-777c-bde8-e633c852c907",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1845,7 +1845,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c65-75f0-b2c3-46c67fbd799d",
+            id: "01a21608-db89-7197-96d1-d47f6f2e3437",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1861,7 +1861,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c69-7514-abec-128040dd3da2",
+            id: "01a21608-db8d-72c2-bff6-ab1b3e6908f5",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1877,7 +1877,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c6d-75d2-b7fe-b13057ce55d9",
+            id: "01a21608-db91-736c-9d7c-0aca591c59f3",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1893,7 +1893,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c71-75b2-9fc7-db7e0012d1dd",
+            id: "01a21608-db95-709f-b6dc-18b4f926876c",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1909,7 +1909,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c74-76c7-85a0-1df747c1daea",
+            id: "01a21608-db9a-7005-9cb9-051176618019",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1925,7 +1925,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c78-70eb-a9bc-ee2915ffb755",
+            id: "01a21608-db9e-705a-b738-8b1f05eb72f2",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1941,7 +1941,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c7c-76f9-8207-9ac3919e6bcb",
+            id: "01a21608-dba3-7214-8bbe-a27a388b4d98",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1957,7 +1957,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c80-71c2-a7de-84d1724bfa7f",
+            id: "01a21608-dba7-77e7-a658-c40ccc4931ba",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1973,7 +1973,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c85-771d-9960-141caa57ffe2",
+            id: "01a21608-dbac-7226-b905-89a837a52e9f",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -1989,7 +1989,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c89-76a3-bfa6-0165b07bcc9b",
+            id: "01a21608-dbb0-76e3-877f-4ab2140730d3",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2005,7 +2005,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c8d-7208-89fe-5ac77e9c28c3",
+            id: "01a21608-dbb3-75e8-bfd9-a1d7c80c5162",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2021,7 +2021,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c90-77bd-ad99-7822db106d48",
+            id: "01a21608-dbb6-77e9-a1b5-d5b5907128f0",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2037,7 +2037,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c94-7369-95b3-718ce58c2ba5",
+            id: "01a21608-dbba-72ef-abec-a18b2d58b897",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2053,7 +2053,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c98-756a-95a5-d29412cd0d7b",
+            id: "01a21608-dbbe-7219-a573-bab0de471c95",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2069,7 +2069,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c9b-719d-ae85-d69e5343dbc5",
+            id: "01a21608-dbc0-72d3-9e8b-2cd9170a1b24",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2085,7 +2085,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3c9d-75e9-b98d-40968a948912",
+            id: "01a21608-dbc3-714c-8c56-9e7487f5f043",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2101,7 +2101,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ca2-775f-8cca-20c138ec7aee",
+            id: "01a21608-dbc6-7385-8705-6cc34563f38d",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2117,7 +2117,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ca7-777a-afc2-4f3ee97fe2b7",
+            id: "01a21608-dbca-7080-88e6-e7a530de56fb",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2133,7 +2133,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3cab-75d3-ac83-c49fb12a0c37",
+            id: "01a21608-dbce-76ca-b70b-e05ea6062449",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2149,7 +2149,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3caf-759d-a9d9-6697336035e1",
+            id: "01a21608-dbd2-7363-bb55-d2dc7e3341b5",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2165,7 +2165,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3cb3-71a8-b566-36b7ee245b00",
+            id: "01a21608-dbd7-753c-b1e6-7066f6dfa861",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2181,7 +2181,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3cb7-7049-ba76-743a5f153b42",
+            id: "01a21608-dbdb-756f-8da9-a71c61a468c8",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2197,7 +2197,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3cba-77ec-b736-2b8d25211b4a",
+            id: "01a21608-dbdf-7124-a5b6-3cba19dc33a9",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2213,7 +2213,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3cbe-70f6-9089-81d3a2d9265d",
+            id: "01a21608-dbe3-749a-baab-a31f5c27eeae",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2229,7 +2229,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3cc2-755c-85cd-0defe066292f",
+            id: "01a21608-dbe8-776d-bcd9-823b1f8ea7a8",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2245,7 +2245,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3cc6-72e1-a592-e3b64a53b09c",
+            id: "01a21608-dbed-7057-8bfb-aeda0b53e6b8",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2261,7 +2261,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3cca-717a-8522-f80af5bc30f0",
+            id: "01a21608-dbf2-7366-9545-e2f05c38a83f",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2277,7 +2277,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3cce-709d-bc8b-db3ab5bc0cbd",
+            id: "01a21608-dbf6-7511-bd65-ff685f2b1b0e",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2293,7 +2293,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3cd2-7482-95eb-857c171e1e5e",
+            id: "01a21608-dbfb-769f-a439-f898b34ead27",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2309,7 +2309,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3cd5-7060-b066-8469c9020226",
+            id: "01a21608-dc00-75a7-bc97-2cbb306b6dd8",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2325,7 +2325,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3cd9-7412-be57-e6867fd45023",
+            id: "01a21608-dc05-7024-bb3d-003f166707a6",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2341,7 +2341,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3cde-75ec-b595-f2cffef52663",
+            id: "01a21608-dc0a-7493-9474-0478aceede6b",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2357,7 +2357,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ce1-738b-8bea-a1e44f2c5fa7",
+            id: "01a21608-dc0d-703e-a276-242a796cbb2c",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2373,7 +2373,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ce4-73bf-89d5-ac6d195a8698",
+            id: "01a21608-dc11-72d0-9f0d-0e6716c49c38",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2389,7 +2389,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ce8-7472-aafc-01835be45228",
+            id: "01a21608-dc14-73f4-aaa7-2b8591ad677d",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2405,7 +2405,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ced-748c-97f6-721ae6a406f2",
+            id: "01a21608-dc18-724f-bfe3-369e51369c88",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2421,7 +2421,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3cf1-74d0-aebc-ade081a9adfb",
+            id: "01a21608-dc1d-7075-9b3f-ec49183a361f",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2437,7 +2437,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3cf6-7278-b7f5-e4b786571c6e",
+            id: "01a21608-dc22-701c-9093-445c73d30acd",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2453,7 +2453,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3cfb-7148-a2e5-b452bfc7a2dd",
+            id: "01a21608-dc27-714d-8a0d-1ee29345aa4c",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2469,7 +2469,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d00-72cd-a45d-3274fe264c91",
+            id: "01a21608-dc2c-7307-a825-154eaafbccbe",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2485,7 +2485,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d03-73f9-9436-43b432255d5b",
+            id: "01a21608-dc30-76b9-8353-7a0eb24df46e",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2501,7 +2501,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d07-7789-af56-b09d2ec92df7",
+            id: "01a21608-dc34-76d1-8278-1dba4f2a6c13",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2517,7 +2517,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d0c-701e-984c-d9b1edf5d465",
+            id: "01a21608-dc39-7036-a8fa-5f2dfa95ea4e",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2533,7 +2533,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d11-70b7-be1c-4637501f611b",
+            id: "01a21608-dc3e-7415-badd-5e1d27507f4d",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2549,7 +2549,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d16-7746-a5e7-25d132879c62",
+            id: "01a21608-dc43-76d0-ad3b-a03d5768a0f3",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2565,7 +2565,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d1b-7135-8b50-b0881dfb5220",
+            id: "01a21608-dc48-749a-b7e3-8504f5e2cc0a",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2581,7 +2581,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d20-7359-87bf-8183a9beb112",
+            id: "01a21608-dc4d-7231-b956-7bfa4bcb4f89",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2597,7 +2597,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d23-754e-8ee3-a68369e65646",
+            id: "01a21608-dc52-77f5-b641-8fd061c32e3b",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2613,7 +2613,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d28-74de-93a9-1d9649b95315",
+            id: "01a21608-dc57-727c-8021-a98196f71770",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2629,7 +2629,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d2d-71f9-8023-25c690710b11",
+            id: "01a21608-dc5c-735d-90b3-3cf37ea5b469",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2645,7 +2645,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d30-7349-b99a-5578e7d41167",
+            id: "01a21608-dc60-74de-9771-9ecd79269d03",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2661,7 +2661,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d33-72c3-8f7b-f734aae7d617",
+            id: "01a21608-dc63-75b3-a797-8ebb1d9ae17b",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2677,7 +2677,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d38-749b-a772-2b597b489bb5",
+            id: "01a21608-dc66-7107-b02a-77bb226aee47",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2693,7 +2693,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d3d-7644-94bd-00d15e9f5460",
+            id: "01a21608-dc6b-7667-b942-ca83bc827e96",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2709,7 +2709,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d42-7449-a74f-8434b69bd642",
+            id: "01a21608-dc70-75df-be54-fce143200078",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2725,7 +2725,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d47-73c2-ad4e-6d64b72bf5cc",
+            id: "01a21608-dc75-7251-aedc-34131e2a6e39",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2741,7 +2741,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d4c-77ab-8bab-d83c57daf56c",
+            id: "01a21608-dc7a-71b2-9ad5-9ab3a5256237",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2757,7 +2757,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d51-7618-9c9b-ea8928a04d23",
+            id: "01a21608-dc7f-73e6-9930-b4c1c4aa778a",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2773,7 +2773,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d54-7380-8cff-e3e622db154e",
+            id: "01a21608-dc83-724b-a3cd-dc043353b03a",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2789,7 +2789,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d59-77b3-953d-bdbcdc922e29",
+            id: "01a21608-dc87-75d4-9277-c5f47a72ff87",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2805,7 +2805,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d5e-77f0-bffb-14832577bd41",
+            id: "01a21608-dc8c-7244-bfb3-8a7fff335545",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2821,7 +2821,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d63-7599-96fa-b5656260051b",
+            id: "01a21608-dc91-7349-91ce-5fdd4419ae8a",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2837,7 +2837,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d68-74cd-bd43-496ea0478369",
+            id: "01a21608-dc96-7176-94a0-4c105fbc3315",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2853,7 +2853,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d6d-70c5-b7fc-9fc24af281e3",
+            id: "01a21608-dc9b-7715-9bea-78df5ddb69b8",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2869,7 +2869,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d72-74f2-84ae-ab7ee47ed104",
+            id: "01a21608-dca0-7058-a3cd-9418b8548ca9",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2885,7 +2885,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d75-7483-81d6-0a546a642671",
+            id: "01a21608-dca5-7508-9bba-206c8d794d7c",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2901,7 +2901,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d7a-7381-a996-fc73bf00ea4f",
+            id: "01a21608-dcaa-7342-abf5-49521d20a5e8",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2917,7 +2917,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d7f-730d-ba04-a5fc27b22cf0",
+            id: "01a21608-dcaf-7041-90f2-07c20d5cb8d4",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2933,7 +2933,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d82-7429-80ee-d87f331440e0",
+            id: "01a21608-dcb3-75e2-bce2-e770e7273432",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2949,7 +2949,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d85-76e9-9dd6-ae87dd7b8d6c",
+            id: "01a21608-dcb6-7370-b612-20e60f05461c",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2965,7 +2965,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d8a-70bb-8666-55e039a016b6",
+            id: "01a21608-dcba-745e-8158-d54f7d49ee36",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2981,7 +2981,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d8f-732e-97a8-ba3cb5b37bc7",
+            id: "01a21608-dcbe-7025-8b6b-0b1b8b55da85",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -2997,7 +2997,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d94-7766-8704-4607efd1ef24",
+            id: "01a21608-dcc3-7719-a045-81edf7828e2e",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3013,7 +3013,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d99-736c-bf5d-2c7979c125da",
+            id: "01a21608-dcc8-733d-9be0-9e97c7fa2fcc",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3029,7 +3029,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3d9e-769e-a276-f67eb4fe868b",
+            id: "01a21608-dccd-71fb-b862-cf5819b137da",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3045,7 +3045,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3da3-7157-9a88-b67fbc06cff2",
+            id: "01a21608-dcd2-75f5-9181-c8a97913e240",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3061,7 +3061,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3da6-7045-99a9-0bfafed1dd2b",
+            id: "01a21608-dcd6-72af-b76d-c5dff8be912e",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3077,7 +3077,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3dab-7172-a7b5-4242a526ed60",
+            id: "01a21608-dcdb-740d-9804-330a94db4264",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3093,7 +3093,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3db0-71b5-8941-18fbd8d0b0a2",
+            id: "01a21608-dce0-7080-aba2-6138ee6ce2a5",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3109,7 +3109,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3db5-726a-b873-a9b08225817a",
+            id: "01a21608-dce5-773b-85a8-5c53ca33afa2",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3125,7 +3125,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3db8-7365-813c-e4031688062c",
+            id: "01a21608-dcea-7096-ac72-8cab9d81f6d2",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3141,7 +3141,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3dbe-75b4-a901-90f7e318ad36",
+            id: "01a21608-dcef-76b2-ac16-88da75b3ad9e",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3157,7 +3157,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3dc3-773e-86cb-a883bbdfdce6",
+            id: "01a21608-dcf4-732e-8d37-9f8f07d6cfa2",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3173,7 +3173,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3dc6-7592-806b-f153dda59403",
+            id: "01a21608-dcf9-7579-8130-911d8045e723",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3189,7 +3189,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3dcb-705e-9c4b-8a4e0307b34a",
+            id: "01a21608-dcfe-702c-8eb0-57a61d6fa2e0",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3205,7 +3205,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3dd0-708b-92f1-87e519337812",
+            id: "01a21608-dd03-7000-8e77-66941582793c",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3221,7 +3221,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3dd3-75d3-a881-6c7ed8b83dd8",
+            id: "01a21608-dd07-7027-872b-0cb201f61881",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3237,7 +3237,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3dd7-7720-8cf7-85f32f219590",
+            id: "01a21608-dd0a-7455-930f-a2b2a638352a",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3253,7 +3253,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3dda-71df-b1e6-5fcf620a37df",
+            id: "01a21608-dd0e-7221-afd4-7fcab60fb144",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3269,7 +3269,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3de0-75c4-a8c9-62d203522d5c",
+            id: "01a21608-dd13-702d-a3cd-613629603496",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3285,7 +3285,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3de5-709b-b786-b0500a56c467",
+            id: "01a21608-dd18-7454-a1ba-419e327d5357",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3301,7 +3301,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3dea-76d5-b83e-41fb903a602f",
+            id: "01a21608-dd1d-74c3-8ba1-7adb0afa7905",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3317,7 +3317,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3def-7214-9088-0c0674b21708",
+            id: "01a21608-dd22-73d1-8107-efc4acfd5863",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3333,7 +3333,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3df4-7227-b726-04842585b944",
+            id: "01a21608-dd27-738f-9ab1-28593c8ae27d",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3349,7 +3349,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3df9-7429-b0b2-5da4b655ab55",
+            id: "01a21608-dd2b-7158-b0b6-cfedff0c0ce6",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3365,7 +3365,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3dfe-74ef-93bb-f0d8609da87a",
+            id: "01a21608-dd30-73e2-b0e0-54bd87f7fc03",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3381,7 +3381,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e03-770f-bb4e-19d43a6e6dc2",
+            id: "01a21608-dd35-730c-92f7-7c6893b62074",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3397,7 +3397,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e08-72dd-aa97-f1f95de72a12",
+            id: "01a21608-dd3a-7440-96d2-ec3ef2788fec",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3413,7 +3413,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e0d-7155-b4fe-9f0a1605c666",
+            id: "01a21608-dd3f-74ab-b2bf-51ec02743f7f",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3429,7 +3429,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e12-71de-af9d-41a9262228b6",
+            id: "01a21608-dd44-778e-acb3-40efa8697f93",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3445,7 +3445,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e17-7328-8fd0-5f32e159bf6e",
+            id: "01a21608-dd49-76d0-a9fd-db0482301e99",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3461,7 +3461,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e1a-748d-bbc2-f8b4263feebc",
+            id: "01a21608-dd4e-74a9-a9d6-c5219c13a2d1",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3477,7 +3477,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e1e-74cd-a73d-43e9db695add",
+            id: "01a21608-dd53-7561-ae66-5cd4bb611dc1",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3493,7 +3493,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e23-716f-96bd-ba3a0f341400",
+            id: "01a21608-dd58-76b4-9b4f-e3170cb06da3",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3509,7 +3509,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e26-7167-9fde-32b5cd533caf",
+            id: "01a21608-dd5c-7401-ad39-ceb75e0e0f95",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3525,7 +3525,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e2a-730f-8414-cf4457ea9b89",
+            id: "01a21608-dd60-718a-a9ca-ad97c3473ddf",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3541,7 +3541,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e2f-733b-99de-8f97bbae2a35",
+            id: "01a21608-dd63-76be-9fd2-f86fc6f49c02",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3557,7 +3557,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e34-70e1-afdc-ec68f334c768",
+            id: "01a21608-dd68-76e2-b99c-3d1702a24e82",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3573,7 +3573,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e39-7448-9aa5-a0f6b1d35a3d",
+            id: "01a21608-dd6d-778e-8204-8585fbb6ddd0",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3589,7 +3589,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e3e-77c8-88e4-6767efde11ed",
+            id: "01a21608-dd72-7611-9682-5030fd5ca85b",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3605,7 +3605,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e43-7242-aed7-74aaf04ec8ab",
+            id: "01a21608-dd77-779f-9156-0f1da14cc9db",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3621,7 +3621,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e48-7769-8109-6cee0e824456",
+            id: "01a21608-dd7c-7138-a890-4c86b255864d",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3637,7 +3637,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e4b-7757-a099-ecc5d4e15a1d",
+            id: "01a21608-dd80-77c5-be13-81bb9bbc9d8a",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3653,7 +3653,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e51-75d2-9c69-952f3ef2e5b0",
+            id: "01a21608-dd85-717e-9e5b-6d04ee0089b1",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3669,7 +3669,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e56-71eb-8617-54bd33353ecb",
+            id: "01a21608-dd8a-76e1-8ef2-6f7e14002d4d",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3685,7 +3685,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e5b-71b4-afa9-5f9fa550058e",
+            id: "01a21608-dd8f-7646-920c-a54b27d9b4f9",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3701,7 +3701,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e5f-77a1-8c09-5d4a8b2dce09",
+            id: "01a21608-dd94-777c-a956-bdcc2cdeafb4",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3717,7 +3717,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e64-77f6-89d3-f6d4d9563110",
+            id: "01a21608-dd99-7478-976c-dcd2727e2218",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3733,7 +3733,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e69-733f-a3f8-f60cdc60a04f",
+            id: "01a21608-dd9e-76d1-8021-42b6134013d5",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3749,7 +3749,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e6d-739a-8b31-107a783536cb",
+            id: "01a21608-dda3-7750-b223-df32e195e4b9",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3765,7 +3765,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e72-72de-a83c-c3add38a8477",
+            id: "01a21608-dda8-7537-b68d-b310c6632c96",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3781,7 +3781,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e78-7713-b802-1df12c36abff",
+            id: "01a21608-ddae-7347-ad48-f576305fe462",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3797,7 +3797,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e7b-726c-a5b8-aac741643263",
+            id: "01a21608-ddb2-7541-bc4f-4d221aaf2ce3",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3813,7 +3813,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e7f-72b9-8ccd-b39b6f52cae1",
+            id: "01a21608-ddb6-7534-b397-156929e32019",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3829,7 +3829,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e85-7725-b54e-14e390d083ef",
+            id: "01a21608-ddba-7423-8302-7500443eb98b",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3845,7 +3845,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e89-75a3-8ed2-c525209dccc3",
+            id: "01a21608-ddbf-77c8-9bb2-760d8280808f",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3861,7 +3861,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e8e-71cf-bcb4-faeab41338e1",
+            id: "01a21608-ddc4-7669-ac6c-5854bb8735c4",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3877,7 +3877,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e93-755c-bb39-9687ac48a5b6",
+            id: "01a21608-ddc9-7277-a411-cf8809caa08f",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3893,7 +3893,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e98-708d-ba6d-aa89774615c4",
+            id: "01a21608-ddce-7064-8811-613e9153575d",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3909,7 +3909,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3e9d-771e-a3d2-9121001eda46",
+            id: "01a21608-ddd3-7742-953c-2881d094d881",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3925,7 +3925,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ea2-76cc-be23-8b7ae2fd98b5",
+            id: "01a21608-ddd9-7418-932a-08c11cbce714",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3941,7 +3941,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ea7-700f-88a7-446f3edf56b1",
+            id: "01a21608-ddde-7477-8d7a-11d5c998295e",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3957,7 +3957,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3eac-741b-932f-bc65d80e6976",
+            id: "01a21608-dde3-775f-9cda-c696071d73aa",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3973,7 +3973,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3eb1-71fc-936a-4c43131db5c4",
+            id: "01a21608-dde7-738e-8401-3d0e61223b32",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -3989,7 +3989,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3eb6-779f-908f-a73bc8157ed1",
+            id: "01a21608-ddec-715c-abef-5d56f8d069e6",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4005,7 +4005,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ebb-76cf-8b84-277c44bad96e",
+            id: "01a21608-ddf1-751c-9d8c-e44b9227178c",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4021,7 +4021,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ec0-71a3-9eba-37e2253b45b3",
+            id: "01a21608-ddf6-77ba-b66c-f2fddf3550f8",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4037,7 +4037,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ec4-726a-9a28-9e1110822d10",
+            id: "01a21608-ddfb-73b6-bb07-0ac00e3fb893",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4053,7 +4053,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ec8-76a5-96ad-ad883d6dfa41",
+            id: "01a21608-de00-762e-8d7d-80ddff1e050a",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4069,7 +4069,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ecd-74d8-b135-bd02d49e82db",
+            id: "01a21608-de05-72b2-b6d7-4efea2aa10af",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4085,7 +4085,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ed2-750c-bd05-e3ec3f854296",
+            id: "01a21608-de0a-77d1-a08c-891d3beff348",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4101,7 +4101,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ed7-72d9-9d86-07adbaa5fcd4",
+            id: "01a21608-de0f-755e-899d-413d0760243f",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4117,7 +4117,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3edb-71dc-a797-2c551c1b38da",
+            id: "01a21608-de14-7581-ad12-c46dc9b10e20",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4133,7 +4133,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ee0-7509-8990-10db785680c8",
+            id: "01a21608-de19-73c8-9e0b-fcd656824c0b",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4149,7 +4149,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ee5-75e6-b56b-fc0afef7e494",
+            id: "01a21608-de1e-76c3-83b4-b8c1530459b6",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4165,7 +4165,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3eea-739a-b42a-c54f73425c56",
+            id: "01a21608-de23-7139-84e4-22dd0382b659",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4181,7 +4181,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3eef-751a-aa41-635364d3bc0f",
+            id: "01a21608-de28-747a-b105-cf9b6a668512",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4197,7 +4197,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ef4-7603-9c29-c609f1920176",
+            id: "01a21608-de2d-7453-adfd-7c92a07a86ec",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4213,7 +4213,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ef9-76f4-8d0b-48af9a77a83f",
+            id: "01a21608-de32-707f-8ea6-e708cb56cdd2",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4229,7 +4229,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3eff-758c-b3b6-e1f1f8313f2a",
+            id: "01a21608-de38-779f-9f2e-e300463bcd82",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4245,7 +4245,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f05-743a-b609-31a91ada1638",
+            id: "01a21608-de3e-75bc-9c53-c2b653a23960",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4261,7 +4261,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f0b-7237-9100-66481de68c6f",
+            id: "01a21608-de44-73c0-8843-067865b36f75",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4277,7 +4277,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f10-76eb-af29-59e582ef4da5",
+            id: "01a21608-de4a-74be-b415-28d2bc17114f",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4293,7 +4293,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f15-77f8-9c8e-15796926d275",
+            id: "01a21608-de50-75f0-8984-c298ff77fb28",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4309,7 +4309,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f1b-7040-aa4d-be6a0dbdbc91",
+            id: "01a21608-de55-75de-9488-21f7759a20e8",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4325,7 +4325,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f20-76ce-835d-b85c9372b6e7",
+            id: "01a21608-de5b-731a-87d3-06226b50fea2",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4341,7 +4341,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f26-7049-b8dd-691eadfb9649",
+            id: "01a21608-de61-71b8-9024-3dfd8c2aa35f",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4357,7 +4357,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f2b-7095-9f73-5c13c0e96dac",
+            id: "01a21608-de67-72f5-bf67-a61a06a82e6d",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4373,7 +4373,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f30-7038-9755-4cc352159392",
+            id: "01a21608-de6d-7002-ba75-ff23f315c799",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4389,7 +4389,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f36-72f4-b67a-c80cf3ea254c",
+            id: "01a21608-de73-72f3-abd4-7d6e08624408",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4405,7 +4405,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f3c-75f1-a879-d7feb4624a3e",
+            id: "01a21608-de79-769a-94fd-210f51a92ede",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4421,7 +4421,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f41-706c-aa73-30359db86997",
+            id: "01a21608-de7f-7461-9e2f-b83636cee342",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4437,7 +4437,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f47-7140-9aec-12653d7fd4ce",
+            id: "01a21608-de85-7739-9516-f4088c72d5de",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4453,7 +4453,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f4d-7502-bcc2-51d92c957f2d",
+            id: "01a21608-de8b-7697-bfda-81a54932fc6f",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4469,7 +4469,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f53-76cf-b40d-c98f1d94e3bd",
+            id: "01a21608-de91-703e-bedc-2b5c77606fe3",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4485,7 +4485,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f59-76c5-bb0d-e070f394d083",
+            id: "01a21608-de97-77aa-bc70-7ac2aee95c0c",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4501,7 +4501,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f5f-74a7-8db9-afedf3cc2458",
+            id: "01a21608-de9d-75a0-a4f0-b718a81d24c1",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4517,7 +4517,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f64-7618-9f3a-2d469aa5d4df",
+            id: "01a21608-dea3-76a2-8f2b-1d6ef05484cd",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4533,7 +4533,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f69-73fb-b2d6-15a598950845",
+            id: "01a21608-dea8-76e5-9c15-677acf90fb5a",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4549,7 +4549,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f6f-77c7-bee8-df564257b480",
+            id: "01a21608-dead-755d-99ea-4bf4f4756613",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4565,7 +4565,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f75-7086-805e-c2315e746335",
+            id: "01a21608-deb3-76f7-9295-1a0b35cfc49a",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4581,7 +4581,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f7b-7034-a618-314a8630d9b3",
+            id: "01a21608-deb9-7661-8bcb-380eeae18477",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4597,7 +4597,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f81-71c0-add8-fc11a9bd7f58",
+            id: "01a21608-debe-7658-a831-e30fabf4d23d",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4613,7 +4613,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f87-75b9-a4f9-1344ea5ae14b",
+            id: "01a21608-dec4-74e0-a846-37c01e76fcc5",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4629,7 +4629,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f8d-7631-afd9-a1ee399a39aa",
+            id: "01a21608-deca-7293-a685-f38598976edc",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4645,7 +4645,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f93-731e-85cd-36c632981a7f",
+            id: "01a21608-ded0-753d-9973-08c2803d7f92",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4661,7 +4661,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f99-7040-a6fe-91817934abab",
+            id: "01a21608-ded6-7526-9594-26ed03318146",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4677,7 +4677,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3f9f-72c1-a7fb-c9057891b433",
+            id: "01a21608-dedc-7256-b979-61b6727a30c5",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4693,7 +4693,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3fa5-70b9-a824-238226872eb5",
+            id: "01a21608-dee2-75f2-8cdf-9b440a572f66",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4709,7 +4709,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3fab-77eb-91ea-ae9d6f503825",
+            id: "01a21608-dee8-755c-b666-78ab12fa525f",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4725,7 +4725,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3fb1-713e-8a45-eea4ca0ce762",
+            id: "01a21608-deee-7791-bf80-c7b6ab76c517",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4741,7 +4741,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3fb7-7635-9f20-e1707deff136",
+            id: "01a21608-def4-7685-95af-8fd26b871184",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4757,7 +4757,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3fbd-71c0-a71a-d2cdc29e9baa",
+            id: "01a21608-def9-7577-bec8-25d53bff945c",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4773,7 +4773,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3fc3-7411-8c05-2256dab36b0c",
+            id: "01a21608-deff-7117-8f16-3dd9f2bf2702",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4789,7 +4789,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3fc9-77a9-a4dd-dc2347f1f892",
+            id: "01a21608-df05-7618-a2be-c42255a07610",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4805,7 +4805,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3fcf-7442-8b0e-dfbd846fe349",
+            id: "01a21608-df0b-72ae-b329-5ff0e81309b5",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4821,7 +4821,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3fd5-7071-92b6-3a45f38d8dae",
+            id: "01a21608-df11-72fa-a46c-a1cea19e5ca1",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4837,7 +4837,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3fdb-7296-804d-9b869d0275e0",
+            id: "01a21608-df17-769b-be24-f6814e43194c",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4853,7 +4853,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3fe1-7000-a15a-c65a31a4a412",
+            id: "01a21608-df1d-772c-93bd-6fd6613ee34a",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4869,7 +4869,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3fe7-700d-a09a-833593746cdd",
+            id: "01a21608-df23-7439-b9f5-afcb0f194b8a",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4885,7 +4885,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3fed-750a-9082-3a79d80bf6b6",
+            id: "01a21608-df2a-70c5-b987-4f18f9de1d66",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4901,7 +4901,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ff3-75a2-b733-32d211184c10",
+            id: "01a21608-df2f-757f-a377-46617e5f8c64",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4917,7 +4917,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3ff9-7406-aeac-2bc1b5e90779",
+            id: "01a21608-df35-77c9-9af4-ffa44e36e40f",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4933,7 +4933,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-3fff-7392-aea1-509067b76024",
+            id: "01a21608-df3b-753b-83cf-c347e4f4c2be",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4949,7 +4949,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-4005-75ab-b028-2c533de7e5fe",
+            id: "01a21608-df41-7269-a72f-1081411f6aed",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4965,7 +4965,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-400b-70a3-bf7f-200cd2d58c51",
+            id: "01a21608-df47-7365-906f-4ad93536744a",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4981,7 +4981,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-4011-7131-8845-ad655ca3cdae",
+            id: "01a21608-df4d-73c1-aafa-e7644b46d5c9",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -4997,7 +4997,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-4017-7486-b6dc-f2c6d36cf73f",
+            id: "01a21608-df53-72a5-84a3-991e55e2d356",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -5013,7 +5013,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-401d-73f8-af68-17ec9768ee49",
+            id: "01a21608-df59-7503-a2ad-1e0575eaa545",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -5029,7 +5029,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-4023-75be-ae61-754a12f44df2",
+            id: "01a21608-df5f-7269-91bf-1b7d4a3b60e6",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -5045,7 +5045,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-4029-756a-9a18-6125dcf39367",
+            id: "01a21608-df65-7576-88d4-4588a6ee4df4",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -5061,7 +5061,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-402f-7146-80b4-4311699f66c2",
+            id: "01a21608-df6b-7715-a95e-002361ab0cee",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -5077,7 +5077,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-4035-779d-af90-f64b52bfdffc",
+            id: "01a21608-df70-77d6-a519-b7dc77b3a9d7",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -5093,7 +5093,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-403b-73a3-8e75-19c98f815c67",
+            id: "01a21608-df76-7716-94c8-9c572d129c61",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -5109,7 +5109,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-4041-7552-a2bc-015d2238a16e",
+            id: "01a21608-df7c-710a-a4a3-687ecce37908",
             components: {
                 "MeshRenderer": (
                     cast_shadows: true,
@@ -5125,7 +5125,7 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-4047-76c1-9fed-9bd5090625b0",
+            id: "01a21608-df81-7337-803d-ce0172618eb3",
             components: {
                 "DirectionalLight": (
                     color: (1.0, 0.95, 0.86),
@@ -5150,7 +5150,18 @@ Scene(
             },
         ),
         Entity(
-            id: "01a215f9-404d-76a6-aefc-71f80d30a5a3",
+            id: "01a21608-df8a-7785-81f1-1cc53f70990c",
+            components: {
+                "Environment": (
+                    intensity: 8000.0,
+                    map: "asset:01a21607-9e7e-7176-b1a4-a8ea047b8f57",
+                    skybox: false,
+                ),
+                "Name": "Sky",
+            },
+        ),
+        Entity(
+            id: "01a21608-df91-70aa-82ad-382bce9565cf",
             components: {
                 "Camera": (
                     clear: (0.45, 0.62, 0.85, 1.0),

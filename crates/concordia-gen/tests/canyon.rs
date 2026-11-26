@@ -224,7 +224,7 @@ fn canyon_layout_is_deterministic_and_uniformly_scaled() {
 }
 
 /// The ground path flies 2.5 m over the floor down the canyon's centreline, looking 30 m ahead;
-/// the overhead path looks down on the centreline from high up. Both repeat exactly.
+/// the overhead path looks down on the centreline from high up (90 m). Both repeat exactly.
 #[test]
 fn canyon_camera_paths_follow_the_centreline() {
     let canyon = Canyon::M4;
@@ -275,6 +275,22 @@ fn generators_use_no_platform_maths() {
     );
     assert_eq!(
         glb_hash(&tile, Canyon::M4.seed),
-        "08859ea1e5ee016af5dcb567baeea91c29eb2725c7b0597c967f8990862bbf7c"
+        "a40a007c5d1d955da1351999122af186385c42da6dbf548ceab4cb382147ddf2"
     );
+}
+
+/// A strip is a heightfield seen from above: every triangle winds counter-clockwise from +Y (its
+/// face normal points up), so it is drawn, not back-face culled.
+#[test]
+fn canyon_tiles_face_up() {
+    let m = tile(1, [32, 12]);
+    for t in m.indices.chunks(3) {
+        let [a, b, c] = [t[0], t[1], t[2]].map(|i| m.positions[i as usize]);
+        let (u, v) = (
+            [b[0] - a[0], b[1] - a[1], b[2] - a[2]],
+            [c[0] - a[0], c[1] - a[1], c[2] - a[2]],
+        );
+        let ny = u[2] * v[0] - u[0] * v[2];
+        assert!(ny > 0.0, "triangle {t:?} faces down: {a:?} {b:?} {c:?}");
+    }
 }

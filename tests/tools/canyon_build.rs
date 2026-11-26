@@ -19,6 +19,7 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 const ACTOR: &str = "tool:canyon-builder";
 const SCENE: &str = "scenes/canyon.scene.ron";
+const SKY: &str = "assets/sky/sky.png";
 const MATERIALS: [&str; 3] = [
     "materials/sandstone.material.ron",
     "materials/rock_red.material.ron",
@@ -73,6 +74,7 @@ fn main() -> Result<()> {
         total += triangles[&p.asset];
     }
     spawn_sun(&mut b)?;
+    spawn_sky(&mut b)?;
     spawn_camera(&mut b, canyon.ground_path()[0])?;
     b.call("scene.save", json!({"actor": ACTOR}))?;
     write_perf_scenes(&root.join("tests/perf/scenes"), &canyon)?;
@@ -159,6 +161,29 @@ fn spawn_sun(b: &mut Builder) -> Result<()> {
             "DirectionalLight": {"color": [1.0, 0.95, 0.86], "illuminance_lux": 100000.0, "shadows": {
                 "cascades": 3, "depth_bias": 0.02, "max_distance": 150.0, "normal_bias": 1.5, "pcf": "X3",
                 "resolution": 2048, "split_lambda": 0.75, "stabilize": true}},
+        }, "actor": ACTOR}),
+    )?;
+    Ok(())
+}
+
+/// A soft, neutral ambient map (generated, 64 × 64: sky and sand bounce averaged, the same from
+/// every direction) lighting the scene as an environment, without a skybox, so shaded walls
+/// aren't black (a culling hole in a black shadow would be invisible to
+/// the image comparisons).
+fn spawn_sky(b: &mut Builder) -> Result<()> {
+    let out = b.call(
+        "gen.run",
+        json!({"provider": "texture", "request": {"size": 64,
+               "pattern": {"Noise": {"kind": "Value", "cells": 4, "octaves": 2}},
+               "colors": [[176, 178, 184, 255], [194, 186, 174, 255]]},
+               "seed": 1, "path": SKY, "actor": ACTOR}),
+    )?;
+    let id = out["id"].as_str().ok_or("an asset id")?;
+    b.call(
+        "entity.spawn",
+        json!({"components": {
+            "Name": "Sky",
+            "Environment": {"intensity": 8000.0, "map": format!("asset:{id}"), "skybox": false},
         }, "actor": ACTOR}),
     )?;
     Ok(())

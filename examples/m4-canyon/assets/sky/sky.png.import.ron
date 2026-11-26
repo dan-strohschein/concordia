@@ -1,0 +1,42 @@
+Sidecar(
+    id: "01a21607-9e7e-7176-b1a4-a8ea047b8f57",
+    importer: "image",
+    importer_version: 1,
+    provenance: Some((
+        inputs_hash: "419066de6ea421d32122905e9a9bdf823a84f328d10d43038c16ffb362241931",
+        output: Some("c73d246642c744d28219b37393550fc2b2e74d7136cedb3fe3154d75f39f3ada"),
+        provider: "texture",
+        provider_version: 1,
+        request: {
+            "colors": [
+                [
+                    176,
+                    178,
+                    184,
+                    255,
+                ],
+                [
+                    194,
+                    186,
+                    174,
+                    255,
+                ],
+            ],
+            "pattern": {
+                "Noise": {
+                    "cells": 4,
+                    "kind": "Value",
+                    "octaves": 2,
+                },
+            },
+            "size": 64,
+        },
+        seed: 1,
+    )),
+    settings: {
+        "color_space": "Srgb",
+        "generate_mips": true,
+        "normal_map": false,
+    },
+    sub_assets: {},
+)
