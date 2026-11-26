@@ -181,3 +181,178 @@ fn vsm_frames_mark_allocate_and_clear_pages() {
         assert!(order.windows(2).all(|w| w[0] < w[1]), "{passes:?}");
     }
 }
+
+/// The fraction of `image`'s pixels in its lower half that are darker than `threshold` (luma).
+fn dark_fraction(image: &Image, threshold: f32) -> f32 {
+    let mut dark = 0;
+    let mut total = 0;
+    for y in image.height / 2..image.height {
+        for x in 0..image.width {
+            let [r, g, b, _] = common::pixel(image, x, y);
+            let luma = 0.2126 * f32::from(r) + 0.7152 * f32::from(g) + 0.0722 * f32::from(b);
+            dark += u32::from(luma < threshold);
+            total += 1;
+        }
+    }
+    dark as f32 / total as f32
+}
+
+/// Virtual shadow maps shadow the ground where cascades do: the balls' and the box's shadows cover
+/// about the same share of the ground (within 15 % of each other), and the pictures are close.
+#[test]
+fn vsm_shadows_land_where_csm_shadows_do() {
+    for mut r in meshlet_renderers() {
+        let mut scene = yard(Msaa::Off, true);
+        let csm = render(&mut r, &mut scene, ShadowTechnique::csm, ViewMode::lit);
+        let vsm = render(&mut r, &mut scene, ShadowTechnique::vsm, ViewMode::lit);
+        let (c, v) = (dark_fraction(&csm, 60.0), dark_fraction(&vsm, 60.0));
+        assert!(c > 0.02, "the scene has shadows: {c}");
+        assert!(
+            (v - c).abs() <= 0.15 * c,
+            "{:?}: csm {c}, vsm {v}",
+            r.stats().raster_path
+        );
+        let flip = common::flip(&csm, &vsm).mean;
+        assert!(flip <= 0.05, "{:?}: FLIP {flip}", r.stats().raster_path);
+    }
+}
+
+/// Both meshlet draw paths write the same pages: mesh shaders against compute + indirect.
+#[test]
+fn vsm_matches_on_both_routes() {
+    let renderers = meshlet_renderers();
+    if renderers.len() < 2 {
+        return;
+    }
+    let images: Vec<Image> = renderers
+        .into_iter()
+        .map(|mut r| {
+            render(
+                &mut r,
+                &mut yard(Msaa::Off, true),
+                ShadowTechnique::vsm,
+                ViewMode::lit,
+            )
+        })
+        .collect();
+    let flip = common::flip(&images[0], &images[1]).mean;
+    assert!(flip <= 0.001, "FLIP {flip}");
+}
+
+/// Asked for `vsm` on a device without fragment atomics or attachment-less passes (masked), the
+/// renderer draws CSM: the same picture as asking for `csm`.
+#[test]
+fn vsm_falls_back_to_csm_without_caps() {
+    for mask in [
+        concordia_rhi::CapsMask {
+            fragment_atomics: true,
+            ..Default::default()
+        },
+        concordia_rhi::CapsMask {
+            attachmentless_passes: true,
+            ..Default::default()
+        },
+    ] {
+        let Some(mut r) = common::renderer_masked(&mask) else {
+            return;
+        };
+        let mut scene = yard(Msaa::Off, true);
+        let csm = render(&mut r, &mut scene, ShadowTechnique::csm, ViewMode::lit);
+        let fallback = render(&mut r, &mut scene, ShadowTechnique::vsm, ViewMode::lit);
+        assert_eq!(csm.rgba, fallback.rgba, "{mask:?}");
+    }
+}
+
+/// `render.stats.shadows` says which technique ran and counts the pages: every requested page gets
+/// one with the default pool, and meshlets were drawn into the levels.
+#[test]
+fn vsm_stats_report_the_technique_and_pages() {
+    for mut r in meshlet_renderers() {
+        let mut scene = yard(Msaa::Off, true);
+        render(&mut r, &mut scene, ShadowTechnique::vsm, ViewMode::lit);
+        let s = r.stats().shadows;
+        assert_eq!(
+            (s.requested, s.technique),
+            (ShadowTechnique::vsm, ShadowTechnique::vsm)
+        );
+        assert_eq!(
+            (s.pool_pages, s.levels, s.reason.as_deref()),
+            (4096, 16, None)
+        );
+        assert!(s.pages_requested > 0, "{s:?}");
+        assert_eq!(s.pages_allocated, s.pages_requested, "{s:?}");
+        assert_eq!(s.pages_starved, 0);
+        assert!(s.shadow_meshlets > 0, "{s:?}");
+        render(&mut r, &mut scene, ShadowTechnique::csm, ViewMode::lit);
+        let s = r.stats().shadows;
+        assert_eq!(
+            (s.technique, s.pool_pages, s.pages_requested),
+            (ShadowTechnique::csm, 0, 0)
+        );
+    }
+}
+
+/// Where `vsm` can't run, the stats say so and why.
+#[test]
+fn vsm_reports_why_it_fell_back() {
+    let mask = concordia_rhi::CapsMask {
+        fragment_atomics: true,
+        ..Default::default()
+    };
+    let Some(mut r) = common::renderer_masked(&mask) else {
+        return;
+    };
+    render(
+        &mut r,
+        &mut yard(Msaa::Off, true),
+        ShadowTechnique::vsm,
+        ViewMode::lit,
+    );
+    let s = r.stats().shadows;
+    assert_eq!(
+        (s.requested, s.technique),
+        (ShadowTechnique::vsm, ShadowTechnique::csm)
+    );
+    assert!(
+        s.reason.as_deref().is_some_and(|r| r.contains("atomics")),
+        "{s:?}"
+    );
+}
+
+/// Meshlets over no page due to be drawn are culled: twenty balls far behind the camera (inside
+/// the coarse levels, under no visible pixel's page) add no shadow meshlets.
+#[test]
+fn page_rect_culling_skips_meshlets_over_clean_pages() {
+    for mut r in meshlet_renderers() {
+        let mut near = yard(Msaa::Off, true);
+        render(&mut r, &mut near, ShadowTechnique::vsm, ViewMode::lit);
+        let without = r.stats().shadows.shadow_meshlets;
+        let mut far = yard(Msaa::Off, true);
+        let ball = far.assets.insert_mesh(
+            "far ball",
+            with_meshlets(concordia_assets::shapes::sphere(1.0, 64, 32)),
+        );
+        let stone = far.material("far stone", lit([0.5, 0.5, 0.5]));
+        for i in 0..20 {
+            let id = far.entity(
+                Vec3::new(-20.0 + 2.0 * i as f32, 1.0, 300.0),
+                Quat::IDENTITY,
+                Vec3::ONE,
+            );
+            far.world
+                .insert(
+                    id,
+                    concordia_assets::MeshRenderer {
+                        mesh: ball.clone(),
+                        material: stone.clone(),
+                        cast_shadows: true,
+                    },
+                )
+                .unwrap();
+        }
+        render(&mut r, &mut far, ShadowTechnique::vsm, ViewMode::lit);
+        let with = r.stats().shadows.shadow_meshlets;
+        assert!(without > 0);
+        assert_eq!(with, without, "{:?}", r.stats().raster_path);
+    }
+}

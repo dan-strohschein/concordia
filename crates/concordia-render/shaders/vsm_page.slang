@@ -6,12 +6,6 @@ import vsm;
 
 struct MarkPush { uint depth; uint params; uint table; uint views; uint width; uint height; };
 
-// The light clip position of `world` in depth view `view`.
-float4 vsm_clip(uint views, uint view, float3 world) {
-    float4* m = ((float4*)g_buffers.ptr[views]) + view * 4;
-    return m[0] * world.x + m[1] * world.y + m[2] * world.z + m[3];
-}
-
 // Requests the pages of `level` under `world`'s texel ± `radius` texels (at most four; none
 // outside the level).
 void request(uint params, uint table, uint views, uint level, float3 world, float radius) {

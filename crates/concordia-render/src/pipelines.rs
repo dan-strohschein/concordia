@@ -102,11 +102,24 @@ pub(crate) enum Geometry {
 }
 
 /// The mesh-shader path's stages, compiled when the device takes the path (4.3b).
+/// Caster pipelines writing virtual-shadow-map pages (no targets; fragments write the pool).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct VsmCasters {
+    /// M1 draws (`shadow_vs`, `vsm_fs`).
+    pub(crate) m1: Pipeline,
+    /// Meshlet buckets on the compute route (`meshlet_shadow_vs`, `meshlet_vsm_fs`).
+    pub(crate) meshlets: Pipeline,
+    /// Meshlet buckets on the mesh-shader route, when the device takes it.
+    pub(crate) mesh: Option<Pipeline>,
+}
+
 struct MeshStages {
     object: ObjectStage,
     mesh: MeshStage,
     /// Depth-only mesh pipeline for meshlet shadow casters (`meshlet_shadow_mesh`).
     shadow: Pipeline,
+    /// Its mesh stage (VSM casters reuse it).
+    shadow_stage: MeshStage,
 }
 
 /// What a forward-pass pipeline is, apart from where its vertices come from.
@@ -148,6 +161,8 @@ pub(crate) struct Pipelines {
     hzb: Pipeline,
     /// Virtual shadow maps' page work (`vsm_page.slang`; M4 4.7).
     vsm: crate::vsm::VsmPipelines,
+    /// Virtual shadow maps' caster pipelines, where the device runs them.
+    vsm_casters: Option<VsmCasters>,
     /// The own temporal resolve (`temporal.slang`; M4 4.6).
     temporal: crate::temporal::own::OwnPipelines,
     /// The mesh-shader path's stages, when the device takes it.
@@ -217,14 +232,10 @@ impl Pipelines {
                 label: label.into(),
             })
         };
-        let shadow = shadow_depth(
-            compile("forward.slang", "shadow_vs", Stage::Vertex)?,
-            "shadow depth",
-        )?;
-        let meshlet_shadow = shadow_depth(
-            compile("meshlet.slang", "meshlet_shadow_vs", Stage::Vertex)?,
-            "meshlet shadow depth",
-        )?;
+        let shadow_vs = compile("forward.slang", "shadow_vs", Stage::Vertex)?;
+        let shadow = shadow_depth(shadow_vs.clone(), "shadow depth")?;
+        let meshlet_shadow_vs = compile("meshlet.slang", "meshlet_shadow_vs", Stage::Vertex)?;
+        let meshlet_shadow = shadow_depth(meshlet_shadow_vs.clone(), "meshlet shadow depth")?;
         let kernel =
             |file: &str, entry: &str| compute_pipeline(device, compiler.as_ref(), file, entry);
         let cull = crate::meshlet_pass::CullPipelines {
@@ -260,6 +271,39 @@ impl Pipelines {
             compile("forward.slang", "sky_fs", Stage::Fragment)?,
         );
         let hzb_view = compile("forward.slang", "hzb_view_fs", Stage::Fragment)?;
+        let vsm_casters = match crate::vsm::supported(device.caps()) {
+            Ok(()) => {
+                let page_writer = |vertex: ShaderSource, fragment: ShaderSource, label: &str| {
+                    device.create_graphics_pipeline(&GraphicsPipelineDesc {
+                        vertex,
+                        fragment: Some(fragment),
+                        color_formats: Vec::new(),
+                        depth: None,
+                        samples: SampleCount::X1,
+                        cull: CullMode::None,
+                        blend: BlendMode::Opaque,
+                        color_writes: concordia_rhi::ColorWrites::ALL,
+                        label: label.into(),
+                    })
+                };
+                let m1 = page_writer(
+                    shadow_vs,
+                    compile("forward.slang", "vsm_fs", Stage::Fragment)?,
+                    "vsm casters",
+                )?;
+                let meshlets = page_writer(
+                    meshlet_shadow_vs,
+                    compile("meshlet.slang", "meshlet_vsm_fs", Stage::Fragment)?,
+                    "vsm meshlet casters",
+                )?;
+                let mesh = match &mesh_stages {
+                    Some(stages) => Some(vsm_mesh(device, compiler.as_ref(), stages)?),
+                    None => None,
+                };
+                Some(VsmCasters { m1, meshlets, mesh })
+            }
+            Err(_) => None,
+        };
         Ok(Self {
             compiler,
             forward,
@@ -272,6 +316,7 @@ impl Pipelines {
             cull,
             hzb,
             vsm,
+            vsm_casters,
             temporal,
             mesh_stages,
             sky,
@@ -492,6 +537,11 @@ impl Pipelines {
         self.hzb
     }
 
+    /// Virtual shadow maps' caster pipelines (`None` where the device can't run them).
+    pub(crate) fn vsm_casters(&self) -> Option<VsmCasters> {
+        self.vsm_casters
+    }
+
     /// Virtual shadow maps' page work pipelines.
     pub(crate) fn vsm(&self) -> crate::vsm::VsmPipelines {
         self.vsm
@@ -657,6 +707,33 @@ impl Pipelines {
 }
 
 /// Compiles the mesh-shader path's stages and creates its shadow pipeline (4.3b).
+/// The mesh-shader route's VSM caster pipeline: the shadow object and mesh stages, `meshlet_vsm_mesh_fs`.
+fn vsm_mesh(
+    device: &dyn Device,
+    compiler: &dyn ShaderCompiler,
+    stages: &MeshStages,
+) -> Result<Pipeline, RenderError> {
+    let fragment = compile(
+        device,
+        compiler,
+        "meshlet.slang",
+        "meshlet_vsm_mesh_fs",
+        Stage::Fragment,
+    )?;
+    Ok(device.create_mesh_pipeline(&MeshPipelineDesc {
+        object: Some(stages.object.clone()),
+        mesh: stages.shadow_stage.clone(),
+        fragment: Some(fragment.source()),
+        color_formats: Vec::new(),
+        depth: None,
+        samples: SampleCount::X1,
+        cull: CullMode::None,
+        blend: BlendMode::Opaque,
+        color_writes: concordia_rhi::ColorWrites::ALL,
+        label: "vsm meshlet casters (mesh)".into(),
+    })?)
+}
+
 fn mesh_stages(
     device: &dyn Device,
     compiler: &dyn ShaderCompiler,
@@ -685,9 +762,10 @@ fn mesh_stages(
         })
     };
     let mesh = mesh_stage("meshlet_mesh")?;
+    let shadow_stage = mesh_stage("meshlet_shadow_mesh")?;
     let shadow = device.create_mesh_pipeline(&MeshPipelineDesc {
         object: Some(object.clone()),
-        mesh: mesh_stage("meshlet_shadow_mesh")?,
+        mesh: shadow_stage.clone(),
         fragment: None,
         color_formats: Vec::new(),
         depth: Some(DepthState {
@@ -705,5 +783,6 @@ fn mesh_stages(
         object,
         mesh,
         shadow,
+        shadow_stage,
     })
 }

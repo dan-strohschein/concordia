@@ -205,6 +205,8 @@ struct InFlight {
     clusters: u64,
     /// The meshlet path's cull codes, read when the frame retires.
     cull: Option<crate::cull_stats::CullReadback>,
+    /// The virtual shadow maps' counts, read when the frame retires.
+    vsm: Option<crate::vsm::VsmReadback>,
 }
 
 /// A frame's cluster overflow: read now, or once a presented frame retires.
@@ -215,6 +217,7 @@ enum Overflow {
         clusters: u64,
         value: u64,
         cull: Option<crate::cull_stats::CullReadback>,
+        vsm: Option<crate::vsm::VsmReadback>,
     },
 }
 
@@ -282,6 +285,8 @@ struct FramePlan<'a> {
     prepass: Option<crate::forward_pass::Prepass>,
     /// The virtual shadow maps' page work.
     vsm: Option<crate::vsm::VsmJob>,
+    /// Their casters.
+    vsm_draws: Option<crate::vsm::CasterDraws>,
     /// Skybox pipeline and push constants, drawn first in the forward pass.
     sky: Option<(Pipeline, Vec<u8>)>,
     output: Output,
@@ -419,6 +424,8 @@ pub struct RenderStats {
     pub meshlets: crate::MeshletCounts,
     /// What the temporal resolve did (M4 4.6).
     pub temporal: crate::temporal::TemporalStats,
+    /// The sun's shadows: the technique that ran and the virtual shadow maps' pages (M4 4.7).
+    pub shadows: crate::vsm::ShadowStats,
 }
 
 impl Renderer {
@@ -745,6 +752,7 @@ impl Renderer {
                     clusters,
                     value,
                     cull,
+                    vsm,
                 },
             )) => {
                 self.in_flight.push_back(InFlight {
@@ -753,6 +761,7 @@ impl Renderer {
                     overflow: buffer,
                     clusters,
                     cull,
+                    vsm,
                 });
                 Ok(image)
             }
@@ -1067,6 +1076,8 @@ impl Renderer {
         });
         let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
         let vsm_on = self.vsm_runs(world);
+        self.note_shadows(vsm_on);
+        let vsm_casters = self.pipelines.vsm_casters().filter(|_| vsm_on);
         let shadows = match vsm_on {
             true => None,
             false => self.prepare_shadows(world, &skinning.placements, view, aspect, dir)?,
@@ -1373,7 +1384,24 @@ impl Renderer {
             true => &[][..],
             false => shadows.as_ref().map_or(&[][..], |(c, _, _)| c.as_slice()),
         };
-        let meshlet_plan = crate::meshlet::plan(&path_draws, cascades.len() as u32);
+        // With virtual shadow maps the levels' casters are a plan of their own, culled after the
+        // pages are allocated (`vsm.cull`); the camera's plan then has no shadow buckets.
+        let shadow_views = match &vsm {
+            Some(_) => 0,
+            None => cascades.len() as u32,
+        };
+        let meshlet_plan = crate::meshlet::plan(&path_draws, shadow_views);
+        let vsm_plan = vsm.as_ref().map(|job| {
+            let casters: Vec<_> = path_draws
+                .iter()
+                .filter(|d| d.casts)
+                .map(|d| crate::meshlet::PathDraw {
+                    forward: None,
+                    ..*d
+                })
+                .collect();
+            crate::meshlet::plan(&casters, job.clipmap.levels.len() as u32)
+        });
         let camera = crate::cull::CullView::camera(
             view_proj,
             eye(&view.world),
@@ -1391,8 +1419,24 @@ impl Renderer {
             ),
             None => camera,
         };
-        let views =
-            crate::cull::view_table(camera, cascades.iter().map(|c| c.view_proj), self.culling);
+        let views = match &vsm {
+            Some(job) => {
+                let table = index(job.work.table)?;
+                let levels = job.clipmap.levels.iter().map(|l| {
+                    let pages = crate::cull::PageTest {
+                        table,
+                        params: job.params,
+                        level: l.index,
+                        texels_per_metre: 1.0 / crate::vsm::texel_world(l.index),
+                    };
+                    crate::cull::CullView::vsm_level(l.view_proj, self.culling, pages)
+                });
+                crate::cull::view_rows(std::iter::once(camera).chain(levels))
+            }
+            None => {
+                crate::cull::view_table(camera, cascades.iter().map(|c| c.view_proj), self.culling)
+            }
+        };
         let views_buf = frame.keep(up.buffer(device, &views, "cull views")?);
         let passes = match hzb {
             Some(_) => crate::meshlet_pass::Passes::Two {
@@ -1416,14 +1460,29 @@ impl Renderer {
                 shadow: self.pipelines.meshlet_shadow(),
             },
         };
+        let page_writer = vsm_casters.map(|c| match route {
+            crate::meshlet::Route::MeshTasks => c.mesh.unwrap_or(c.meshlets),
+            crate::meshlet::Route::ComputeIndirect => c.meshlets,
+        });
         let meshlets = MeshletJob::prepare(
             device,
             &mut up,
             &meshlet_plan,
             (tables, pipelines, passes),
-            vsm_on,
+            page_writer,
             &mut kept,
         )?;
+        let vsm_meshlets = match &vsm_plan {
+            Some(plan) => MeshletJob::prepare(
+                device,
+                &mut up,
+                plan,
+                (tables, pipelines, crate::meshlet_pass::Passes::Single),
+                page_writer,
+                &mut kept,
+            )?,
+            None => None,
+        };
         kept.into_iter().for_each(|b| {
             frame.keep(b);
         });
@@ -1471,6 +1530,19 @@ impl Renderer {
             )),
             false => None,
         };
+        let vsm_draws = vsm_casters
+            .zip(vsm.as_ref())
+            .map(|(c, job)| crate::vsm::CasterDraws {
+                m1_pipeline: c.m1,
+                m1: casters.clone(),
+                buckets: vsm_meshlets
+                    .as_ref()
+                    .map_or_else(Vec::new, |m| m.shadows.clone()),
+                cull: vsm_meshlets.clone(),
+                entries: vsm_plan.as_ref().map_or(0, |p| p.entries),
+                levels: job.clipmap.levels.len() as u32,
+                pool: job.pool.clone(),
+            });
         let prepass = vsm_on.then(|| {
             let (early, late) = meshlets
                 .as_ref()
@@ -1522,6 +1594,7 @@ impl Renderer {
             shadow,
             prepass,
             vsm,
+            vsm_draws,
             sky,
             output,
             uploads,
@@ -1849,11 +1922,44 @@ impl Renderer {
     /// True if the frame splits for two-pass occlusion: the test is on, something takes the
     /// meshlet path, the HZB can come from the depth (single-sample, or resolved with min), and
     /// the occlusion test takes the projection.
+    /// Records the frame's shadow technique in the stats (page counts arrive with the readback).
+    fn note_shadows(&mut self, vsm_on: bool) {
+        use crate::vsm::ShadowTechnique;
+        let s = &mut self.stats.shadows;
+        s.requested = self.shadow_technique;
+        s.technique = match vsm_on {
+            true => ShadowTechnique::vsm,
+            false => ShadowTechnique::csm,
+        };
+        s.reason = match (self.shadow_technique, self.pipelines.vsm_casters()) {
+            (ShadowTechnique::vsm, None) => crate::vsm::supported(self.device.caps())
+                .err()
+                .map(str::to_owned),
+            _ => None,
+        };
+        let (pool, levels) = match vsm_on {
+            true => (
+                self.vsm_settings.pool_pages,
+                u32::from(self.vsm_settings.levels),
+            ),
+            false => (0, 0),
+        };
+        (s.pool_pages, s.levels) = (pool, levels);
+        if !vsm_on {
+            (
+                s.pages_requested,
+                s.pages_allocated,
+                s.pages_starved,
+                s.shadow_meshlets,
+            ) = (0, 0, 0, 0);
+        }
+    }
+
     /// Whether this frame draws the sun's shadows with virtual shadow maps: asked for, the device
     /// can run them, and the first directional light casts shadows.
     fn vsm_runs(&self, world: &RenderWorld) -> bool {
         self.shadow_technique == crate::vsm::ShadowTechnique::vsm
-            && crate::vsm::supported(self.device.caps()).is_ok()
+            && self.pipelines.vsm_casters().is_some()
             && world
                 .lights
                 .first()
@@ -1926,6 +2032,7 @@ impl Renderer {
             shadow,
             prepass,
             vsm,
+            vsm_draws,
             sky,
             output,
             uploads,
@@ -1993,6 +2100,12 @@ impl Renderer {
             device: self.device.clone(),
             view: hzb_view,
         });
+        let vsm_counts = vsm.as_ref().map(|job| {
+            let codes = vsm_draws
+                .as_ref()
+                .and_then(|d| d.cull.as_ref().map(|m| (m.codes, d.entries)));
+            (job.work.counts, codes)
+        });
         let over = match prepass {
             Some(p) => {
                 let (depth, over) = crate::forward_pass::add_prepass(
@@ -2010,6 +2123,9 @@ impl Renderer {
                         (depth, size),
                         self.device.clone(),
                     );
+                }
+                if let Some(draws) = vsm_draws {
+                    crate::vsm::add_render_pass(&mut graph, draws);
                 }
                 over
             }
@@ -2113,6 +2229,51 @@ impl Renderer {
             dst_offset: 0,
             size: clusters * 4,
         });
+        let vsm_readback = match vsm_counts {
+            Some((counts, codes)) => {
+                let readback = |bytes: u64, label: &str| {
+                    self.recycle.buffer(
+                        device,
+                        &BufferDesc {
+                            size: NonZeroU64::new(bytes).unwrap_or(NonZeroU64::MIN),
+                            usage: BufferUsage::COPY_DST,
+                            memory: MemoryLocation::Readback,
+                            label: label.into(),
+                        },
+                    )
+                };
+                let counts_rb = frame.keep(readback(
+                    u64::from(crate::vsm::COUNT_WORDS) * 4,
+                    "vsm counts",
+                )?);
+                list.push(Command::CopyBuffer {
+                    src: counts,
+                    src_offset: 0,
+                    dst: counts_rb,
+                    dst_offset: 0,
+                    size: u64::from(crate::vsm::COUNT_WORDS) * 4,
+                });
+                let codes = match codes {
+                    Some((src, entries)) if entries > 0 => {
+                        let rb = frame.keep(readback(u64::from(entries) * 4, "vsm cull codes")?);
+                        list.push(Command::CopyBuffer {
+                            src,
+                            src_offset: 0,
+                            dst: rb,
+                            dst_offset: 0,
+                            size: u64::from(entries) * 4,
+                        });
+                        Some((rb, entries))
+                    }
+                    _ => None,
+                };
+                Some(crate::vsm::VsmReadback {
+                    counts: counts_rb,
+                    codes,
+                })
+            }
+            None => None,
+        };
         let cull = match cull {
             Some((codes, layout, cpu)) => {
                 let bytes = u64::from(layout.entries) * 4;
@@ -2160,6 +2321,7 @@ impl Renderer {
                 clusters,
                 value,
                 cull,
+                vsm: vsm_readback,
             };
             return Ok((None, pending));
         }
@@ -2184,6 +2346,9 @@ impl Renderer {
         };
         if let Some(c) = &cull {
             self.read_cull(c)?;
+        }
+        if let Some(v) = &vsm_readback {
+            v.read(device, &mut self.stats.shadows)?;
         }
         if let Some(buffer) = motion_readback {
             let bytes = device.read_buffer(buffer, 0, u64::from(w) * u64::from(h) * 4)?;
@@ -2451,9 +2616,15 @@ impl Renderer {
             };
             let overflow = read_overflow(device.as_ref(), f.overflow, f.clusters);
             let culled = f.cull.as_ref().map(|c| self.read_cull(c)).transpose();
+            let vsm = f
+                .vsm
+                .as_ref()
+                .map(|v| v.read(device.as_ref(), &mut self.stats.shadows))
+                .transpose();
             f.resources.release(device.as_ref(), &mut self.recycle);
             self.record_overflow(overflow?);
             culled?;
+            vsm?;
         }
         Ok(())
     }

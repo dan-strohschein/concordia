@@ -149,3 +149,83 @@ pub(crate) fn add_page_passes(
         })),
     );
 }
+
+/// What draws a frame's VSM casters: the M1 casters on `m1_pipeline` (depth view filled per level)
+/// and one meshlet bucket per level.
+pub(crate) struct CasterDraws {
+    pub(crate) m1_pipeline: concordia_rhi::Pipeline,
+    pub(crate) m1: Vec<crate::shadow_pass::ShadowDraw>,
+    pub(crate) buckets: Vec<crate::meshlet_pass::BucketDraw>,
+    /// The levels' meshlet job (its compute cull runs as `vsm.cull`) and its entry count.
+    pub(crate) cull: Option<crate::meshlet_pass::MeshletJob>,
+    pub(crate) entries: u32,
+    pub(crate) levels: u32,
+    /// The pool, written here and read by `forward`.
+    pub(crate) pool: Vec<Buffer>,
+}
+
+/// `vsm.render`: per level, an attachment-less pass over the whole virtual map in which every
+/// caster fragment keeps the nearest depth in its page (pages not due to be drawn are skipped).
+pub(crate) fn add_render_pass(graph: &mut RenderGraph, draws: CasterDraws) {
+    use concordia_rhi::{Command, RenderPassDesc};
+    if let Some(job) = &draws.cull {
+        job.add_named_pass(graph, "vsm.cull");
+    }
+    let side = std::num::NonZeroU32::new(super::table::VIRTUAL_TEXELS)
+        .unwrap_or(std::num::NonZeroU32::MIN);
+    graph.add_pass_recorded(
+        "vsm.render",
+        |p| p.side_effect(),
+        Some(Box::new(move |ctx: &mut PassContext<'_>| {
+            for level in 0..draws.levels {
+                ctx.commands.push(Command::BeginRenderPass(RenderPassDesc {
+                    colors: Vec::new(),
+                    depth: None,
+                    extent: Some([side, side]),
+                }));
+                if !draws.m1.is_empty() {
+                    ctx.commands.push(Command::SetPipeline(draws.m1_pipeline));
+                }
+                for draw in &draws.m1 {
+                    let push = crate::shadow_pass::ShadowPush {
+                        cascade: 1 + level,
+                        ..draw.push
+                    };
+                    ctx.commands.push(Command::PushConstants(push.bytes()));
+                    ctx.commands.push(Command::Draw {
+                        vertices: 0..draw.vertices,
+                        instances: 0..draw.instances,
+                    });
+                }
+                if let Some(bucket) = draws.buckets.get(level as usize) {
+                    ctx.commands.push(Command::SetPipeline(bucket.pipeline));
+                    ctx.commands.commands.extend(bucket.commands());
+                }
+                ctx.commands.push(Command::EndRenderPass);
+            }
+            ctx.commands.push(pool_written(&draws.pool));
+            Ok(())
+        })),
+    );
+}
+
+/// Fragment writes of the pool before `forward`'s fragment reads.
+fn pool_written(pool: &[Buffer]) -> concordia_rhi::Command {
+    use concordia_rhi::{Access, AccessFlags, BufferBarrier, Layout, Stages};
+    let access = |access| Access {
+        stages: Stages::FRAGMENT,
+        access,
+        layout: Layout::General,
+    };
+    concordia_rhi::Command::Barrier {
+        buffers: pool
+            .iter()
+            .map(|&buffer| BufferBarrier {
+                buffer,
+                before: access(AccessFlags::SHADER_WRITE),
+                after: access(AccessFlags::SHADER_READ),
+            })
+            .collect(),
+        textures: Vec::new(),
+    }
+}

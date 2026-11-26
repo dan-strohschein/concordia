@@ -15,6 +15,7 @@
 // projected sphere, Mara & McGuire 2013), draws what pass 1 didn't, and writes next frame's words.
 import bindless;
 import forward;
+import vsm;
 
 // `MeshletBlob` v1 in 32-bit words: the header is 12 words (meshlet count at 4, vertex-reference
 // count at 5); records are 8 words (sphere centre at 0–2 and radius at 3 as float bits, the cone at
@@ -45,6 +46,11 @@ static const uint VIEW_NEAR = 4;
 // Test occlusion against the view's HZB (pass 2); its projection is orthographic.
 static const uint VIEW_OCCLUSION = 8;
 static const uint VIEW_ORTHO = 16;
+// A virtual shadow map level (M4 4.7): meshlets over no page due to be drawn are culled. Its rows:
+// view[0] = (table, params, level, 0) as bits, view[1..2] = the level's clip x and y rows, proj.x =
+// virtual texels per metre.
+static const uint VIEW_PAGES = 32;
+static const uint CULL_PAGES = 7;
 // A bucket's cull word: its view in bits 0–7; this bit for double-sided materials (no cone).
 static const uint BUCKET_NO_CONE = 0x100;
 
@@ -174,6 +180,27 @@ bool occluded(CullView view, float3 c, float r) {
     return depth < farthest;
 }
 
+// Whether a page under the world-space sphere (`c`, `r`) in the view's VSM level is due to be
+// drawn: its texel rect, one texel wider, against the table (spans over 8 × 8 pages count as yes).
+bool on_dirty_pages(CullView view, float3 c, float r) {
+    uint4 ids = asuint(view.view[0]);
+    float4 p = float4(c, 1.0);
+    float2 t = vsm_texel(float4(dot(view.view[1], p), dot(view.view[2], p), 0.0, 1.0));
+    float rt = r * view.proj.x + 1.0;
+    int last = int(VSM_PAGES_PER_SIDE) - 1;
+    int2 lo = clamp(int2(floor((t - rt) / float(VSM_PAGE_TEXELS))), int2(0, 0), int2(last, last));
+    int2 hi = clamp(int2(floor((t + rt) / float(VSM_PAGE_TEXELS))), int2(0, 0), int2(last, last));
+    if (any(hi - lo >= 8)) { return true; }
+    int2 origin = vsm_origin(ids.y, ids.z);
+    for (int y = lo.y; y <= hi.y; y++) {
+        for (int x = lo.x; x <= hi.x; x++) {
+            uint entry = g_buffers.ptr[ids.x][vsm_slot(ids.z, origin + int2(x, y))];
+            if ((entry & VSM_DIRTY) != 0) { return true; }
+        }
+    }
+    return false;
+}
+
 // The world-space bounding sphere of `meshlet` of `inst` (mesh row in `meshes`).
 float4 world_sphere(Instance* inst, uint meshes, uint meshlet) {
     uint4* rows = (uint4*)g_buffers.ptr[meshes];
@@ -231,6 +258,7 @@ uint cull_code(uint views, uint word, Instance* inst, uint meshes, uint meshlet)
         if (!sees_box(view, inst.model, asfloat(rows[row + 2].xyz), asfloat(rows[row + 3].xyz))) { return CULL_INSTANCE; }
         float3 c = xform(inst.model, float4(sphere.xyz, 1.0)).xyz;
         if (!sees_sphere(view, c, sphere.w * max_scale(inst.model))) { return CULL_FRUSTUM; }
+        if ((view.flags.x & VIEW_PAGES) != 0 && !on_dirty_pages(view, c, sphere.w * max_scale(inst.model))) { return CULL_PAGES; }
     }
     bool cone = (view.flags.x & VIEW_CONE) != 0 && (word & BUCKET_NO_CONE) == 0;
     if (cone && cone_rejects(inst.model, view.eye.xyz, sphere, blob[record + 4])) { return CULL_CONE; }
@@ -430,6 +458,20 @@ void meshlet_mesh(uint lane : SV_GroupThreadID, uint group : SV_GroupID, in payl
 }
 
 struct ShadowVertex { float4 position : SV_Position; };
+
+// A VSM caster fragment of a meshlet bucket (compute route, `MeshletPush`; M4 4.7).
+[shader("fragment")]
+void meshlet_vsm_fs(float4 pos : SV_Position, uniform MeshletPush push) {
+    Frame* frame = (Frame*)g_buffers.ptr[push.frame];
+    vsm_write(frame.vsm.y, frame.vsm.z, push.cascade, pos);
+}
+
+// The same on the mesh-shader route (`TaskPush`).
+[shader("fragment")]
+void meshlet_vsm_mesh_fs(ShadowVertex v, uniform TaskPush push) {
+    Frame* frame = (Frame*)g_buffers.ptr[push.frame];
+    vsm_write(frame.vsm.y, frame.vsm.z, push.cascade, v.position);
+}
 
 [shader("mesh")]
 [numthreads(128, 1, 1)]

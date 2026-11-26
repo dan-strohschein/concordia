@@ -107,6 +107,8 @@ pub enum CullCode {
     Drawn = 5,
     /// Drawn in pass 2 (two-pass occlusion).
     DrawnLate = 6,
+    /// Over no virtual-shadow-map page due to be drawn (M4 4.7).
+    Pages = 7,
 }
 
 impl CullCode {
@@ -119,6 +121,7 @@ impl CullCode {
             Self::Occluded,
             Self::Drawn,
             Self::DrawnLate,
+            Self::Pages,
         ]
         .into_iter()
         .find(|c| *c as u32 == code)
@@ -131,6 +134,17 @@ pub(crate) const VIEW_CONE: u32 = 2;
 pub(crate) const VIEW_NEAR: u32 = 4;
 pub(crate) const VIEW_OCCLUSION: u32 = 8;
 pub(crate) const VIEW_ORTHO: u32 = 16;
+pub(crate) const VIEW_PAGES: u32 = 32;
+
+/// What a virtual-shadow-map level's page test reads (M4 4.7): the table and parameter blocks'
+/// bindless indices, the level, and virtual texels per metre.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PageTest {
+    pub(crate) table: u32,
+    pub(crate) params: u32,
+    pub(crate) level: u32,
+    pub(crate) texels_per_metre: f32,
+}
 
 /// `uint4` rows per view in the cull view table.
 pub(crate) const VIEW_ROWS: usize = 13;
@@ -158,6 +172,8 @@ pub struct CullView {
     tests: Culling,
     /// Two-pass occlusion against this frame's HZB (the camera, when the frame splits).
     occlusion: Option<Occlusion>,
+    /// A virtual shadow map level's page test, with its view-projection (GPU only).
+    pages: Option<(PageTest, Mat4)>,
 }
 
 impl CullView {
@@ -169,6 +185,7 @@ impl CullView {
             near: true,
             tests,
             occlusion: None,
+            pages: None,
         }
     }
 
@@ -202,6 +219,16 @@ impl CullView {
             near: false,
             tests,
             occlusion: None,
+            pages: None,
+        }
+    }
+
+    /// A virtual shadow map level's view (M4 4.7): a cascade's tests, then meshlets over no page
+    /// due to be drawn are culled on the GPU (the CPU reference stops at the frustum).
+    pub(crate) fn vsm_level(view_proj: Mat4, tests: Culling, pages: PageTest) -> Self {
+        Self {
+            pages: Some((pages, view_proj)),
+            ..Self::cascade(view_proj, tests)
         }
     }
 
@@ -222,6 +249,9 @@ impl CullView {
         }
         if self.occlusion.is_some_and(|o| !o.terms.perspective) {
             flags |= VIEW_ORTHO;
+        }
+        if self.pages.is_some() && self.tests.frustum {
+            flags |= VIEW_PAGES;
         }
         flags
     }
@@ -246,6 +276,12 @@ impl CullView {
             let [p22, p32] = o.terms.depth;
             rows[11] = bits(Vec4::new(sx, sy, p22, p32));
             rows[12] = [o.hzb, o.screen[0], o.screen[1], 0];
+        }
+        if let Some((p, vp)) = self.pages {
+            rows[8] = [p.table, p.params, p.level, 0];
+            rows[9] = bits(vp.row(0));
+            rows[10] = bits(vp.row(1));
+            rows[11] = bits(Vec4::new(p.texels_per_metre, 0.0, 0.0, 0.0));
         }
         rows
     }
@@ -397,9 +433,14 @@ pub(crate) fn view_table(
     cascades: impl IntoIterator<Item = Mat4>,
     tests: Culling,
 ) -> Vec<u8> {
-    let mut out = Vec::new();
     let cascades = cascades.into_iter().map(|vp| CullView::cascade(vp, tests));
-    for view in std::iter::once(camera).chain(cascades) {
+    view_rows(std::iter::once(camera).chain(cascades))
+}
+
+/// The cull view table of `views`, in order (the camera's first).
+pub(crate) fn view_rows(views: impl IntoIterator<Item = CullView>) -> Vec<u8> {
+    let mut out = Vec::new();
+    for view in views {
         crate::frame::push_rows_u32(&mut out, &view.rows());
     }
     out
@@ -699,11 +740,12 @@ mod tests {
             CullCode::Occluded,
             CullCode::Drawn,
             CullCode::DrawnLate,
+            CullCode::Pages,
         ] {
             assert_eq!(CullCode::from_u32(c as u32), Some(c));
         }
         assert_eq!(CullCode::from_u32(0), None);
-        assert_eq!(CullCode::from_u32(7), None);
+        assert_eq!(CullCode::from_u32(8), None);
     }
 
     /// A camera with an HZB adds the occlusion rows: the view's first three rows, the projection

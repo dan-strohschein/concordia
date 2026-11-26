@@ -40,6 +40,35 @@ public int2 vsm_origin(uint params, uint level) {
     return int2(asint(row.x), asint(row.y));
 }
 
+// Level `level`'s light-space depth span in metres (clip z per metre is its inverse).
+public float vsm_span(uint params, uint level) {
+    return asfloat(((uint4*)g_buffers.ptr[params])[VSM_ROW_LEVELS + level].z);
+}
+
+// The light clip position of `world` in depth view `view` (a buffer of column matrices).
+public float4 vsm_clip(uint views, uint view, float3 world) {
+    float4* m = ((float4*)g_buffers.ptr[views]) + view * 4;
+    return m[0] * world.x + m[1] * world.y + m[2] * world.z + m[3];
+}
+
+// The table entry for virtual texel `t` of `level`.
+public uint vsm_entry(uint params, uint table, uint level, int2 t) {
+    int2 page = int2(floor(float2(t) / float(VSM_PAGE_TEXELS)));
+    return g_buffers.ptr[table][vsm_slot(level, vsm_origin(params, level) + page)];
+}
+
+// Keeps the nearest depth of a caster fragment at virtual texel `pos.xy` of depth view `view`
+// (1 + level) in its page, when the page is allocated and due to be drawn.
+public void vsm_write(uint params, uint table, uint view, float4 pos) {
+    uint level = view - 1;
+    uint entry = vsm_entry(params, table, level, int2(pos.xy));
+    uint page = vsm_physical(entry);
+    if (page == 0 || (entry & VSM_DIRTY) == 0) return;
+    uint2 t = uint2(pos.xy) % VSM_PAGE_TEXELS;
+    uint old;
+    InterlockedMax(vsm_word(vsm_params(params), page - 1, t)[0], asuint(pos.z), old);
+}
+
 // The finest level whose texels are at least the pixel's footprint × 2^bias (`level_for_footprint`).
 public uint vsm_level(VsmParams* p, float3 world) {
     float footprint = p.choice.z > 0.0 ? distance(world, p.eye.xyz) * p.choice.z : p.choice.w;

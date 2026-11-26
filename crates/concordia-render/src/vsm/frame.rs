@@ -82,7 +82,7 @@ pub(crate) fn params_rows(p: &ParamsIn<'_>) -> Vec<u8> {
         .iter()
         .map(|l| {
             let o = l.origin_page();
-            [o.x as u32, o.y as u32, 0, 0]
+            [o.x as u32, o.y as u32, p.clipmap.depth_span().to_bits(), 0]
         })
         .collect();
     push_rows_u32(&mut out, &origins);

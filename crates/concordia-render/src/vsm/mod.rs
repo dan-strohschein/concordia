@@ -7,6 +7,7 @@ mod gpu;
 mod job;
 mod pool;
 mod settings;
+mod stats;
 mod table;
 
 pub use clipmap::{
@@ -14,10 +15,12 @@ pub use clipmap::{
     texel_world,
 };
 pub use frame::{Footprint, floor_level};
-pub(crate) use gpu::{VsmPipelines, VsmPool};
-pub(crate) use job::{JobIn, VsmJob, add_page_passes};
+pub(crate) use gpu::{COUNT_WORDS, VsmPipelines, VsmPool};
+pub(crate) use job::{CasterDraws, JobIn, VsmJob, add_page_passes, add_render_pass};
 pub use pool::{PoolError, PoolLayout};
 pub use settings::{ShadowTechnique, VsmSettings};
+pub use stats::ShadowStats;
+pub(crate) use stats::VsmReadback;
 pub use table::{PAGE_TEXELS, PAGES_PER_SIDE, PageEntry, PageFlags, VIRTUAL_TEXELS, table_slot};
 
 use concordia_rhi::RhiCaps;

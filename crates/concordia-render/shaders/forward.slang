@@ -5,6 +5,7 @@
 import bindless;
 import skin;
 import material;
+import vsm;
 
 static const uint NO_TEXTURE = 0xffffffff;
 static const uint FLAG_UNLIT = 1;
@@ -39,7 +40,8 @@ struct Frame {
     uint4 env_a; uint4 env_b;
     // debug.x = view mode (ViewMode order: 0 lit, 1 unlit, 2 wireframe, 3 normals, 4 albedo,
     // 5 roughness/metallic, 6 overdraw, 7 shadow cascades, 8 light clusters, 9 closures, 10–13 the
-    // feature views, 14 lod, 15 meshlets, 16 triangles, 17 motion, 18 occlusion, 19 hzb); debug.y = the exposure as float
+    // feature views, 14 lod, 15 meshlets, 16 triangles, 17 motion, 18 occlusion, 19 hzb, 20 vsm_pages,
+    // 21 vsm_levels, 22 vsm_cache, 23 shadow_mask); debug.y = the exposure as float
     // bits (emission is in nits); debug.z = the HZB's bindless index + 1 (0: none), debug.w = its finest level's width.
     uint4 debug;
     // The camera's view-projection last frame (motion vectors; view_proj without one).
@@ -95,6 +97,11 @@ struct ForwardOut { float4 color : SV_Target0; float2 motion : SV_Target1; };
 // The `occlusion` and `hzb` views (M4 4.4b).
 static const uint MODE_OCCLUSION = 18;
 static const uint MODE_HZB = 19;
+// Virtual shadow maps' views (M4 4.7; `ViewMode`).
+static const uint MODE_VSM_PAGES = 20;
+static const uint MODE_VSM_LEVELS = 21;
+static const uint MODE_VSM_CACHE = 22;
+static const uint MODE_SHADOW_MASK = 23;
 
 // UV (y down) of a clip position.
 float2 clip_uv(float4 clip) { return clip.xy / clip.w * float2(0.5, -0.5) + 0.5; }
@@ -197,6 +204,104 @@ float4 shadow_vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform Shado
         p = skin_vertex(frame.buffers.w, inst.skin.x, push.joints, push.weights, v, p, float3(0.0, 0.0, 1.0), float3(1.0, 0.0, 0.0)).position;
     }
     return cascade_xform(frame, push.cascade, xform(inst.model, float4(p, 1.0)));
+}
+
+// The VSM debug views' tint (modes 20-22; M4 4.7): `vsm_pages` a colour per physical page with
+// darkened page borders, `vsm_levels` a hue per level (magenta where a pixel fell back to a coarser
+// one), `vsm_cache` the page's state (yellow drawn this frame, green kept, blue with a dynamic
+// layer); white where no page holds the pixel.
+float3 vsm_tint(Frame* frame, float3 world, float3 n, uint mode) {
+    if (frame.vsm.x == 0) { return float3(1.0); }
+    VsmParams* p = vsm_params(frame.vsm.y);
+    float4 clip;
+    uint entry;
+    uint level = vsm_find(frame, world, n, clip, entry);
+    if (level >= p.counts.x) { return float3(1.0); }
+    if (mode == MODE_VSM_LEVELS) {
+        if (level != vsm_level(p, world)) { return float3(1.0, 0.0, 1.0); }
+        float hue = float(level) / float(p.counts.x);
+        return saturate(abs(frac(hue + float3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0) * 0.8 + 0.2;
+    }
+    if (mode == MODE_VSM_CACHE) {
+        if ((entry & VSM_DIRTY) != 0) { return float3(1.0, 0.9, 0.2); }
+        return (entry & (8u << 16)) != 0 ? float3(0.3, 0.5, 1.0) : float3(0.3, 1.0, 0.3);
+    }
+    uint h = mix_id(vsm_physical(entry));
+    float3 hue = float3(h & 255, (h >> 8) & 255, (h >> 16) & 255) / 255.0 * 0.7 + 0.3;
+    float2 t = fmod(vsm_texel(clip), float(VSM_PAGE_TEXELS));
+    bool border = any(t < 1.5) || any(t > float(VSM_PAGE_TEXELS) - 1.5);
+    return border ? hue * 0.25 : hue;
+}
+
+// A VSM caster fragment of an M1 draw (`ShadowPush`; M4 4.7).
+[shader("fragment")]
+void vsm_fs(float4 pos : SV_Position, uniform ShadowPush push) {
+    Frame* frame = (Frame*)g_buffers.ptr[push.frame];
+    vsm_write(frame.vsm.y, frame.vsm.z, push.cascade, pos);
+}
+
+// Where the virtual shadow maps hold `world` (offset along `n`): the first level from the pixel's
+// own whose page under it is valid. Returns that level (the level count when none, or beyond max
+// distance), its light clip position and the page's entry.
+uint vsm_find(Frame* frame, float3 world, float3 n, out float4 clip, out uint entry) {
+    VsmParams* p = vsm_params(frame.vsm.y);
+    clip = float4(0.0);
+    entry = 0;
+    if (distance(world, p.eye.xyz) > p.bias.z) { return p.counts.x; }
+    for (uint level = vsm_level(p, world); level < p.counts.x; level++) {
+        float texel = p.choice.x * exp2(float(level));
+        clip = vsm_clip(frame.vsm.x - 1, 1 + level, world + n * p.bias.y * texel);
+        float2 st = vsm_texel(clip) - 0.5;
+        if (any(st < 0.0) || any(st >= float(VSM_VIRTUAL_TEXELS) - 1.0)) { continue; }
+        entry = vsm_entry(frame.vsm.y, frame.vsm.z, level, int2(floor(st)));
+        if ((entry & VSM_VALID) != 0 && vsm_physical(entry) != 0) { return level; }
+    }
+    return p.counts.x;
+}
+
+// Fraction of sunlight reaching `world` through the virtual shadow maps (M4 4.7): at `vsm_find`'s
+// level, PCF in that level's texels, each tap reading its own page (clamped to the centre page
+// where a neighbour has none); 1 where no level holds it.
+float vsm_sun_shadow(Frame* frame, float3 world, float3 n, float3 to_light) {
+    uint params = frame.vsm.y;
+    uint table = frame.vsm.z;
+    VsmParams* p = vsm_params(params);
+    int k = int(p.counts.w);
+    float nol = saturate(dot(n, to_light));
+    float tan_theta = min(sqrt(1.0 - nol * nol) / max(nol, 1e-3), 10.0);
+    float4 clip;
+    uint centre;
+    uint level = vsm_find(frame, world, n, clip, centre);
+    if (level < p.counts.x) {
+        float texel = p.choice.x * exp2(float(level));
+        float2 st = vsm_texel(clip) - 0.5;
+        int2 base = int2(floor(st));
+        float slope = texel * (float(k) + 1.0) * tan_theta;
+        // Clamped: past the casters' far bound only a stored caster (> 0) shadows; nearer than
+        // their near bound nothing does.
+        float depth = saturate(clip.z + (p.bias.x * texel + slope) / vsm_span(params, level));
+        float2 f = st - float2(base);
+        int2 page = base / int(VSM_PAGE_TEXELS);
+        float lit = 0.0;
+        for (int dy = -k; dy <= k + 1; dy++) {
+            float wy = dy == -k ? 1.0 - f.y : (dy == k + 1 ? f.y : 1.0);
+            for (int dx = -k; dx <= k + 1; dx++) {
+                float wx = dx == -k ? 1.0 - f.x : (dx == k + 1 ? f.x : 1.0);
+                int2 t = base + int2(dx, dy);
+                uint entry = vsm_entry(params, table, level, t);
+                if ((entry & VSM_VALID) == 0 || vsm_physical(entry) == 0) {
+                    entry = centre;
+                    t = clamp(t, page * int(VSM_PAGE_TEXELS), page * int(VSM_PAGE_TEXELS) + int(VSM_PAGE_TEXELS) - 1);
+                }
+                uint2 local = uint2(t % int(VSM_PAGE_TEXELS));
+                float stored = asfloat(vsm_word(p, vsm_physical(entry) - 1, local)[0]);
+                lit += wx * wy * (stored <= depth ? 1.0 : 0.0);
+            }
+        }
+        float side = float(2 * k + 1);
+        return lit / (side * side);
+    }
+    return 1.0;
 }
 
 // Fraction of sunlight reaching `world` (1 outside the cascades). Reverse-Z: a texel closer to the
@@ -622,7 +727,7 @@ float4 shade_pixel(VsOut i, bool front, DrawPush push) {
     if (mode == MODE_HZB) { return float4(0.0, 0.0, 0.0, 1.0); }
     // A one-slab material shaded lit (the common case) skips the interpreter; everything else
     // loads the shape's closures into `g_closures` and runs it.
-    bool single = SHAPE_OPS == 1 && (flags & FLAG_UNLIT) == 0 && (mode == 0 || mode == 7 || mode == 8);
+    bool single = SHAPE_OPS == 1 && (flags & FLAG_UNLIT) == 0 && (mode == 0 || mode == 7 || mode == 8 || mode >= MODE_VSM_PAGES);
     Closure c0;
     if (single) {
         c0 = load_closure(frame, rows + 2, i, front, v, false, closure_features(rows + 2, 0));
@@ -664,14 +769,18 @@ float4 shade_pixel(VsOut i, bool front, DrawPush push) {
         float facing = saturate(dot(normalize(i.normal) * (front ? 1.0 : -1.0), v));
         return float4(lod_color(i.lod) * (0.55 + 0.45 * facing), 1.0);
     }
-    if (mode >= 10) { return float4(saturate(run(frame, rows, EVAL_VALUE, v, v, i.uv, mode, false).color), 1.0); }
+    if (mode >= 10 && mode <= 13) { return float4(saturate(run(frame, rows, EVAL_VALUE, v, v, i.uv, mode, false).color), 1.0); }
 
     float3 geometric = normalize(i.normal) * (front ? 1.0 : -1.0);
     float3 to_sun = -normalize(frame.light_dir.xyz);
     float3 lit = float3(0.0);
     if (any(frame.light_radiance.rgb > 0.0)) {
         float3 sun = single ? lit_single(frame, c0, v, to_sun, blend) : run(frame, rows, EVAL_LIGHT, v, to_sun, i.uv, 0, blend).color;
-        lit = sun * frame.light_radiance.rgb * sun_shadow(frame, i.world, geometric, to_sun);
+        float shadow = frame.vsm.x != 0 ? vsm_sun_shadow(frame, i.world, geometric, to_sun) : sun_shadow(frame, i.world, geometric, to_sun);
+        if (mode == MODE_SHADOW_MASK) { return float4(float3(shadow), 1.0); }
+        lit = sun * frame.light_radiance.rgb * shadow;
+    } else if (mode == MODE_SHADOW_MASK) {
+        return float4(1.0, 1.0, 1.0, 1.0);
     }
     lit += single ? punctual_single(frame, i.position, i.world, c0, v, blend) : punctual(frame, i.position, i.world, rows, v, i.uv, blend);
     Entry ambient_light = single ? covered(slab_entry(frame, c0, EVAL_AMBIENT, v, v, 0, false), blend)
@@ -685,6 +794,9 @@ float4 shade_pixel(VsOut i, bool front, DrawPush push) {
         uint cascade = cascade_of(frame, i.world);
         uint tint = cascade >= uint(frame.shadow.w) ? 4 : min(cascade, 3u); // white: no cascade
         return finish(blend, (lit + emissive) * tints[tint], alpha);
+    }
+    if (mode >= MODE_VSM_PAGES && mode <= MODE_VSM_CACHE) {
+        return finish(blend, (lit + emissive) * vsm_tint(frame, i.world, geometric, mode), alpha);
     }
     if (mode == 8) {
         float shade = dot(lit, float3(0.2126, 0.7152, 0.0722));

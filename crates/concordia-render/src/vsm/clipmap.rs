@@ -58,6 +58,8 @@ pub struct Clipmap {
     pub light_view: Mat4,
     /// Finest first.
     pub levels: Vec<ClipLevel>,
+    /// The light-space depth range (far, near) every level covers.
+    pub depth: (f32, f32),
 }
 
 impl Clipmap {
@@ -69,7 +71,16 @@ impl Clipmap {
         let levels = (0..u32::from(levels))
             .map(|index| level(&light_view, eye, index, depth))
             .collect();
-        Self { light_view, levels }
+        Self {
+            light_view,
+            levels,
+            depth,
+        }
+    }
+
+    /// Metres of light-space depth the levels cover.
+    pub fn depth_span(&self) -> f32 {
+        (self.depth.1 - self.depth.0).abs().max(1e-3)
     }
 }
 

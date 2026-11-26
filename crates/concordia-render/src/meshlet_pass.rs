@@ -133,7 +133,8 @@ pub(crate) struct MeshletJob {
     /// The shadow casters' bucket per cascade, in cascade order.
     pub(crate) shadows: Vec<BucketDraw>,
     /// The forward buckets on the depth pipeline, drawn into the camera's depth prepass (depth
-    /// view [`CAMERA_DEPTH_VIEW`]; virtual shadow maps only), for pass 1 and pass 2.
+    /// view [`CAMERA_DEPTH_VIEW`]; virtual shadow maps only), for pass 1 and pass 2. With virtual
+    /// shadow maps, `shadows` holds one bucket per clipmap level instead of per cascade.
     pub(crate) prepass: (Vec<BucketDraw>, Vec<BucketDraw>),
     /// One cull code per entry, written by either route.
     pub(crate) codes: Buffer,
@@ -170,7 +171,7 @@ impl MeshletJob {
         up: &mut Uploads,
         plan: &MeshletPlan<BucketKey>,
         (tables, pipelines, passes): (FrameTables, RoutePipelines, Passes),
-        prepass: bool,
+        vsm: Option<Pipeline>,
         keep: &mut Vec<Buffer>,
     ) -> Result<Option<Self>, RenderError> {
         if plan.entries == 0 {
@@ -272,6 +273,7 @@ impl MeshletJob {
                 },
             })
         };
+        let prepass = vsm.is_some();
         let draw = |pipeline, material, i, pass| draw_in(pipeline, material, i, pass, None);
         let depth = |i, pass| draw_in(shadow_pipeline, 0, i, pass, Some(CAMERA_DEPTH_VIEW));
         let mut forward = Vec::new();
@@ -292,8 +294,12 @@ impl MeshletJob {
                         }
                     }
                 }
-                // Shadows are culled once, in the first pass, without the HZB.
-                None => shadows.push(draw(shadow_pipeline, 0, i, pass)?),
+                // Shadows are culled once, in the first pass, without the HZB. Virtual shadow map
+                // levels write pages, in depth view 1 + level (the camera's is 0).
+                None => shadows.push(match vsm {
+                    Some(casters) => draw_in(casters, 0, i, pass, Some(bucket.view))?,
+                    None => draw(shadow_pipeline, 0, i, pass)?,
+                }),
             }
         }
         Ok(Some(Self {
@@ -311,6 +317,11 @@ impl MeshletJob {
     /// The `meshlet.cull` pass (compute route only).
     pub(crate) fn add_pass(&self, graph: &mut RenderGraph) {
         add_cull_pass(graph, "meshlet.cull", self.compute.clone());
+    }
+
+    /// The compute route's cull pass under another name (`vsm.cull`); nothing on the mesh route.
+    pub(crate) fn add_named_pass(&self, graph: &mut RenderGraph, name: &str) {
+        add_cull_pass(graph, name, self.compute.clone());
     }
 
     /// The `meshlet.cull_late` pass (compute route with two-pass occlusion only).
@@ -594,7 +605,7 @@ mod tests {
             &mut up,
             &plan,
             (tables, pipelines, Passes::Single),
-            false,
+            None,
             &mut keep,
         )
         .unwrap()
@@ -687,7 +698,7 @@ mod tests {
             &mut up,
             &plan,
             (tables, pipelines, Passes::Single),
-            false,
+            None,
             &mut keep,
         )
         .unwrap()
@@ -809,7 +820,7 @@ mod tests {
             &mut up,
             &plan,
             (tables, pipelines, Passes::Single),
-            false,
+            None,
             &mut keep,
         )
         .unwrap()
