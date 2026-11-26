@@ -136,11 +136,10 @@ impl Planner<'_> {
             needs.push((color.texture, Layout::ColorAttachment));
             needs.extend(color.resolve.map(|r| (r, Layout::ColorAttachment)));
         }
-        needs.extend(
-            desc.depth
-                .as_ref()
-                .map(|d| (d.texture, Layout::DepthAttachment)),
-        );
+        if let Some(depth) = &desc.depth {
+            needs.push((depth.texture, Layout::DepthAttachment));
+            needs.extend(depth.resolve.map(|r| (r.texture, Layout::DepthAttachment)));
+        }
         let end = commands[at..]
             .iter()
             .position(|c| matches!(c, Command::EndRenderPass))
@@ -218,8 +217,8 @@ impl Planner<'_> {
 mod tests {
     use super::*;
     use concordia_rhi::{
-        Access, AccessFlags, Buffer, ColorAttachment, DepthAttachment, LoadOp, Stages, StoreOp,
-        TextureBarrier,
+        Access, AccessFlags, Buffer, ColorAttachment, DepthAttachment, DepthResolve,
+        DepthResolveTarget, LoadOp, Stages, StoreOp, TextureBarrier,
     };
     use proptest::prelude::*;
 
@@ -228,6 +227,7 @@ mod tests {
     const RT_ONLY: Texture = Texture::from_raw(2, 0);
     const DEPTH: Texture = Texture::from_raw(3, 0);
     const MSAA: Texture = Texture::from_raw(4, 0);
+    const RESOLVED_DEPTH: Texture = Texture::from_raw(5, 0);
     const BUF: Buffer = Buffer::from_raw(0, 0);
 
     fn textures() -> BTreeMap<Texture, TexState> {
@@ -250,6 +250,13 @@ mod tests {
                 home(TextureUsage::RENDER_TARGET, Format::Depth32Float),
             ),
             (MSAA, home(TextureUsage::RENDER_TARGET, Format::Rgba8Unorm)),
+            (
+                RESOLVED_DEPTH,
+                home(
+                    TextureUsage::RENDER_TARGET | TextureUsage::SAMPLED,
+                    Format::Depth32Float,
+                ),
+            ),
         ]
         .into_iter()
         .map(|(t, home)| {
@@ -265,6 +272,16 @@ mod tests {
     }
 
     fn pass(color: Texture, resolve: Option<Texture>, depth: Option<Texture>) -> Command {
+        depth_pass(color, resolve, depth, None)
+    }
+
+    /// [`pass`] with the depth attachment resolved (min) into `depth_resolve`.
+    fn depth_pass(
+        color: Texture,
+        resolve: Option<Texture>,
+        depth: Option<Texture>,
+        depth_resolve: Option<Texture>,
+    ) -> Command {
         Command::BeginRenderPass(RenderPassDesc {
             colors: vec![ColorAttachment {
                 texture: color,
@@ -274,6 +291,10 @@ mod tests {
             }],
             depth: depth.map(|texture| DepthAttachment {
                 texture,
+                resolve: depth_resolve.map(|texture| DepthResolveTarget {
+                    texture,
+                    filter: DepthResolve::Min,
+                }),
                 load: LoadOp::Load,
                 store: StoreOp::Store,
             }),
@@ -406,6 +427,33 @@ mod tests {
                 Layout::ShaderRead,
                 Layout::ColorAttachment
             )])
+        );
+    }
+
+    /// A depth resolve target (M4 4.4b) is a depth attachment during the pass and returns home
+    /// (sampled, for the HZB build) after it.
+    #[test]
+    fn depth_resolve_targets_are_depth_attachments_for_the_pass() {
+        let list = [
+            depth_pass(MSAA, None, Some(DEPTH), Some(RESOLVED_DEPTH)),
+            Command::EndRenderPass,
+        ];
+        let ops = plan(&list, &mut textures()).unwrap();
+        assert_eq!(
+            ops[0],
+            Op::Barrier(vec![t(
+                RESOLVED_DEPTH,
+                Layout::ShaderRead,
+                Layout::DepthAttachment
+            )])
+        );
+        assert_eq!(
+            ops.last(),
+            Some(&Op::Barrier(vec![t(
+                RESOLVED_DEPTH,
+                Layout::DepthAttachment,
+                Layout::ShaderRead
+            )]))
         );
     }
 
@@ -563,8 +611,13 @@ mod tests {
                     dst,
                     mip: 0
                 }]),
-            (tex.clone(), any::<bool>(), any::<bool>()).prop_map(|(c, d, mesh)| vec![
-                pass(c, None, d.then_some(DEPTH)),
+            (tex.clone(), 0..3u8, any::<bool>()).prop_map(|(c, d, mesh)| vec![
+                depth_pass(
+                    c,
+                    None,
+                    (d > 0).then_some(DEPTH),
+                    (d > 1).then_some(RESOLVED_DEPTH)
+                ),
                 match mesh {
                     true => Command::DrawMeshTasks { groups: [2, 1, 1] },
                     false => Command::Draw {
@@ -610,11 +663,13 @@ mod tests {
                     .iter()
                     .map(|c| (c.texture, vec![Layout::ColorAttachment]))
                     .collect();
-                v.extend(
-                    desc.depth
-                        .iter()
-                        .map(|d| (d.texture, vec![Layout::DepthAttachment])),
-                );
+                if let Some(d) = &desc.depth {
+                    v.push((d.texture, vec![Layout::DepthAttachment]));
+                    v.extend(
+                        d.resolve
+                            .map(|r| (r.texture, vec![Layout::DepthAttachment])),
+                    );
+                }
                 v
             }
             Command::CopyTextureToBuffer { src, .. } => vec![(*src, copy(*src, Layout::CopySrc))],

@@ -2030,6 +2030,7 @@ fn add_forward(
                     },
                 ],
                 depth: Some(DepthAttachment {
+                    resolve: None,
                     texture: ctx.texture(depth),
                     load: LoadOp::Clear(ClearValue::Depth(0.0)),
                     store: StoreOp::DontCare,

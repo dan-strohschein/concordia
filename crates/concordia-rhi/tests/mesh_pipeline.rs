@@ -20,6 +20,7 @@ fn caps() -> RhiCaps {
         ray_tracing: false,
         hw_ray_tracing: false,
         metalfx_temporal: false,
+        depth_resolve_min: false,
         timestamp_granularity: TimestampGranularity::StageBoundary,
         max_mesh_output_vertices: 256,
         max_mesh_output_primitives: 512,

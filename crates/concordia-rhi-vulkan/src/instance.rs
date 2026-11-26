@@ -7,7 +7,7 @@ use concordia_rhi::RhiError;
 
 use crate::Validation;
 use crate::convert::{error, sample_counts};
-use crate::record::{DeviceType, Features, MeshRecord, ProbeRecord};
+use crate::record::{DeviceType, Features, MeshRecord, ProbeRecord, ResolveMode};
 use crate::validation::{ValidationLog, callback};
 
 const VALIDATION_LAYER: &CStr = c"VK_LAYER_KHRONOS_validation";
@@ -183,6 +183,7 @@ impl Instance {
             extensions: self.noted_extensions(physical)?,
             surface_extensions: self.surface_names(),
             mesh: None,
+            depth_resolve_modes: resolve_modes(v12.supported_depth_resolve_modes),
         };
         let record = ProbeRecord {
             mesh: record
@@ -436,4 +437,17 @@ fn device_type(raw: vk::PhysicalDeviceType) -> DeviceType {
         vk::PhysicalDeviceType::CPU => DeviceType::Cpu,
         _ => DeviceType::Other,
     }
+}
+
+/// The modes in `flags`, ascending.
+fn resolve_modes(flags: vk::ResolveModeFlags) -> Vec<ResolveMode> {
+    [
+        (vk::ResolveModeFlags::SAMPLE_ZERO, ResolveMode::SampleZero),
+        (vk::ResolveModeFlags::AVERAGE, ResolveMode::Average),
+        (vk::ResolveModeFlags::MIN, ResolveMode::Min),
+        (vk::ResolveModeFlags::MAX, ResolveMode::Max),
+    ]
+    .into_iter()
+    .filter_map(|(bit, mode)| flags.contains(bit).then_some(mode))
+    .collect()
 }

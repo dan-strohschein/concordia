@@ -52,11 +52,29 @@ pub struct ColorAttachment {
     pub store: StoreOp,
 }
 
+/// How a multisampled depth attachment is resolved to one sample (M4 4.4b).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DepthResolve {
+    /// The smallest sample: the farthest depth with reverse-Z (needs `RhiCaps::depth_resolve_min`).
+    Min,
+}
+
+/// A single-sample depth texture a multisampled depth attachment resolves into.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DepthResolveTarget {
+    /// The target (same size and format as the attachment, `RENDER_TARGET` usage).
+    pub texture: Texture,
+    /// How the samples combine.
+    pub filter: DepthResolve,
+}
+
 /// A depth attachment.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DepthAttachment {
     /// The depth texture.
     pub texture: Texture,
+    /// Resolved at the end of the pass into this target (multisampled attachments only).
+    pub resolve: Option<DepthResolveTarget>,
     /// Load action.
     pub load: LoadOp,
     /// Store action.

@@ -64,6 +64,11 @@ pub fn caps_from_record(record: &ProbeRecord) -> RhiCaps {
         ray_tracing: record.supports_raytracing,
         hw_ray_tracing: record.supports_raytracing && record.has("apple9"),
         metalfx_temporal: record.metalfx_temporal,
+        // Apple's feature-set table: min and max depth resolve filters on Apple3+ and Mac2.
+        depth_resolve_min: record
+            .families
+            .iter()
+            .any(|f| f == "mac2" || f.starts_with("apple")),
         timestamp_granularity: timestamp_granularity(record),
         max_mesh_output_vertices: vertices,
         max_mesh_output_primitives: primitives,

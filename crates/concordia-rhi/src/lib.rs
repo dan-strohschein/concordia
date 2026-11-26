@@ -27,8 +27,9 @@ pub use caps::{
 };
 pub use command::{
     ClearValue, ColorAttachment, Command, CommandList, DRAW_INDEXED_INDIRECT_BYTES,
-    DRAW_INDIRECT_BYTES, DepthAttachment, LoadOp, MAX_MESH_TASK_GROUPS, MAX_MESH_TASK_GROUPS_TOTAL,
-    MAX_PUSH_CONSTANTS, Rect, RenderPassDesc, StoreOp, TextureOrigin, TimerScope, Viewport,
+    DRAW_INDIRECT_BYTES, DepthAttachment, DepthResolve, DepthResolveTarget, LoadOp,
+    MAX_MESH_TASK_GROUPS, MAX_MESH_TASK_GROUPS_TOTAL, MAX_PUSH_CONSTANTS, Rect, RenderPassDesc,
+    StoreOp, TextureOrigin, TimerScope, Viewport,
 };
 pub use device::{Device, QueueKind, Submit};
 pub use error::RhiError;

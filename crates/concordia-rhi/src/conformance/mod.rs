@@ -2,6 +2,7 @@
 //! [`conformance_tests!`](crate::conformance_tests) in its `tests/conformance.rs`.
 
 mod cases;
+mod depth;
 mod indirect;
 mod mesh;
 mod regions;
@@ -10,6 +11,7 @@ mod targets;
 mod util;
 
 pub use cases::*;
+pub use depth::*;
 pub use indirect::*;
 pub use mesh::*;
 pub use regions::*;
@@ -113,7 +115,8 @@ macro_rules! conformance_tests {
             mesh_and_vertex_draws_share_one_depth_buffer,
             mesh_pipeline_misuse_is_reported,
             rg16_float_renders_and_reads_back,
-            write_mask_leaves_a_target_untouched
+            write_mask_leaves_a_target_untouched,
+            depth_resolve_min_keeps_the_farthest_sample
         );
     };
     (@cases $make:expr, $golden:expr, $shaders:expr, $finish:expr; $($name:ident),+) => {$(

@@ -23,6 +23,51 @@ pub fn indirect_args(args: &BufferDesc, offset: u64, bytes: u64) -> Result<(), R
     }
 }
 
+/// A multisampled depth attachment `source` can resolve into `target`: a single-sample texture
+/// of its size and depth format with `RENDER_TARGET` usage, on a device with min resolves.
+pub fn depth_resolve(
+    source: &TextureDesc,
+    target: &TextureDesc,
+    min_supported: bool,
+) -> Result<(), RhiError> {
+    let invalid = |why: String| RhiError::invalid("depth resolve", why);
+    if !min_supported {
+        return Err(invalid("the device has no min depth resolves".into()));
+    }
+    if !source.format.is_depth() {
+        return Err(invalid(format!(
+            "{:?} is not a depth format",
+            source.format
+        )));
+    }
+    if source.samples == SampleCount::X1 {
+        return Err(invalid(format!(
+            "{:?} needs a multisampled source",
+            source.label
+        )));
+    }
+    if target.samples != SampleCount::X1 {
+        return Err(invalid(format!(
+            "{:?} needs a single-sample target",
+            target.label
+        )));
+    }
+    if (target.width, target.height, target.format) != (source.width, source.height, source.format)
+    {
+        return Err(invalid(format!(
+            "{:?} and {:?} differ in size or format",
+            source.label, target.label
+        )));
+    }
+    if !target.usage.contains(TextureUsage::RENDER_TARGET) {
+        return Err(invalid(format!(
+            "{:?} lacks RENDER_TARGET usage",
+            target.label
+        )));
+    }
+    Ok(())
+}
+
 /// One side of a texture copy: the texture, its descriptor and the region's corner.
 #[derive(Debug, Clone, Copy)]
 pub struct CopySide<'a> {

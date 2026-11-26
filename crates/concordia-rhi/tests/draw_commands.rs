@@ -281,3 +281,76 @@ fn viewports_and_scissors_must_lie_inside_the_pass() {
     assert!(check::scissor_in(&rect(0, 31, 4, 2), size).is_err());
     assert!(check::scissor_in(&rect(u32::MAX, 0, 4, 2), size).is_err());
 }
+
+fn depth_desc(
+    width: u32,
+    format: Format,
+    samples: SampleCount,
+    usage: TextureUsage,
+) -> TextureDesc {
+    TextureDesc {
+        width: nz(width),
+        height: nz(width / 2),
+        mip_levels: nz(1),
+        samples,
+        format,
+        usage,
+        label: "depth".into(),
+    }
+}
+
+/// A depth resolve (M4 4.4b) takes a multisampled depth attachment into a single-sample texture of
+/// its size and format with `RENDER_TARGET` usage, and needs the device's min resolve.
+#[test]
+fn depth_resolve_needs_a_single_sample_depth_target() {
+    let rt = TextureUsage::RENDER_TARGET;
+    let source = depth_desc(64, Format::Depth32Float, SampleCount::X4, rt);
+    let target = depth_desc(
+        64,
+        Format::Depth32Float,
+        SampleCount::X1,
+        rt | TextureUsage::SAMPLED,
+    );
+    assert!(check::depth_resolve(&source, &target, true).is_ok());
+    let fails = |result: Result<(), concordia_rhi::RhiError>, why: &str| {
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains(why), "expected {why:?}: {err}");
+    };
+    fails(
+        check::depth_resolve(&source, &target, false),
+        "min depth resolves",
+    );
+    fails(
+        check::depth_resolve(&target, &target, true),
+        "multisampled source",
+    );
+    fails(
+        check::depth_resolve(&source, &source, true),
+        "single-sample target",
+    );
+    let small = depth_desc(32, Format::Depth32Float, SampleCount::X1, rt);
+    fails(
+        check::depth_resolve(&source, &small, true),
+        "size or format",
+    );
+    let color_source = depth_desc(64, Format::Rgba8Unorm, SampleCount::X4, rt);
+    let color_target = depth_desc(64, Format::Rgba8Unorm, SampleCount::X1, rt);
+    fails(
+        check::depth_resolve(&color_source, &color_target, true),
+        "not a depth format",
+    );
+    fails(
+        check::depth_resolve(&source, &color_target, true),
+        "size or format",
+    );
+    let sampled_only = depth_desc(
+        64,
+        Format::Depth32Float,
+        SampleCount::X1,
+        TextureUsage::SAMPLED,
+    );
+    fails(
+        check::depth_resolve(&source, &sampled_only, true),
+        "RENDER_TARGET",
+    );
+}

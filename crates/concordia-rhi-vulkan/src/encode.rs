@@ -5,8 +5,9 @@ use std::num::NonZeroU32;
 
 use ash::vk;
 use concordia_rhi::{
-    Buffer, BufferUsage, Command, Format, Layout, Pipeline, Rect, RenderPassDesc, RhiError,
-    SampleCount, Texture, TextureOrigin, TextureUsage, TimerScope, Viewport, check,
+    Buffer, BufferUsage, Command, DepthResolve, DepthResolveTarget, Format, Layout, Pipeline, Rect,
+    RenderPassDesc, RhiError, SampleCount, Texture, TextureOrigin, TextureUsage, TimerScope,
+    Viewport, check,
 };
 
 use crate::convert;
@@ -28,6 +29,8 @@ pub(crate) struct Target<'a> {
     pub mesh: Option<&'a ash::ext::mesh_shader::Device>,
     /// Timestamp queries, when timed.
     pub queries: Option<(vk::QueryPool, &'a Queries)>,
+    /// The device resolves depth with the min mode.
+    pub depth_resolve_min: bool,
 }
 
 /// Records `commands` after `inits` (new textures' moves to their home layouts). Returns the
@@ -93,7 +96,10 @@ fn textures_of(command: &Command) -> Vec<Texture> {
                 .flat_map(|c| [Some(c.texture), c.resolve])
                 .flatten()
                 .collect();
-            v.extend(desc.depth.as_ref().map(|d| d.texture));
+            if let Some(d) = &desc.depth {
+                v.push(d.texture);
+                v.extend(d.resolve.map(|r| r.texture));
+            }
             v
         }
         Command::CopyBufferToTexture { dst, .. } => vec![*dst],
@@ -502,14 +508,16 @@ impl Recorder<'_> {
                 }
                 shrink(&mut extent, t);
                 let (load, clear) = convert::load(d.load);
-                Some(
-                    vk::RenderingAttachmentInfo::default()
-                        .image_view(t.mip0)
-                        .image_layout(convert::layout(Layout::DepthAttachment))
-                        .load_op(load)
-                        .store_op(convert::store(d.store))
-                        .clear_value(clear),
-                )
+                let info = vk::RenderingAttachmentInfo::default()
+                    .image_view(t.mip0)
+                    .image_layout(convert::layout(Layout::DepthAttachment))
+                    .load_op(load)
+                    .store_op(convert::store(d.store))
+                    .clear_value(clear);
+                Some(match d.resolve {
+                    Some(resolve) => self.depth_resolve(info, t, resolve)?,
+                    None => info,
+                })
             }
             None => None,
         };
@@ -544,6 +552,28 @@ impl Recorder<'_> {
             .zip(NonZeroU32::new(extent.height))
             .map(|(w, h)| [w, h]);
         Ok(())
+    }
+
+    /// `info` resolving depth texture `source` into `resolve` (the shared check first).
+    fn depth_resolve<'i>(
+        &self,
+        info: vk::RenderingAttachmentInfo<'i>,
+        source: &VkTexture,
+        resolve: DepthResolveTarget,
+    ) -> Result<vk::RenderingAttachmentInfo<'i>, RhiError> {
+        let r = self.texture(
+            resolve.texture,
+            TextureUsage::RENDER_TARGET,
+            "a depth resolve target",
+        )?;
+        check::depth_resolve(&source.desc, &r.desc, self.t.depth_resolve_min)?;
+        let mode = match resolve.filter {
+            DepthResolve::Min => vk::ResolveModeFlags::MIN,
+        };
+        Ok(info
+            .resolve_mode(mode)
+            .resolve_image_view(r.mip0)
+            .resolve_image_layout(convert::layout(Layout::DepthAttachment)))
     }
 
     fn resolve_target(&self, source: &VkTexture, resolve: Texture) -> Result<&VkTexture, RhiError> {

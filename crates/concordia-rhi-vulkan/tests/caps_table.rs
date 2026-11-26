@@ -2,7 +2,9 @@
 
 use concordia_rhi::{Backend, Requirement, SampleCount, TimestampGranularity};
 use concordia_rhi_vulkan::BINDLESS_CAPACITY;
-use concordia_rhi_vulkan::record::{DeviceType, MeshRecord, ProbeRecord, caps_from_record, choose};
+use concordia_rhi_vulkan::record::{
+    DeviceType, MeshRecord, ProbeRecord, ResolveMode, caps_from_record, choose,
+};
 
 fn lavapipe() -> ProbeRecord {
     serde_json::from_str(include_str!("fixtures/probes/lavapipe.probe.json"))
@@ -273,4 +275,31 @@ fn independent_blend_is_required() {
     assert!(record.missing().is_empty());
     record.features.independent_blend = false;
     assert_eq!(record.missing(), ["independentBlend"]);
+}
+
+/// `supportedDepthResolveModes` (M4 4.4b) gives `depth_resolve_min` when it has the min mode on a
+/// usable device; records made before 4.4b (the lavapipe fixture among them, re-recorded at M4's
+/// end) read as having no modes.
+#[test]
+fn vulkan_caps_from_record_read_depth_resolve_modes() {
+    let old = lavapipe();
+    assert!(old.depth_resolve_modes.is_empty());
+    assert!(!caps_from_record(&old).depth_resolve_min);
+    let mut record = lavapipe();
+    record.depth_resolve_modes = vec![ResolveMode::SampleZero, ResolveMode::Min];
+    assert!(caps_from_record(&record).depth_resolve_min);
+    record.depth_resolve_modes = vec![
+        ResolveMode::SampleZero,
+        ResolveMode::Average,
+        ResolveMode::Max,
+    ];
+    assert!(!caps_from_record(&record).depth_resolve_min);
+    record.depth_resolve_modes = vec![ResolveMode::Min];
+    record.features.dynamic_rendering = false;
+    assert!(
+        !caps_from_record(&record).depth_resolve_min,
+        "unusable device"
+    );
+    let json = serde_json::to_value(ResolveMode::SampleZero).unwrap();
+    assert_eq!(json, serde_json::json!("sample_zero"));
 }
