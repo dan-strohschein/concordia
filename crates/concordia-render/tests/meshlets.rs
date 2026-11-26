@@ -11,7 +11,8 @@ use concordia_assets::{AssetRef, ImageSettings, MeshData, MeshRenderer, shapes};
 use concordia_core::math::{Quat, Vec3};
 use concordia_render::shadow::CascadeSettings;
 use concordia_render::{
-    Camera, DirectionalLight, Environment, Image, MeshletCounts, RasterPath, Renderer, ViewMode,
+    Camera, Culling, DirectionalLight, Environment, Image, MeshletCounts, RasterPath, Renderer,
+    ViewMode,
 };
 
 const SIZE: (u32, u32) = (320, 180);
@@ -285,7 +286,8 @@ fn masked_material_meshlets_render_alpha_cutouts_correctly() {
     assert_eq!(r.stats().meshlets.instances, 1);
 }
 
-/// What each meshlet path reports: the same counts, as indirect draws or mesh-task draws.
+/// What each meshlet path reports with culling off: the same counts, as indirect draws or
+/// mesh-task draws, every candidate drawn.
 #[test]
 fn render_stats_report_the_meshlet_path() {
     let Some(mut r) = renderer() else { return };
@@ -295,7 +297,10 @@ fn render_stats_report_the_meshlet_path() {
     let mut s = scene();
     let ball = MeshletInfo::of(&with_meshlets(sphere()));
     let bowl = MeshletInfo::of(&with_meshlets(bowl()));
+    let all = 3 * ball.meshlets + bowl.meshlets;
+    let cascades = u64::from(CascadeSettings::default().cascades);
     for renderer in [&mut r, &mut compute] {
+        renderer.set_culling(Culling::OFF);
         let _ = render(renderer, &mut s, true);
         let stats = renderer.stats();
         let mesh = stats.raster_path == RasterPath::mesh_shader;
@@ -304,10 +309,15 @@ fn render_stats_report_the_meshlet_path() {
             stats.meshlets,
             MeshletCounts {
                 instances: 4,
-                meshlets: 3 * ball.meshlets + bowl.meshlets,
+                meshlets: all,
                 triangles: 3 * ball.triangles + bowl.triangles,
                 indirect_draws: if mesh { 0 } else { 3 },
                 mesh_draws: if mesh { 3 } else { 0 },
+                candidates: all,
+                after_instance_frustum: all,
+                after_frustum: all,
+                after_cone: all,
+                shadow_meshlets: cascades * all,
             },
             "red (two balls), gold and teal"
         );
@@ -315,6 +325,53 @@ fn render_stats_report_the_meshlet_path() {
         assert_eq!(stats.draw_calls, 4, "three buckets and the ground");
         assert_eq!(stats.triangles, 3 * ball.triangles + bowl.triangles + 2);
     }
+}
+
+/// With culling on (the default), each stage keeps at most what the one before kept: the balls'
+/// far sides fail the cone test, and the double-sided bowl keeps all of its meshlets. Both paths
+/// report the same counts.
+#[test]
+fn render_stats_report_each_cull_stage() {
+    let Some(mut r) = renderer() else { return };
+    let Some(mut compute) = compute_renderer() else {
+        return;
+    };
+    let mut s = scene();
+    let ball = MeshletInfo::of(&with_meshlets(sphere()));
+    let bowl = MeshletInfo::of(&with_meshlets(bowl()));
+    let mut seen = Vec::new();
+    for renderer in [&mut r, &mut compute] {
+        let _ = render(renderer, &mut s, true);
+        let stats = renderer.stats();
+        let m = stats.meshlets;
+        println!("{:?}: {m:?}", stats.raster_path);
+        assert_eq!(m.candidates, 3 * ball.meshlets + bowl.meshlets);
+        assert_eq!(
+            m.after_instance_frustum, m.candidates,
+            "every instance is in view"
+        );
+        assert!(m.after_frustum <= m.after_instance_frustum);
+        assert!(
+            m.after_cone < m.after_frustum,
+            "back-facing ball meshlets: {m:?}"
+        );
+        assert!(
+            m.after_cone >= bowl.meshlets,
+            "the double-sided bowl keeps all"
+        );
+        assert_eq!(m.meshlets, m.after_cone, "nothing else culls in 4.4a");
+        assert!(m.triangles < 3 * ball.triangles + bowl.triangles);
+        assert_eq!(m.instances, 4);
+        assert_eq!(stats.draws, 5, "four meshlet instances and the ground");
+        assert!(m.shadow_meshlets > 0);
+        seen.push(m);
+    }
+    let strip = |m: MeshletCounts| MeshletCounts {
+        mesh_draws: 0,
+        indirect_draws: 0,
+        ..m
+    };
+    assert_eq!(strip(seen[0]), strip(seen[1]), "both paths cull the same");
 }
 
 /// The wireframe and triangles views need per-triangle data that shared mesh-stage vertices can't
@@ -418,10 +475,10 @@ fn meshlet_and_triangle_view_modes_color_their_primitives() {
     }
 }
 
-/// Perf mode times `meshlet.expand` before the draws on the compute path; the mesh-shader path has
+/// Perf mode times `meshlet.cull` before the draws on the compute path; the mesh-shader path has
 /// no such pass.
 #[test]
-fn perf_mode_times_meshlet_expand_before_the_draws() {
+fn perf_mode_times_meshlet_cull_before_the_draws() {
     let Some(mut r) = compute_renderer() else {
         return;
     };
@@ -430,25 +487,25 @@ fn perf_mode_times_meshlet_expand_before_the_draws() {
     let _ = common::render_timed(&mut r, &mut s, SIZE);
     let names = r.stats().timed_passes;
     let at = |n: &str| names.iter().position(|p| p == n);
-    let expand = at("meshlet.expand").unwrap_or_else(|| panic!("{names:?}"));
+    let cull = at("meshlet.cull").unwrap_or_else(|| panic!("{names:?}"));
     assert!(
-        expand < at("shadow 0").unwrap() && expand < at("forward").unwrap(),
+        cull < at("shadow 0").unwrap() && cull < at("forward").unwrap(),
         "{names:?}"
     );
     r.set_meshlets(false);
     let _ = common::render_timed(&mut r, &mut s, SIZE);
-    assert!(!r.stats().timed_passes.iter().any(|p| p == "meshlet.expand"));
+    assert!(!r.stats().timed_passes.iter().any(|p| p == "meshlet.cull"));
     let Some(mut mesh) = renderer() else { return };
     if meshlet_path(&mesh) == RasterPath::mesh_shader {
         mesh.set_perf_mode(true);
         let _ = common::render_timed(&mut mesh, &mut s, SIZE);
         let names = mesh.stats().timed_passes;
-        assert!(!names.iter().any(|p| p == "meshlet.expand"), "{names:?}");
+        assert!(!names.iter().any(|p| p == "meshlet.cull"), "{names:?}");
     }
 }
 
 /// Timings only (perf is deferred): 64 dense balls (590k triangles) at 1280×720, 150 frames
-/// after 30 warm-up frames, on the M1, compute and mesh-shader paths; prints each pass's median. Run on the reference Mac:
+/// after 30 warm-up frames, on the M1, compute and mesh-shader paths, each with GPU culling off and on (M4 4.4); prints each pass's median. Run on the reference Mac:
 /// `cargo nextest run -p concordia-render --release --run-ignored only -E 'test(meshlet_path_timings)' --no-capture`.
 #[test]
 #[ignore = "timings for the As built, run by hand in release"]
@@ -473,16 +530,19 @@ fn meshlet_path_timings() {
     compute.set_perf_mode(true);
     let mesh = meshlet_path(&r) == RasterPath::mesh_shader;
     let runs = [
-        ("m1", false, false),
-        ("compute", true, true),
-        ("mesh", true, false),
+        ("m1", false, false, Culling::OFF),
+        ("compute (culling off)", true, true, Culling::OFF),
+        ("compute (culling on)", true, true, Culling::default()),
+        ("mesh (culling off)", true, false, Culling::OFF),
+        ("mesh (culling on)", true, false, Culling::default()),
     ];
-    for (label, meshlets, masked) in runs {
-        if label == "mesh" && !mesh {
+    for (label, meshlets, masked, culling) in runs {
+        if label.starts_with("mesh") && !mesh {
             continue;
         }
         let r = if masked { &mut compute } else { &mut r };
         r.set_meshlets(meshlets);
+        r.set_culling(culling);
         let mut samples: std::collections::BTreeMap<String, Vec<f64>> = Default::default();
         for frame in 0..180 {
             let (_, timing) = common::render_timed(r, &mut s, (1280, 720));
@@ -500,6 +560,7 @@ fn meshlet_path_timings() {
             ms.sort_by(f64::total_cmp);
             println!("{label} {name}: median {:.3} ms", ms[ms.len() / 2]);
         }
+        println!("{label} meshlets: {:?}", r.stats().meshlets);
     }
 }
 

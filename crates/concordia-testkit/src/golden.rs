@@ -128,6 +128,10 @@ pub struct Tolerances {
     /// the mesh-shader path, M4 4.3b), by golden name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub paths: BTreeMap<String, Tolerance>,
+    /// How closely a golden's scene rendered with GPU culling on agrees with it rendered with
+    /// culling off (M4 4.4), by golden name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub culling: BTreeMap<String, Tolerance>,
     /// Per-backend overrides, by backend name (D4: each backend has its own tolerance).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub backends: BTreeMap<String, BackendTolerances>,
@@ -144,16 +148,53 @@ pub struct BackendTolerances {
     /// Path agreement by golden name (see [`Tolerances::paths`]).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub paths: BTreeMap<String, Tolerance>,
+    /// Culling agreement by golden name (see [`Tolerances::culling`]).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub culling: BTreeMap<String, Tolerance>,
+}
+
+/// Two renders of one golden's scene that must agree, each with its own entries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Comparison {
+    /// Two draw paths ([`Tolerances::paths`]).
+    Paths,
+    /// GPU culling on and off ([`Tolerances::culling`]).
+    Culling,
+}
+
+impl Comparison {
+    /// This comparison's map of a file or backend section.
+    fn pick<'a>(
+        self,
+        paths: &'a BTreeMap<String, Tolerance>,
+        culling: &'a BTreeMap<String, Tolerance>,
+    ) -> &'a BTreeMap<String, Tolerance> {
+        match self {
+            Self::Paths => paths,
+            Self::Culling => culling,
+        }
+    }
 }
 
 impl Tolerances {
     /// How closely two draw paths of golden `name`'s scene must agree on `backend`: the
     /// backend's `paths` entry, else the shared one; `None` without either.
     pub fn for_paths(&self, backend: Option<Backend>, name: &str) -> Option<Tolerance> {
+        self.for_comparison(backend, name, Comparison::Paths)
+    }
+
+    /// How closely `comparison`'s two renders of golden `name`'s scene must agree on `backend`:
+    /// the backend's entry, else the shared one; `None` without either.
+    pub fn for_comparison(
+        &self,
+        backend: Option<Backend>,
+        name: &str,
+        comparison: Comparison,
+    ) -> Option<Tolerance> {
         backend
             .and_then(|b| self.backends.get(b.as_str()))
-            .and_then(|o| o.paths.get(name))
-            .or_else(|| self.paths.get(name))
+            .and_then(|o| comparison.pick(&o.paths, &o.culling).get(name))
+            .or_else(|| comparison.pick(&self.paths, &self.culling).get(name))
             .copied()
     }
 
@@ -362,9 +403,20 @@ impl Golden {
         suite: &str,
         name: &str,
     ) -> Result<Option<Tolerance>, GoldenError> {
+        self.comparison_tolerance_on(backend, suite, name, Comparison::Paths)
+    }
+
+    /// [`Tolerances::for_comparison`] from `<suite>/tolerances.ron` (`None` without the file).
+    pub fn comparison_tolerance_on(
+        &self,
+        backend: Option<Backend>,
+        suite: &str,
+        name: &str,
+        comparison: Comparison,
+    ) -> Result<Option<Tolerance>, GoldenError> {
         Ok(self
             .tolerances_file(suite, name)?
-            .and_then(|file| file.for_paths(backend, name)))
+            .and_then(|file| file.for_comparison(backend, name, comparison)))
     }
 
     /// `<suite>/tolerances.ron`, validated; `None` without one.

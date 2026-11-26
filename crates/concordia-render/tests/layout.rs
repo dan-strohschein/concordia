@@ -1,6 +1,9 @@
 //! Rust mirrors of shader structs match Slang's reflected layout.
 
-use concordia_render::{DrawPush, ExpandPush, MeshletPush, ShadowPush, TaskPush, shader_dir};
+use concordia_render::{
+    CompactPush, CullPush, DrawPush, MeshletPush, ScanAddPush, ScanPush, ShadowPush, TaskPush,
+    shader_dir,
+};
 use concordia_shaders::{
     CompileRequest, ShaderCompiler, ShaderStruct, SlangToolchain, SlangcCompiler, Stage, Target,
     check_layout,
@@ -44,7 +47,14 @@ fn shadow_push_matches_forward_slang() {
 fn meshlet_push_matches_meshlet_slang() {
     check_push_in::<MeshletPush>("meshlet.slang", "meshlet_vs", Stage::Vertex);
     check_push_in::<MeshletPush>("meshlet.slang", "meshlet_shadow_vs", Stage::Vertex);
-    check_push_in::<ExpandPush>("meshlet.slang", "meshlet_expand", Stage::Compute);
+}
+
+#[test]
+fn cull_pushes_match_their_shaders() {
+    check_push_in::<CullPush>("meshlet.slang", "meshlet_cull", Stage::Compute);
+    check_push_in::<CompactPush>("meshlet.slang", "meshlet_compact", Stage::Compute);
+    check_push_in::<ScanPush>("scan.slang", "scan_groups", Stage::Compute);
+    check_push_in::<ScanAddPush>("scan.slang", "scan_add", Stage::Compute);
 }
 
 #[test]
@@ -74,9 +84,12 @@ fn task_push_keeps_the_fields_fs_reads_where_draw_push_has_them() {
         first: 7,
         count: 8,
         item_count: 9,
-        cascade: 10,
+        views: 10,
+        codes: 11,
+        cull: 12,
+        cascade: 13,
     };
-    let words: Vec<u8> = (1u32..=10).flat_map(|w| w.to_le_bytes()).collect();
+    let words: Vec<u8> = (1u32..=13).flat_map(|w| w.to_le_bytes()).collect();
     assert_eq!(push.bytes(), words);
     assert_eq!(push.bytes().len(), TaskPush::layout().size);
     assert!(push.bytes().len() <= concordia_rhi::MAX_PUSH_CONSTANTS);
@@ -112,14 +125,30 @@ fn meshlet_push_bytes_follow_the_layout() {
     let bytes: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
     assert_eq!(push.bytes(), bytes);
     assert_eq!(push.bytes().len(), MeshletPush::layout().size);
-    let expand = ExpandPush {
+    let cull = CullPush {
         items: 1,
         item_count: 2,
         buckets: 3,
-        entries: 4,
-        args: 5,
-        total: 6,
+        views: 4,
+        instances: 5,
+        meshes: 6,
+        codes: 7,
+        drawn: 8,
+        total: 9,
     };
-    assert_eq!(expand.bytes(), bytes[..24]);
-    assert_eq!(expand.bytes().len(), ExpandPush::layout().size);
+    let nine: Vec<u8> = (1u32..=9).flat_map(|w| w.to_le_bytes()).collect();
+    assert_eq!(cull.bytes(), nine);
+    assert_eq!(cull.bytes().len(), CullPush::layout().size);
+    let compact = CompactPush {
+        items: 1,
+        item_count: 2,
+        buckets: 3,
+        drawn: 4,
+        sums: 5,
+        entries: 6,
+        args: 7,
+        total: 8,
+    };
+    assert_eq!(compact.bytes(), bytes);
+    assert_eq!(compact.bytes().len(), CompactPush::layout().size);
 }

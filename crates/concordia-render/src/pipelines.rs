@@ -48,6 +48,25 @@ pub(crate) fn compile(
     compile_with(device, compiler, file, entry, stage, BTreeMap::new())
 }
 
+/// A compute pipeline for `entry` of render shader `file`.
+fn compute_pipeline(
+    device: &dyn Device,
+    compiler: &dyn ShaderCompiler,
+    file: &str,
+    entry: &str,
+) -> Result<Pipeline, RenderError> {
+    let module = compile(device, compiler, file, entry, Stage::Compute)?;
+    let threads_per_group = module
+        .reflection
+        .threads_per_group
+        .ok_or_else(|| RenderError::Shader(format!("{entry}: no thread group size")))?;
+    Ok(device.create_compute_pipeline(&ComputePipelineDesc {
+        shader: module.source(),
+        threads_per_group,
+        label: entry.into(),
+    })?)
+}
+
 /// [`compile`] with preprocessor defines.
 fn compile_with(
     device: &dyn Device,
@@ -124,7 +143,7 @@ pub(crate) struct Pipelines {
     uis: BTreeMap<u8, Pipeline>,
     shadow: Pipeline,
     meshlet_shadow: Pipeline,
-    expand: Pipeline,
+    cull: crate::meshlet_pass::CullPipelines,
     /// The mesh-shader path's stages, when the device takes it.
     mesh_stages: Option<MeshStages>,
     sky: (ShaderSource, ShaderSource),
@@ -188,21 +207,16 @@ impl Pipelines {
             compile("meshlet.slang", "meshlet_shadow_vs", Stage::Vertex)?,
             "meshlet shadow depth",
         )?;
-        let expand_module = compile_with(
-            device,
-            compiler.as_ref(),
-            "meshlet.slang",
-            "meshlet_expand",
-            Stage::Compute,
-            BTreeMap::new(),
-        )?;
-        let expand = device.create_compute_pipeline(&ComputePipelineDesc {
-            shader: expand_module.source(),
-            threads_per_group: expand_module.reflection.threads_per_group.ok_or_else(|| {
-                RenderError::Shader("meshlet.expand: no thread group size".into())
-            })?,
-            label: "meshlet.expand".into(),
-        })?;
+        let kernel =
+            |file: &str, entry: &str| compute_pipeline(device, compiler.as_ref(), file, entry);
+        let cull = crate::meshlet_pass::CullPipelines {
+            cull: kernel("meshlet.slang", "meshlet_cull")?,
+            compact: kernel("meshlet.slang", "meshlet_compact")?,
+            scan: crate::scan::ScanPipelines {
+                groups: kernel("scan.slang", "scan_groups")?,
+                add: kernel("scan.slang", "scan_add")?,
+            },
+        };
         let meshlet_vs = compile("meshlet.slang", "meshlet_vs", Stage::Vertex)?;
         let mesh_stages = match crate::meshlet::route(device.caps(), crate::ViewMode::lit) {
             crate::meshlet::Route::MeshTasks => Some(mesh_stages(device, compiler.as_ref())?),
@@ -221,7 +235,7 @@ impl Pipelines {
             tonemaps: BTreeMap::new(),
             shadow,
             meshlet_shadow,
-            expand,
+            cull,
             mesh_stages,
             sky,
             skies: BTreeMap::new(),
@@ -412,9 +426,9 @@ impl Pipelines {
         self.mesh_stages.as_ref().map(|m| m.shadow)
     }
 
-    /// The `meshlet.expand` compute pipeline.
-    pub(crate) fn expand(&self) -> Pipeline {
-        self.expand
+    /// The `meshlet.cull` pass's compute pipelines.
+    pub(crate) fn cull(&self) -> crate::meshlet_pass::CullPipelines {
+        self.cull
     }
 
     /// Creates `raster` with `geometry`'s vertex source: a vertex shader, or the object and mesh

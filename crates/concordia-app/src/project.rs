@@ -234,7 +234,8 @@ impl Project {
                 RenderModule::new(Arc::new(device))
                     .with_closure_budget(self.closure_budget())
                     .with_perf_mode(self.manifest.render.as_ref().is_some_and(|r| r.perf_mode))
-                    .with_meshlets(self.manifest.render.as_ref().is_none_or(|r| r.meshlets)),
+                    .with_meshlets(self.manifest.render.as_ref().is_none_or(|r| r.meshlets))
+                    .with_culling(self.manifest.render.as_ref().is_none_or(|r| r.culling)),
             ));
             // Reference renders with the path tracer (ADR-0090, ADR-0101): GPU by default.
             modules.push(Arc::new(concordia_pathtrace::PathTraceModule::new(Some(

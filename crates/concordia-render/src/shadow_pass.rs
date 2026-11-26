@@ -122,8 +122,8 @@ pub(crate) struct ShadowJob {
     pub(crate) resolution: u32,
     pub(crate) pipeline: Pipeline,
     pub(crate) casters: Vec<ShadowDraw>,
-    /// The meshlet casters' bucket.
-    pub(crate) meshlets: Option<crate::meshlet_pass::BucketDraw>,
+    /// The meshlet casters' bucket per cascade (culled for that cascade's view).
+    pub(crate) meshlets: Vec<crate::meshlet_pass::BucketDraw>,
     /// The maps already hold exactly these shadows: sample them, draw nothing.
     pub(crate) reuse: bool,
 }
@@ -179,11 +179,9 @@ pub(crate) fn add_shadow_passes(graph: &mut RenderGraph, job: ShadowJob) -> Vec<
                         instances: 0..draw.instances,
                     });
                 }
-                if let Some(bucket) = meshlets.as_ref() {
+                if let Some(bucket) = meshlets.get(cascade) {
                     ctx.commands.push(Command::SetPipeline(bucket.pipeline));
-                    ctx.commands
-                        .commands
-                        .extend(bucket.commands(Some(cascade as u32)));
+                    ctx.commands.commands.extend(bucket.commands());
                 }
                 ctx.commands.push(Command::EndRenderPass);
                 Ok(())

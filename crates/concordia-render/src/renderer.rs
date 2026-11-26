@@ -107,6 +107,12 @@ pub struct Renderer {
     last_motion: Option<MotionImage>,
     /// Draw static meshes with meshlets through the meshlet path (ADR-0100).
     meshlets: bool,
+    /// The meshlet path's GPU culling tests (M4 4.4).
+    culling: crate::Culling,
+    /// Keep each read-back frame's per-meshlet cull records (`set_cull_readback`).
+    cull_readback: bool,
+    /// The last ones kept.
+    last_culling: Option<Vec<crate::CulledMeshlet>>,
     /// A surface image acquired ahead of its frame (`acquire_ahead`), with its size.
     ahead: Option<(Surface, Texture, (u32, u32))>,
     environments: EnvironmentCache,
@@ -144,6 +150,8 @@ struct InFlight {
     /// Per-cluster overflow counts, read when the frame retires.
     overflow: Buffer,
     clusters: u64,
+    /// The meshlet path's cull codes, read when the frame retires.
+    cull: Option<crate::cull_stats::CullReadback>,
 }
 
 /// A frame's cluster overflow: read now, or once a presented frame retires.
@@ -153,6 +161,7 @@ enum Overflow {
         buffer: Buffer,
         clusters: u64,
         value: u64,
+        cull: Option<crate::cull_stats::CullReadback>,
     },
 }
 
@@ -195,6 +204,12 @@ struct FrameBlocks {
 /// Everything `execute` records for one frame.
 struct FramePlan<'a> {
     draws: Vec<Draw>,
+    /// The meshlet path's code buffer, its layout and the CPU's counts, read back after the frame.
+    cull: Option<(
+        Buffer,
+        crate::cull_stats::CullLayout,
+        crate::cull_stats::CpuCounts,
+    )>,
     /// The meshlet path's work, when anything takes it.
     meshlets: Option<MeshletJob>,
     samples: SampleCount,
@@ -371,6 +386,9 @@ impl Renderer {
             motion_readback: false,
             last_motion: None,
             meshlets: true,
+            culling: crate::Culling::default(),
+            cull_readback: false,
+            last_culling: None,
             ahead: None,
             environments: EnvironmentCache::default(),
             shadow_maps: ShadowMaps::default(),
@@ -615,6 +633,7 @@ impl Renderer {
                     buffer,
                     clusters,
                     value,
+                    cull,
                 },
             )) => {
                 self.in_flight.push_back(InFlight {
@@ -622,6 +641,7 @@ impl Renderer {
                     resources: frame,
                     overflow: buffer,
                     clusters,
+                    cull,
                 });
                 Ok(image)
             }
@@ -704,6 +724,74 @@ impl Renderer {
     /// Whether the meshlet path is on.
     pub fn meshlets(&self) -> bool {
         self.meshlets
+    }
+
+    /// Chooses the meshlet path's GPU culling tests (all on by default; `Culling::OFF` for
+    /// comparisons).
+    pub fn set_culling(&mut self, culling: crate::Culling) {
+        self.culling = culling;
+    }
+
+    /// The meshlet path's GPU culling tests.
+    pub fn culling(&self) -> crate::Culling {
+        self.culling
+    }
+
+    /// Keeps what GPU culling decided for every candidate meshlet of each frame read back
+    /// (tests and agents checking culling); off by default.
+    pub fn set_cull_readback(&mut self, on: bool) {
+        self.cull_readback = on;
+        if !on {
+            self.last_culling = None;
+        }
+    }
+
+    /// The per-meshlet cull records of the last frame read back with `set_cull_readback` on, in
+    /// entry-slot order (camera buckets, then each cascade's).
+    pub fn read_culling(&self) -> Option<&[crate::CulledMeshlet]> {
+        self.last_culling.as_deref()
+    }
+
+    /// Reads a frame's cull codes back into the stats (and the records, if kept).
+    fn read_cull(&mut self, cull: &crate::cull_stats::CullReadback) -> Result<(), RenderError> {
+        let bytes = u64::from(cull.layout.entries) * 4;
+        let words: Vec<u32> = match bytes {
+            0 => Vec::new(),
+            _ => self
+                .device
+                .read_buffer(cull.buffer, 0, bytes)?
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|c| u32::from_le_bytes(*c))
+                .collect(),
+        };
+        let tally = crate::cull_stats::tally(&words, &cull.layout);
+        self.apply_cull(cull.cpu, &tally);
+        if self.cull_readback {
+            self.last_culling = Some(crate::cull_stats::records(&words, &cull.layout));
+        }
+        Ok(())
+    }
+
+    /// The frame's draw, cull and triangle totals and meshlet counts from both paths' counts.
+    fn apply_cull(
+        &mut self,
+        cpu: crate::cull_stats::CpuCounts,
+        gpu: &crate::cull_stats::CullTally,
+    ) {
+        self.stats.draws = (cpu.draws + gpu.instances) as usize;
+        self.stats.culled = (cpu.culled + gpu.instances_culled) as usize;
+        self.stats.triangles = cpu.triangles + gpu.triangles;
+        let m = &mut self.stats.meshlets;
+        m.instances = gpu.instances;
+        m.meshlets = gpu.drawn;
+        m.triangles = gpu.triangles;
+        m.candidates = gpu.candidates;
+        m.after_instance_frustum = gpu.after_instance_frustum;
+        m.after_frustum = gpu.after_frustum;
+        m.after_cone = gpu.after_cone;
+        m.shadow_meshlets = gpu.shadow_drawn;
     }
 
     /// Sets the project's closure budget (None: the platform's); it can only lower the platform's.
@@ -881,10 +969,15 @@ impl Renderer {
             crate::meshlet::Route::MeshTasks => Geometry::MeshTasks,
         };
         let mut path_draws: Vec<crate::meshlet::PathDraw<BucketKey>> = Vec::new();
-        let mut meshlet_triangles = 0u64;
         let mut draws: Vec<Draw> = Vec::with_capacity(order.len());
         let mut casters: Vec<ShadowDraw> = Vec::new();
-        let culled = order.iter().filter(|d| !d.visible).count();
+        // Meshlet-path instances are culled on the GPU (M4 4.4); the CPU culls the M1 path's.
+        let culled = order
+            .iter()
+            .filter(|d| !d.visible && d.meshlet_row.is_none())
+            .count();
+        let mut path_instances: Vec<Option<(concordia_core::id::EntityId, u32)>> =
+            vec![None; order.len()];
         let mut casting = std::hash::DefaultHasher::new();
         for (
             instance,
@@ -915,28 +1008,22 @@ impl Renderer {
             let shape = self.programs.shape(&world.draws[item].material).cloned();
             let variant = (samples, double_sided, blend);
             if let (Some(mesh_row), Some((_, info))) = (meshlet_row, mesh.meshlets) {
-                if visible {
-                    meshlet_triangles += u64::from(mesh.count / 3);
-                }
-                let forward = match visible {
-                    true => Some((
-                        self.pipelines.for_view(
-                            device,
-                            view_mode,
-                            variant,
-                            shape.as_ref(),
-                            meshlet_geometry,
-                        )?,
-                        material_index,
-                    )),
-                    false => None,
-                };
+                // The GPU culls meshlet-path instances (M4 4.4): every one gets its bucket.
+                path_instances[instance as usize] = Some((world.draws[item].entity, info.meshlets));
+                let pipeline = self.pipelines.for_view(
+                    device,
+                    view_mode,
+                    variant,
+                    shape.as_ref(),
+                    meshlet_geometry,
+                )?;
                 path_draws.push(crate::meshlet::PathDraw {
                     instance,
                     mesh_row,
                     info,
-                    forward,
+                    forward: Some((pipeline, material_index)),
                     casts,
+                    double_sided,
                 });
                 continue;
             }
@@ -1004,20 +1091,53 @@ impl Renderer {
                 }),
             }
         }
-        let meshlet_plan = crate::meshlet::plan(&path_draws);
+        // Reused shadow maps draw nothing, so their casters are neither culled nor laid out. The
+        // culling switches are part of the key, so comparing culling on and off redraws them.
+        std::hash::Hash::hash(&self.culling, &mut casting);
+        let shadow_key = shadows.as_ref().map(|(cascades, settings, maps)| {
+            shadow_key(
+                std::hash::Hasher::finish(&casting),
+                cascades,
+                settings.resolution,
+                maps,
+            )
+        });
+        let reuse = shadow_key.is_some() && self.shadow_key == shadow_key;
+        self.shadow_key = shadow_key;
+        self.stats.shadows_cached = reuse;
+        let cascades = match reuse {
+            true => &[][..],
+            false => shadows.as_ref().map_or(&[][..], |(c, _, _)| c.as_slice()),
+        };
+        let meshlet_plan = crate::meshlet::plan(&path_draws, cascades.len() as u32);
+        let views = crate::cull::view_table(
+            crate::cull::CullView::camera(
+                view_proj,
+                eye(&view.world),
+                matches!(
+                    view.camera.projection,
+                    concordia_render_types::Projection::Perspective { .. }
+                ),
+                self.culling,
+            ),
+            cascades.iter().map(|c| c.view_proj),
+            self.culling,
+        );
+        let views_buf = frame.keep(up.buffer(device, &views, "cull views")?);
         let mut kept = Vec::new();
         let tables = FrameTables {
             frame: frame_i,
             instances: inst_i,
             materials: mat_i,
             meshes: index(mesh_buf)?,
+            views: index(views_buf)?,
         };
         let pipelines = match (route, self.pipelines.meshlet_shadow_mesh()) {
             (crate::meshlet::Route::MeshTasks, Some(shadow)) => {
                 RoutePipelines::MeshTasks { shadow }
             }
             _ => RoutePipelines::ComputeIndirect {
-                expand: self.pipelines.expand(),
+                cull: self.pipelines.cull(),
                 shadow: self.pipelines.meshlet_shadow(),
             },
         };
@@ -1035,21 +1155,32 @@ impl Renderer {
         staging.into_iter().for_each(|b| {
             frame.keep(b);
         });
-        self.stats.meshlets = meshlet_counts(&path_draws, &meshlet_plan, meshlet_triangles, route);
+        self.stats.meshlets = meshlet_counts(&meshlet_plan, route);
+        let views: Vec<u32> = meshlet_plan.buckets.iter().map(|b| b.view).collect();
+        let layout = crate::cull_stats::CullLayout::new(
+            &meshlet_plan.items,
+            &views,
+            &path_instances,
+            meshlet_plan.entries,
+        );
         self.stats.raster_path = match meshlets.as_ref().map(|m| m.route) {
             Some(crate::meshlet::Route::ComputeIndirect) => crate::RasterPath::compute_indirect,
             Some(crate::meshlet::Route::MeshTasks) => crate::RasterPath::mesh_shader,
             None => crate::RasterPath::forward,
         };
-        self.stats.draws = world.draws.len() - culled;
-        self.stats.culled = culled;
         self.stats.draw_calls = draws.len()
             + (self.stats.meshlets.indirect_draws + self.stats.meshlets.mesh_draws) as usize;
-        self.stats.triangles = draws
-            .iter()
-            .map(|d| u64::from(d.vertices / 3) * u64::from(d.instances))
-            .sum::<u64>()
-            + meshlet_triangles;
+        let cpu = crate::cull_stats::CpuCounts {
+            draws: (world.draws.len() - culled - path_draws.len()) as u64,
+            culled: culled as u64,
+            triangles: draws
+                .iter()
+                .map(|d| u64::from(d.vertices / 3) * u64::from(d.instances))
+                .sum::<u64>(),
+        };
+        // Until the codes are read back, nothing is known of the meshlet path.
+        self.apply_cull(cpu, &crate::cull_stats::CullTally::default());
+        let cull = meshlets.as_ref().map(|m| (m.codes, layout, cpu));
         self.stats.memory_bytes = device.allocated_bytes();
         let job = ClusterJob {
             buffers: &cluster,
@@ -1064,29 +1195,16 @@ impl Renderer {
             )),
             false => None,
         };
-        let shadow = shadows.map(|(cascades, settings, maps)| {
-            let key = shadow_key(
-                std::hash::Hasher::finish(&casting),
-                &cascades,
-                settings.resolution,
-                &maps,
-            );
-            let reuse = self.shadow_key == Some(key);
-            self.shadow_key = Some(key);
-            self.stats.shadows_cached = reuse;
-            ShadowJob {
-                maps,
-                resolution: settings.resolution,
-                pipeline: self.pipelines.shadow(),
-                casters,
-                meshlets: meshlets.as_ref().and_then(|m| m.shadow.clone()),
-                reuse,
-            }
+        let shadow = shadows.map(|(_, settings, maps)| ShadowJob {
+            maps,
+            resolution: settings.resolution,
+            pipeline: self.pipelines.shadow(),
+            casters,
+            meshlets: meshlets
+                .as_ref()
+                .map_or_else(Vec::new, |m| m.shadows.clone()),
+            reuse,
         });
-        if shadow.is_none() {
-            self.shadow_key = None;
-            self.stats.shadows_cached = false;
-        }
         self.motion.advance(
             world
                 .draws
@@ -1098,6 +1216,7 @@ impl Renderer {
         );
         let plan = FramePlan {
             draws,
+            cull,
             meshlets,
             samples,
             size: (width, height),
@@ -1347,7 +1466,7 @@ impl Renderer {
                 };
                 crate::frame::push_rows_u32(
                     &mut table,
-                    &crate::meshlet::mesh_row(blob, streams, info),
+                    &crate::meshlet::mesh_row(blob, streams, info, mesh.aabb),
                 );
                 next
             });
@@ -1365,6 +1484,7 @@ impl Renderer {
     ) -> Result<(Option<Image>, Overflow), RenderError> {
         let FramePlan {
             draws,
+            cull,
             meshlets,
             samples,
             size,
@@ -1525,6 +1645,35 @@ impl Renderer {
             dst_offset: 0,
             size: clusters * 4,
         });
+        let cull = match cull {
+            Some((codes, layout, cpu)) => {
+                let bytes = u64::from(layout.entries) * 4;
+                let buffer = frame.keep(self.recycle.buffer(
+                    device,
+                    &BufferDesc {
+                        size: NonZeroU64::new(bytes).unwrap_or(NonZeroU64::MIN),
+                        usage: BufferUsage::COPY_DST,
+                        memory: MemoryLocation::Readback,
+                        label: "meshlet cull codes".into(),
+                    },
+                )?);
+                if bytes > 0 {
+                    list.push(Command::CopyBuffer {
+                        src: codes,
+                        src_offset: 0,
+                        dst: buffer,
+                        dst_offset: 0,
+                        size: bytes,
+                    });
+                }
+                Some(crate::cull_stats::CullReadback {
+                    buffer,
+                    layout,
+                    cpu,
+                })
+            }
+            None => None,
+        };
         if let Output::Surface { surface, .. } = output {
             let value = self.frames + 1;
             let timeline = self.timeline(device)?;
@@ -1542,6 +1691,7 @@ impl Renderer {
                 buffer: overflow_rb,
                 clusters,
                 value,
+                cull,
             };
             return Ok((None, pending));
         }
@@ -1564,6 +1714,9 @@ impl Renderer {
             }),
             None => None,
         };
+        if let Some(c) = &cull {
+            self.read_cull(c)?;
+        }
         if let Some(buffer) = motion_readback {
             let bytes = device.read_buffer(buffer, 0, u64::from(w) * u64::from(h) * 4)?;
             self.last_motion = Some(MotionImage {
@@ -1694,8 +1847,10 @@ impl Renderer {
                 break;
             };
             let overflow = read_overflow(device.as_ref(), f.overflow, f.clusters);
+            let culled = f.cull.as_ref().map(|c| self.read_cull(c)).transpose();
             f.resources.release(device.as_ref(), &mut self.recycle);
             self.record_overflow(overflow?);
+            culled?;
         }
         Ok(())
     }
@@ -1922,22 +2077,17 @@ fn add_forward(
     ForwardTargets { hdr, motion }
 }
 
-/// What the meshlet path draws in the forward pass (`triangles`: its instances' source triangles).
+/// The meshlet path's draw calls this frame; the GPU's counts arrive with the cull codes.
 fn meshlet_counts(
-    draws: &[crate::meshlet::PathDraw<BucketKey>],
     plan: &crate::meshlet::MeshletPlan<BucketKey>,
-    triangles: u64,
     route: crate::meshlet::Route,
 ) -> crate::MeshletCounts {
-    let forward = plan.buckets.iter().filter(|b| b.key.is_some());
-    let buckets = forward.clone().count() as u64;
+    let buckets = plan.buckets.iter().filter(|b| b.key.is_some()).count() as u64;
     let mesh = route == crate::meshlet::Route::MeshTasks;
     crate::MeshletCounts {
-        instances: draws.iter().filter(|d| d.forward.is_some()).count() as u64,
-        meshlets: forward.map(|b| u64::from(b.entries)).sum(),
-        triangles,
         indirect_draws: if mesh { 0 } else { buckets },
         mesh_draws: if mesh { buckets } else { 0 },
+        ..crate::MeshletCounts::default()
     }
 }
 
@@ -1955,7 +2105,7 @@ fn draw_buckets(
             commands.push(Command::SetPipeline(bucket.pipeline));
             bound = Some(bucket.pipeline);
         }
-        commands.extend(bucket.commands(None));
+        commands.extend(bucket.commands());
     }
     bound
 }

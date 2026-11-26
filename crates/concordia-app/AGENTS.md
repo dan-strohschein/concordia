@@ -19,6 +19,7 @@ The composition root: loads a project's `concordia.toml` and builds the engine m
 - `[render] closure_budget` (1..=8) is checked when the project loads and can only lower the platform's closure budget (ADR-0068); `Project::closure_budget` passes it to `RenderModule::with_closure_budget`.
 - `[render] backend = "auto" | "metal" | "vulkan"` (M4 4.1v(b), ADR-0088): the render and pathtrace modules' device, through `concordia-rhi-select`; `CONCORDIA_BACKEND` beats it, and `auto` is Metal on macOS, Vulkan elsewhere (`Project::backend_choice`, `render_backend`, `render_backend_with`; a bad env value is `AppError::Backend`).
 - `[render] perf_mode = true` (default false) times every frame's passes through `RenderModule::with_perf_mode` (M4 4.1a, ADR-0089); `concordia perf run` sets it in memory.
+- `[render] meshlets` (default true; M4 4.3a) and `[render] culling` (default true; M4 4.4) reach the renderer through `RenderModule::with_meshlets` / `with_culling`: the meshlet path, and its GPU culling (`false` draws every candidate meshlet).
 
 ## How to test
 `cargo nextest run -p concordia-app`

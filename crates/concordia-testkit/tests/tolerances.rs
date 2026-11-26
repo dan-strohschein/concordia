@@ -127,11 +127,17 @@ fn every_tolerance_entry_names_an_existing_golden() {
         let tolerances: concordia_testkit::golden::Tolerances =
             concordia_scene::read_document(&text).unwrap();
         tolerances.validate().expect("backend keys name backends");
-        let backend_entries = tolerances
-            .backends
-            .values()
-            .flat_map(|b| b.goldens.keys().chain(b.paths.keys()));
-        let shared = tolerances.goldens.keys().chain(tolerances.paths.keys());
+        let backend_entries = tolerances.backends.values().flat_map(|b| {
+            b.goldens
+                .keys()
+                .chain(b.paths.keys())
+                .chain(b.culling.keys())
+        });
+        let shared = tolerances
+            .goldens
+            .keys()
+            .chain(tolerances.paths.keys())
+            .chain(tolerances.culling.keys());
         for entry in shared.chain(backend_entries) {
             assert!(
                 suite.join(format!("{entry}.png")).is_file(),
@@ -343,6 +349,55 @@ const WITH_PATHS: &str = r#"Tolerances(
         ),
     },
 )"#;
+
+const WITH_CULLING: &str = r#"Tolerances(
+    default: (mean: 0.005, p99: 0.2),
+    goldens: {},
+    paths: {
+        "scene": (mean: 0.002, p99: 0.1),
+    },
+    culling: {
+        "scene": (mean: 0.001, p99: 0.05),
+    },
+    backends: {
+        "vulkan": (
+            default: None,
+            goldens: {},
+            culling: {
+                "scene": (mean: 0.003, p99: 0.05),
+            },
+        ),
+    },
+)"#;
+
+/// A scene rendered with culling on and off agrees within its golden's `culling` entry (M4 4.4),
+/// per backend like the others, and independently of its `paths` entry.
+#[test]
+fn culling_tolerances_are_read_per_golden_and_backend() {
+    use concordia_testkit::golden::Comparison;
+    let dir = tempfile::tempdir().unwrap();
+    write_tolerances(dir.path(), "s", WITH_CULLING);
+    let golden = store(dir.path());
+    let culling = |backend, name| {
+        golden
+            .comparison_tolerance_on(backend, "s", name, Comparison::Culling)
+            .unwrap()
+    };
+    let t = |mean, p99| Some(Tolerance { mean, p99 });
+    assert_eq!(culling(None, "scene"), t(0.001, 0.05));
+    assert_eq!(
+        culling(Some(concordia_rhi::Backend::Vulkan), "scene"),
+        t(0.003, 0.05)
+    );
+    assert_eq!(culling(None, "other"), None);
+    assert_eq!(
+        golden
+            .path_tolerance_on(Some(concordia_rhi::Backend::Vulkan), "s", "scene")
+            .unwrap(),
+        t(0.002, 0.1),
+        "paths are their own entries"
+    );
+}
 
 /// Two draw paths of one golden's scene agree within its `paths` entry (M4 4.3b: the compute
 /// fallback against the mesh-shader path), per backend like golden entries; none without one.
