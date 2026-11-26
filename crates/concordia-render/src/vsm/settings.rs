@@ -32,6 +32,13 @@ pub struct VsmSettings {
     pub normal_bias: f32,
 }
 
+impl VsmSettings {
+    /// Checks every field's range (as reading `[render.vsm]` does).
+    pub fn validate(&self) -> Result<(), String> {
+        Self::try_from(RawVsm::from(*self)).map(|_| ())
+    }
+}
+
 impl Default for VsmSettings {
     fn default() -> Self {
         Self {

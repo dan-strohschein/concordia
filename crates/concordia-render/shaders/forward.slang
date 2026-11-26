@@ -47,6 +47,10 @@ struct Frame {
     // temporal = (sub-pixel jitter as a clip-space offset per unit w (x, y), material texture mip
     // bias, 0) (M4 4.6).
     float4 temporal;
+    // Virtual shadow maps (M4 4.7): vsm.x = the depth views' matrix buffer + 1 (0: VSM off, depth
+    // views are the cascades in cascade_vp), vsm.y = the VSM parameter buffer, vsm.z = the page
+    // table, vsm.w = clipmap levels.
+    uint4 vsm;
 };
 // Per light: position+range, direction, exposed radiance, spot (scale, offset).
 struct Light { float4 position_range; float4 direction; float4 radiance; float4 spot; };
@@ -174,7 +178,12 @@ float3 lod_color(uint code) {
     return (code & 16u) != 0 ? c * 0.214 : c; // 0.214 linear is half of display white
 }
 
+// Depth view `c` (a cascade, or with VSM on a row of the depth-view buffer) applied to `p`.
 float4 cascade_xform(Frame* frame, uint c, float4 p) {
+    if (frame.vsm.x != 0) {
+        float4* m = ((float4*)g_buffers.ptr[frame.vsm.x - 1]) + c * 4;
+        return m[0] * p.x + m[1] * p.y + m[2] * p.z + m[3] * p.w;
+    }
     return frame.cascade_vp[c * 4] * p.x + frame.cascade_vp[c * 4 + 1] * p.y + frame.cascade_vp[c * 4 + 2] * p.z + frame.cascade_vp[c * 4 + 3] * p.w;
 }
 

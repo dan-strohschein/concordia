@@ -176,6 +176,14 @@ pub struct Renderer {
     recycle: Recycler,
     /// What the shadow maps currently hold (see `shadow_key`).
     shadow_key: Option<u64>,
+    /// The sun's shadow technique as asked for (M4 4.7; `csm` by default).
+    shadow_technique: crate::vsm::ShadowTechnique,
+    /// `[render.vsm]`.
+    vsm_settings: crate::vsm::VsmSettings,
+    /// The physical page pool.
+    vsm_pool: crate::vsm::VsmPool,
+    /// The clipmap's light-space depth range, kept while the casters fit in it.
+    vsm_depth_range: Option<(f32, f32)>,
     /// Materials fitted to the closure budget, as programs.
     programs: Programs,
     /// GPU copies of forgotten assets; the next frame takes them and frees them when it retires,
@@ -270,6 +278,10 @@ struct FramePlan<'a> {
     temporal: Option<TemporalJob>,
     cluster: ClusterJob<'a>,
     shadow: Option<ShadowJob>,
+    /// The camera's depth prepass (virtual shadow maps, M4 4.7).
+    prepass: Option<crate::forward_pass::Prepass>,
+    /// The virtual shadow maps' page work.
+    vsm: Option<crate::vsm::VsmJob>,
     /// Skybox pipeline and push constants, drawn first in the forward pass.
     sky: Option<(Pipeline, Vec<u8>)>,
     output: Output,
@@ -454,6 +466,10 @@ impl Renderer {
             frames_in_flight: 2,
             recycle: Recycler::default(),
             shadow_key: None,
+            shadow_technique: Default::default(),
+            vsm_settings: Default::default(),
+            vsm_pool: Default::default(),
+            vsm_depth_range: None,
             programs,
             retired: FrameResources::default(),
             unskinnable: std::collections::BTreeSet::new(),
@@ -833,6 +849,29 @@ impl Renderer {
         self.temporal = temporal;
     }
 
+    /// Chooses the sun's shadow technique (`csm` by default; `vsm` falls back to `csm` on devices
+    /// that can't run virtual shadow maps; M4 4.7).
+    pub fn set_shadows(&mut self, technique: crate::vsm::ShadowTechnique) {
+        self.shadow_technique = technique;
+    }
+
+    /// Sets the virtual shadow maps' pool, levels and biases (`[render.vsm]`); refuses values out
+    /// of range.
+    pub fn set_vsm_settings(
+        &mut self,
+        settings: crate::vsm::VsmSettings,
+    ) -> Result<(), RenderError> {
+        settings.validate().map_err(RenderError::InvalidSettings)?;
+        self.vsm_settings = settings;
+        self.vsm_depth_range = None;
+        Ok(())
+    }
+
+    /// The shadow technique as asked for.
+    pub fn shadows(&self) -> crate::vsm::ShadowTechnique {
+        self.shadow_technique
+    }
+
     /// The temporal settings, as set.
     pub fn temporal(&self) -> crate::temporal::Temporal {
         self.temporal
@@ -1027,7 +1066,29 @@ impl Renderer {
             frame.keep(*b);
         });
         let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
-        let shadows = self.prepare_shadows(world, &skinning.placements, view, aspect, dir)?;
+        let vsm_on = self.vsm_runs(world);
+        let shadows = match vsm_on {
+            true => None,
+            false => self.prepare_shadows(world, &skinning.placements, view, aspect, dir)?,
+        };
+        let vsm = match vsm_on {
+            true => Some(self.prepare_vsm(
+                world,
+                &skinning.placements,
+                (view, dir, view_proj, height),
+                (&mut up, frame),
+            )?),
+            false => None,
+        };
+        let vsm_rows = match &vsm {
+            Some(j) => Some([
+                j.views,
+                j.params,
+                index(j.work.table)?,
+                j.clipmap.levels.len() as u32,
+            ]),
+            None => None,
+        };
         let palette_buf = frame.keep(up.buffer(device, &skinning.palette, "joint palettes")?);
         // Captures wait for a new environment's prefiltering; viewport frames draw without it.
         let wait = matches!(output, Output::Readback);
@@ -1133,6 +1194,7 @@ impl Renderer {
                 Some(h) => Some((index(h.buffer)?, h.layout.levels[0][0])),
                 None => None,
             },
+            vsm: vsm_rows,
         });
         let frame_buf = frame.keep(up.buffer(device, &block, "frame")?);
         let inst_buf = frame.keep(up.buffer(device, &instances, "instances")?);
@@ -1148,6 +1210,7 @@ impl Renderer {
         let mut path_draws: Vec<crate::meshlet::PathDraw<BucketKey>> = Vec::new();
         let mut draws: Vec<Draw> = Vec::with_capacity(order.len());
         let mut casters: Vec<ShadowDraw> = Vec::new();
+        let mut prepass_draws: Vec<ShadowDraw> = Vec::new();
         // Meshlet-path instances are culled on the GPU (M4 4.4); the CPU culls the M1 path's.
         let culled = order
             .iter()
@@ -1230,6 +1293,30 @@ impl Renderer {
             }
             if !visible {
                 continue;
+            }
+            if vsm_on && !blend {
+                match prepass_draws.last_mut() {
+                    Some(c)
+                        if c.push.indices == mesh.indices
+                            && c.push.instance + c.instances == instance =>
+                    {
+                        c.instances += 1;
+                    }
+                    _ => prepass_draws.push(ShadowDraw {
+                        push: ShadowPush {
+                            frame: frame_i,
+                            instances: inst_i,
+                            instance,
+                            indices: mesh.indices,
+                            positions: mesh.positions,
+                            cascade: crate::meshlet_pass::CAMERA_DEPTH_VIEW,
+                            joints: mesh.joints,
+                            weights: mesh.weights,
+                        },
+                        vertices: mesh.count,
+                        instances: 1,
+                    }),
+                }
             }
             let push = DrawPush {
                 frame: frame_i,
@@ -1334,6 +1421,7 @@ impl Renderer {
             &mut up,
             &meshlet_plan,
             (tables, pipelines, passes),
+            vsm_on,
             &mut kept,
         )?;
         kept.into_iter().for_each(|b| {
@@ -1383,6 +1471,17 @@ impl Renderer {
             )),
             false => None,
         };
+        let prepass = vsm_on.then(|| {
+            let (early, late) = meshlets
+                .as_ref()
+                .map_or_else(Default::default, |m| m.prepass.clone());
+            crate::forward_pass::Prepass {
+                pipeline: self.pipelines.shadow(),
+                draws: prepass_draws,
+                early,
+                late,
+            }
+        });
         let shadow = shadows.map(|(_, settings, maps)| ShadowJob {
             maps,
             resolution: settings.resolution,
@@ -1421,6 +1520,8 @@ impl Renderer {
             temporal,
             cluster: job,
             shadow,
+            prepass,
+            vsm,
             sky,
             output,
             uploads,
@@ -1482,6 +1583,58 @@ impl Renderer {
             self.record_overflow(count);
         }
         Ok((image, overflow))
+    }
+
+    /// Plans the frame's virtual shadow maps for the sun travelling along `dir`, seen by `view`
+    /// with (unjittered) `view_proj` at `height` scene pixels; buffers are kept by `frame`.
+    fn prepare_vsm(
+        &mut self,
+        world: &RenderWorld,
+        placements: &[Placement],
+        (view, dir, view_proj, height): (&CameraView, Vec3, Mat4, NonZeroU32),
+        (up, frame): (&mut Uploads, &mut FrameResources),
+    ) -> Result<crate::vsm::VsmJob, RenderError> {
+        let casters = world
+            .draws
+            .iter()
+            .zip(placements)
+            .filter(|(d, _)| d.cast_shadows)
+            .map(|(_, p)| (p.bounds, p.world));
+        let pcf = world
+            .lights
+            .first()
+            .and_then(|l| l.light.shadows.as_ref())
+            .map_or(1, |s| s.pcf.radius());
+        let footprint = match view.camera.projection {
+            concordia_render_types::Projection::Perspective { fov_y, .. } => {
+                crate::vsm::Footprint::PerMetre(2.0 * (fov_y / 2.0).tan() / height.get() as f32)
+            }
+            concordia_render_types::Projection::Orthographic { height: h, .. } => {
+                crate::vsm::Footprint::Fixed(h / height.get() as f32)
+            }
+        };
+        let input = crate::vsm::JobIn {
+            settings: &self.vsm_settings,
+            light_dir: dir,
+            eye: eye(&view.world),
+            camera: view_proj,
+            footprint,
+            pcf_radius: pcf,
+            casters: world_bounds(casters),
+        };
+        let mut keep = Vec::new();
+        let job = crate::vsm::VsmJob::prepare(
+            self.device.as_ref(),
+            up,
+            self.pipelines.vsm(),
+            &input,
+            (&mut self.vsm_pool, &mut self.vsm_depth_range),
+            &mut keep,
+        )?;
+        keep.into_iter().for_each(|b| {
+            frame.keep(b);
+        });
+        Ok(job)
     }
 
     /// Cascades, settings and shadow maps when the first directional light casts shadows.
@@ -1696,6 +1849,17 @@ impl Renderer {
     /// True if the frame splits for two-pass occlusion: the test is on, something takes the
     /// meshlet path, the HZB can come from the depth (single-sample, or resolved with min), and
     /// the occlusion test takes the projection.
+    /// Whether this frame draws the sun's shadows with virtual shadow maps: asked for, the device
+    /// can run them, and the first directional light casts shadows.
+    fn vsm_runs(&self, world: &RenderWorld) -> bool {
+        self.shadow_technique == crate::vsm::ShadowTechnique::vsm
+            && crate::vsm::supported(self.device.caps()).is_ok()
+            && world
+                .lights
+                .first()
+                .is_some_and(|l| l.light.shadows.is_some())
+    }
+
     fn splits(&self, samples: SampleCount, meshlets: bool, proj: Mat4) -> bool {
         let depth = samples == SampleCount::X1 || self.device.caps().depth_resolve_min;
         self.culling.occlusion
@@ -1760,6 +1924,8 @@ impl Renderer {
             temporal,
             cluster: job,
             shadow,
+            prepass,
+            vsm,
             sky,
             output,
             uploads,
@@ -1821,19 +1987,41 @@ impl Renderer {
         let shadow_maps = shadow
             .map(|s| add_shadow_passes(&mut graph, s))
             .unwrap_or_default();
-        let split = hzb.map(|hzb| crate::forward_pass::Split {
+        let mut split = hzb.map(|hzb| crate::forward_pass::Split {
             hzb,
             pipeline: self.pipelines.hzb(),
             device: self.device.clone(),
             view: hzb_view,
         });
+        let over = match prepass {
+            Some(p) => {
+                let (depth, over) = crate::forward_pass::add_prepass(
+                    &mut graph,
+                    scene,
+                    p,
+                    split.take(),
+                    meshlets.as_ref(),
+                );
+                if let Some(job) = &vsm {
+                    let size = [scene.0.get(), scene.1.get()];
+                    crate::vsm::add_page_passes(
+                        &mut graph,
+                        job,
+                        (depth, size),
+                        self.device.clone(),
+                    );
+                }
+                over
+            }
+            None => None,
+        };
         let targets = add_forward(
             &mut graph,
             view,
             (draws, meshlets),
             (samples, scene),
             &shadow_maps,
-            (sky, grid),
+            (sky, grid, over),
             (split, temporal.is_some()),
         );
         let hdr = match &temporal {
@@ -2280,6 +2468,7 @@ impl Drop for Renderer {
         self.assets.destroy(self.device.as_ref());
         self.ui_textures.destroy(self.device.as_ref());
         self.shadow_maps.destroy(self.device.as_ref());
+        self.vsm_pool.destroy(self.device.as_ref());
         self.environments.destroy(self.device.as_ref());
         self.visibility_buffer.destroy(self.device.as_ref());
         self.surfaces

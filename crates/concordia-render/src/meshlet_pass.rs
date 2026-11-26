@@ -132,9 +132,15 @@ pub(crate) struct MeshletJob {
     pub(crate) forward_late: Vec<BucketDraw>,
     /// The shadow casters' bucket per cascade, in cascade order.
     pub(crate) shadows: Vec<BucketDraw>,
+    /// The forward buckets on the depth pipeline, drawn into the camera's depth prepass (depth
+    /// view [`CAMERA_DEPTH_VIEW`]; virtual shadow maps only), for pass 1 and pass 2.
+    pub(crate) prepass: (Vec<BucketDraw>, Vec<BucketDraw>),
     /// One cull code per entry, written by either route.
     pub(crate) codes: Buffer,
 }
+
+/// The camera's row in the depth-view buffer (virtual shadow maps, M4 4.7).
+pub(crate) const CAMERA_DEPTH_VIEW: u32 = 0;
 
 /// A GPU-only storage buffer of `bytes` bytes.
 fn gpu_buffer(
@@ -164,6 +170,7 @@ impl MeshletJob {
         up: &mut Uploads,
         plan: &MeshletPlan<BucketKey>,
         (tables, pipelines, passes): (FrameTables, RoutePipelines, Passes),
+        prepass: bool,
         keep: &mut Vec<Buffer>,
     ) -> Result<Option<Self>, RenderError> {
         if plan.entries == 0 {
@@ -207,9 +214,14 @@ impl MeshletJob {
             }
             RoutePipelines::MeshTasks { shadow } => (Route::MeshTasks, None, None, shadow),
         };
-        let draw = |pipeline, material, i: usize, pass| -> Result<BucketDraw, RenderError> {
+        let draw_in = |pipeline,
+                       material,
+                       i: usize,
+                       pass,
+                       depth_view: Option<u32>|
+         -> Result<BucketDraw, RenderError> {
             let bucket = &plan.buckets[i];
-            let cascade = bucket.view.saturating_sub(1);
+            let cascade = depth_view.unwrap_or(bucket.view.saturating_sub(1));
             let compute = match pass {
                 PASS_LATE => &late,
                 _ => &compute,
@@ -260,15 +272,24 @@ impl MeshletJob {
                 },
             })
         };
+        let draw = |pipeline, material, i, pass| draw_in(pipeline, material, i, pass, None);
+        let depth = |i, pass| draw_in(shadow_pipeline, 0, i, pass, Some(CAMERA_DEPTH_VIEW));
         let mut forward = Vec::new();
         let mut forward_late = Vec::new();
         let mut shadows = Vec::new();
+        let (mut early_depth, mut late_depth) = (Vec::new(), Vec::new());
         for (i, bucket) in plan.buckets.iter().enumerate() {
             match bucket.key {
                 Some((pipeline, material)) => {
                     forward.push(draw(pipeline, material, i, pass)?);
+                    if prepass {
+                        early_depth.push(depth(i, pass)?);
+                    }
                     if let Passes::Two { .. } = passes {
                         forward_late.push(draw(pipeline, material, i, PASS_LATE)?);
+                        if prepass {
+                            late_depth.push(depth(i, PASS_LATE)?);
+                        }
                     }
                 }
                 // Shadows are culled once, in the first pass, without the HZB.
@@ -282,6 +303,7 @@ impl MeshletJob {
             forward,
             forward_late,
             shadows,
+            prepass: (early_depth, late_depth),
             codes,
         }))
     }
@@ -572,6 +594,7 @@ mod tests {
             &mut up,
             &plan,
             (tables, pipelines, Passes::Single),
+            false,
             &mut keep,
         )
         .unwrap()
@@ -664,6 +687,7 @@ mod tests {
             &mut up,
             &plan,
             (tables, pipelines, Passes::Single),
+            false,
             &mut keep,
         )
         .unwrap()
@@ -785,6 +809,7 @@ mod tests {
             &mut up,
             &plan,
             (tables, pipelines, Passes::Single),
+            false,
             &mut keep,
         )
         .unwrap()

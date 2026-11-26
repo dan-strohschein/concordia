@@ -146,6 +146,8 @@ pub(crate) struct Pipelines {
     cull: crate::meshlet_pass::CullPipelines,
     /// The HZB build (`hzb.slang`; two-pass occlusion).
     hzb: Pipeline,
+    /// Virtual shadow maps' page work (`vsm_page.slang`; M4 4.7).
+    vsm: crate::vsm::VsmPipelines,
     /// The own temporal resolve (`temporal.slang`; M4 4.6).
     temporal: crate::temporal::own::OwnPipelines,
     /// The mesh-shader path's stages, when the device takes it.
@@ -234,6 +236,15 @@ impl Pipelines {
             },
         };
         let hzb = kernel("hzb.slang", "hzb_build")?;
+        let vsm = crate::vsm::VsmPipelines {
+            zero: kernel("vsm_page.slang", "vsm_zero")?,
+            mark: kernel("vsm_page.slang", "vsm_mark")?,
+            flags: kernel("vsm_page.slang", "vsm_request_flags")?,
+            allocate: kernel("vsm_page.slang", "vsm_allocate")?,
+            counts: kernel("vsm_page.slang", "vsm_counts")?,
+            clear: kernel("vsm_page.slang", "vsm_clear")?,
+            scan: cull.scan,
+        };
         let temporal = crate::temporal::own::OwnPipelines {
             resolve: kernel("temporal.slang", "taa_resolve")?,
             keep_depth: kernel("temporal.slang", "taa_keep_depth")?,
@@ -260,6 +271,7 @@ impl Pipelines {
             meshlet_shadow,
             cull,
             hzb,
+            vsm,
             temporal,
             mesh_stages,
             sky,
@@ -478,6 +490,11 @@ impl Pipelines {
     /// The HZB build's compute pipeline.
     pub(crate) fn hzb(&self) -> Pipeline {
         self.hzb
+    }
+
+    /// Virtual shadow maps' page work pipelines.
+    pub(crate) fn vsm(&self) -> crate::vsm::VsmPipelines {
+        self.vsm
     }
 
     /// The own temporal resolve's compute pipelines.
