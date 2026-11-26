@@ -240,23 +240,44 @@ mod tests {
     }
 
     fn gpu_scan(device: &dyn Device, pipelines: ScanPipelines, values: &[u32]) -> Vec<u32> {
+        gpu_scan_prefix(device, pipelines, values, values.len() as u32)
+    }
+
+    /// Exclusive sums of the first `valid` of `values` (the buffer holds them all).
+    fn gpu_scan_prefix(
+        device: &dyn Device,
+        pipelines: ScanPipelines,
+        values: &[u32],
+        valid: u32,
+    ) -> Vec<u32> {
         let mut up = Uploads::new();
         let bytes: Vec<u8> = values.iter().flat_map(|v| v.to_le_bytes()).collect();
         let input = up.buffer(device, &bytes, "values").unwrap();
-        let out = scratch(device, &up, values.len() as u32 + 1, "sums").unwrap();
+        let out = scratch(device, &up, valid + 1, "sums").unwrap();
         let mut keep = Vec::new();
-        let scan = Scan::prepare(
-            device,
-            &up,
-            pipelines,
-            (input, out),
-            values.len() as u32,
-            &mut keep,
-        )
-        .unwrap();
+        let scan = Scan::prepare(device, &up, pipelines, (input, out), valid, &mut keep).unwrap();
         up.flush(device).unwrap();
         test_gpu::run_commands(device, scan.commands().iter().cloned());
-        test_gpu::download(device, out, (values.len() as u64 + 1) * 4)
+        test_gpu::download(device, out, (u64::from(valid) + 1) * 4)
+    }
+
+    /// Values past `valid` in a longer buffer (a pooled one) are never summed.
+    #[test]
+    fn scan_reads_only_its_valid_values() {
+        let Some(device) = test_gpu::device() else {
+            return;
+        };
+        let pipelines = pipelines(device.as_ref());
+        for valid in [1u32, 255, 256, 300] {
+            let values = vec![1u32; valid as usize + 64];
+            let got = gpu_scan_prefix(device.as_ref(), pipelines, &values, valid);
+            assert_eq!(
+                got,
+                cpu_scan(&values[..valid as usize]),
+                "{valid} of {}",
+                values.len()
+            );
+        }
     }
 
     fn cpu_scan(values: &[u32]) -> Vec<u32> {

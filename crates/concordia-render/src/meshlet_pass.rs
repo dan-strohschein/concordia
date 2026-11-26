@@ -384,6 +384,7 @@ impl Compute {
 mod tests {
     use super::*;
     use crate::cull::{CullCode, CullView, Culling};
+    use crate::meshlet::tests::grid_blob;
     use crate::meshlet::{MeshletInfo, PathDraw, plan};
     use crate::test_gpu::{self, download, run_commands};
     use concordia_core::math::{Mat4, Vec3};
@@ -404,12 +405,11 @@ mod tests {
     fn tables(
         device: &dyn Device,
         up: &mut Uploads,
-        (models, views): (&[Mat4], &[CullView]),
+        (blob, models, views): (&[u8], &[Mat4], &[CullView]),
         keep: &mut Vec<Buffer>,
     ) -> FrameTables {
-        let blob = crate::meshlet::tests::grid_blob(16);
-        let info = MeshletInfo::of(&blob).unwrap().unwrap();
-        let blob = up.buffer(device, &blob, "blob").unwrap();
+        let info = MeshletInfo::of(blob).unwrap().unwrap();
+        let blob = up.buffer(device, blob, "blob").unwrap();
         let streams = crate::meshlet::Streams {
             positions: 0,
             normals: 0,
@@ -486,7 +486,12 @@ mod tests {
         let mut keep = Vec::new();
         let off = CullView::camera(Mat4::IDENTITY, Vec3::ZERO, true, Culling::OFF);
         let models = [Mat4::IDENTITY; 3];
-        let tables = tables(device, &mut up, (&models, &[off; 3]), &mut keep);
+        let tables = tables(
+            device,
+            &mut up,
+            (&grid_blob(16), &models, &[off; 3]),
+            &mut keep,
+        );
         let pipelines = RoutePipelines::ComputeIndirect {
             cull: cull_pipelines(device),
             shadow: Pipeline::from_raw(0, 0),
@@ -567,7 +572,12 @@ mod tests {
         let plan = plan(&draws, 0);
         let mut up = Uploads::new();
         let mut keep = Vec::new();
-        let tables = tables(device, &mut up, (&models, &[view]), &mut keep);
+        let tables = tables(
+            device,
+            &mut up,
+            (&grid_blob(16), &models, &[view]),
+            &mut keep,
+        );
         let pipelines = RoutePipelines::ComputeIndirect {
             cull: cull_pipelines(device),
             shadow: Pipeline::from_raw(0, 0),
@@ -605,6 +615,122 @@ mod tests {
                 args[b * 4 + 1] as usize,
                 want.len() / 2,
                 "bucket {b}'s instance count"
+            );
+        }
+    }
+
+    /// World → clip of a view at `eye` looking along `dir` through `proj`.
+    fn looking(proj: Mat4, eye: Vec3, dir: Vec3) -> Mat4 {
+        let rotation = concordia_core::math::Quat::from_rotation_arc(Vec3::NEG_Z, dir.normalize());
+        proj * Mat4::from_rotation_translation(rotation, eye).inverse()
+    }
+
+    /// Every rule of the GPU's `cull` against the CPU reference, slot by slot: the camera seeing
+    /// the grid's back from below an edge (frustum and cone), a cascade with a caster beyond its
+    /// near plane, scaled, mirrored and stretched instances, and a meshlet whose cutoff of 1
+    /// comes with an over-long quantized axis (never culled).
+    #[test]
+    fn gpu_codes_follow_every_cull_rule() {
+        use concordia_core::math::camera::rh::proj::directx;
+        let Some(device) = test_gpu::device() else {
+            return;
+        };
+        let device = device.as_ref();
+        let mut blob = grid_blob(16);
+        // Meshlet 0's cone (record at 48, cone at 16): axis (1, 1, 0) unnormalized, cutoff 1.
+        blob[48 + 16..48 + 20].copy_from_slice(&[127, 127, 0, 127]);
+        let mesh = concordia_cluster::MeshletMesh::decode(&blob).unwrap();
+        let meshlets = mesh.meshlets.len() as u32;
+        let eye = Vec3::new(8.0, 8.0, -9.0);
+        let camera = CullView::camera(
+            looking(
+                directx::perspective(1.0, 1.0, 1000.0, 0.1),
+                eye,
+                Vec3::new(0.1, 0.0, 1.0),
+            ),
+            eye,
+            true,
+            Culling::default(),
+        );
+        let light = looking(
+            directx::orthographic(-12.0, 12.0, -12.0, 12.0, 30.0, 0.1),
+            Vec3::new(8.0, 8.0, 5.0),
+            Vec3::NEG_Z,
+        );
+        let cascade = CullView::cascade(light, Culling::default());
+        let models = [
+            Mat4::IDENTITY,
+            Mat4::from_scale_rotation_translation(
+                Vec3::splat(3.0),
+                Default::default(),
+                Vec3::new(9.0, -20.0, 0.0),
+            ),
+            Mat4::from_scale(Vec3::new(-1.0, 1.0, 1.0))
+                * Mat4::from_translation(Vec3::new(-16.0, 0.0, 0.0)),
+            Mat4::from_scale(Vec3::new(1.0, 1.01, 1.0)),
+            Mat4::from_translation(Vec3::new(0.0, 0.0, 20.0)),
+        ];
+        let key = |m| Some((Pipeline::from_raw(0, 0), m));
+        let draws: Vec<_> = (0..models.len() as u32)
+            .map(|i| PathDraw {
+                instance: i,
+                mesh_row: 0,
+                info: MeshletInfo {
+                    meshlets,
+                    max_triangles: 128,
+                },
+                forward: key(1),
+                casts: true,
+                double_sided: false,
+            })
+            .collect();
+        let plan = plan(&draws, 1);
+        let mut up = Uploads::new();
+        let mut keep = Vec::new();
+        let tables = tables(
+            device,
+            &mut up,
+            (&blob, &models, &[camera, cascade]),
+            &mut keep,
+        );
+        let pipelines = RoutePipelines::ComputeIndirect {
+            cull: cull_pipelines(device),
+            shadow: Pipeline::from_raw(0, 0),
+        };
+        let job = MeshletJob::prepare(device, &mut up, &plan, (tables, pipelines), &mut keep)
+            .unwrap()
+            .unwrap();
+        up.flush(device).unwrap();
+        run_commands(device, job.compute.as_ref().unwrap().commands());
+        let codes = download(device, job.codes, u64::from(plan.entries) * 4);
+        let bounds = (Vec3::splat(-1.0), Vec3::splat(17.0));
+        let mut seen = std::collections::BTreeSet::new();
+        for item in &plan.items {
+            let [instance, _, first, bucket] = *item;
+            let view = [camera, cascade][plan.buckets[bucket as usize].view as usize];
+            for (m, meshlet) in mesh.meshlets.iter().enumerate() {
+                let world = &models[instance as usize];
+                let at = |margin| view.code_within(world, bounds, meshlet, false, margin);
+                let gpu = CullCode::from_u32(codes[(first as usize) + m] & 0xff).unwrap();
+                assert!(
+                    at(-1e-3) <= gpu && gpu <= at(1e-3),
+                    "instance {instance}, view {view:?}, meshlet {m}: GPU {gpu:?}, CPU {:?}",
+                    at(0.0)
+                );
+                seen.insert((instance, bucket, gpu));
+            }
+        }
+        for (instance, bucket, code) in [
+            (0, 0, CullCode::Cone),
+            (1, 0, CullCode::Frustum),
+            (1, 1, CullCode::Frustum),
+            (2, 0, CullCode::Drawn),
+            (3, 0, CullCode::Drawn),
+            (4, 1, CullCode::Drawn),
+        ] {
+            assert!(
+                seen.contains(&(instance, bucket, code)),
+                "the scene exercises {code:?} for {instance}: {seen:?}"
             );
         }
     }

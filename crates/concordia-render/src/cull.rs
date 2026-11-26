@@ -461,7 +461,8 @@ mod tests {
             CullCode::Drawn,
             "double-sided"
         );
-        let never = meshlet([0.0; 3], 0.5, [0, 0, -127], 127);
+        // Quantization can leave an axis longer than 1; a cutoff of 1 still never culls.
+        let never = meshlet([0.0; 3], 0.5, [0, -127, -127], 127);
         assert_eq!(
             v.code(&id, BOX, &never, false),
             CullCode::Drawn,
