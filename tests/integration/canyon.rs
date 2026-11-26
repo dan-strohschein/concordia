@@ -1,7 +1,8 @@
 //! The M4 canyon (phase 4.4c; Phase 4.4's done criterion): `examples/m4-canyon` is made from
 //! fixed seeds and remade byte for byte, holds at least 20 M source triangles all on the meshlet
 //! path, and along its two scripted camera paths the meshlet counts are the same between runs and
-//! between the two draw paths, frame by frame, while culling never changes the image.
+//! between the two draw paths, frame by frame, while culling never changes the image. With the own
+//! TAAU (phase 4.6's done criterion) it renders 2560 × 1440 from 1706 × 960.
 
 use concordia_gen::canyon::{CameraKey, Canyon as Spec, Family};
 use concordia_gen::{GenContext, ProviderRegistry};
@@ -210,6 +211,79 @@ fn canyon_culling_matches_culling_off() {
                     missed.push(format!("{name} on {path:?}: {e}"));
                 }
             }
+        }
+    }
+    assert!(missed.is_empty(), "{}", missed.join("\n"));
+}
+
+/// Phase 4.6's done criterion (4.6 plan Q11): the ground path's 32 frames at 2560 × 1440 from
+/// 1706 × 960 with the own TAAU (1.5×). Every frame is drawn by the own resolve at those sizes and
+/// shows the canyon (not black, not flat).
+#[test]
+fn canyon_taau_runs_at_1440p() {
+    use concordia_render::temporal::{Temporal, TemporalBackend, Upscale};
+    let Some(mut r) = renderer(&Default::default(), Culling::default()) else {
+        return;
+    };
+    r.set_temporal(Temporal {
+        backend: TemporalBackend::own,
+        upscale: Upscale::X1_5,
+    });
+    let mut loaded = Canyon::load();
+    let world = concordia_render::RenderWorld::extract(&loaded.world);
+    let scene = perf_scene("m4-canyon-ground");
+    for i in 0..32 {
+        let view = canyon::view(&scene, i, 32);
+        let image = loaded.render_sized(&mut r, &world, view, (2560, 1440));
+        canyon::keep_for_review("canyon_ground_1440p", i, &image);
+        let t = r.stats().temporal;
+        assert_eq!(t.backend, TemporalBackend::own, "frame {i}");
+        assert_eq!(
+            (t.internal, t.output),
+            ([1706, 960], [2560, 1440]),
+            "frame {i}"
+        );
+        let luma: Vec<f32> = image.rgba.chunks(4).map(|p| p[1] as f32).collect();
+        let mean = luma.iter().sum::<f32>() / luma.len() as f32;
+        let spread = luma.iter().map(|l| (l - mean).abs()).sum::<f32>() / luma.len() as f32;
+        assert!(
+            mean > 20.0 && spread > 5.0,
+            "frame {i}: mean {mean}, spread {spread}"
+        );
+    }
+}
+
+/// The own TAAU on both paths: a still middle pose after 32 frames at 1280 × 720 from 853 × 480,
+/// against the `m4_temporal` goldens.
+#[test]
+fn canyon_taau_goldens() {
+    use concordia_render::temporal::{Temporal, TemporalBackend, Upscale};
+    use concordia_testkit::golden::{Golden, RgbaImage};
+    let Some(mut r) = renderer(&Default::default(), Culling::default()) else {
+        return;
+    };
+    r.set_temporal(Temporal {
+        backend: TemporalBackend::own,
+        upscale: Upscale::X1_5,
+    });
+    let backend = concordia_rhi_select::choose_from_env(Default::default()).unwrap();
+    let mut loaded = Canyon::load();
+    let world = concordia_render::RenderWorld::extract(&loaded.world);
+    let mut missed = Vec::new();
+    for (scene_name, golden, frames, keep) in PATHS {
+        let scene = perf_scene(scene_name);
+        let view = canyon::view(&scene, keep[1], frames);
+        r.reset_motion_history();
+        let mut image = None;
+        for _ in 0..32 {
+            image = Some(loaded.render_sized(&mut r, &world, view.clone(), (1280, 720)));
+        }
+        let image = image.unwrap();
+        assert_eq!(r.stats().temporal.internal, [853, 480]);
+        let name = format!("{golden}_taau");
+        let rgba = RgbaImage::new(image.width, image.height, image.rgba.clone()).unwrap();
+        if let Err(e) = Golden::from_env().check_on(Some(backend), "m4_temporal", &name, &rgba) {
+            missed.push(format!("{name}: {e}"));
         }
     }
     assert!(missed.is_empty(), "{}", missed.join("\n"));
