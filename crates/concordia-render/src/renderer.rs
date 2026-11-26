@@ -38,6 +38,23 @@ use crate::{CameraView, Msaa, RenderError, RenderWorld, Tonemap};
 /// The largest capture side.
 pub const MAX_SIZE: u32 = 8192;
 
+/// A view's temporal history is freed after this many renderer frames without it.
+const HISTORY_IDLE_FRAMES: u64 = 120;
+
+/// A frame's temporal resolve: the view's textures and this frame's parameters (M4 4.6).
+struct TemporalJob {
+    textures: crate::temporal::history::HistoryTextures,
+    has_history: bool,
+    internal: (NonZeroU32, NonZeroU32),
+    output: (NonZeroU32, NonZeroU32),
+    /// In input pixels.
+    jitter: [f32; 2],
+    mip_bias: f32,
+    exposure: crate::temporal::FrameExposure,
+    max_count: f32,
+    depth_terms: [f32; 4],
+}
+
 /// What to render.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RenderRequest {
@@ -112,6 +129,14 @@ pub struct Renderer {
     culling: crate::Culling,
     /// A fixed sub-pixel offset and mip bias instead of the temporal sequence (M4 4.6).
     subpixel: Option<crate::temporal::SubpixelOverride>,
+    /// The temporal resolve and its ratio (`[render] temporal`, `upscale`).
+    temporal: crate::temporal::Temporal,
+    /// Each view's temporal state and motion history (M4 4.6 plan Q6).
+    histories: Vec<crate::temporal::history::ViewHistory>,
+    /// The view the frame being rendered belongs to (taken from `histories`).
+    current: Option<crate::temporal::history::ViewHistory>,
+    /// The offscreen view `render` draws into (`select_history`).
+    offscreen: u64,
     /// Keep each read-back frame's per-meshlet cull records (`set_cull_readback`).
     cull_readback: bool,
     /// The last ones kept.
@@ -224,7 +249,12 @@ struct FramePlan<'a> {
     /// The meshlet path's work, when anything takes it.
     meshlets: Option<MeshletJob>,
     samples: SampleCount,
+    /// The image's size.
     size: (NonZeroU32, NonZeroU32),
+    /// The scene's: the internal size with temporal on, else the image's.
+    scene: (NonZeroU32, NonZeroU32),
+    /// The temporal resolve's work (M4 4.6).
+    temporal: Option<TemporalJob>,
     cluster: ClusterJob<'a>,
     shadow: Option<ShadowJob>,
     /// Skybox pipeline and push constants, drawn first in the forward pass.
@@ -386,6 +416,10 @@ impl Renderer {
             meshlets: true,
             culling: crate::Culling::default(),
             subpixel: None,
+            temporal: Default::default(),
+            histories: Vec::new(),
+            current: None,
+            offscreen: 0,
             cull_readback: false,
             last_culling: None,
             visibility: Default::default(),
@@ -610,6 +644,7 @@ impl Renderer {
         // Representation LOD is this camera's choice for this frame only (ADR-0076, E2).
         self.report_invalid_representations(world);
         let world = &world.represented(crate::camera::eye(&view.world));
+        self.enter_view(output);
         let result = self.render_frame(
             world,
             assets,
@@ -625,6 +660,7 @@ impl Renderer {
             },
             &mut frame,
         );
+        self.leave_view();
         self.frames += 1;
         self.stats.allocations = self.recycle.created() - allocated;
         match result {
@@ -720,6 +756,7 @@ impl Renderer {
     /// and scene loads (motion vectors, 4.3b2).
     pub fn reset_motion_history(&mut self) {
         self.motion.reset();
+        self.histories.iter_mut().for_each(|h| h.forget());
     }
 
     /// Whether the meshlet path is on.
@@ -731,6 +768,22 @@ impl Renderer {
     /// comparisons).
     pub fn set_culling(&mut self, culling: crate::Culling) {
         self.culling = culling;
+    }
+
+    /// Chooses the temporal resolve and its ratio (off by default; M4 4.6).
+    pub fn set_temporal(&mut self, temporal: crate::temporal::Temporal) {
+        self.temporal = temporal;
+    }
+
+    /// The temporal settings, as set.
+    pub fn temporal(&self) -> crate::temporal::Temporal {
+        self.temporal
+    }
+
+    /// Chooses the view `render` draws into: each keeps its own temporal history and motion
+    /// (presents use their surface's; 0 by default).
+    pub fn select_history(&mut self, view: u64) {
+        self.offscreen = view;
     }
 
     /// Fixes the camera's sub-pixel offset and texture mip bias for the next frames, instead of the
@@ -859,9 +912,19 @@ impl Renderer {
         let aspect = width.get() as f32 / height.get() as f32;
         let view_m = view_matrix(&view.world);
         let view_proj = view.camera.projection.matrix(aspect)? * view_m;
-        let samples = match view.camera.msaa {
-            Msaa::Off => SampleCount::X1,
-            Msaa::X4 => SampleCount::X4,
+        // With temporal on, the scene renders at the internal size with one sample (M4 4.6);
+        // `width` and `height` are the scene's from here, `output_size` the image's.
+        let output_size = (width, height);
+        let temporal = self.temporal_frame(
+            view_mode,
+            output_size,
+            view.camera.exposure(),
+            &view.camera.projection.matrix(aspect)?,
+        )?;
+        let (width, height) = temporal.as_ref().map_or(output_size, |t| t.internal);
+        let samples = match (&temporal, view.camera.msaa) {
+            (Some(_), _) | (None, Msaa::Off) => SampleCount::X1,
+            (None, Msaa::X4) => SampleCount::X4,
         };
         frame.adopt(std::mem::take(&mut self.retired));
         let mut up = Uploads::pooled(self.recycle.pool.clone());
@@ -970,7 +1033,11 @@ impl Renderer {
             )?),
             false => None,
         };
-        let subpixel = self.subpixel;
+        let (jitter, mip_bias) = match (&temporal, self.subpixel) {
+            (Some(t), _) => (t.jitter, t.mip_bias),
+            (None, Some(s)) => (s.offset, s.mip_bias),
+            (None, None) => ([0.0; 2], 0.0),
+        };
         let block = frame_block(&FrameParams {
             view_proj,
             view: view_m,
@@ -997,10 +1064,8 @@ impl Renderer {
             view_mode: view_mode.shader_index(),
             exposure,
             prev_view_proj: self.motion.previous_view_proj(&view_proj),
-            jitter: subpixel.map_or([0.0; 2], |s| {
-                crate::temporal::ndc_offset(s.offset, (width.get(), height.get()))
-            }),
-            mip_bias: subpixel.map_or(0.0, |s| s.mip_bias),
+            jitter: crate::temporal::ndc_offset(jitter, (width.get(), height.get())),
+            mip_bias,
             hzb: match &hzb {
                 Some(h) => Some((index(h.buffer)?, h.layout.levels[0][0])),
                 None => None,
@@ -1288,7 +1353,9 @@ impl Renderer {
             hzb_view,
             meshlets,
             samples,
-            size: (width, height),
+            size: output_size,
+            scene: (width, height),
+            temporal,
             cluster: job,
             shadow,
             sky,
@@ -1311,8 +1378,8 @@ impl Renderer {
                 .map_or_else(Vec::new, |o| {
                     let projector = crate::overlay::Projector::new(
                         view_proj,
-                        width.get() as f32,
-                        height.get() as f32,
+                        output_size.0.get() as f32,
+                        output_size.1.get() as f32,
                     );
                     let boxes: Vec<_> = skinning
                         .placements
@@ -1327,7 +1394,11 @@ impl Renderer {
             },
             ui,
         };
+        let resolved = plan.temporal.is_some();
         let (image, overflow) = self.execute(view, plan, frame)?;
+        if let (true, Some(v)) = (resolved, self.current.as_mut()) {
+            v.advance();
+        }
         self.stats.punctual_lights = world.punctual.len();
         self.stats.dropped_lights = lights.dropped;
         if let Overflow::Read(count) = overflow {
@@ -1608,6 +1679,8 @@ impl Renderer {
             meshlets,
             samples,
             size,
+            scene,
+            temporal,
             cluster: job,
             shadow,
             sky,
@@ -1681,11 +1754,15 @@ impl Renderer {
             &mut graph,
             view,
             (draws, meshlets),
-            (samples, size),
+            (samples, scene),
             &shadow_maps,
             (sky, grid),
-            split,
+            (split, temporal.is_some()),
         );
+        let hdr = match &temporal {
+            Some(job) => self.add_temporal(&mut graph, &targets, job)?,
+            None => targets.hdr,
+        };
         let tonemap = self.pipelines.tonemap(device, format)?;
         let overlay = match overlay.is_empty() {
             true => None,
@@ -1707,7 +1784,7 @@ impl Renderer {
         };
         add_tonemap(
             &mut graph,
-            targets.hdr,
+            hdr,
             out,
             (tonemap, ui, overlay),
             tonemap_mode,
@@ -1730,7 +1807,7 @@ impl Renderer {
                 ("motion readback", targets.motion),
                 frame,
                 device,
-                size,
+                scene,
                 &self.recycle,
             )?),
             _ => None,
@@ -1928,6 +2005,115 @@ impl Renderer {
     }
 
     /// The presented-frame timeline (created on first use).
+    /// Adds `job`'s temporal resolve over the forward pass's `targets`; returns its output HDR.
+    fn add_temporal(
+        &self,
+        graph: &mut RenderGraph,
+        targets: &crate::forward_pass::ForwardTargets,
+        job: &TemporalJob,
+    ) -> Result<GraphTexture, RenderError> {
+        use crate::temporal::TemporalUpscaler;
+        let upscaler = crate::temporal::own::OwnTaau {
+            pipelines: self.pipelines.temporal(),
+            device: self.device.clone(),
+            disocclusion: true,
+            reactive: true,
+        };
+        let inputs = crate::temporal::TemporalInputs {
+            color: targets.hdr,
+            depth: targets.depth,
+            motion: targets.motion,
+            internal: job.internal,
+            output: job.output,
+            jitter: job.jitter,
+            exposure: job.exposure,
+            max_count: job.max_count,
+            depth_terms: job.depth_terms,
+        };
+        upscaler.add_pass(graph, &inputs, &job.textures, job.has_history)
+    }
+
+    /// This frame's temporal work for the current view, or `None` (temporal off, or a debug view,
+    /// which show this frame's raw data); a view without it forgets its history.
+    fn temporal_frame(
+        &mut self,
+        view_mode: crate::ViewMode,
+        output: (NonZeroU32, NonZeroU32),
+        exposure: f32,
+        proj: &concordia_core::math::Mat4,
+    ) -> Result<Option<TemporalJob>, RenderError> {
+        use crate::temporal::{FrameExposure, internal_size, jitter, mip_bias};
+        let settings = self.temporal;
+        let Some(view) = self.current.as_mut() else {
+            return Ok(None);
+        };
+        if !settings.is_on() || view_mode != crate::ViewMode::lit {
+            view.pause();
+            return Ok(None);
+        }
+        let internal = internal_size(output, settings.upscale);
+        let size = |(w, h): (NonZeroU32, NonZeroU32)| (w.get(), h.get());
+        let freed = view.fit(self.device.as_ref(), settings, size(output), size(internal))?;
+        self.retired.textures.extend(freed);
+        let has_history = view.has_history();
+        let exposure = match (view.exposure, has_history) {
+            (Some(e), true) => e.next(exposure),
+            _ => FrameExposure::first(exposure),
+        };
+        view.exposure = Some(exposure);
+        let phases = settings.upscale.phases();
+        let (jitter, mip_bias) = match self.subpixel {
+            Some(s) => (s.offset, s.mip_bias),
+            None => (jitter(view.frames, phases), mip_bias(internal.0, output.0)),
+        };
+        let Some(textures) = view.textures else {
+            return Ok(None);
+        };
+        Ok(Some(TemporalJob {
+            textures,
+            has_history,
+            internal,
+            output,
+            jitter,
+            mip_bias,
+            exposure,
+            max_count: phases as f32,
+            depth_terms: crate::temporal::depth_terms(proj),
+        }))
+    }
+
+    /// Takes `output`'s view state (made on first use) for the frame, with its motion history.
+    fn enter_view(&mut self, output: Output) {
+        use crate::temporal::history::{HistoryKey, ViewHistory};
+        let key = match output {
+            Output::Surface { surface, .. } => HistoryKey::Surface(surface),
+            Output::Readback => HistoryKey::Offscreen(self.offscreen),
+        };
+        let mut view = match self.histories.iter().position(|h| h.key == key) {
+            Some(i) => self.histories.swap_remove(i),
+            None => ViewHistory::new(key),
+        };
+        std::mem::swap(&mut self.motion, &mut view.motion);
+        self.current = Some(view);
+    }
+
+    /// Returns the frame's view state, and frees views unused for [`HISTORY_IDLE_FRAMES`].
+    fn leave_view(&mut self) {
+        if let Some(mut view) = self.current.take() {
+            std::mem::swap(&mut self.motion, &mut view.motion);
+            view.last_used = self.frames;
+            self.histories.push(view);
+        }
+        let now = self.frames;
+        let (idle, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut self.histories)
+            .into_iter()
+            .partition(|h| now.saturating_sub(h.last_used) > HISTORY_IDLE_FRAMES);
+        self.histories = kept;
+        for mut view in idle {
+            self.retired.textures.extend(view.take_textures());
+        }
+    }
+
     fn timeline(&mut self, device: &dyn Device) -> Result<concordia_rhi::Timeline, RenderError> {
         match self.timeline {
             Some(t) => Ok(t),

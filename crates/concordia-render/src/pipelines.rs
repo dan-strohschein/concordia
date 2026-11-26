@@ -146,6 +146,8 @@ pub(crate) struct Pipelines {
     cull: crate::meshlet_pass::CullPipelines,
     /// The HZB build (`hzb.slang`; two-pass occlusion).
     hzb: Pipeline,
+    /// The own temporal resolve (`temporal.slang`; M4 4.6).
+    temporal: crate::temporal::own::OwnPipelines,
     /// The mesh-shader path's stages, when the device takes it.
     mesh_stages: Option<MeshStages>,
     sky: (ShaderSource, ShaderSource),
@@ -232,6 +234,10 @@ impl Pipelines {
             },
         };
         let hzb = kernel("hzb.slang", "hzb_build")?;
+        let temporal = crate::temporal::own::OwnPipelines {
+            resolve: kernel("temporal.slang", "taa_resolve")?,
+            keep_depth: kernel("temporal.slang", "taa_keep_depth")?,
+        };
         let meshlet_vs = compile("meshlet.slang", "meshlet_vs", Stage::Vertex)?;
         let mesh_stages = match crate::meshlet::route(device.caps(), crate::ViewMode::lit) {
             crate::meshlet::Route::MeshTasks => Some(mesh_stages(device, compiler.as_ref())?),
@@ -253,6 +259,7 @@ impl Pipelines {
             meshlet_shadow,
             cull,
             hzb,
+            temporal,
             mesh_stages,
             sky,
             hzb_view,
@@ -470,6 +477,11 @@ impl Pipelines {
     /// The HZB build's compute pipeline.
     pub(crate) fn hzb(&self) -> Pipeline {
         self.hzb
+    }
+
+    /// The own temporal resolve's compute pipelines.
+    pub(crate) fn temporal(&self) -> crate::temporal::own::OwnPipelines {
+        self.temporal
     }
 
     /// The `meshlet.cull` pass's compute pipelines.

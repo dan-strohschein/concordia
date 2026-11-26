@@ -42,6 +42,8 @@ pub(crate) struct ForwardTargets {
     pub(crate) hdr: GraphTexture,
     /// Motion vectors, resolved (M4 4.3b2).
     pub(crate) motion: GraphTexture,
+    /// Depth (single-sample and stored when the frame keeps it for a temporal resolve).
+    pub(crate) depth: GraphTexture,
 }
 
 /// The split's HZB build: the frame's HZB, its pipeline, and the device (for bindless indices);
@@ -85,6 +87,8 @@ struct Targets {
     msaa: Option<(GraphTexture, GraphTexture)>,
     /// Pass 1's min-resolved depth (a split with MSAA).
     resolved: Option<GraphTexture>,
+    /// Store the depth after the last pass, sampled (a temporal resolve reads it; M4 4.6).
+    keep_depth: bool,
 }
 
 /// Adds the forward pass (or, with `split`, its two halves, the HZB build and pass 2's culling).
@@ -95,10 +99,13 @@ pub(crate) fn add_forward(
     (samples, size): (SampleCount, (NonZeroU32, NonZeroU32)),
     shadow_maps: &[GraphTexture],
     (sky, grid): (FullDraw, FullDraw),
-    split: Option<Split>,
+    (split, keep_depth): (Option<Split>, bool),
 ) -> ForwardTargets {
-    let targets = create_targets(graph, samples, size, split.is_some());
-    let clear = view.camera.clear;
+    let targets = create_targets(graph, samples, size, (split.is_some(), keep_depth));
+    // HDR alpha is the reactive mask (M4 4.6): 0 under the sky and opaque surfaces, blended
+    // coverage over them. Nothing else reads it.
+    let [r, g, b, _] = view.camera.clear;
+    let clear = [r, g, b, 0.0];
     let (forward, late) = match &meshlets {
         Some(m) => (m.forward.clone(), m.forward_late.clone()),
         None => (Vec::new(), Vec::new()),
@@ -163,6 +170,7 @@ pub(crate) fn add_forward(
     ForwardTargets {
         hdr: targets.hdr,
         motion: targets.motion,
+        depth: targets.depth,
     }
 }
 
@@ -171,12 +179,16 @@ fn create_targets(
     graph: &mut RenderGraph,
     samples: SampleCount,
     size: (NonZeroU32, NonZeroU32),
-    split: bool,
+    (split, keep_depth): (bool, bool),
 ) -> Targets {
+    debug_assert!(
+        !keep_depth || samples == SampleCount::X1,
+        "kept depth is single-sample"
+    );
     let sampled = TextureUsage::RENDER_TARGET | TextureUsage::SAMPLED | TextureUsage::BINDLESS;
     let multisampled = samples != SampleCount::X1;
     let hdr = graph.create_texture(desc(size, HDR, SampleCount::X1, sampled, "hdr"));
-    let depth_usage = match split && !multisampled {
+    let depth_usage = match (split || keep_depth) && !multisampled {
         true => sampled,
         false => TextureUsage::RENDER_TARGET,
     };
@@ -185,7 +197,7 @@ fn create_targets(
         size,
         MOTION,
         SampleCount::X1,
-        TextureUsage::RENDER_TARGET | TextureUsage::SAMPLED | TextureUsage::COPY_SRC,
+        sampled | TextureUsage::COPY_SRC,
         "motion",
     ));
     let msaa = multisampled.then(|| {
@@ -210,6 +222,7 @@ fn create_targets(
         depth,
         msaa,
         resolved,
+        keep_depth,
     }
 }
 
@@ -311,8 +324,8 @@ fn pass_desc(ctx: &PassContext<'_>, part: Part, t: Targets, clear: [f32; 4]) -> 
                 _ => None,
             },
             load: depth_load,
-            store: match part {
-                Part::Early => StoreOp::Store,
+            store: match (part, t.keep_depth) {
+                (Part::Early, _) | (_, true) => StoreOp::Store,
                 _ => StoreOp::DontCare,
             },
         }),

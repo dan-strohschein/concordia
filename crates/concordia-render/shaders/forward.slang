@@ -280,7 +280,7 @@ ForwardOut sky_fs(SkyOut i, uniform SkyPush push) {
     float4 far = xform(frame.inv_view_proj, float4(i.ndc, 0.5, 1.0));
     float3 dir = normalize(far.xyz / far.w - near.xyz / near.w);
     ForwardOut o;
-    o.color = float4(env_sample(frame, 0, dir) * frame.ibl.x, 1.0);
+    o.color = float4(env_sample(frame, 0, dir) * frame.ibl.x, 0.0); // alpha: not reactive
     // The sky is infinitely far: only the camera's rotation moves it.
     o.motion = clip_uv(xform(frame.view_proj, float4(dir, 0.0))) - clip_uv(xform(frame.prev_view_proj, float4(dir, 0.0)));
     return o;
@@ -703,6 +703,9 @@ static const uint MODE_MOTION = 17;
 ForwardOut fs(VsOut i, bool front : SV_IsFrontFace, uniform DrawPush push) {
     ForwardOut o;
     o.color = shade_pixel(i, front, push);
+    // HDR alpha is the reactive mask (M4 4.6): blended draws add their coverage, opaque ones none.
+    uint flags = (((uint4*)g_buffers.ptr[push.materials]) + push.material)[0].z;
+    if ((flags & FLAG_BLEND) == 0) { o.color.a = 0.0; }
     o.motion = clip_uv(i.clip) - clip_uv(i.prev_clip);
     Frame* frame = (Frame*)g_buffers.ptr[push.frame];
     if (frame.debug.x == MODE_MOTION) {
