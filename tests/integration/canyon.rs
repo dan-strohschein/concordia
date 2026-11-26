@@ -101,6 +101,20 @@ fn canyon_is_deterministic_for_its_seeds() {
     };
     assert_eq!(keys("m4-canyon-ground"), spec.ground_path());
     assert_eq!(keys("m4-canyon-overhead"), spec.overhead_path());
+    // The 1440p TAAU twins (4.6 plan Q13): the same paths, from 1706 × 960 with the own resolve.
+    use concordia_render::temporal::TemporalBackend;
+    for name in ["m4-canyon-ground", "m4-canyon-overhead"] {
+        let (plain, twin) = (perf_scene(name), perf_scene(&format!("{name}-taau")));
+        assert_eq!(twin.path, plain.path, "{name}");
+        assert_eq!((twin.width, twin.height), (2560, 1440), "{name}");
+        assert_eq!(twin.fov_y, plain.fov_y, "{name}");
+        let t = twin.temporal.expect("a temporal setting");
+        assert_eq!(
+            (t.backend, t.upscale),
+            (TemporalBackend::own, 1.5),
+            "{name}"
+        );
+    }
 }
 
 /// The sum over instances of each mesh's triangles is at least 20,000,000, and every instance's
@@ -250,6 +264,81 @@ fn canyon_taau_runs_at_1440p() {
             mean > 20.0 && spread > 5.0,
             "frame {i}: mean {mean}, spread {spread}"
         );
+    }
+}
+
+/// Phase 4.6's `temporal_pass_budget`, recording only (4.6 plan Q13): the own resolve's GPU time
+/// on the ground path's middle pose at 2560 × 1440 from 1706 × 960, 120 frames after 30 warm-up,
+/// printed as median and p95 against the provisional 0.8 ms. It passes either way (the assertion
+/// lands with the canyon budget file at M4's end) and says when this isn't the reference machine.
+#[test]
+fn temporal_pass_budget() {
+    use concordia_perf::{HostProbe, ReferenceMachine, Summary, machine::SystemProbe};
+    use concordia_render::temporal::{Temporal, TemporalBackend, Upscale};
+    let Some(mut r) = renderer(&Default::default(), Culling::default()) else {
+        return;
+    };
+    r.set_perf_mode(true);
+    r.set_temporal(Temporal {
+        backend: TemporalBackend::own,
+        upscale: Upscale::X1_5,
+    });
+    let mut loaded = Canyon::load();
+    let world = concordia_render::RenderWorld::extract(&loaded.world);
+    let scene = perf_scene("m4-canyon-ground-taau");
+    let view = canyon::view(&scene, 150, 300);
+    let samples = loaded.pass_samples(&mut r, &world, view, (2560, 1440), 120);
+    let Some(resolve) = samples.get("temporal.resolve").and_then(|s| Summary::of(s)) else {
+        println!(
+            "temporal_pass_budget: not measured ({:?})",
+            r.stats().pass_timing
+        );
+        return;
+    };
+    let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("perf/reference.ron");
+    let reference = ReferenceMachine::read(&std::fs::read_to_string(file).unwrap()).unwrap();
+    let place = match reference.mismatch(&SystemProbe.host(r.device().caps())) {
+        None => "the reference machine".to_owned(),
+        Some(why) => format!("NotReference: {why}"),
+    };
+    let verdict = if resolve.p95_ms <= 0.8 {
+        "within"
+    } else {
+        "over"
+    };
+    println!(
+        "temporal_pass_budget ({place}): temporal.resolve median {:.3} ms, p95 {:.3} ms; {verdict} the provisional 0.8 ms",
+        resolve.median_ms, resolve.p95_ms
+    );
+}
+
+/// Timings only, for the As built (4.6 plan Q13): the ground path's middle pose at 2560 × 1440 with
+/// temporal off and the own resolve at 1.0×, 1.5× and 2.0×; each pass's median and the frame's.
+/// Run on the reference Mac:
+/// `cargo nextest run -p concordia-tests --release --test canyon --run-ignored only -E 'test(canyon_temporal_timings)' --no-capture`.
+#[test]
+#[ignore = "timings for the As built, run by hand in release"]
+fn canyon_temporal_timings() {
+    use concordia_render::temporal::{Temporal, TemporalBackend, Upscale};
+    let Some(mut r) = renderer(&Default::default(), Culling::default()) else {
+        return;
+    };
+    r.set_perf_mode(true);
+    let mut loaded = Canyon::load();
+    let world = concordia_render::RenderWorld::extract(&loaded.world);
+    let view = canyon::view(&perf_scene("m4-canyon-ground-taau"), 150, 300);
+    let runs = [
+        ("off", TemporalBackend::off, Upscale::X1),
+        ("own 1.0×", TemporalBackend::own, Upscale::X1),
+        ("own 1.5×", TemporalBackend::own, Upscale::X1_5),
+        ("own 2.0×", TemporalBackend::own, Upscale::X2),
+    ];
+    for (label, backend, upscale) in runs {
+        r.set_temporal(Temporal { backend, upscale });
+        for (name, mut ms) in loaded.pass_samples(&mut r, &world, view.clone(), (2560, 1440), 150) {
+            ms.sort_by(f64::total_cmp);
+            println!("canyon {label} {name}: median {:.3} ms", ms[ms.len() / 2]);
+        }
     }
 }
 

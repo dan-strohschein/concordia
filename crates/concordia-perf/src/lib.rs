@@ -15,5 +15,5 @@ pub use error::PerfError;
 pub use machine::{HostInfo, HostProbe, ReferenceMachine};
 pub use report::{PerfReport, Summary};
 pub use runner::{Run, RunOptions, run};
-pub use scene::{CameraKey, PerfScene};
+pub use scene::{CameraKey, PerfScene, PerfTemporal};
 pub use verdict::{Stat, Verdict, Violation, check, judge};

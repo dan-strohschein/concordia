@@ -5,7 +5,7 @@ Perf testing on reference hardware (ADR-0089): per-scene budgets as text, the re
 
 ## Public entry points
 - `run(scene_file, &RunOptions, &dyn HostProbe) -> Run` (`Run::write(out)` writes `<out>/<name>.perf.ron`); `concordia perf run` and `just perf` call it.
-- `PerfScene` (`tests/perf/scenes/<name>.perf.ron`: project, scene, size, warm-up and measured frames, `fov_y`, camera `path`; `pose(i, frames)`).
+- `PerfScene` (`tests/perf/scenes/<name>.perf.ron`: project, scene, size, warm-up and measured frames, `fov_y`, camera `path`, optional `temporal` (`PerfTemporal`: backend and upscale; the runner sets it with `render.set_temporal` and captures two frames per sample, so the measured one has history; M4 4.6a); `pose(i, frames)`).
 - `BudgetFile` / `Limit` (`tests/perf/budgets/<name>.budget.ron`; `read`, `to_text`, `validate`).
 - `ReferenceMachine` (`tests/perf/reference.ron`; `mismatch(&HostInfo)`), `HostInfo`, `HostProbe`, `machine::SystemProbe`.
 - `PerfReport` / `Summary` / `report::Status` (`record(&Verdict)`), `check`, `judge`, `Verdict`, `Violation`, `Stat`.

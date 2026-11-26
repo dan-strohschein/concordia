@@ -34,7 +34,8 @@ pub fn project() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/m4-canyon")
 }
 
-/// `tests/perf/scenes/<name>.perf.ron` (`m4-canyon-ground` or `m4-canyon-overhead`).
+/// `tests/perf/scenes/<name>.perf.ron` (`m4-canyon-ground` or `m4-canyon-overhead`, or their
+/// `-taau` twins).
 pub fn perf_scene(name: &str) -> PerfScene {
     let file = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("perf/scenes/{name}.perf.ron"));
     let text = std::fs::read_to_string(&file).unwrap_or_else(|e| panic!("{}: {e}", file.display()));
@@ -167,6 +168,51 @@ impl Canyon {
         };
         r.render(world, &mut self.assets, &request)
             .expect("a frame")
+    }
+
+    /// Each timed pass's GPU times (and the whole frame's, as `frame`) over `frames` frames of
+    /// still `view` at `size`, after 30 warm-up frames; `r` must be in perf mode.
+    pub fn pass_samples(
+        &mut self,
+        r: &mut Renderer,
+        world: &RenderWorld,
+        view: View,
+        size: (u32, u32),
+        frames: usize,
+    ) -> BTreeMap<String, Vec<f64>> {
+        let request = RenderRequest {
+            camera: None,
+            view: Some(view),
+            width: size.0,
+            height: size.1,
+            overlays: None,
+            view_mode: ViewMode::lit,
+            debug: Vec::new(),
+            ui: Default::default(),
+        };
+        let mut samples: BTreeMap<String, Vec<f64>> = BTreeMap::new();
+        for frame in 0..frames + 30 {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let callbacks = concordia_render::FrameCallbacks {
+                presented: None,
+                gpu_time: Some(Box::new(move |t| tx.send(t).unwrap())),
+            };
+            r.render_with(world, &mut self.assets, &request, callbacks)
+                .expect("a frame");
+            let timing = rx
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .expect("GPU timing");
+            if frame < 30 {
+                continue;
+            }
+            let names = r.stats().timed_passes;
+            for p in concordia_render::perf::pass_times(&names, &timing) {
+                samples.entry(p.name).or_default().push(p.gpu_ms);
+            }
+            let total = timing.total_ms.unwrap_or(f64::NAN);
+            samples.entry("frame".into()).or_default().push(total);
+        }
+        samples
     }
 
     /// Draws `frames` consecutive frames along `scene`'s path on `r`, keeping each frame's meshlet

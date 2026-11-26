@@ -60,3 +60,16 @@ fn measured_frames_move_evenly_through_the_keys() {
         "one frame: the first key"
     );
 }
+
+/// A perf scene may set the temporal resolve (4.6 plan Q13); absent, the project's setting stands.
+#[test]
+fn perf_scene_reads_an_optional_temporal_setting() {
+    use concordia_render::temporal::TemporalBackend;
+    assert_eq!(PerfScene::read(TEXT).unwrap().temporal, None);
+    let with = |t: &str| TEXT.replace("fov_y: 0.9,", &format!("fov_y: 0.9,\n    temporal: {t},"));
+    let scene = PerfScene::read(&with("Some((backend: own, upscale: 1.5))")).expect("reads");
+    let t = scene.temporal.expect("a temporal setting");
+    assert_eq!((t.backend, t.upscale), (TemporalBackend::own, 1.5));
+    let err = PerfScene::read(&with("Some((backend: own, upscale: 3.0))")).expect_err("3×");
+    assert!(err.to_string().contains("upscale"), "{err}");
+}

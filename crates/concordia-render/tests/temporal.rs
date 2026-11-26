@@ -784,3 +784,27 @@ fn render_stats_report_the_temporal_backend_and_sizes() {
     scene.render(&mut r, YARD.0, YARD.1);
     assert_eq!(r.stats().temporal.backend, TemporalBackend::off);
 }
+
+/// Timings only, for the As built (4.6 plan Q13): the fence yard at 2560 × 1440 with temporal off
+/// and the own resolve at 1.0×, 1.5× and 2.0×; each pass's median and the frame's. Run on the
+/// reference Mac:
+/// `cargo nextest run -p concordia-render --release --run-ignored only -E 'test(fence_yard_temporal_timings)' --no-capture`.
+#[test]
+#[ignore = "timings for the As built, run by hand in release"]
+fn fence_yard_temporal_timings() {
+    let Some(mut r) = renderer() else { return };
+    r.set_perf_mode(true);
+    let mut s = fence_yard();
+    let runs = [
+        ("off", Temporal::default()),
+        ("own 1.0×", own(Upscale::X1)),
+        ("own 1.5×", own(Upscale::X1_5)),
+        ("own 2.0×", own(Upscale::X2)),
+    ];
+    for (label, temporal) in runs {
+        r.set_temporal(temporal);
+        for (name, ms) in common::median_pass_times(&mut r, &mut s, (2560, 1440), 150) {
+            println!("fence yard {label} {name}: median {ms:.3} ms");
+        }
+    }
+}
