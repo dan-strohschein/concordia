@@ -41,6 +41,7 @@ mod shape;
 mod skinning;
 mod stats;
 mod templates;
+pub mod temporal;
 #[cfg(test)]
 mod test_gpu;
 mod thread;

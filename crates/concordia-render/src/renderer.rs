@@ -110,6 +110,8 @@ pub struct Renderer {
     meshlets: bool,
     /// The meshlet path's GPU culling tests (M4 4.4).
     culling: crate::Culling,
+    /// A fixed sub-pixel offset and mip bias instead of the temporal sequence (M4 4.6).
+    subpixel: Option<crate::temporal::SubpixelOverride>,
     /// Keep each read-back frame's per-meshlet cull records (`set_cull_readback`).
     cull_readback: bool,
     /// The last ones kept.
@@ -383,6 +385,7 @@ impl Renderer {
             last_motion: None,
             meshlets: true,
             culling: crate::Culling::default(),
+            subpixel: None,
             cull_readback: false,
             last_culling: None,
             visibility: Default::default(),
@@ -730,6 +733,17 @@ impl Renderer {
         self.culling = culling;
     }
 
+    /// Fixes the camera's sub-pixel offset and texture mip bias for the next frames, instead of the
+    /// temporal sequence (`None`: the sequence; M4 4.6).
+    pub fn set_subpixel_override(&mut self, subpixel: Option<crate::temporal::SubpixelOverride>) {
+        self.subpixel = subpixel;
+    }
+
+    /// The sub-pixel override, as set.
+    pub fn subpixel_override(&self) -> Option<crate::temporal::SubpixelOverride> {
+        self.subpixel
+    }
+
     /// The meshlet path's GPU culling tests.
     pub fn culling(&self) -> crate::Culling {
         self.culling
@@ -956,6 +970,7 @@ impl Renderer {
             )?),
             false => None,
         };
+        let subpixel = self.subpixel;
         let block = frame_block(&FrameParams {
             view_proj,
             view: view_m,
@@ -982,6 +997,10 @@ impl Renderer {
             view_mode: view_mode.shader_index(),
             exposure,
             prev_view_proj: self.motion.previous_view_proj(&view_proj),
+            jitter: subpixel.map_or([0.0; 2], |s| {
+                crate::temporal::ndc_offset(s.offset, (width.get(), height.get()))
+            }),
+            mip_bias: subpixel.map_or(0.0, |s| s.mip_bias),
             hzb: match &hzb {
                 Some(h) => Some((index(h.buffer)?, h.layout.levels[0][0])),
                 None => None,

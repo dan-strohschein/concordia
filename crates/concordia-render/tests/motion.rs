@@ -194,6 +194,29 @@ fn motion_vectors_zero_for_static_scene_and_exact_for_translation() {
     }
 }
 
+/// The camera's sub-pixel jitter (M4 4.6) moves only where pixels are rasterized: a still scene
+/// rendered with a different offset each frame still has exactly zero motion, on every path.
+#[test]
+fn still_scene_motion_stays_zero_under_jitter() {
+    use concordia_render::temporal::SubpixelOverride;
+    for mut r in renderers() {
+        let mut q = quads(common::unlit([1.0; 4]));
+        let eye = view(Vec3::new(0.0, 0.0, 5.0));
+        for (frame, offset) in [[0.3, -0.2], [-0.4, 0.45], [0.1, 0.1]]
+            .into_iter()
+            .enumerate()
+        {
+            r.set_subpixel_override(Some(SubpixelOverride {
+                offset,
+                mip_bias: 0.0,
+            }));
+            let m = motion(&mut r, &mut q.scene, &eye);
+            let what = format!("frame {frame}, {:?}", r.stats().raster_path);
+            assert!(m.uv.iter().all(|m| *m == [0.0, 0.0]), "{what}");
+        }
+    }
+}
+
 #[test]
 fn camera_motion_moves_static_pixels() {
     for mut r in renderers() {

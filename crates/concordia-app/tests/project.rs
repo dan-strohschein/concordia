@@ -393,6 +393,43 @@ fn m2_scripting_example_spawns_and_runs_its_wanderers() {
     assert_eq!(moved, 200, "every wanderer walked");
 }
 
+/// `[render] temporal` (off by default) picks the temporal resolve and `upscale` (1.0, 1.5 or 2.0)
+/// its ratio (M4 4.6); anything else is refused when the project loads, naming the key.
+#[test]
+fn temporal_settings_read_from_the_manifest() {
+    use concordia_render::temporal::{TemporalBackend, Upscale};
+    let render = |text: &str| {
+        let (_dir, project) = project_with(text);
+        project.map(|p| p.manifest.render.unwrap_or_default())
+    };
+    let default = render("[render]\n").unwrap();
+    assert_eq!(
+        (default.temporal, default.upscale),
+        (TemporalBackend::off, Upscale::X1)
+    );
+    let on = render("[render]\ntemporal = \"own\"\nupscale = 1.5\n").unwrap();
+    assert_eq!(
+        (on.temporal, on.upscale),
+        (TemporalBackend::own, Upscale::X1_5)
+    );
+    let apple = render("[render]\ntemporal = \"metalfx\"\nupscale = 2.0\n").unwrap();
+    assert_eq!(
+        (apple.temporal, apple.upscale),
+        (TemporalBackend::metalfx, Upscale::X2)
+    );
+    for (bad, words) in [
+        ("upscale = 1.25", ["upscale", "1.0, 1.5 or 2.0"]),
+        ("temporal = \"fsr\"", ["temporal", "fsr"]),
+    ] {
+        let err = render(&format!("[render]\n{bad}\n")).unwrap_err();
+        assert!(matches!(err, AppError::Manifest { .. }), "{err}");
+        let text = err.to_string();
+        for w in words {
+            assert!(text.contains(w), "{bad}: {text}");
+        }
+    }
+}
+
 /// `[render] closure_budget` may lower the platform's closure budget (8 on Metal) but never raise
 /// it: values outside 1..=8 are refused when the project loads (ADR-0068).
 #[test]
