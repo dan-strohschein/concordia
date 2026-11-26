@@ -75,7 +75,7 @@ pub fn fit_cascades(
 }
 
 /// World → light view (rotation only, so the texel grid is fixed in the world).
-fn light_rotation(dir: Vec3) -> Mat4 {
+pub(crate) fn light_rotation(dir: Vec3) -> Mat4 {
     let f = dir.normalize_or(Vec3::NEG_Y);
     let up = if f.y.abs() > 0.99 { Vec3::Z } else { Vec3::Y };
     let r = f.cross(up).normalize();

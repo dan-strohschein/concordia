@@ -119,6 +119,28 @@ fn new_project_enables_modules_and_studio() {
     assert!(map.action(&defaults.click).is_some() && map.action(&defaults.pointer).is_some());
 }
 
+/// The manifest documents the shadow settings (M4 4.7) as comments, so the defaults stay in force
+/// and the file still parses.
+#[test]
+fn new_project_documents_the_shadow_settings() {
+    let dir = tempfile::tempdir().unwrap();
+    assert!(run(&["new", "g"], dir.path()).status.success());
+    let manifest = std::fs::read_to_string(dir.path().join("g/concordia.toml")).unwrap();
+    for line in [
+        "# shadows = \"vsm\"",
+        "# [render.vsm]",
+        "# pool_pages = 4096",
+        "# levels = 16",
+    ] {
+        assert!(manifest.contains(line), "{line} missing:\n{manifest}");
+    }
+    let parsed: toml::Table = toml::from_str(&manifest).unwrap();
+    assert!(
+        parsed["render"].as_table().unwrap().is_empty(),
+        "only comments"
+    );
+}
+
 #[test]
 fn new_project_writes_the_default_studio() {
     let dir = tempfile::tempdir().unwrap();
