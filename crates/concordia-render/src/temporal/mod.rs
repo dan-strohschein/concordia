@@ -5,6 +5,7 @@ mod api;
 mod exposure;
 pub(crate) mod history;
 mod jitter;
+pub(crate) mod metalfx;
 pub(crate) mod own;
 mod settings;
 

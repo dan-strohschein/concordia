@@ -8,6 +8,8 @@ pub struct FrameExposure {
     pub value: f32,
     /// Last frame's (this frame's on a view's first frame).
     pub previous: f32,
+    /// The exposure the view's history started at.
+    pub base: f32,
 }
 
 impl FrameExposure {
@@ -17,6 +19,7 @@ impl FrameExposure {
         Self {
             value,
             previous: value,
+            base: value,
         }
     }
 
@@ -26,12 +29,19 @@ impl FrameExposure {
         Self {
             value,
             previous: self.value,
+            base: self.base,
         }
     }
 
     /// What history made last frame is multiplied by to match this frame.
     pub fn history_scale(self) -> f32 {
         self.value / self.previous
+    }
+
+    /// This frame's exposure relative to the history's start (MetalFX's pre-exposure: its history
+    /// stays in the start's units, so it never meets the tiny absolute exposures of daylight).
+    pub fn relative(self) -> f32 {
+        self.value / self.base
     }
 }
 
@@ -52,5 +62,13 @@ mod tests {
             (0.5, 0.25, 2.0)
         );
         assert_eq!(next.next(0.5).history_scale(), 1.0);
+    }
+
+    #[test]
+    fn exposure_record_keeps_the_historys_base() {
+        let first = FrameExposure::first(0.25);
+        assert_eq!((first.base, first.relative()), (0.25, 1.0));
+        let later = first.next(0.5).next(1.0);
+        assert_eq!((later.base, later.relative()), (0.25, 4.0));
     }
 }

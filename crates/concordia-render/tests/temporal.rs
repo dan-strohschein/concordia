@@ -495,22 +495,34 @@ fn changed(a: &Image, b: &Image) -> Vec<bool> {
 #[test]
 fn taa_panning_camera_converges() {
     let Some(mut r) = renderer() else { return };
+    let score = pan(&mut r, own(Upscale::X1), "panning");
+    eprintln!("panning: {score:?}");
+    assert!(score.mean <= 0.05, "panning against SSAA: {score:?}");
+}
+
+/// Pans the fence yard 24 frames with `temporal`; the last frame's FLIP against the supersampled
+/// render of its pose (frames kept for review under `name`).
+fn pan(r: &mut Renderer, temporal: Temporal, name: &str) -> FlipScore {
     let mut scene = fence_yard();
     let camera = scene_camera(&scene);
     let (eye, target) = (Vec3::new(0.4, 1.2, 4.0), Vec3::new(0.0, 0.7, -1.0));
     let step = Vec3::new(0.025, 0.0, 0.0);
-    r.set_temporal(own(Upscale::X1));
+    r.set_temporal(temporal);
+    r.reset_motion_history();
     let mut last = None;
     for f in 0..24 {
         scene.aim(camera, eye + step * f as f32, target + step * f as f32);
-        let image = scene.render(&mut r, YARD.0, YARD.1);
-        review("panning", f, &image);
+        let image = scene.render(r, YARD.0, YARD.1);
+        review(name, f, &image);
         last = Some(image);
     }
-    let reference = supersampled(&mut r, &mut scene, YARD);
-    let score = flip(&reference, &last.unwrap());
-    eprintln!("panning: {score:?}");
-    assert!(score.mean <= 0.05, "panning against SSAA: {score:?}");
+    assert_eq!(
+        r.stats().temporal.backend,
+        temporal.backend,
+        "the backend ran"
+    );
+    let reference = supersampled(r, &mut scene, YARD);
+    flip(&reference, &last.unwrap())
 }
 
 /// A bright panel slides away fast from in front of the dark wall and the sky: 4 frames later the
@@ -633,6 +645,17 @@ fn taa_reactive_mask_prevents_translucent_smearing() {
 #[test]
 fn exposure_change_does_not_flash() {
     let Some(mut r) = renderer() else { return };
+    let (a, b) = exposure_step(&mut r, own(Upscale::X1));
+    eprintln!("exposure: next {a}, settled {b}");
+    assert!(
+        (a - b).abs() <= 0.02 * b,
+        "the frame after the change: {a} against {b}"
+    );
+}
+
+/// The mean luminance of the frame after one EV step with `temporal`, and of a converged render at
+/// the new exposure.
+fn exposure_step(r: &mut Renderer, temporal: Temporal) -> (f32, f32) {
     let mut scene = fence_yard();
     let camera = scene_camera(&scene);
     let set_ev = |scene: &mut Scene, ev: f32| {
@@ -640,10 +663,15 @@ fn exposure_change_does_not_flash() {
         c.exposure_ev100 = ev;
         scene.world.insert(camera, c).unwrap();
     };
-    let _ = converge(&mut r, &mut scene, own(Upscale::X1), 16);
+    let _ = converge(r, &mut scene, temporal, 16);
     set_ev(&mut scene, 14.0);
-    let next = scene.render(&mut r, YARD.0, YARD.1);
-    let settled = converge(&mut r, &mut scene, own(Upscale::X1), 16);
+    let next = scene.render(r, YARD.0, YARD.1);
+    assert_eq!(
+        r.stats().temporal.backend,
+        temporal.backend,
+        "the backend ran"
+    );
+    let settled = converge(r, &mut scene, temporal, 16);
     let all = vec![true; (YARD.0 * YARD.1) as usize];
     let mean = |i: &Image| {
         mean_luma_bias(
@@ -655,12 +683,7 @@ fn exposure_change_does_not_flash() {
             &all,
         )
     };
-    let (a, b) = (mean(&next), mean(&settled));
-    eprintln!("exposure: next {a}, settled {b}");
-    assert!(
-        (a - b).abs() <= 0.02 * b,
-        "the frame after the change: {a} against {b}"
-    );
+    (mean(&next), mean(&settled))
 }
 
 /// Two views rendered in turn each keep their own history: a view's frames equal its frames
@@ -805,6 +828,183 @@ fn fence_yard_temporal_timings() {
         r.set_temporal(temporal);
         for (name, ms) in common::median_pass_times(&mut r, &mut s, (2560, 1440), 150) {
             println!("fence yard {label} {name}: median {ms:.3} ms");
+        }
+    }
+}
+
+fn metalfx(upscale: Upscale) -> Temporal {
+    Temporal {
+        backend: TemporalBackend::metalfx,
+        upscale,
+    }
+}
+
+/// Whether `r`'s device has MetalFX's temporal scaler (the MetalFX tests skip, saying why, if not).
+fn has_metalfx(r: &Renderer) -> bool {
+    let has = r.device().caps().metalfx_temporal;
+    if !has {
+        eprintln!("skipped: this device has no MetalFX temporal scaler (Apple GPUs only)");
+    }
+    has
+}
+
+/// On a device without MetalFX (masked), `metalfx` runs the own resolve: the stats say `own` and
+/// the image is the own resolve's, byte for byte.
+#[test]
+fn metalfx_unavailable_falls_back_to_own() {
+    let mask = concordia_rhi::CapsMask {
+        metalfx_temporal: true,
+        ..Default::default()
+    };
+    let Some(mut r) = common::renderer_masked(&mask) else {
+        return;
+    };
+    let mut scene = fence_yard();
+    let fallback = converge(&mut r, &mut scene, metalfx(Upscale::X1_5), 8);
+    assert_eq!(r.stats().temporal.backend, TemporalBackend::own);
+    let own = converge(&mut r, &mut scene, own(Upscale::X1_5), 8);
+    assert!(fallback == own, "the fallback is the own resolve");
+}
+
+/// MetalFX at 1.5× (48 still frames) is within FLIP 0.06 of the own TAAU at 1.5×, and `render.stats`
+/// says it ran at 1.5×.
+#[test]
+fn metalfx_backend_matches_own_taau_within_loose_tolerance() {
+    let Some(mut r) = renderer() else { return };
+    if !has_metalfx(&r) {
+        return;
+    }
+    let mut scene = fence_yard();
+    let theirs = converge(&mut r, &mut scene, metalfx(Upscale::X1_5), 48);
+    let t = r.stats().temporal;
+    assert_eq!(t.backend, TemporalBackend::metalfx);
+    assert_eq!((t.internal, t.output), ([426, 240], [640, 360]));
+    let ours = converge(&mut r, &mut scene, own(Upscale::X1_5), 48);
+    let reference = supersampled(&mut r, &mut scene, YARD);
+    review("fence_metalfx_1_5x", 0, &theirs);
+    review("fence_own_1_5x", 0, &ours);
+    let score = flip(&ours, &theirs);
+    eprintln!(
+        "MetalFX 1.5× against own {score:?}; against SSAA {:?} (own {:?})",
+        flip(&reference, &theirs),
+        flip(&reference, &ours)
+    );
+    assert!(
+        score.mean <= 0.06,
+        "MetalFX against the own TAAU: {score:?}"
+    );
+    goldens(&[("fence_metalfx_1_5x", &theirs)]);
+}
+
+/// MetalFX takes the jitter in its own sign and units: with the jitter held at an offset it pulls
+/// the image back toward where an unjittered render puts it. It can only partly undo a constant
+/// sub-pixel offset (0.45 px → 0.25 px measured), while a wrong sign pushes it further (0.65 px) and
+/// a doubled scale overshoots (−0.56 px); the bound is 0.35 px.
+#[test]
+fn metalfx_still_scene_does_not_drift() {
+    let Some(mut r) = renderer() else { return };
+    if !has_metalfx(&r) {
+        return;
+    }
+    let mut scene = Scene::new();
+    let white = scene.material("white", unlit([1.0; 4]));
+    scene.mesh(
+        "cube",
+        white,
+        Vec3::ZERO,
+        Quat::from_rotation_z(0.3),
+        Vec3::splat(1.4),
+    );
+    scene.camera(Vec3::new(0.0, 0.0, 3.0), Vec3::ZERO, single_sample());
+    let still = centroid(&scene.render(&mut r, 160, 90));
+    r.set_temporal(metalfx(Upscale::X1));
+    for offset in [[0.45, 0.0], [0.0, 0.45], [-0.3, 0.3]] {
+        r.reset_motion_history();
+        r.set_subpixel_override(Some(SubpixelOverride {
+            offset,
+            mip_bias: 0.0,
+        }));
+        let mut last = None;
+        for _ in 0..8 {
+            last = Some(scene.render(&mut r, 160, 90));
+        }
+        assert_eq!(r.stats().temporal.backend, TemporalBackend::metalfx);
+        let at = centroid(&last.unwrap());
+        for axis in 0..2 {
+            let drift = at[axis] - still[axis];
+            eprintln!("MetalFX offset {offset:?} axis {axis}: drift {drift:.3} px");
+            assert!(
+                drift.abs() <= 0.35,
+                "offset {offset:?}, axis {axis}: drift {drift}"
+            );
+        }
+    }
+}
+
+/// MetalFX keeps a panning image, pinning its motion vectors' sign and scale: FLIP ≤ 0.07 against
+/// the supersampled pose (measured 0.061; the own TAA's 0.049; with a wrong sign 0.077–0.080, with
+/// no motion 0.092).
+#[test]
+fn metalfx_panning_camera_converges() {
+    let Some(mut r) = renderer() else { return };
+    if !has_metalfx(&r) {
+        return;
+    }
+    let score = pan(&mut r, metalfx(Upscale::X1), "panning_metalfx");
+    eprintln!("MetalFX panning: {score:?}");
+    assert!(
+        score.mean <= 0.07,
+        "MetalFX panning against SSAA: {score:?}"
+    );
+}
+
+/// MetalFX takes the exposure record: one EV step, the next frame within 2 % of settled.
+#[test]
+fn metalfx_exposure_change_does_not_flash() {
+    let Some(mut r) = renderer() else { return };
+    if !has_metalfx(&r) {
+        return;
+    }
+    let (a, b) = exposure_step(&mut r, metalfx(Upscale::X1));
+    eprintln!("MetalFX exposure: next {a}, settled {b}");
+    assert!(
+        (a - b).abs() <= 0.02 * b,
+        "the frame after the change: {a} against {b}"
+    );
+}
+
+/// Switching own → MetalFX → off → own every 10 frames (40 in all) renders every frame, with the
+/// stats naming the backend that ran and each switch starting a fresh history.
+#[test]
+fn upscaler_backends_are_interchangeable_at_runtime() {
+    let Some(mut r) = renderer() else { return };
+    let expected_metalfx = match r.device().caps().metalfx_temporal {
+        true => TemporalBackend::metalfx,
+        false => TemporalBackend::own,
+    };
+    let mut scene = fence_yard();
+    let runs = [
+        (own(Upscale::X1_5), TemporalBackend::own),
+        (metalfx(Upscale::X1_5), expected_metalfx),
+        (Temporal::default(), TemporalBackend::off),
+        (own(Upscale::X1_5), TemporalBackend::own),
+    ];
+    for (i, (temporal, ran)) in runs.into_iter().enumerate() {
+        r.set_temporal(temporal);
+        for f in 0..10 {
+            let image = scene.render(&mut r, YARD.0, YARD.1);
+            let t = r.stats().temporal;
+            assert_eq!(t.backend, ran, "run {i} frame {f}");
+            assert_eq!(
+                t.reset,
+                f == 0 && ran != TemporalBackend::off,
+                "run {i} frame {f}"
+            );
+            let lit = image.rgba.chunks(4).filter(|p| p[1] > 16).count();
+            assert!(
+                lit * 4 > image.rgba.len() / 4,
+                "run {i} frame {f}: mostly black"
+            );
         }
     }
 }

@@ -231,27 +231,61 @@ fn canyon_culling_matches_culling_off() {
 }
 
 /// Phase 4.6's done criterion (4.6 plan Q11): the ground path's 32 frames at 2560 × 1440 from
-/// 1706 × 960 with the own TAAU (1.5×). Every frame is drawn by the own resolve at those sizes and
-/// shows the canyon (not black, not flat).
+/// 1706 × 960 at 1.5×, with the own TAAU and, where the device has it, MetalFX. Every frame is drawn
+/// by the backend asked for at those sizes and shows the canyon (not black, not flat), and the two
+/// backends' last frames are within FLIP 0.06.
 #[test]
 fn canyon_taau_runs_at_1440p() {
     use concordia_render::temporal::{Temporal, TemporalBackend, Upscale};
+    use concordia_testkit::golden::{RgbaImage, flip_score};
     let Some(mut r) = renderer(&Default::default(), Culling::default()) else {
         return;
     };
-    r.set_temporal(Temporal {
-        backend: TemporalBackend::own,
-        upscale: Upscale::X1_5,
-    });
     let mut loaded = Canyon::load();
     let world = concordia_render::RenderWorld::extract(&loaded.world);
     let scene = perf_scene("m4-canyon-ground");
+    let mut backends = vec![TemporalBackend::own];
+    match r.device().caps().metalfx_temporal {
+        true => backends.push(TemporalBackend::metalfx),
+        false => eprintln!("MetalFX skipped: this device has no MetalFX temporal scaler"),
+    }
+    let mut last = Vec::new();
+    for backend in backends {
+        r.set_temporal(Temporal {
+            backend,
+            upscale: Upscale::X1_5,
+        });
+        r.reset_motion_history();
+        last.push(ride_1440p(&mut r, &mut loaded, &world, &scene, backend));
+    }
+    if let [own, metalfx] = &last[..] {
+        let rgba = |i: &concordia_render::Image| {
+            RgbaImage::new(i.width, i.height, i.rgba.clone()).unwrap()
+        };
+        let score = flip_score(&rgba(own), &rgba(metalfx)).unwrap();
+        eprintln!("canyon frame 31, MetalFX against own: {score:?}");
+        assert!(
+            score.mean <= 0.06,
+            "MetalFX against own at 1440p: {score:?}"
+        );
+    }
+}
+
+/// The ground path's 32 frames at 2560 × 1440 with `backend` (set on `r`), each checked; the last.
+fn ride_1440p(
+    r: &mut concordia_render::Renderer,
+    loaded: &mut Canyon,
+    world: &concordia_render::RenderWorld,
+    scene: &concordia_perf::PerfScene,
+    backend: concordia_render::temporal::TemporalBackend,
+) -> concordia_render::Image {
+    let mut last = None;
     for i in 0..32 {
-        let view = canyon::view(&scene, i, 32);
-        let image = loaded.render_sized(&mut r, &world, view, (2560, 1440));
-        canyon::keep_for_review("canyon_ground_1440p", i, &image);
+        let view = canyon::view(scene, i, 32);
+        let image = loaded.render_sized(r, world, view, (2560, 1440));
+        canyon::keep_for_review(&format!("canyon_ground_1440p_{backend:?}"), i, &image);
         let t = r.stats().temporal;
-        assert_eq!(t.backend, TemporalBackend::own, "frame {i}");
+        assert_eq!(t.backend, backend, "frame {i}");
         assert_eq!(
             (t.internal, t.output),
             ([1706, 960], [2560, 1440]),
@@ -262,9 +296,11 @@ fn canyon_taau_runs_at_1440p() {
         let spread = luma.iter().map(|l| (l - mean).abs()).sum::<f32>() / luma.len() as f32;
         assert!(
             mean > 20.0 && spread > 5.0,
-            "frame {i}: mean {mean}, spread {spread}"
+            "{backend:?} frame {i}: mean {mean}, spread {spread}"
         );
+        last = Some(image);
     }
+    last.expect("32 frames")
 }
 
 /// Phase 4.6's `temporal_pass_budget`, recording only (4.6 plan Q13): the own resolve's GPU time
@@ -342,8 +378,8 @@ fn canyon_temporal_timings() {
     }
 }
 
-/// The own TAAU on both paths: a still middle pose after 32 frames at 1280 × 720 from 853 × 480,
-/// against the `m4_temporal` goldens.
+/// The own TAAU on both paths, and MetalFX on the ground path where the device has it: a still
+/// middle pose after 32 frames at 1280 × 720 from 853 × 480, against the `m4_temporal` goldens.
 #[test]
 fn canyon_taau_goldens() {
     use concordia_render::temporal::{Temporal, TemporalBackend, Upscale};
@@ -351,25 +387,33 @@ fn canyon_taau_goldens() {
     let Some(mut r) = renderer(&Default::default(), Culling::default()) else {
         return;
     };
-    r.set_temporal(Temporal {
-        backend: TemporalBackend::own,
-        upscale: Upscale::X1_5,
-    });
     let backend = concordia_rhi_select::choose_from_env(Default::default()).unwrap();
     let mut loaded = Canyon::load();
     let world = concordia_render::RenderWorld::extract(&loaded.world);
+    let mut runs: Vec<_> = PATHS
+        .iter()
+        .map(|path| (TemporalBackend::own, path, "taau"))
+        .collect();
+    if r.device().caps().metalfx_temporal {
+        runs.push((TemporalBackend::metalfx, &PATHS[0], "metalfx"));
+    }
     let mut missed = Vec::new();
-    for (scene_name, golden, frames, keep) in PATHS {
+    for (temporal, (scene_name, golden, frames, keep), suffix) in runs {
+        r.set_temporal(Temporal {
+            backend: temporal,
+            upscale: Upscale::X1_5,
+        });
         let scene = perf_scene(scene_name);
-        let view = canyon::view(&scene, keep[1], frames);
+        let view = canyon::view(&scene, keep[1], *frames);
         r.reset_motion_history();
         let mut image = None;
         for _ in 0..32 {
             image = Some(loaded.render_sized(&mut r, &world, view.clone(), (1280, 720)));
         }
         let image = image.unwrap();
-        assert_eq!(r.stats().temporal.internal, [853, 480]);
-        let name = format!("{golden}_taau");
+        let t = r.stats().temporal;
+        assert_eq!((t.backend, t.internal), (temporal, [853, 480]));
+        let name = format!("{golden}_{suffix}");
         let rgba = RgbaImage::new(image.width, image.height, image.rgba.clone()).unwrap();
         if let Err(e) = Golden::from_env().check_on(Some(backend), "m4_temporal", &name, &rgba) {
             missed.push(format!("{name}: {e}"));
