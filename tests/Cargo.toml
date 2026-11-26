@@ -57,6 +57,10 @@ wasmtime-wasi.workspace = true
 name = "canyon_build"
 path = "tools/canyon_build.rs"
 
+[[bin]]
+name = "lighting_build"
+path = "tools/lighting_build.rs"
+
 [[test]]
 name = "canyon"
 path = "integration/canyon.rs"
@@ -64,6 +68,10 @@ path = "integration/canyon.rs"
 [[test]]
 name = "reference_blessing"
 path = "integration/reference_blessing.rs"
+
+[[test]]
+name = "vsm_reference"
+path = "integration/vsm_reference.rs"
 
 [[test]]
 name = "bless_reference"

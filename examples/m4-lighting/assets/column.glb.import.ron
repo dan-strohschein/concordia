@@ -1,0 +1,26 @@
+Sidecar(
+    id: "01a21a26-2e9e-7277-9721-95cd3530ee6f",
+    importer: "gltf",
+    importer_version: 5,
+    provenance: Some((
+        inputs_hash: "4462fc0e406172bf62be8fba8467262bc89c063395a44d11ccafe37a7f9b6e72",
+        output: Some("409ceb24605027aefe0c102142bcd3db26d7032c389d14a671021e8e6e4a4b92"),
+        provider: "mesh",
+        provider_version: 1,
+        request: {
+            "Cylinder": {
+                "height": 3.5,
+                "radius": 0.22,
+                "segments": 32,
+            },
+        },
+        seed: 1,
+    )),
+    settings: {
+        "emissive_reference_ev100": None,
+        "meshlets": "auto",
+    },
+    sub_assets: {
+        "mesh/mesh/0": "b8b08b54-811d-5854-bc45-b663c2b9c374",
+    },
+)

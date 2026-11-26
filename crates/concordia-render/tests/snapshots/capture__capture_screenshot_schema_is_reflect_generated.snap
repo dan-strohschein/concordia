@@ -1,6 +1,5 @@
 ---
 source: crates/concordia-render/tests/capture.rs
-assertion_line: 190
 expression: "params_schema(&MethodInfo::of::<CaptureScreenshot>())"
 ---
 {
@@ -198,6 +197,22 @@ expression: "params_schema(&MethodInfo::of::<CaptureScreenshot>())"
         {
           "const": "hzb",
           "description": "The HZB's finest level as grey depth (brighter: nearer); black when the frame has no HZB."
+        },
+        {
+          "const": "vsm_pages",
+          "description": "The lit image tinted by the virtual-shadow-map page each pixel reads (one colour per\nphysical page, page borders dark); untinted without virtual shadow maps (M4 4.7)."
+        },
+        {
+          "const": "vsm_levels",
+          "description": "The lit image tinted by the clipmap level each pixel reads (a hue per level, magenta where it\nfell back to a coarser level)."
+        },
+        {
+          "const": "vsm_cache",
+          "description": "The lit image tinted by the page's cache state: yellow drawn this frame, green kept from an\nearlier frame, blue with a dynamic layer."
+        },
+        {
+          "const": "shadow_mask",
+          "description": "The sun's visibility alone: white lit, black shadowed (CSM or VSM; not tonemapped)."
         }
       ],
       "title": "ViewMode",

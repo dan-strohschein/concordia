@@ -110,7 +110,7 @@ fn manifest(name: &str, features: &Features) -> String {
             "# [render.vsm]\n",
             "# pool_pages = 4096      # physical pages, 64 KB each\n",
             "# levels = 16            # sun clipmap levels, 8 m wide at level 0\n",
-            "# resolution_bias = 0.0  # -1 finer, +1 coarser\n",
+            "# resolution_bias = -1.0 # finer below, coarser above\n",
         ));
         text.push_str(
             "\n# Gameplay modules: add [[scripts.module]] entries (kind = \"wasm\" or \"native\", path).\n[scripts]\n",

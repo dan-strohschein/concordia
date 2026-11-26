@@ -729,6 +729,19 @@ fn the_projects_temporal_setting_reaches_the_renderer() {
     assert_eq!(off["backend"], "off", "{off}");
 }
 
+/// `[render] shadows` (`csm` by default) reaches the renderer: `render.stats` `shadows` reports
+/// what the project asked for (M4 4.7).
+#[test]
+fn the_projects_shadow_setting_reaches_the_renderer() {
+    if mesh_shaders().is_none() {
+        return;
+    }
+    let vsm = ball_frame("[assets]\n[render]\nshadows = \"vsm\"\n")["shadows"].clone();
+    assert_eq!(vsm["requested"], "vsm", "{vsm}");
+    let csm = ball_frame("[assets]\n[render]\n")["shadows"].clone();
+    assert_eq!(csm["requested"], "csm", "{csm}");
+}
+
 /// `[render] culling` (on by default) culls the ball's far side on the GPU (M4 4.4); `false`
 /// draws every candidate meshlet.
 #[test]

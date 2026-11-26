@@ -44,6 +44,8 @@ pub struct RenderModule {
     culling: crate::Culling,
     /// The temporal resolve (M4 4.6; `[render] temporal`, `upscale`).
     temporal: crate::temporal::Temporal,
+    /// The sun's shadows (M4 4.7; `[render] shadows`, `[render.vsm]`).
+    shadows: crate::vsm::Shadows,
 }
 
 impl std::fmt::Debug for RenderModule {
@@ -62,7 +64,13 @@ impl RenderModule {
             meshlets: true,
             culling: crate::Culling::default(),
             temporal: Default::default(),
+            shadows: Default::default(),
         }
+    }
+
+    /// Sets the sun's shadows (`[render] shadows`, `[render.vsm]`; `csm` by default).
+    pub fn with_shadows(self, shadows: crate::vsm::Shadows) -> Self {
+        Self { shadows, ..self }
     }
 
     /// Sets the temporal resolve (`[render] temporal`, `upscale`; off by default).
@@ -108,6 +116,8 @@ pub(crate) struct RenderState {
     culling: crate::Culling,
     /// The temporal resolve, as set by the project or `render.set_temporal`.
     temporal: crate::temporal::Temporal,
+    /// The sun's shadows, as set by the project or `render.set_shadows`.
+    shadows: crate::vsm::Shadows,
     thread: Option<RenderThread>,
     /// Whether a host attached the editor's native viewport.
     surface: bool,
@@ -167,6 +177,7 @@ impl EngineModule for RenderModule {
             MethodInfo::of::<crate::gizmo::ViewportGizmo>(),
             MethodInfo::of::<crate::stats::RenderStatsGet>(),
             MethodInfo::of::<crate::temporal::RenderSetTemporal>(),
+            MethodInfo::of::<crate::vsm::RenderSetShadows>(),
         ]
     }
 
@@ -203,6 +214,7 @@ impl EngineModule for RenderModule {
             meshlets: self.meshlets,
             culling: self.culling,
             temporal: self.temporal,
+            shadows: self.shadows,
             thread: None,
             surface: false,
             shipped: BTreeSet::new(),
@@ -460,6 +472,21 @@ pub(crate) fn set_temporal(
     }
 }
 
+/// Sets the sun's shadow technique for the rest of the session (`render.set_shadows`).
+pub(crate) fn set_shadow_technique(
+    engine: &mut Engine,
+    technique: crate::vsm::ShadowTechnique,
+) -> Result<(), ApiError> {
+    let state = engine
+        .state_mut::<RenderState>()
+        .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render module has no state"))?;
+    state.shadows.technique = technique;
+    match &state.thread {
+        Some(thread) => thread.set_shadows(state.shadows).map_err(api_error),
+        None => Ok(()),
+    }
+}
+
 /// The render thread, started on first use (with its device and renderer).
 fn render_thread(engine: &mut Engine) -> Result<&RenderThread, ApiError> {
     let ddc = engine.project().join(".concordia/ddc");
@@ -473,6 +500,7 @@ fn render_thread(engine: &mut Engine) -> Result<&RenderThread, ApiError> {
             state.meshlets,
             state.culling,
             state.temporal,
+            state.shadows,
         );
         let last = state.last.clone();
         state.thread = Some(
@@ -492,11 +520,12 @@ fn make_renderer(
     factory: &DeviceFactory,
     ddc: std::path::PathBuf,
     closure_budget: Option<crate::ClosureBudget>,
-    (perf_mode, meshlets, culling, temporal): (
+    (perf_mode, meshlets, culling, temporal, shadows): (
         bool,
         bool,
         crate::Culling,
         crate::temporal::Temporal,
+        crate::vsm::Shadows,
     ),
 ) -> Result<Renderer, RenderError> {
     let device = factory().map_err(RenderError::Gpu)?;
@@ -511,6 +540,8 @@ fn make_renderer(
     renderer.set_meshlets(meshlets);
     renderer.set_culling(culling);
     renderer.set_temporal(temporal);
+    renderer.set_shadows(shadows.technique);
+    renderer.set_vsm_settings(shadows.vsm)?;
     Ok(renderer)
 }
 

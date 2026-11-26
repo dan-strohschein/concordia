@@ -15,7 +15,7 @@ fn defaults_match_the_plan() {
     let s = VsmSettings::default();
     assert_eq!(
         (s.pool_pages, s.levels, s.resolution_bias, s.max_distance),
-        (4096, 16, 0.0, 1000.0)
+        (4096, 16, -1.0, 1000.0)
     );
     assert_eq!(VIRTUAL_TEXELS, PAGE_TEXELS * PAGES_PER_SIDE);
     assert_eq!((VIRTUAL_TEXELS, PAGE_TEXELS), (16_384, 128));

@@ -31,7 +31,11 @@ export type ViewMode =
   | "triangles"
   | "motion"
   | "occlusion"
-  | "hzb";
+  | "hzb"
+  | "vsm_pages"
+  | "vsm_levels"
+  | "vsm_cache"
+  | "shadow_mask";
 
 /**
  * What the engine draws over the viewport.

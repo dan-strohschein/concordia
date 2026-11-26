@@ -20,8 +20,8 @@ test("only the transform tools show a gizmo", () => {
 test("view modes list every engine mode once, lit first", () => {
   const ids = VIEW_MODES.map((m) => m.id);
   expect(ids[0]).toBe("lit");
-  expect(ids).toHaveLength(20);
-  expect(new Set(ids).size).toBe(20);
+  expect(ids).toHaveLength(24);
+  expect(new Set(ids).size).toBe(24);
   for (const id of [
     "light_clusters",
     "closures",

@@ -356,3 +356,143 @@ fn page_rect_culling_skips_meshlets_over_clean_pages() {
         assert_eq!(with, without, "{:?}", r.stats().raster_path);
     }
 }
+
+/// The debug views: `shadow_mask` is the sun's visibility (grey, both lit and shadowed pixels);
+/// `vsm_pages` and `vsm_levels` tint the ground with several colours; `vsm_cache` shows every page
+/// drawn this frame (yellow) until caching arrives (4.7b).
+#[test]
+fn vsm_debug_views_show_pages_levels_cache_and_the_mask() {
+    for mut r in meshlet_renderers() {
+        let mut scene = yard(Msaa::Off, true);
+        let mask = render(
+            &mut r,
+            &mut scene,
+            ShadowTechnique::vsm,
+            ViewMode::shadow_mask,
+        );
+        let ground: Vec<[u8; 4]> = (SIZE.1 / 2..SIZE.1)
+            .flat_map(|y| (0..SIZE.0).map(move |x| (x, y)))
+            .map(|(x, y)| common::pixel(&mask, x, y))
+            .collect();
+        assert!(ground.iter().all(|[r, g, b, _]| r == g && g == b), "grey");
+        assert!(ground.iter().any(|p| p[0] < 20) && ground.iter().any(|p| p[0] > 235));
+        let distinct = |image: &Image| {
+            (SIZE.1 / 2..SIZE.1)
+                .step_by(4)
+                .flat_map(|y| (0..SIZE.0).step_by(4).map(move |x| (x, y)))
+                .map(|(x, y)| common::pixel(image, x, y))
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+        };
+        let lit = render(&mut r, &mut scene, ShadowTechnique::vsm, ViewMode::lit);
+        for mode in [ViewMode::vsm_pages, ViewMode::vsm_levels] {
+            let image = render(&mut r, &mut scene, ShadowTechnique::vsm, mode);
+            assert_ne!(image.rgba, lit.rgba, "{mode:?}");
+            assert!(distinct(&image) > distinct(&lit), "{mode:?}");
+        }
+        let cache = render(
+            &mut r,
+            &mut scene,
+            ShadowTechnique::vsm,
+            ViewMode::vsm_cache,
+        );
+        let [cr, cg, cb, _] = common::pixel(&cache, SIZE.0 / 2, SIZE.1 - 10);
+        assert!(cr > cb && cg > cb, "yellowish: {cr} {cg} {cb}");
+    }
+}
+
+/// Regression goldens (`tests/golden/m4_vsm/`, tight): the yard lit with virtual shadow maps, its
+/// sun visibility, and the page, level and cache views, at 640 × 360 on the device's own path.
+#[test]
+fn vsm_regression_goldens() {
+    let Some(mut r) = meshlet_renderers().into_iter().next() else {
+        return;
+    };
+    let mut scene = yard(Msaa::Off, true);
+    r.set_shadows(ShadowTechnique::vsm);
+    let mut shot = |mode| {
+        scene.render_mode(&mut r, 640, 360, mode);
+        scene.render_mode(&mut r, 640, 360, mode)
+    };
+    let images = [
+        ("yard_lit", shot(ViewMode::lit)),
+        ("yard_shadow_mask", shot(ViewMode::shadow_mask)),
+        ("yard_vsm_pages", shot(ViewMode::vsm_pages)),
+        ("yard_vsm_levels", shot(ViewMode::vsm_levels)),
+        ("yard_vsm_cache", shot(ViewMode::vsm_cache)),
+    ];
+    let named: Vec<(&str, &Image)> = images.iter().map(|(n, i)| (*n, i)).collect();
+    common::assert_goldens_in("m4_vsm", &named);
+}
+
+/// Review footage (not a check; runs only with CONCORDIA_REVIEW_FRAMES=<dir>): raw RGBA frames at
+/// 640 × 360 of the camera dollying through the yard (lit, then the page view) and of a ball rolling
+/// across the ground (lit, then the sun mask), for the review page's videos.
+#[test]
+fn vsm_review_frames() {
+    let Ok(dir) = std::env::var("CONCORDIA_REVIEW_FRAMES") else {
+        return;
+    };
+    let dir = std::path::PathBuf::from(dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let Some(mut r) = meshlet_renderers().into_iter().next() else {
+        return;
+    };
+    r.set_shadows(ShadowTechnique::vsm);
+    let frames = 48;
+    let mut scene = yard(Msaa::Off, true);
+    let camera = scene.camera(
+        Vec3::new(0.0, 3.0, 6.0),
+        Vec3::new(0.0, 0.5, -10.0),
+        Camera {
+            exposure_ev100: 14.0,
+            msaa: Msaa::Off,
+            priority: 1,
+            ..Camera::default()
+        },
+    );
+    for mode in [ViewMode::lit, ViewMode::vsm_pages] {
+        let mut raw = Vec::new();
+        for i in 0..frames {
+            let t = i as f32 / frames as f32;
+            let eye = Vec3::new(-3.0 + 6.0 * t, 3.0, 6.0 - 4.0 * t);
+            scene.aim(camera, eye, eye + Vec3::new(0.0, -2.5, -16.0));
+            raw.extend(scene.render_mode(&mut r, 640, 360, mode).rgba);
+        }
+        std::fs::write(dir.join(format!("dolly_{mode:?}.rgba")), raw).unwrap();
+    }
+    let mut scene = yard(Msaa::Off, true);
+    let ball = scene.entity(Vec3::ZERO, Quat::IDENTITY, Vec3::splat(0.6));
+    let red = scene.material("ball", lit([0.8, 0.3, 0.2]));
+    scene
+        .world
+        .insert(
+            ball,
+            concordia_assets::MeshRenderer {
+                mesh: "builtin:mesh/sphere".parse().unwrap(),
+                material: red,
+                cast_shadows: true,
+            },
+        )
+        .unwrap();
+    for mode in [ViewMode::lit, ViewMode::shadow_mask] {
+        let mut raw = Vec::new();
+        for i in 0..frames {
+            let t = i as f32 / frames as f32;
+            let at = Vec3::new(
+                -4.0 + 8.0 * t,
+                0.3 + 0.8 * (t * std::f32::consts::PI).sin(),
+                -1.0,
+            );
+            scene.aim(ball, at, at + Vec3::Z);
+            let mut transform = *scene
+                .world
+                .get::<concordia_scene::builtin::Transform>(ball)
+                .unwrap();
+            transform.scale = Vec3::splat(0.6);
+            scene.world.insert(ball, transform).unwrap();
+            raw.extend(scene.render_mode(&mut r, 640, 360, mode).rgba);
+        }
+        std::fs::write(dir.join(format!("ball_{mode:?}.rgba")), raw).unwrap();
+    }
+}

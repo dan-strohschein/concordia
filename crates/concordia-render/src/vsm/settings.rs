@@ -14,6 +14,15 @@ pub enum ShadowTechnique {
     vsm,
 }
 
+/// The sun's shadow settings a renderer runs with: the technique and `[render.vsm]`.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Shadows {
+    /// `csm` or `vsm`.
+    pub technique: ShadowTechnique,
+    /// The virtual shadow maps' pool, levels and biases.
+    pub vsm: VsmSettings,
+}
+
 /// `[render.vsm]`: the virtual shadow maps' sizes and biases (validated when read).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(try_from = "RawVsm", into = "RawVsm")]
@@ -22,7 +31,9 @@ pub struct VsmSettings {
     pub pool_pages: u32,
     /// Clipmap levels, 1..=24.
     pub levels: u8,
-    /// Level offset, −4..=4: −1 finer, +1 coarser.
+    /// Level offset, −4..=4: −1 finer, +1 coarser. −1 by default: two texels per pixel across, so
+    /// the light's PCF kernel (three texels or more) stays within about a pixel (4.7a's reference
+    /// test: FLIP 0.0149 against 0.0241 at 0 on `sun_courtyard_iso`).
     pub resolution_bias: f32,
     /// Distance the coarse floor covers in metres, (0, 100 000].
     pub max_distance: f32,
@@ -44,7 +55,7 @@ impl Default for VsmSettings {
         Self {
             pool_pages: 4096,
             levels: 16,
-            resolution_bias: 0.0,
+            resolution_bias: -1.0,
             max_distance: 1000.0,
             depth_bias: 1.0,
             normal_bias: 1.0,

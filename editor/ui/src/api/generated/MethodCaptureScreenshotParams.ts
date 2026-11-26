@@ -59,7 +59,11 @@ export type ViewMode =
   | "triangles"
   | "motion"
   | "occlusion"
-  | "hzb";
+  | "hzb"
+  | "vsm_pages"
+  | "vsm_levels"
+  | "vsm_cache"
+  | "shadow_mask";
 /**
  * Which world: the scene being edited or the running simulation.
  */

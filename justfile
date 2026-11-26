@@ -72,6 +72,10 @@ lamplight-build: wasm native-fixtures
 canyon-build:
     cargo run -p concordia-tests --bin canyon_build
 
+# Rebuilds examples/m4-lighting's scenes (M4 4.7): meshes by gen.run, the layout, the sun.
+lighting-build:
+    cargo run -p concordia-tests --bin lighting_build
+
 play-sample: lamplight-build
     cargo run --release -p concordia-cli -- run --project examples/m2-lamplight
 
