@@ -1,0 +1,14 @@
+# Concordia project manifest.
+[project]
+name = "m4-canyon"
+
+[scene]
+main = "scenes/canyon.scene.ron"
+
+[assets]
+
+# Rocks and ground strips are generated (gen.run) and restored from their sidecars' recipes
+# (gen.restore); the .glb files are not in git.
+[gen]
+
+[render]

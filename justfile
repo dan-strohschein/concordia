@@ -67,6 +67,11 @@ lamplight-build: wasm native-fixtures
     cp {{native_dir}}/out/lamplight_fog.{{dll_ext}} examples/m2-lamplight/build/lamplight_fog.{{dll_ext}}
 
 # Play Lamplight, the M2 sample, in a window (builds its modules first; release for smooth play)
+# Rebuild the M4 canyon (examples/m4-canyon, 4.4c): its generated meshes and their sidecars, the
+# scene and the two perf scenes, from `concordia_gen::canyon::Canyon::M4`.
+canyon-build:
+    cargo run -p concordia-tests --bin canyon_build
+
 play-sample: lamplight-build
     cargo run --release -p concordia-cli -- run --project examples/m2-lamplight
 

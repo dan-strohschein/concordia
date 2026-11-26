@@ -1,0 +1,29 @@
+Sidecar(
+    id: "01a215f8-7cdf-70f1-a6eb-f39c4f8a444c",
+    importer: "gltf",
+    importer_version: 5,
+    provenance: Some((
+        inputs_hash: "7200d95eaa53bec6e8b5fa534e68617a034f4200701151200a95deefcfbdcf7e",
+        output: Some("f7353fbd30b754a2b60d5fdd0664606f54de541a349fc7891d49cf9789708ba8"),
+        provider: "mesh",
+        provider_version: 1,
+        request: {
+            "CanyonTile": {
+                "cells": [
+                    320,
+                    120,
+                ],
+                "of": 8,
+                "tile": 2,
+            },
+        },
+        seed: 19524,
+    )),
+    settings: {
+        "emissive_reference_ev100": None,
+        "meshlets": true,
+    },
+    sub_assets: {
+        "mesh/mesh/0": "1617739d-0e58-50b9-b045-4a40177efd0a",
+    },
+)

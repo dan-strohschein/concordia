@@ -1,4 +1,5 @@
-//! Measures a perf scene: opens its project with perf mode on, draws the warm-up and measured
+//! Measures a perf scene: opens its project with perf mode on (restoring generated files kept out
+//! of git first), draws the warm-up and measured
 //! frames along the camera path through `capture.screenshot`, and reads each frame's pass times
 //! from `render.stats`. The perf folder holds `reference.ron`, `scenes/` and `budgets/`.
 
@@ -130,8 +131,22 @@ impl Session {
             "session.open",
             json!({"client": "perf", "actor": "tool:perf"}),
         )?;
+        opened.restore_generated()?;
         opened.call("scene.open", json!({"path": scene}))?;
         Ok(opened)
+    }
+
+    /// Remakes generated files left out of the project (`gen.restore`, when it has `[gen]`).
+    fn restore_generated(&mut self) -> Result<(), PerfError> {
+        let params = json!({"actor": "tool:perf"});
+        match self.engine.call(self.session, "gen.restore", params) {
+            Err(e) if e.kind == concordia_api::ApiErrorKind::MethodNotFound => Ok(()),
+            Err(e) => Err(PerfError::Engine {
+                method: "gen.restore".into(),
+                message: e.message,
+            }),
+            Ok(_) => Ok(()),
+        }
     }
 
     fn call(&mut self, method: &str, params: Value) -> Result<Value, PerfError> {

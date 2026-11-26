@@ -235,3 +235,92 @@ fn generated_music_imports_with_its_loop_points() {
     .unwrap();
     assert_eq!(image.importer, "image");
 }
+
+const ROCK: &str = "assets/rocks/rock.glb";
+
+fn rock() -> Value {
+    json!({"provider": "mesh", "request": {"Rock": {"size": [2.0, 1.5, 1.8], "detail": 40, "roughness": 0.2, "strata": 0.3, "lumps": 3}},
+           "seed": 5, "path": ROCK, "actor": ACTOR})
+}
+
+fn provenance(rig: &Rig, rel: &str) -> concordia_assets::Provenance {
+    Sidecar::read(&Sidecar::path_for(&rig.dir.path().join(rel)))
+        .unwrap()
+        .provenance
+        .expect("provenance")
+}
+
+/// `gen.run` records the BLAKE3 of the bytes it wrote (M4 4.4c), so a file can be checked
+/// against its recipe.
+#[test]
+fn gen_run_records_the_output_hash() {
+    let mut rig = Rig::new();
+    rig.ok("gen.run", pillar());
+    let p = provenance(&rig, PILLAR);
+    let want = blake3::hash(&rig.bytes(PILLAR)).to_hex().to_string();
+    assert_eq!(p.output.as_deref(), Some(want.as_str()));
+}
+
+/// Rocks and canyon strips are made for the meshlet path: their sidecars say `meshlets: true`,
+/// so a change to the `auto` rule can't drop them.
+#[test]
+fn dense_generated_meshes_always_take_meshlets() {
+    let mut rig = Rig::new();
+    rig.ok("gen.run", rock());
+    let sidecar = Sidecar::read(&Sidecar::path_for(&rig.dir.path().join(ROCK))).unwrap();
+    assert_eq!(
+        sidecar.settings["meshlets"],
+        json!(true),
+        "{:?}",
+        sidecar.settings
+    );
+    rig.ok("gen.run", pillar());
+    let pillar = Sidecar::read(&Sidecar::path_for(&rig.dir.path().join(PILLAR))).unwrap();
+    assert_eq!(pillar.settings["meshlets"], json!("auto"));
+}
+
+/// `gen.restore` remakes a generated file that is missing or whose bytes differ from its
+/// recorded hash, and leaves matching files alone; it needs an actor.
+#[test]
+fn restore_rewrites_missing_and_changed_files_only() {
+    let mut rig = Rig::new();
+    rig.ok("gen.run", pillar());
+    rig.ok("gen.run", rock());
+    let ground = "assets/models/ground.glb";
+    rig.ok("gen.run", json!({"provider": "mesh", "request": {"Heightfield": {"size": [8.0, 8.0], "cells": [8, 8], "amplitude": 1.0, "frequency": 1.0}},
+        "seed": 3, "path": ground, "actor": ACTOR}));
+    let (pillar_bytes, rock_bytes) = (rig.bytes(PILLAR), rig.bytes(ROCK));
+    std::fs::remove_file(rig.dir.path().join(PILLAR)).unwrap();
+    std::fs::write(rig.dir.path().join(ROCK), b"edited").unwrap();
+    let err = rig.call("gen.restore", json!({})).unwrap_err();
+    assert_eq!(err.kind, ApiErrorKind::InvalidParams, "{err:?}");
+    assert!(err.message.contains("actor"), "{err:?}");
+    let out = rig.ok("gen.restore", json!({"actor": ACTOR}));
+    assert_eq!(out["restored"], json!([PILLAR, ROCK]), "{out}");
+    assert_eq!(out["unchanged"], json!([ground]), "{out}");
+    assert_eq!(
+        (rig.bytes(PILLAR), rig.bytes(ROCK)),
+        (pillar_bytes, rock_bytes)
+    );
+    let again = rig.ok("gen.restore", json!({"actor": ACTOR}));
+    assert_eq!(again["restored"], json!([]), "{again}");
+}
+
+/// A recipe that no longer makes its recorded bytes is refused, naming the file, and nothing is
+/// written.
+#[test]
+fn restore_refuses_a_hash_mismatch() {
+    let mut rig = Rig::new();
+    rig.ok("gen.run", pillar());
+    let path = Sidecar::path_for(&rig.dir.path().join(PILLAR));
+    let mut sidecar = Sidecar::read(&path).unwrap();
+    sidecar.provenance.as_mut().unwrap().output = Some("0".repeat(64));
+    sidecar.write(&path).unwrap();
+    std::fs::remove_file(rig.dir.path().join(PILLAR)).unwrap();
+    let err = rig
+        .call("gen.restore", json!({"actor": ACTOR}))
+        .unwrap_err();
+    assert!(err.message.contains(PILLAR), "{err:?}");
+    assert!(err.message.contains("hash"), "{err:?}");
+    assert!(!rig.dir.path().join(PILLAR).exists(), "nothing written");
+}

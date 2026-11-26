@@ -1,8 +1,10 @@
 //! The `mesh` provider: primitives, sweeps, heightfields and signed-distance shapes, as GLB.
 
 mod build;
+mod canyon_tile;
 mod ground;
-mod noise;
+pub(crate) mod noise;
+mod rock;
 mod sdf;
 mod sweep;
 
@@ -94,6 +96,29 @@ pub enum MeshRequest {
         /// Grid cell size (at most a tenth of the shapes' extent).
         cell: f32,
     },
+    /// A seeded rock (M4 4.4c): lumps smooth-unioned, displaced by 3D noise, with ledges and a
+    /// flat base, meshed by surface nets.
+    Rock {
+        /// Width, height, depth of its lumps (the noise may reach a little past them).
+        size: [f32; 3],
+        /// Grid cells across the longest side (8–250).
+        detail: u32,
+        /// Noise depth as a fraction of the smallest half size (0–0.5).
+        roughness: f32,
+        /// Ledge spacing in metres (0: none).
+        strata: f32,
+        /// Lumps (1–8).
+        lumps: u32,
+    },
+    /// One strip of the canyon (M4 4.4c, `crate::canyon`), seeded by the canyon's seed.
+    CanyonTile {
+        /// Which strip, from the canyon's mouth (z = 0) down −Z.
+        tile: u32,
+        /// Strips the canyon is cut into.
+        of: u32,
+        /// Cells across (X) and along (Z), each 1–4096.
+        cells: [u32; 2],
+    },
 }
 
 /// A signed-distance shape.
@@ -162,6 +187,25 @@ pub fn build(request: &MeshRequest, seed: u64) -> Result<MeshData, GenError> {
             smooth,
             cell,
         } => sdf::sdf(shapes, *smooth, *cell),
+        MeshRequest::Rock {
+            size,
+            detail,
+            roughness,
+            strata,
+            lumps,
+        } => rock::rock(
+            &rock::RockShape {
+                size: *size,
+                detail: *detail,
+                roughness: *roughness,
+                strata: *strata,
+                lumps: *lumps,
+            },
+            seed,
+        ),
+        MeshRequest::CanyonTile { tile, of, cells } => {
+            canyon_tile::tile(&crate::canyon::Canyon { seed }, *tile, *of, *cells)
+        }
     }
 }
 
@@ -207,8 +251,18 @@ impl crate::provider::ContentProvider for MeshProvider {
                 "triangles": mesh.indices.len() / 3,
                 "bounds": {"min": mesh.aabb.0, "max": mesh.aabb.1},
             }),
-            settings: None,
+            settings: import_settings(&request),
             inputs: Vec::new(),
         })
     }
+}
+
+/// Import settings a request's mesh needs: rocks and canyon strips always take the meshlet path
+/// (M4 4.4c), whatever the `auto` rule becomes.
+fn import_settings(request: &MeshRequest) -> Option<serde_json::Value> {
+    matches!(
+        request,
+        MeshRequest::Rock { .. } | MeshRequest::CanyonTile { .. }
+    )
+    .then(|| serde_json::json!({ "meshlets": true }))
 }

@@ -1,0 +1,4 @@
+# Generated meshes and the sky map: restored from their sidecars' recipes (gen.restore), checked by
+# hash.
+assets/**/*.glb
+assets/**/*.png

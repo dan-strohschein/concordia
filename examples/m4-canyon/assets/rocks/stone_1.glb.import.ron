@@ -1,0 +1,32 @@
+Sidecar(
+    id: "01a215f9-33a8-71b4-9422-2e64afff8ee2",
+    importer: "gltf",
+    importer_version: 5,
+    provenance: Some((
+        inputs_hash: "81019756b455635535be15ec2f3f492b71a2361f04470ab1223c6a338d6326d1",
+        output: Some("d809de0393aa033db8adfd0e44c0e6a523b3ec9024a9bc0fa4176b61a05d526b"),
+        provider: "mesh",
+        provider_version: 1,
+        request: {
+            "Rock": {
+                "detail": 90,
+                "lumps": 3,
+                "roughness": 0.18000000715255737,
+                "size": [
+                    1.2000000476837158,
+                    0.800000011920929,
+                    1.0,
+                ],
+                "strata": 0.0,
+            },
+        },
+        seed: 12220975817702107138,
+    )),
+    settings: {
+        "emissive_reference_ev100": None,
+        "meshlets": true,
+    },
+    sub_assets: {
+        "mesh/mesh/0": "037193a6-b83f-5104-a347-aef0cd82bbca",
+    },
+)

@@ -2,6 +2,7 @@
 //! file, `gen.run` writes and imports it with its provenance, and `gen.list` describes them.
 
 pub mod blender;
+pub mod canyon;
 mod config;
 mod error;
 pub mod glb;
@@ -13,13 +14,18 @@ mod plugin;
 mod process;
 mod provider;
 mod registry;
+pub mod restore;
+mod rng;
 pub mod sfx;
 pub mod texture;
 mod wav;
 
 pub use config::{BlenderConfig, GenConfig, PluginConfig};
 pub use error::GenError;
-pub use methods::{GenList, GenListResult, GenRun, GenRunParams, GenRunResult, ProviderInfo};
+pub use methods::{
+    GenList, GenListResult, GenRestore, GenRestoreParams, GenRestoreResult, GenRun, GenRunParams,
+    GenRunResult, ProviderInfo,
+};
 pub use module::GenModule;
 pub use plugin::PluginProvider;
 pub use provider::{ContentProvider, GenContext, GenKind, Generated, inputs_hash};
