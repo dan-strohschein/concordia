@@ -809,7 +809,8 @@ fn render_stats_report_the_temporal_backend_and_sizes() {
 }
 
 /// Timings only, for the As built (4.6 plan Q13): the fence yard at 2560 × 1440 with temporal off
-/// and the own resolve at 1.0×, 1.5× and 2.0×; each pass's median and the frame's. Run on the
+/// and the own resolve and MetalFX (4.6b) at 1.0×, 1.5× and 2.0×; each pass's median and the
+/// frame's (MetalFX's own work shows only in the frame). Run on the
 /// reference Mac:
 /// `cargo nextest run -p concordia-render --release --run-ignored only -E 'test(fence_yard_temporal_timings)' --no-capture`.
 #[test]
@@ -823,6 +824,9 @@ fn fence_yard_temporal_timings() {
         ("own 1.0×", own(Upscale::X1)),
         ("own 1.5×", own(Upscale::X1_5)),
         ("own 2.0×", own(Upscale::X2)),
+        ("metalfx 1.0×", metalfx(Upscale::X1)),
+        ("metalfx 1.5×", metalfx(Upscale::X1_5)),
+        ("metalfx 2.0×", metalfx(Upscale::X2)),
     ];
     for (label, temporal) in runs {
         r.set_temporal(temporal);

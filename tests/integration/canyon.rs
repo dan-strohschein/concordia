@@ -349,7 +349,8 @@ fn temporal_pass_budget() {
 }
 
 /// Timings only, for the As built (4.6 plan Q13): the ground path's middle pose at 2560 × 1440 with
-/// temporal off and the own resolve at 1.0×, 1.5× and 2.0×; each pass's median and the frame's.
+/// temporal off, the own resolve and MetalFX (4.6b) at 1.0×, 1.5× and 2.0×; each pass's median and the
+/// frame's (MetalFX's own work shows only in the frame).
 /// Run on the reference Mac:
 /// `cargo nextest run -p concordia-tests --release --test canyon --run-ignored only -E 'test(canyon_temporal_timings)' --no-capture`.
 #[test]
@@ -368,6 +369,9 @@ fn canyon_temporal_timings() {
         ("own 1.0×", TemporalBackend::own, Upscale::X1),
         ("own 1.5×", TemporalBackend::own, Upscale::X1_5),
         ("own 2.0×", TemporalBackend::own, Upscale::X2),
+        ("metalfx 1.0×", TemporalBackend::metalfx, Upscale::X1),
+        ("metalfx 1.5×", TemporalBackend::metalfx, Upscale::X1_5),
+        ("metalfx 2.0×", TemporalBackend::metalfx, Upscale::X2),
     ];
     for (label, backend, upscale) in runs {
         r.set_temporal(Temporal { backend, upscale });
