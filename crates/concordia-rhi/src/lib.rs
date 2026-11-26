@@ -16,6 +16,7 @@ mod pipeline;
 mod resource;
 mod slots;
 mod surface;
+mod temporal;
 
 pub mod check;
 #[cfg(feature = "conformance")]
@@ -34,7 +35,9 @@ pub use command::{
 pub use device::{Device, QueueKind, Submit};
 pub use error::RhiError;
 pub use format::Format;
-pub use handle::{BindlessIndex, Buffer, Heap, Pipeline, Surface, Texture, Timeline};
+pub use handle::{
+    BindlessIndex, Buffer, Heap, Pipeline, Surface, TemporalScaler, Texture, Timeline,
+};
 pub use pipeline::{
     BlendMode, ColorWrites, CompareOp, ComputePipelineDesc, CullMode, DepthState,
     GraphicsPipelineDesc, MAX_MESH_PAYLOAD_BYTES, MAX_MESH_STAGE_THREADS, MeshPipelineDesc,
@@ -45,3 +48,4 @@ pub use slots::Slots;
 pub use surface::{
     GpuTimeCallback, GpuTiming, Present, PresentedCallback, ScopeTime, SurfaceTarget,
 };
+pub use temporal::{TemporalScale, TemporalScalerDesc};

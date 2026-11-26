@@ -8,7 +8,8 @@ use concordia_rhi::{
     BindlessIndex, Buffer, BufferDesc, BufferUsage, CapsMask, ComputePipelineDesc, Device, Format,
     GraphicsPipelineDesc, Heap, HeapDesc, MemoryLocation, MeshPipelineDesc, Pipeline, Present,
     RhiCaps, RhiError, SampleCount, ShaderSource, Slots, StaticSampler, Submit, Surface,
-    SurfaceTarget, Texture, TextureDesc, TextureUsage, Timeline,
+    SurfaceTarget, TemporalScaler, TemporalScalerDesc, Texture, TextureDesc, TextureUsage,
+    Timeline,
 };
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
@@ -79,6 +80,7 @@ pub(crate) struct Inner {
     pub(crate) heaps: Slots<Retained<MtlHeap>>,
     pub(crate) surfaces: Slots<crate::surface::SurfaceEntry>,
     pub(crate) timelines: Slots<Retained<MtlEvent>>,
+    pub(crate) scalers: Slots<crate::metalfx::ScalerEntry>,
     pub(crate) buffer_table: Table,
     pub(crate) texture_table: Table,
     /// Static samplers referenced from the texture table (kept alive here).
@@ -163,6 +165,7 @@ impl MetalDevice {
             heaps: Slots::default(),
             surfaces: Slots::default(),
             timelines: Slots::default(),
+            scalers: Slots::default(),
             last: None,
             calibration,
         };
@@ -670,6 +673,30 @@ impl Device for MetalDevice {
         {
             inner.buffer_table.release(slot);
         }
+    }
+
+    fn create_temporal_scaler(
+        &self,
+        desc: &TemporalScalerDesc,
+    ) -> Result<TemporalScaler, RhiError> {
+        desc.validate()?;
+        if !self.caps.metalfx_temporal {
+            return Err(RhiError::Unsupported(
+                "this device has no MetalFX temporal scaler".into(),
+            ));
+        }
+        let mut inner = self.lock()?;
+        let raw = crate::metalfx::create(&inner.device, desc)?;
+        let (index, generation) = inner.scalers.insert(crate::metalfx::ScalerEntry {
+            raw,
+            desc: desc.clone(),
+        });
+        Ok(TemporalScaler::from_raw(index, generation))
+    }
+
+    fn destroy_temporal_scaler(&self, scaler: TemporalScaler) {
+        let Ok(mut inner) = self.lock() else { return };
+        inner.scalers.remove(scaler.index(), scaler.generation());
     }
 
     fn destroy_texture(&self, texture: Texture) {
