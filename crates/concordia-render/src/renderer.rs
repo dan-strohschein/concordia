@@ -217,6 +217,8 @@ struct FramePlan<'a> {
     )>,
     /// This frame's HZB, when it splits for two-pass occlusion (M4 4.4b).
     hzb: Option<crate::hzb::Hzb>,
+    /// The `hzb` view's full-screen draw, in that view of a split frame.
+    hzb_view: Option<(Pipeline, Vec<u8>)>,
     /// The meshlet path's work, when anything takes it.
     meshlets: Option<MeshletJob>,
     samples: SampleCount,
@@ -917,6 +919,43 @@ impl Renderer {
                 .for_each(|(i, (_, m))| indices[i] = *m);
             (cascades.as_slice(), settings, indices)
         });
+        let mut visibility = std::mem::take(&mut self.visibility);
+        let blocks = self.instance_data(
+            world,
+            &skinning.placements,
+            &materials,
+            &view_m,
+            &crate::cull::Frustum::new(view_proj),
+            &mut visibility,
+        );
+        self.visibility = visibility;
+        let FrameBlocks {
+            instances,
+            materials: material_bytes,
+            meshes: mesh_table,
+            order,
+        } = blocks?;
+        let visibility_buf = self.visibility_buffer.ensure(
+            device,
+            &mut up,
+            self.visibility.words(),
+            &mut |old| {
+                frame.keep(old);
+            },
+        )?;
+        // The frame splits for two-pass occlusion when something takes the meshlet path (M4 4.4b).
+        let mut kept = Vec::new();
+        let proj = view.camera.projection.matrix(aspect)?;
+        let on_path = order.iter().any(|d| d.meshlet_row.is_some());
+        let hzb = match self.splits(samples, on_path, proj) {
+            true => Some(crate::hzb::Hzb::prepare(
+                device,
+                &up,
+                crate::hzb::HzbLayout::new(width, height),
+                &mut kept,
+            )?),
+            false => None,
+        };
         let block = frame_block(&FrameParams {
             view_proj,
             view: view_m,
@@ -943,32 +982,12 @@ impl Renderer {
             view_mode: view_mode.shader_index(),
             exposure,
             prev_view_proj: self.motion.previous_view_proj(&view_proj),
+            hzb: match &hzb {
+                Some(h) => Some((index(h.buffer)?, h.layout.levels[0][0])),
+                None => None,
+            },
         });
         let frame_buf = frame.keep(up.buffer(device, &block, "frame")?);
-        let mut visibility = std::mem::take(&mut self.visibility);
-        let blocks = self.instance_data(
-            world,
-            &skinning.placements,
-            &materials,
-            &view_m,
-            &crate::cull::Frustum::new(view_proj),
-            &mut visibility,
-        );
-        self.visibility = visibility;
-        let FrameBlocks {
-            instances,
-            materials: material_bytes,
-            meshes: mesh_table,
-            order,
-        } = blocks?;
-        let visibility_buf = self.visibility_buffer.ensure(
-            device,
-            &mut up,
-            self.visibility.words(),
-            &mut |old| {
-                frame.keep(old);
-            },
-        )?;
         let inst_buf = frame.keep(up.buffer(device, &instances, "instances")?);
         let mat_buf = frame.keep(up.buffer(device, &material_bytes, "materials")?);
         let mesh_buf = frame.keep(up.buffer(device, &mesh_table, "meshlet meshes")?);
@@ -1121,17 +1140,6 @@ impl Renderer {
             false => shadows.as_ref().map_or(&[][..], |(c, _, _)| c.as_slice()),
         };
         let meshlet_plan = crate::meshlet::plan(&path_draws, cascades.len() as u32);
-        let mut kept = Vec::new();
-        let proj = view.camera.projection.matrix(aspect)?;
-        let hzb = match self.splits(samples, !path_draws.is_empty(), proj) {
-            true => Some(crate::hzb::Hzb::prepare(
-                device,
-                &up,
-                crate::hzb::HzbLayout::new(width, height),
-                &mut kept,
-            )?),
-            false => None,
-        };
         let camera = crate::cull::CullView::camera(
             view_proj,
             eye(&view.world),
@@ -1247,10 +1255,18 @@ impl Renderer {
             world.skins.iter().map(|s| (s.entity, s.palette.clone())),
             view_proj,
         );
+        let hzb_view = match (view_mode, &hzb) {
+            (crate::ViewMode::hzb, Some(_)) => Some((
+                self.pipelines.hzb_view(device, samples)?,
+                frame_i.to_le_bytes().to_vec(),
+            )),
+            _ => None,
+        };
         let plan = FramePlan {
             draws,
             cull,
             hzb,
+            hzb_view,
             meshlets,
             samples,
             size: (width, height),
@@ -1569,6 +1585,7 @@ impl Renderer {
             draws,
             cull,
             hzb,
+            hzb_view,
             meshlets,
             samples,
             size,
@@ -1639,6 +1656,7 @@ impl Renderer {
             hzb,
             pipeline: self.pipelines.hzb(),
             device: self.device.clone(),
+            view: hzb_view,
         });
         let targets = add_forward(
             &mut graph,

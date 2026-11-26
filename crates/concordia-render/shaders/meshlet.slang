@@ -213,6 +213,9 @@ uint decide(uint pass, uint views, uint word, Instance* inst, uint meshes, uint 
     return (code == CULL_DRAWN ? CULL_DRAWN_LATE : code) | triangles;
 }
 
+// `VsOut.pass` for a draw in culling pass `pass`: 1 the first (or only) pass, 2 pass 2.
+uint drawing_pass(uint pass) { return pass == PASS_LATE ? 2 : 1; }
+
 // True if code word `code` is drawn in culling pass `pass`.
 bool drawn_in(uint pass, uint code) { return (code & 0xff) == (pass == PASS_LATE ? CULL_DRAWN_LATE : CULL_DRAWN); }
 
@@ -267,7 +270,8 @@ void meshlet_compact(uint3 id : SV_DispatchThreadID, uniform CompactPush push) {
 }
 
 // Shared with `DrawPush` where `fs` reads it: frame at 0, materials at 12, material at 16.
-struct MeshletPush { uint frame; uint instances; uint entries; uint materials; uint material; uint meshes; uint first; uint cascade; };
+// pass: the culling pass drawing the bucket (`PASS_*`; the `occlusion` view).
+struct MeshletPush { uint frame; uint instances; uint entries; uint materials; uint material; uint meshes; uint first; uint cascade; uint pass; };
 
 // Where an instance's meshlet lives: its mesh's table rows and, in the blob (`row_a.x`), its
 // record and the first vertex reference. Indices, not pointers: SPIR-V needs pointers initialised
@@ -340,6 +344,7 @@ VsOut meshlet_vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform Meshl
     uint meshlet = meshlet_id(p.instance, p.meshlet);
     uint2 ids = uint2(meshlet, mix_id(meshlet) ^ mix_id(vid / 3 + 0x9e3779b9));
     VsOut o = meshlet_surface(frame, inst, p.at, p.v, vid % 3, ids);
+    o.pass = drawing_pass(push.pass);
     if (!p.valid) { o.position = NOWHERE; }
     return o;
 }
@@ -415,7 +420,9 @@ void meshlet_mesh(uint lane : SV_GroupThreadID, uint group : SV_GroupID, in payl
     // Shared vertices carry no triangle id (the `triangles` view takes the compute path).
     uint meshlet = meshlet_id(entry.x, entry.y);
     if (lane < vertex_count) {
-        vertices[lane] = meshlet_surface(frame, inst, at, mesh_vertex(at, lane), 0, uint2(meshlet, meshlet));
+        VsOut v = meshlet_surface(frame, inst, at, mesh_vertex(at, lane), 0, uint2(meshlet, meshlet));
+        v.pass = drawing_pass(push.pass);
+        vertices[lane] = v;
     }
     if (lane < triangle_count) {
         triangles[lane] = uint3(local_corner(at, lane * 3), local_corner(at, lane * 3 + 1), local_corner(at, lane * 3 + 2));

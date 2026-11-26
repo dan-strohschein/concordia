@@ -57,7 +57,9 @@ export type ViewMode =
   | "lod"
   | "meshlets"
   | "triangles"
-  | "motion";
+  | "motion"
+  | "occlusion"
+  | "hzb";
 /**
  * Which world: the scene being edited or the running simulation.
  */

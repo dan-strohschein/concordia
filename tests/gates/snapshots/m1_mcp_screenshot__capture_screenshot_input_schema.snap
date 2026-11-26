@@ -190,6 +190,14 @@ expression: capture.input_schema.as_ref()
         {
           "const": "motion",
           "description": "Motion vectors: black where still, hue by screen direction, brighter with length (full\nat 16 pixels)."
+        },
+        {
+          "const": "occlusion",
+          "description": "Meshlets tinted by the culling pass that drew them: pass 1 green, pass 2 orange (two-pass\nocclusion, M4 4.4b); M1 draws grey."
+        },
+        {
+          "const": "hzb",
+          "description": "The HZB's finest level as grey depth (brighter: nearer); black when the frame has no HZB."
         }
       ],
       "title": "ViewMode",

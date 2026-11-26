@@ -35,7 +35,9 @@ export type ViewMode =
   | "lod"
   | "meshlets"
   | "triangles"
-  | "motion";
+  | "motion"
+  | "occlusion"
+  | "hzb";
 
 /**
  * `render.stats` result.

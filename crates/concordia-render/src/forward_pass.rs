@@ -44,20 +44,24 @@ pub(crate) struct ForwardTargets {
     pub(crate) motion: GraphTexture,
 }
 
-/// The split's HZB build: the frame's HZB, its pipeline, and the device (for bindless indices).
+/// The split's HZB build: the frame's HZB, its pipeline, and the device (for bindless indices);
+/// and the `hzb` view's draw, last in pass 2, in that view.
 pub(crate) struct Split {
     pub(crate) hzb: Hzb,
     pub(crate) pipeline: Pipeline,
     pub(crate) device: Arc<dyn Device>,
+    pub(crate) view: FullDraw,
 }
 
-/// What one forward pass draws: the sky, M1 draws (opaque first), buckets, the grid.
+/// What one forward pass draws: the sky, M1 draws (opaque first), buckets, the grid, and a
+/// full-screen draw over everything (the `hzb` view).
 #[derive(Clone)]
 struct Contents {
     sky: FullDraw,
     draws: Vec<Draw>,
     buckets: Vec<BucketDraw>,
     grid: FullDraw,
+    over: FullDraw,
 }
 
 /// Which part of the frame a forward pass is.
@@ -106,6 +110,7 @@ pub(crate) fn add_forward(
                 draws,
                 buckets: forward,
                 grid,
+                over: None,
             };
             add_part(
                 graph,
@@ -123,6 +128,7 @@ pub(crate) fn add_forward(
                 draws: draws[..opaque].to_vec(),
                 buckets: forward,
                 grid: None,
+                over: None,
             };
             add_part(
                 graph,
@@ -132,6 +138,7 @@ pub(crate) fn add_forward(
                 shadow_maps,
                 early,
             );
+            let view = split.view.clone();
             add_hzb(graph, targets.resolved.unwrap_or(targets.depth), split);
             if let Some(m) = &meshlets {
                 m.add_late_pass(graph);
@@ -141,6 +148,7 @@ pub(crate) fn add_forward(
                 draws: draws[opaque..].to_vec(),
                 buckets: late,
                 grid,
+                over: view,
             };
             add_part(
                 graph,
@@ -311,7 +319,8 @@ fn pass_desc(ctx: &PassContext<'_>, part: Part, t: Targets, clear: [f32; 4]) -> 
     }
 }
 
-/// Records `c` in order: the sky, the opaque M1 draws, the buckets, the blended draws, the grid.
+/// Records `c` in order: the sky, the opaque M1 draws, the buckets, the blended draws, the grid,
+/// the draw over everything.
 fn record(c: &Contents, commands: &mut Vec<Command>) {
     let full = |draw: &FullDraw, vertices: u32, commands: &mut Vec<Command>| {
         if let Some((pipeline, push)) = draw {
@@ -346,6 +355,7 @@ fn record(c: &Contents, commands: &mut Vec<Command>) {
         draw_buckets(&c.buckets, commands, bound);
     }
     full(&c.grid, 6, commands);
+    full(&c.over, 3, commands);
 }
 
 /// Records the buckets' draws; returns the pipeline left bound.

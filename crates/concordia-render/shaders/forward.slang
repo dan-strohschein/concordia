@@ -39,7 +39,8 @@ struct Frame {
     uint4 env_a; uint4 env_b;
     // debug.x = view mode (ViewMode order: 0 lit, 1 unlit, 2 wireframe, 3 normals, 4 albedo,
     // 5 roughness/metallic, 6 overdraw, 7 shadow cascades, 8 light clusters, 9 closures, 10–13 the
-    // feature views, 14 lod, 15 meshlets, 16 triangles, 17 motion); debug.y = the exposure as float bits (emission is in nits).
+    // feature views, 14 lod, 15 meshlets, 16 triangles, 17 motion, 18 occlusion, 19 hzb); debug.y = the exposure as float
+    // bits (emission is in nits); debug.z = the HZB's bindless index + 1 (0: none), debug.w = its finest level's width.
     uint4 debug;
     // The camera's view-projection last frame (motion vectors; view_proj without one).
     float4 prev_view_proj[4];
@@ -74,6 +75,9 @@ struct VsOut {
     nointerpolation uint lod : LOD;
     // Hashed ids for the meshlets and triangles views: (meshlet or NO_ID off its path, triangle).
     nointerpolation uint2 ids : IDS;
+    // The culling pass that drew the surface: 0 off the meshlet path, 1 pass 1 (or the only one),
+    // 2 pass 2 (the `occlusion` view, M4 4.4b).
+    nointerpolation uint pass : PASS;
     // Clip position this frame and last frame, computed alike (motion vectors; equal when still).
     float4 clip : CLIP;
     float4 prev_clip : PREV_CLIP;
@@ -81,6 +85,9 @@ struct VsOut {
 
 // What every forward-pass fragment shader writes: color and motion (UV units, y down).
 struct ForwardOut { float4 color : SV_Target0; float2 motion : SV_Target1; };
+// The `occlusion` and `hzb` views (M4 4.4b).
+static const uint MODE_OCCLUSION = 18;
+static const uint MODE_HZB = 19;
 
 // UV (y down) of a clip position.
 float2 clip_uv(float4 clip) { return clip.xy / clip.w * float2(0.5, -0.5) + 0.5; }
@@ -120,6 +127,7 @@ VsOut surface_vertex(Frame* frame, Instance* inst, float3 p, float3 prev_p, floa
     o.bary = float3(corner == 0 ? 1.0 : 0.0, corner == 1 ? 1.0 : 0.0, corner == 2 ? 1.0 : 0.0);
     o.lod = inst.skin.z;
     o.ids = ids;
+    o.pass = 0;
     return o;
 }
 
@@ -265,6 +273,22 @@ ForwardOut sky_fs(SkyOut i, uniform SkyPush push) {
     o.color = float4(env_sample(frame, 0, dir) * frame.ibl.x, 1.0);
     // The sky is infinitely far: only the camera's rotation moves it.
     o.motion = clip_uv(xform(frame.view_proj, float4(dir, 0.0))) - clip_uv(xform(frame.prev_view_proj, float4(dir, 0.0)));
+    return o;
+}
+
+// The `hzb` view (M4 4.4b): the HZB's finest level under each pixel as grey (brighter: nearer, the
+// fourth root of the reverse-Z depth); black when the frame has none. Drawn last in pass 2.
+[shader("fragment")]
+ForwardOut hzb_view_fs(SkyOut i, uniform SkyPush push) {
+    Frame* frame = (Frame*)g_buffers.ptr[push.frame];
+    ForwardOut o;
+    o.motion = float2(0.0, 0.0);
+    o.color = float4(0.0, 0.0, 0.0, 1.0);
+    if (frame.debug.z != 0) {
+        uint2 t = uint2(i.position.xy) / 2;
+        float depth = asfloat(g_buffers.ptr[frame.debug.z - 1][t.y * frame.debug.w + t.x]);
+        o.color = float4(float3(pow(saturate(depth), 0.25)), 1.0);
+    }
     return o;
 }
 
@@ -573,6 +597,9 @@ float4 shade_pixel(VsOut i, bool front, DrawPush push) {
     // `g_closures` miscompiles on Metal (every masked fragment is dropped).
     if ((flags & FLAG_MASK) != 0 && program_alpha(rows, i.uv) < asfloat(rows[0].w)) { discard; }
     uint mode = frame.debug.x;
+    // The `hzb` view draws the HZB over everything at the end (`hzb_view_fs`); surfaces only need
+    // their depth.
+    if (mode == MODE_HZB) { return float4(0.0, 0.0, 0.0, 1.0); }
     // A one-slab material shaded lit (the common case) skips the interpreter; everything else
     // loads the shape's closures into `g_closures` and runs it.
     bool single = SHAPE_OPS == 1 && (flags & FLAG_UNLIT) == 0 && (mode == 0 || mode == 7 || mode == 8);
@@ -601,6 +628,11 @@ float4 shade_pixel(VsOut i, bool front, DrawPush push) {
     if (mode == 3) { return float4(c0.n * 0.5 + 0.5, 1.0); }
     if (mode == 5) { return float4(0.0, c0.roughness, c0.metallic, 1.0); }
     if (mode == 9) { return float4(heat(float(count), 1.0, 4.0, 8.0), 1.0); }
+    if (mode == MODE_OCCLUSION) {
+        float facing = saturate(dot(normalize(i.normal) * (front ? 1.0 : -1.0), v));
+        const float3 tints[3] = { float3(0.45), float3(0.2, 0.85, 0.3), float3(1.0, 0.55, 0.1) };
+        return float4(tints[min(i.pass, 2u)] * (0.55 + 0.45 * facing), 1.0);
+    }
     if (mode == 15 || mode == 16) {
         uint id = mode == 15 ? i.ids.x : i.ids.y;
         float facing = saturate(dot(normalize(i.normal) * (front ? 1.0 : -1.0), v));

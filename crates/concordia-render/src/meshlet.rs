@@ -132,6 +132,8 @@ pub struct MeshletPush {
     pub first: u32,
     /// Shadow cascade (shadow draws only).
     pub cascade: u32,
+    /// The culling pass that draws the bucket (`PASS_*`; the `occlusion` view).
+    pub pass: u32,
 }
 
 concordia_shaders::shader_struct!(MeshletPush {
@@ -142,12 +144,13 @@ concordia_shaders::shader_struct!(MeshletPush {
     material,
     meshes,
     first,
-    cascade
+    cascade,
+    pass
 });
 
 impl MeshletPush {
-    /// The block's words in layout order (the cascade last).
-    pub(crate) fn words(&self) -> [u32; 8] {
+    /// The block's words in layout order.
+    pub(crate) fn words(&self) -> [u32; 9] {
         [
             self.frame,
             self.instances,
@@ -157,6 +160,7 @@ impl MeshletPush {
             self.meshes,
             self.first,
             self.cascade,
+            self.pass,
         ]
     }
 

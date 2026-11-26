@@ -149,11 +149,23 @@ pub(crate) struct Pipelines {
     /// The mesh-shader path's stages, when the device takes it.
     mesh_stages: Option<MeshStages>,
     sky: (ShaderSource, ShaderSource),
-    skies: BTreeMap<u8, Pipeline>,
+    /// The `hzb` view's fragment shader (drawn with `sky`'s vertex shader).
+    hzb_view: ShaderSource,
+    /// Full-screen pipelines by fragment shader and sample count.
+    skies: BTreeMap<(Fullscreen, u8), Pipeline>,
     grid: (ShaderSource, ShaderSource),
     grids: BTreeMap<u8, Pipeline>,
     variants: BTreeMap<(u8, bool, bool, Option<ProgramShape>, Geometry), Pipeline>,
     debug: BTreeMap<(u8, bool, Geometry), Pipeline>,
+}
+
+/// What a full-screen pipeline draws.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Fullscreen {
+    /// The environment's sky.
+    Sky,
+    /// The `hzb` view.
+    HzbView,
 }
 
 impl Pipelines {
@@ -229,6 +241,7 @@ impl Pipelines {
             compile("forward.slang", "sky_vs", Stage::Vertex)?,
             compile("forward.slang", "sky_fs", Stage::Fragment)?,
         );
+        let hzb_view = compile("forward.slang", "hzb_view_fs", Stage::Fragment)?;
         Ok(Self {
             compiler,
             forward,
@@ -242,6 +255,7 @@ impl Pipelines {
             hzb,
             mesh_stages,
             sky,
+            hzb_view,
             skies: BTreeMap::new(),
             overlay,
             overlays: BTreeMap::new(),
@@ -335,12 +349,35 @@ impl Pipelines {
         device: &dyn Device,
         samples: SampleCount,
     ) -> Result<Pipeline, RenderError> {
-        if let Some(p) = self.skies.get(&samples.get()) {
+        self.fullscreen(device, samples, Fullscreen::Sky)
+    }
+
+    /// The `hzb` view's full-screen pipeline for a sample count (M4 4.4b).
+    pub(crate) fn hzb_view(
+        &mut self,
+        device: &dyn Device,
+        samples: SampleCount,
+    ) -> Result<Pipeline, RenderError> {
+        self.fullscreen(device, samples, Fullscreen::HzbView)
+    }
+
+    /// A full-screen pipeline into the forward targets, untested against depth.
+    fn fullscreen(
+        &mut self,
+        device: &dyn Device,
+        samples: SampleCount,
+        which: Fullscreen,
+    ) -> Result<Pipeline, RenderError> {
+        if let Some(p) = self.skies.get(&(which, samples.get())) {
             return Ok(*p);
         }
+        let fragment = match which {
+            Fullscreen::Sky => self.sky.1.clone(),
+            Fullscreen::HzbView => self.hzb_view.clone(),
+        };
         let pipeline = device.create_graphics_pipeline(&GraphicsPipelineDesc {
             vertex: self.sky.0.clone(),
-            fragment: Some(self.sky.1.clone()),
+            fragment: Some(fragment),
             color_formats: vec![HDR, MOTION],
             depth: Some(DepthState {
                 format: DEPTH,
@@ -351,9 +388,9 @@ impl Pipelines {
             cull: CullMode::None,
             blend: BlendMode::Opaque,
             color_writes: concordia_rhi::ColorWrites::ALL,
-            label: format!("sky x{}", samples.get()),
+            label: format!("{which:?} x{}", samples.get()),
         })?;
-        self.skies.insert(samples.get(), pipeline);
+        self.skies.insert((which, samples.get()), pipeline);
         Ok(pipeline)
     }
 

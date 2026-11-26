@@ -226,6 +226,7 @@ impl MeshletJob {
                         meshes: tables.meshes,
                         first: bucket.first,
                         cascade,
+                        pass,
                     }
                     .bytes(),
                     draw: Command::DrawIndirect {

@@ -29,7 +29,9 @@ export type ViewMode =
   | "lod"
   | "meshlets"
   | "triangles"
-  | "motion";
+  | "motion"
+  | "occlusion"
+  | "hzb";
 
 /**
  * `viewport.overlays` result.

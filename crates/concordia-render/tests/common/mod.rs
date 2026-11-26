@@ -360,12 +360,26 @@ pub fn golden_in(suite: &str, name: &str, image: &Image) {
 
 /// [`golden`] as a result, so a test can check several images before failing.
 pub fn check_golden(name: &str, image: &Image) -> Result<(), String> {
+    check_golden_in("render", name, image)
+}
+
+/// [`golden_in`] as a result.
+pub fn check_golden_in(suite: &str, name: &str, image: &Image) -> Result<(), String> {
     let rgba =
         RgbaImage::new(image.width, image.height, image.rgba.clone()).expect("well-formed image");
     concordia_testkit::golden::Golden::from_env()
-        .check_on(Some(backend()), "render", name, &rgba)
+        .check_on(Some(backend()), suite, name, &rgba)
         .map(|_| ())
-        .map_err(|e| format!("golden render/{name} on {}: {e}", backend()))
+        .map_err(|e| format!("golden {suite}/{name} on {}: {e}", backend()))
+}
+
+/// Checks every `(name, image)` against its golden in `suite`, then fails naming each mismatch.
+pub fn assert_goldens_in(suite: &str, images: &[(&str, &Image)]) {
+    let failed: Vec<String> = images
+        .iter()
+        .filter_map(|(name, image)| check_golden_in(suite, name, image).err())
+        .collect();
+    assert!(failed.is_empty(), "{}", failed.join("\n"));
 }
 
 /// `mesh` with its meshlets built (128 triangles each), as the importers attach them.
@@ -416,6 +430,36 @@ pub fn assert_same_as_m1(name: &str, m1: &Image, meshlets: &Image) {
     );
     golden_in("m4_meshlet", name, m1);
     golden_in("m4_meshlet", name, meshlets);
+}
+
+/// Each pass's median GPU time (and the whole frame's, as `frame`) over `frames` frames of `scene`
+/// at `size` after 30 warm-up frames; `renderer` must be in perf mode.
+pub fn median_pass_times(
+    renderer: &mut Renderer,
+    scene: &mut Scene,
+    size: (u32, u32),
+    frames: usize,
+) -> std::collections::BTreeMap<String, f64> {
+    let mut samples: std::collections::BTreeMap<String, Vec<f64>> = Default::default();
+    for frame in 0..frames + 30 {
+        let (_, timing) = render_timed(renderer, scene, size);
+        if frame < 30 {
+            continue;
+        }
+        let names = renderer.stats().timed_passes;
+        for p in concordia_render::perf::pass_times(&names, &timing) {
+            samples.entry(p.name).or_default().push(p.gpu_ms);
+        }
+        let total = timing.total_ms.unwrap_or(f64::NAN);
+        samples.entry("frame".into()).or_default().push(total);
+    }
+    samples
+        .into_iter()
+        .map(|(name, mut ms)| {
+            ms.sort_by(f64::total_cmp);
+            (name, ms[ms.len() / 2])
+        })
+        .collect()
 }
 
 /// Renders `scene` once at `size`, returning the image and its GPU timing.
