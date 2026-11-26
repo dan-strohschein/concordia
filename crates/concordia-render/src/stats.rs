@@ -73,10 +73,12 @@ pub enum RasterPath {
     mesh_shader,
 }
 
-/// What the meshlet path drew in the frame's forward pass.
+/// What the meshlet path drew in the frame's forward pass, and what GPU culling removed on the way
+/// (M4 4.4). The GPU's counts come from the latest frame read back (a viewport frame's arrive
+/// when it retires).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect)]
 pub struct MeshletCounts {
-    /// Instances drawn through meshlets (in the camera's view).
+    /// Instances with at least one meshlet drawn (in the camera's view).
     pub instances: u64,
     /// Meshlets drawn.
     pub meshlets: u64,
@@ -86,6 +88,16 @@ pub struct MeshletCounts {
     pub indirect_draws: u64,
     /// Mesh-task draws issued (one per pipeline and material, on the mesh-shader path).
     pub mesh_draws: u64,
+    /// Meshlets of every instance in the camera's buckets, before culling.
+    pub candidates: u64,
+    /// Candidates whose instance's box is in the camera's view.
+    pub after_instance_frustum: u64,
+    /// Those whose own sphere is in the view too.
+    pub after_frustum: u64,
+    /// Those with a triangle that may face the camera (the normal-cone test).
+    pub after_cone: u64,
+    /// Meshlets drawn into the sun's shadow cascades (each culled for its cascade).
+    pub shadow_meshlets: u64,
 }
 
 /// A material simplified to fit the closure budget.

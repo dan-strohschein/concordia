@@ -160,11 +160,27 @@ export interface ClosureMergeStats {
  */
 export interface MeshletCounts {
   /**
+   * Those with a triangle that may face the camera (the normal-cone test).
+   */
+  after_cone: number;
+  /**
+   * Those whose own sphere is in the view too.
+   */
+  after_frustum: number;
+  /**
+   * Candidates whose instance's box is in the camera's view.
+   */
+  after_instance_frustum: number;
+  /**
+   * Meshlets of every instance in the camera's buckets, before culling.
+   */
+  candidates: number;
+  /**
    * Indirect draws issued (one per pipeline and material, on the compute path).
    */
   indirect_draws: number;
   /**
-   * Instances drawn through meshlets (in the camera's view).
+   * Instances with at least one meshlet drawn (in the camera's view).
    */
   instances: number;
   /**
@@ -175,6 +191,10 @@ export interface MeshletCounts {
    * Meshlets drawn.
    */
   meshlets: number;
+  /**
+   * Meshlets drawn into the sun's shadow cascades (each culled for its cascade).
+   */
+  shadow_meshlets: number;
   /**
    * Triangles in those meshlets (not the padded draws).
    */

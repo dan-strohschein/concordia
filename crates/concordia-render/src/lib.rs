@@ -7,6 +7,7 @@ mod camera;
 pub mod cluster;
 mod components;
 mod cull;
+mod cull_stats;
 mod environment;
 mod error;
 mod extract;
@@ -30,6 +31,7 @@ mod pointer;
 mod programs;
 mod renderer;
 mod representation;
+mod scan;
 mod scene_cache;
 pub mod shadow;
 mod shadow_pass;
@@ -37,6 +39,8 @@ mod shape;
 mod skinning;
 mod stats;
 mod templates;
+#[cfg(test)]
+mod test_gpu;
 mod thread;
 pub mod tonemap;
 mod ui_pass;
@@ -50,6 +54,8 @@ pub use components::{
     Camera, DirectionalLight, Environment, Msaa, PointLight, Projection, SpotLight, Tonemap,
 };
 pub use concordia_material::{ClosureBudget, ClosureReport};
+pub use cull::{CullCode, CullView, Culling};
+pub use cull_stats::CulledMeshlet;
 pub use error::RenderError;
 pub use extract::{
     CameraView, DrawItem, EntityItems, LightView, PoseView, PunctualKind, PunctualLight,
@@ -57,7 +63,7 @@ pub use extract::{
 };
 pub use frame::DrawPush;
 pub use lighting::candela;
-pub use meshlet::{ExpandPush, MeshletPush, TaskPush};
+pub use meshlet::{CompactPush, CullPush, MeshletPush, TaskPush};
 pub use module::{
     CaptureScreenshot, CaptureScreenshotParams, CaptureScreenshotResult, DeviceFactory,
     RenderModule, ViewportControl, ViewportNavigateParams, attach_surface, detach_surface,
@@ -77,6 +83,7 @@ pub use renderer::{
     FrameCallbacks, Image, MAX_SIZE, MotionImage, RenderRequest, RenderStats, Renderer,
 };
 pub use representation::Representation;
+pub use scan::{ScanAddPush, ScanPush};
 pub use scene_cache::{RenderScene, SceneCache, SceneDelta, SceneItems};
 pub use shadow_pass::ShadowPush;
 pub use stats::{

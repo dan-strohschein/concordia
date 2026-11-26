@@ -20,6 +20,7 @@ Dev-dependency-only test helpers: GPU test guards and golden images compared wit
 - Golden names are `[A-Za-z0-9_@-]+` (no path escapes).
 - Keep mode (`CONCORDIA_GOLDEN_KEEP=1`) also writes `<name>.actual.png` for a missing golden, so new images are reviewed before blessing; it never blesses. (M4 4.3a)
 - A suite's `tolerances.ron` may hold `paths: { "<golden>": (mean, p99) }` (shared and per backend): how closely two draw paths of that golden's scene agree (`Golden::path_tolerance_on`, `None` without an entry). Keys name goldens like other entries. (M4 4.3b)
+- `culling: { "<golden>": (mean, p99) }` (shared and per backend; M4 4.4): how closely that golden's scene rendered with GPU culling on agrees with it rendered off. Both kinds go through `Comparison` (`Tolerances::for_comparison`, `Golden::comparison_tolerance_on`); `for_paths` / `path_tolerance_on` are its `Paths` case.
 
 ## How to test
 `cargo nextest run -p concordia-testkit`

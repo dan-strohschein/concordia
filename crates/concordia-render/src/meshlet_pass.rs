@@ -1,6 +1,7 @@
 //! GPU side of the meshlet path (ADR-0100): the frame's meshlet buffers and each bucket's draw,
-//! by the compute + indirect route (the `meshlet.expand` pass, M4 4.3a) or the mesh-shader route
-//! (one mesh-task draw per bucket, 4.3b).
+//! by the compute + indirect route (the `meshlet.cull` pass: cull, scan and compact, M4 4.3a and
+//! 4.4) or the mesh-shader route (one mesh-task draw per bucket that culls in its object stage,
+//! 4.3b and 4.4). Both routes write one cull code per entry.
 
 use std::num::NonZeroU64;
 
@@ -13,7 +14,10 @@ use crate::RenderError;
 use crate::frame::push_rows_u32;
 use crate::gpu::Uploads;
 use crate::graph::{PassContext, RenderGraph};
-use crate::meshlet::{ExpandPush, MeshletPlan, MeshletPush, Route, TaskPush, task_groups};
+use crate::meshlet::{
+    CompactPush, CullPush, MeshletPlan, MeshletPush, Route, TaskPush, task_groups,
+};
+use crate::scan::{Scan, ScanPipelines, compute_barrier};
 
 /// A forward bucket's key: its pipeline and its material's first row.
 pub(crate) type BucketKey = (Pipeline, u32);
@@ -22,7 +26,7 @@ pub(crate) type BucketKey = (Pipeline, u32);
 const ROW_GROUPS: u32 = 65_535;
 
 /// The dispatch size covering `entries` threads (64 per group, rows of [`ROW_GROUPS`] groups).
-pub(crate) fn expand_groups(entries: u32) -> [u32; 3] {
+pub(crate) fn cull_groups(entries: u32) -> [u32; 3] {
     let groups = entries.div_ceil(64);
     match groups <= ROW_GROUPS {
         true => [groups, 1, 1],
@@ -37,44 +41,54 @@ pub(crate) struct FrameTables {
     pub(crate) instances: u32,
     pub(crate) materials: u32,
     pub(crate) meshes: u32,
+    /// The cull view table (`cull::CullView::rows`, camera first).
+    pub(crate) views: u32,
+}
+
+/// The compute route's culling pipelines.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CullPipelines {
+    pub(crate) cull: Pipeline,
+    pub(crate) compact: Pipeline,
+    pub(crate) scan: ScanPipelines,
 }
 
 /// The pipelines a route draws with: forward pipelines come with the buckets' keys.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum RoutePipelines {
-    /// `meshlet.expand` and the vertex-shader shadow pipeline.
-    ComputeIndirect { expand: Pipeline, shadow: Pipeline },
+    /// `meshlet.cull` and the vertex-shader shadow pipeline.
+    ComputeIndirect {
+        cull: CullPipelines,
+        shadow: Pipeline,
+    },
     /// The mesh-shader shadow pipeline.
     MeshTasks { shadow: Pipeline },
 }
 
-/// One bucket's draw, ready to record: its pipeline, push words (the shadow cascade last, in both
-/// routes' layouts) and draw command.
+/// One bucket's draw, ready to record: its pipeline, push constants and draw command.
 #[derive(Debug, Clone)]
 pub(crate) struct BucketDraw {
     pub(crate) pipeline: Pipeline,
-    push: Vec<u32>,
+    push: Vec<u8>,
     draw: Command,
 }
 
 impl BucketDraw {
-    /// The push constants and draw (the pipeline is set by the caller), for `cascade` if a shadow.
-    pub(crate) fn commands(&self, cascade: Option<u32>) -> [Command; 2] {
-        let mut push = self.push.clone();
-        if let (Some(c), Some(last)) = (cascade, push.last_mut()) {
-            *last = c;
-        }
-        let bytes = push.iter().flat_map(|w| w.to_le_bytes()).collect();
-        [Command::PushConstants(bytes), self.draw.clone()]
+    /// The push constants and draw (the pipeline is set by the caller).
+    pub(crate) fn commands(&self) -> [Command; 2] {
+        [Command::PushConstants(self.push.clone()), self.draw.clone()]
     }
 }
 
-/// `meshlet.expand`: its pipeline, push constants and dispatch, and the buffers it writes.
+/// The `meshlet.cull` pass: code every entry, sum the survivors, pack them and write arguments.
 #[derive(Debug, Clone)]
-struct Expand {
-    pipeline: Pipeline,
-    push: ExpandPush,
+struct Compute {
+    cull: (Pipeline, CullPush),
+    compact: (Pipeline, CompactPush),
     groups: [u32; 3],
+    scan: Scan,
+    codes: Buffer,
+    drawn: Buffer,
     entries: Buffer,
     /// One `DrawIndirect` record per bucket.
     args: Buffer,
@@ -85,17 +99,39 @@ struct Expand {
 pub(crate) struct MeshletJob {
     /// How the buckets reach the rasterizer.
     pub(crate) route: Route,
-    /// The compute route's expand pass.
-    expand: Option<Expand>,
+    /// The compute route's cull pass.
+    compute: Option<Compute>,
     /// Forward buckets, in plan order.
     pub(crate) forward: Vec<BucketDraw>,
-    /// The shadow casters' bucket (cascade filled per pass).
-    pub(crate) shadow: Option<BucketDraw>,
+    /// The shadow casters' bucket per cascade, in cascade order.
+    pub(crate) shadows: Vec<BucketDraw>,
+    /// One cull code per entry, written by either route.
+    pub(crate) codes: Buffer,
+}
+
+/// A GPU-only storage buffer of `bytes` bytes.
+fn gpu_buffer(
+    device: &dyn Device,
+    up: &Uploads,
+    bytes: u64,
+    usage: BufferUsage,
+    label: &str,
+) -> Result<Buffer, RenderError> {
+    Ok(up.alloc(
+        device,
+        &BufferDesc {
+            size: NonZeroU64::new(bytes).unwrap_or(NonZeroU64::MIN),
+            usage: usage | BufferUsage::STORAGE | BufferUsage::BINDLESS | BufferUsage::COPY_SRC,
+            memory: MemoryLocation::GpuOnly,
+            label: label.into(),
+        },
+    )?)
 }
 
 impl MeshletJob {
-    /// Uploads `plan`'s work items (and, on the compute route, its bucket table, entries and
-    /// arguments); `None` when nothing takes the path. Every buffer is returned in `keep`.
+    /// Uploads `plan`'s work items and bucket table and allocates the codes (and, on the compute
+    /// route, the cull pass's buffers); `None` when nothing takes the path. Every buffer is
+    /// returned in `keep`.
     pub(crate) fn prepare(
         device: &dyn Device,
         up: &mut Uploads,
@@ -106,37 +142,54 @@ impl MeshletJob {
         if plan.entries == 0 {
             return Ok(None);
         }
+        let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
         let mut items = Vec::new();
         push_rows_u32(&mut items, &plan.items);
         let items = up.buffer(device, &items, "meshlet work items")?;
-        keep.push(items);
-        let items = device.buffer_index(items)?.0;
-        let (route, expand, shadow_pipeline) = match pipelines {
-            RoutePipelines::ComputeIndirect { expand, shadow } => {
-                let job = Expand::prepare(device, up, plan, (items, expand), keep)?;
+        let mut buckets = Vec::new();
+        let rows: Vec<[u32; 4]> = plan
+            .buckets
+            .iter()
+            .map(|b| [b.first, b.entries, b.vertices, b.cull_word()])
+            .collect();
+        push_rows_u32(&mut buckets, &rows);
+        let buckets = up.buffer(device, &buckets, "meshlet buckets")?;
+        let codes = gpu_buffer(
+            device,
+            up,
+            u64::from(plan.entries) * 4,
+            BufferUsage::empty(),
+            "meshlet cull codes",
+        )?;
+        keep.extend([items, buckets, codes]);
+        let (items, buckets_i, codes_i) = (index(items)?, index(buckets)?, index(codes)?);
+        let (route, compute, shadow_pipeline) = match pipelines {
+            RoutePipelines::ComputeIndirect { cull, shadow } => {
+                let refs = (items, buckets_i, codes);
+                let job = Compute::prepare(device, up, plan, (tables, refs, cull), keep)?;
                 (Route::ComputeIndirect, Some(job), shadow)
             }
             RoutePipelines::MeshTasks { shadow } => (Route::MeshTasks, None, shadow),
         };
-        let draw = |pipeline, material, i: usize| {
+        let draw = |pipeline, material, i: usize| -> Result<BucketDraw, RenderError> {
             let bucket = &plan.buckets[i];
-            match &expand {
-                Some(e) => BucketDraw {
+            let cascade = bucket.view.saturating_sub(1);
+            Ok(match &compute {
+                Some(c) => BucketDraw {
                     pipeline,
                     push: MeshletPush {
                         frame: tables.frame,
                         instances: tables.instances,
-                        entries: e.push.entries,
+                        entries: index(c.entries)?,
                         materials: tables.materials,
                         material,
                         meshes: tables.meshes,
                         first: bucket.first,
-                        cascade: 0,
+                        cascade,
                     }
-                    .words()
-                    .to_vec(),
+                    .bytes(),
                     draw: Command::DrawIndirect {
-                        args: e.args,
+                        args: c.args,
                         offset: i as u64 * concordia_rhi::DRAW_INDIRECT_BYTES,
                     },
                 },
@@ -152,118 +205,153 @@ impl MeshletJob {
                         first: bucket.first,
                         count: bucket.entries,
                         item_count: plan.items.len() as u32,
-                        cascade: 0,
+                        views: tables.views,
+                        codes: codes_i,
+                        cull: bucket.cull_word(),
+                        cascade,
                     }
-                    .words()
-                    .to_vec(),
+                    .bytes(),
                     draw: Command::DrawMeshTasks {
                         groups: task_groups(bucket.entries),
                     },
                 },
-            }
+            })
         };
         let mut forward = Vec::new();
-        let mut shadow = None;
+        let mut shadows = Vec::new();
         for (i, bucket) in plan.buckets.iter().enumerate() {
             match bucket.key {
-                Some((pipeline, material)) => forward.push(draw(pipeline, material, i)),
-                None => shadow = Some(draw(shadow_pipeline, 0, i)),
+                Some((pipeline, material)) => forward.push(draw(pipeline, material, i)?),
+                None => shadows.push(draw(shadow_pipeline, 0, i)?),
             }
         }
         Ok(Some(Self {
             route,
-            expand,
+            compute,
             forward,
-            shadow,
+            shadows,
+            codes,
         }))
     }
 
-    /// The `meshlet.expand` pass (compute route only).
+    /// The `meshlet.cull` pass (compute route only).
     pub(crate) fn add_pass(&self, graph: &mut RenderGraph) {
-        let Some(expand) = self.expand.clone() else {
+        let Some(compute) = self.compute.clone() else {
             return;
         };
         graph.add_pass_recorded(
-            "meshlet.expand",
+            "meshlet.cull",
             |p| p.side_effect(),
             Some(Box::new(move |ctx: &mut PassContext<'_>| {
-                ctx.commands.commands.extend(expand.commands());
+                ctx.commands.commands.extend(compute.commands());
                 Ok(())
             })),
         );
     }
 }
 
-impl Expand {
-    /// Uploads the bucket table and allocates the entries and arguments `meshlet.expand` writes;
-    /// `items` is the work items' bindless index.
+impl Compute {
+    /// Allocates the drawn flags, their sums, the entries and the arguments, and prepares the
+    /// scan; `refs` are the work items' and bucket table's bindless indices and the code buffer.
     fn prepare(
         device: &dyn Device,
-        up: &mut Uploads,
+        up: &Uploads,
         plan: &MeshletPlan<BucketKey>,
-        (items, pipeline): (u32, Pipeline),
+        (tables, refs, pipelines): (FrameTables, (u32, u32, Buffer), CullPipelines),
         keep: &mut Vec<Buffer>,
     ) -> Result<Self, RenderError> {
+        let (items, buckets, codes) = refs;
         let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
-        let mut buckets = Vec::new();
-        let rows: Vec<[u32; 4]> = plan
-            .buckets
-            .iter()
-            .map(|b| [b.first, b.entries, b.vertices, 0])
-            .collect();
-        push_rows_u32(&mut buckets, &rows);
-        let bucket_table = up.buffer(device, &buckets, "meshlet buckets")?;
-        let gpu = |bytes: u64, usage: BufferUsage, label: &str| {
-            up.alloc(
-                device,
-                &BufferDesc {
-                    size: NonZeroU64::new(bytes).unwrap_or(NonZeroU64::MIN),
-                    usage: usage
-                        | BufferUsage::STORAGE
-                        | BufferUsage::BINDLESS
-                        | BufferUsage::COPY_SRC,
-                    memory: MemoryLocation::GpuOnly,
-                    label: label.into(),
-                },
-            )
-        };
-        let entries = gpu(
-            u64::from(plan.entries) * 8,
+        let total = plan.entries;
+        let words = |n: u32| u64::from(n) * 4;
+        let drawn = gpu_buffer(
+            device,
+            up,
+            words(total),
+            BufferUsage::empty(),
+            "meshlet drawn",
+        )?;
+        let sums = gpu_buffer(
+            device,
+            up,
+            words(total + 1),
+            BufferUsage::empty(),
+            "meshlet sums",
+        )?;
+        let entries = gpu_buffer(
+            device,
+            up,
+            u64::from(total) * 8,
             BufferUsage::empty(),
             "meshlet entries",
         )?;
-        let args = gpu(
+        let args = gpu_buffer(
+            device,
+            up,
             plan.buckets.len() as u64 * concordia_rhi::DRAW_INDIRECT_BYTES,
             BufferUsage::INDIRECT,
             "meshlet arguments",
         )?;
-        keep.extend([bucket_table, entries, args]);
+        keep.extend([drawn, sums, entries, args]);
+        let scan = Scan::prepare(device, up, pipelines.scan, (drawn, sums), total, keep)?;
+        let item_count = plan.items.len() as u32;
         Ok(Self {
-            pipeline,
-            push: ExpandPush {
-                items,
-                item_count: plan.items.len() as u32,
-                buckets: index(bucket_table)?,
-                entries: index(entries)?,
-                args: index(args)?,
-                total: plan.entries,
-            },
-            groups: expand_groups(plan.entries),
+            cull: (
+                pipelines.cull,
+                CullPush {
+                    items,
+                    item_count,
+                    buckets,
+                    views: tables.views,
+                    instances: tables.instances,
+                    meshes: tables.meshes,
+                    codes: index(codes)?,
+                    drawn: index(drawn)?,
+                    total,
+                },
+            ),
+            compact: (
+                pipelines.compact,
+                CompactPush {
+                    items,
+                    item_count,
+                    buckets,
+                    drawn: index(drawn)?,
+                    sums: index(sums)?,
+                    entries: index(entries)?,
+                    args: index(args)?,
+                    total,
+                },
+            ),
+            groups: cull_groups(total),
+            scan,
+            codes,
+            drawn,
             entries,
             args,
         })
     }
 
-    /// The pass's commands: the dispatch and its barrier.
-    fn commands(&self) -> [Command; 4] {
-        [
-            Command::SetPipeline(self.pipeline),
-            Command::PushConstants(self.push.bytes()),
+    /// The pass's commands: cull, the scan, compact, and the barrier before the draws.
+    fn commands(&self) -> Vec<Command> {
+        let mut out = vec![
+            Command::SetPipeline(self.cull.0),
+            Command::PushConstants(self.cull.1.bytes()),
+            Command::Dispatch {
+                groups: self.groups,
+            },
+            compute_barrier(&[self.codes, self.drawn]),
+        ];
+        out.extend(self.scan.commands().iter().cloned());
+        out.extend([
+            Command::SetPipeline(self.compact.0),
+            Command::PushConstants(self.compact.1.bytes()),
             Command::Dispatch {
                 groups: self.groups,
             },
             self.barrier(),
-        ]
+        ]);
+        out
     }
 
     /// Entry and argument writes before the vertex shaders and indirect draws read them.
@@ -295,161 +383,369 @@ impl Expand {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cull::{CullCode, CullView, Culling};
+    use crate::meshlet::tests::grid_blob;
     use crate::meshlet::{MeshletInfo, PathDraw, plan};
-    use concordia_rhi::{CommandList, QueueKind, Submit};
+    use crate::test_gpu::{self, download, run_commands};
+    use concordia_core::math::{Mat4, Vec3};
 
-    fn device() -> Option<std::sync::Arc<dyn Device>> {
-        let backend = concordia_rhi_select::choose_from_env(Default::default()).ok()?;
-        match concordia_rhi_select::new_headless(backend) {
-            Ok(d) => Some(d.into()),
-            Err(e) => {
-                assert!(!concordia_testkit::device_required(backend), "{e}");
-                None
-            }
+    /// The compute route's pipelines on `device`.
+    fn cull_pipelines(device: &dyn Device) -> CullPipelines {
+        CullPipelines {
+            cull: test_gpu::compute(device, "meshlet.slang", "meshlet_cull"),
+            compact: test_gpu::compute(device, "meshlet.slang", "meshlet_compact"),
+            scan: ScanPipelines {
+                groups: test_gpu::compute(device, "scan.slang", "scan_groups"),
+                add: test_gpu::compute(device, "scan.slang", "scan_add"),
+            },
         }
     }
 
-    fn download(device: &dyn Device, buffer: Buffer, bytes: u64) -> Vec<u32> {
-        let readback = device
-            .create_buffer(&BufferDesc {
-                size: NonZeroU64::new(bytes).unwrap(),
-                usage: BufferUsage::COPY_DST,
-                memory: MemoryLocation::Readback,
-                label: "readback".into(),
-            })
-            .unwrap();
-        let mut list = CommandList::new("download");
-        list.push(Command::CopyBuffer {
-            src: buffer,
-            src_offset: 0,
-            dst: readback,
-            dst_offset: 0,
-            size: bytes,
-        });
-        run(device, &list);
-        let raw = device.read_buffer(readback, 0, bytes).unwrap();
-        raw.as_chunks::<4>()
-            .0
+    /// Instances at the origin (identity rows) of one mesh row whose blob has `meshlets` meshlets.
+    fn tables(
+        device: &dyn Device,
+        up: &mut Uploads,
+        (blob, models, views): (&[u8], &[Mat4], &[CullView]),
+        keep: &mut Vec<Buffer>,
+    ) -> FrameTables {
+        let info = MeshletInfo::of(blob).unwrap().unwrap();
+        let blob = up.buffer(device, blob, "blob").unwrap();
+        let streams = crate::meshlet::Streams {
+            positions: 0,
+            normals: 0,
+            tangents: 0,
+            uvs: 0,
+        };
+        let bounds = (Vec3::splat(-1.0), Vec3::splat(17.0));
+        let mut meshes = Vec::new();
+        let row =
+            crate::meshlet::mesh_row(device.buffer_index(blob).unwrap().0, streams, info, bounds);
+        push_rows_u32(&mut meshes, &row);
+        let mut rows = Vec::new();
+        for &model in models {
+            crate::frame::InstanceRow {
+                model,
+                previous: model,
+                skin: [0, 0, 0, 1],
+                motion: [0; 4],
+            }
+            .write(&mut rows);
+        }
+        let mut table = Vec::new();
+        views
             .iter()
-            .map(|c| u32::from_le_bytes(*c))
-            .collect()
-    }
-
-    fn run(device: &dyn Device, list: &CommandList) {
-        device
-            .submit(Submit {
-                queue: QueueKind::Graphics,
-                commands: list,
-                wait: &[],
-                signal: &[],
-            })
-            .unwrap();
-        device.wait_idle().unwrap();
+            .for_each(|v| push_rows_u32(&mut table, &v.rows()));
+        let views = table;
+        let buffers = [
+            up.buffer(device, &meshes, "meshes").unwrap(),
+            up.buffer(device, &rows, "instances").unwrap(),
+            up.buffer(device, &views, "views").unwrap(),
+        ];
+        keep.extend([blob]);
+        keep.extend(buffers);
+        let index = |b| device.buffer_index(b).unwrap().0;
+        FrameTables {
+            frame: 0,
+            instances: index(buffers[1]),
+            materials: 0,
+            meshes: index(buffers[0]),
+            views: index(buffers[2]),
+        }
     }
 
     #[test]
-    fn expand_writes_one_entry_per_meshlet_and_counts_them() {
-        let Some(device) = device() else { return };
+    fn culling_off_writes_every_entry_and_counts_them() {
+        let Some(device) = test_gpu::device() else {
+            return;
+        };
         let device = device.as_ref();
-        let toolchain =
-            concordia_shaders::SlangToolchain::locate().expect("run `just slang-fetch`");
-        let compiler = concordia_shaders::SlangcCompiler::new(toolchain);
-        let module = crate::pipelines::compile(
-            device,
-            &compiler,
-            "meshlet.slang",
-            "meshlet_expand",
-            concordia_shaders::Stage::Compute,
-        )
-        .unwrap();
-        let expand = device
-            .create_compute_pipeline(&concordia_rhi::ComputePipelineDesc {
-                shader: module.source(),
-                threads_per_group: module.reflection.threads_per_group.unwrap(),
-                label: "expand".into(),
-            })
-            .unwrap();
+        let meshlets = MeshletInfo::of(&crate::meshlet::tests::grid_blob(16))
+            .unwrap()
+            .unwrap()
+            .meshlets;
         let key = |m| Some((Pipeline::from_raw(0, 0), m));
-        let path = |instance, meshlets, forward, casts| PathDraw {
+        let path = |instance, forward, casts| PathDraw {
             instance,
-            mesh_row: instance % 2,
+            mesh_row: 0,
             info: MeshletInfo {
                 meshlets,
                 max_triangles: 128,
             },
             forward,
             casts,
+            double_sided: false,
         };
-        // Forward buckets of 3 + 1, 70 and 1 entries (one-entry buckets catch an off-by-one in
-        // who writes the arguments), then 70 + 1 + 5 shadow entries.
+        // Two forward buckets (two instances, then one), then the casters for two cascades.
         let draws = [
-            path(4, 3, key(9), false),
-            path(5, 70, key(2), true),
-            path(6, 1, key(9), true),
-            path(8, 1, key(3), false),
-            path(7, 5, None, true),
+            path(0, key(9), false),
+            path(1, key(2), true),
+            path(2, key(9), true),
         ];
-        let plan = plan(&draws);
+        let plan = plan(&draws, 2);
         let mut up = Uploads::new();
         let mut keep = Vec::new();
-        let tables = FrameTables {
-            frame: 0,
-            instances: 0,
-            materials: 0,
-            meshes: 0,
-        };
+        let off = CullView::camera(Mat4::IDENTITY, Vec3::ZERO, true, Culling::OFF);
+        let models = [Mat4::IDENTITY; 3];
+        let tables = tables(
+            device,
+            &mut up,
+            (&grid_blob(16), &models, &[off; 3]),
+            &mut keep,
+        );
         let pipelines = RoutePipelines::ComputeIndirect {
-            expand,
-            shadow: expand,
+            cull: cull_pipelines(device),
+            shadow: Pipeline::from_raw(0, 0),
         };
         let job = MeshletJob::prepare(device, &mut up, &plan, (tables, pipelines), &mut keep)
             .unwrap()
             .unwrap();
         up.flush(device).unwrap();
-        let job = job.expand.expect("the compute route expands");
-        let mut list = CommandList::new("expand");
-        job.commands().into_iter().for_each(|c| {
-            list.push(c);
-        });
-        run(device, &list);
-        let entries = download(device, job.entries, u64::from(plan.entries) * 8);
+        assert_eq!(job.shadows.len(), 2, "one shadow draw per cascade");
+        let compute = job.compute.expect("the compute route culls");
+        run_commands(device, compute.commands());
+        let entries = download(device, compute.entries, u64::from(plan.entries) * 8);
         let mut want = Vec::new();
         for item in &plan.items {
-            let meshlets = draws
-                .iter()
-                .find(|d| d.instance == item[0])
-                .unwrap()
-                .info
-                .meshlets;
             for m in 0..meshlets {
                 want.extend([item[0], m]);
             }
         }
-        assert_eq!(
-            entries, want,
-            "one (instance, meshlet) per entry, in item order"
-        );
-        let args = download(device, job.args, plan.buckets.len() as u64 * 16);
+        assert_eq!(entries, want, "every (instance, meshlet), in slot order");
+        let codes = download(device, job.codes, u64::from(plan.entries) * 4);
+        let mesh =
+            concordia_cluster::MeshletMesh::decode(&crate::meshlet::tests::grid_blob(16)).unwrap();
+        for (slot, &word) in codes.iter().enumerate() {
+            let meshlet = slot as u32
+                - plan
+                    .items
+                    .iter()
+                    .rev()
+                    .find(|i| i[2] <= slot as u32)
+                    .unwrap()[2];
+            let triangles = u32::from(mesh.meshlets[meshlet as usize].triangle_count);
+            assert_eq!(word, CullCode::Drawn as u32 | triangles << 8, "slot {slot}");
+        }
+        let args = download(device, compute.args, plan.buckets.len() as u64 * 16);
         let want_args: Vec<u32> = plan
             .buckets
             .iter()
             .flat_map(|b| [b.vertices, b.entries, 0, 0])
             .collect();
         assert_eq!(args, want_args, "each bucket's draw arguments");
-        assert_eq!(plan.buckets.len(), 4);
+    }
+
+    /// Survivors are packed in slot order into their bucket's region, and each bucket's draw
+    /// counts exactly its survivors.
+    #[test]
+    fn survivors_keep_slot_order() {
+        use concordia_core::math::camera::rh::proj::directx;
+        let Some(device) = test_gpu::device() else {
+            return;
+        };
+        let device = device.as_ref();
+        let meshlets = MeshletInfo::of(&crate::meshlet::tests::grid_blob(16))
+            .unwrap()
+            .unwrap()
+            .meshlets;
+        let key = |m| Some((Pipeline::from_raw(0, 0), m));
+        let path = |instance, forward| PathDraw {
+            instance,
+            mesh_row: 0,
+            info: MeshletInfo {
+                meshlets,
+                max_triangles: 128,
+            },
+            forward,
+            casts: false,
+            double_sided: false,
+        };
+        // A narrow view of part of the grid: the second instance is far aside, the others are cut.
+        let eye = Vec3::new(4.0, 4.0, 10.0);
+        let view_proj = directx::perspective(0.5, 1.0, 1000.0, 0.1) * Mat4::from_translation(-eye);
+        let view = CullView::camera(view_proj, eye, true, Culling::default());
+        let models = [
+            Mat4::IDENTITY,
+            Mat4::from_translation(Vec3::new(100.0, 0.0, 0.0)),
+            Mat4::from_translation(Vec3::new(-6.0, -3.0, 0.0)),
+        ];
+        let draws = [path(0, key(1)), path(1, key(1)), path(2, key(2))];
+        let plan = plan(&draws, 0);
+        let mut up = Uploads::new();
+        let mut keep = Vec::new();
+        let tables = tables(
+            device,
+            &mut up,
+            (&grid_blob(16), &models, &[view]),
+            &mut keep,
+        );
+        let pipelines = RoutePipelines::ComputeIndirect {
+            cull: cull_pipelines(device),
+            shadow: Pipeline::from_raw(0, 0),
+        };
+        let job = MeshletJob::prepare(device, &mut up, &plan, (tables, pipelines), &mut keep)
+            .unwrap()
+            .unwrap();
+        up.flush(device).unwrap();
+        let compute = job.compute.expect("the compute route culls");
+        run_commands(device, compute.commands());
+        let codes = download(device, job.codes, u64::from(plan.entries) * 4);
+        let entries = download(device, compute.entries, u64::from(plan.entries) * 8);
+        let args = download(device, compute.args, plan.buckets.len() as u64 * 16);
+        let drawn = |slot: usize| codes[slot] & 0xff == CullCode::Drawn as u32;
+        assert!(
+            (0..codes.len()).any(|s| !drawn(s)) && (0..codes.len()).any(drawn),
+            "{codes:?}"
+        );
+        for (b, bucket) in plan.buckets.iter().enumerate() {
+            let mut want = Vec::new();
+            for item in plan.items.iter().filter(|i| i[3] == b as u32) {
+                for m in 0..meshlets {
+                    if drawn((item[2] + m) as usize) {
+                        want.extend([item[0], m]);
+                    }
+                }
+            }
+            let start = bucket.first as usize * 2;
+            assert_eq!(
+                entries[start..start + want.len()],
+                want[..],
+                "bucket {b} in slot order"
+            );
+            assert_eq!(
+                args[b * 4 + 1] as usize,
+                want.len() / 2,
+                "bucket {b}'s instance count"
+            );
+        }
+    }
+
+    /// World → clip of a view at `eye` looking along `dir` through `proj`.
+    fn looking(proj: Mat4, eye: Vec3, dir: Vec3) -> Mat4 {
+        let rotation = concordia_core::math::Quat::from_rotation_arc(Vec3::NEG_Z, dir.normalize());
+        proj * Mat4::from_rotation_translation(rotation, eye).inverse()
+    }
+
+    /// Every rule of the GPU's `cull` against the CPU reference, slot by slot: the camera seeing
+    /// the grid's back from below an edge (frustum and cone), a cascade with a caster beyond its
+    /// near plane, scaled, mirrored and stretched instances, and a meshlet whose cutoff of 1
+    /// comes with an over-long quantized axis (never culled).
+    #[test]
+    fn gpu_codes_follow_every_cull_rule() {
+        use concordia_core::math::camera::rh::proj::directx;
+        let Some(device) = test_gpu::device() else {
+            return;
+        };
+        let device = device.as_ref();
+        let mut blob = grid_blob(16);
+        // Meshlet 0's cone (record at 48, cone at 16): axis (1, 1, 0) unnormalized, cutoff 1.
+        blob[48 + 16..48 + 20].copy_from_slice(&[127, 127, 0, 127]);
+        let mesh = concordia_cluster::MeshletMesh::decode(&blob).unwrap();
+        let meshlets = mesh.meshlets.len() as u32;
+        let eye = Vec3::new(8.0, 8.0, -9.0);
+        let camera = CullView::camera(
+            looking(
+                directx::perspective(1.0, 1.0, 1000.0, 0.1),
+                eye,
+                Vec3::new(0.1, 0.0, 1.0),
+            ),
+            eye,
+            true,
+            Culling::default(),
+        );
+        let light = looking(
+            directx::orthographic(-12.0, 12.0, -12.0, 12.0, 30.0, 0.1),
+            Vec3::new(8.0, 8.0, 5.0),
+            Vec3::NEG_Z,
+        );
+        let cascade = CullView::cascade(light, Culling::default());
+        let models = [
+            Mat4::IDENTITY,
+            Mat4::from_scale_rotation_translation(
+                Vec3::splat(3.0),
+                Default::default(),
+                Vec3::new(9.0, -20.0, 0.0),
+            ),
+            Mat4::from_scale(Vec3::new(-1.0, 1.0, 1.0))
+                * Mat4::from_translation(Vec3::new(-16.0, 0.0, 0.0)),
+            Mat4::from_scale(Vec3::new(1.0, 1.01, 1.0)),
+            Mat4::from_translation(Vec3::new(0.0, 0.0, 20.0)),
+        ];
+        let key = |m| Some((Pipeline::from_raw(0, 0), m));
+        let draws: Vec<_> = (0..models.len() as u32)
+            .map(|i| PathDraw {
+                instance: i,
+                mesh_row: 0,
+                info: MeshletInfo {
+                    meshlets,
+                    max_triangles: 128,
+                },
+                forward: key(1),
+                casts: true,
+                double_sided: false,
+            })
+            .collect();
+        let plan = plan(&draws, 1);
+        let mut up = Uploads::new();
+        let mut keep = Vec::new();
+        let tables = tables(
+            device,
+            &mut up,
+            (&blob, &models, &[camera, cascade]),
+            &mut keep,
+        );
+        let pipelines = RoutePipelines::ComputeIndirect {
+            cull: cull_pipelines(device),
+            shadow: Pipeline::from_raw(0, 0),
+        };
+        let job = MeshletJob::prepare(device, &mut up, &plan, (tables, pipelines), &mut keep)
+            .unwrap()
+            .unwrap();
+        up.flush(device).unwrap();
+        run_commands(device, job.compute.as_ref().unwrap().commands());
+        let codes = download(device, job.codes, u64::from(plan.entries) * 4);
+        let bounds = (Vec3::splat(-1.0), Vec3::splat(17.0));
+        let mut seen = std::collections::BTreeSet::new();
+        for item in &plan.items {
+            let [instance, _, first, bucket] = *item;
+            let view = [camera, cascade][plan.buckets[bucket as usize].view as usize];
+            for (m, meshlet) in mesh.meshlets.iter().enumerate() {
+                let world = &models[instance as usize];
+                let at = |margin| view.code_within(world, bounds, meshlet, false, margin);
+                let gpu = CullCode::from_u32(codes[(first as usize) + m] & 0xff).unwrap();
+                assert!(
+                    at(-1e-3) <= gpu && gpu <= at(1e-3),
+                    "instance {instance}, view {view:?}, meshlet {m}: GPU {gpu:?}, CPU {:?}",
+                    at(0.0)
+                );
+                seen.insert((instance, bucket, gpu));
+            }
+        }
+        for (instance, bucket, code) in [
+            (0, 0, CullCode::Cone),
+            (1, 0, CullCode::Frustum),
+            (1, 1, CullCode::Frustum),
+            (2, 0, CullCode::Drawn),
+            (3, 0, CullCode::Drawn),
+            (4, 1, CullCode::Drawn),
+        ] {
+            assert!(
+                seen.contains(&(instance, bucket, code)),
+                "the scene exercises {code:?} for {instance}: {seen:?}"
+            );
+        }
     }
 
     #[test]
-    fn expand_covers_every_entry_in_rows_of_groups() {
-        assert_eq!(expand_groups(1), [1, 1, 1]);
-        assert_eq!(expand_groups(64), [1, 1, 1]);
-        assert_eq!(expand_groups(65), [2, 1, 1]);
+    fn cull_covers_every_entry_in_rows_of_groups() {
+        assert_eq!(cull_groups(1), [1, 1, 1]);
+        assert_eq!(cull_groups(64), [1, 1, 1]);
+        assert_eq!(cull_groups(65), [2, 1, 1]);
         let row = 65_535 * 64;
-        assert_eq!(expand_groups(row), [65_535, 1, 1]);
-        assert_eq!(expand_groups(row + 1), [65_535, 2, 1]);
-        assert_eq!(expand_groups(u32::MAX), [65_535, 1025, 1]);
+        assert_eq!(cull_groups(row), [65_535, 1, 1]);
+        assert_eq!(cull_groups(row + 1), [65_535, 2, 1]);
+        assert_eq!(cull_groups(u32::MAX), [65_535, 1025, 1]);
         for entries in [1, 63, 64, 65, 1000, row - 1, row, row + 1, 3 * row + 7] {
-            let [x, y, _] = expand_groups(entries);
+            let [x, y, _] = cull_groups(entries);
             let threads = u64::from(x) * 64 * u64::from(y);
             assert!(threads >= u64::from(entries), "{entries}");
             assert!(y == 1 || x == ROW_GROUPS, "full rows first: {entries}");

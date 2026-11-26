@@ -172,6 +172,8 @@ pub struct RenderSection {
     pub backend: concordia_rhi_select::BackendChoice,
     /// Draw static meshes with meshlets through the meshlet path (ADR-0100); on by default.
     pub meshlets: bool,
+    /// Cull the meshlet path's instances and meshlets on the GPU (M4 4.4); on by default.
+    pub culling: bool,
 }
 
 impl Default for RenderSection {
@@ -181,6 +183,7 @@ impl Default for RenderSection {
             perf_mode: false,
             backend: Default::default(),
             meshlets: true,
+            culling: true,
         }
     }
 }

@@ -1,7 +1,8 @@
 //! The meshlet path's CPU side (ADR-0100, M4 4.3a): which draws take it, the mesh table, and the
-//! buckets and work items that `meshlet.expand` turns into indirect draws.
+//! buckets and work items that `meshlet.cull` culls and packs into indirect draws (4.4).
 
 use concordia_cluster::{ClusterError, MeshletMesh};
+use concordia_core::math::Vec3;
 
 /// What the GPU needs of a mesh's `MeshletBlob` v1 (decoded and checked once, at upload).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -42,7 +43,7 @@ pub(crate) fn takes_path(
 /// How meshlet buckets reach the rasterizer this frame (ADR-0100).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum Route {
-    /// `meshlet.expand` then one indirect draw per bucket (`meshlet_vs`).
+    /// `meshlet.cull` then one indirect draw per bucket (`meshlet_vs`).
     ComputeIndirect,
     /// One mesh-task draw per bucket (`meshlet_object` and `meshlet_mesh`).
     MeshTasks,
@@ -92,12 +93,21 @@ pub(crate) struct Streams {
     pub(crate) uvs: u32,
 }
 
-/// A mesh-table row (two `uint4`, mirrored by `meshlet.slang`): blob, positions, normals,
-/// tangents; UVs, meshlet count, triangles per meshlet, 0.
-pub(crate) fn mesh_row(blob: u32, streams: Streams, info: MeshletInfo) -> [[u32; 4]; 2] {
+/// A mesh-table row (four `uint4`, mirrored by `meshlet.slang`'s `MESH_ROWS`): blob, positions,
+/// normals, tangents; UVs, meshlet count, triangles per meshlet, 0; the local box's lo and hi
+/// (float bits, for instance culling).
+pub(crate) fn mesh_row(
+    blob: u32,
+    streams: Streams,
+    info: MeshletInfo,
+    (lo, hi): (Vec3, Vec3),
+) -> [[u32; 4]; 4] {
+    let bits = |v: Vec3| [v.x.to_bits(), v.y.to_bits(), v.z.to_bits(), 0];
     [
         [blob, streams.positions, streams.normals, streams.tangents],
         [streams.uvs, info.meshlets, info.max_triangles, 0],
+        bits(lo),
+        bits(hi),
     ]
 }
 
@@ -179,6 +189,12 @@ pub struct TaskPush {
     pub count: u32,
     /// Work items in the buffer.
     pub item_count: u32,
+    /// Cull view table buffer.
+    pub views: u32,
+    /// Cull code buffer (one word per entry).
+    pub codes: u32,
+    /// The bucket's cull word (view, no-cone flag).
+    pub cull: u32,
     /// Shadow cascade (shadow draws only).
     pub cascade: u32,
 }
@@ -193,12 +209,15 @@ concordia_shaders::shader_struct!(TaskPush {
     first,
     count,
     item_count,
+    views,
+    codes,
+    cull,
     cascade
 });
 
 impl TaskPush {
     /// The block's words in layout order (the cascade last).
-    pub(crate) fn words(&self) -> [u32; 10] {
+    pub(crate) fn words(&self) -> [u32; 13] {
         [
             self.frame,
             self.instances,
@@ -209,6 +228,9 @@ impl TaskPush {
             self.first,
             self.count,
             self.item_count,
+            self.views,
+            self.codes,
+            self.cull,
             self.cascade,
         ]
     }
@@ -219,35 +241,78 @@ impl TaskPush {
     }
 }
 
-impl ExpandPush {
+fn words<const N: usize>(values: [u32; N]) -> Vec<u8> {
+    values.iter().flat_map(|w| w.to_le_bytes()).collect()
+}
+
+/// Push constants of `meshlet_cull` (mirrors `meshlet.slang`).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CullPush {
+    /// Work item buffer.
+    pub items: u32,
+    /// Work items.
+    pub item_count: u32,
+    /// Bucket table buffer (first entry, entries, vertices, cull word).
+    pub buckets: u32,
+    /// Cull view table buffer.
+    pub views: u32,
+    /// Instance buffer.
+    pub instances: u32,
+    /// Mesh table buffer.
+    pub meshes: u32,
+    /// Cull code buffer (one word per entry).
+    pub codes: u32,
+    /// Drawn flag buffer (one word per entry; the scan's input).
+    pub drawn: u32,
+    /// Entries in all buckets.
+    pub total: u32,
+}
+
+concordia_shaders::shader_struct!(CullPush {
+    items,
+    item_count,
+    buckets,
+    views,
+    instances,
+    meshes,
+    codes,
+    drawn,
+    total
+});
+
+impl CullPush {
     /// Little-endian bytes for `Command::PushConstants`.
     pub fn bytes(&self) -> Vec<u8> {
         words([
             self.items,
             self.item_count,
             self.buckets,
-            self.entries,
-            self.args,
+            self.views,
+            self.instances,
+            self.meshes,
+            self.codes,
+            self.drawn,
             self.total,
         ])
     }
 }
 
-fn words<const N: usize>(values: [u32; N]) -> Vec<u8> {
-    values.iter().flat_map(|w| w.to_le_bytes()).collect()
-}
-
-/// Push constants of `expand` (mirrors `meshlet.slang`).
+/// Push constants of `meshlet_compact` (mirrors `meshlet.slang`).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct ExpandPush {
+pub struct CompactPush {
     /// Work item buffer.
     pub items: u32,
     /// Work items.
     pub item_count: u32,
-    /// Bucket table buffer (first entry, entries, vertices, 0).
+    /// Bucket table buffer.
     pub buckets: u32,
-    /// Entry buffer.
+    /// Drawn flag buffer.
+    pub drawn: u32,
+    /// The drawn flags' exclusive sums (one more than the entries).
+    pub sums: u32,
+    /// Entry buffer (instance, meshlet), packed per bucket.
     pub entries: u32,
     /// Indirect argument buffer.
     pub args: u32,
@@ -255,14 +320,32 @@ pub struct ExpandPush {
     pub total: u32,
 }
 
-concordia_shaders::shader_struct!(ExpandPush {
+concordia_shaders::shader_struct!(CompactPush {
     items,
     item_count,
     buckets,
+    drawn,
+    sums,
     entries,
     args,
     total
 });
+
+impl CompactPush {
+    /// Little-endian bytes for `Command::PushConstants`.
+    pub fn bytes(&self) -> Vec<u8> {
+        words([
+            self.items,
+            self.item_count,
+            self.buckets,
+            self.drawn,
+            self.sums,
+            self.entries,
+            self.args,
+            self.total,
+        ])
+    }
+}
 
 /// One draw on the meshlet path, in the M1 path's draw order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -276,6 +359,8 @@ pub(crate) struct PathDraw<K> {
     pub(crate) forward: Option<K>,
     /// It casts sun shadows.
     pub(crate) casts: bool,
+    /// Its material draws back faces (no cone test).
+    pub(crate) double_sided: bool,
 }
 
 /// One indirect draw: a contiguous range of entries, one instance per meshlet.
@@ -289,6 +374,24 @@ pub(crate) struct Bucket<K> {
     pub(crate) entries: u32,
     /// Vertices per instance: 3 × the largest triangles per meshlet among its meshes.
     pub(crate) vertices: u32,
+    /// The view it is culled for: 0 the camera, 1 + c shadow cascade c.
+    pub(crate) view: u32,
+    /// Its meshlets may be cone-culled (single-sided forward buckets).
+    pub(crate) cone: bool,
+}
+
+/// A bucket's cull word's flag for buckets without the cone test (`meshlet.slang`).
+pub(crate) const BUCKET_NO_CONE: u32 = 0x100;
+
+impl<K> Bucket<K> {
+    /// The cull word the shaders read: the view, and [`BUCKET_NO_CONE`] when it has no cone test.
+    pub(crate) fn cull_word(&self) -> u32 {
+        debug_assert!(self.view < 256, "a view index fits the word's low byte");
+        match self.cone {
+            true => self.view,
+            false => self.view | BUCKET_NO_CONE,
+        }
+    }
 }
 
 /// A frame's meshlet work.
@@ -302,16 +405,18 @@ pub(crate) struct MeshletPlan<K> {
     pub(crate) entries: u32,
 }
 
-/// Groups `draws` into buckets (forward by key, then shadow casters) and lays out their entries.
-pub(crate) fn plan<K: Copy + Eq>(draws: &[PathDraw<K>]) -> MeshletPlan<K> {
-    let mut keys: Vec<Option<K>> = Vec::new();
+/// Groups `draws` into buckets (forward by key, then the shadow casters once per cascade, for
+/// `cascades` cascades) and lays out their entries.
+pub(crate) fn plan<K: Copy + Eq>(draws: &[PathDraw<K>], cascades: u32) -> MeshletPlan<K> {
+    // (forward key, or the cascade's view for shadows)
+    let mut keys: Vec<Result<K, u32>> = Vec::new();
     for key in draws.iter().filter_map(|d| d.forward) {
-        if !keys.contains(&Some(key)) {
-            keys.push(Some(key));
+        if !keys.contains(&Ok(key)) {
+            keys.push(Ok(key));
         }
     }
     if draws.iter().any(|d| d.casts) {
-        keys.push(None);
+        keys.extend((1..=cascades).map(Err));
     }
     let mut out = MeshletPlan {
         items: Vec::new(),
@@ -319,17 +424,25 @@ pub(crate) fn plan<K: Copy + Eq>(draws: &[PathDraw<K>]) -> MeshletPlan<K> {
         entries: 0,
     };
     for (index, key) in keys.into_iter().enumerate() {
-        let members = draws.iter().filter(|d| match key {
-            Some(k) => d.forward == Some(k),
-            None => d.casts,
-        });
-        out.buckets.push(bucket(
+        let members: Vec<&PathDraw<K>> = draws
+            .iter()
+            .filter(|d| match key {
+                Ok(k) => d.forward == Some(k),
+                Err(_) => d.casts,
+            })
+            .collect();
+        let mut b = bucket(
             &mut out.items,
             &mut out.entries,
             index as u32,
-            key,
-            members,
-        ));
+            key.ok(),
+            members.iter().copied(),
+        );
+        b.view = key.err().unwrap_or(0);
+        // Members of a forward bucket share its pipeline, so they agree on double-sidedness;
+        // cascades test no cone (shadow pipelines cull no faces).
+        b.cone = key.is_ok() && !members.iter().any(|d| d.double_sided);
+        out.buckets.push(b);
     }
     out
 }
@@ -354,11 +467,13 @@ fn bucket<'a, K: Copy + 'a>(
         first,
         entries: *next - first,
         vertices: 3 * max_triangles,
+        view: 0,
+        cone: true,
     }
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use concordia_cluster::{ClusterInput, MeshletBuildSettings, MeshletSize};
     use concordia_core::jobs::JobSystem;
@@ -370,7 +485,7 @@ mod tests {
     };
 
     /// A grid of `n`×`n` quads built into meshlets.
-    fn blob(n: u32) -> Vec<u8> {
+    pub(crate) fn grid_blob(n: u32) -> Vec<u8> {
         let positions: Vec<[f32; 3]> = (0..=n)
             .flat_map(|y| (0..=n).map(move |x| [x as f32, y as f32, 0.0]))
             .collect();
@@ -399,7 +514,7 @@ mod tests {
 
     #[test]
     fn blobs_give_their_counts_and_bad_blobs_are_errors() {
-        let bytes = blob(16);
+        let bytes = grid_blob(16);
         let mesh = MeshletMesh::decode(&bytes).unwrap();
         assert_eq!(
             MeshletInfo::of(&bytes).unwrap(),
@@ -437,16 +552,23 @@ mod tests {
     }
 
     #[test]
-    fn mesh_table_rows_point_at_the_blob_and_streams() {
+    fn mesh_table_rows_carry_the_blob_streams_and_local_bounds() {
         let streams = Streams {
             positions: 11,
             normals: 12,
             tangents: 13,
             uvs: 14,
         };
+        let bounds = (Vec3::new(-1.0, -2.0, -3.0), Vec3::new(4.0, 5.0, 6.0));
+        let f = |v: f32| v.to_bits();
         assert_eq!(
-            mesh_row(10, streams, INFO),
-            [[10, 11, 12, 13], [14, 3, 128, 0]]
+            mesh_row(10, streams, INFO, bounds),
+            [
+                [10, 11, 12, 13],
+                [14, 3, 128, 0],
+                [f(-1.0), f(-2.0), f(-3.0), 0],
+                [f(4.0), f(5.0), f(6.0), 0]
+            ]
         );
     }
 
@@ -460,6 +582,7 @@ mod tests {
             },
             forward,
             casts,
+            double_sided: false,
         }
     }
 
@@ -473,7 +596,7 @@ mod tests {
             draw(3, 4, Some(7), true),
             draw(4, 5, None, true),
         ];
-        let p = plan(&draws);
+        let p = plan(&draws, 1);
         let keys: Vec<_> = p.buckets.iter().map(|b| b.key).collect();
         assert_eq!(
             keys,
@@ -486,7 +609,9 @@ mod tests {
                 key: Some(7),
                 first: 0,
                 entries: 9,
-                vertices: 384
+                vertices: 384,
+                view: 0,
+                cone: true,
             }
         );
         assert_eq!(
@@ -495,7 +620,9 @@ mod tests {
                 key: Some(3),
                 first: 9,
                 entries: 1,
-                vertices: 384
+                vertices: 384,
+                view: 0,
+                cone: true,
             }
         );
         assert_eq!(
@@ -504,7 +631,9 @@ mod tests {
                 key: None,
                 first: 10,
                 entries: 12,
-                vertices: 384
+                vertices: 384,
+                view: 1,
+                cone: false,
             }
         );
         assert_eq!(p.entries, 22);
@@ -526,18 +655,61 @@ mod tests {
     }
 
     #[test]
+    fn plan_lays_out_one_shadow_region_per_cascade() {
+        let draws = [draw(0, 2, Some(7), true), draw(1, 3, None, true)];
+        let p = plan(&draws, 3);
+        let regions: Vec<_> = p
+            .buckets
+            .iter()
+            .map(|b| (b.key, b.view, b.first, b.entries))
+            .collect();
+        assert_eq!(
+            regions,
+            [
+                (Some(7), 0, 0, 2),
+                (None, 1, 2, 5),
+                (None, 2, 7, 5),
+                (None, 3, 12, 5)
+            ]
+        );
+        assert_eq!(p.entries, 17);
+        assert!(
+            plan(&draws, 0).buckets.iter().all(|b| b.key.is_some()),
+            "no cascades, no casters"
+        );
+    }
+
+    #[test]
+    fn double_sided_buckets_skip_the_cone_test() {
+        let mut two = draw(0, 2, Some(7), false);
+        two.double_sided = true;
+        let p = plan(&[two, draw(1, 1, Some(8), false)], 0);
+        assert_eq!(
+            p.buckets.iter().map(|b| b.cone).collect::<Vec<_>>(),
+            [false, true]
+        );
+        assert_eq!(p.buckets[0].cull_word(), 0x100);
+        let shadow = plan(&[draw(0, 1, None, true)], 2);
+        assert_eq!(
+            shadow.buckets[1].cull_word(),
+            2 | BUCKET_NO_CONE,
+            "cascade views by index, no cone"
+        );
+    }
+
+    #[test]
     fn vertices_cover_the_largest_meshlets_in_a_bucket() {
         let mut small = draw(1, 2, Some(1), false);
         small.info.max_triangles = 64;
-        let p = plan(&[small]);
+        let p = plan(&[small], 0);
         assert_eq!(p.buckets[0].vertices, 192);
-        let p = plan(&[small, draw(0, 1, Some(1), false)]);
+        let p = plan(&[small, draw(0, 1, Some(1), false)], 0);
         assert_eq!(p.buckets[0].vertices, 384);
     }
 
     #[test]
     fn nothing_to_draw_plans_nothing() {
-        let p = plan(&[draw(0, 2, None, false)]);
+        let p = plan(&[draw(0, 2, None, false)], 1);
         assert_eq!((p.items.len(), p.buckets.len(), p.entries), (0, 0, 0));
     }
 
@@ -641,12 +813,13 @@ mod tests {
 
         #[test]
         fn work_items_cover_every_meshlet_once(
-            raw in prop::collection::vec((1u32..40, prop::option::of(0u32..4), any::<bool>()), 0..40)
+            raw in prop::collection::vec((1u32..40, prop::option::of(0u32..4), any::<bool>()), 0..40),
+            cascades in 0u32..4,
         ) {
             let draws: Vec<_> = raw.iter().enumerate()
                 .map(|(i, (m, k, c))| draw(i as u32, *m, *k, *c))
                 .collect();
-            let p = plan(&draws);
+            let p = plan(&draws, cascades);
             // Expand every item into (bucket, instance, meshlet) and every bucket's range.
             let mut seen = std::collections::BTreeMap::new();
             for item in &p.items {
@@ -663,14 +836,14 @@ mod tests {
             prop_assert!(seen.keys().copied().eq(0..p.entries));
             for (b, bucket) in p.buckets.iter().enumerate() {
                 let want: u32 = draws.iter()
-                    .filter(|d| match bucket.key { Some(k) => d.forward == Some(k), None => d.casts })
+                    .filter(|d| match bucket.key { Some(k) => d.forward == Some(k), None => d.casts && cascades > 0 })
                     .map(|d| d.info.meshlets)
                     .sum();
                 prop_assert_eq!(bucket.entries, want, "bucket {}", b);
             }
             let forward: u32 = draws.iter().filter(|d| d.forward.is_some()).map(|d| d.info.meshlets).sum();
             let shadow: u32 = draws.iter().filter(|d| d.casts).map(|d| d.info.meshlets).sum();
-            prop_assert_eq!(p.entries, forward + shadow);
+            prop_assert_eq!(p.entries, forward + shadow * cascades);
         }
     }
 }

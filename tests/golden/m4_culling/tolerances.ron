@@ -1,0 +1,17 @@
+Tolerances(
+    culling: {
+        "cone_views": (
+            mean: 0.001,
+            p99: 0.05,
+        ),
+        "culling_row": (
+            mean: 0.001,
+            p99: 0.05,
+        ),
+    },
+    default: (
+        mean: 0.01,
+        p99: 0.25,
+    ),
+    goldens: {},
+)
