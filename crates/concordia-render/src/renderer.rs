@@ -2391,6 +2391,7 @@ fn add_tonemap(
                     store: StoreOp::Store,
                 }],
                 depth: None,
+                extent: None,
             }));
             ctx.commands.push(Command::SetPipeline(pipeline));
             let mut push = index.to_le_bytes().to_vec();

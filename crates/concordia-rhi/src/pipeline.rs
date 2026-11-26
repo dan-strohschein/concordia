@@ -138,6 +138,22 @@ pub struct GraphicsPipelineDesc {
     pub label: String,
 }
 
+/// A pipeline's targets: 0..=8 colours and an optional depth, and at least one of them unless a
+/// fragment stage writes storage instead (attachment-less passes, M4 4.7a).
+pub fn pipeline_targets(
+    colors: &[Format],
+    depth: Option<&DepthState>,
+    fragment: bool,
+) -> Result<(), String> {
+    if colors.len() > 8 {
+        return Err(format!("{} color targets; at most 8", colors.len()));
+    }
+    match (colors.is_empty() && depth.is_none(), fragment) {
+        (true, false) => Err("needs a color or depth target, or a fragment stage".into()),
+        _ => Ok(()),
+    }
+}
+
 /// Most threads in one object or mesh threadgroup on every backend (Vulkan's guaranteed minimum).
 pub const MAX_MESH_STAGE_THREADS: u32 = 128;
 /// Largest object-to-mesh payload in bytes on every backend (Metal's limit, Vulkan's minimum).
@@ -200,11 +216,12 @@ impl MeshPipelineDesc {
         self.supported(caps)?;
         let invalid =
             |why: String| RhiError::invalid("mesh pipeline", format!("{:?}: {why}", self.label));
-        if self.color_formats.is_empty() && self.depth.is_none() || self.color_formats.len() > 8 {
-            return Err(invalid(
-                "needs 1..=8 color targets or a depth target".into(),
-            ));
-        }
+        pipeline_targets(
+            &self.color_formats,
+            self.depth.as_ref(),
+            self.fragment.is_some(),
+        )
+        .map_err(invalid)?;
         stage_threads("mesh", self.mesh.threads_per_group).map_err(invalid)?;
         outputs(&self.mesh, caps).map_err(invalid)?;
         if let Some(object) = &self.object {

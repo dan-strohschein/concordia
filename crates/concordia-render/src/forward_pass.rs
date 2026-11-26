@@ -329,6 +329,7 @@ fn pass_desc(ctx: &PassContext<'_>, part: Part, t: Targets, clear: [f32; 4]) -> 
                 _ => StoreOp::DontCare,
             },
         }),
+        extent: None,
     }
 }
 

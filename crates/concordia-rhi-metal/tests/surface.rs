@@ -55,6 +55,7 @@ fn clear(texture: concordia_rhi::Texture) -> CommandList {
             store: StoreOp::Store,
         }],
         depth: None,
+        extent: None,
     }))
     .push(Command::EndRenderPass);
     list

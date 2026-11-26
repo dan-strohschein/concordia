@@ -97,6 +97,7 @@ fn frame(device: &dyn Device) -> Frame {
             store: StoreOp::Store,
             resolve: None,
         }),
+        extent: None,
     }))
     .push(Command::EndRenderPass);
     run(device, &list);

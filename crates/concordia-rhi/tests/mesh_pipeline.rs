@@ -21,6 +21,8 @@ fn caps() -> RhiCaps {
         hw_ray_tracing: false,
         metalfx_temporal: false,
         depth_resolve_min: false,
+        fragment_atomics: false,
+        max_render_extent: 0,
         timestamp_granularity: TimestampGranularity::StageBoundary,
         max_mesh_output_vertices: 256,
         max_mesh_output_primitives: 512,
@@ -121,10 +123,17 @@ fn mesh_stage_threads_and_payload_stay_within_portable_limits() {
 }
 
 #[test]
-fn mesh_pipelines_need_targets() {
+fn mesh_pipelines_need_targets_or_a_fragment_stage() {
     let mut d = desc();
     d.color_formats.clear();
-    invalid(d.validate(&caps()), "no targets");
+    assert_eq!(
+        d.validate(&caps()),
+        Ok(()),
+        "fragments write storage (M4 4.7a)"
+    );
+    d.fragment = None;
+    invalid(d.validate(&caps()), "no targets and no fragment stage");
+    d.fragment = Some(source());
     d.color_formats = vec![Format::Rgba8Unorm; 9];
     invalid(d.validate(&caps()), "nine colour targets");
 }
@@ -162,6 +171,7 @@ fn begin() -> Command {
             store: StoreOp::Store,
         }],
         depth: None,
+        extent: None,
     })
 }
 

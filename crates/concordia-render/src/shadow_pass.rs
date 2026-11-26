@@ -167,6 +167,7 @@ pub(crate) fn add_shadow_passes(graph: &mut RenderGraph, job: ShadowJob) -> Vec<
                         load: LoadOp::Clear(ClearValue::Depth(0.0)),
                         store: StoreOp::Store,
                     }),
+                    extent: None,
                 }));
                 ctx.commands.push(Command::SetPipeline(pipeline));
                 for draw in casters.iter() {

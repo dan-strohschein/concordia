@@ -88,6 +88,8 @@ pub struct RenderPassDesc {
     pub colors: Vec<ColorAttachment>,
     /// Optional depth attachment.
     pub depth: Option<DepthAttachment>,
+    /// Width and height of a pass with no attachments (exactly then; ≤ `RhiCaps::max_render_extent`).
+    pub extent: Option<[std::num::NonZeroU32; 2]>,
 }
 
 /// Bytes of one [`Command::DrawIndirect`] record: vertex count, instance count, first vertex, first
@@ -391,8 +393,15 @@ impl Structure {
             Command::BeginRenderPass(desc) if self.in_pass => {
                 Err(format!("nested render pass {desc:?}"))
             }
-            Command::BeginRenderPass(desc) if desc.colors.is_empty() && desc.depth.is_none() => {
-                Err("render pass without attachments".into())
+            Command::BeginRenderPass(desc)
+                if desc.colors.is_empty() && desc.depth.is_none() && desc.extent.is_none() =>
+            {
+                Err("render pass without attachments needs an extent".into())
+            }
+            Command::BeginRenderPass(desc)
+                if desc.extent.is_some() && (!desc.colors.is_empty() || desc.depth.is_some()) =>
+            {
+                Err("an extent is only for render passes without attachments".into())
             }
             Command::BeginRenderPass(desc) if desc.colors.len() > 8 => {
                 Err("more than 8 color attachments".into())

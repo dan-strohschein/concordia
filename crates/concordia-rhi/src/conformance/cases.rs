@@ -41,6 +41,7 @@ pub(super) fn pass(
             },
         }],
         depth,
+        extent: None,
     })
 }
 

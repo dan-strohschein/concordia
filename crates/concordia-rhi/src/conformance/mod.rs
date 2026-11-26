@@ -1,6 +1,7 @@
 //! The backend-agnostic conformance suite. Each backend instantiates it with
 //! [`conformance_tests!`](crate::conformance_tests) in its `tests/conformance.rs`.
 
+mod attachmentless;
 mod cases;
 mod depth;
 mod indirect;
@@ -11,6 +12,7 @@ mod targets;
 mod temporal;
 mod util;
 
+pub use attachmentless::*;
 pub use cases::*;
 pub use depth::*;
 pub use indirect::*;
@@ -119,7 +121,8 @@ macro_rules! conformance_tests {
             rg16_float_renders_and_reads_back,
             write_mask_leaves_a_target_untouched,
             depth_resolve_min_keeps_the_farthest_sample,
-            temporal_scaler_upscales_a_frame
+            temporal_scaler_upscales_a_frame,
+            attachmentless_pass_writes_storage_from_fragments
         );
     };
     (@cases $make:expr, $golden:expr, $shaders:expr, $finish:expr; $($name:ident),+) => {$(

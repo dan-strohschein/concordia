@@ -111,6 +111,7 @@ fn command_list_validation_catches_structure_errors() {
             store: StoreOp::Store,
         }],
         depth: None,
+        extent: None,
     };
     let mut ok = CommandList::new("ok");
     ok.push(Command::BeginRenderPass(pass.clone()));

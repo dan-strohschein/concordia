@@ -15,6 +15,8 @@ fn metal_caps() -> RhiCaps {
         hw_ray_tracing: true,
         metalfx_temporal: true,
         depth_resolve_min: true,
+        fragment_atomics: true,
+        max_render_extent: 16_384,
         timestamp_granularity: TimestampGranularity::StageBoundary,
         max_mesh_output_vertices: 256,
         max_mesh_output_primitives: 512,
@@ -163,6 +165,32 @@ fn masking_depth_resolve_min_hides_it() {
     json.as_object_mut().unwrap().remove("depth_resolve_min");
     let old: RhiCaps = serde_json::from_value(json).unwrap();
     assert!(!old.depth_resolve_min);
+}
+
+/// Masking fragment atomics or attachment-less passes (M4 4.7a) lets one machine test the CSM
+/// fallback; caps recorded before 4.7a read as having neither.
+#[test]
+fn masking_fragment_atomics_and_attachmentless_passes_hides_them() {
+    let caps = metal_caps();
+    let atomics = caps.masked(&CapsMask {
+        fragment_atomics: true,
+        ..CapsMask::default()
+    });
+    assert!(!atomics.fragment_atomics);
+    assert_eq!(atomics.max_render_extent, caps.max_render_extent);
+    let passes = caps.masked(&CapsMask {
+        attachmentless_passes: true,
+        ..CapsMask::default()
+    });
+    assert_eq!(passes.max_render_extent, 0);
+    assert!(passes.fragment_atomics);
+    let mut json = serde_json::to_value(&caps).unwrap();
+    let fields = json.as_object_mut().unwrap();
+    fields.remove("fragment_atomics");
+    fields.remove("max_render_extent");
+    let old: RhiCaps = serde_json::from_value(json).unwrap();
+    assert!(!old.fragment_atomics);
+    assert_eq!(old.max_render_extent, 0);
 }
 
 #[test]

@@ -69,6 +69,17 @@ pub fn caps_from_record(record: &ProbeRecord) -> RhiCaps {
             .families
             .iter()
             .any(|f| f == "mac2" || f.starts_with("apple")),
+        // Device-memory atomics in every function type on Metal 2+; render targets up to 16384
+        // pixels on Apple3+ and Mac2 (Apple's feature-set table).
+        fragment_atomics: true,
+        max_render_extent: match record
+            .families
+            .iter()
+            .any(|f| f == "mac2" || f.starts_with("apple"))
+        {
+            true => 16_384,
+            false => 8_192,
+        },
         timestamp_granularity: timestamp_granularity(record),
         max_mesh_output_vertices: vertices,
         max_mesh_output_primitives: primitives,

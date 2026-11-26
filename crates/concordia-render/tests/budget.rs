@@ -17,6 +17,8 @@ fn caps(backend: Backend) -> RhiCaps {
         hw_ray_tracing: false,
         metalfx_temporal: false,
         depth_resolve_min: false,
+        fragment_atomics: false,
+        max_render_extent: 0,
         timestamp_granularity: TimestampGranularity::CommandBuffer,
         max_mesh_output_vertices: 0,
         max_mesh_output_primitives: 0,
