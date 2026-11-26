@@ -16,4 +16,6 @@ Developer scripts (`doctor.sh`), crate templates, and exporter plugins (M5).
   two builds at once (memory-bound). Run the on-demand `vulkan` workflow at the same point.
 - `just mutants <file.json> [workers]` (`mutants/run.py`; a milestone's end only): mutation checks in parallel git
   worktrees under `target/mutants/` (2 workers by default, sharing `CARGO_BUILD_JOBS`); each test
-  selection runs unmutated first. `just clean-builds` removes the worktrees' builds.
+  selection runs unmutated first. A phase mutates only the code it changed; a milestone's end runs
+  the full sweep. `just clean-builds` (only when free disk is under 25 GB) removes the worktrees'
+  builds with the rest.
