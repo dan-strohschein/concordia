@@ -41,7 +41,7 @@ fn shape(s: &SdfShape, p: [f32; 3]) -> f32 {
 }
 
 /// A polynomial smooth minimum (Quílez); `k = 0` is the plain minimum.
-fn smooth_min(a: f32, b: f32, k: f32) -> f32 {
+pub(crate) fn smooth_min(a: f32, b: f32, k: f32) -> f32 {
     if k <= 0.0 {
         return a.min(b);
     }
@@ -88,22 +88,60 @@ fn check(shapes: &[SdfShape], smooth: f32, cell: f32) -> Result<([f32; 3], [usiz
             format!("{cell} is coarser than a tenth of the shapes' extent ({extent})"),
         ));
     }
-    let margin = smooth + 2.0 * cell;
-    let origin = lo.map(|c| c - margin);
-    let counts: [usize; 3] =
-        std::array::from_fn(|i| ((hi[i] - lo[i] + 2.0 * margin) / cell).ceil() as usize + 1);
-    if counts.iter().any(|&n| n > MAX_POINTS) {
-        return Err(GenError::invalid(
-            "cell",
-            format!("{cell} needs more than {MAX_POINTS} grid points per axis"),
-        ));
-    }
-    Ok((origin, counts))
+    let grid = Grid::around(lo, hi, smooth + 2.0 * cell, cell)?;
+    Ok((grid.origin, grid.counts))
 }
 
 /// The union of `shapes` (smoothed over `smooth`), meshed at `cell`.
 pub(crate) fn sdf(shapes: &[SdfShape], smooth: f32, cell: f32) -> Result<MeshData, GenError> {
-    let (origin, [nx, ny, nz]) = check(shapes, smooth, cell)?;
+    let (origin, counts) = check(shapes, smooth, cell)?;
+    Ok(surface_nets(
+        &|p| distance(shapes, smooth, p),
+        &Grid {
+            origin,
+            counts,
+            cell,
+        },
+    ))
+}
+
+/// A sampling grid: `counts` points per axis, `cell` apart, from `origin`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Grid {
+    pub origin: [f32; 3],
+    pub counts: [usize; 3],
+    pub cell: f32,
+}
+
+impl Grid {
+    /// The grid around the box `lo..hi` grown by `margin`, `cell` apart; at most
+    /// `MAX_POINTS` per axis.
+    pub fn around(lo: [f32; 3], hi: [f32; 3], margin: f32, cell: f32) -> Result<Self, GenError> {
+        let origin = lo.map(|c| c - margin);
+        let counts: [usize; 3] =
+            std::array::from_fn(|i| ((hi[i] - lo[i] + 2.0 * margin) / cell).ceil() as usize + 1);
+        if counts.iter().any(|&n| n > MAX_POINTS) {
+            return Err(GenError::invalid(
+                "cell",
+                format!("{cell} needs more than {MAX_POINTS} grid points per axis"),
+            ));
+        }
+        Ok(Self {
+            origin,
+            counts,
+            cell,
+        })
+    }
+}
+
+/// The surface where `distance` is zero (negative inside), sampled on `grid` by surface nets;
+/// normals from the distance's gradient, uvs planar over XZ.
+pub(crate) fn surface_nets(distance: &dyn Fn([f32; 3]) -> f32, grid: &Grid) -> MeshData {
+    let Grid {
+        origin,
+        counts: [nx, ny, nz],
+        cell,
+    } = *grid;
     let at = |i: usize, j: usize, k: usize| {
         [
             origin[0] + i as f32 * cell,
@@ -116,13 +154,14 @@ pub(crate) fn sdf(shapes: &[SdfShape], smooth: f32, cell: f32) -> Result<MeshDat
     for k in 0..nz {
         for j in 0..ny {
             for i in 0..nx {
-                field[index(i, j, k)] = distance(shapes, smooth, at(i, j, k));
+                field[index(i, j, k)] = distance(at(i, j, k));
             }
         }
     }
+    resolve_ambiguous_faces(&mut field, grid.counts);
     let gradient = |p: [f32; 3]| {
         let e = cell * 0.5;
-        let d = |o: [f32; 3]| distance(shapes, smooth, [p[0] + o[0], p[1] + o[1], p[2] + o[2]]);
+        let d = |o: [f32; 3]| distance([p[0] + o[0], p[1] + o[1], p[2] + o[2]]);
         normalize([
             d([e, 0.0, 0.0]) - d([-e, 0.0, 0.0]),
             d([0.0, e, 0.0]) - d([0.0, -e, 0.0]),
@@ -158,10 +197,7 @@ pub(crate) fn sdf(shapes: &[SdfShape], smooth: f32, cell: f32) -> Result<MeshDat
     for k in 0..nz - 1 {
         for j in 0..ny - 1 {
             for i in 0..nx - 1 {
-                let v: Vec<f32> = corners
-                    .iter()
-                    .map(|&(a, b2, c)| field[index(i + a, j + b2, k + c)])
-                    .collect();
+                let v: [f32; 8] = corners.map(|(a, b2, c)| field[index(i + a, j + b2, k + c)]);
                 if v.iter().all(|d| *d < 0.0) || v.iter().all(|d| *d >= 0.0) {
                     continue;
                 }
@@ -188,10 +224,15 @@ pub(crate) fn sdf(shapes: &[SdfShape], smooth: f32, cell: f32) -> Result<MeshDat
             }
         }
     }
-    let quad = |b: &mut Builder, ids: [(usize, usize, usize); 4]| {
+    // `ids` run counter-clockwise seen from the edge's +axis end; `outward` when that end is
+    // outside, else the quad turns over. Winding follows the signs, not the noisy normals.
+    let quad = |b: &mut Builder, ids: [(usize, usize, usize); 4], outward: bool| {
         let v: Vec<u32> = ids.iter().filter_map(|c| cells.get(c).copied()).collect();
         if let [a, b2, c, d] = v[..] {
-            b.quad(a, b2, c, d);
+            match outward {
+                true => b.wound_triangles(&[a, b2, c, a, c, d]),
+                false => b.wound_triangles(&[a, c, b2, a, d, c]),
+            }
         }
     };
     for k in 1..nz - 1 {
@@ -202,22 +243,95 @@ pub(crate) fn sdf(shapes: &[SdfShape], smooth: f32, cell: f32) -> Result<MeshDat
                     quad(
                         &mut b,
                         [(i, j - 1, k - 1), (i, j, k - 1), (i, j, k), (i, j - 1, k)],
+                        here,
                     );
                 }
                 if j + 1 < ny && here != (field[index(i, j + 1, k)] < 0.0) {
                     quad(
                         &mut b,
                         [(i - 1, j, k - 1), (i, j, k - 1), (i, j, k), (i - 1, j, k)],
+                        !here,
                     );
                 }
                 if k + 1 < nz && here != (field[index(i, j, k + 1)] < 0.0) {
                     quad(
                         &mut b,
                         [(i - 1, j - 1, k), (i, j - 1, k), (i, j, k), (i - 1, j, k)],
+                        here,
                     );
                 }
             }
         }
     }
-    Ok(b.finish())
+    b.finish()
+}
+
+/// Passes of [`resolve_ambiguous_faces`] at most.
+const MAX_RESOLVE_PASSES: usize = 16;
+
+/// Removes ambiguous faces (four corners alternating inside and outside), where surface nets
+/// would join two cells by an edge four times: the corner nearest the surface (smallest |d|)
+/// moves to the other side, just past zero. Repeats until no face is ambiguous.
+fn resolve_ambiguous_faces(field: &mut [f32], [nx, ny, nz]: [usize; 3]) {
+    let index = |i: usize, j: usize, k: usize| (k * ny + j) * nx + i;
+    for _ in 0..MAX_RESOLVE_PASSES {
+        let mut changed = false;
+        for k in 0..nz {
+            for j in 0..ny {
+                for i in 0..nx {
+                    let o = index(i, j, k);
+                    let faces = [
+                        (i + 1 < nx && j + 1 < ny).then(|| {
+                            [
+                                o,
+                                index(i + 1, j, k),
+                                index(i + 1, j + 1, k),
+                                index(i, j + 1, k),
+                            ]
+                        }),
+                        (j + 1 < ny && k + 1 < nz).then(|| {
+                            [
+                                o,
+                                index(i, j + 1, k),
+                                index(i, j + 1, k + 1),
+                                index(i, j, k + 1),
+                            ]
+                        }),
+                        (i + 1 < nx && k + 1 < nz).then(|| {
+                            [
+                                o,
+                                index(i + 1, j, k),
+                                index(i + 1, j, k + 1),
+                                index(i, j, k + 1),
+                            ]
+                        }),
+                    ];
+                    for face in faces.into_iter().flatten() {
+                        changed |= resolve_face(field, face);
+                    }
+                }
+            }
+        }
+        if !changed {
+            return;
+        }
+    }
+}
+
+/// Resolves one face (corners in order around it); true if it was ambiguous.
+fn resolve_face(field: &mut [f32], face: [usize; 4]) -> bool {
+    let inside = face.map(|c| field[c] < 0.0);
+    let ambiguous = inside[0] == inside[2] && inside[1] == inside[3] && inside[0] != inside[1];
+    if !ambiguous {
+        return false;
+    }
+    let nearest = face
+        .into_iter()
+        .min_by(|&a, &b| field[a].abs().total_cmp(&field[b].abs()).then(a.cmp(&b)))
+        .unwrap_or(face[0]);
+    field[nearest] = match field[nearest] < 0.0 {
+        true => 0.0,
+        false => -f32::MIN_POSITIVE,
+    };
+    true
 }

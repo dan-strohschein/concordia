@@ -98,3 +98,70 @@ fn runner_measures_each_pass_and_judges_on_the_reference() {
         there.report.notes
     );
 }
+
+/// Copies `from` into `to`, leaving out the derived data (`.concordia/`).
+fn copy_project(from: &Path, to: &Path) {
+    for entry in std::fs::read_dir(from).unwrap().flatten() {
+        let (src, dst) = (entry.path(), to.join(entry.file_name()));
+        if entry.file_name() == ".concordia" {
+            continue;
+        }
+        if src.is_dir() {
+            std::fs::create_dir_all(&dst).unwrap();
+            copy_project(&src, &dst);
+        } else {
+            std::fs::copy(&src, &dst).unwrap();
+        }
+    }
+}
+
+/// A generated file left out of the project (only its sidecar's recipe is there) is made again
+/// before the scene opens (M4 4.4c), so a perf scene can use generated content kept out of git.
+#[test]
+fn runner_restores_generated_assets_before_opening() {
+    let Ok(caps) = concordia_rhi_metal::probe() else {
+        assert!(!concordia_testkit::gpu_required(), "no Metal device");
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("project");
+    let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+    copy_project(&examples.join("m1-physics-stack"), &project);
+    let manifest = project.join("concordia.toml");
+    let text = std::fs::read_to_string(&manifest).unwrap();
+    std::fs::write(&manifest, format!("{text}\n[gen]\n")).unwrap();
+    let rock = "assets/rock.glb";
+    let loaded = concordia_app::Project::load(&project).unwrap();
+    let mut engine = concordia_api::Engine::new(loaded.engine_config().unwrap()).unwrap();
+    let session = engine.open_session();
+    engine
+        .call(
+            session,
+            "gen.run",
+            serde_json::json!({"provider": "mesh", "request": {"Box": {"size": [1.0, 1.0, 1.0]}},
+                "path": rock, "actor": "tool:test"}),
+        )
+        .unwrap();
+    drop(engine);
+    let bytes = std::fs::read(project.join(rock)).unwrap();
+    std::fs::remove_file(project.join(rock)).unwrap();
+    let perf = dir.path().join("perf");
+    let scene = perf_folder(&perf, &SystemProbe.host(&caps));
+    let text = std::fs::read_to_string(&scene).unwrap();
+    let original = examples.join("m1-physics-stack").canonicalize().unwrap();
+    let text = text.replace(
+        &original.display().to_string(),
+        &project.display().to_string(),
+    );
+    std::fs::write(&scene, text).unwrap();
+    let options = RunOptions {
+        warmup_frames: Some(0),
+        frames: Some(1),
+    };
+    run(&scene, &options, &SystemProbe).expect("a run");
+    let restored = std::fs::read(project.join(rock)).ok();
+    assert!(
+        restored == Some(bytes),
+        "{rock} was not restored before the run"
+    );
+}

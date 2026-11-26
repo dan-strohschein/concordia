@@ -14,6 +14,9 @@ pub enum GenError {
     /// The output could not be written.
     #[error("{0}")]
     Output(String),
+    /// A generated file could not be restored from its recipe.
+    #[error("{0}")]
+    Restore(String),
 }
 
 impl GenError {

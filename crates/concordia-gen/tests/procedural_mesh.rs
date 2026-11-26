@@ -15,6 +15,15 @@ fn weld(p: [f32; 3]) -> [i64; 3] {
 /// opposite directions (closed and consistently wound), and the signed volume is positive
 /// (outward), close to `volume`.
 fn assert_closed(name: &str, m: &MeshData, volume: f64, tolerance: f64) {
+    let signed = closed_volume(name, m);
+    assert!(
+        (signed - volume).abs() <= tolerance * volume,
+        "{name}: volume {signed}, want {volume}"
+    );
+}
+
+/// Checks that `m` is closed and consistently wound (as [`assert_closed`]); its signed volume.
+fn closed_volume(name: &str, m: &MeshData) -> f64 {
     let mut edges: BTreeMap<([i64; 3], [i64; 3]), i32> = BTreeMap::new();
     let mut signed = 0.0f64;
     for t in m.indices.chunks(3) {
@@ -39,10 +48,7 @@ fn assert_closed(name: &str, m: &MeshData, volume: f64, tolerance: f64) {
             "{name}: edge {u:?}->{v:?} has no twin"
         );
     }
-    assert!(
-        (signed - volume).abs() <= tolerance * volume,
-        "{name}: volume {signed}, want {volume}"
-    );
+    signed
 }
 
 fn bounds(m: &MeshData) -> ([f32; 3], [f32; 3]) {
@@ -303,5 +309,177 @@ fn bad_requests_are_refused_naming_the_field() {
     for (req, field) in bad {
         let err = build(&req, 0).unwrap_err().to_string();
         assert!(err.contains(field), "{req:?}: {err}");
+    }
+}
+
+/// BLAKE3 of the GLB for `request` and `seed`.
+fn glb_hash(request: &MeshRequest, seed: u64) -> String {
+    let bytes = concordia_gen::glb::write_glb(&build(request, seed).unwrap()).unwrap();
+    blake3::hash(&bytes).to_hex().to_string()
+}
+
+/// The shared surface-nets mesher and the generalized noise (M4 4.4c) give the same bytes as
+/// before for every existing seeded or meshed request (hashes pinned from 3.7a's code).
+#[test]
+fn existing_sdf_and_heightfield_bytes_are_unchanged() {
+    let sdf = MeshRequest::Sdf {
+        shapes: vec![
+            SdfShape::Sphere {
+                center: [0.0, 0.0, 0.0],
+                radius: 1.0,
+            },
+            SdfShape::Box {
+                center: [0.8, 0.3, 0.0],
+                half: [0.5, 0.4, 0.6],
+            },
+        ],
+        smooth: 0.3,
+        cell: 0.05,
+    };
+    let ground = MeshRequest::Heightfield {
+        size: [12.0, 9.0],
+        cells: [40, 30],
+        amplitude: 1.5,
+        frequency: 0.7,
+    };
+    assert_eq!(
+        glb_hash(&sdf, 0),
+        "9d998622ec1fc8effdf58fdc806b41935bc7e1e4921dc0d79894f865617c84a5"
+    );
+    assert_eq!(
+        glb_hash(&ground, 11),
+        "0d1c5a01d5db15b7ebe2bb25a538ad637d1b5d4e428a94fa0519671939627a4f"
+    );
+}
+
+fn rock(detail: u32) -> MeshRequest {
+    MeshRequest::Rock {
+        size: [3.0, 2.0, 2.4],
+        detail,
+        roughness: 0.2,
+        strata: 0.4,
+        lumps: 4,
+    }
+}
+
+/// Seeded SDF rocks (M4 4.4c) are closed and wound outward, whatever their lumps, noise and
+/// strata; their volume is positive and below their box's.
+#[test]
+fn rock_is_watertight_with_outward_winding() {
+    for seed in [1, 2, 3] {
+        for (name, request) in [
+            ("rock", rock(48)),
+            (
+                "smooth",
+                MeshRequest::Rock {
+                    size: [1.0, 1.0, 1.0],
+                    detail: 40,
+                    roughness: 0.0,
+                    strata: 0.0,
+                    lumps: 1,
+                },
+            ),
+        ] {
+            let m = build(&request, seed).unwrap_or_else(|e| panic!("{name} {seed}: {e}"));
+            assert_eq!(m.normals.len(), m.positions.len());
+            let volume = closed_volume(&format!("{name} {seed}"), &m);
+            assert!(
+                volume > 0.0 && volume < 3.0 * 2.0 * 2.4,
+                "{name} {seed}: {volume}"
+            );
+        }
+    }
+}
+
+/// Twice the detail is about four times the triangles (a surface, not a volume); the seed
+/// changes the rock and the same seed repeats it.
+#[test]
+fn rock_triangle_counts_follow_detail() {
+    let tris = |detail| build(&rock(detail), 5).unwrap().indices.len() / 3;
+    let (coarse, fine) = (tris(40), tris(80));
+    let ratio = fine as f64 / coarse as f64;
+    assert!((3.0..=5.0).contains(&ratio), "{coarse} → {fine}: {ratio}");
+    assert_eq!(glb_hash(&rock(40), 5), glb_hash(&rock(40), 5));
+    assert_ne!(glb_hash(&rock(40), 5), glb_hash(&rock(40), 6));
+}
+
+/// Rock requests name the bad field: sizes positive, detail 8–250 cells, roughness 0–0.5,
+/// strata ≥ 0, lumps 1–8.
+#[test]
+fn rock_requests_are_validated() {
+    let with = |f: &dyn Fn(&mut MeshRequest)| {
+        let mut r = rock(40);
+        f(&mut r);
+        r
+    };
+    let cases: Vec<(MeshRequest, &str)> = vec![
+        (
+            with(&|r| {
+                if let MeshRequest::Rock { size, .. } = r {
+                    size[1] = 0.0
+                }
+            }),
+            "size",
+        ),
+        (
+            with(&|r| {
+                if let MeshRequest::Rock { detail, .. } = r {
+                    *detail = 4
+                }
+            }),
+            "detail",
+        ),
+        (
+            with(&|r| {
+                if let MeshRequest::Rock { detail, .. } = r {
+                    *detail = 251
+                }
+            }),
+            "detail",
+        ),
+        (
+            with(&|r| {
+                if let MeshRequest::Rock { roughness, .. } = r {
+                    *roughness = 0.6
+                }
+            }),
+            "roughness",
+        ),
+        (
+            with(&|r| {
+                if let MeshRequest::Rock { roughness, .. } = r {
+                    *roughness = f32::NAN
+                }
+            }),
+            "roughness",
+        ),
+        (
+            with(&|r| {
+                if let MeshRequest::Rock { strata, .. } = r {
+                    *strata = -1.0
+                }
+            }),
+            "strata",
+        ),
+        (
+            with(&|r| {
+                if let MeshRequest::Rock { lumps, .. } = r {
+                    *lumps = 0
+                }
+            }),
+            "lumps",
+        ),
+        (
+            with(&|r| {
+                if let MeshRequest::Rock { lumps, .. } = r {
+                    *lumps = 9
+                }
+            }),
+            "lumps",
+        ),
+    ];
+    for (req, field) in cases {
+        let err = build(&req, 0).unwrap_err().to_string();
+        assert!(err.starts_with(field), "{req:?}: {err}");
     }
 }

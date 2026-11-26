@@ -147,3 +147,8 @@ opt-level = 2
 
 [profile.dev.package.recast-sys]
 opt-level = 2
+
+# The canyon's generators (M4 4.4c) mesh 256³ distance grids; unoptimized, restoring the example
+# for its tests would take minutes.
+[profile.dev.package.concordia-gen]
+opt-level = 2

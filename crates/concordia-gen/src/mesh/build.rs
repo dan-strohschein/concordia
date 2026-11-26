@@ -61,6 +61,13 @@ impl Builder {
         }
     }
 
+    /// Triangles already counter-clockwise from outside, kept as given whatever the vertex
+    /// normals say (three indices each).
+    pub fn wound_triangles(&mut self, indices: &[u32]) {
+        debug_assert!(indices.len().is_multiple_of(3));
+        self.indices.extend_from_slice(indices);
+    }
+
     /// Two triangles over the quad `a b c d` (in order around it).
     pub fn quad(&mut self, a: u32, b: u32, c: u32, d: u32) {
         self.triangle(a, b, c);

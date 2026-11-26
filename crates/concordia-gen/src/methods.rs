@@ -105,17 +105,7 @@ impl Method for GenRun {
     type Result = GenRunResult;
 
     fn call(engine: &mut Engine, ctx: &CallCtx, p: GenRunParams) -> Result<GenRunResult, ApiError> {
-        let actor = p
-            .actor
-            .clone()
-            .or_else(|| ctx.actor.clone())
-            .ok_or_else(|| {
-                ApiError::new(
-                    ApiErrorKind::InvalidParams,
-                    "gen.run writes a file, so it needs an actor",
-                )
-                .at("/actor")
-            })?;
+        let actor = actor_for("gen.run writes a file", p.actor.clone(), ctx)?;
         let registry = registry(engine)?;
         let provider = registry.get(&p.provider).ok_or_else(|| {
             let ids: Vec<&str> = registry.iter().map(|p| p.id()).collect();
@@ -152,7 +142,9 @@ impl Method for GenRun {
             )
             .at("/request")
         })?;
-        write(&file, &generated.bytes)?;
+        crate::restore::write_atomically(&file, &generated.bytes).map_err(|e| {
+            ApiError::new(ApiErrorKind::SceneIo, format!("{}: {e}", file.display()))
+        })?;
         let import = |engine: &mut Engine| {
             concordia_assets::AssetImport::call(
                 engine,
@@ -175,7 +167,8 @@ impl Method for GenRun {
             seed,
             &generated.inputs,
         );
-        record_provenance(&file, provider.as_ref(), &p.request, seed, &hash)?;
+        let output = crate::restore::output_hash(&generated.bytes);
+        record_provenance(&file, provider.as_ref(), &p.request, seed, (&hash, &output))?;
         tracing::info!(target: "concordia::gen", actor = %actor, provider = provider.id(), path = %p.path, "content generated");
         Ok(GenRunResult {
             path: p.path,
@@ -187,6 +180,9 @@ impl Method for GenRun {
     }
 }
 
+/// Threads a restore uses at most (each holds one mesh's distance grid, up to 67 MB).
+const RESTORE_THREADS: std::num::NonZeroUsize = std::num::NonZeroUsize::new(4).unwrap();
+
 /// The engine's providers (`[gen]`).
 fn registry(engine: &Engine) -> Result<crate::registry::ProviderRegistry, ApiError> {
     engine
@@ -195,17 +191,15 @@ fn registry(engine: &Engine) -> Result<crate::registry::ProviderRegistry, ApiErr
         .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the gen module's state is missing"))
 }
 
-/// Writes `bytes` to `file` (its directory first), replacing it atomically.
-fn write(file: &std::path::Path, bytes: &[u8]) -> Result<(), ApiError> {
-    let io = |e: std::io::Error| {
-        ApiError::new(ApiErrorKind::SceneIo, format!("{}: {e}", file.display()))
-    };
-    if let Some(dir) = file.parent() {
-        std::fs::create_dir_all(dir).map_err(io)?;
-    }
-    let tmp = file.with_extension("gen-tmp");
-    std::fs::write(&tmp, bytes).map_err(io)?;
-    std::fs::rename(&tmp, file).map_err(io)
+/// The call's actor (`given`, else the session's), or an error saying why one is needed.
+fn actor_for(why: &str, given: Option<Actor>, ctx: &CallCtx) -> Result<Actor, ApiError> {
+    given.or_else(|| ctx.actor.clone()).ok_or_else(|| {
+        ApiError::new(
+            ApiErrorKind::InvalidParams,
+            format!("{why}, so it needs an actor"),
+        )
+        .at("/actor")
+    })
 }
 
 /// Merges a provider's import settings (e.g. loop points) into `file`'s sidecar.
@@ -227,7 +221,7 @@ fn record_provenance(
     provider: &dyn crate::provider::ContentProvider,
     request: &Value,
     seed: u64,
-    hash: &str,
+    (hash, output): (&str, &str),
 ) -> Result<(), ApiError> {
     use concordia_assets::{Provenance, Sidecar};
     let path = Sidecar::path_for(file);
@@ -240,11 +234,77 @@ fn record_provenance(
         request: request.clone(),
         seed,
         inputs_hash: hash.to_owned(),
+        output: Some(output.to_owned()),
     });
     sidecar.write(&path).map_err(fail)
 }
 
+/// Regenerate every generated file that is missing or whose bytes differ from the hash its sidecar records, from the recorded provider, version, request and seed (procedural providers only; others are listed as skipped). A recipe that no longer makes its recorded bytes is an error. Writes files, so it needs an actor.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct GenRestore;
+
+/// `gen.restore` params.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct GenRestoreParams {
+    /// Who is restoring (required; logged).
+    pub actor: Option<Actor>,
+}
+
+/// `gen.restore` result (project-relative paths, sorted).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Reflect)]
+pub struct GenRestoreResult {
+    /// Files written again.
+    pub restored: Vec<String>,
+    /// Files that already match their recipe (or record no hash to check).
+    pub unchanged: Vec<String>,
+    /// Missing files whose provider isn't procedural (Blender, plugins), left alone.
+    pub skipped: Vec<String>,
+}
+
+impl Method for GenRestore {
+    const NAME: &'static str = "gen.restore";
+    const MUTATES: bool = false;
+    type Params = GenRestoreParams;
+    type Result = GenRestoreResult;
+
+    fn call(
+        engine: &mut Engine,
+        ctx: &CallCtx,
+        p: GenRestoreParams,
+    ) -> Result<GenRestoreResult, ApiError> {
+        let actor = actor_for("gen.restore writes files", p.actor, ctx)?;
+        let registry = registry(engine)?;
+        let sources: Vec<String> = engine
+            .state::<concordia_assets::AssetDb>()
+            .ok_or_else(|| {
+                ApiError::new(
+                    ApiErrorKind::InvalidParams,
+                    "gen.restore needs the assets module ([assets])",
+                )
+            })?
+            .list()
+            .into_iter()
+            .map(|a| a.path)
+            .collect();
+        let threads = std::thread::available_parallelism()
+            .map_or(std::num::NonZeroUsize::MIN, |n| n.min(RESTORE_THREADS));
+        let report = crate::restore::restore(engine.project(), &registry, &sources, threads)
+            .map_err(|e| ApiError::new(ApiErrorKind::InvalidParams, e.to_string()))?;
+        tracing::info!(target: "concordia::gen", actor = %actor, restored = report.restored.len(), "generated files restored");
+        Ok(GenRestoreResult {
+            restored: report.restored,
+            unchanged: report.unchanged,
+            skipped: report.skipped,
+        })
+    }
+}
+
 /// The module's methods.
 pub(crate) fn all() -> Vec<MethodInfo> {
-    vec![MethodInfo::of::<GenList>(), MethodInfo::of::<GenRun>()]
+    vec![
+        MethodInfo::of::<GenList>(),
+        MethodInfo::of::<GenRun>(),
+        MethodInfo::of::<GenRestore>(),
+    ]
 }
