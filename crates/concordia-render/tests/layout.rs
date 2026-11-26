@@ -1,8 +1,8 @@
 //! Rust mirrors of shader structs match Slang's reflected layout.
 
 use concordia_render::{
-    CompactPush, CullPush, DrawPush, MeshletPush, ScanAddPush, ScanPush, ShadowPush, TaskPush,
-    shader_dir,
+    CompactPush, CullPush, DrawPush, HzbPush, MeshletPush, ScanAddPush, ScanPush, ShadowPush,
+    TaskPush, shader_dir,
 };
 use concordia_shaders::{
     CompileRequest, ShaderCompiler, ShaderStruct, SlangToolchain, SlangcCompiler, Stage, Target,
@@ -55,6 +55,7 @@ fn cull_pushes_match_their_shaders() {
     check_push_in::<CompactPush>("meshlet.slang", "meshlet_compact", Stage::Compute);
     check_push_in::<ScanPush>("scan.slang", "scan_groups", Stage::Compute);
     check_push_in::<ScanAddPush>("scan.slang", "scan_add", Stage::Compute);
+    check_push_in::<HzbPush>("hzb.slang", "hzb_build", Stage::Compute);
 }
 
 #[test]

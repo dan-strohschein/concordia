@@ -16,6 +16,11 @@ mod frame_log;
 mod gizmo;
 mod gpu;
 pub mod graph;
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "the two-pass culling uses it (4.4b steps 3–4)")
+)]
+mod hzb;
 pub mod ibl;
 mod lighting;
 mod material_rows;
@@ -62,6 +67,7 @@ pub use extract::{
     RenderWorld, SkinView,
 };
 pub use frame::DrawPush;
+pub use hzb::HzbPush;
 pub use lighting::candela;
 pub use meshlet::{CompactPush, CullPush, MeshletPush, TaskPush};
 pub use module::{

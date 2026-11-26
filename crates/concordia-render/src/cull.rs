@@ -228,6 +228,114 @@ impl CullView {
     }
 }
 
+/// A view's projection terms for the occlusion test: a symmetric perspective or orthographic
+/// projection with reverse-Z depth (Mara & McGuire 2013's projected sphere, for both).
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "the two-pass culling uses it (4.4b steps 3–4)")
+)]
+pub(crate) struct SphereProjection {
+    /// `proj[0][0]` and `proj[1][1]`: view-space x and y to clip.
+    pub(crate) scale: [f32; 2],
+    /// `proj[2][2]` and `proj[3][2]`: view-space z to clip depth.
+    pub(crate) depth: [f32; 2],
+    /// Perspective (clip w = −z) rather than orthographic (w = 1).
+    pub(crate) perspective: bool,
+    /// The near plane's distance in front of the eye.
+    pub(crate) near: f32,
+}
+
+/// A sphere on the screen: its rectangle in UV (y down) and its nearest depth.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "the two-pass culling uses it (4.4b steps 3–4)")
+)]
+pub(crate) struct ProjectedSphere {
+    /// Top-left corner.
+    pub(crate) lo: [f32; 2],
+    /// Bottom-right corner.
+    pub(crate) hi: [f32; 2],
+    /// The nearest point's depth (the largest value with reverse-Z).
+    pub(crate) depth: f32,
+}
+
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "the two-pass culling uses it (4.4b steps 3–4)")
+)]
+impl SphereProjection {
+    /// The terms of `proj`; `None` for an off-centre or otherwise unsupported projection.
+    pub(crate) fn new(proj: Mat4) -> Option<Self> {
+        let centred = [proj.z_axis.x, proj.z_axis.y, proj.w_axis.x, proj.w_axis.y]
+            .iter()
+            .all(|t| *t == 0.0)
+            && proj.x_axis.y == 0.0
+            && proj.y_axis.x == 0.0;
+        let perspective = match (proj.z_axis.w, proj.w_axis.w) {
+            (-1.0, 0.0) => true,
+            (0.0, 1.0) => false,
+            _ => return None,
+        };
+        let (p22, p32) = (proj.z_axis.z, proj.w_axis.z);
+        // Depth 1 at the near plane: (p22·z + p32) / −z = 1, or p22·z + p32 = 1 (in f64: the
+        // orthographic form cancels when far ≫ near).
+        let (p22d, p32d) = (f64::from(p22), f64::from(p32));
+        let near = match perspective {
+            true => p32d / (p22d + 1.0),
+            false => (p32d - 1.0) / p22d,
+        } as f32;
+        let usable = centred && near.is_finite() && near > 0.0;
+        usable.then_some(Self {
+            scale: [proj.x_axis.x, proj.y_axis.y],
+            depth: [p22, p32],
+            perspective,
+            near,
+        })
+    }
+
+    /// Where the view-space sphere (`center`, `radius`) lands; `None` unless it lies wholly
+    /// beyond the near plane.
+    pub(crate) fn project(&self, center: Vec3, radius: f32) -> Option<ProjectedSphere> {
+        let distance = -center.z;
+        if distance - radius <= self.near {
+            return None;
+        }
+        let [x, y] = [center.x, center.y];
+        let ([x0, x1], [y0, y1]) = match self.perspective {
+            true => (tangents(x, distance, radius), tangents(y, distance, radius)),
+            false => ([x - radius, x + radius], [y - radius, y + radius]),
+        };
+        let [sx, sy] = self.scale;
+        let nearest = center.z + radius;
+        let [p22, p32] = self.depth;
+        let depth = match self.perspective {
+            true => (p22 * nearest + p32) / -nearest,
+            false => p22 * nearest + p32,
+        };
+        Some(ProjectedSphere {
+            lo: [x0 * sx * 0.5 + 0.5, 0.5 - y1 * sy * 0.5],
+            hi: [x1 * sx * 0.5 + 0.5, 0.5 - y0 * sy * 0.5],
+            depth,
+        })
+    }
+}
+
+/// The slopes (offset over distance) of the two lines from the eye tangent to a circle at offset
+/// `a` and distance `z` > `r` with radius `r`, in one axis's plane (Mara & McGuire 2013).
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "the two-pass culling uses it (4.4b steps 3–4)")
+)]
+fn tangents(a: f32, z: f32, r: f32) -> [f32; 2] {
+    let t = (a * a + z * z - r * r).sqrt();
+    [
+        (t * a - r * z) / (t * z + r * a),
+        (t * a + r * z) / (t * z - r * a),
+    ]
+}
+
 /// The cull view table the shaders read: the camera's view, then each cascade's.
 pub(crate) fn view_table(
     camera: CullView,
@@ -539,5 +647,87 @@ mod tests {
         }
         assert_eq!(CullCode::from_u32(0), None);
         assert_eq!(CullCode::from_u32(4), None, "occlusion is 4.4b");
+    }
+
+    /// A reverse-Z projection for the projected-sphere tests: perspective or orthographic.
+    fn test_projection(perspective: bool, fov: f32, aspect: f32, near: f32) -> Mat4 {
+        match perspective {
+            true => directx::perspective(fov, aspect, 500.0, near),
+            false => directx::orthographic(-aspect * 4.0, aspect * 4.0, -4.0, 4.0, 500.0, near),
+        }
+    }
+
+    proptest! {
+        /// Every point of the sphere projects inside its rectangle and no nearer than its depth;
+        /// a sphere reaching the near plane has no bounds.
+        #[test]
+        fn projected_sphere_bounds_contain_the_sphere(
+            perspective in any::<bool>(),
+            fov in 0.3f32..2.5,
+            aspect in 0.5f32..2.5,
+            near in 0.05f32..2.0,
+            c in (-30.0f32..30.0, -30.0f32..30.0, -200.0f32..0.0),
+            r in 0.01f32..10.0,
+            dirs in prop::collection::vec(prop::array::uniform3(-1.0f32..1.0), 32),
+        ) {
+            let proj = test_projection(perspective, fov, aspect, near);
+            let terms = SphereProjection::new(proj).expect("symmetric projections are supported");
+            // Orthographic depth keeps fewer digits of near (a sphere crossing it gets depth > 1
+            // and so is never occluded anyway).
+            let tolerance = if perspective { 1e-4 } else { 1e-2 };
+            prop_assert!((terms.near - near).abs() <= near * tolerance, "{} vs {near}", terms.near);
+            let near = terms.near;
+            let center = Vec3::new(c.0, c.1, c.2);
+            let Some(s) = terms.project(center, r) else {
+                prop_assert!(-center.z - r <= near * (1.0 + 1e-4));
+                return Ok(());
+            };
+            prop_assert!(-center.z - r > near * (1.0 - 1e-4));
+            for d in dirs {
+                let d = Vec3::from_array(d);
+                if d.length() < 1e-3 {
+                    continue;
+                }
+                let p = center + d.normalize() * r;
+                let clip = proj * p.extend(1.0);
+                let ndc = clip.truncate() / clip.w;
+                let uv = [ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5];
+                let eps = 1e-4 * (1.0 + uv[0].abs().max(uv[1].abs()));
+                prop_assert!(uv[0] >= s.lo[0] - eps && uv[0] <= s.hi[0] + eps, "u {uv:?} {s:?}");
+                prop_assert!(uv[1] >= s.lo[1] - eps && uv[1] <= s.hi[1] + eps, "v {uv:?} {s:?}");
+                prop_assert!(ndc.z <= s.depth + 1e-5, "depth {} > {}", ndc.z, s.depth);
+            }
+        }
+    }
+
+    /// The bounds are tight: a sphere on the axis spans its tangent cone exactly, and its depth
+    /// is its nearest point's; off-centre projections aren't supported.
+    #[test]
+    fn projected_sphere_bounds_are_tight_on_the_axis() {
+        let proj = test_projection(true, 1.0, 1.5, 0.1);
+        let terms = SphereProjection::new(proj).unwrap();
+        let s = terms.project(Vec3::new(0.0, 0.0, -10.0), 2.0).unwrap();
+        let half = (2.0f32 / 10.0).asin().tan();
+        let (sx, sy) = (proj.x_axis.x * half * 0.5, proj.y_axis.y * half * 0.5);
+        for (got, want) in [
+            (s.lo[0], 0.5 - sx),
+            (s.hi[0], 0.5 + sx),
+            (s.lo[1], 0.5 - sy),
+            (s.hi[1], 0.5 + sy),
+        ] {
+            assert!((got - want).abs() < 1e-5, "{got} vs {want}");
+        }
+        let nearest = proj * Vec4::new(0.0, 0.0, -8.0, 1.0);
+        assert!((s.depth - nearest.z / nearest.w).abs() < 1e-6);
+        let ortho = SphereProjection::new(test_projection(false, 1.0, 1.0, 0.1)).unwrap();
+        let o = ortho.project(Vec3::new(1.0, 0.0, -10.0), 1.0).unwrap();
+        assert!(
+            (o.lo[0] - 0.5).abs() < 1e-6 && (o.hi[0] - 0.75).abs() < 1e-6,
+            "{o:?}"
+        );
+        let mut shifted = proj;
+        shifted.z_axis.x = 0.1;
+        assert_eq!(SphereProjection::new(shifted), None);
+        assert_eq!(SphereProjection::new(Mat4::IDENTITY * 2.0), None);
     }
 }
