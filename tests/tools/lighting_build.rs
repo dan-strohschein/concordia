@@ -2,7 +2,9 @@
 //! `tool:lighting-builder`. `sun_courtyard`: a walled courtyard with an archway and windows, a
 //! pergola of thin slats over four columns, a bench on thin legs, a lattice screen and a pole (fine
 //! and contact shadows), an urn and a rock on the meshlet path, one low sun and no sky, so its
-//! direct light is the sun's alone. Our own work (CC0-1.0).
+//! direct light is the sun's alone. `spell_arena_direct` (M4 4.7c): an arena of pillars, an arch
+//! and rubble lit only by eight shadowed spot and point lights of several colours (no sun, sky or
+//! emission); `spell_arena_256` adds 248 small unshadowed spell lights. Our own work (CC0-1.0).
 //!
 //! `just lighting-build` (from the repository root). Scenes are written anew each time.
 
@@ -18,6 +20,9 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 const ACTOR: &str = "tool:lighting-builder";
 const SCENE: &str = "scenes/sun_courtyard.scene.ron";
+const ARENA: &str = "scenes/spell_arena_direct.scene.ron";
+const ARENA_256: &str = "scenes/spell_arena_256.scene.ron";
+const SEAMS: &str = "scenes/point_seams.scene.ron";
 const MATERIALS: [&str; 4] = [
     "materials/stone.material.ron",
     "materials/plaster.material.ron",
@@ -142,6 +147,220 @@ fn main() -> Result<()> {
     sun(&mut b)?;
     camera(&mut b)?;
     b.call("scene.save", json!({"actor": ACTOR}))?;
+    for (path, name, spells) in [
+        (ARENA, "Spell arena (direct)", false),
+        (ARENA_256, "Spell arena, 256 lights", true),
+    ] {
+        let file = project.join(path);
+        if file.exists() {
+            std::fs::remove_file(&file)?;
+        }
+        b.call(
+            "scene.new",
+            json!({"path": path, "name": name, "actor": ACTOR}),
+        )?;
+        arena(&mut b, (&rock, &column))?;
+        arena_lights(&mut b)?;
+        if spells {
+            spell_lights(&mut b)?;
+        }
+        arena_camera(&mut b)?;
+        b.call("scene.save", json!({"actor": ACTOR}))?;
+    }
+    let file = project.join(SEAMS);
+    if file.exists() {
+        std::fs::remove_file(&file)?;
+    }
+    b.call(
+        "scene.new",
+        json!({"path": SEAMS, "name": "Point light seams", "actor": ACTOR}),
+    )?;
+    seams(&mut b)?;
+    b.call("scene.save", json!({"actor": ACTOR}))?;
+    Ok(())
+}
+
+/// `point_seams` (4.7c's seam check): a closed room (6 × 4 × 6 m) with one shadowed point light in
+/// its middle and beams that cross the light's cube-face boundaries, so their shadows run across
+/// face edges on the floor and walls.
+fn seams(b: &mut Builder) -> Result<()> {
+    b.block("Floor", "stone", [0.0, -0.1, 0.0], [6.4, 0.2, 6.4])?;
+    b.block("Ceiling", "plaster", [0.0, 4.1, 0.0], [6.4, 0.2, 6.4])?;
+    b.block("Wall N", "plaster", [0.0, 2.0, -3.1], [6.4, 4.0, 0.2])?;
+    b.block("Wall S", "plaster", [0.0, 2.0, 3.1], [6.4, 4.0, 0.2])?;
+    b.block("Wall W", "plaster", [-3.1, 2.0, 0.0], [0.2, 4.0, 6.4])?;
+    b.block("Wall E", "plaster", [3.1, 2.0, 0.0], [0.2, 4.0, 6.4])?;
+    // Beams along the diagonals between faces, near the light.
+    b.block("Beam low", "wood", [0.0, 1.2, 0.0], [3.0, 0.08, 0.08])?;
+    b.block("Beam high", "wood", [0.0, 2.8, 0.0], [0.08, 0.08, 3.0])?;
+    b.block("Post", "wood", [0.6, 2.0, 0.6], [0.08, 4.0, 0.08])?;
+    b.call(
+        "entity.spawn",
+        json!({"components": {
+            "Name": "Lamp",
+            "Transform": {"translation": [0.0, 2.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]},
+            "PointLight": {"color": [1.0, 0.95, 0.85], "intensity_lumens": 4000.0, "range": 12.0,
+                "shadows": {"depth_bias": 1.0, "normal_bias": 1.0, "pcf": "X3"}},
+        }, "actor": ACTOR}),
+    )?;
+    let (eye, target) = (Vec3::new(-2.7, 3.6, 2.7), Vec3::new(1.0, 0.8, -1.0));
+    let view = concordia_render::View {
+        eye,
+        target,
+        projection: concordia_render::Projection::default(),
+    };
+    let (_, rotation, _) = view.world_matrix()?.to_scale_rotation_translation();
+    b.call(
+        "entity.spawn",
+        json!({"components": {
+            "Name": "Camera",
+            "Transform": {"translation": eye.to_array(), "rotation": rotation.to_array(), "scale": [1.0, 1.0, 1.0]},
+            "Camera": {"clear": [0.0, 0.0, 0.0, 1.0], "exposure_ev100": 6.0, "msaa": "X4", "priority": 0,
+                "projection": {"Perspective": {"far": 100.0, "fov_y": 1.3, "near": 0.05}}, "tonemap": "AgX"},
+        }, "actor": ACTOR}),
+    )?;
+    Ok(())
+}
+
+/// The arena's geometry: a floor, a ring of eight pillars, an arch, rubble and two rocks.
+fn arena(b: &mut Builder, (rock, column): (&str, &str)) -> Result<()> {
+    b.place(
+        "Floor",
+        "builtin:mesh/plane",
+        "stone",
+        [0.0, 0.0, 0.0],
+        [24.0, 1.0, 24.0],
+    )?;
+    for i in 0..8 {
+        let a = std::f32::consts::TAU * i as f32 / 8.0;
+        b.place(
+            &format!("Pillar {i}"),
+            column,
+            "plaster",
+            [7.0 * a.cos(), 1.75, 7.0 * a.sin()],
+            [1.3, 1.0, 1.3],
+        )?;
+    }
+    b.block("Arch west", "plaster", [-1.6, 1.4, -2.0], [0.5, 2.8, 0.8])?;
+    b.block("Arch east", "plaster", [1.6, 1.4, -2.0], [0.5, 2.8, 0.8])?;
+    b.block("Arch lintel", "plaster", [0.0, 3.0, -2.0], [3.7, 0.4, 0.8])?;
+    let rubble = [
+        ([-3.0f32, 0.15, 2.0], [0.6f32, 0.3, 0.5]),
+        ([-2.4, 0.1, 2.6], [0.3, 0.2, 0.4]),
+        ([2.8, 0.2, 1.5], [0.5, 0.4, 0.5]),
+        ([3.4, 0.1, 2.2], [0.4, 0.2, 0.3]),
+        ([0.5, 0.25, 3.5], [0.8, 0.5, 0.4]),
+        ([-0.6, 0.12, 4.2], [0.35, 0.24, 0.35]),
+    ];
+    for (i, (at, size)) in rubble.into_iter().enumerate() {
+        b.block(&format!("Rubble {i}"), "stone", at, size)?;
+    }
+    b.place(
+        "Rock west",
+        rock,
+        "stone",
+        [-4.5, 0.35, -3.5],
+        [1.0, 1.0, 1.0],
+    )?;
+    b.place(
+        "Rock east",
+        rock,
+        "stone",
+        [4.0, 0.35, 4.5],
+        [1.2, 1.0, 0.9],
+    )?;
+    Ok(())
+}
+
+/// Four shadowed spot lights and four shadowed point lights of several colours.
+fn arena_lights(b: &mut Builder) -> Result<()> {
+    let shadows = json!({"depth_bias": 1.0, "normal_bias": 1.0, "pcf": "X3"});
+    let spots = [
+        (
+            [-5.0f32, 5.0, -5.0],
+            [0.6f32, -1.0, 0.6],
+            [1.0f32, 0.7, 0.4],
+        ),
+        ([5.0, 5.5, -5.0], [-0.6, -1.0, 0.5], [0.5, 0.7, 1.0]),
+        ([5.0, 4.5, 5.0], [-0.5, -1.0, -0.6], [1.0, 0.5, 0.8]),
+        ([-5.0, 5.0, 5.0], [0.6, -1.0, -0.5], [0.6, 1.0, 0.6]),
+    ];
+    for (i, (at, dir, color)) in spots.into_iter().enumerate() {
+        let rotation = Quat::from_rotation_arc(Vec3::NEG_Z, Vec3::from(dir).normalize());
+        b.call(
+            "entity.spawn",
+            json!({"components": {
+                "Name": format!("Spot {i}"),
+                "Transform": {"translation": at, "rotation": rotation.to_array(), "scale": [1.0, 1.0, 1.0]},
+                "SpotLight": {"color": color, "intensity_lumens": 12000.0, "range": 16.0,
+                    "inner_angle": 0.45, "outer_angle": 0.7, "shadows": shadows},
+            }, "actor": ACTOR}),
+        )?;
+    }
+    let points = [
+        ([0.0f32, 1.6, 0.5], [1.0f32, 0.55, 0.25]),
+        ([-3.5, 1.2, -1.0], [0.4, 0.6, 1.0]),
+        ([3.0, 1.0, -3.0], [0.9, 0.3, 1.0]),
+        ([2.0, 1.4, 3.0], [0.3, 1.0, 0.7]),
+    ];
+    for (i, (at, color)) in points.into_iter().enumerate() {
+        b.call(
+            "entity.spawn",
+            json!({"components": {
+                "Name": format!("Point {i}"),
+                "Transform": {"translation": at, "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]},
+                "PointLight": {"color": color, "intensity_lumens": 3000.0, "range": 10.0, "shadows": shadows},
+            }, "actor": ACTOR}),
+        )?;
+    }
+    Ok(())
+}
+
+/// 248 small unshadowed spell lights on a grid over the arena, colours from a fixed cycle.
+fn spell_lights(b: &mut Builder) -> Result<()> {
+    let colors = [
+        [1.0f32, 0.4, 0.1],
+        [0.3, 0.6, 1.0],
+        [0.8, 0.2, 1.0],
+        [0.3, 1.0, 0.5],
+    ];
+    for i in 0..248u32 {
+        let (x, z) = (i % 16, i / 16);
+        let at = [
+            -9.0 + 1.2 * x as f32,
+            0.4 + 0.1 * (i % 3) as f32,
+            -9.0 + 1.2 * z as f32,
+        ];
+        b.call(
+            "entity.spawn",
+            json!({"components": {
+                "Name": format!("Spell {i}"),
+                "Transform": {"translation": at, "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]},
+                "PointLight": {"color": colors[i as usize % 4], "intensity_lumens": 60.0, "range": 1.5},
+            }, "actor": ACTOR}),
+        )?;
+    }
+    Ok(())
+}
+
+/// The arena's camera: a low view across it (the references add the port's isometric angle).
+fn arena_camera(b: &mut Builder) -> Result<()> {
+    let (eye, target) = (Vec3::new(-6.5, 2.2, 8.5), Vec3::new(1.0, 0.8, -1.0));
+    let view = concordia_render::View {
+        eye,
+        target,
+        projection: concordia_render::Projection::default(),
+    };
+    let (_, rotation, _) = view.world_matrix()?.to_scale_rotation_translation();
+    b.call(
+        "entity.spawn",
+        json!({"components": {
+            "Name": "Camera",
+            "Transform": {"translation": eye.to_array(), "rotation": rotation.to_array(), "scale": [1.0, 1.0, 1.0]},
+            "Camera": {"clear": [0.0, 0.0, 0.0, 1.0], "exposure_ev100": 7.0, "msaa": "X4", "priority": 0,
+                "projection": {"Perspective": {"far": 1000.0, "fov_y": 1.05, "near": 0.1}}, "tonemap": "AgX"},
+        }, "actor": ACTOR}),
+    )?;
     Ok(())
 }
 
