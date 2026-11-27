@@ -494,3 +494,31 @@ fn canyon_paths_render_with_vsm_cached() {
         }
     }
 }
+
+/// Review footage (M4 4.7b; not a check; runs only with CONCORDIA_REVIEW_DIR=<dir>): the ground
+/// path's first 96 frames on cached virtual shadow maps, lit and in the cache view, at 640 × 360.
+#[test]
+fn canyon_vsm_review_frames() {
+    use concordia_render::ViewMode;
+    use concordia_render::vsm::ShadowTechnique;
+    if std::env::var("CONCORDIA_REVIEW_DIR").is_err() {
+        return;
+    }
+    let mut loaded = Canyon::load();
+    let world = concordia_render::RenderWorld::extract(&loaded.world);
+    let scene = perf_scene("m4-canyon-ground");
+    for (mode, name) in [
+        (ViewMode::lit, "canyon_vsm_lit"),
+        (ViewMode::vsm_cache, "canyon_vsm_cache"),
+    ] {
+        let Some(mut r) = renderer(&Default::default(), Culling::default()) else {
+            return;
+        };
+        r.set_shadows(ShadowTechnique::vsm);
+        for i in 0..96 {
+            let view = canyon::view(&scene, i, scene.frames);
+            let image = loaded.render_mode(&mut r, &world, (view, (640, 360)), mode);
+            canyon::keep_for_review(name, i, &image);
+        }
+    }
+}

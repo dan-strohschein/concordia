@@ -1232,3 +1232,132 @@ fn moving_shadow_does_not_ghost_under_taa() {
     );
     assert!(vsm <= csm * 1.1 + 1.0, "vsm {vsm} vs csm {csm}");
 }
+
+/// Regression goldens of the cache (4.7b, `tests/golden/m4_vsm/`): the still yard's kept pages
+/// (green), the yard while the box moves (blue around it, red where it left on the first move),
+/// and the page levels with the pool starved (magenta where pixels fell back to a coarser level).
+#[test]
+fn vsm_cache_goldens() {
+    let Some(r) = meshlet_renderers().into_iter().next() else {
+        return;
+    };
+    let mut r = cached(r, true);
+    let (mut scene, ids) = yard_with_ids(Msaa::Off, true);
+    let shot = |r: &mut Renderer, scene: &mut Scene, mode| scene.render_mode(r, 640, 360, mode);
+    shot(&mut r, &mut scene, ViewMode::vsm_cache);
+    let still = shot(&mut r, &mut scene, ViewMode::vsm_cache);
+    move_to(&mut scene, ids.cube, Vec3::new(1.3, 0.5, -2.0));
+    let started = shot(&mut r, &mut scene, ViewMode::vsm_cache);
+    move_to(&mut scene, ids.cube, Vec3::new(1.6, 0.5, -2.0));
+    let moving = shot(&mut r, &mut scene, ViewMode::vsm_cache);
+    let Some(mut starved) = fine(512, true) else {
+        return;
+    };
+    shot(&mut starved, &mut scene, ViewMode::vsm_levels);
+    let levels = shot(&mut starved, &mut scene, ViewMode::vsm_levels);
+    common::assert_goldens_in(
+        "m4_vsm",
+        &[
+            ("yard_cache_still", &still),
+            ("yard_cache_starts_moving", &started),
+            ("yard_cache_moving", &moving),
+            ("yard_levels_starved", &levels),
+        ],
+    );
+}
+
+/// Review footage of the cache (4.7b; not a check; runs only with CONCORDIA_REVIEW_FRAMES=<dir>):
+/// raw RGBA frames at 640 × 360 of a box crossing the yard (lit and the cache view), the camera
+/// translating, the sun turning (the cache view), the pool starved while the camera moves (the
+/// levels view), and the box crossing under TAA and without it.
+#[test]
+fn vsm_cache_review_frames() {
+    let Ok(dir) = std::env::var("CONCORDIA_REVIEW_FRAMES") else {
+        return;
+    };
+    let dir = std::path::PathBuf::from(dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let frames = 48;
+    let write =
+        |name: &str, raw: Vec<u8>| std::fs::write(dir.join(format!("{name}.rgba")), raw).unwrap();
+    let box_at = |i: u32| Vec3::new(-3.0 + 6.0 * i as f32 / frames as f32, 0.5, -2.0);
+    for mode in [ViewMode::lit, ViewMode::vsm_cache] {
+        let Some(r) = meshlet_renderers().into_iter().next() else {
+            return;
+        };
+        let mut r = cached(r, true);
+        let (mut scene, ids) = yard_with_ids(Msaa::Off, true);
+        let mut raw = Vec::new();
+        for i in 0..frames + 12 {
+            move_to(&mut scene, ids.cube, box_at(i.min(frames)));
+            raw.extend(scene.render_mode(&mut r, 640, 360, mode).rgba);
+        }
+        write(&format!("cross_{mode:?}"), raw);
+    }
+    let Some(r) = meshlet_renderers().into_iter().next() else {
+        return;
+    };
+    let mut r = cached(r, true);
+    let (mut scene, ids) = yard_with_ids(Msaa::Off, true);
+    let mut raw = Vec::new();
+    for i in 0..frames {
+        let x = -2.0 + 4.0 * i as f32 / frames as f32;
+        scene.aim(ids.camera, Vec3::new(x, 3.0, 6.0), Vec3::new(x, 0.5, -10.0));
+        raw.extend(
+            scene
+                .render_mode(&mut r, 640, 360, ViewMode::vsm_cache)
+                .rgba,
+        );
+    }
+    write("camera_vsm_cache", raw);
+    let mut raw = Vec::new();
+    for _ in 0..frames {
+        let mut t = *scene
+            .world
+            .get::<concordia_scene::builtin::Transform>(ids.sun)
+            .unwrap();
+        t.rotation = Quat::from_rotation_y(0.01) * t.rotation;
+        scene.world.insert(ids.sun, t).unwrap();
+        raw.extend(
+            scene
+                .render_mode(&mut r, 640, 360, ViewMode::vsm_cache)
+                .rgba,
+        );
+    }
+    write("sun_vsm_cache", raw);
+    let Some(mut starved) = fine(512, true) else {
+        return;
+    };
+    let (mut scene, ids) = yard_with_ids(Msaa::Off, true);
+    let mut raw = Vec::new();
+    for i in 0..frames {
+        let x = -2.0 + 4.0 * i as f32 / frames as f32;
+        scene.aim(ids.camera, Vec3::new(x, 3.0, 6.0), Vec3::new(x, 0.5, -10.0));
+        raw.extend(
+            scene
+                .render_mode(&mut starved, 640, 360, ViewMode::vsm_levels)
+                .rgba,
+        );
+    }
+    write("starved_vsm_levels", raw);
+    for temporal in [true, false] {
+        use concordia_render::temporal::{Temporal, TemporalBackend};
+        let Some(r) = meshlet_renderers().into_iter().next() else {
+            return;
+        };
+        let mut r = cached(r, true);
+        if temporal {
+            r.set_temporal(Temporal {
+                backend: TemporalBackend::own,
+                ..Temporal::default()
+            });
+        }
+        let (mut scene, ids) = yard_with_ids(Msaa::Off, true);
+        let mut raw = Vec::new();
+        for i in 0..frames + 12 {
+            move_to(&mut scene, ids.cube, box_at(i.min(frames)));
+            raw.extend(scene.render(&mut r, 640, 360).rgba);
+        }
+        write(&format!("cross_taa_{temporal}"), raw);
+    }
+}

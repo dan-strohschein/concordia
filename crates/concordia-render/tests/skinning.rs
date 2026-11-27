@@ -1129,3 +1129,27 @@ fn walker_draws_only_into_dynamic_pages() {
         }
     }
 }
+
+/// Review footage (4.7b; not a check; runs only with CONCORDIA_REVIEW_FRAMES=<dir>): the skinned
+/// arm swinging under cached virtual shadow maps, lit and in the cache view, at 640 × 360.
+#[test]
+fn vsm_walker_review_frames() {
+    let Ok(dir) = std::env::var("CONCORDIA_REVIEW_FRAMES") else {
+        return;
+    };
+    std::fs::create_dir_all(&dir).unwrap();
+    for mode in [ViewMode::lit, ViewMode::vsm_cache] {
+        let Some(mut r) = vsm_renderer(true) else {
+            return;
+        };
+        let (mut s, arm) = shadow_scene_with_arm(true, &bent(0.0));
+        let mut raw = Vec::new();
+        for k in 0..48 {
+            let angle = -1.2 * (k as f32 / 48.0 * std::f32::consts::TAU).sin();
+            s.world.insert(arm, bent(angle)).unwrap();
+            raw.extend(s.render_mode(&mut r, 640, 360, mode).rgba);
+        }
+        let path = std::path::Path::new(&dir).join(format!("walker_{mode:?}.rgba"));
+        std::fs::write(path, raw).unwrap();
+    }
+}
