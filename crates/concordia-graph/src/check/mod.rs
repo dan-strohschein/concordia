@@ -1,7 +1,7 @@
 //! The type checker (M4 4.9, H7–H9): every problem as a located [`Diagnostic`].
 
 mod diagnostic;
-mod infer;
+pub(crate) mod infer;
 mod resolve;
 mod rules;
 mod structure;

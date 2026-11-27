@@ -957,6 +957,9 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "uuid",
+ "wasm-encoder 0.263.0",
+ "wasmparser 0.263.0",
+ "wasmtime",
 ]
 
 [[package]]

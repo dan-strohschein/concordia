@@ -1,6 +1,6 @@
 # Gameplay graphs (for agents)
 
-A graph is a `.graph.ron` file: nodes joined by data links and exec (control-flow) links. You write it as text, check it, and fix what the diagnostics name. (M4 4.9 gives the format, the node library and the checker; compiling, running and MCP tools come in 4.10.)
+A graph is a `.graph.ron` file: nodes joined by data links and exec (control-flow) links. You write it as text, check it, and fix what the diagnostics name. (M4 4.9 gives the format, the node library and the checker; 4.10a compiles pure Function graphs to WASM; running graphs in the engine and the MCP tools follow in 4.10b–c.)
 
 ## Kinds
 | Kind | What it is | Rule |
@@ -38,4 +38,4 @@ Graph(
 - Core: flow (`branch`, `sequence`, `for_each`, `gate`, `query.each`), `entity.self`, `math.*` (generic over `Numeric` = i32, i64, f32, Vec2–4, or `Scalar` = i32, i64, f32), `logic.*`, `conv.*`, `vector.*`, `behavior.*`, `utility.curve`. The full list with pin types is the core snapshot `crates/concordia-graph/tests/snapshots/library__core_library.snap`.
 
 ## Diagnostics
-Each is `{ code, node_id, pin, message, suggestion }` (JSON Schema from `concordia-reflect`). Codes: `unknown_op`, `unknown_variable`, `unknown_type`, `unknown_pin`, `unknown_node`, `type_mismatch`, `unconnected_input`, `data_cycle`, `impure_in_pure`, `generic_unresolved`, `kind_rule`, `exec_mismatch`. Fix the named node and pin; a `suggestion` lists the closest valid names.
+Each is `{ code, node_id, pin, message, suggestion }` (JSON Schema from `concordia-reflect`). Codes: `unknown_op`, `unknown_variable`, `unknown_type`, `unknown_pin`, `unknown_node`, `type_mismatch`, `unconnected_input`, `data_cycle`, `impure_in_pure`, `generic_unresolved`, `kind_rule`, `exec_mismatch`, and from the compiler `unsupported_node` (a node or type it can't lower yet). Fix the named node and pin; a `suggestion` lists the closest valid names.

@@ -141,7 +141,7 @@ fn mismatch(arrival: &Arrival, expected: &PinType) -> Option<String> {
 }
 
 /// A value's own type.
-fn literal_type(v: &Literal) -> PinType {
+pub(crate) fn literal_type(v: &Literal) -> PinType {
     match v {
         Literal::Bool(_) => PinType::Bool,
         Literal::Int(_) => PinType::I32,
