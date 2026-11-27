@@ -336,3 +336,50 @@ fn pending_signals_are_counted_by_type_name() {
         "delivered on the tick"
     );
 }
+
+/// A signal raised both as its Rust type and as a dynamic value in one tick (a Rust system and a
+/// script, or the API) keeps both, in raise order, for typed and dynamic readers (M4 4.10b: the
+/// second raise used to be dropped silently).
+#[test]
+fn typed_and_dynamic_raises_of_one_signal_both_arrive() {
+    for dynamic_first in [false, true] {
+        let mut registry = concordia_reflect::TypeRegistry::default();
+        concordia_terra::register_component::<Hit>(&mut registry).unwrap();
+        let log: Log = Arc::default();
+        let seen = log.clone();
+        let mut schedule = Schedule::new();
+        schedule.add_processor(
+            processor("receive", Phase::PrePhysics)
+                .receives::<Hit>()
+                .run(move |view: &mut View<'_>, ctx: &SystemCtx<'_>| {
+                    for (id, hit) in view.signals::<Hit>().unwrap() {
+                        seen.lock().unwrap().push((ctx.tick.0, *id, hit.0));
+                    }
+                }),
+        );
+        let mut world = World::new();
+        let mut sim = SimLoop::new(TickRate::HZ_60, schedule, &mut world).unwrap();
+        let id = world
+            .spawn(&mut concordia_core::id::DeterministicIdGen::new(3))
+            .unwrap();
+        let dynamic =
+            concordia_reflect::DynamicValue::from_json(Hit::type_info(), serde_json::json!(2))
+                .unwrap();
+        if dynamic_first {
+            world.signal_dynamic(id, dynamic);
+            world.signal(id, Hit(1));
+        } else {
+            world.signal(id, Hit(1));
+            world.signal_dynamic(id, dynamic);
+        }
+        assert_eq!(
+            world.pending_signal_count("Hit"),
+            2,
+            "dynamic first: {dynamic_first}"
+        );
+        sim.step(&mut world, &jobs(1), 1);
+        let got: Vec<u32> = log.lock().unwrap().iter().map(|e| e.2).collect();
+        let want = if dynamic_first { [2, 1] } else { [1, 2] };
+        assert_eq!(got, want, "dynamic first: {dynamic_first}");
+    }
+}

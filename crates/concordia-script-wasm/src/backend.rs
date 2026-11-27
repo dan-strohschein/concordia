@@ -58,8 +58,9 @@ impl std::hash::Hasher for Blake3Hasher {
 }
 
 /// The engine configuration: AOT Cranelift, deterministic, metered, pooled. Wasm threads are
-/// unavailable: Wasmtime is built without its `threads` feature.
-fn engine_config(config: &WasmConfig) -> Config {
+/// unavailable: Wasmtime is built without its `threads` feature. Compiled graphs share it (M4
+/// 4.10b).
+pub fn engine_config(config: &WasmConfig) -> Config {
     let mut c = Config::new();
     c.wasm_component_model(true)
         .strategy(Strategy::Cranelift)
