@@ -11,6 +11,11 @@ use concordia_shaders::ShaderCompiler;
 use super::{Gi, GiInputs, GiInstance, GiLight, GiProbes, GiScene, GiSun, GiTechnique, ProbeGrid};
 use crate::{PunctualKind, RenderError, RenderWorld};
 
+/// Updates run at once when the lattice resets (each adds a bounce): the first
+/// `WARMUP_FAST` with hysteresis 0.5, the rest with 0.9.
+const WARMUP: u32 = 32;
+const WARMUP_FAST: u32 = 20;
+
 /// GI as the renderer runs it.
 #[derive(Default)]
 pub(crate) struct GiState {
@@ -32,7 +37,7 @@ impl GiState {
 
     /// Whether probes run.
     pub(crate) fn on(&self) -> bool {
-        self.gi.technique == GiTechnique::Probes
+        self.gi.technique == GiTechnique::probes
     }
 
     /// Whether GI has what it needs of mesh `reference` (always, while off).
@@ -92,6 +97,20 @@ impl GiState {
         let Some(probes) = self.probes.as_mut() else {
             return Ok(None);
         };
+        if probes.resets_for(&inputs.grid) {
+            // A new lattice starts dark: settle it now, so this frame (and a capture) sees
+            // converged bounces rather than one.
+            for k in 0..WARMUP {
+                // Fast first (each update adds a bounce), then slower to average the noise.
+                let hysteresis = if k < WARMUP_FAST { 0.5 } else { 0.9 };
+                let warm = GiInputs {
+                    frame: inputs.frame.wrapping_add(k),
+                    hysteresis,
+                    ..inputs.clone()
+                };
+                probes.update(device, &self.scene, &warm)?;
+            }
+        }
         let commands = probes.prepare(device, &self.scene, &inputs)?;
         Ok(Some((commands, probes.params_index())))
     }
@@ -122,6 +141,7 @@ impl GiState {
             lights: world.punctual.iter().map(gi_light).collect(),
             sky: sky.map(|(sh, intensity)| sh.map(|c| Vec3::from(c) * intensity)),
             light_events,
+            hysteresis: super::BASE_HYSTERESIS,
         }
     }
 }

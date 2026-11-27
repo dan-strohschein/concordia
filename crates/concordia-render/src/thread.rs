@@ -60,6 +60,7 @@ enum Job {
     Temporal(crate::temporal::Temporal),
     /// Switch the sun's shadows (`render.set_shadows`).
     Shadows(crate::vsm::Shadows),
+    Gi(crate::gi::Gi),
     Attach {
         target: SurfaceTarget,
         reply: mpsc::Sender<Result<(), RenderError>>,
@@ -138,6 +139,11 @@ impl RenderThread {
     /// Switches the sun's shadows; returns at once.
     pub(crate) fn set_shadows(&self, shadows: crate::vsm::Shadows) -> Result<(), RenderError> {
         self.send(Job::Shadows(shadows))
+    }
+
+    /// Sets diffuse GI.
+    pub(crate) fn set_gi(&self, gi: crate::gi::Gi) -> Result<(), RenderError> {
+        self.send(Job::Gi(gi))
     }
 
     /// Makes `target` the viewport surface (replacing any earlier one).
@@ -435,6 +441,12 @@ impl Worker {
             }
             Job::Temporal(temporal) => {
                 self.renderer.set_temporal(temporal);
+                latest
+            }
+            Job::Gi(gi) => {
+                if let Err(e) = self.renderer.set_gi(gi) {
+                    tracing::warn!(target: "concordia::render", error = %e, "GI settings refused");
+                }
                 latest
             }
             Job::Shadows(shadows) => {

@@ -188,6 +188,7 @@ impl EngineModule for RenderModule {
             MethodInfo::of::<crate::stats::RenderStatsGet>(),
             MethodInfo::of::<crate::temporal::RenderSetTemporal>(),
             MethodInfo::of::<crate::vsm::RenderSetShadows>(),
+            MethodInfo::of::<crate::gi::RenderSetGi>(),
         ]
     }
 
@@ -481,6 +482,34 @@ pub(crate) fn set_temporal(
         Some(thread) => thread.set_temporal(temporal).map_err(api_error),
         None => Ok(()),
     }
+}
+
+/// Diffuse GI as the session runs it.
+pub(crate) fn gi(engine: &mut Engine) -> Result<crate::gi::Gi, ApiError> {
+    engine
+        .state_mut::<RenderState>()
+        .map(|s| s.gi)
+        .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render module has no state"))
+}
+
+/// Sets diffuse GI for the rest of the session (`render.set_gi`); returns what now runs.
+pub(crate) fn set_gi(
+    engine: &mut Engine,
+    technique: crate::gi::GiTechnique,
+    settings: Option<crate::gi::GiSettings>,
+) -> Result<crate::gi::Gi, ApiError> {
+    let state = engine
+        .state_mut::<RenderState>()
+        .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render module has no state"))?;
+    state.gi.technique = technique;
+    if let Some(s) = settings {
+        state.gi.settings = s;
+    }
+    let gi = state.gi;
+    if let Some(thread) = &state.thread {
+        thread.set_gi(gi).map_err(api_error)?;
+    }
+    Ok(gi)
 }
 
 /// Sets the sun's shadow technique for the rest of the session (`render.set_shadows`).

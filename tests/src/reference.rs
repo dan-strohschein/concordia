@@ -108,6 +108,18 @@ pub fn render_scene_against(
     golden: &Path,
     technique: &str,
 ) -> Result<(RgbaImage, RgbaImage), String> {
+    render_with(name, scene, golden, technique, None)
+}
+
+/// As [`render_scene_against`], with probe GI set by `render.set_gi` params `gi` when given
+/// (M4 4.8; e.g. `{"technique": "probes"}`).
+pub fn render_with(
+    name: &str,
+    scene: Option<&str>,
+    golden: &Path,
+    technique: &str,
+    gi: Option<Value>,
+) -> Result<(RgbaImage, RgbaImage), String> {
     let store = Golden::new(golden.to_path_buf(), golden.join("../review"), false, false);
     let file = store.reference(name).map_err(fail)?;
     let reference = std::fs::read(golden.join(SUITE).join(format!("{name}.png"))).map_err(|e| {
@@ -122,6 +134,9 @@ pub fn render_scene_against(
     }
     let mut session = Session::open(&file)?;
     session.call("render.set_shadows", json!({"technique": technique}))?;
+    if let Some(params) = gi {
+        session.call("render.set_gi", params)?;
+    }
     Ok((session.screenshot(&file)?, reference))
 }
 
@@ -196,5 +211,23 @@ impl Session {
             .decode(shot["image"]["data_base64"].as_str().unwrap_or_default())
             .map_err(fail)?;
         RgbaImage::from_png(&bytes).map_err(fail)
+    }
+}
+
+/// Writes reference, image and FLIP map under `target/golden-review/<suite>/<name>.*` when
+/// `CONCORDIA_GOLDEN_KEEP=1` (for review pages).
+pub fn keep(suite: &str, name: &str, reference: &RgbaImage, image: &RgbaImage) {
+    if std::env::var("CONCORDIA_GOLDEN_KEEP").as_deref() != Ok("1") {
+        return;
+    }
+    let root = crate::repo_root();
+    let store = Golden::new(
+        root.join("tests/golden"),
+        root.join("target/golden-review"),
+        false,
+        false,
+    );
+    if let Err(e) = store.write_comparison(suite, name, reference, image) {
+        eprintln!("keeping {suite}/{name}: {e}");
     }
 }

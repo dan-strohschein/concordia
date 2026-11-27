@@ -1,18 +1,19 @@
 //! GI's settings (`[render] gi`, `[render.gi]`; M4 4.8).
 
+use concordia_reflect::Reflect;
 use serde::{Deserialize, Serialize};
 
 use crate::RenderError;
 
-/// How diffuse light bounces.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+/// How diffuse light bounces (`[render] gi`).
+#[allow(non_camel_case_types)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Reflect)]
 pub enum GiTechnique {
     /// Direct light only (plus the environment's SH9 ambient).
     #[default]
-    Off,
+    off,
     /// DDGI-style probes around the camera.
-    Probes,
+    probes,
 }
 
 /// The probe volume (`[render.probes]`; validated when read).
@@ -32,7 +33,7 @@ pub struct GiSettings {
 impl Default for GiSettings {
     fn default() -> Self {
         Self {
-            rays: 128,
+            rays: 256,
             probes: [32, 8, 32],
             spacing: 1.5,
             center: None,

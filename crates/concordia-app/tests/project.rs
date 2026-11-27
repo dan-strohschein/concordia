@@ -471,11 +471,11 @@ fn gi_setting_parses_and_rejects_bad_values() {
         project.map(|p| p.manifest.render.unwrap_or_default())
     };
     let default = render("[render]\n").unwrap();
-    assert_eq!(default.gi, GiTechnique::Off);
-    assert_eq!(default.probes.rays, 128);
+    assert_eq!(default.gi, GiTechnique::off);
+    assert_eq!(default.probes.rays, 256);
     let on = render("[render]\ngi = \"probes\"\n[render.probes]\nrays = 64\nprobes = [16, 4, 16]\nspacing = 2.0\n")
         .unwrap();
-    assert_eq!(on.gi, GiTechnique::Probes);
+    assert_eq!(on.gi, GiTechnique::probes);
     assert_eq!(
         (on.probes.rays, on.probes.probes, on.probes.spacing),
         (64, [16, 4, 16], 2.0)

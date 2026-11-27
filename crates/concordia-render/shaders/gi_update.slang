@@ -120,6 +120,9 @@ bool light_event(GiVolume v, uint4* u, uint probe) {
 
 float luminance(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
+// Each irradiance texel's (old, fresh) luminance, for the probe's mean.
+groupshared float2 g_luma[64];
+
 // One group per probe, one thread per interior irradiance texel.
 [shader("compute")]
 [numthreads(8, 8, 1)]
@@ -143,7 +146,14 @@ void gi_blend_irradiance(uint3 group : SV_GroupID, uint3 tid : SV_GroupThreadID,
     float3 fresh = wsum > 0.0 ? sum / wsum * 3.14159265 : float3(0.0);
     uint at = probe * GI_IRR_TILE * GI_IRR_TILE + (tid.y + 1) * GI_IRR_TILE + tid.x + 1;
     float3 old = gi_irr(v)[at].rgb;
-    float h = u[11].w != 0 ? 0.0 : gi_hysteresis(luminance(old), luminance(fresh), v.base_hysteresis, light_event(v, u, probe));
+    // Judge change on the probe's mean luminance: one texel's estimate is noisy (a small bright
+    // emitter is hit by few rays), and noise taken for change would keep hysteresis low.
+    g_luma[tid.y * GI_IRR + tid.x] = float2(luminance(old), luminance(fresh));
+    GroupMemoryBarrierWithGroupSync();
+    float2 mean = float2(0.0);
+    for (uint k = 0; k < GI_IRR * GI_IRR; k++) { mean += g_luma[k]; }
+    mean /= float(GI_IRR * GI_IRR);
+    float h = u[11].w != 0 ? 0.0 : gi_hysteresis(mean.x, mean.y, v.base_hysteresis, light_event(v, u, probe));
     gi_irr(v)[at] = float4(lerp(fresh, old, h), 1.0);
 }
 
@@ -170,7 +180,9 @@ void gi_blend_distance(uint3 group : SV_GroupID, uint3 tid : SV_GroupThreadID, u
     float2 fresh = sum / wsum;
     uint at = probe * GI_DIST_TILE * GI_DIST_TILE + (tid.y + 1) * GI_DIST_TILE + tid.x + 1;
     float2 old = gi_dist(v)[at];
-    float h = u[11].w != 0 ? 0.0 : gi_hysteresis(old.x, fresh.x, v.base_hysteresis, light_event(v, u, probe));
+    // Distance moments blend steadily: each narrow texel sees few rays a frame, and that noise
+    // taken for change would keep visibility noisy (light leaks).
+    float h = u[11].w != 0 ? 0.0 : (light_event(v, u, probe) ? min(v.base_hysteresis, 0.5) : v.base_hysteresis);
     gi_dist(v)[at] = lerp(fresh, old, h);
 }
 

@@ -64,7 +64,7 @@ pub struct GiLight {
 }
 
 /// One frame's inputs to the probe update.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct GiInputs {
     /// The lattice this frame.
     pub grid: ProbeGrid,
@@ -80,6 +80,23 @@ pub struct GiInputs {
     pub sky: Option<[Vec3; 9]>,
     /// Where lights appeared this frame (probes near them react at once).
     pub light_events: Vec<Vec3>,
+    /// The old value's weight when nothing changes (a warm-up lowers it to converge fast).
+    pub hysteresis: f32,
+}
+
+impl Default for GiInputs {
+    fn default() -> Self {
+        Self {
+            grid: ProbeGrid::default(),
+            rays: 256,
+            frame: 0,
+            sun: None,
+            lights: Vec::new(),
+            sky: None,
+            light_events: Vec::new(),
+            hysteresis: super::BASE_HYSTERESIS,
+        }
+    }
 }
 
 /// Rows of the parameter block (`gi.slang`).
@@ -252,6 +269,11 @@ impl GiProbes {
         submit(device, &list)
     }
 
+    /// Whether `grid` differs from the lattice the atlases hold (the next update starts over).
+    pub fn resets_for(&self, grid: &ProbeGrid) -> bool {
+        self.grid != Some(*grid)
+    }
+
     /// The parameter block's bindless index (what sampling reads; valid after `prepare`).
     pub(crate) fn params_index(&self) -> u32 {
         self.params.index
@@ -358,7 +380,7 @@ impl GiProbes {
             }
         }
         rows[21] = f([
-            super::BASE_HYSTERESIS,
+            inputs.hysteresis.clamp(0.0, 1.0),
             1.5 * g.spacing,
             NORMAL_BIAS,
             VIEW_BIAS,

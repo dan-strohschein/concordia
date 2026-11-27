@@ -86,7 +86,7 @@ fn band(image: &Image, rows: std::ops::Range<u32>) -> f32 {
 
 fn probes() -> Gi {
     Gi {
-        technique: GiTechnique::Probes,
+        technique: GiTechnique::probes,
         settings: GiSettings {
             probes: [6, 6, 6],
             spacing: 0.9,
@@ -138,7 +138,7 @@ fn gi_settings_refuse_out_of_range_values() {
         },
     ] {
         let gi = Gi {
-            technique: GiTechnique::Probes,
+            technique: GiTechnique::probes,
             settings: bad,
         };
         assert!(renderer.set_gi(gi).is_err(), "{bad:?}");
