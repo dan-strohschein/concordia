@@ -1,7 +1,11 @@
 //! Dynamic diffuse GI from probes (M4 4.8, DDGI: Majercik et al. 2019 and 2021): the CPU model of
 //! the math the GPU update and sampling use, so each piece is tested on its own.
 
+mod error;
 pub mod octa;
 mod probe;
+mod scene;
 
+pub use error::GiError;
 pub use probe::{BASE_HYSTERESIS, ProbeRay, ProbeState, chebyshev, hysteresis, relocate};
+pub use scene::{GiInstance, GiLook, GiScene, UpdateReport, material, proxy};
