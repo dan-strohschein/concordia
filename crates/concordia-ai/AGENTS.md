@@ -8,12 +8,16 @@ Runtime AI that needs no LLM (M4 4.12): a typed blackboard, event-driven behavio
 - `BehaviorTree` (`ai.BehaviorTree`: keys + nodes depth first, each with its subtree's `end`), `Spec` (nested, flattened by `BehaviorTree::build`), `NodeKind`, `TaskKind`, `Abort`, `CmpOp`, `ParallelPolicy`, `TreeError`.
 - `Ticker { tree, state, bb, host, rng, dt, decisions }.tick()`, `BtState` (`ai.BtState`), `NodeMem`, `Status`, `Decision`, `TaskHost` (what the engine implements).
 - Utility: `Curve`, `Input`, `Consideration`, `UtilityOption`, `Selection`, `score`, `choose`.
+- Engine (4.12b): `AiModule` (`[ai] agents_per_tick`), components `ai.Brain { tree }`, `ai.Blackboard`, `ai.BtState`; signals `ai.Decision`, `ai.Cast`, `ai.Run`; `add_ai_processors`/`insert_ai_resources` (`ai.think`, PostPhysics), `Trees`, `AiStats`; methods `ai.inspect`, `ai.trace`.
 
 ## Invariants
 - Composites keep memory: a running child resumes next tick. Conditions re-check per `abort`: `None` on entry only, `SelfOnly` while their child runs, `Lower` while lower-priority siblings under a selector run (they abort them).
 - Time counts from the tick a node starts (`Wait`, `TimeLimit`, `Cooldown` use the tree clock `BtState::time`).
 - Randomness only from the caller's `SimRng` (`RandomSelector`, `Selection::TopN`); everything else is a pure function of the inputs.
 - Curves clamp to [0, 1]; a consideration at 0 vetoes its option; scores use Mark's IAUS compensation.
+
+- `ai.think` changes the world only through commands (`NavAgent.target`, `AnimGraphPlayer` triggers, `Transform` facing) and signals, from a parallel loop with per-piece buffers: results never depend on the thread count. Each agent's randomness is `processor_seed(sim seed, tick, "ai.think")` forked by its id.
+- Time slicing: `agents_per_tick` agents re-think per tick in rotation, plus every agent whose `MoveTo` heard `NavArrived`/`NavPathFailed` this tick; a skipped agent's tree clock catches up (`BtState::last_tick`).
 
 ## How to test
 `cargo nextest run -p concordia-ai`
@@ -22,7 +26,7 @@ Runtime AI that needs no LLM (M4 4.12): a typed blackboard, event-driven behavio
 Colledanchise & Ögren, *Behavior Trees in Robotics and AI* (CRC 2018) for composite semantics; Champandard's AiGameDev articles on event-driven BTs (2007–2012) and UE's public behavior-tree documentation for abort modes (no code); Mark & Dill, "Improving AI Decision Modeling Through Utility Theory" (GDC 2010); Mark, "Building a Better Centaur: AI at Massive Scale" (GDC 2015) for the compensation factor; Graham, "An Introduction to Utility Theory" (Game AI Pro, 2013) for curves.
 
 ## Status
-M4 4.12a: the pure runtime. The engine module, perception, LLM seam and graphs are 4.12b–e.
+M4 4.12a–b: the pure runtime and the engine module. Perception, the LLM seam and graphs are 4.12c–e.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

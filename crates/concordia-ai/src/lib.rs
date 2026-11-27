@@ -3,12 +3,22 @@
 
 mod blackboard;
 mod bt;
+mod engine;
+mod module;
 mod tick;
 mod utility;
 
 pub use blackboard::{BbType, BbValue, Blackboard, BlackboardError};
 pub use bt::{
     Abort, BehaviorTree, BtNode, CmpOp, NodeKind, ParallelPolicy, Spec, TaskKind, TreeError,
+};
+pub use engine::{
+    AiCast, AiConfig, AiCursor, AiDecision, AiRun, AiStats, Brain, THINK, Trees, add_ai_processors,
+    insert_ai_resources,
+};
+pub use module::{
+    AiInspect, AiInspectParams, AiInspectResult, AiModule, AiTrace, AiTraceParams, AiTraceResult,
+    RunningNode, TracedTick,
 };
 pub use tick::{BtState, Decision, NodeMem, Status, TaskHost, Ticker};
 pub use utility::{Choice, Consideration, Curve, Input, Selection, UtilityOption, choose, score};

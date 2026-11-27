@@ -215,6 +215,12 @@ impl Project {
         if self.manifest.anim.is_some() {
             modules.push(Arc::new(AnimModule::new()));
         }
+        if let Some(ai) = &self.manifest.ai {
+            let config = concordia_ai::AiConfig {
+                agents_per_tick: ai.agents_per_tick.get(),
+            };
+            modules.push(Arc::new(concordia_ai::AiModule::new(config)));
+        }
         if self.manifest.audio.is_some() {
             modules.push(Arc::new(self.audio_module(playback)?));
         }

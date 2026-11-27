@@ -30,6 +30,7 @@ concordia-scene.workspace = true
 concordia-rhi.workspace = true
 concordia-rhi-select.workspace = true
 concordia-scripting.workspace = true
+concordia-ai.workspace = true
 concordia-anim.workspace = true
 concordia-audio.workspace = true
 concordia-ui.workspace = true
