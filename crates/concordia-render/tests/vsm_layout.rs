@@ -495,3 +495,13 @@ fn caster_box_holds_every_meshlet_sphere() {
     assert!(aabb.0.cmpge(lo).all() && aabb.1.cmple(hi).all());
     assert_eq!(caster_box(aabb, []), aabb, "no meshlets: the mesh's bounds");
 }
+
+/// `[render.vsm] max_local_lights` (M4 4.7c): 64 by default, 0..=64, refused beyond.
+#[test]
+fn max_local_lights_parses_and_rejects_out_of_range() {
+    assert_eq!(VsmSettings::default().max_local_lights, 64);
+    let parsed: VsmSettings = toml::from_str("max_local_lights = 8").unwrap();
+    assert_eq!(parsed.max_local_lights, 8);
+    let err = toml::from_str::<VsmSettings>("max_local_lights = 65").unwrap_err();
+    assert!(err.to_string().contains("max_local_lights"), "{err}");
+}

@@ -113,6 +113,7 @@ fn manifest(name: &str, features: &Features) -> String {
             "# resolution_bias = -1.0 # finer below, coarser above\n",
             "# keep_frames = 60       # frames an unrequested page is kept\n",
             "# cache = true           # keep pages across frames (false: redraw every frame)\n",
+            "# max_local_lights = 64  # shadowed spot and point lights per frame\n",
         ));
         text.push_str(
             "\n# Gameplay modules: add [[scripts.module]] entries (kind = \"wasm\" or \"native\", path).\n[scripts]\n",

@@ -1,5 +1,5 @@
 # ADR-0014: Advanced shadows milestone (M10): tiled shadow atlas
-- Status: Proposed (author's direction, 2026-11-20)
+- Status: Proposed (author's direction, 2026-11-20; amended 2026-11-27 by M4 4.7c and ADR-0091: VSM is the default local-light tier, the atlas its fallback)
 - Date: 2026-11-20
 - Builds on: ADR-0040 (renderer), M1's cascaded sun shadows and clustered punctual lights; relates to M4's virtual shadow maps (Phase 4.7) and ADR-0100 (meshlets)
 
@@ -22,7 +22,7 @@ M4 plans virtual shadow maps: hundreds of 128² pages per light that move every 
 8. **ADR block:** M10 draws ADR numbers from 0220–0239.
 
 ## Consequences
-- The atlas and M4's VSM must share one light selection, one invalidation model, one set of stats and one BVH, not grow parallel versions. Their final relation (alternative, precursor or fallback tier) is open question 1 in the M10 plan; the recommendation is that the atlas ships first and stays the default local-light tier, with VSM kept for the sun and as an opt-in high tier where it measurably wins.
+- The atlas and M4's VSM must share one light selection, one invalidation model, one set of stats and one BVH, not grow parallel versions. Their final relation (alternative, precursor or fallback tier) is open question 1 in the M10 plan; the recommendation is that the atlas ships first and stays the default local-light tier, with VSM kept for the sun and as an opt-in high tier where it measurably wins. *Amended (2026-11-27, M4 4.7c):* VSM shipped first and covers spot and point lights, so the atlas becomes the fallback tier for devices or projects without VSM; it reuses `shadow_select`, `LocalShadowSettings`, the caster ledger, `mobility` and the stats (M10's open question 1).
 - The RHI gains viewport and scissor commands and a texture region copy (and indirect draws, if the MDI path is built).
 - `PointLight` and `SpotLight` gain `shadows`, `MeshRenderer` gains `mobility`, and `render.stats` gains shadow-atlas counters. No new MCP tools are planned.
 - A small proposed crate, `concordia-bvh`, joins the README crate table.

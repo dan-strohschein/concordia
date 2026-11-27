@@ -13,7 +13,7 @@ pub use camera::{ProjectionError, pick_camera, view_matrix};
 pub use components::{
     Camera, DirectionalLight, Environment, Msaa, PointLight, Projection, SpotLight, Tonemap,
 };
-pub use shadow_settings::{CascadeSettings, PcfKernel};
+pub use shadow_settings::{CascadeSettings, LocalShadowSettings, PcfKernel};
 pub use units::{SpotCone, candela, distance_window};
 
 /// Registers the render components (`RenderModule` does this in a project; hosts without the

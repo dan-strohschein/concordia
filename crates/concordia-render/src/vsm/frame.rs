@@ -34,8 +34,11 @@ pub(crate) struct ParamsIn<'a> {
     pub(crate) inv_view_proj: Mat4,
     /// Each level's origin (in pages) last frame, for releasing slots scrolled out (4.7b).
     pub(crate) previous: &'a [IVec2],
-    /// Bindless indices of the page table and the dynamic table (4.7b).
-    pub(crate) tables: [u32; 2],
+    /// Bindless indices of the page table, the dynamic table (4.7b) and the local lights' rows
+    /// (4.7c; a header row of zeros when there are none).
+    pub(crate) tables: [u32; 3],
+    /// Whether the sun casts (its pages are marked; 4.7c).
+    pub(crate) sun: bool,
 }
 
 /// The coarse floor: the finest level at least eight times `max_distance` wide, so a frame's
@@ -81,7 +84,10 @@ pub(crate) fn params_rows(p: &ParamsIn<'_>) -> Vec<u8> {
     chunks[..p.chunks.len()].copy_from_slice(p.chunks);
     push_rows_u32(&mut out, chunks.as_chunks::<4>().0);
     push_rows(&mut out, &columns(&p.inv_view_proj));
-    push_rows_u32(&mut out, &[[p.tables[0], p.tables[1], 0, 0]]);
+    push_rows_u32(
+        &mut out,
+        &[[p.tables[0], p.tables[1], p.tables[2], u32::from(p.sun)]],
+    );
     let origins: Vec<[u32; 4]> = p
         .clipmap
         .levels
@@ -103,14 +109,17 @@ pub(crate) fn params_rows(p: &ParamsIn<'_>) -> Vec<u8> {
     out
 }
 
-/// The depth views: the camera's view-projection, each level's (`cascade_xform` rows), then the
-/// light view (`vsm_page_position`).
-pub(crate) fn depth_views(camera: &Mat4, clipmap: &Clipmap) -> Vec<u8> {
+/// The depth views: the camera's view-projection, each level's (`cascade_xform` rows), the light
+/// view (`vsm_page_position`), then the local maps' (4.7c; view `2 + levels + map`).
+pub(crate) fn depth_views(camera: &Mat4, clipmap: &Clipmap, locals: &[Mat4]) -> Vec<u8> {
     let mut out = Vec::new();
     push_rows(&mut out, &columns(camera));
     for level in &clipmap.levels {
         push_rows(&mut out, &columns(&level.view_proj));
     }
     push_rows(&mut out, &columns(&clipmap.light_view));
+    for m in locals {
+        push_rows(&mut out, &columns(m));
+    }
     out
 }

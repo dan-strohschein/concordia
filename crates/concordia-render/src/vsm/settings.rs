@@ -45,6 +45,8 @@ pub struct VsmSettings {
     pub keep_frames: u8,
     /// Keep pages across frames; off redraws every page every frame (the oracle).
     pub cache: bool,
+    /// Shadowed spot and point lights given virtual shadow maps per frame, 0..=64 (M4 4.7c).
+    pub max_local_lights: u8,
 }
 
 impl VsmSettings {
@@ -65,6 +67,7 @@ impl Default for VsmSettings {
             normal_bias: 1.0,
             keep_frames: 60,
             cache: true,
+            max_local_lights: 64,
         }
     }
 }
@@ -81,6 +84,7 @@ struct RawVsm {
     normal_bias: f32,
     keep_frames: u32,
     cache: bool,
+    max_local_lights: u32,
 }
 
 impl Default for RawVsm {
@@ -100,6 +104,7 @@ impl From<VsmSettings> for RawVsm {
             normal_bias: s.normal_bias,
             keep_frames: u32::from(s.keep_frames),
             cache: s.cache,
+            max_local_lights: u32::from(s.max_local_lights),
         }
     }
 }
@@ -114,6 +119,7 @@ impl TryFrom<RawVsm> for VsmSettings {
         within("depth_bias", f64::from(r.depth_bias), 0.0, 10.0)?;
         within("normal_bias", f64::from(r.normal_bias), 0.0, 10.0)?;
         within("keep_frames", f64::from(r.keep_frames), 0.0, 255.0)?;
+        within("max_local_lights", f64::from(r.max_local_lights), 0.0, 64.0)?;
         if !(r.max_distance > 0.0 && r.max_distance <= 100_000.0) {
             return Err(format!(
                 "max_distance must be in (0, 100000], not {}",
@@ -129,6 +135,7 @@ impl TryFrom<RawVsm> for VsmSettings {
             normal_bias: r.normal_bias,
             keep_frames: r.keep_frames as u8,
             cache: r.cache,
+            max_local_lights: r.max_local_lights as u8,
         })
     }
 }

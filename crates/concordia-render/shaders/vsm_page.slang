@@ -35,8 +35,37 @@ void vsm_mark(uint3 id : SV_DispatchThreadID, uniform MarkPush push) {
     float3 world = h.xyz / h.w;
     if (distance(world, p.eye.xyz) > p.bias.z) return;
     float radius = float(p.counts.w) + 1.0;
-    request(push.params, push.table, push.views, vsm_level(p, world), world, radius);
-    request(push.params, push.table, push.views, p.counts.y, world, radius);
+    if (p.tables.w != 0) {
+        request(push.params, push.table, push.views, vsm_level(p, world), world, radius);
+        request(push.params, push.table, push.views, p.counts.y, world, radius);
+    }
+    request_local(p, push.table, push.views, world);
+}
+
+// The local lights' pages under `world` (4.7c): for each selected light whose range (and cone)
+// holds it, the page of its map at the pixel's mip, widened by the light's PCF footprint and
+// clamped to the map.
+void request_local(VsmParams* p, uint table, uint views, float3 world) {
+    uint4 header = vsm_local_header(p);
+    float footprint = p.choice.z > 0.0 ? distance(world, p.eye.xyz) * p.choice.z : p.choice.w;
+    for (uint s = 0; s < header.x; s++) {
+        VsmLocal l = vsm_local(p, s);
+        uint map;
+        float dist;
+        if (!vsm_local_map(l, world, map, dist)) continue;
+        uint mip = vsm_local_mip(footprint, dist, asfloat(l.info.z), p.choice.y);
+        float2 t = vsm_local_texel(vsm_clip(views, header.y + map, world), mip);
+        float radius = float(l.info.w) + 1.0;
+        int last = int(vsm_mip_side(mip)) - 1;
+        int2 lo = clamp(int2(floor((t - radius) / float(VSM_PAGE_TEXELS))), int2(0, 0), int2(last, last));
+        int2 hi = clamp(int2(floor((t + radius) / float(VSM_PAGE_TEXELS))), int2(0, 0), int2(last, last));
+        for (int y = lo.y; y <= hi.y; ++y) {
+            for (int x = lo.x; x <= hi.x; ++x) {
+                uint old;
+                InterlockedOr(g_buffers.ptr[table][vsm_map_entry(p, map, mip, uint2(x, y))], VSM_REQUESTED, old);
+            }
+        }
+    }
 }
 
 // Zeroes `count` words of `buffer` (the store on a reset, the age histogram each frame).
@@ -53,13 +82,13 @@ uint thread_of(uint3 id) { return id.y * 65535 * 256 + id.x; }
 
 // Frame start (4.7b), one thread per entry: last frame's request and draw flags are cleared, a kept
 // page ages by one (to 255), and a slot whose world page scrolled out of its level is released.
-struct AgePush { uint table; uint pages; uint params; uint levels; };
+struct AgePush { uint table; uint pages; uint params; uint levels; uint entries; };
 
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void vsm_age(uint3 id : SV_DispatchThreadID, uniform AgePush push) {
     uint i = thread_of(id);
-    if (i >= push.levels * VSM_TABLE_LEVEL) return;
+    if (i >= push.entries) return;
     uint entry = g_buffers.ptr[push.table][i];
     uint page = vsm_physical(entry);
     if (page == 0) {
@@ -69,7 +98,8 @@ void vsm_age(uint3 id : SV_DispatchThreadID, uniform AgePush push) {
     uint level = i / VSM_TABLE_LEVEL;
     uint slot = i % VSM_TABLE_LEVEL;
     int2 xy = int2(int(slot % VSM_PAGES_PER_SIDE), int(slot / VSM_PAGES_PER_SIDE));
-    if (any(vsm_slot_page(vsm_previous_origin(push.params, level), xy) != vsm_slot_page(vsm_origin(push.params, level), xy))) {
+    bool sun = level < push.levels; // local maps never scroll
+    if (sun && any(vsm_slot_page(vsm_previous_origin(push.params, level), xy) != vsm_slot_page(vsm_origin(push.params, level), xy))) {
         g_buffers.ptr[push.pages][page - 1] = 0;
         g_buffers.ptr[push.table][i] = 0;
         return;
@@ -108,9 +138,11 @@ void vsm_flag_spheres(uint lane : SV_GroupThreadID, uint3 group : SV_GroupID, un
 }
 
 // requests[j] = 1 when table entry j' (allocation order: coarse levels first) is requested.
-struct FlagsPush { uint table; uint requests; uint levels; };
+struct FlagsPush { uint table; uint requests; uint levels; uint entries; };
 
 uint entry_of(uint j, uint levels) {
+    // The local maps (4.7c) follow the sun's levels and are already coarse mips first.
+    if (j >= levels * VSM_TABLE_LEVEL) { return j; }
     uint level = levels - 1 - j / VSM_TABLE_LEVEL;
     return level * VSM_TABLE_LEVEL + j % VSM_TABLE_LEVEL;
 }
@@ -119,7 +151,7 @@ uint entry_of(uint j, uint levels) {
 [numthreads(256, 1, 1)]
 void vsm_request_flags(uint3 id : SV_DispatchThreadID, uniform FlagsPush push) {
     uint j = thread_of(id);
-    if (j >= push.levels * VSM_TABLE_LEVEL) return;
+    if (j >= push.entries) return;
     uint entry = g_buffers.ptr[push.table][entry_of(j, push.levels)];
     g_buffers.ptr[push.requests][j] = (entry & VSM_REQUESTED) != 0 ? 1 : 0;
 }
@@ -127,13 +159,13 @@ void vsm_request_flags(uint3 id : SV_DispatchThreadID, uniform FlagsPush push) {
 // Residency, one thread per entry in allocation order: the first `pool` requests (by their scan)
 // are resident; a resident entry with a page keeps it (age 0), one without needs a page; a starved
 // entry gives its page up; an unrequested page older than `keep` frames is freed.
-struct UpdatePush { uint table; uint requests; uint scanned; uint needs; uint pages; uint levels; uint pool; uint keep; };
+struct UpdatePush { uint table; uint requests; uint scanned; uint needs; uint pages; uint levels; uint entries; uint pool; uint keep; };
 
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void vsm_update(uint3 id : SV_DispatchThreadID, uniform UpdatePush push) {
     uint j = thread_of(id);
-    if (j >= push.levels * VSM_TABLE_LEVEL) return;
+    if (j >= push.entries) return;
     uint e = entry_of(j, push.levels);
     uint entry = g_buffers.ptr[push.table][e];
     uint page = vsm_physical(entry);
@@ -264,13 +296,13 @@ void vsm_free_list(uint3 id : SV_DispatchThreadID, uniform FreeListPush push) {
 }
 
 // The k-th entry needing a page (allocation order) gets the k-th free page; it is drawn this frame.
-struct AllocatePush { uint table; uint needs; uint need_scan; uint free_list; uint pages; uint levels; };
+struct AllocatePush { uint table; uint needs; uint need_scan; uint free_list; uint pages; uint levels; uint entries; };
 
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void vsm_allocate(uint3 id : SV_DispatchThreadID, uniform AllocatePush push) {
     uint j = thread_of(id);
-    if (j >= push.levels * VSM_TABLE_LEVEL || g_buffers.ptr[push.needs][j] == 0) return;
+    if (j >= push.entries || g_buffers.ptr[push.needs][j] == 0) return;
     uint page = g_buffers.ptr[push.free_list][g_buffers.ptr[push.need_scan][j]];
     uint e = entry_of(j, push.levels);
     g_buffers.ptr[push.table][e] = (page + 1) | VSM_REQUESTED | VSM_VALID | VSM_DIRTY;
@@ -279,13 +311,13 @@ void vsm_allocate(uint3 id : SV_DispatchThreadID, uniform AllocatePush push) {
 
 // out[j] = 1 when entry j' (allocation order) holds a page with any of `mask` (`DIRTY`: to draw
 // this frame; `DYNAMIC`: wants a dynamic page).
-struct EntryFlagsPush { uint table; uint out; uint levels; uint mask; };
+struct EntryFlagsPush { uint table; uint out; uint levels; uint entries; uint mask; };
 
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void vsm_entry_flags(uint3 id : SV_DispatchThreadID, uniform EntryFlagsPush push) {
     uint j = thread_of(id);
-    if (j >= push.levels * VSM_TABLE_LEVEL) return;
+    if (j >= push.entries) return;
     uint entry = g_buffers.ptr[push.table][entry_of(j, push.levels)];
     g_buffers.ptr[push.out][j] = (entry & push.mask) != 0 && vsm_physical(entry) != 0 ? 1 : 0;
 }
@@ -302,16 +334,31 @@ void vsm_release_dynamic(uint3 id : SV_DispatchThreadID, uniform ReleasePush pus
     if ((g_buffers.ptr[push.pages][p] & VSM_DYNAMIC_OWNER) != 0) { g_buffers.ptr[push.pages][p] = 0; }
 }
 
+// Releases `count` entries from `first` (a local light that changed or left its slot, 4.7c): their
+// pages go back to the pool and the entries are emptied.
+struct ReleaseRangePush { uint table; uint pages; uint first; uint count; };
+
+[shader("compute")]
+[numthreads(256, 1, 1)]
+void vsm_release_range(uint3 id : SV_DispatchThreadID, uniform ReleaseRangePush push) {
+    uint k = thread_of(id);
+    if (k >= push.count) return;
+    uint e = push.first + k;
+    uint page = vsm_physical(g_buffers.ptr[push.table][e]);
+    if (page != 0) { g_buffers.ptr[push.pages][page - 1] = 0; }
+    g_buffers.ptr[push.table][e] = 0;
+}
+
 // The k-th entry (allocation order) wanting a dynamic page gets the k-th free page while they last
 // (dynamic[e] = page + 1; copies[k] = (static page, dynamic page)); the rest draw their dynamic
 // casters into the static page, which is redrawn now and next frame (`DIRTY | POLLUTED`).
-struct DynamicPush { uint table; uint movers; uint mover_scan; uint free_list; uint free_scan; uint pages; uint dynamic; uint copies; uint levels; uint pool; };
+struct DynamicPush { uint table; uint movers; uint mover_scan; uint free_list; uint free_scan; uint pages; uint dynamic; uint copies; uint levels; uint entries; uint pool; };
 
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void vsm_dynamic_allocate(uint3 id : SV_DispatchThreadID, uniform DynamicPush push) {
     uint j = thread_of(id);
-    if (j >= push.levels * VSM_TABLE_LEVEL || g_buffers.ptr[push.movers][j] == 0) return;
+    if (j >= push.entries || g_buffers.ptr[push.movers][j] == 0) return;
     uint e = entry_of(j, push.levels);
     uint k = g_buffers.ptr[push.mover_scan][j];
     uint entry = g_buffers.ptr[push.table][e];
@@ -340,20 +387,20 @@ void vsm_composite(uint lane : SV_GroupThreadID, uint3 group : SV_GroupID, unifo
 }
 
 // list[rank] = the physical page of each entry to draw, in allocation order.
-struct ListPush { uint table; uint dirty; uint dirty_scan; uint list; uint levels; };
+struct ListPush { uint table; uint dirty; uint dirty_scan; uint list; uint levels; uint entries; };
 
 [shader("compute")]
 [numthreads(256, 1, 1)]
 void vsm_draw_list(uint3 id : SV_DispatchThreadID, uniform ListPush push) {
     uint j = thread_of(id);
-    if (j >= push.levels * VSM_TABLE_LEVEL || g_buffers.ptr[push.dirty][j] == 0) return;
+    if (j >= push.entries || g_buffers.ptr[push.dirty][j] == 0) return;
     uint entry = g_buffers.ptr[push.table][entry_of(j, push.levels)];
     g_buffers.ptr[push.list][g_buffers.ptr[push.dirty_scan][j]] = vsm_physical(entry) - 1;
 }
 
 // counts = requested, resident, starved, the clear's dispatch (drawn, 1, 1), new, drawn, evicted,
 // kept, pool used.
-struct CountsPush { uint scanned; uint counts; uint entries; uint pool; uint need_scan; uint dirty_scan; uint histogram; uint free_scan; uint mover_scan; };
+struct CountsPush { uint scanned; uint counts; uint entries; uint pool; uint need_scan; uint dirty_scan; uint histogram; uint free_scan; uint mover_scan; uint sun_entries; };
 
 [shader("compute")]
 [numthreads(1, 1, 1)]
@@ -385,6 +432,10 @@ void vsm_counts(uniform CountsPush push) {
     c[13] = 1;
     c[14] = dynamic;
     c[15] = movers - dynamic;
+    // Local requests rank after the sun's (4.7c).
+    uint sun = g_buffers.ptr[push.scanned][push.sun_entries];
+    c[16] = requested - sun;
+    c[17] = resident - min(sun, push.pool);
 }
 
 // One group per listed page: its texels to 0 (the far plane, reverse-Z).

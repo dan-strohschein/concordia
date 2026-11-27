@@ -275,6 +275,22 @@ export interface ShadowStats {
    */
   levels: number;
   /**
+   * Shadowed spot and point lights beyond `max_local_lights` (shaded unshadowed).
+   */
+  local_lights_dropped: number;
+  /**
+   * Spot and point lights given virtual shadow maps this frame (4.7c).
+   */
+  local_lights_shadowed: number;
+  /**
+   * The local lights' requested pages that hold a physical page.
+   */
+  local_pages_allocated: number;
+  /**
+   * The local lights' pages some pixel asked for.
+   */
+  local_pages_requested: number;
+  /**
    * Caster-page pairs drawn: each caster drawn once per page due under it (4.7a2).
    */
   page_draws: number;

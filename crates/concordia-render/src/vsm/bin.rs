@@ -311,32 +311,36 @@ impl UnitBins {
     }
 }
 
-/// The units of M1 caster draws `casters` (consecutive instances each, whose world spheres and
-/// dynamic flags are `spheres` in caster order) in `levels` levels, ordered by draw, then level,
-/// then instance; and each draw's span with its vertex count.
+/// The units of instance caster draws `casters` (consecutive instances each, whose world spheres
+/// and dynamic flags are `spheres` in caster order) in the views `views(draw, sphere)` gives each
+/// instance (sun levels, then local maps' mips; 4.7c), ordered by draw, then view, then instance;
+/// and each draw's span with its vertex count.
 pub(crate) fn units_for(
     casters: &[crate::shadow_pass::ShadowDraw],
     spheres: &[(Vec4, bool)],
-    levels: u32,
+    views: impl Fn(usize, Vec4) -> Vec<u32>,
 ) -> (Vec<Unit>, Vec<DrawSpan>) {
     let (mut units, mut spans) = (Vec::new(), Vec::with_capacity(casters.len()));
     let mut sphere = 0usize;
     for (d, draw) in casters.iter().enumerate() {
         let first = units.len() as u32;
-        for level in 0..levels {
-            for k in 0..draw.instances {
-                let (s, dynamic) = spheres
-                    .get(sphere + k as usize)
-                    .copied()
-                    .unwrap_or((Vec4::ZERO, false));
-                units.push(Unit {
-                    sphere: s,
-                    draw: d as u32,
-                    level,
-                    instance: draw.push.instance + k,
-                    dynamic,
-                });
-            }
+        let mut pending: Vec<(u32, u32, Vec4, bool)> = Vec::new();
+        for k in 0..draw.instances {
+            let (s, dynamic) = spheres
+                .get(sphere + k as usize)
+                .copied()
+                .unwrap_or((Vec4::ZERO, false));
+            pending.extend(views(d, s).into_iter().map(|v| (v, k, s, dynamic)));
+        }
+        pending.sort_by_key(|(v, k, _, _)| (*v, *k));
+        for (level, k, s, dynamic) in pending {
+            units.push(Unit {
+                sphere: s,
+                draw: d as u32,
+                level,
+                instance: draw.push.instance + k,
+                dynamic,
+            });
         }
         sphere += draw.instances as usize;
         spans.push(DrawSpan {
@@ -645,6 +649,9 @@ mod tests {
             let words = |w: &[u32]| -> Vec<u8> { w.iter().flat_map(|w| w.to_le_bytes()).collect() };
             let table = up.buffer(device, &words(self.table), "table").unwrap();
             let dynamic = up.buffer(device, &words(self.dynamic), "dynamic").unwrap();
+            let locals = up
+                .buffer(device, &crate::vsm::local::local_rows(&[], 0, 0), "locals")
+                .unwrap();
             let index = |b: Buffer| device.buffer_index(b).unwrap().0;
             let origins: Vec<IVec2> = self
                 .clipmap
@@ -661,13 +668,14 @@ mod tests {
                 chunks: &[],
                 inv_view_proj: Default::default(),
                 previous: &origins,
-                tables: [index(table), index(dynamic)],
+                tables: [index(table), index(dynamic), index(locals)],
+                sun: true,
             });
             let params = up.buffer(device, &params, "params").unwrap();
             let views = up
                 .buffer(
                     device,
-                    &depth_views(&Default::default(), self.clipmap),
+                    &depth_views(&Default::default(), self.clipmap, &[]),
                     "views",
                 )
                 .unwrap();

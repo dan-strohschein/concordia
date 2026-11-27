@@ -206,6 +206,7 @@ fn many_lights_golden() {
                     color,
                     intensity_lumens: 60.0,
                     range: 2.5,
+                    ..Default::default()
                 },
             )
             .unwrap();
@@ -264,6 +265,7 @@ fn spot_light_cone_falloff_golden() {
                 range: 12.0,
                 inner_angle: 0.35,
                 outer_angle: 0.55,
+                ..Default::default()
             },
         )
         .unwrap();

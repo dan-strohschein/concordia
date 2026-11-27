@@ -18,3 +18,6 @@ concordia-reflect.workspace = true
 serde.workspace = true
 concordia-terra.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

@@ -1,5 +1,5 @@
 # ADR-0091: Shadows: virtual shadow maps by default, cascades as the fallback
-- Status: Proposed (M4 4.7a, 2026-11-26; the 4.7 plan's Q1–Q18, approved by the author; amended by 4.7b, caching). Accepted when 4.7d completes Phase 4.7's done criterion.
+- Status: Proposed (M4 4.7a, 2026-11-26; the 4.7 plan's Q1–Q18, approved by the author; amended by 4.7b, caching, and 4.7c, local lights). Accepted when 4.7d completes Phase 4.7's done criterion.
 - Date: 2026-11-26
 - Builds on: ADR-0014 (M10's tiled shadow atlas), ADR-0040 (render graph), ADR-0088 (Vulkan backend), ADR-0090 (quality methodology), ADR-0100 (meshlets and GPU culling), ADR-0103 (temporal upscaling)
 
@@ -21,6 +21,11 @@ M1 shadows the sun with three or four stabilized cascades of 2048². Near the ca
 - **Invalidation**: a ledger compares every caster (sphere, mesh, material, pose) with last frame's and invalidates the static pages under the spheres that changed; a sun turn, a change of levels, pool or depth range, a new view, a scene load or a technique switch clear the cache. Camera cuts keep it.
 - **Static/dynamic split**: skinned and `Movable` casters, and `Auto` casters for 60 frames after they move, draw into a per-frame second page (a copy of the static page, `vsm.composite`); static pages never hold them. Without room for a second page they draw into the static page, which is redrawn the next frame. `MeshRenderer.mobility` (`Auto | Static | Movable`, default `Auto`) is a hint that changes only the cost.
 - **One cached view at a time** (per-view caching is in `later-backlog.md` §12); `[render.vsm] cache = false` redraws everything every frame with every caster static, the oracle.
+
+### Amendment (M4 4.7c, 2026-11-27): spot and point lights
+- `shadows: Option<LocalShadowSettings>` on `PointLight` and `SpotLight` (`None` by default; spell lights stay unshadowed unless they opt in). `[render.vsm] max_local_lights` (64) lights are selected per frame by `shadow_select` (view coverage × candela, 10 % hysteresis, stable slots); the rest shade unshadowed and are counted.
+- A spot light is one map (field of view twice its outer angle, up to 120°), a point light six cube faces (90° plus a 2-texel guard band); each map is 8192² texels in 64² pages with mips down to one page, reverse-Z perspective, in the same page table (after the sun's levels, sized to the lights present) and pool. One view index covers sun levels and local mips, so marking, residency, caching, invalidation, the static/dynamic split, binning and drawing are the sun's. Local casters are drawn as whole instances (no per-meshlet culling across hundreds of local views yet). VSM runs for shadowed local lights without a sun.
+- Against the path tracer (`spell_arena_direct`): FLIP 0.0027 and 0.0032, a fifth of the unshadowed error; no cube seams (`point_seams`). Cost on `spell_arena_256` about 5.4 ms (above the provisional 2.5 ms; recorded for M4's recalibration).
 
 ## Consequences
 - The frame under `vsm` gains a depth prepass (it also feeds the HZB), page marking, allocation and page rendering; CSM frames are unchanged.

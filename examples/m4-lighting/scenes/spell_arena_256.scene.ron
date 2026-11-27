@@ -1,0 +1,4763 @@
+// Concordia scene, format 1. Canonical form: `concordia fmt` rewrites this file.
+Scene(
+    format: 1,
+    id: "01a21b94-f13d-74ba-b884-4f45b57d0ef0",
+    name: "Spell arena, 256 lights",
+    entities: [
+        Entity(
+            id: "01a21b94-f13d-74ba-b884-4f46239999c1",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf0-7082-a373-36dea4f7afad",
+                    mesh: "builtin:mesh/plane",
+                    mobility: Auto,
+                ),
+                "Name": "Floor",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (24.0, 1.0, 24.0),
+                    translation: (0.0, 0.0, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f140-70e4-8712-5d3e89dacad7",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "asset:01a21a26-2e9e-7277-9721-95cd3530ee6f#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Pillar 0",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.3, 1.0, 1.3),
+                    translation: (7.0, 1.75, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f142-778d-b73e-c20b9709eae5",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "asset:01a21a26-2e9e-7277-9721-95cd3530ee6f#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Pillar 1",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.3, 1.0, 1.3),
+                    translation: (4.9497476, 1.75, 4.9497476),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f146-7045-9de2-4031a33d5025",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "asset:01a21a26-2e9e-7277-9721-95cd3530ee6f#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Pillar 2",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.3, 1.0, 1.3),
+                    translation: (-3.059797e-7, 1.75, 7.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f14a-7045-b9d4-2e037d469e3c",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "asset:01a21a26-2e9e-7277-9721-95cd3530ee6f#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Pillar 3",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.3, 1.0, 1.3),
+                    translation: (-4.9497476, 1.75, 4.9497476),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f14e-714b-b9e8-55436e5fe38a",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "asset:01a21a26-2e9e-7277-9721-95cd3530ee6f#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Pillar 4",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.3, 1.0, 1.3),
+                    translation: (-7.0, 1.75, -6.119594e-7),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f152-712d-b408-9281785f6372",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "asset:01a21a26-2e9e-7277-9721-95cd3530ee6f#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Pillar 5",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.3, 1.0, 1.3),
+                    translation: (-4.9497466, 1.75, -4.949748),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f156-7744-9da5-da0b3584026b",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "asset:01a21a26-2e9e-7277-9721-95cd3530ee6f#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Pillar 6",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.3, 1.0, 1.3),
+                    translation: (8.347416e-8, 1.75, -7.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f15a-7206-8c7d-d6d563d043ef",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "asset:01a21a26-2e9e-7277-9721-95cd3530ee6f#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Pillar 7",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.3, 1.0, 1.3),
+                    translation: (4.949749, 1.75, -4.9497457),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f15e-7492-b431-379cc0c5f64b",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Arch west",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.5, 2.8, 0.8),
+                    translation: (-1.6, 1.4, -2.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f160-7755-beda-4ad76c137e35",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Arch east",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.5, 2.8, 0.8),
+                    translation: (1.6, 1.4, -2.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f164-7357-9ca6-e3c5ccf59b42",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Arch lintel",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (3.7, 0.4, 0.8),
+                    translation: (0.0, 3.0, -2.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f168-7267-b9f2-0ade57c836ef",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf0-7082-a373-36dea4f7afad",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Rubble 0",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.6, 0.3, 0.5),
+                    translation: (-3.0, 0.15, 2.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f16c-73d6-926d-78e3406f34ad",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf0-7082-a373-36dea4f7afad",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Rubble 1",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.3, 0.2, 0.4),
+                    translation: (-2.4, 0.1, 2.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f170-744c-8faa-b583ac1474a3",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf0-7082-a373-36dea4f7afad",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Rubble 2",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.5, 0.4, 0.5),
+                    translation: (2.8, 0.2, 1.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f174-7629-9194-bbc9ac172a9e",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf0-7082-a373-36dea4f7afad",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Rubble 3",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.4, 0.2, 0.3),
+                    translation: (3.4, 0.1, 2.2),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f178-7185-aef2-f42b4e63034c",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf0-7082-a373-36dea4f7afad",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Rubble 4",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.8, 0.5, 0.4),
+                    translation: (0.5, 0.25, 3.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f17c-76b1-bdb2-d816c127d235",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf0-7082-a373-36dea4f7afad",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Rubble 5",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.35, 0.24, 0.35),
+                    translation: (-0.6, 0.12, 4.2),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f180-7586-91c8-1eebbb9acb23",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf0-7082-a373-36dea4f7afad",
+                    mesh: "asset:01a21a26-2c4a-70eb-ac9f-e53bdafabf1c#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Rock west",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-4.5, 0.35, -3.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f184-7705-b5a2-f5314f59070e",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf0-7082-a373-36dea4f7afad",
+                    mesh: "asset:01a21a26-2c4a-70eb-ac9f-e53bdafabf1c#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Rock east",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.2, 1.0, 0.9),
+                    translation: (4.0, 0.35, 4.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f188-7030-8f41-5298b355e2e3",
+            components: {
+                "Name": "Spot 0",
+                "SpotLight": (
+                    color: (1.0, 0.7, 0.4),
+                    inner_angle: 0.45,
+                    intensity_lumens: 12000.0,
+                    outer_angle: 0.7,
+                    range: 16.0,
+                    shadows: Some((
+                        depth_bias: 1.0,
+                        normal_bias: 1.0,
+                        pcf: X3,
+                    )),
+                ),
+                "Transform": (
+                    rotation: (-0.73201376, -0.43920827, -0.0, 0.5208187),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-5.0, 5.0, -5.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f18b-7729-949b-7133a8012eba",
+            components: {
+                "Name": "Spot 1",
+                "SpotLight": (
+                    color: (0.5, 0.7, 1.0),
+                    inner_angle: 0.45,
+                    intensity_lumens: 12000.0,
+                    outer_angle: 0.7,
+                    range: 16.0,
+                    shadows: Some((
+                        depth_bias: 1.0,
+                        normal_bias: 1.0,
+                        pcf: X3,
+                    )),
+                ),
+                "Transform": (
+                    rotation: (-0.71590525, 0.42954314, 0.0, 0.5504292),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (5.0, 5.5, -5.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f18d-730a-be93-d26d94599c4a",
+            components: {
+                "Name": "Spot 2",
+                "SpotLight": (
+                    color: (1.0, 0.5, 0.8),
+                    inner_angle: 0.45,
+                    intensity_lumens: 12000.0,
+                    outer_angle: 0.7,
+                    range: 16.0,
+                    shadows: Some((
+                        depth_bias: 1.0,
+                        normal_bias: 1.0,
+                        pcf: X3,
+                    )),
+                ),
+                "Transform": (
+                    rotation: (-0.45918787, 0.22959393, 0.0, 0.8581568),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (5.0, 4.5, 5.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f191-72ca-903a-dbdaf34cc659",
+            components: {
+                "Name": "Spot 3",
+                "SpotLight": (
+                    color: (0.6, 1.0, 0.6),
+                    inner_angle: 0.45,
+                    intensity_lumens: 12000.0,
+                    outer_angle: 0.7,
+                    range: 16.0,
+                    shadows: Some((
+                        depth_bias: 1.0,
+                        normal_bias: 1.0,
+                        pcf: X3,
+                    )),
+                ),
+                "Transform": (
+                    rotation: (-0.4719892, -0.28319353, -0.0, 0.8348818),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-5.0, 5.0, 5.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f194-7439-8d08-8e2517a09ee0",
+            components: {
+                "Name": "Point 0",
+                "PointLight": (
+                    color: (1.0, 0.55, 0.25),
+                    intensity_lumens: 3000.0,
+                    range: 10.0,
+                    shadows: Some((
+                        depth_bias: 1.0,
+                        normal_bias: 1.0,
+                        pcf: X3,
+                    )),
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.0, 1.6, 0.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f198-74ab-a028-7be97fc88f5f",
+            components: {
+                "Name": "Point 1",
+                "PointLight": (
+                    color: (0.4, 0.6, 1.0),
+                    intensity_lumens: 3000.0,
+                    range: 10.0,
+                    shadows: Some((
+                        depth_bias: 1.0,
+                        normal_bias: 1.0,
+                        pcf: X3,
+                    )),
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.5, 1.2, -1.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f19c-751e-88fd-63f812653bc4",
+            components: {
+                "Name": "Point 2",
+                "PointLight": (
+                    color: (0.9, 0.3, 1.0),
+                    intensity_lumens: 3000.0,
+                    range: 10.0,
+                    shadows: Some((
+                        depth_bias: 1.0,
+                        normal_bias: 1.0,
+                        pcf: X3,
+                    )),
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.0, 1.0, -3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1a1-741d-afad-92431e04ee69",
+            components: {
+                "Name": "Point 3",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.7),
+                    intensity_lumens: 3000.0,
+                    range: 10.0,
+                    shadows: Some((
+                        depth_bias: 1.0,
+                        normal_bias: 1.0,
+                        pcf: X3,
+                    )),
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (2.0, 1.4, 3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1a5-738c-b8b6-c8f19d2ac66e",
+            components: {
+                "Name": "Spell 0",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-9.0, 0.4, -9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1a9-736e-a8a9-ee957995e992",
+            components: {
+                "Name": "Spell 1",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-7.8, 0.5, -9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1ac-73f7-8e86-057789a46cfe",
+            components: {
+                "Name": "Spell 2",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-6.6, 0.6, -9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1b0-725d-9f12-6a0499b9f90f",
+            components: {
+                "Name": "Spell 3",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-5.3999996, 0.4, -9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1b4-765b-a541-160aefdd30e7",
+            components: {
+                "Name": "Spell 4",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-4.2, 0.5, -9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1b8-742a-93ad-b9aca2d1b5d6",
+            components: {
+                "Name": "Spell 5",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.0, 0.6, -9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1bc-7796-b5fc-9919047c216c",
+            components: {
+                "Name": "Spell 6",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.7999997, 0.4, -9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1c0-77ab-9ad1-43785696af22",
+            components: {
+                "Name": "Spell 7",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-0.5999994, 0.5, -9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1c4-7311-a210-6e87945a7a94",
+            components: {
+                "Name": "Spell 8",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.6000004, 0.6, -9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1c8-75e3-b67c-b5dbcdc7a342",
+            components: {
+                "Name": "Spell 9",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (1.8000002, 0.4, -9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1cc-70b6-bc40-29487d4c8ac4",
+            components: {
+                "Name": "Spell 10",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.0, 0.5, -9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1cf-7267-946b-c34728c1cc50",
+            components: {
+                "Name": "Spell 11",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (4.200001, 0.6, -9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1d3-76d4-929c-54a44f8b21f3",
+            components: {
+                "Name": "Spell 12",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (5.4000006, 0.4, -9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1d7-75d3-af29-7fedd6b574a6",
+            components: {
+                "Name": "Spell 13",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (6.6000004, 0.5, -9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1da-7536-b9da-52b1809e373f",
+            components: {
+                "Name": "Spell 14",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (7.800001, 0.6, -9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1dc-7087-a723-9b030b02b661",
+            components: {
+                "Name": "Spell 15",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (9.0, 0.4, -9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1e0-775c-bdbf-78e8114a704f",
+            components: {
+                "Name": "Spell 16",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-9.0, 0.5, -7.8),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1e3-77e5-a44d-1a75c67802b7",
+            components: {
+                "Name": "Spell 17",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-7.8, 0.6, -7.8),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1e5-7064-ac67-b22d50a712dd",
+            components: {
+                "Name": "Spell 18",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-6.6, 0.4, -7.8),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1e9-7337-8f5f-c8e4dfaa3a27",
+            components: {
+                "Name": "Spell 19",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-5.3999996, 0.5, -7.8),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1ed-767c-b96a-be915065ec11",
+            components: {
+                "Name": "Spell 20",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-4.2, 0.6, -7.8),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1f1-7114-a226-b4a35e29b6fb",
+            components: {
+                "Name": "Spell 21",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.0, 0.4, -7.8),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1f5-72c7-922c-e80b958c478e",
+            components: {
+                "Name": "Spell 22",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.7999997, 0.5, -7.8),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1f9-7500-859b-ca43e31598f0",
+            components: {
+                "Name": "Spell 23",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-0.5999994, 0.6, -7.8),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f1fc-70f7-8752-9ce8caa4f91f",
+            components: {
+                "Name": "Spell 24",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.6000004, 0.4, -7.8),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f200-7772-8893-788e91260ab8",
+            components: {
+                "Name": "Spell 25",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (1.8000002, 0.5, -7.8),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f205-7335-bf55-76e330b26d4b",
+            components: {
+                "Name": "Spell 26",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.0, 0.6, -7.8),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f209-7256-bccc-1f9768e77826",
+            components: {
+                "Name": "Spell 27",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (4.200001, 0.4, -7.8),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f20d-7073-88d4-0074284800bf",
+            components: {
+                "Name": "Spell 28",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (5.4000006, 0.5, -7.8),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f212-73f2-8ff7-09529006174b",
+            components: {
+                "Name": "Spell 29",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (6.6000004, 0.6, -7.8),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f216-7195-8126-398d5f525219",
+            components: {
+                "Name": "Spell 30",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (7.800001, 0.4, -7.8),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f21a-7636-82c8-311725143d10",
+            components: {
+                "Name": "Spell 31",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (9.0, 0.5, -7.8),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f21e-73ce-9639-af51e350ca20",
+            components: {
+                "Name": "Spell 32",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-9.0, 0.6, -6.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f222-723f-80e3-3da783c9f278",
+            components: {
+                "Name": "Spell 33",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-7.8, 0.4, -6.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f226-74cb-af10-821055305eba",
+            components: {
+                "Name": "Spell 34",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-6.6, 0.5, -6.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f229-77f1-bff4-dbb28e1a5036",
+            components: {
+                "Name": "Spell 35",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-5.3999996, 0.6, -6.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f22b-756d-93b6-abaeb978efd8",
+            components: {
+                "Name": "Spell 36",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-4.2, 0.4, -6.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f22e-727d-b00d-9d85280c45ec",
+            components: {
+                "Name": "Spell 37",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.0, 0.5, -6.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f232-7519-a31c-9ceb1d714b5a",
+            components: {
+                "Name": "Spell 38",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.7999997, 0.6, -6.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f234-772d-b7b0-bb761ca3ebcc",
+            components: {
+                "Name": "Spell 39",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-0.5999994, 0.4, -6.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f237-751e-bc69-54fb3f4a17e0",
+            components: {
+                "Name": "Spell 40",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.6000004, 0.5, -6.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f23b-71f0-a334-1fbf1fbf6dca",
+            components: {
+                "Name": "Spell 41",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (1.8000002, 0.6, -6.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f23f-743e-9ea6-500f8f4b7404",
+            components: {
+                "Name": "Spell 42",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.0, 0.4, -6.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f243-75af-b6a8-4f70d194ca7c",
+            components: {
+                "Name": "Spell 43",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (4.200001, 0.5, -6.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f247-7220-b221-ca6664a8a8a7",
+            components: {
+                "Name": "Spell 44",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (5.4000006, 0.6, -6.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f24a-747c-9369-3d0cf2596782",
+            components: {
+                "Name": "Spell 45",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (6.6000004, 0.4, -6.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f24e-706c-8831-7460cfd07a89",
+            components: {
+                "Name": "Spell 46",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (7.800001, 0.5, -6.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f252-7263-8a16-e4b9d321b041",
+            components: {
+                "Name": "Spell 47",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (9.0, 0.6, -6.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f256-77d3-a9ca-76f6204b7333",
+            components: {
+                "Name": "Spell 48",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-9.0, 0.4, -5.3999996),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f25a-7477-aee4-843077210212",
+            components: {
+                "Name": "Spell 49",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-7.8, 0.5, -5.3999996),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f25e-7073-9279-94723d8e1292",
+            components: {
+                "Name": "Spell 50",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-6.6, 0.6, -5.3999996),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f263-73b9-b673-d047f499256d",
+            components: {
+                "Name": "Spell 51",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-5.3999996, 0.4, -5.3999996),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f269-7551-b3e0-10bce15fa25f",
+            components: {
+                "Name": "Spell 52",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-4.2, 0.5, -5.3999996),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f26d-72e9-9097-94117ae24ac4",
+            components: {
+                "Name": "Spell 53",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.0, 0.6, -5.3999996),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f270-70c7-8885-5e8a9affe54d",
+            components: {
+                "Name": "Spell 54",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.7999997, 0.4, -5.3999996),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f274-76c5-897f-030bc40311bb",
+            components: {
+                "Name": "Spell 55",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-0.5999994, 0.5, -5.3999996),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f279-7098-8f55-963f3bb4f24d",
+            components: {
+                "Name": "Spell 56",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.6000004, 0.6, -5.3999996),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f27c-7505-b879-86e9141272d1",
+            components: {
+                "Name": "Spell 57",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (1.8000002, 0.4, -5.3999996),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f27f-726c-a395-5247c11b577f",
+            components: {
+                "Name": "Spell 58",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.0, 0.5, -5.3999996),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f282-728e-a843-5f699abb91bb",
+            components: {
+                "Name": "Spell 59",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (4.200001, 0.6, -5.3999996),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f285-769d-8bb5-54916fe3400c",
+            components: {
+                "Name": "Spell 60",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (5.4000006, 0.4, -5.3999996),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f289-71fe-bb20-16d3ac40111d",
+            components: {
+                "Name": "Spell 61",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (6.6000004, 0.5, -5.3999996),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f28d-714a-a1d5-2c69fbaec10b",
+            components: {
+                "Name": "Spell 62",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (7.800001, 0.6, -5.3999996),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f291-76b4-80d7-9d8366c3eac4",
+            components: {
+                "Name": "Spell 63",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (9.0, 0.4, -5.3999996),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f296-7097-8f32-1d8220c95529",
+            components: {
+                "Name": "Spell 64",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-9.0, 0.5, -4.2),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f29b-72db-b9a8-f42897155e5e",
+            components: {
+                "Name": "Spell 65",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-7.8, 0.6, -4.2),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f29f-7241-ae8b-5ba5cd7da84f",
+            components: {
+                "Name": "Spell 66",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-6.6, 0.4, -4.2),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2a4-764e-8f2b-ad3e02a909b4",
+            components: {
+                "Name": "Spell 67",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-5.3999996, 0.5, -4.2),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2a8-7442-8f94-c0cda59042bd",
+            components: {
+                "Name": "Spell 68",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-4.2, 0.6, -4.2),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2ac-765c-a776-c40012f7e986",
+            components: {
+                "Name": "Spell 69",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.0, 0.4, -4.2),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2b1-754d-977d-c8e549d6cb5c",
+            components: {
+                "Name": "Spell 70",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.7999997, 0.5, -4.2),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2b5-72b3-a47a-236c39d5ce08",
+            components: {
+                "Name": "Spell 71",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-0.5999994, 0.6, -4.2),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2ba-7470-95fe-3338f30514e3",
+            components: {
+                "Name": "Spell 72",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.6000004, 0.4, -4.2),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2be-733c-89cf-77845b625cc3",
+            components: {
+                "Name": "Spell 73",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (1.8000002, 0.5, -4.2),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2c2-772c-8de4-e9915234a0ca",
+            components: {
+                "Name": "Spell 74",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.0, 0.6, -4.2),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2c5-7625-b9c7-69bb63dada7a",
+            components: {
+                "Name": "Spell 75",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (4.200001, 0.4, -4.2),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2ca-77a0-8497-bb5ef9ff5ea3",
+            components: {
+                "Name": "Spell 76",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (5.4000006, 0.5, -4.2),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2cf-7641-a5bd-ce3c714b75b7",
+            components: {
+                "Name": "Spell 77",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (6.6000004, 0.6, -4.2),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2d2-77de-aa99-45dbcd5369eb",
+            components: {
+                "Name": "Spell 78",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (7.800001, 0.4, -4.2),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2d5-71a0-a0dd-28440a4616ef",
+            components: {
+                "Name": "Spell 79",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (9.0, 0.5, -4.2),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2da-7050-86e7-cd3ca409d80d",
+            components: {
+                "Name": "Spell 80",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-9.0, 0.6, -3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2dd-713b-bc3a-01cbc829cb86",
+            components: {
+                "Name": "Spell 81",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-7.8, 0.4, -3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2e0-704f-a8e3-f77f659a9d0a",
+            components: {
+                "Name": "Spell 82",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-6.6, 0.5, -3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2e3-7380-bbd1-1fd797f29f14",
+            components: {
+                "Name": "Spell 83",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-5.3999996, 0.6, -3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2e8-72ec-a631-4f4a48d366ad",
+            components: {
+                "Name": "Spell 84",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-4.2, 0.4, -3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2ed-74ea-8d13-30915599f9c1",
+            components: {
+                "Name": "Spell 85",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.0, 0.5, -3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2f2-751b-9148-9fb1c80f3ed0",
+            components: {
+                "Name": "Spell 86",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.7999997, 0.6, -3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2f7-7328-a270-c21740eb2b07",
+            components: {
+                "Name": "Spell 87",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-0.5999994, 0.4, -3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2fb-74f2-996d-11e7ee6441da",
+            components: {
+                "Name": "Spell 88",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.6000004, 0.5, -3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f2ff-75ac-aa7b-a1e877211996",
+            components: {
+                "Name": "Spell 89",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (1.8000002, 0.6, -3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f304-775e-a1d0-b2732430ecc4",
+            components: {
+                "Name": "Spell 90",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.0, 0.4, -3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f309-72c8-9fcd-d88ae85e09dc",
+            components: {
+                "Name": "Spell 91",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (4.200001, 0.5, -3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f30e-75d0-aabb-d52273522132",
+            components: {
+                "Name": "Spell 92",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (5.4000006, 0.6, -3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f313-7572-b16d-2fe8526f8995",
+            components: {
+                "Name": "Spell 93",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (6.6000004, 0.4, -3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f317-7342-8967-9335f32c7cc6",
+            components: {
+                "Name": "Spell 94",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (7.800001, 0.5, -3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f31c-7061-a629-ab74acf9b1b0",
+            components: {
+                "Name": "Spell 95",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (9.0, 0.6, -3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f321-73f9-8d37-443056b24d53",
+            components: {
+                "Name": "Spell 96",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-9.0, 0.4, -1.7999997),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f324-77bf-918e-b8e04d59bac6",
+            components: {
+                "Name": "Spell 97",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-7.8, 0.5, -1.7999997),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f329-7015-ae91-6a8eae0b955f",
+            components: {
+                "Name": "Spell 98",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-6.6, 0.6, -1.7999997),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f32e-759c-b50e-e40b24277511",
+            components: {
+                "Name": "Spell 99",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-5.3999996, 0.4, -1.7999997),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f331-71c4-99c8-4b7f19da5679",
+            components: {
+                "Name": "Spell 100",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-4.2, 0.5, -1.7999997),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f334-7211-83f5-5469cfe269c2",
+            components: {
+                "Name": "Spell 101",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.0, 0.6, -1.7999997),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f339-701f-bdf7-8dde9e66d863",
+            components: {
+                "Name": "Spell 102",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.7999997, 0.4, -1.7999997),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f33c-7136-891d-5b084e7c9551",
+            components: {
+                "Name": "Spell 103",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-0.5999994, 0.5, -1.7999997),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f341-75f9-a8dc-1d5c9043831f",
+            components: {
+                "Name": "Spell 104",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.6000004, 0.6, -1.7999997),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f346-75fe-8ca8-6ceb8165f1cf",
+            components: {
+                "Name": "Spell 105",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (1.8000002, 0.4, -1.7999997),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f34b-748f-bea4-cad863c64cc9",
+            components: {
+                "Name": "Spell 106",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.0, 0.5, -1.7999997),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f350-7617-8402-9a4553648f09",
+            components: {
+                "Name": "Spell 107",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (4.200001, 0.6, -1.7999997),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f355-7608-887b-58377bc142e6",
+            components: {
+                "Name": "Spell 108",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (5.4000006, 0.4, -1.7999997),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f35a-7649-a22e-e1c3dcefeaf1",
+            components: {
+                "Name": "Spell 109",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (6.6000004, 0.5, -1.7999997),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f35f-763c-91a7-2f1d9df13079",
+            components: {
+                "Name": "Spell 110",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (7.800001, 0.6, -1.7999997),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f364-7271-903b-d198f0fb16bb",
+            components: {
+                "Name": "Spell 111",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (9.0, 0.4, -1.7999997),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f369-7473-80c2-3bd73076d064",
+            components: {
+                "Name": "Spell 112",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-9.0, 0.5, -0.5999994),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f36e-72b6-a530-2afd39437070",
+            components: {
+                "Name": "Spell 113",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-7.8, 0.6, -0.5999994),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f373-7679-a48b-f2796dcd90d2",
+            components: {
+                "Name": "Spell 114",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-6.6, 0.4, -0.5999994),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f378-7636-9c6c-9f9b3e432258",
+            components: {
+                "Name": "Spell 115",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-5.3999996, 0.5, -0.5999994),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f37c-72b2-a488-e34177b37646",
+            components: {
+                "Name": "Spell 116",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-4.2, 0.6, -0.5999994),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f381-7495-bc95-1757a4c891bf",
+            components: {
+                "Name": "Spell 117",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.0, 0.4, -0.5999994),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f385-74a1-9504-e2b36c2056d7",
+            components: {
+                "Name": "Spell 118",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.7999997, 0.5, -0.5999994),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f389-7337-8a71-f046c61aff26",
+            components: {
+                "Name": "Spell 119",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-0.5999994, 0.6, -0.5999994),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f38e-778f-9bfd-5e10c799d231",
+            components: {
+                "Name": "Spell 120",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.6000004, 0.4, -0.5999994),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f391-7075-a8bf-b7895b669c24",
+            components: {
+                "Name": "Spell 121",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (1.8000002, 0.5, -0.5999994),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f395-745a-9a10-6ee7060e5948",
+            components: {
+                "Name": "Spell 122",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.0, 0.6, -0.5999994),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f399-715d-8410-f711c2e87975",
+            components: {
+                "Name": "Spell 123",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (4.200001, 0.4, -0.5999994),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f39c-70f5-877b-afe2119f9923",
+            components: {
+                "Name": "Spell 124",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (5.4000006, 0.5, -0.5999994),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f3a0-7011-b116-e49f45a472b0",
+            components: {
+                "Name": "Spell 125",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (6.6000004, 0.6, -0.5999994),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f3a5-731e-b2c4-f9ea9ef4454b",
+            components: {
+                "Name": "Spell 126",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (7.800001, 0.4, -0.5999994),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f3aa-740a-a4f2-b1df6f1d1f61",
+            components: {
+                "Name": "Spell 127",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (9.0, 0.5, -0.5999994),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f3af-70ce-b316-907cf0545913",
+            components: {
+                "Name": "Spell 128",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-9.0, 0.6, 0.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f3b4-73e2-93dc-0286e11ff49e",
+            components: {
+                "Name": "Spell 129",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-7.8, 0.4, 0.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f3b9-7757-84fe-788275014436",
+            components: {
+                "Name": "Spell 130",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-6.6, 0.5, 0.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f3be-777f-ace0-11be9b07ac1f",
+            components: {
+                "Name": "Spell 131",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-5.3999996, 0.6, 0.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f3c3-70c1-8b25-18a4e90fcd4d",
+            components: {
+                "Name": "Spell 132",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-4.2, 0.4, 0.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f3c8-706d-8a45-4767b45aacc5",
+            components: {
+                "Name": "Spell 133",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.0, 0.5, 0.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f3cc-7224-8fef-8c437eab431f",
+            components: {
+                "Name": "Spell 134",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.7999997, 0.6, 0.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f3d1-740c-88e7-c84c58be2e77",
+            components: {
+                "Name": "Spell 135",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-0.5999994, 0.4, 0.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f3d6-749c-b410-a2f837c3cae2",
+            components: {
+                "Name": "Spell 136",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.6000004, 0.5, 0.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f3db-713b-a7b5-79e805c135da",
+            components: {
+                "Name": "Spell 137",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (1.8000002, 0.6, 0.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f3e0-773a-9b3e-8a035e39002f",
+            components: {
+                "Name": "Spell 138",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.0, 0.4, 0.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f3e4-70c5-a6de-467b986f306b",
+            components: {
+                "Name": "Spell 139",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (4.200001, 0.5, 0.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f3e7-7131-9935-944a94adda54",
+            components: {
+                "Name": "Spell 140",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (5.4000006, 0.6, 0.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f3ec-71d9-83f0-31c9162ec981",
+            components: {
+                "Name": "Spell 141",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (6.6000004, 0.4, 0.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f3f0-7213-942f-824abbe2c3d6",
+            components: {
+                "Name": "Spell 142",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (7.800001, 0.5, 0.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f3f3-758b-8c35-91a30584ac3b",
+            components: {
+                "Name": "Spell 143",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (9.0, 0.6, 0.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f3f9-70d2-8941-0d83e161bba2",
+            components: {
+                "Name": "Spell 144",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-9.0, 0.4, 1.8000002),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f3fc-71c2-8f36-e66b323c7914",
+            components: {
+                "Name": "Spell 145",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-7.8, 0.5, 1.8000002),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f3ff-73c3-a141-a3e5047dddf3",
+            components: {
+                "Name": "Spell 146",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-6.6, 0.6, 1.8000002),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f404-77ce-821a-979222c0549c",
+            components: {
+                "Name": "Spell 147",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-5.3999996, 0.4, 1.8000002),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f409-7688-826c-76c7e116e7c0",
+            components: {
+                "Name": "Spell 148",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-4.2, 0.5, 1.8000002),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f40e-7619-86b6-54687d2dd4e8",
+            components: {
+                "Name": "Spell 149",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.0, 0.6, 1.8000002),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f413-752c-a77e-5162a54fb99d",
+            components: {
+                "Name": "Spell 150",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.7999997, 0.4, 1.8000002),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f418-7021-9073-780f0ac4d957",
+            components: {
+                "Name": "Spell 151",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-0.5999994, 0.5, 1.8000002),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f41d-77b5-8151-e9926fd9e110",
+            components: {
+                "Name": "Spell 152",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.6000004, 0.6, 1.8000002),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f422-76f8-b3f8-7e163bb4bcc0",
+            components: {
+                "Name": "Spell 153",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (1.8000002, 0.4, 1.8000002),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f427-7215-bfd4-29d326a39891",
+            components: {
+                "Name": "Spell 154",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.0, 0.5, 1.8000002),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f42c-734f-b5f5-681a94f45fd8",
+            components: {
+                "Name": "Spell 155",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (4.200001, 0.6, 1.8000002),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f431-7651-81f2-74d8775e55ef",
+            components: {
+                "Name": "Spell 156",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (5.4000006, 0.4, 1.8000002),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f436-7449-bffc-c00c84f16c37",
+            components: {
+                "Name": "Spell 157",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (6.6000004, 0.5, 1.8000002),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f43b-7318-b593-256c9eb98039",
+            components: {
+                "Name": "Spell 158",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (7.800001, 0.6, 1.8000002),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f440-73c5-aec8-c5ddd2249215",
+            components: {
+                "Name": "Spell 159",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (9.0, 0.4, 1.8000002),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f443-736f-82e1-398032cae59a",
+            components: {
+                "Name": "Spell 160",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-9.0, 0.5, 3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f449-77ac-971f-5e2224f87a60",
+            components: {
+                "Name": "Spell 161",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-7.8, 0.6, 3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f44e-70ac-9e10-168b6b7087b1",
+            components: {
+                "Name": "Spell 162",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-6.6, 0.4, 3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f453-702a-a3cb-d4b54417ff5e",
+            components: {
+                "Name": "Spell 163",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-5.3999996, 0.5, 3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f457-7359-9e05-a3e2943fa795",
+            components: {
+                "Name": "Spell 164",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-4.2, 0.6, 3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f45b-739d-8ac1-8993d69559d4",
+            components: {
+                "Name": "Spell 165",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.0, 0.4, 3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f460-770b-9c85-a783f4adf31a",
+            components: {
+                "Name": "Spell 166",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.7999997, 0.5, 3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f464-77c9-a97f-771743c5149e",
+            components: {
+                "Name": "Spell 167",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-0.5999994, 0.6, 3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f468-734e-bebf-07e519f95b44",
+            components: {
+                "Name": "Spell 168",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.6000004, 0.4, 3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f46d-7503-a1e8-e6fa917fa5cf",
+            components: {
+                "Name": "Spell 169",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (1.8000002, 0.5, 3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f472-7118-9cf8-2e4d613a0f8d",
+            components: {
+                "Name": "Spell 170",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.0, 0.6, 3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f477-74c0-8d3b-b3f0069f093d",
+            components: {
+                "Name": "Spell 171",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (4.200001, 0.4, 3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f47c-7786-9e88-6847c9103ec0",
+            components: {
+                "Name": "Spell 172",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (5.4000006, 0.5, 3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f481-7552-8a3f-eb260553cd27",
+            components: {
+                "Name": "Spell 173",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (6.6000004, 0.6, 3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f486-7796-aa20-ffd246481b99",
+            components: {
+                "Name": "Spell 174",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (7.800001, 0.4, 3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f48b-77c3-888a-d0487ab1f87e",
+            components: {
+                "Name": "Spell 175",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (9.0, 0.5, 3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f490-71f9-a78d-15090ca636f9",
+            components: {
+                "Name": "Spell 176",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-9.0, 0.6, 4.200001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f495-75c1-9d5d-b30f4a2c160f",
+            components: {
+                "Name": "Spell 177",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-7.8, 0.4, 4.200001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f49a-7504-9917-9e8ab178c236",
+            components: {
+                "Name": "Spell 178",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-6.6, 0.5, 4.200001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f4a0-7350-9166-199405199142",
+            components: {
+                "Name": "Spell 179",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-5.3999996, 0.6, 4.200001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f4a5-74a7-8651-54eadc107ead",
+            components: {
+                "Name": "Spell 180",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-4.2, 0.4, 4.200001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f4aa-71e4-824e-a72a6cae23bb",
+            components: {
+                "Name": "Spell 181",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.0, 0.5, 4.200001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f4ae-72b7-a23f-9eea62668b94",
+            components: {
+                "Name": "Spell 182",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.7999997, 0.6, 4.200001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f4b3-7068-8785-05fea01a0e86",
+            components: {
+                "Name": "Spell 183",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-0.5999994, 0.4, 4.200001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f4b9-74d7-98d8-a23c259b8e21",
+            components: {
+                "Name": "Spell 184",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.6000004, 0.5, 4.200001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f4bd-74b0-9f8b-1e78cbb5feb5",
+            components: {
+                "Name": "Spell 185",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (1.8000002, 0.6, 4.200001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f4c1-7496-8f75-aef7949197db",
+            components: {
+                "Name": "Spell 186",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.0, 0.4, 4.200001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f4c6-7716-bcb9-c8c951c7a393",
+            components: {
+                "Name": "Spell 187",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (4.200001, 0.5, 4.200001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f4ca-7684-9405-c30f651f98a3",
+            components: {
+                "Name": "Spell 188",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (5.4000006, 0.6, 4.200001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f4ce-7637-833a-889b9a5f0eb6",
+            components: {
+                "Name": "Spell 189",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (6.6000004, 0.4, 4.200001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f4d2-70eb-b1c2-649a80278ead",
+            components: {
+                "Name": "Spell 190",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (7.800001, 0.5, 4.200001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f4d7-713a-9963-1e98c7b8ce0b",
+            components: {
+                "Name": "Spell 191",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (9.0, 0.6, 4.200001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f4dc-74b0-b84f-1af70dc5a5bc",
+            components: {
+                "Name": "Spell 192",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-9.0, 0.4, 5.4000006),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f4e2-74c6-b379-f2fe3b8f0f5e",
+            components: {
+                "Name": "Spell 193",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-7.8, 0.5, 5.4000006),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f4e7-74a5-9fcb-2578d7686464",
+            components: {
+                "Name": "Spell 194",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-6.6, 0.6, 5.4000006),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f4ec-7061-aa8f-9affb49f40b9",
+            components: {
+                "Name": "Spell 195",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-5.3999996, 0.4, 5.4000006),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f4f3-7464-8935-0e621122cd39",
+            components: {
+                "Name": "Spell 196",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-4.2, 0.5, 5.4000006),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f4f8-71f8-a06a-3fc6502329ad",
+            components: {
+                "Name": "Spell 197",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.0, 0.6, 5.4000006),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f4fe-7514-8945-72edd5973687",
+            components: {
+                "Name": "Spell 198",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.7999997, 0.4, 5.4000006),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f503-7773-8207-61a93ba575ac",
+            components: {
+                "Name": "Spell 199",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-0.5999994, 0.5, 5.4000006),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f509-74e4-8dee-f2898720352d",
+            components: {
+                "Name": "Spell 200",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.6000004, 0.6, 5.4000006),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f50e-7658-a066-6211352348b8",
+            components: {
+                "Name": "Spell 201",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (1.8000002, 0.4, 5.4000006),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f513-77c8-bc31-818414fd9bda",
+            components: {
+                "Name": "Spell 202",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.0, 0.5, 5.4000006),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f517-7597-a983-0df66e581129",
+            components: {
+                "Name": "Spell 203",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (4.200001, 0.6, 5.4000006),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f51c-72ad-9122-a63b6b99488c",
+            components: {
+                "Name": "Spell 204",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (5.4000006, 0.4, 5.4000006),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f521-7023-92dc-73761ecc6fcd",
+            components: {
+                "Name": "Spell 205",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (6.6000004, 0.5, 5.4000006),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f525-74d3-ab3e-9bced4d92ede",
+            components: {
+                "Name": "Spell 206",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (7.800001, 0.6, 5.4000006),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f529-7564-8f98-16d260c44d9c",
+            components: {
+                "Name": "Spell 207",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (9.0, 0.4, 5.4000006),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f52c-76f4-a016-51b0c2cdf327",
+            components: {
+                "Name": "Spell 208",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-9.0, 0.5, 6.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f532-7192-bb7f-baa7c8bed2e4",
+            components: {
+                "Name": "Spell 209",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-7.8, 0.6, 6.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f536-7261-9866-2c8e22878365",
+            components: {
+                "Name": "Spell 210",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-6.6, 0.4, 6.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f53a-7171-bdfa-54683b18cef8",
+            components: {
+                "Name": "Spell 211",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-5.3999996, 0.5, 6.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f53f-7308-9ca9-980fbf16be5d",
+            components: {
+                "Name": "Spell 212",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-4.2, 0.6, 6.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f544-72f6-8fec-2072dd2cff9d",
+            components: {
+                "Name": "Spell 213",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.0, 0.4, 6.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f549-7102-949c-759df5c2daf1",
+            components: {
+                "Name": "Spell 214",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.7999997, 0.5, 6.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f54e-77af-a784-93d8c3e59a16",
+            components: {
+                "Name": "Spell 215",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-0.5999994, 0.6, 6.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f552-7097-987a-79dc9b32ffb9",
+            components: {
+                "Name": "Spell 216",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.6000004, 0.4, 6.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f557-75ee-8c1e-0da19a3aed39",
+            components: {
+                "Name": "Spell 217",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (1.8000002, 0.5, 6.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f55c-7736-b8e2-c2489a76b5a2",
+            components: {
+                "Name": "Spell 218",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.0, 0.6, 6.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f562-74e9-a2b6-c5a45ac5b3e3",
+            components: {
+                "Name": "Spell 219",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (4.200001, 0.4, 6.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f568-7610-8817-77abe691213f",
+            components: {
+                "Name": "Spell 220",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (5.4000006, 0.5, 6.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f56d-7633-a3f2-cf667654442f",
+            components: {
+                "Name": "Spell 221",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (6.6000004, 0.6, 6.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f573-76f6-8614-2ddbe4a73460",
+            components: {
+                "Name": "Spell 222",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (7.800001, 0.4, 6.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f579-746d-ae28-c702e8bd0d1b",
+            components: {
+                "Name": "Spell 223",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (9.0, 0.5, 6.6000004),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f57f-74cd-91b5-9388849be82b",
+            components: {
+                "Name": "Spell 224",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-9.0, 0.6, 7.800001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f583-73df-825c-0b6ccfb40038",
+            components: {
+                "Name": "Spell 225",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-7.8, 0.4, 7.800001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f589-7673-a62b-9ae00d8ccb2e",
+            components: {
+                "Name": "Spell 226",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-6.6, 0.5, 7.800001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f58f-7013-a286-e99d061bb97b",
+            components: {
+                "Name": "Spell 227",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-5.3999996, 0.6, 7.800001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f593-7535-b527-b61c9329d2de",
+            components: {
+                "Name": "Spell 228",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-4.2, 0.4, 7.800001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f597-7649-8cbe-4bf7a96a1cac",
+            components: {
+                "Name": "Spell 229",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.0, 0.5, 7.800001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f59d-71da-9696-bc56c2ed2e6b",
+            components: {
+                "Name": "Spell 230",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.7999997, 0.6, 7.800001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f5a1-7158-8900-2899b2cbc045",
+            components: {
+                "Name": "Spell 231",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-0.5999994, 0.4, 7.800001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f5a7-7525-afc0-e4c069e076cb",
+            components: {
+                "Name": "Spell 232",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.6000004, 0.5, 7.800001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f5ad-7232-a1cd-4053e812c4a3",
+            components: {
+                "Name": "Spell 233",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (1.8000002, 0.6, 7.800001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f5b3-71b9-9aec-f748ba3652b3",
+            components: {
+                "Name": "Spell 234",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.0, 0.4, 7.800001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f5bb-70b8-97ba-f0427c8641ee",
+            components: {
+                "Name": "Spell 235",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (4.200001, 0.5, 7.800001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f5c0-77ad-b566-80fb9af86926",
+            components: {
+                "Name": "Spell 236",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (5.4000006, 0.6, 7.800001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f5c6-773d-9f3b-7dbd5d4339ae",
+            components: {
+                "Name": "Spell 237",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (6.6000004, 0.4, 7.800001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f5cc-7574-9252-80feece646eb",
+            components: {
+                "Name": "Spell 238",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (7.800001, 0.5, 7.800001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f5d2-7541-b234-b40620f5c104",
+            components: {
+                "Name": "Spell 239",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (9.0, 0.6, 7.800001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f5d8-726c-94a8-b70fb33fbf44",
+            components: {
+                "Name": "Spell 240",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-9.0, 0.4, 9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f5de-725a-93c7-5ae6717823e2",
+            components: {
+                "Name": "Spell 241",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-7.8, 0.5, 9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f5e4-75ba-a717-8098c17d83e7",
+            components: {
+                "Name": "Spell 242",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-6.6, 0.6, 9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f5ea-7706-943c-e53e3e230080",
+            components: {
+                "Name": "Spell 243",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-5.3999996, 0.4, 9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f5f0-7459-ade5-dff763effd41",
+            components: {
+                "Name": "Spell 244",
+                "PointLight": (
+                    color: (1.0, 0.4, 0.1),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-4.2, 0.5, 9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f5f6-7739-bd5d-11b0add0267e",
+            components: {
+                "Name": "Spell 245",
+                "PointLight": (
+                    color: (0.3, 0.6, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.0, 0.6, 9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f5fc-7163-9655-f3dc4c296116",
+            components: {
+                "Name": "Spell 246",
+                "PointLight": (
+                    color: (0.8, 0.2, 1.0),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.7999997, 0.4, 9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f601-75e9-87f5-39bc34300142",
+            components: {
+                "Name": "Spell 247",
+                "PointLight": (
+                    color: (0.3, 1.0, 0.5),
+                    intensity_lumens: 60.0,
+                    range: 1.5,
+                    shadows: None,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-0.5999994, 0.5, 9.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21b94-f607-7563-be53-085a81a7f63f",
+            components: {
+                "Camera": (
+                    clear: (0.0, 0.0, 0.0, 1.0),
+                    exposure_ev100: 7.0,
+                    msaa: X4,
+                    priority: 0,
+                    projection: Perspective(
+                        far: 1000.0,
+                        fov_y: 1.05,
+                        near: 0.1,
+                    ),
+                    tonemap: AgX,
+                ),
+                "Name": "Camera",
+                "Transform": (
+                    rotation: (-0.054363, -0.3274178, -0.018872796, 0.94312567),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-6.5, 2.2, 8.5),
+                ),
+            },
+        ),
+    ],
+)

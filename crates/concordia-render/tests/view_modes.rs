@@ -82,6 +82,7 @@ fn scene() -> Scene {
                     color,
                     intensity_lumens: 100_000.0,
                     range: 6.0,
+                    ..Default::default()
                 },
             )
             .unwrap();

@@ -328,6 +328,68 @@ float vsm_sun_shadow(Frame* frame, float3 world, float3 n, float3 to_light) {
     return 1.0;
 }
 
+// The local map entry of page `page` of `mip` of `map`, naming its dynamic page when it has one.
+uint vsm_local_entry(VsmParams* p, uint table, uint map, uint mip, uint2 page) {
+    uint slot = vsm_map_entry(p, map, mip, page);
+    uint entry = g_buffers.ptr[table][slot];
+    if ((entry & VSM_DYNAMIC) != 0) { entry = (entry & ~0xFFFFu) | g_buffers.ptr[p.tables.y][slot]; }
+    return entry;
+}
+
+// Fraction of slot `slot`'s local light reaching `world` (normal `n`, `to_light` toward it; M4
+// 4.7c): its map at the pixel's mip (walking to coarser mips while the page isn't resident), PCF
+// in that mip's texels with per-tap pages clamped to the map, the receiver offset along the normal
+// and toward the light in texels; 1 outside the light or where no mip holds it.
+float vsm_local_shadow(Frame* frame, uint slot, float3 world, float3 n, float3 to_light) {
+    if (frame.vsm.x == 0) { return 1.0; }
+    VsmParams* p = vsm_params(frame.vsm.y);
+    uint table = frame.vsm.z;
+    uint views = frame.vsm.x - 1;
+    VsmLocal l = vsm_local(p, slot);
+    uint map;
+    float dist;
+    if (!vsm_local_map(l, world, map, dist)) { return 1.0; }
+    float fov = asfloat(l.info.z);
+    float footprint = p.choice.z > 0.0 ? distance(world, p.eye.xyz) * p.choice.z : p.choice.w;
+    uint view = vsm_local_header(p).y + map;
+    int k = int(l.info.w);
+    float nol = saturate(dot(n, to_light));
+    float tan_theta = min(sqrt(1.0 - nol * nol) / max(nol, 1e-3), 10.0);
+    for (uint mip = vsm_local_mip(footprint, dist, fov, p.choice.y); mip < VSM_LOCAL_MIPS; mip++) {
+        float texel = 2.0 * dist * tan(fov * 0.5) / float(VSM_LOCAL_TEXELS) * exp2(float(mip));
+        float3 offset = world + n * l.bias.y * texel;
+        float2 st = vsm_local_texel(vsm_clip(views, view, offset), mip) - 0.5;
+        int side = int(VSM_LOCAL_TEXELS >> mip);
+        int2 base = clamp(int2(floor(st)), int2(0, 0), int2(side - 1, side - 1));
+        uint2 page = uint2(base) / VSM_PAGE_TEXELS;
+        uint centre = vsm_local_entry(p, table, map, mip, page);
+        if (!vsm_resident(centre)) { continue; }
+        float4 cd = vsm_clip(views, view, offset + to_light * texel * (l.bias.x + float(k + 1) * tan_theta));
+        float depth = saturate(cd.z / cd.w);
+        float2 f = st - float2(base);
+        float lit = 0.0;
+        for (int dy = -k; dy <= k + 1; dy++) {
+            float wy = dy == -k ? 1.0 - f.y : (dy == k + 1 ? f.y : 1.0);
+            for (int dx = -k; dx <= k + 1; dx++) {
+                float wx = dx == -k ? 1.0 - f.x : (dx == k + 1 ? f.x : 1.0);
+                int2 t = clamp(base + int2(dx, dy), int2(0, 0), int2(side - 1, side - 1));
+                uint entry = vsm_local_entry(p, table, map, mip, uint2(t) / VSM_PAGE_TEXELS);
+                if (!vsm_resident(entry)) {
+                    entry = centre;
+                    int2 lo = int2(page) * int(VSM_PAGE_TEXELS);
+                    t = clamp(t, lo, lo + int(VSM_PAGE_TEXELS) - 1);
+                }
+                uint2 local = uint2(t % int(VSM_PAGE_TEXELS));
+                float stored = asfloat(vsm_word(p, vsm_physical(entry) - 1, local)[0]);
+                lit += wx * wy * (stored <= depth ? 1.0 : 0.0);
+            }
+        }
+        float width = float(2 * k + 1);
+        return lit / (width * width);
+    }
+    return 1.0;
+}
+
 // Fraction of sunlight reaching `world` (1 outside the cascades). Reverse-Z: a texel closer to the
 // light than the receiver stores a larger depth. Filtered PCF: a box of bilinear compares. Bias:
 // constant + normal offset + slope-scaled, so the whole PCF footprint clears the receiver plane.
@@ -659,7 +721,7 @@ float wire_edge(float3 bary) {
     return 1.0 - min(a.x, min(a.y, a.z));
 }
 
-float3 punctual(Frame* frame, float4 frag, float3 world, uint4* rows, float3 v, float2 uv, bool blend) {
+float3 punctual(Frame* frame, float4 frag, float3 world, float3 n, uint4* rows, float3 v, float2 uv, bool blend) {
     uint c = cluster_of(frame, frag, world);
     uint* counts = (uint*)g_buffers.ptr[frame.buffers.y];
     uint* indices = (uint*)g_buffers.ptr[frame.buffers.z];
@@ -673,6 +735,8 @@ float3 punctual(Frame* frame, float4 frag, float3 world, uint4* rows, float3 v, 
         float3 l = to_light * rsqrt(max(d2, 1e-8));
         float spot = saturate(dot(-l, light.direction.xyz) * light.spot.x + light.spot.y);
         float atten = distance_attenuation(d2, light.position_range.w) * spot * spot;
+        uint shadow_slot = asuint(light.spot.z);
+        if (shadow_slot != 0 && atten > 0.0) { atten *= vsm_local_shadow(frame, shadow_slot - 1, world, n, l); }
         sum += run(frame, rows, EVAL_LIGHT, v, l, uv, 0, blend).color * light.radiance.rgb * atten;
     }
     return sum;
@@ -709,7 +773,7 @@ float3 lit_single(Frame* frame, Closure c, float3 v, float3 l, bool blend) {
 }
 
 // The clustered punctual lights on a one-slab material: the closure stays in registers.
-float3 punctual_single(Frame* frame, float4 frag, float3 world, Closure c, float3 v, bool blend) {
+float3 punctual_single(Frame* frame, float4 frag, float3 world, float3 n, Closure c, float3 v, bool blend) {
     uint cluster = cluster_of(frame, frag, world);
     uint* counts = (uint*)g_buffers.ptr[frame.buffers.y];
     uint* indices = (uint*)g_buffers.ptr[frame.buffers.z];
@@ -723,6 +787,8 @@ float3 punctual_single(Frame* frame, float4 frag, float3 world, Closure c, float
         float3 l = to_light * rsqrt(max(d2, 1e-8));
         float spot = saturate(dot(-l, light.direction.xyz) * light.spot.x + light.spot.y);
         float atten = distance_attenuation(d2, light.position_range.w) * spot * spot;
+        uint shadow_slot = asuint(light.spot.z);
+        if (shadow_slot != 0 && atten > 0.0) { atten *= vsm_local_shadow(frame, shadow_slot - 1, world, n, l); }
         sum += lit_single(frame, c, v, l, blend) * light.radiance.rgb * atten;
     }
     return sum;
@@ -806,7 +872,7 @@ float4 shade_pixel(VsOut i, bool front, DrawPush push) {
     } else if (mode == MODE_SHADOW_MASK) {
         return float4(1.0, 1.0, 1.0, 1.0);
     }
-    lit += single ? punctual_single(frame, i.position, i.world, c0, v, blend) : punctual(frame, i.position, i.world, rows, v, i.uv, blend);
+    lit += single ? punctual_single(frame, i.position, i.world, geometric, c0, v, blend) : punctual(frame, i.position, i.world, geometric, rows, v, i.uv, blend);
     Entry ambient_light = single ? covered(slab_entry(frame, c0, EVAL_AMBIENT, v, v, 0, false), blend)
                                  : run(frame, rows, EVAL_AMBIENT, v, v, i.uv, 0, blend);
     lit += ambient_light.color;

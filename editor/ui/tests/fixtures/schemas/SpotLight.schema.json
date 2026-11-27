@@ -1,4 +1,46 @@
 {
+  "$defs": {
+    "LocalShadowSettings": {
+      "additionalProperties": false,
+      "description": "Shadow settings of a point or spot light (M4 4.7c; `None` on the light: unshadowed).",
+      "properties": {
+        "depth_bias": {
+          "description": "Receiver depth bias in shadow texels.",
+          "maximum": 10.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "normal_bias": {
+          "description": "Receiver offset along the normal, in shadow texels.",
+          "maximum": 10.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        "pcf": {
+          "$ref": "#/$defs/PcfKernel",
+          "description": "Filter."
+        }
+      },
+      "title": "LocalShadowSettings",
+      "type": "object",
+      "x-concordia-type": "LocalShadowSettings"
+    },
+    "PcfKernel": {
+      "description": "Percentage-closer filter size.",
+      "oneOf": [
+        {
+          "const": "X3",
+          "description": "3×3 texels (tent-filtered)."
+        },
+        {
+          "const": "X5",
+          "description": "5×5 texels (softer)."
+        }
+      ],
+      "title": "PcfKernel",
+      "x-concordia-type": "PcfKernel"
+    }
+  },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "default": {
@@ -10,7 +52,8 @@
     "inner_angle": 0.30000001192092896,
     "intensity_lumens": 800.0,
     "outer_angle": 0.5,
-    "range": 10.0
+    "range": 10.0,
+    "shadows": null
   },
   "description": "Cone light along the entity's -Z.",
   "properties": {
@@ -47,6 +90,17 @@
       "maximum": 1000.0,
       "minimum": 0.01,
       "type": "number"
+    },
+    "shadows": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/LocalShadowSettings"
+        }
+      ],
+      "description": "Shadows on virtual shadow maps (M4 4.7c); `None`: unshadowed (the default)."
     }
   },
   "title": "SpotLight",
