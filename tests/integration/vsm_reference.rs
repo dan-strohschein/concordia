@@ -2,7 +2,7 @@
 //! direct-only references (one sun, no sky, `max_bounces: 1`), so the difference is shadow error.
 //! Needs a GPU (required with CONCORDIA_REQUIRE_GPU=1).
 
-use concordia_testkit::golden::flip_score;
+use concordia_testkit::golden::{RgbaImage, flip_score};
 use concordia_tests::reference::render_against;
 
 const VIEWS: [&str; 2] = ["sun_courtyard_iso", "sun_courtyard_ground"];
@@ -23,20 +23,31 @@ fn flip(name: &str, technique: &str) -> f32 {
     let golden = root.join("tests/golden");
     let (image, reference) = render_against(name, &golden, technique).unwrap();
     let score = flip_score(&reference, &image).unwrap();
-    // CONCORDIA_GOLDEN_KEEP=1 keeps the reference, the render and their FLIP map for review.
-    if std::env::var("CONCORDIA_GOLDEN_KEEP").as_deref() == Ok("1") {
-        let review = root.join("target/golden-review");
-        let store = concordia_testkit::golden::Golden::new(golden.clone(), review, false, false);
-        let name = format!("{name}_{technique}");
-        store
-            .write_comparison("m4_vsm_reference", &name, &reference, &image)
-            .unwrap();
-    }
+    keep(name, technique, (&reference, &image));
     println!(
         "{name} {technique}: mean {:.4} p99 {:.4}",
         score.mean, score.p99
     );
     score.mean
+}
+
+/// With CONCORDIA_GOLDEN_KEEP=1, keeps the reference, `technique`'s render of `name` and their FLIP
+/// map for review (`target/golden-review/m4_vsm_reference/`).
+fn keep(name: &str, technique: &str, (reference, image): (&RgbaImage, &RgbaImage)) {
+    if std::env::var("CONCORDIA_GOLDEN_KEEP").as_deref() != Ok("1") {
+        return;
+    }
+    let root = concordia_tests::repo_root();
+    let store = concordia_testkit::golden::Golden::new(
+        root.join("tests/golden"),
+        root.join("target/golden-review"),
+        false,
+        false,
+    );
+    let name = format!("{name}_{technique}");
+    store
+        .write_comparison("m4_vsm_reference", &name, reference, image)
+        .unwrap();
 }
 
 /// VSM's direct light is within mean FLIP 0.05 of the path tracer's on both views.
@@ -113,6 +124,7 @@ fn cube_faces_have_no_seams() {
     let golden = root.join("tests/golden");
     let score = |technique: &str| {
         let (image, reference) = render_against("point_seams", &golden, technique).unwrap();
+        keep("point_seams", technique, (&reference, &image));
         flip_score(&reference, &image).unwrap()
     };
     let (vsm, unshadowed) = (score("vsm"), score("csm"));
