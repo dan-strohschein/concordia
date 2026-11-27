@@ -12,6 +12,8 @@ test("team_docks_are_hidden_outside_team_mode", () => {
 test("the_bottom_panel_grows_for_the_studio_board", () => {
   expect(windowGrid(visibleDocks(ALL_DOCKS, false)).rows).toBe("30px 1fr 140px");
   expect(windowGrid(visibleDocks(ALL_DOCKS, true)).rows).toBe("30px 1fr 280px");
-  const none = { ...ALL_DOCKS, Output: false, Studio: false };
+  const none = { ...ALL_DOCKS, Output: false, Graph: false, Studio: false };
   expect(windowGrid(visibleDocks(none, true)).rows).toBe("30px 1fr 0px");
+  // The Graph panel is tall while it shows (M4 4.11a).
+  expect(windowGrid(visibleDocks(ALL_DOCKS, false), true).rows).toBe("30px 1fr 280px");
 });

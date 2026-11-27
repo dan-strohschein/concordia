@@ -120,21 +120,15 @@ expression: schemas
                           "type": "null"
                         },
                         {
-                          "items": false,
+                          "items": {
+                            "type": "number"
+                          },
                           "maxItems": 2,
                           "minItems": 2,
-                          "prefixItems": [
-                            {
-                              "type": "number"
-                            },
-                            {
-                              "type": "number"
-                            }
-                          ],
                           "type": "array"
                         }
                       ],
-                      "description": "Its position."
+                      "description": "Its position, `[x, y]`."
                     },
                     "id": {
                       "anyOf": [
@@ -171,18 +165,12 @@ expression: schemas
                   "additionalProperties": false,
                   "properties": {
                     "at": {
-                      "description": "Its position.",
-                      "items": false,
+                      "description": "Its position, `[x, y]`.",
+                      "items": {
+                        "type": "number"
+                      },
                       "maxItems": 2,
                       "minItems": 2,
-                      "prefixItems": [
-                        {
-                          "type": "number"
-                        },
-                        {
-                          "type": "number"
-                        }
-                      ],
                       "type": "array"
                     },
                     "node": {

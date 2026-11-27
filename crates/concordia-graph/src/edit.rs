@@ -18,15 +18,15 @@ pub enum GraphEdit {
         id: Option<String>,
         /// Its operation.
         op: String,
-        /// Its position.
-        at: Option<(f32, f32)>,
+        /// Its position, `[x, y]`.
+        at: Option<[f32; 2]>,
     },
     /// Moves a node in the editor (layout only: never changes what the graph means).
     SetPosition {
         /// The node.
         node: String,
-        /// Its position.
-        at: (f32, f32),
+        /// Its position, `[x, y]`.
+        at: [f32; 2],
     },
     /// Removes a node, its layout and every link to or from it.
     RemoveNode {
@@ -162,14 +162,14 @@ fn apply(g: &mut Graph, edit: &GraphEdit, added: &mut Vec<String>) -> Result<(),
                 return Err("a node needs an op".into());
             }
             g.nodes.insert(id.clone(), Node::new(op));
-            if let Some(at) = at {
-                g.layout.insert(id.clone(), *at);
+            if let Some([x, y]) = at {
+                g.layout.insert(id.clone(), (*x, *y));
             }
             added.push(id);
         }
         GraphEdit::SetPosition { node: n, at } => {
             exists(g, n)?;
-            g.layout.insert(n.clone(), *at);
+            g.layout.insert(n.clone(), (at[0], at[1]));
         }
         GraphEdit::RemoveNode { id } => {
             exists(g, id)?;

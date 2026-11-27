@@ -11,9 +11,10 @@ import { Inspector } from "../inspector/Inspector";
 import { Outliner } from "../outliner/Outliner";
 import { EscalationBadge, TeamDesk } from "../questions/TeamQuestions";
 import { useTeamQuestions } from "../questions/questions";
+import { GraphPanel } from "../graph/GraphPanel";
 import { Output } from "../output/Output";
 import { StudioPanel } from "../studio/StudioPanel";
-import { useStudio } from "../studio/studio";
+import { agentRole, roleColors, useStudio } from "../studio/studio";
 import { isNative } from "../viewport/native";
 import { Viewport } from "../viewport/Viewport";
 import { ALL_DOCKS, DOCKS, TEAM_DOCKS, visibleDocks, windowGrid, type DockSet } from "./docks";
@@ -38,12 +39,18 @@ export function Editor({ session }: { session: EditorSession }) {
   const team = useTeamQuestions(session);
   const studio = useStudio(session);
   const teamMode = studio.teamMode || team.teamMode;
-  const [bottom, setBottom] = useState<"Output" | "Studio">("Studio");
+  const [bottom, setBottom] = useState<"Output" | "Graph" | "Studio">("Studio");
+  const [graphPath, setGraphPath] = useState<string>();
+  const openGraph = useCallback((path: string) => {
+    setGraphPath(path);
+    setBottom("Graph");
+  }, []);
   const revealQuestions = useCallback(() => setShown((s) => ({ ...s, "Team Questions": true })), []);
   const visible = visibleDocks(shown, teamMode);
-  const layout = windowGrid(visible);
-  const bottomTabs = (["Output", "Studio"] as const).filter((d) => visible[d]);
+
+  const bottomTabs = (["Output", "Graph", "Studio"] as const).filter((d) => visible[d]);
   const bottomTab = bottomTabs.includes(bottom) ? bottom : bottomTabs[0];
+  const layout = windowGrid(visible, bottomTab === "Graph");
   const act = (method: string, params: Record<string, unknown> = {}) =>
     void session.call(method, { ...params, actor: EDITOR_ACTOR });
   useEffect(() => {
@@ -150,6 +157,7 @@ export function Editor({ session }: { session: EditorSession }) {
             <FileSystem
               session={session}
               onOpenScene={scene.openScene}
+              onOpenGraph={openGraph}
               onSelectMaterial={setMaterial}
               selected={material}
             />
@@ -219,6 +227,18 @@ export function Editor({ session }: { session: EditorSession }) {
                 <Output session={session} />
               </section>
             )}
+            {bottomTab === "Graph" &&
+              (graphPath === undefined ? (
+                <p style={{ padding: 8, opacity: 0.6 }}>Double-click a .graph.ron in FileSystem to open it here.</p>
+              ) : (
+                <section aria-label="Graph panel" style={{ height: "100%" }}>
+                  <GraphPanel
+                    session={session}
+                    path={graphPath}
+                    roleColor={(actor) => roleColors(studio.roles)[agentRole(actor) ?? ""]}
+                  />
+                </section>
+              ))}
             {bottomTab === "Studio" && <StudioPanel session={session} studio={studio} />}
           </div>
         </footer>

@@ -7,9 +7,9 @@ export type GraphEdit =
   | {
       AddNode: {
         /**
-         * Its position.
+         * Its position, `[x, y]`.
          */
-        at?: null | never[];
+        at?: null | [number, number];
         /**
          * Its id (UUIDv7).
          */
@@ -23,12 +23,12 @@ export type GraphEdit =
   | {
       SetPosition: {
         /**
-         * Its position.
+         * Its position, `[x, y]`.
          *
          * @minItems 2
          * @maxItems 2
          */
-        at: never[];
+        at: [number, number];
         /**
          * The node.
          */

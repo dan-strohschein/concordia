@@ -13,7 +13,7 @@ fn authored() -> Vec<GraphEdit> {
     let node = |n: u32, op: &str| GraphEdit::AddNode {
         id: Some(id(n)),
         op: op.into(),
-        at: Some((n as f32 * 100.0, 0.0)),
+        at: Some([n as f32 * 100.0, 0.0]),
     };
     vec![
         GraphEdit::SetVariable {
@@ -209,7 +209,7 @@ fn moving_a_node_changes_only_the_layout() {
         &mut g,
         &[GraphEdit::SetPosition {
             node: id(3),
-            at: (12.0, 34.0),
+            at: [12.0, 34.0],
         }],
     )
     .unwrap();
@@ -220,7 +220,7 @@ fn moving_a_node_changes_only_the_layout() {
             &mut g,
             &[GraphEdit::SetPosition {
                 node: id(99),
-                at: (0.0, 0.0)
+                at: [0.0, 0.0]
             }]
         )
         .is_err()

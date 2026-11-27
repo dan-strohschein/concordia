@@ -20,16 +20,21 @@ const ICONS: Record<ProjectFile["kind"], string> = {
   other: "📄",
 };
 
+/** Graphs are `.graph.ron` files (the engine lists them as other files). */
+export const isGraph = (path: string) => path.endsWith(".graph.ron");
+
 interface FileSystemProps {
   session: EditorSession;
   onOpenScene: (path: string) => void;
+  /** Called when a `.graph.ron` is double-clicked (opened in the Graph panel). */
+  onOpenGraph?: (path: string) => void;
   /** Called when a material is clicked (shown in the Inspector). */
   onSelectMaterial?: (path: string) => void;
   /** The material the Inspector shows, highlighted. */
   selected?: string | undefined;
 }
 
-export function FileSystem({ session, onOpenScene, onSelectMaterial, selected }: FileSystemProps) {
+export function FileSystem({ session, onOpenScene, onOpenGraph, onSelectMaterial, selected }: FileSystemProps) {
   const [root, setRoot] = useState<FolderNode>();
   const [error, setError] = useState<string>();
   const refresh = useCallback(() => {
@@ -57,6 +62,7 @@ export function FileSystem({ session, onOpenScene, onSelectMaterial, selected }:
         node={root}
         depth={0}
         onOpenScene={onOpenScene}
+        onOpenGraph={onOpenGraph}
         onImport={onImport}
         onSelectMaterial={onSelectMaterial ?? (() => undefined)}
         selected={selected}
@@ -68,6 +74,7 @@ export function FileSystem({ session, onOpenScene, onSelectMaterial, selected }:
 interface RowProps {
   depth: number;
   onOpenScene: (path: string) => void;
+  onOpenGraph: ((path: string) => void) | undefined;
   onImport: (file: ProjectFile) => void;
   onSelectMaterial: (path: string) => void;
   selected: string | undefined;
@@ -94,7 +101,15 @@ function Folder({ node, depth, ...rest }: RowProps & { node: FolderNode }) {
   );
 }
 
-function File({ file, depth, onOpenScene, onImport, onSelectMaterial, selected }: RowProps & { file: ProjectFile }) {
+function File({
+  file,
+  depth,
+  onOpenScene,
+  onOpenGraph,
+  onImport,
+  onSelectMaterial,
+  selected,
+}: RowProps & { file: ProjectFile }) {
   const name = baseName(file.path);
   const draggable = file.kind === "model";
   const isSelected = file.path === selected;
@@ -107,7 +122,10 @@ function File({ file, depth, onOpenScene, onImport, onSelectMaterial, selected }
           e.dataTransfer.effectAllowed = "copy";
         }}
         onClick={() => file.kind === "material" && onSelectMaterial(file.path)}
-        onDoubleClick={() => file.kind === "scene" && onOpenScene(file.path)}
+        onDoubleClick={() => {
+          if (file.kind === "scene") onOpenScene(file.path);
+          else if (isGraph(file.path)) onOpenGraph?.(file.path);
+        }}
         style={{
           paddingLeft: depth * 12 + 12,
           display: "flex",
@@ -117,7 +135,7 @@ function File({ file, depth, onOpenScene, onImport, onSelectMaterial, selected }
           background: isSelected ? "#2f4a6a" : undefined,
         }}
       >
-        <span aria-hidden>{ICONS[file.kind]}</span>
+        <span aria-hidden>{isGraph(file.path) ? "🕸" : ICONS[file.kind]}</span>
         <span style={{ flex: 1 }}>{name}</span>
         {file.importer !== null && file.asset === null && (
           <button aria-label={`Import ${name}`} style={{ fontSize: 11 }} onClick={() => onImport(file)}>
