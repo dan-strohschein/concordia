@@ -4,6 +4,7 @@ mod agent_surface;
 mod anim_tools;
 mod audio_tools;
 mod common;
+mod graph_tools;
 mod material_tools;
 mod nav_tools;
 mod replay_tools;

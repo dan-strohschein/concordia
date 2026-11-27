@@ -176,7 +176,7 @@ impl Graph {
     }
 }
 
-fn v7(what: &'static str, id: &str) -> Result<(), GraphError> {
+pub(crate) fn v7(what: &'static str, id: &str) -> Result<(), GraphError> {
     let bad = || GraphError::InvalidId {
         what,
         id: id.to_owned(),

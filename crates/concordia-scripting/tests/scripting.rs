@@ -162,8 +162,20 @@ fn scripts_module_registers_module_types_and_adds_script_reload() {
     );
     let core: Vec<&str> = concordia_api::methods().names().collect();
     let all: Vec<&str> = p.engine.methods().names().collect();
-    assert_eq!(all.len(), core.len() + 1, "the module adds one method");
-    assert!(all.contains(&"script.reload"));
+    let added = [
+        "script.reload",
+        "graph.list_nodes",
+        "graph.check",
+        "graph.compile",
+        "graph.apply",
+        "graph.trace",
+    ];
+    assert_eq!(
+        all.len(),
+        core.len() + added.len(),
+        "the module adds script.reload and the graph methods"
+    );
+    assert!(added.iter().all(|m| all.contains(m)), "{all:?}");
     let schema = p.ok("schema.get", json!({"name": "conf.Position"}));
     assert_eq!(schema["schema"]["type"], "object", "{schema}");
     let id = mover(&mut p);
@@ -661,4 +673,117 @@ fn hot_reload_of_broken_graph_keeps_previous_version_and_reports_diagnostics() {
         60,
         "the previous version keeps running"
     );
+}
+
+/// The edits for "on tick, move up by dt" (what an agent sends `graph.apply`).
+fn rise_edits() -> Value {
+    let id = |n: u32| format!("0193b0f2-0000-7000-8000-{n:012x}");
+    json!([
+        {"AddNode": {"id": id(1), "op": "event.on_tick", "at": [0.0, 0.0]}},
+        {"AddNode": {"id": id(2), "op": "get.Transform.translation", "at": null}},
+        {"AddNode": {"id": id(3), "op": "conv.vec3", "at": null}},
+        {"AddNode": {"id": id(4), "op": "math.add", "at": null}},
+        {"AddNode": {"id": id(5), "op": "set.Transform.translation", "at": null}},
+        {"SetValue": {"node": id(3), "pin": "x", "value": {"Float": 0.0}}},
+        {"Connect": {"from": id(1), "from_pin": "dt", "to": id(3), "to_pin": "y"}},
+        {"SetValue": {"node": id(3), "pin": "z", "value": {"Float": 0.0}}},
+        {"Connect": {"from": id(2), "from_pin": "value", "to": id(4), "to_pin": "a"}},
+        {"Connect": {"from": id(3), "from_pin": "out", "to": id(4), "to_pin": "b"}},
+        {"Connect": {"from": id(4), "from_pin": "out", "to": id(5), "to_pin": "value"}},
+        {"ConnectExec": {"from": id(1), "from_pin": "out", "to": id(5), "to_pin": "in"}},
+    ])
+}
+
+/// A project listing `graphs/rise.graph.ron`, which doesn't exist yet.
+fn empty_graph_project() -> Project {
+    Project::new(
+        1,
+        |dir| vec![entry(dir, ScriptKind::Graph, "graphs/rise.graph.ron")],
+        |m| m,
+        None,
+    )
+}
+
+#[test]
+fn graph_methods_list_check_compile_and_apply() {
+    let mut p = empty_graph_project();
+    let nodes = p.ok("graph.list_nodes", json!({}))["nodes"].clone();
+    assert!(
+        nodes.get("event.on_tick").is_some() && nodes.get("get.Transform.translation").is_some()
+    );
+    // An agent builds the graph in two steps: a broken half (written, with its diagnostics)...
+    let edits = rise_edits();
+    let (first, rest) = edits.as_array().unwrap().split_at(5);
+    let half = p.ok(
+        "graph.apply",
+        json!({"path": "graphs/rise.graph.ron", "kind": "Event", "edits": first}),
+    );
+    assert_eq!(half["ok"], false);
+    assert!(
+        half["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["code"] == "unconnected_input"),
+        "{half}"
+    );
+    assert_eq!(half["reloaded"], false, "a broken graph isn't reloaded");
+    let half_text = std::fs::read_to_string(p.dir.path().join("graphs/rise.graph.ron")).unwrap();
+    // ...then the rest, which checks clean, so the module joins.
+    let done = p.ok(
+        "graph.apply",
+        json!({"path": "graphs/rise.graph.ron", "edits": rest}),
+    );
+    assert_eq!(done["ok"], true, "{done}");
+    assert_eq!(done["reloaded"], true, "{done}");
+    let checked = p.ok("graph.check", json!({"path": "graphs/rise.graph.ron"}));
+    assert_eq!(checked["ok"], true);
+    let compiled = p.ok("graph.compile", json!({"path": "graphs/rise.graph.ron"}));
+    assert_eq!(compiled["processors"][0]["name"], "graph.rise.tick");
+    assert_eq!(compiled["processors"][0]["writes"], json!(["Transform"]));
+    assert!(compiled["processors"][0]["wasm_bytes"].as_u64().unwrap() > 0);
+    // Text can be checked without a file too.
+    let text = std::fs::read_to_string(p.dir.path().join("graphs/rise.graph.ron")).unwrap();
+    let broken = text.replace("math.add", "math.addd");
+    let checked = p.ok("graph.check", json!({"text": broken}));
+    assert_eq!(checked["ok"], false);
+    assert_eq!(checked["diagnostics"][0]["code"], "unknown_op");
+    // Each apply is one undoable transaction by the session's actor; undo restores the file.
+    let history = p.ok("txn.history", json!({}))["entries"].clone();
+    let last = history.as_array().unwrap().last().unwrap().clone();
+    assert_eq!(last["actor"], "agent:test", "{last}");
+    p.ok("txn.undo", json!({}));
+    let after_undo = std::fs::read_to_string(p.dir.path().join("graphs/rise.graph.ron")).unwrap();
+    assert_eq!(
+        after_undo, half_text,
+        "back to the first half, byte for byte"
+    );
+    p.ok("txn.undo", json!({}));
+    assert!(
+        !p.dir.path().join("graphs/rise.graph.ron").exists(),
+        "back to no file"
+    );
+}
+
+#[test]
+fn graph_paths_must_be_graph_files_in_the_project() {
+    let mut p = empty_graph_project();
+    for bad in ["../x.graph.ron", "graphs/x.ron", "/tmp/x.graph.ron"] {
+        let err = p
+            .call("graph.apply", json!({"path": bad, "edits": []}))
+            .unwrap_err();
+        assert_eq!(err.kind, ApiErrorKind::InvalidParams, "{bad}");
+    }
+}
+
+#[test]
+fn mcp_graph_tools_schemas_generated_from_reflect() {
+    let module = ScriptsModule::new(ScriptsConfig::for_project(Path::new("."), 1));
+    let schemas: Vec<Value> = concordia_api::EngineModule::methods(&module)
+        .iter()
+        .filter(|m| m.name.starts_with("graph."))
+        .map(|m| json!({"name": m.name, "mutates": m.mutates, "docs": m.docs, "params": concordia_api::params_schema(m)}))
+        .collect();
+    assert_eq!(schemas.len(), 5, "{schemas:?}");
+    insta::assert_json_snapshot!(schemas);
 }

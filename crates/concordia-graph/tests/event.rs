@@ -341,3 +341,73 @@ fn compiled_programs_validate() {
         }
     }
 }
+
+#[test]
+fn graph_trace_reports_executed_nodes_in_order() {
+    let reg = registry();
+    let graph = example("regenerate");
+    let module = compile_event("regenerate", &graph, &library(&reg), &reg).unwrap();
+    let p = &module.processors[0];
+    let op = |id: &String| graph.nodes[id].op.clone();
+    let health = column(&[
+        Health {
+            value: 5.0,
+            max: 10.0,
+        },
+        Health {
+            value: 10.0,
+            max: 10.0,
+        },
+    ]);
+    let image = Image::tick(p, 2, 0.5, &slots(p, &[("Health", health)], 2)).unwrap();
+    let below = p.trace_job(&image, 0).unwrap();
+    assert_eq!(
+        below.executed.iter().map(op).collect::<Vec<_>>(),
+        ["branch", "set.Health.value"]
+    );
+    let at_max = p.trace_job(&image, 1).unwrap();
+    assert_eq!(
+        at_max.executed.iter().map(op).collect::<Vec<_>>(),
+        ["branch"]
+    );
+    let read = |t: &concordia_graph::runtime::JobTrace, wanted: &str| {
+        t.pins
+            .iter()
+            .find(|pin| op(&pin.node) == wanted)
+            .map(|pin| pin.values.clone())
+    };
+    assert_eq!(read(&below, "get.Health.value"), Some(vec![5.0]));
+    assert_eq!(
+        read(&below, "math.min"),
+        Some(vec![6.0]),
+        "the value it would set"
+    );
+    assert_eq!(read(&at_max, "math.lt"), Some(vec![0.0]));
+    // Tracing is read only.
+    assert_eq!(
+        image,
+        Image::tick(
+            p,
+            2,
+            0.5,
+            &slots(
+                p,
+                &[(
+                    "Health",
+                    column(&[
+                        Health {
+                            value: 5.0,
+                            max: 10.0
+                        },
+                        Health {
+                            value: 10.0,
+                            max: 10.0
+                        }
+                    ])
+                )],
+                2
+            )
+        )
+        .unwrap()
+    );
+}

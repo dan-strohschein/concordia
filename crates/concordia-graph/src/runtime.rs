@@ -115,6 +115,42 @@ pub struct Program {
     pub(crate) stores: Vec<Store>,
     pub(crate) raises: Vec<RaiseSite>,
     pub(crate) func: Function,
+    pub(crate) trace: TraceMap,
+}
+
+/// What a trace reads: the unoptimized function, its statements and data pins (M4 4.10c).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct TraceMap {
+    /// Before optimization (every pin's value is still there).
+    pub(crate) raw: Function,
+    /// Statements in exec order and the predicate each runs under.
+    pub(crate) statements: Vec<(String, crate::ir::ValueId)>,
+    /// Data pins as lowered: (node, pin, values).
+    pub(crate) pins: Vec<(String, String, Vec<crate::ir::ValueId>)>,
+}
+
+/// One job's trace: what ran, in order, and the values its data pins carried.
+#[derive(
+    Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, concordia_reflect::Reflect,
+)]
+pub struct JobTrace {
+    /// Statement nodes that ran, in exec order.
+    pub executed: Vec<String>,
+    /// Data pins' values (vectors as components, bools as 0 or 1), in lowering order.
+    pub pins: Vec<PinTrace>,
+}
+
+/// A data pin's value in a trace.
+#[derive(
+    Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, concordia_reflect::Reflect,
+)]
+pub struct PinTrace {
+    /// The node.
+    pub node: String,
+    /// Its output pin.
+    pub pin: String,
+    /// The value's scalars.
+    pub values: Vec<f64>,
 }
 
 /// A compiled Event graph: its variables' component and its processors.
@@ -165,6 +201,61 @@ impl Program {
         crate::ir::emit_program(self)
     }
 
+    /// Job `job`'s row and the function's arguments for it.
+    fn arguments(&self, image: &Image, job: usize) -> Result<(usize, Vec<Scalar>), RuntimeError> {
+        let dt = f32::from_bits(image.word(1)?);
+        let row = image.word_at(image.word(2)? as usize + job * 4)? as usize;
+        let args = self
+            .loads
+            .iter()
+            .map(|l| image.load(self, *l, job, row, dt))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok((row, args))
+    }
+
+    /// How many jobs `image` holds.
+    pub fn jobs(&self, image: &Image) -> Result<usize, RuntimeError> {
+        Ok(image.word(0)? as usize)
+    }
+
+    /// The row job `job` runs on.
+    pub fn job_row(&self, image: &Image, job: usize) -> Result<usize, RuntimeError> {
+        Ok(self.arguments(image, job)?.0)
+    }
+
+    /// What job `job` would do on `image` (read only): statements run and pin values.
+    pub fn trace_job(&self, image: &Image, job: usize) -> Result<JobTrace, RuntimeError> {
+        let (_, args) = self.arguments(image, job)?;
+        let values = self
+            .trace
+            .raw
+            .eval_all(&args)
+            .map_err(|e| RuntimeError::Image(e.to_string()))?;
+        let number = |v: Scalar| match v {
+            Scalar::I32(x) => f64::from(x),
+            Scalar::I64(x) => x as f64,
+            Scalar::F32(x) => f64::from(x),
+        };
+        let executed = self
+            .trace
+            .statements
+            .iter()
+            .filter(|(_, pred)| values[*pred as usize] != Scalar::I32(0))
+            .map(|(node, _)| node.clone())
+            .collect();
+        let pins = self
+            .trace
+            .pins
+            .iter()
+            .map(|(node, pin, ids)| PinTrace {
+                node: node.clone(),
+                pin: pin.clone(),
+                values: ids.iter().map(|&v| number(values[v as usize])).collect(),
+            })
+            .collect();
+        Ok(JobTrace { executed, pins })
+    }
+
     /// The columns the image carries, in slot order.
     pub fn columns(&self) -> &[ColumnSlot] {
         &self.columns
@@ -191,15 +282,9 @@ impl Program {
         if budget.is_some_and(|b| steps.saturating_mul(jobs as u64) > b) {
             return Err(RuntimeError::Budget);
         }
-        let dt = f32::from_bits(image.word(1)?);
         let mut raised = 0u32;
         for job in 0..jobs {
-            let row = image.word_at(image.word(2)? as usize + job * 4)? as usize;
-            let args = self
-                .loads
-                .iter()
-                .map(|l| image.load(self, *l, job, row, dt))
-                .collect::<Result<Vec<_>, _>>()?;
+            let (row, args) = self.arguments(image, job)?;
             let results = self
                 .func
                 .eval(&args)

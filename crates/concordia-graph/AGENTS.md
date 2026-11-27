@@ -7,6 +7,7 @@ Text-first gameplay graphs (M4 4.9, D6): the `.graph.ron` format, the node libra
 - Format: `Graph`, `GraphKind`, `Node`, `Input`, `Literal`, `ExecLink`, `Signature`, `PinDecl`, `Variable`; `read_graph`, `write_graph` (canonical through `concordia-scene`), `Graph::semantic_hash`, `Graph::normalized`.
 - Library: `NodeLibrary::core()` (built-in nodes and `fns::graph_fns()`), `NodeLibrary::build(registry, is_component)` (plus `get.`/`set.` per component and field, `raise.`/`on.` per signal), `NodeDef`, `PinDef`, `PinType`, `GenericKind`.
 - Checker: `check(graph, library) -> Report` (`diagnostics`, `pin_type`), `Diagnostic`, `Code`.
+- Edits (4.10c): `GraphEdit`, `apply_edits` (all or nothing), `new_graph`, `fresh_id`. Traces: `runtime::Program::trace_job` → `JobTrace { executed, pins }` (the unoptimized function).
 - Compiler (4.10a): `compile_function(graph, library) -> CompiledFunction { ir, wasm, params, results }`; `ir::{Function, Inst, Scalar, ScalarTy, UnOp, BinOp}`; `Function::eval` is the interpreter.
 
 ## Invariants

@@ -273,6 +273,17 @@ impl Engine {
         crate::methods::commit_as(self, actor, label, ops)
     }
 
+    /// Applies `ops` for a method call: inside the caller's open transaction, or as one new
+    /// transaction by its actor and session (one undo step), as the built-in edits do.
+    pub fn commit_edits(
+        &mut self,
+        ctx: &crate::CallCtx,
+        label: &str,
+        ops: Vec<concordia_command::EditOp>,
+    ) -> Result<(), ApiError> {
+        crate::methods::edit_all(self, ctx, label, ops, None)
+    }
+
     /// Undoes `txn`, which must be the latest commit, attributed to `actor`.
     pub fn undo_as(
         &mut self,

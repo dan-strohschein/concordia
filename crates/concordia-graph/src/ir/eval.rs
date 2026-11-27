@@ -24,6 +24,12 @@ pub enum EvalError {
 impl Function {
     /// Runs the function on scalar arguments.
     pub fn eval(&self, args: &[Scalar]) -> Result<Vec<Scalar>, EvalError> {
+        let values = self.eval_all(args)?;
+        Ok(self.outputs.iter().map(|&o| values[o as usize]).collect())
+    }
+
+    /// Every value the function computes, by id (for traces).
+    pub fn eval_all(&self, args: &[Scalar]) -> Result<Vec<Scalar>, EvalError> {
         let got: Vec<ScalarTy> = args.iter().map(Scalar::ty).collect();
         if got != self.params {
             return Err(EvalError::Arguments {
@@ -44,7 +50,7 @@ impl Function {
             };
             values.push(value);
         }
-        Ok(self.outputs.iter().map(|&o| values[o as usize]).collect())
+        Ok(values)
     }
 }
 

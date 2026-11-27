@@ -90,32 +90,51 @@ impl GraphBackend {
         text: &str,
         registry: &TypeRegistry,
     ) -> Result<Arc<dyn ScriptModule>, ScriptError> {
+        let module: Arc<dyn ScriptModule> = self.load_graph(name, text, registry)?;
+        Ok(module)
+    }
+
+    /// As [`GraphBackend::load_text`], as the concrete module (for traces).
+    pub fn load_graph(
+        &self,
+        name: &str,
+        text: &str,
+        registry: &TypeRegistry,
+    ) -> Result<Arc<GraphModule>, ScriptError> {
         if name.is_empty() {
             return Err(ScriptError::Load("a graph module needs a name".into()));
         }
         let graph = read_graph(text).map_err(|e| ScriptError::Load(e.to_string()))?;
-        let library = NodeLibrary::build(registry, |r| {
-            r.data::<concordia_terra::ReflectComponent>().is_some()
-        });
-        let module = compile_event(name, &graph, &library, registry).map_err(|diagnostics| {
-            let lines: Vec<String> = diagnostics
-                .iter()
-                .map(|d| match &d.suggestion {
-                    Some(s) => format!(
-                        "{:?} at {:?}/{:?}: {} (did you mean {s}?)",
-                        d.code, d.node_id, d.pin, d.message
-                    ),
-                    None => format!("{:?} at {:?}/{:?}: {}", d.code, d.node_id, d.pin, d.message),
-                })
-                .collect();
-            ScriptError::Load(format!("graph {name}:\n{}", lines.join("\n")))
-        })?;
+        let module = compile_event(name, &graph, &engine_library(registry), registry).map_err(
+            |diagnostics| {
+                let lines: Vec<String> = diagnostics
+                    .iter()
+                    .map(|d| match &d.suggestion {
+                        Some(s) => format!(
+                            "{:?} at {:?}/{:?}: {} (did you mean {s}?)",
+                            d.code, d.node_id, d.pin, d.message
+                        ),
+                        None => {
+                            format!("{:?} at {:?}/{:?}: {}", d.code, d.node_id, d.pin, d.message)
+                        }
+                    })
+                    .collect();
+                ScriptError::Load(format!("graph {name}:\n{}", lines.join("\n")))
+            },
+        )?;
         Ok(Arc::new(GraphModule::new(
             module,
             &self.mode,
             self.engine.as_ref(),
         )?))
     }
+}
+
+/// The node library over a registry's components (terra's registrations) and signals.
+pub fn engine_library(registry: &TypeRegistry) -> NodeLibrary {
+    NodeLibrary::build(registry, |r| {
+        r.data::<concordia_terra::ReflectComponent>().is_some()
+    })
 }
 
 /// `enemy.graph.ron` → `enemy`.

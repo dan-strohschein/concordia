@@ -69,10 +69,13 @@ impl EngineModule for ScriptsModule {
             let loaded = scripts.load(&source, registry).and_then(|build| {
                 let host =
                     ScriptHost::load(build.module, registry, config).map_err(|e| e.to_string())?;
-                Ok((host, build.hash))
+                Ok((host, build.hash, build.graph))
             });
             match loaded {
-                Ok((host, hash)) => scripts.loaded.push(Loaded { source, host, hash }),
+                Ok((host, hash, graph)) => {
+                    scripts.adopt(host.desc().name, graph);
+                    scripts.loaded.push(Loaded { source, host, hash });
+                }
                 Err(reason) => {
                     tracing::error!(target: "concordia::script", %reason, "script module failed to load");
                     scripts.failed.push((source, reason));
@@ -83,7 +86,15 @@ impl EngineModule for ScriptsModule {
     }
 
     fn methods(&self) -> Vec<MethodInfo> {
-        vec![MethodInfo::of::<crate::reload::ScriptReload>()]
+        use crate::graph_api::{GraphApply, GraphCheck, GraphCompile, GraphListNodes, GraphTrace};
+        vec![
+            MethodInfo::of::<crate::reload::ScriptReload>(),
+            MethodInfo::of::<GraphListNodes>(),
+            MethodInfo::of::<GraphCheck>(),
+            MethodInfo::of::<GraphCompile>(),
+            MethodInfo::of::<GraphApply>(),
+            MethodInfo::of::<GraphTrace>(),
+        ]
     }
 
     /// Each loaded module's build, by content hash (ADR-0072).
