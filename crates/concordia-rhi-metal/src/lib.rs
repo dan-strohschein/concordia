@@ -5,6 +5,7 @@
 
 #[cfg(target_os = "macos")]
 mod accel;
+#[cfg(target_os = "macos")]
 mod bindless;
 #[cfg(target_os = "macos")]
 mod convert;
