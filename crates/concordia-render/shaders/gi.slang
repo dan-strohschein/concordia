@@ -25,28 +25,26 @@ public static const float GI_BACKFACE = 0.2;
 public struct GiVolume {
     public float3 origin; public float spacing;
     public uint3 counts; public uint rays;
-    public float4* probes; public float4* rays_buf; public float4* irr; public float2* dist;
+    // Bindless indices (structs passed by value must not hold pointers on Vulkan).
+    public uint probes; public uint rays_buf; public uint irr; public uint dist;
     public float max_distance; public float normal_bias; public float view_bias; public float base_hysteresis;
 };
 
 public GiVolume gi_volume(uint params) {
     float4* p = (float4*)g_buffers.ptr[params];
     uint4* u = (uint4*)g_buffers.ptr[params];
-    GiVolume v;
-    v.origin = p[0].xyz;
-    v.spacing = p[0].w;
-    v.counts = u[1].xyz;
-    v.rays = u[1].w;
-    v.probes = (float4*)g_buffers.ptr[u[2].x];
-    v.rays_buf = (float4*)g_buffers.ptr[u[2].y];
-    v.irr = (float4*)g_buffers.ptr[u[2].z];
-    v.dist = (float2*)g_buffers.ptr[u[2].w];
-    v.base_hysteresis = p[21].x;
-    v.max_distance = p[21].y;
-    v.normal_bias = p[21].z;
-    v.view_bias = p[21].w;
+    GiVolume v = {
+        p[0].xyz, p[0].w, u[1].xyz, u[1].w,
+        u[2].x, u[2].y, u[2].z, u[2].w,
+        p[21].y, p[21].z, p[21].w, p[21].x,
+    };
     return v;
 }
+
+public float4* gi_probes(GiVolume v) { return (float4*)g_buffers.ptr[v.probes]; }
+public float4* gi_rays(GiVolume v) { return (float4*)g_buffers.ptr[v.rays_buf]; }
+public float4* gi_irr(GiVolume v) { return (float4*)g_buffers.ptr[v.irr]; }
+public float2* gi_dist(GiVolume v) { return (float2*)g_buffers.ptr[v.dist]; }
 
 public uint gi_probe_count(GiVolume v) { return v.counts.x * v.counts.y * v.counts.z; }
 
@@ -58,10 +56,10 @@ public uint3 gi_probe_cell(GiVolume v, uint index) {
 
 // Probe `index`'s position: its grid point plus its relocation offset.
 public float3 gi_probe_position(GiVolume v, uint index) {
-    return v.origin + float3(gi_probe_cell(v, index)) * v.spacing + v.probes[index].xyz;
+    return v.origin + float3(gi_probe_cell(v, index)) * v.spacing + gi_probes(v)[index].xyz;
 }
 
-public bool gi_probe_active(GiVolume v, uint index) { return v.probes[index].w > 0.5; }
+public bool gi_probe_active(GiVolume v, uint index) { return gi_probes(v)[index].w > 0.5; }
 
 float2 gi_sign(float2 p) { return float2(p.x >= 0.0 ? 1.0 : -1.0, p.y >= 0.0 ? 1.0 : -1.0); }
 
@@ -113,10 +111,10 @@ float4 gi_tile_irr(GiVolume v, uint probe, float3 d) {
     float2 f = frac(t);
     int2 b = clamp(int2(floor(t)), int2(0), int2(GI_IRR_TILE - 2));
     uint base = probe * GI_IRR_TILE * GI_IRR_TILE;
-    float4 a = v.irr[base + b.y * GI_IRR_TILE + b.x];
-    float4 c = v.irr[base + b.y * GI_IRR_TILE + b.x + 1];
-    float4 e = v.irr[base + (b.y + 1) * GI_IRR_TILE + b.x];
-    float4 g = v.irr[base + (b.y + 1) * GI_IRR_TILE + b.x + 1];
+    float4 a = gi_irr(v)[base + b.y * GI_IRR_TILE + b.x];
+    float4 c = gi_irr(v)[base + b.y * GI_IRR_TILE + b.x + 1];
+    float4 e = gi_irr(v)[base + (b.y + 1) * GI_IRR_TILE + b.x];
+    float4 g = gi_irr(v)[base + (b.y + 1) * GI_IRR_TILE + b.x + 1];
     return lerp(lerp(a, c, f.x), lerp(e, g, f.x), f.y);
 }
 
@@ -125,10 +123,10 @@ float2 gi_tile_dist(GiVolume v, uint probe, float3 d) {
     float2 f = frac(t);
     int2 b = clamp(int2(floor(t)), int2(0), int2(GI_DIST_TILE - 2));
     uint base = probe * GI_DIST_TILE * GI_DIST_TILE;
-    float2 a = v.dist[base + b.y * GI_DIST_TILE + b.x];
-    float2 c = v.dist[base + b.y * GI_DIST_TILE + b.x + 1];
-    float2 e = v.dist[base + (b.y + 1) * GI_DIST_TILE + b.x];
-    float2 g = v.dist[base + (b.y + 1) * GI_DIST_TILE + b.x + 1];
+    float2 a = gi_dist(v)[base + b.y * GI_DIST_TILE + b.x];
+    float2 c = gi_dist(v)[base + b.y * GI_DIST_TILE + b.x + 1];
+    float2 e = gi_dist(v)[base + (b.y + 1) * GI_DIST_TILE + b.x];
+    float2 g = gi_dist(v)[base + (b.y + 1) * GI_DIST_TILE + b.x + 1];
     return lerp(lerp(a, c, f.x), lerp(e, g, f.x), f.y);
 }
 

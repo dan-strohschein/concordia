@@ -83,18 +83,18 @@ void gi_trace(uint3 id : SV_DispatchThreadID, uniform Push push) {
     ray.tmax = GI_MISS;
     BvhHit h = bvh_intersect(b, ray, false);
     if (!h.found) {
-        v.rays_buf[id.x] = float4(sky(p, u, ray.d), GI_MISS);
+        gi_rays(v)[id.x] = float4(sky(p, u, ray.d), GI_MISS);
         return;
     }
     // The geometric normal, object → world through the inverse's transpose.
-    uint4 m = b.meshes[asuint(b.insts[h.inst * BVH_INSTANCE_ROWS + 3].x)];
+    uint4 m = bvh_meshes(b)[asuint(bvh_insts(b)[h.inst * BVH_INSTANCE_ROWS + 3].x)];
     uint t = (m.y + h.prim) * 3;
-    float3 a = b.tris[t].xyz, e1 = b.tris[t + 1].xyz - a, e2 = b.tris[t + 2].xyz - a;
+    float3 a = bvh_tris(b)[t].xyz, e1 = bvh_tris(b)[t + 1].xyz - a, e2 = bvh_tris(b)[t + 2].xyz - a;
     float3 no = cross(e1, e2);
-    float4 r0 = b.insts[h.inst * BVH_INSTANCE_ROWS], r1 = b.insts[h.inst * BVH_INSTANCE_ROWS + 1], r2 = b.insts[h.inst * BVH_INSTANCE_ROWS + 2];
+    float4 r0 = bvh_insts(b)[h.inst * BVH_INSTANCE_ROWS], r1 = bvh_insts(b)[h.inst * BVH_INSTANCE_ROWS + 1], r2 = bvh_insts(b)[h.inst * BVH_INSTANCE_ROWS + 2];
     float3 n = normalize(r0.xyz * no.x + r1.xyz * no.y + r2.xyz * no.z);
     if (dot(n, ray.d) > 0.0) {
-        v.rays_buf[id.x] = float4(0.0, 0.0, 0.0, -GI_BACKFACE * h.t);
+        gi_rays(v)[id.x] = float4(0.0, 0.0, 0.0, -GI_BACKFACE * h.t);
         return;
     }
     float3 x = ray.o + ray.d * h.t;
@@ -104,7 +104,7 @@ void gi_trace(uint3 id : SV_DispatchThreadID, uniform Push push) {
     float3 albedo = looks[look * 2].rgb;
     float3 emission = looks[look * 2 + 1].rgb;
     float3 e = direct(p, u, b, x, n) + gi_irradiance(v, x, n, -ray.d);
-    v.rays_buf[id.x] = float4(albedo / 3.14159265 * e + emission, h.t);
+    gi_rays(v)[id.x] = float4(albedo / 3.14159265 * e + emission, h.t);
 }
 
 // Whether a light appeared within reach of `probe` this frame.
@@ -133,7 +133,7 @@ void gi_blend_irradiance(uint3 group : SV_GroupID, uint3 tid : SV_GroupThreadID,
     float3 sum = float3(0.0);
     float wsum = 0.0;
     for (uint r = 0; r < v.rays; r++) {
-        float4 ray = v.rays_buf[probe * v.rays + r];
+        float4 ray = gi_rays(v)[probe * v.rays + r];
         if (ray.w < 0.0) continue;
         float w = max(dot(td, ray_dir(p, r, v.rays)), 0.0);
         sum += ray.rgb * w;
@@ -142,9 +142,9 @@ void gi_blend_irradiance(uint3 group : SV_GroupID, uint3 tid : SV_GroupThreadID,
     // The cosine-weighted mean radiance is irradiance / π.
     float3 fresh = wsum > 0.0 ? sum / wsum * 3.14159265 : float3(0.0);
     uint at = probe * GI_IRR_TILE * GI_IRR_TILE + (tid.y + 1) * GI_IRR_TILE + tid.x + 1;
-    float3 old = v.irr[at].rgb;
+    float3 old = gi_irr(v)[at].rgb;
     float h = u[11].w != 0 ? 0.0 : gi_hysteresis(luminance(old), luminance(fresh), v.base_hysteresis, light_event(v, u, probe));
-    v.irr[at] = float4(lerp(fresh, old, h), 1.0);
+    gi_irr(v)[at] = float4(lerp(fresh, old, h), 1.0);
 }
 
 // One group per probe, one thread per interior distance texel.
@@ -160,7 +160,7 @@ void gi_blend_distance(uint3 group : SV_GroupID, uint3 tid : SV_GroupThreadID, u
     float2 sum = float2(0.0);
     float wsum = 0.0;
     for (uint r = 0; r < v.rays; r++) {
-        float4 ray = v.rays_buf[probe * v.rays + r];
+        float4 ray = gi_rays(v)[probe * v.rays + r];
         float w = pow(max(dot(td, ray_dir(p, r, v.rays)), 0.0), 50.0);
         float d = min(abs(ray.w), v.max_distance);
         sum += float2(d, d * d) * w;
@@ -169,9 +169,9 @@ void gi_blend_distance(uint3 group : SV_GroupID, uint3 tid : SV_GroupThreadID, u
     if (wsum <= 0.0) return;
     float2 fresh = sum / wsum;
     uint at = probe * GI_DIST_TILE * GI_DIST_TILE + (tid.y + 1) * GI_DIST_TILE + tid.x + 1;
-    float2 old = v.dist[at];
+    float2 old = gi_dist(v)[at];
     float h = u[11].w != 0 ? 0.0 : gi_hysteresis(old.x, fresh.x, v.base_hysteresis, light_event(v, u, probe));
-    v.dist[at] = lerp(fresh, old, h);
+    gi_dist(v)[at] = lerp(fresh, old, h);
 }
 
 // The interior texel a border texel `t` of an `n`-wide interior copies (octahedral wrap).
@@ -201,9 +201,9 @@ void gi_border(uint3 id : SV_DispatchThreadID, uniform Push push) {
     uint2 s = border_source(t, n);
     uint base = probe * per;
     if (push.pass == 0) {
-        v.irr[base + t.y * tile + t.x] = v.irr[base + s.y * tile + s.x];
+        gi_irr(v)[base + t.y * tile + t.x] = gi_irr(v)[base + s.y * tile + s.x];
     } else {
-        v.dist[base + t.y * tile + t.x] = v.dist[base + s.y * tile + s.x];
+        gi_dist(v)[base + t.y * tile + t.x] = gi_dist(v)[base + s.y * tile + s.x];
     }
 }
 
@@ -218,7 +218,7 @@ void gi_relocate(uint3 id : SV_DispatchThreadID, uniform Push push) {
     float near_back = GI_MISS, near_front = GI_MISS;
     float3 back_dir = float3(0.0), front_dir = float3(0.0);
     for (uint r = 0; r < v.rays; r++) {
-        float w = v.rays_buf[id.x * v.rays + r].w;
+        float w = gi_rays(v)[id.x * v.rays + r].w;
         if (w >= GI_MISS * 0.5) continue;
         hits++;
         float3 d = ray_dir(p, r, v.rays);
@@ -231,7 +231,7 @@ void gi_relocate(uint3 id : SV_DispatchThreadID, uniform Push push) {
             front_dir = d;
         }
     }
-    float3 offset = v.probes[id.x].xyz;
+    float3 offset = gi_probes(v)[id.x].xyz;
     if (backs * 4 > v.rays) {
         offset += back_dir * (near_back + 0.05 * v.spacing);
     } else if (near_front < 0.2 * v.spacing) {
@@ -241,5 +241,5 @@ void gi_relocate(uint3 id : SV_DispatchThreadID, uniform Push push) {
     float len = length(offset);
     if (len > most) offset *= most / len;
     bool active = hits > 0 && backs < v.rays;
-    v.probes[id.x] = float4(offset, active ? 1.0 : 0.0);
+    gi_probes(v)[id.x] = float4(offset, active ? 1.0 : 0.0);
 }

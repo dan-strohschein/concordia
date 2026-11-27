@@ -572,6 +572,11 @@ impl Pipelines {
         Ok(self.vsm)
     }
 
+    /// The shader compiler (pipelines built on demand elsewhere, e.g. GI's).
+    pub(crate) fn compiler(&self) -> &dyn ShaderCompiler {
+        self.compiler.as_ref()
+    }
+
     /// The own temporal resolve's compute pipelines.
     pub(crate) fn temporal(&self) -> crate::temporal::own::OwnPipelines {
         self.temporal

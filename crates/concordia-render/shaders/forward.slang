@@ -7,6 +7,7 @@ import skin;
 import material;
 import vsm;
 import light;
+import gi;
 
 static const uint NO_TEXTURE = 0xffffffff;
 static const uint FLAG_UNLIT = 1;
@@ -54,6 +55,8 @@ struct Frame {
     // views are the cascades in cascade_vp), vsm.y = the VSM parameter buffer, vsm.z = the page
     // table, vsm.w = clipmap levels.
     uint4 vsm;
+    // Probe GI (M4 4.8): gi.x = the probes' parameter block + 1 (0: off).
+    uint4 gi;
 };
 // Per light: position+range, direction, exposed radiance, spot (scale, offset).
 struct Light { float4 position_range; float4 direction; float4 radiance; float4 spot; };
@@ -668,8 +671,14 @@ float3 prefiltered(Frame* frame, float3 r, float roughness) {
     return lerp(env_sample(frame, lo, r), env_sample(frame, hi, r), lod - floor(lod));
 }
 
+// This pixel's probe irradiance, exposed (set once per pixel by `shade_pixel`; M4 4.8): what
+// `ambient` uses for diffuse in place of the environment's SH9 while GI is on.
+static float3 g_gi_irradiance = float3(0.0);
+
 float3 ambient(Frame* frame, Closure c, float3 v) {
-    if (frame.ibl.w < 0.5) { return float3(0.0); }
+    bool gi = frame.gi.x != 0;
+    float3 gi_diffuse = gi ? c.diffuse * g_gi_irradiance : float3(0.0);
+    if (frame.ibl.w < 0.5) { return gi_diffuse; }
     float3 n = c.n;
     float nov = saturate(dot(n, v));
     float3 f0 = c.f0;
@@ -681,14 +690,14 @@ float3 ambient(Frame* frame, Closure c, float3 v) {
         float2 hz = split_sum(frame, nov, c.haze_roughness);
         specular = lerp(specular, prefiltered(frame, r, c.haze_roughness) * (f0 * hz.x + hz.y), c.haze_weight);
     }
-    float3 diffuse = c.diffuse * sh_irradiance(frame, n);
-    float3 result = specular + diffuse;
+    float3 diffuse = gi ? gi_diffuse : c.diffuse * sh_irradiance(frame, n) * frame.ibl.x;
+    float3 result = specular * frame.ibl.x + diffuse;
     if (has(c, FEATURE_FUZZ)) {
         float e = c.sheen_e;
-        float3 sheen = c.fuzz * min(e, 1.0) * prefiltered(frame, r, c.fuzz_roughness);
+        float3 sheen = c.fuzz * min(e, 1.0) * prefiltered(frame, r, c.fuzz_roughness) * frame.ibl.x;
         result = sheen + (1.0 - max3(c.fuzz) * min(e, 1.0)) * result;
     }
-    return result * frame.ibl.x;
+    return result;
 }
 
 // What each slab contributes: lit by one light, by the environment, its albedo, or a debug value.
@@ -944,6 +953,9 @@ float4 shade_pixel(VsOut i, bool front, DrawPush push) {
         return float4(1.0, 1.0, 1.0, 1.0);
     }
     lit += single ? punctual_single(frame, i.position, i.world, geometric, c0, v, blend) : punctual(frame, i.position, i.world, geometric, rows, v, i.uv, blend);
+    if (frame.gi.x != 0) {
+        g_gi_irradiance = gi_irradiance(gi_volume(frame.gi.x - 1), i.world, geometric, v) * asfloat(frame.debug.y);
+    }
     Entry ambient_light = single ? covered(slab_entry(frame, c0, EVAL_AMBIENT, v, v, 0, false), blend)
                                  : run(frame, rows, EVAL_AMBIENT, v, v, i.uv, 0, blend);
     lit += ambient_light.color;

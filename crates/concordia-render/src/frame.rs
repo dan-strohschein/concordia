@@ -126,6 +126,8 @@ pub(crate) struct FrameParams<'a> {
     /// Virtual shadow maps' bindless indices: depth views, parameters, page table, and the level
     /// count (None: off).
     pub(crate) vsm: Option<[u32; 4]>,
+    /// The GI probes' parameter block (bindless; None: GI off; M4 4.8).
+    pub(crate) gi: Option<u32>,
 }
 
 /// The environment as the shader sees it.
@@ -180,6 +182,8 @@ pub(crate) fn frame_block(p: &FrameParams<'_>) -> Vec<u8> {
         [views + 1, params, table, levels]
     });
     out.extend(vsm.iter().flat_map(|w| w.to_le_bytes()));
+    let gi = [p.gi.map_or(0, |i| i + 1), 0, 0, 0];
+    out.extend(gi.iter().flat_map(|w| w.to_le_bytes()));
     out
 }
 

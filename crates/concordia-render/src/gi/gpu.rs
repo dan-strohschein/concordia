@@ -252,6 +252,11 @@ impl GiProbes {
         submit(device, &list)
     }
 
+    /// The parameter block's bindless index (what sampling reads; valid after `prepare`).
+    pub(crate) fn params_index(&self) -> u32 {
+        self.params.index
+    }
+
     /// Probe `probe`'s irradiance texels (8 × 8, rows first; physical lux).
     pub fn irradiance(&self, device: &dyn Device, probe: u32) -> Result<Vec<Vec3>, RenderError> {
         let tile = (IRR_TILE * IRR_TILE * 16) as usize;

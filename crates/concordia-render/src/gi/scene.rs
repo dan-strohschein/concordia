@@ -225,6 +225,11 @@ impl GiScene {
         })
     }
 
+    /// Whether `reference` has a proxy.
+    pub fn has_mesh(&self, reference: &AssetRef) -> bool {
+        self.meshes.contains_key(reference)
+    }
+
     /// The structure rays are traced against.
     pub fn accel(&self) -> &Accel {
         &self.accel
