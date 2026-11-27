@@ -208,8 +208,8 @@ float4 shadow_vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform Shado
 
 // The VSM debug views' tint (modes 20-22; M4 4.7): `vsm_pages` a colour per physical page with
 // darkened page borders, `vsm_levels` a hue per level (magenta where a pixel fell back to a coarser
-// one), `vsm_cache` the page's state (yellow drawn this frame, green kept, blue with a dynamic
-// layer); white where no page holds the pixel.
+// one), `vsm_cache` the page's state (green kept, yellow new this frame, red redrawn because a
+// caster under it changed, blue with a dynamic page; 4.7b); white where no page holds the pixel.
 float3 vsm_tint(Frame* frame, float3 world, float3 n, uint mode) {
     if (frame.vsm.x == 0) { return float3(1.0); }
     VsmParams* p = vsm_params(frame.vsm.y);
@@ -223,8 +223,11 @@ float3 vsm_tint(Frame* frame, float3 world, float3 n, uint mode) {
         return saturate(abs(frac(hue + float3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0) * 0.8 + 0.2;
     }
     if (mode == MODE_VSM_CACHE) {
+        // Red first: a page invalidated this frame may also have a dynamic page.
+        if ((entry & VSM_INVALIDATED) != 0) { return float3(1.0, 0.25, 0.2); }
+        if ((entry & VSM_DYNAMIC) != 0) { return float3(0.3, 0.5, 1.0); }
         if ((entry & VSM_DIRTY) != 0) { return float3(1.0, 0.9, 0.2); }
-        return (entry & (8u << 16)) != 0 ? float3(0.3, 0.5, 1.0) : float3(0.3, 1.0, 0.3);
+        return float3(0.3, 1.0, 0.3);
     }
     uint h = mix_id(vsm_physical(entry));
     float3 hue = float3(h & 255, (h >> 8) & 255, (h >> 16) & 255) / 255.0 * 0.7 + 0.3;

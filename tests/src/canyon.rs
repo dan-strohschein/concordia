@@ -156,13 +156,24 @@ impl Canyon {
         view: View,
         size: (u32, u32),
     ) -> Image {
+        self.render_mode(r, world, (view, size), ViewMode::lit)
+    }
+
+    /// Renders `view` at `size` in `view_mode`.
+    pub fn render_mode(
+        &mut self,
+        r: &mut Renderer,
+        world: &RenderWorld,
+        (view, size): (View, (u32, u32)),
+        view_mode: ViewMode,
+    ) -> Image {
         let request = RenderRequest {
             camera: None,
             view: Some(view),
             width: size.0,
             height: size.1,
             overlays: None,
-            view_mode: ViewMode::lit,
+            view_mode,
             debug: Vec::new(),
             ui: Default::default(),
         };

@@ -12,3 +12,5 @@ main = "scenes/canyon.scene.ron"
 [gen]
 
 [render]
+# Virtual shadow maps (M4 4.7b), cached; [render.vsm] keeps its defaults.
+shadows = "vsm"

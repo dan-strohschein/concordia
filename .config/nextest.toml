@@ -27,6 +27,12 @@ filter = "test(=pass_timer_overhead_under_2_percent)"
 threads-required = "num-test-threads"
 retries = 2
 
+# The VSM TAA trailing test (M4 4.7b) runs CSM and VSM through four renderers each (about 90 s
+# alone, longer under a full workspace run).
+[[profile.default.overrides]]
+filter = "test(=moving_shadow_does_not_ghost_under_taa)"
+slow-timeout = { period = "60s", terminate-after = 6 }
+
 # Blessing a path-traced reference (`just bless-reference`) traces for minutes at full quality.
 [[profile.default.overrides]]
 filter = "binary(bless_reference)"

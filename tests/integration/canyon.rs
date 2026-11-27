@@ -425,3 +425,72 @@ fn canyon_taau_goldens() {
     }
     assert!(missed.is_empty(), "{}", missed.join("\n"));
 }
+
+/// The canyon runs on virtual shadow maps by default (M4 4.7b, Phase 4.7's done criterion, first
+/// half): its manifest asks for `vsm`, its four perf scenes say so, and a renderer set up from the
+/// manifest runs VSM with no fallback.
+#[test]
+fn canyon_uses_vsm() {
+    use concordia_render::vsm::ShadowTechnique;
+    let project = concordia_app::Project::load(&canyon::project()).expect("the canyon project");
+    let render = project.manifest.render.clone().unwrap_or_default();
+    assert_eq!(render.shadows, ShadowTechnique::vsm);
+    for name in [
+        "m4-canyon-ground",
+        "m4-canyon-overhead",
+        "m4-canyon-ground-taau",
+        "m4-canyon-overhead-taau",
+    ] {
+        assert_eq!(
+            perf_scene(name).shadows,
+            Some(ShadowTechnique::vsm),
+            "{name}"
+        );
+    }
+    let Some(mut r) = renderer(&Default::default(), Culling::default()) else {
+        return;
+    };
+    r.set_shadows(render.shadows);
+    r.set_vsm_settings(render.vsm).unwrap();
+    let mut loaded = Canyon::load();
+    let scene = perf_scene("m4-canyon-overhead");
+    loaded.stills(&mut r, &scene, 16, &[8]);
+    let s = r.stats().shadows;
+    assert_eq!(
+        (s.technique, s.reason.as_deref()),
+        (ShadowTechnique::vsm, None),
+        "{s:?}"
+    );
+}
+
+/// Both camera paths render on cached virtual shadow maps: no pairs dropped, no page starved, and
+/// after the first frame most resident pages are kept.
+#[test]
+fn canyon_paths_render_with_vsm_cached() {
+    use concordia_render::vsm::ShadowTechnique;
+    let Some(mut r) = renderer(&Default::default(), Culling::default()) else {
+        return;
+    };
+    r.set_shadows(ShadowTechnique::vsm);
+    let mut loaded = Canyon::load();
+    let world = concordia_render::RenderWorld::extract(&loaded.world);
+    for (scene_name, _, frames, _) in PATHS {
+        let scene = perf_scene(scene_name);
+        for i in 0..frames {
+            loaded.render(&mut r, &world, canyon::view(&scene, i, frames));
+            let s = r.stats().shadows;
+            assert_eq!(s.technique, ShadowTechnique::vsm, "{scene_name} {i}: {s:?}");
+            assert_eq!(
+                (s.page_draws_dropped, s.pages_starved),
+                (0, 0),
+                "{scene_name} {i}: {s:?}"
+            );
+            if i > 0 {
+                assert!(
+                    s.pages_cached * 2 > s.pages_allocated,
+                    "{scene_name} {i}: {s:?}"
+                );
+            }
+        }
+    }
+}
