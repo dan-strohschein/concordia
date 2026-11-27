@@ -9,6 +9,7 @@ mod frame;
 mod gpu;
 mod job;
 mod ledger;
+pub mod local;
 mod pool;
 mod settings;
 mod stats;
