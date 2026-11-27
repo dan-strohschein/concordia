@@ -291,6 +291,10 @@ export interface ShadowStats {
    */
   pages_evicted: number;
   /**
+   * Resident pages redrawn because a caster under them changed.
+   */
+  pages_invalidated: number;
+  /**
    * Pages held though no pixel asked for them (kept for `keep_frames`).
    */
   pages_kept: number;

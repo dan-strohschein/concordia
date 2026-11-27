@@ -3,13 +3,14 @@
 
 use std::sync::Arc;
 
-use concordia_core::math::{IVec2, Mat4, Vec3};
+use concordia_core::math::{IVec2, Mat4, Vec3, Vec4};
 use concordia_rhi::{Buffer, Device};
 
 use super::cache::{CacheKey, CacheReset, CacheState};
 use super::clipmap::{Clipmap, stable_depth_range};
 use super::frame::{Footprint, ParamsIn, depth_views, params_rows};
 use super::gpu::{PageStore, PageWork, VsmPipelines, VsmPool, WorkShape};
+use super::ledger::{CasterLedger, CasterState};
 use super::pool::PoolLayout;
 use super::settings::VsmSettings;
 use crate::RenderError;
@@ -30,6 +31,8 @@ pub(crate) struct JobIn<'a> {
     pub(crate) casters: (Vec3, Vec3),
     /// The view the frame is for (one cached view at a time).
     pub(crate) view: u64,
+    /// Every shadow caster this frame, by key (the ledger compares them with last frame's).
+    pub(crate) states: Vec<(crate::visibility::VisKey, CasterState)>,
 }
 
 /// What virtual shadow maps keep between frames: the pool, the page store, the depth range, each
@@ -41,6 +44,7 @@ pub(crate) struct VsmResources {
     pub(crate) depth_range: Option<(f32, f32)>,
     pub(crate) cache: CacheState,
     origins: Vec<IVec2>,
+    ledger: CasterLedger<crate::visibility::VisKey>,
 }
 
 impl VsmResources {
@@ -69,6 +73,8 @@ pub(crate) struct VsmJob {
     pub(crate) pool: Vec<Buffer>,
     /// Why the store is cleared before this frame, if it is.
     pub(crate) reset: Option<CacheReset>,
+    /// Bindless index and count of the spheres whose pages are stale.
+    pub(crate) stale: (u32, u32),
 }
 
 impl VsmJob {
@@ -103,6 +109,19 @@ impl VsmJob {
             depth: range,
         };
         let reset = res.cache.begin(key, s.cache);
+        let mut stale = res.ledger.diff(input.states.iter().cloned());
+        if reset.is_some() {
+            stale.clear(); // the store starts empty: nothing to invalidate
+        }
+        let stale_count = stale.len() as u32;
+        let rows: Vec<u8> = stale
+            .iter()
+            .flat_map(|v: &Vec4| v.to_array())
+            .flat_map(f32::to_le_bytes)
+            .chain([0; 16])
+            .collect();
+        let stale_buf = up.buffer(device, &rows, "vsm stale spheres")?;
+        keep.push(stale_buf);
         let origins: Vec<IVec2> = clipmap.levels.iter().map(|l| l.origin_page()).collect();
         let previous = match (reset, res.origins.len() == origins.len()) {
             (None, true) => std::mem::replace(&mut res.origins, origins.clone()),
@@ -147,6 +166,7 @@ impl VsmJob {
             views: index(views)?,
             pool,
             reset,
+            stale: (index(stale_buf)?, stale_count),
         })
     }
 }
@@ -178,6 +198,15 @@ pub(crate) fn add_page_passes(
         |p| p.side_effect(),
         Some(Box::new(move |ctx: &mut PassContext<'_>| {
             ctx.commands.commands.extend(begin.iter().cloned());
+            Ok(())
+        })),
+    );
+    let invalidate = job.work.invalidate(job.stale, (job.params, job.views));
+    graph.add_pass_recorded(
+        "vsm.invalidate",
+        |p| p.side_effect(),
+        Some(Box::new(move |ctx: &mut PassContext<'_>| {
+            ctx.commands.commands.extend(invalidate.iter().cloned());
             Ok(())
         })),
     );

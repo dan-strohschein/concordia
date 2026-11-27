@@ -8,12 +8,16 @@ mod clipmap;
 mod frame;
 mod gpu;
 mod job;
+mod ledger;
 mod pool;
 mod settings;
 mod stats;
 mod table;
+#[cfg(test)]
+pub(crate) mod testing;
 
 pub use api::{RenderSetShadows, RenderSetShadowsParams, RenderSetShadowsResult};
+pub use bin::caster_sphere;
 pub(crate) use bin::{BinInputs, BinPipelines, MeshletBins, UnitBins, units_for, world_sphere};
 pub use cache::{CacheKey, CacheReset, CacheState};
 pub use clipmap::{
@@ -23,6 +27,7 @@ pub use clipmap::{
 pub use frame::{Footprint, floor_level};
 pub(crate) use gpu::{COUNT_WORDS, VsmPipelines};
 pub(crate) use job::{CasterDraws, JobIn, VsmJob, VsmResources, add_page_passes, add_render_pass};
+pub use ledger::{CasterLedger, CasterState, caster_box};
 pub use pool::{PoolError, PoolLayout};
 pub use settings::{ShadowTechnique, Shadows, VsmSettings};
 pub use stats::ShadowStats;

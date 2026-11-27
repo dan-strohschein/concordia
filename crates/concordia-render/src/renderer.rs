@@ -1805,6 +1805,7 @@ impl Renderer {
                 crate::vsm::Footprint::Fixed(h / height.get() as f32)
             }
         };
+        let states = self.caster_states(world, placements);
         let input = crate::vsm::JobIn {
             settings: &self.vsm_settings,
             light_dir: dir,
@@ -1814,6 +1815,7 @@ impl Renderer {
             pcf_radius: pcf,
             casters: world_bounds(casters),
             view: self.current.as_ref().map_or(0, |v| v.key.id()),
+            states,
         };
         let mut keep = Vec::new();
         let job = crate::vsm::VsmJob::prepare(
@@ -1829,6 +1831,45 @@ impl Renderer {
         });
         self.stats.shadows.cache_reset = self.vsm_res.cache.last_reset();
         Ok(job)
+    }
+
+    /// Every shadow caster's key and state for the VSM ledger (M4 4.7b): its world sphere (the
+    /// mesh's caster box, or the posed bounds when skinned) and a hash of its mesh, material and pose.
+    fn caster_states(
+        &self,
+        world: &RenderWorld,
+        placements: &[Placement],
+    ) -> Vec<(crate::visibility::VisKey, crate::vsm::CasterState)> {
+        use std::hash::{Hash, Hasher};
+        let occurrence = occurrences(world);
+        world
+            .draws
+            .iter()
+            .zip(placements)
+            .zip(occurrence)
+            .filter(|((d, _), _)| d.cast_shadows)
+            .filter_map(|((d, placed), n)| {
+                let mesh = self.assets.meshes.get(&d.mesh)?;
+                let mut shape = std::hash::DefaultHasher::new();
+                d.mesh.hash(&mut shape);
+                d.material.hash(&mut shape);
+                let bounds = match placed.pose {
+                    Some(pose) => {
+                        world.skins[pose]
+                            .palette
+                            .iter()
+                            .for_each(|m| hash_matrix(m, &mut shape));
+                        placed.bounds
+                    }
+                    None => mesh.caster_aabb,
+                };
+                let state = crate::vsm::CasterState {
+                    sphere: crate::vsm::caster_sphere(bounds, &placed.world),
+                    shape: shape.finish(),
+                };
+                Some(((d.entity, d.mesh.clone(), n), state))
+            })
+            .collect()
     }
 
     /// Cascades, settings and shadow maps when the first directional light casts shadows.
@@ -2012,16 +2053,7 @@ impl Renderer {
         order: &[DrawOrder],
         visibility: &mut crate::visibility::Visibility<crate::visibility::VisKey>,
     ) -> Vec<u32> {
-        let mut seen: BTreeMap<(EntityId, &AssetRef), u32> = BTreeMap::new();
-        let occurrence: Vec<u32> = world
-            .draws
-            .iter()
-            .map(|d| {
-                let n = seen.entry((d.entity, &d.mesh)).or_insert(0);
-                *n += 1;
-                *n - 1
-            })
-            .collect();
+        let occurrence = occurrences(world);
         let mut at = Vec::new();
         let mut wanted = Vec::new();
         for (i, d) in order.iter().enumerate() {
@@ -3117,6 +3149,21 @@ fn hash_matrix(m: &Mat4, hasher: &mut impl std::hash::Hasher) {
 
 /// Identifies the shadow maps' contents: the casters (meshes and world matrices), the cascades
 /// and the maps themselves.
+/// Each draw's occurrence: which of its entity's draws of that mesh it is (the third part of a
+/// [`crate::visibility::VisKey`]).
+fn occurrences(world: &RenderWorld) -> Vec<u32> {
+    let mut seen: BTreeMap<(EntityId, &AssetRef), u32> = BTreeMap::new();
+    world
+        .draws
+        .iter()
+        .map(|d| {
+            let n = seen.entry((d.entity, &d.mesh)).or_insert(0);
+            *n += 1;
+            *n - 1
+        })
+        .collect()
+}
+
 fn shadow_key(casters: u64, cascades: &[Cascade], resolution: u32, maps: &[(Texture, u32)]) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::hash::DefaultHasher::new();

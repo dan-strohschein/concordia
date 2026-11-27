@@ -13,6 +13,7 @@ public static const uint VSM_PAGE_WORDS = VSM_PAGE_TEXELS * VSM_PAGE_TEXELS;
 public static const uint VSM_REQUESTED = 1u << 16;
 public static const uint VSM_VALID = 2u << 16;
 public static const uint VSM_DIRTY = 4u << 16;
+public static const uint VSM_INVALIDATED = 16u << 16;
 public static const uint VSM_FLAGS = 0xFFu << 16;
 public static const uint VSM_AGE_SHIFT = 24;
 

@@ -246,9 +246,9 @@ fn scroll_releases_only_wrapped_slots() {
 #[test]
 fn keep_frames_and_cache_parse_and_reject_out_of_range() {
     let s = VsmSettings::default();
-    assert_eq!((s.keep_frames, s.cache), (60, false));
-    let parsed: VsmSettings = toml::from_str("keep_frames = 0\ncache = true").unwrap();
-    assert_eq!((parsed.keep_frames, parsed.cache), (0, true));
+    assert_eq!((s.keep_frames, s.cache), (60, true));
+    let parsed: VsmSettings = toml::from_str("keep_frames = 0\ncache = false").unwrap();
+    assert_eq!((parsed.keep_frames, parsed.cache), (0, false));
     let err = toml::from_str::<VsmSettings>("keep_frames = 300").unwrap_err();
     assert!(err.to_string().contains("keep_frames"), "{err}");
     assert!(toml::from_str::<VsmSettings>("cache = 1").is_err());
@@ -316,4 +316,69 @@ fn sun_and_settings_changes_that_clear_the_cache() {
     state.reset(CacheReset::Scene);
     assert_eq!(state.begin(key, true), Some(CacheReset::Scene));
     assert_eq!(state.last_reset(), Some(CacheReset::Scene));
+}
+
+/// The ledger lists, per frame, the spheres whose pages are stale: a moved caster's old and new,
+/// an added one's new, a removed (or no longer casting) one's old, and a reshaped one's (mesh,
+/// alpha mode or pose) old and new; nothing for a still caster; in key order.
+#[test]
+fn ledger_lists_moved_added_removed_and_changed_draws() {
+    use concordia_core::math::Vec4;
+    use concordia_render::vsm::{CasterLedger, CasterState};
+    let at = |x: f32| Vec4::new(x, 0.0, 0.0, 1.0);
+    let state = |x: f32, shape: u64| CasterState {
+        sphere: at(x),
+        shape,
+    };
+    let mut ledger = CasterLedger::default();
+    assert_eq!(
+        ledger.diff([(1u32, state(1.0, 7)), (2, state(2.0, 7))]),
+        vec![at(1.0), at(2.0)],
+        "first frame: everything is added"
+    );
+    assert!(
+        ledger
+            .diff([(1, state(1.0, 7)), (2, state(2.0, 7))])
+            .is_empty(),
+        "still"
+    );
+    assert_eq!(
+        ledger.diff([(1, state(1.5, 7)), (2, state(2.0, 7))]),
+        vec![at(1.0), at(1.5)],
+        "moved: old and new"
+    );
+    assert_eq!(
+        ledger.diff([(1, state(1.5, 8)), (2, state(2.0, 7)), (3, state(3.0, 7))]),
+        vec![at(1.5), at(1.5), at(3.0)],
+        "reshaped in place, and added"
+    );
+    assert_eq!(
+        ledger.diff([(1, state(1.5, 8)), (3, state(3.0, 7))]),
+        vec![at(2.0)],
+        "removed: old"
+    );
+    ledger.clear();
+    assert_eq!(
+        ledger.diff([(3, state(3.0, 7))]),
+        vec![at(3.0)],
+        "after a clear"
+    );
+}
+
+/// A caster's box for invalidation holds its mesh's bounds and every meshlet's sphere, so every
+/// page a meshlet could be drawn into is among those invalidated.
+#[test]
+fn caster_box_holds_every_meshlet_sphere() {
+    use concordia_render::vsm::caster_box;
+    let aabb = (Vec3::new(-1.0, -1.0, -1.0), Vec3::new(1.0, 1.0, 1.0));
+    let spheres = [(Vec3::new(0.9, 0.9, 0.0), 0.5), (Vec3::ZERO, 0.2)];
+    let (lo, hi) = caster_box(aabb, spheres);
+    for (c, r) in spheres {
+        assert!(
+            (c - r).cmpge(lo).all() && (c + r).cmple(hi).all(),
+            "{c} {r}"
+        );
+    }
+    assert!(aabb.0.cmpge(lo).all() && aabb.1.cmple(hi).all());
+    assert_eq!(caster_box(aabb, []), aabb, "no meshlets: the mesh's bounds");
 }

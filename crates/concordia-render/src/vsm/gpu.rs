@@ -30,6 +30,7 @@ pub(crate) const COUNT_WORDS: u32 = 11;
 pub(crate) struct VsmPipelines {
     pub(crate) zero: Pipeline,
     pub(crate) age: Pipeline,
+    pub(crate) invalidate: Pipeline,
     pub(crate) mark: Pipeline,
     pub(crate) flags: Pipeline,
     pub(crate) update: Pipeline,
@@ -56,6 +57,7 @@ impl VsmPipelines {
         Ok(Self {
             zero: kernel("vsm_zero")?,
             age: kernel("vsm_age")?,
+            invalidate: kernel("vsm_invalidate")?,
             mark: kernel("vsm_mark")?,
             flags: kernel("vsm_request_flags")?,
             update: kernel("vsm_update")?,
@@ -375,6 +377,27 @@ impl PageWork {
             compute_barrier(&[self.table, self.pages]),
         ]);
         out
+    }
+
+    /// Flags the held pages under each of `count` world spheres (bindless buffer `spheres`, one
+    /// `float4` each) in every level as invalidated (parameter block `params`, depth views `views`).
+    pub(crate) fn invalidate(
+        &self,
+        (spheres, count): (u32, u32),
+        (params, views): (u32, u32),
+    ) -> Vec<Command> {
+        if count == 0 {
+            return Vec::new();
+        }
+        let rows = count.div_ceil(65_535);
+        vec![
+            Command::SetPipeline(self.pipelines.invalidate),
+            words([spheres, count, params, views, self.index.table]),
+            Command::Dispatch {
+                groups: [count.min(65_535), rows, self.levels],
+            },
+            compute_barrier(&[self.table]),
+        ]
     }
 
     /// Marks the table from depth texture `depth` (bindless, `size` pixels) with parameter block
@@ -853,6 +876,11 @@ mod tests {
         }
 
         fn frame(&mut self, reset: bool, requested: &[u32]) -> Out {
+            self.frame_with(reset, requested, &[])
+        }
+
+        /// A frame that invalidates the pages under `stale` (world spheres) before the requests.
+        fn frame_with(&mut self, reset: bool, requested: &[u32], stale: &[Vec4]) -> Out {
             let device = self.device;
             let settings = VsmSettings {
                 levels: self.levels as u8,
@@ -873,6 +901,20 @@ mod tests {
             });
             self.previous = origins(&self.clipmap);
             let params = up.buffer(device, &params, "params").unwrap();
+            let views = up
+                .buffer(
+                    device,
+                    &depth_views(&Mat4::IDENTITY, &self.clipmap),
+                    "views",
+                )
+                .unwrap();
+            let rows: Vec<u8> = stale
+                .iter()
+                .flat_map(|v| v.to_array())
+                .flat_map(f32::to_le_bytes)
+                .chain([0; 16])
+                .collect();
+            let spheres = up.buffer(device, &rows, "stale spheres").unwrap();
             let (store, fresh) = self.store.ensure(device, (self.levels, self.pool)).unwrap();
             let shape = WorkShape {
                 store,
@@ -882,8 +924,13 @@ mod tests {
             };
             let work = PageWork::prepare(device, &up, pipelines(device), shape, &mut keep).unwrap();
             up.flush(device).unwrap();
-            let params = device.buffer_index(params).unwrap().0;
-            run_commands(device, work.begin(reset || fresh, params));
+            let index = |b: Buffer| device.buffer_index(b).unwrap().0;
+            let params = index(params);
+            let mut commands = work.begin(reset || fresh, params);
+            commands.extend(
+                work.invalidate((index(spheres), stale.len() as u32), (params, index(views))),
+            );
+            run_commands(device, commands);
             let entries = self.levels * LEVEL_ENTRIES;
             let mut table = download(device, work.table, u64::from(entries) * 4);
             let flag = PageEntry::new(None, PageFlags::REQUESTED, 0).bits();
@@ -1089,5 +1136,59 @@ mod tests {
         }
         assert!(released > 0 && released < LEVEL_ENTRIES, "{released}");
         assert_eq!(out.counts[9], LEVEL_ENTRIES - released, "kept");
+    }
+
+    /// Invalidation flags exactly the held pages under each sphere's rect in each level: a
+    /// requested one keeps its page and is redrawn, an unrequested one is released, the rest are
+    /// untouched; a sphere outside every level touches nothing.
+    #[test]
+    fn invalidation_marks_exactly_the_pages_under_each_sphere() {
+        let Some(device) = test_gpu::device() else {
+            return;
+        };
+        let mut frames = Frames::new(device.as_ref(), 2, LEVEL_ENTRIES, 60);
+        let all: Vec<u32> = (LEVEL_ENTRIES..2 * LEVEL_ENTRIES).collect();
+        let first = frames.frame(true, &all);
+        let stale = [
+            Vec4::new(1.2, 0.5, 2.6, 0.4),
+            Vec4::new(-0.5, 1.0, 4.0, 1.1),
+            Vec4::new(9_000.0, 0.0, 0.0, 1.0),
+        ];
+        let l = &frames.clipmap.levels[1];
+        let mut under = BTreeSet::new();
+        for s in stale {
+            for p in crate::vsm::testing::pages_under(&frames.clipmap, 1, s) {
+                under.insert(table_slot(1, l.world_page(p).into()));
+            }
+        }
+        assert!(under.len() > 20, "{}", under.len());
+        let requested: Vec<u32> = all.iter().copied().filter(|e| e % 2 == 0).collect();
+        let out = frames.frame_with(false, &requested, &stale);
+        let mut redrawn = 0;
+        for &e in &all {
+            let (before, after) = (first.entry(e), out.entry(e));
+            match (under.contains(&e), e % 2 == 0) {
+                (true, true) => {
+                    redrawn += 1;
+                    assert_eq!(after.physical(), before.physical(), "kept page {e}");
+                    let want = PageFlags::REQUESTED
+                        | PageFlags::VALID
+                        | PageFlags::DIRTY
+                        | PageFlags::INVALIDATED;
+                    assert_eq!(after.flags(), want, "entry {e}");
+                }
+                (true, false) => assert_eq!(after.physical(), None, "released {e}"),
+                (false, requested) => {
+                    assert_eq!(after.physical(), before.physical(), "untouched {e}");
+                    assert!(
+                        !after
+                            .flags()
+                            .intersects(PageFlags::DIRTY | PageFlags::INVALIDATED)
+                    );
+                    assert_eq!(after.flags().contains(PageFlags::REQUESTED), requested);
+                }
+            }
+        }
+        assert_eq!((out.counts[6], out.counts[7]), (0, redrawn), "new, drawn");
     }
 }

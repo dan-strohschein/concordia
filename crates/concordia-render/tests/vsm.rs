@@ -18,10 +18,13 @@ fn lit(base: [f32; 3]) -> M1 {
     }
 }
 
-/// The yard's camera, sun and box.
+/// The yard's camera, sun, box and balls.
 struct Yard {
     camera: concordia_core::id::EntityId,
     sun: concordia_core::id::EntityId,
+    cube: concordia_core::id::EntityId,
+    ground: concordia_core::id::EntityId,
+    balls: Vec<concordia_core::id::EntityId>,
 }
 
 /// A ground (M1 path), a row of meshlet balls with a box among them (M1), a shadowed sun, and a
@@ -45,6 +48,7 @@ fn yard_with_ids(msaa: Msaa, casts: bool) -> (Scene, Yard) {
         Quat::IDENTITY,
         Vec3::new(40.0, 1.0, 40.0),
     );
+    let mut balls = Vec::new();
     for i in 0..6 {
         let id = scene.entity(
             Vec3::new(-5.0 + 2.0 * i as f32, 1.0, -4.0 - 3.0 * i as f32),
@@ -62,6 +66,7 @@ fn yard_with_ids(msaa: Msaa, casts: bool) -> (Scene, Yard) {
                 },
             )
             .unwrap();
+        balls.push(id);
     }
     let cube = scene.mesh(
         "cube",
@@ -92,7 +97,16 @@ fn yard_with_ids(msaa: Msaa, casts: bool) -> (Scene, Yard) {
             ..Camera::default()
         },
     );
-    (scene, Yard { camera, sun })
+    (
+        scene,
+        Yard {
+            camera,
+            sun,
+            cube,
+            ground,
+            balls,
+        },
+    )
 }
 
 fn render(r: &mut Renderer, scene: &mut Scene, shadows: ShadowTechnique, mode: ViewMode) -> Image {
@@ -333,7 +347,9 @@ fn vsm_reports_why_it_fell_back() {
 /// the coarse levels, under no visible pixel's page) add no shadow meshlets.
 #[test]
 fn page_rect_culling_skips_meshlets_over_clean_pages() {
-    for mut r in meshlet_renderers() {
+    // Uncached (4.7b): the counts compare two scenes' full redraws, not what a cache kept.
+    for r in meshlet_renderers() {
+        let mut r = cached(r, false);
         let mut near = yard(Msaa::Off, true);
         render(&mut r, &mut near, ShadowTechnique::vsm, ViewMode::lit);
         let without = r.stats().shadows.shadow_meshlets;
@@ -427,11 +443,12 @@ fn vsm_debug_views_show_pages_levels_cache_and_the_mask() {
 /// sun visibility, and the page, level and cache views, at 640 × 360 on the device's own path.
 #[test]
 fn vsm_regression_goldens() {
-    let Some(mut r) = meshlet_renderers().into_iter().next() else {
+    let Some(r) = meshlet_renderers().into_iter().next() else {
         return;
     };
     let mut scene = yard(Msaa::Off, true);
-    r.set_shadows(ShadowTechnique::vsm);
+    // 4.7a's images: the uncached path (`vsm_cache` all yellow); 4.7b adds the cached ones.
+    let mut r = cached(r, false);
     let mut shot = |mode| {
         scene.render_mode(&mut r, 640, 360, mode);
         scene.render_mode(&mut r, 640, 360, mode)
@@ -668,4 +685,177 @@ fn camera_cut_keeps_the_cache_and_a_view_change_resets_it() {
         let (_, s) = frame(&mut r, &mut scene);
         assert_eq!(s.cache_reset, Some(CacheReset::Scene), "{s:?}");
     }
+}
+
+/// Two renderers on VSM, cached and uncached, drawing the same frames (the 4.7b oracle).
+struct Oracle {
+    on: Renderer,
+    off: Renderer,
+}
+
+impl Oracle {
+    fn new() -> Option<Self> {
+        let fresh = || meshlet_renderers().into_iter().next();
+        Some(Self {
+            on: cached(fresh()?, true),
+            off: cached(fresh()?, false),
+        })
+    }
+
+    /// One frame on both; the images must be identical. Returns the cached renderer's stats.
+    fn frame(&mut self, scene: &mut Scene, step: &str) -> concordia_render::vsm::ShadowStats {
+        let (a, s) = frame(&mut self.on, scene);
+        let (b, _) = frame(&mut self.off, scene);
+        if a.rgba != b.rgba {
+            let diff = a.rgba.iter().zip(&b.rgba).filter(|(x, y)| x != y).count();
+            panic!("{step}: cached and uncached differ in {diff} bytes; {s:?}");
+        }
+        s
+    }
+}
+
+fn move_to(scene: &mut Scene, id: concordia_core::id::EntityId, at: Vec3) {
+    let mut t = *scene
+        .world
+        .get::<concordia_scene::builtin::Transform>(id)
+        .unwrap();
+    t.translation = at;
+    scene.world.insert(id, t).unwrap();
+}
+
+/// A moved caster redraws only the pages under it: the box redraws fewer than the ground, which
+/// lies under every page; once they stop, nothing is redrawn.
+#[test]
+fn moving_caster_invalidates_only_overlapping_pages() {
+    let Some(mut o) = Oracle::new() else {
+        return;
+    };
+    let (mut scene, ids) = yard_with_ids(Msaa::Off, true);
+    o.frame(&mut scene, "warm-up");
+    o.frame(&mut scene, "warm-up");
+    move_to(&mut scene, ids.cube, Vec3::new(1.3, 0.5, -2.0));
+    let s = o.frame(&mut scene, "moved");
+    let boxed = s.pages_invalidated;
+    assert!(boxed > 0, "{s:?}");
+    move_to(&mut scene, ids.ground, Vec3::new(0.0, -0.001, 0.0));
+    let s = o.frame(&mut scene, "ground moved");
+    assert_eq!(
+        s.pages_invalidated, s.pages_allocated,
+        "the ground is under every page: {s:?}"
+    );
+    assert!(
+        boxed < s.pages_invalidated,
+        "only overlapping pages: {boxed} {s:?}"
+    );
+    let s = o.frame(&mut scene, "still");
+    assert_eq!(
+        (s.pages_invalidated, s.pages_rendered_static),
+        (0, 0),
+        "{s:?}"
+    );
+}
+
+/// An added caster and a removed one redraw the pages under them.
+#[test]
+fn added_and_removed_instances_invalidate_their_bounds() {
+    let Some(mut o) = Oracle::new() else {
+        return;
+    };
+    let (mut scene, ids) = yard_with_ids(Msaa::Off, true);
+    o.frame(&mut scene, "warm-up");
+    o.frame(&mut scene, "warm-up");
+    let stone = scene.material("stone2", lit([0.5, 0.5, 0.5]));
+    let added = scene.mesh(
+        "cube",
+        stone,
+        Vec3::new(-2.0, 0.5, -3.0),
+        Quat::IDENTITY,
+        Vec3::ONE,
+    );
+    let s = o.frame(&mut scene, "added");
+    assert!(s.pages_invalidated > 0, "{s:?}");
+    scene.world.despawn(added).unwrap();
+    let s = o.frame(&mut scene, "removed");
+    assert!(s.pages_invalidated > 0, "{s:?}");
+    scene.world.despawn(ids.balls[0]).unwrap();
+    let s = o.frame(&mut scene, "removed a meshlet ball");
+    assert!(s.pages_invalidated > 0, "{s:?}");
+}
+
+/// The oracle (Q9): a scripted sequence rendered cached and uncached gives identical images every
+/// frame, and the cached run redraws only what each step should.
+#[test]
+fn cached_frames_equal_uncached() {
+    use concordia_render::vsm::CacheReset;
+    let Some(mut o) = Oracle::new() else {
+        return;
+    };
+    let (mut scene, ids) = yard_with_ids(Msaa::Off, true);
+    o.frame(&mut scene, "warm-up");
+    let s = o.frame(&mut scene, "still");
+    assert_eq!(s.pages_rendered_static, 0, "still: {s:?}");
+    for k in 1..=4 {
+        move_to(
+            &mut scene,
+            ids.cube,
+            Vec3::new(1.0 + 0.25 * k as f32, 0.5, -2.0),
+        );
+        let s = o.frame(&mut scene, &format!("slide {k}"));
+        assert!(s.pages_invalidated > 0, "slide {k}: {s:?}");
+    }
+    move_to(&mut scene, ids.balls[1], Vec3::new(-2.0, 1.0, -6.0));
+    o.frame(&mut scene, "a meshlet ball moved");
+    let stone = scene.material("stone2", lit([0.5, 0.5, 0.5]));
+    let added = scene.mesh(
+        "cube",
+        stone,
+        Vec3::new(-2.0, 0.5, -3.0),
+        Quat::IDENTITY,
+        Vec3::ONE,
+    );
+    o.frame(&mut scene, "added");
+    let mut r = scene
+        .world
+        .get::<concordia_assets::MeshRenderer>(added)
+        .unwrap()
+        .clone();
+    r.mesh = "builtin:mesh/sphere".parse().unwrap();
+    scene.world.insert(added, r.clone()).unwrap();
+    let s = o.frame(&mut scene, "mesh swap");
+    assert!(s.pages_invalidated > 0, "mesh swap: {s:?}");
+    r.cast_shadows = false;
+    scene.world.insert(added, r.clone()).unwrap();
+    let s = o.frame(&mut scene, "stops casting");
+    assert!(s.pages_invalidated > 0, "stops casting: {s:?}");
+    r.cast_shadows = true;
+    scene.world.insert(added, r).unwrap();
+    o.frame(&mut scene, "casts again");
+    scene.world.despawn(added).unwrap();
+    o.frame(&mut scene, "removed");
+    for (step, eye) in [("camera 1 m", 1.0), ("camera 20 m", 21.0)] {
+        scene.aim(
+            ids.camera,
+            Vec3::new(eye, 3.0, 6.0),
+            Vec3::new(eye, 0.5, -10.0),
+        );
+        let s = o.frame(&mut scene, step);
+        assert_eq!(s.pages_invalidated, 0, "{step}: {s:?}");
+    }
+    o.on.reset_motion_history();
+    o.off.reset_motion_history();
+    let s = o.frame(&mut scene, "camera cut");
+    assert_eq!(s.pages_rendered_static, 0, "cut: {s:?}");
+    let mut t = *scene
+        .world
+        .get::<concordia_scene::builtin::Transform>(ids.sun)
+        .unwrap();
+    t.rotation = Quat::from_rotation_y(0.05) * t.rotation;
+    scene.world.insert(ids.sun, t).unwrap();
+    let s = o.frame(&mut scene, "sun step");
+    assert_eq!(s.cache_reset, Some(CacheReset::Light), "{s:?}");
+    move_to(&mut scene, ids.balls[2], Vec3::new(0.0, 400.0, -10.0));
+    let s = o.frame(&mut scene, "leaves the depth range");
+    assert_eq!(s.cache_reset, Some(CacheReset::DepthRange), "{s:?}");
+    let s = o.frame(&mut scene, "still again");
+    assert_eq!(s.pages_rendered_static, 0, "{s:?}");
 }

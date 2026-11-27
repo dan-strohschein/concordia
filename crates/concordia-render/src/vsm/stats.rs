@@ -45,6 +45,8 @@ pub struct ShadowStats {
     pub pages_new: u64,
     /// Static pages drawn this frame (new or invalidated).
     pub pages_rendered_static: u64,
+    /// Resident pages redrawn because a caster under them changed.
+    pub pages_invalidated: u64,
     /// Pages held though no pixel asked for them (kept for `keep_frames`).
     pub pages_kept: u64,
     /// Kept pages evicted, oldest first, to make room for new ones.
@@ -76,6 +78,7 @@ impl VsmReadback {
         stats.pages_starved = u64::from(words[2]);
         stats.pages_new = u64::from(words[6]);
         stats.pages_rendered_static = u64::from(words[7]);
+        stats.pages_invalidated = u64::from(words[7].saturating_sub(words[6]));
         stats.pages_cached = u64::from(words[1].saturating_sub(words[7]));
         stats.pages_evicted = u64::from(words[8]);
         stats.pages_kept = u64::from(words[9]);

@@ -64,7 +64,7 @@ impl Default for VsmSettings {
             depth_bias: 1.0,
             normal_bias: 1.0,
             keep_frames: 60,
-            cache: false,
+            cache: true,
         }
     }
 }

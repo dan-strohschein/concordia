@@ -347,6 +347,40 @@ pub(crate) fn world_sphere(
     ((lo + hi) * 0.5).extend((hi - lo).length() * 0.5)
 }
 
+/// The sphere VSM invalidation uses for a caster with object-space box `bounds` placed by `world`
+/// (M4 4.7b): it holds every sphere binning can draw it with (the box's world sphere, and each
+/// meshlet's sphere inside the box, scaled by the largest column as `max_scale` does).
+pub fn caster_sphere(
+    bounds: (concordia_core::math::Vec3, concordia_core::math::Vec3),
+    world: &concordia_core::math::Mat4,
+) -> Vec4 {
+    let boxed = world_sphere(bounds, world);
+    let (lo, hi) = bounds;
+    let max_scale = [world.x_axis, world.y_axis, world.z_axis]
+        .map(|c| c.truncate().length())
+        .into_iter()
+        .fold(0.0f32, f32::max);
+    let scaled = world
+        .transform_point3((lo + hi) * 0.5)
+        .extend((hi - lo).length() * 0.5 * max_scale);
+    let s = enclose(boxed, scaled);
+    s.truncate().extend(s.w * (1.0 + 1e-4) + 1e-4) // rounding margin
+}
+
+/// The smallest sphere holding spheres `a` and `b` (centre, radius).
+fn enclose(a: Vec4, b: Vec4) -> Vec4 {
+    let d = b.truncate() - a.truncate();
+    let distance = d.length();
+    if distance + b.w <= a.w {
+        return a;
+    }
+    if distance + a.w <= b.w {
+        return b;
+    }
+    let radius = (distance + a.w + b.w) * 0.5;
+    (a.truncate() + d / distance * (radius - a.w)).extend(radius)
+}
+
 /// One group per item for `n` items, in rows of 65 535 groups.
 fn group_rows(n: u32) -> [u32; 3] {
     let n = n.max(1);
@@ -392,7 +426,7 @@ mod tests {
     use super::*;
     use crate::test_gpu::{self, download, run_commands};
     use crate::vsm::frame::{Footprint, ParamsIn, depth_views, params_rows};
-    use crate::vsm::{Clipmap, PageEntry, PageFlags, VsmSettings, table_slot, texel_world};
+    use crate::vsm::{Clipmap, PageEntry, PageFlags, VsmSettings, table_slot};
 
     fn pipelines(device: &dyn Device) -> BinPipelines {
         let k = |entry| test_gpu::compute(device, "vsm_page.slang", entry);
@@ -416,33 +450,70 @@ mod tests {
     /// texels, one texel wider), row by row, that are due to be drawn: (page in level, physical).
     fn dirty_under(clipmap: &Clipmap, table: &[u32], level: u32, sphere: Vec4) -> Vec<(u32, u32)> {
         let l = &clipmap.levels[level as usize];
-        let clip = l.view_proj * sphere.truncate().extend(1.0);
-        let t = Vec3::new(clip.x * 0.5 + 0.5, 0.5 - clip.y * 0.5, 0.0).truncate() * 16_384.0;
-        let r = sphere.w / texel_world(level) + 1.0;
-        let (lo, hi) = (
-            ((t - r) / 128.0).floor().as_ivec2(),
-            ((t + r) / 128.0).floor().as_ivec2(),
-        );
-        if hi.min_element() < 0 || lo.max_element() > 127 {
-            return Vec::new();
-        }
-        let (lo, hi) = (lo.max(IVec2::ZERO), hi.min(IVec2::splat(127)));
-        let mut out = Vec::new();
-        for y in lo.y..=hi.y {
-            for x in lo.x..=hi.x {
-                let slot = table_slot(level, l.world_page(IVec2::new(x, y)).into());
+        crate::vsm::testing::pages_under(clipmap, level, sphere)
+            .into_iter()
+            .filter_map(|p| {
+                let slot = table_slot(level, l.world_page(p).into());
                 let e = PageEntry::from_bits(table[slot as usize]);
-                if let (Some(p), true) = (e.physical(), e.flags().contains(PageFlags::DIRTY)) {
-                    out.push(((y * 128 + x) as u32, u32::from(p)));
+                match (e.physical(), e.flags().contains(PageFlags::DIRTY)) {
+                    (Some(phys), true) => Some(((p.y * 128 + p.x) as u32, u32::from(phys))),
+                    _ => None,
                 }
-            }
-        }
-        out
+            })
+            .collect()
     }
 
     /// Every unit gets one pair per page due to be drawn under its sphere, in unit order and row by
     /// row; pages without a physical page or not due are skipped; each draw's arguments count its
     /// pairs and its base is where they start; pairs past the capacity are dropped and counted.
+    /// Under rotations and non-uniform scales, the invalidation sphere holds the box's world sphere
+    /// and every sphere inside the box as binning places it (centre transformed, radius times the
+    /// largest column).
+    #[test]
+    fn caster_sphere_holds_every_binning_sphere() {
+        use concordia_core::math::{Mat4, Quat};
+        let bounds = (Vec3::new(-1.0, -0.5, -2.0), Vec3::new(3.0, 0.5, 1.0));
+        let inner = [
+            (Vec3::new(-0.4, 0.0, -1.4), 0.5),
+            (Vec3::new(2.5, 0.0, 0.5), 0.5),
+            (Vec3::new(1.0, 0.0, -0.5), 0.5),
+        ];
+        let max_scale = |m: &Mat4| {
+            [m.x_axis, m.y_axis, m.z_axis]
+                .map(|c| c.truncate().length())
+                .into_iter()
+                .fold(0.0f32, f32::max)
+        };
+        for (i, scale) in [
+            Vec3::ONE,
+            Vec3::new(4.0, 0.25, 1.0),
+            Vec3::new(0.3, 2.0, 7.0),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let rotation = Quat::from_euler(
+                concordia_core::math::EulerRot::XYZ,
+                0.3 * i as f32,
+                1.1,
+                -0.7,
+            );
+            let world =
+                Mat4::from_scale_rotation_translation(scale, rotation, Vec3::new(5.0, -2.0, 9.0));
+            let s = caster_sphere(bounds, &world);
+            let holds = |c: Vec3, r: f32| c.distance(s.truncate()) + r <= s.w * (1.0 + 1e-5) + 1e-5;
+            let b = world_sphere(bounds, &world);
+            assert!(holds(b.truncate(), b.w), "box sphere, scale {scale}");
+            for (c, r) in inner {
+                let wc = world.transform_point3(c);
+                assert!(
+                    holds(wc, r * max_scale(&world)),
+                    "inner sphere, scale {scale}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn binning_pairs_each_caster_with_its_dirty_pages() {
         let Some(device) = test_gpu::device() else {

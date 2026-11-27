@@ -20,6 +20,8 @@ bitflags::bitflags! {
         const DIRTY = 1 << 2;
         /// Has a dynamic-layer page (4.7b).
         const DYNAMIC = 1 << 3;
+        /// Something under it changed this frame (4.7b): redrawn if requested, else released.
+        const INVALIDATED = 1 << 4;
     }
 }
 

@@ -78,6 +78,31 @@ void vsm_age(uint3 id : SV_DispatchThreadID, uniform AgePush push) {
     g_buffers.ptr[push.table][i] = page | VSM_VALID | (age << VSM_AGE_SHIFT);
 }
 
+// Invalidation (4.7b): one 64-lane group per (sphere, level) flags every held page under the
+// sphere's rect (binning's rect, exactly) as invalidated; `vsm_update` then redraws it if it is
+// requested and releases it if not. Atomic OR: the result doesn't depend on order.
+struct InvalidatePush { uint spheres; uint count; uint params; uint views; uint table; };
+
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void vsm_invalidate(uint lane : SV_GroupThreadID, uint3 group : SV_GroupID, uniform InvalidatePush push) {
+    uint i = group.y * 65535 + group.x;
+    if (i >= push.count) return;
+    float4 s = ((float4*)g_buffers.ptr[push.spheres])[i];
+    uint level = group.z;
+    int4 rect = vsm_sphere_rect(push.params, push.views, level, s.xyz, s.w);
+    uint area = rect.z < rect.x || rect.w < rect.y ? 0 : uint(rect.z - rect.x + 1) * uint(rect.w - rect.y + 1);
+    uint w = uint(rect.z - rect.x + 1);
+    for (uint k = lane; k < area; k += 64) {
+        int2 p = int2(rect.x + int(k % w), rect.y + int(k / w));
+        uint slot = vsm_page_slot(push.params, level, p);
+        if (vsm_physical(g_buffers.ptr[push.table][slot]) != 0) {
+            uint old;
+            InterlockedOr(g_buffers.ptr[push.table][slot], VSM_INVALIDATED, old);
+        }
+    }
+}
+
 // requests[j] = 1 when table entry j' (allocation order: coarse levels first) is requested.
 struct FlagsPush { uint table; uint requests; uint levels; };
 
@@ -109,17 +134,19 @@ void vsm_update(uint3 id : SV_DispatchThreadID, uniform UpdatePush push) {
     uint entry = g_buffers.ptr[push.table][e];
     uint page = vsm_physical(entry);
     uint need = 0;
+    bool stale = (entry & VSM_INVALIDATED) != 0;
     if (g_buffers.ptr[push.requests][j] != 0) {
         if (g_buffers.ptr[push.scanned][j] < push.pool) {
-            // Resident: keep the page (age 0), or ask for one.
-            entry = page != 0 ? page | VSM_REQUESTED | VSM_VALID : VSM_REQUESTED;
+            // Resident: keep the page (age 0; redrawn when invalidated), or ask for one.
+            uint redraw = stale ? VSM_DIRTY | VSM_INVALIDATED : 0;
+            entry = page != 0 ? page | VSM_REQUESTED | VSM_VALID | redraw : VSM_REQUESTED;
             need = page != 0 ? 0 : 1;
         } else {
             // Starved: the pixels read a coarser level; the page goes back.
             if (page != 0) { g_buffers.ptr[push.pages][page - 1] = 0; }
             entry = VSM_REQUESTED;
         }
-    } else if (page != 0 && (entry >> VSM_AGE_SHIFT) > push.keep) {
+    } else if (page != 0 && (stale || (entry >> VSM_AGE_SHIFT) > push.keep)) {
         g_buffers.ptr[push.pages][page - 1] = 0;
         entry = 0;
     }

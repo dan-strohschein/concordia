@@ -112,7 +112,7 @@ fn manifest(name: &str, features: &Features) -> String {
             "# levels = 16            # sun clipmap levels, 8 m wide at level 0\n",
             "# resolution_bias = -1.0 # finer below, coarser above\n",
             "# keep_frames = 60       # frames an unrequested page is kept\n",
-            "# cache = false          # keep pages across frames\n",
+            "# cache = true           # keep pages across frames (false: redraw every frame)\n",
         ));
         text.push_str(
             "\n# Gameplay modules: add [[scripts.module]] entries (kind = \"wasm\" or \"native\", path).\n[scripts]\n",
