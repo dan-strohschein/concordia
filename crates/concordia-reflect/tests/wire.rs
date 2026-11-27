@@ -250,3 +250,38 @@ fn dynamic_values_are_wire_bytes_with_their_type() {
     let as_dyn: &dyn DynReflect = &value;
     assert_eq!(as_dyn.to_json().unwrap(), json!({"hp": 3.0, "max": 4.0}));
 }
+
+/// A graph's compiled code reads fields in place (M4 4.10b, J13): fields sit back to back.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize, Reflect)]
+struct Packed {
+    /// A flag.
+    on: bool,
+    /// A number.
+    x: f32,
+    /// A position.
+    at: Vec3,
+    /// A count.
+    n: i64,
+}
+
+#[test]
+fn field_offsets_follow_declaration_order() {
+    let info = Packed::type_info();
+    assert_eq!(wire::field_offsets(info).unwrap(), vec![0, 1, 5, 17]);
+    assert_eq!(stride::<Packed>(), 25);
+    let value = Packed {
+        on: true,
+        x: 2.5,
+        at: Vec3::new(1.0, 2.0, 3.0),
+        n: -4,
+    };
+    let bytes = wire::encode(&value, info).unwrap();
+    assert_eq!(bytes[0], 1);
+    assert_eq!(f32::from_le_bytes(bytes[1..5].try_into().unwrap()), 2.5);
+    assert_eq!(f32::from_le_bytes(bytes[13..17].try_into().unwrap()), 3.0);
+    assert_eq!(i64::from_le_bytes(bytes[17..25].try_into().unwrap()), -4);
+    assert!(
+        wire::field_offsets(f32::type_info()).is_err(),
+        "only structs have fields"
+    );
+}

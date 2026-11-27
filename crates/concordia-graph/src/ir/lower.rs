@@ -10,7 +10,34 @@ use crate::{Graph, GraphKind, Input, Literal, NodeDef, NodeLibrary, PinType};
 use super::{BinOp, Function, Inst, Scalar, ScalarTy, UnOp, ValueId};
 
 /// A node's lowered outputs: pin → its scalar values.
-type Outputs = BTreeMap<String, Vec<ValueId>>;
+pub(super) type Outputs = BTreeMap<String, Vec<ValueId>>;
+
+/// Where state-dependent values come from: an event graph's component fields, variables and
+/// entry pins (M4 4.10b). Function graphs have none.
+pub(super) trait Sources {
+    /// The node's outputs when it reads state (`None`: an ordinary node).
+    fn read(
+        &mut self,
+        b: &mut Builder,
+        graph: &Graph,
+        id: &str,
+    ) -> Option<Result<Outputs, Diagnostic>>;
+    /// The scalar layout of a type the plain layout lacks (component structs).
+    fn layout(&self, ty: &PinType) -> Option<Vec<ScalarTy>>;
+}
+
+/// No state: a pure function's sources.
+pub(super) struct NoSources;
+
+impl Sources for NoSources {
+    fn read(&mut self, _: &mut Builder, _: &Graph, _: &str) -> Option<Result<Outputs, Diagnostic>> {
+        None
+    }
+
+    fn layout(&self, _: &PinType) -> Option<Vec<ScalarTy>> {
+        None
+    }
+}
 
 /// Lowers `graph` (already checked clean against `lib`).
 pub(super) fn lower(
@@ -34,6 +61,7 @@ pub(super) fn lower(
         params: BTreeMap::new(),
         memo: BTreeMap::new(),
         errors: Vec::new(),
+        sources: NoSources,
     };
     l.params();
     let outputs = l.outputs();
@@ -44,7 +72,7 @@ pub(super) fn lower(
 }
 
 /// The scalar layout of a pin type (`None`: not compilable in 4.10).
-fn scalars(ty: &PinType) -> Option<Vec<ScalarTy>> {
+pub(super) fn scalars(ty: &PinType) -> Option<Vec<ScalarTy>> {
     use ScalarTy::{F32, I32, I64};
     Some(match ty {
         PinType::Bool | PinType::I32 => vec![I32],
@@ -59,35 +87,40 @@ fn scalars(ty: &PinType) -> Option<Vec<ScalarTy>> {
 
 /// Appends typed instructions.
 #[derive(Default)]
-struct Builder {
+pub(super) struct Builder {
     params: Vec<ScalarTy>,
     insts: Vec<Inst>,
     tys: Vec<ScalarTy>,
 }
 
 impl Builder {
-    fn push(&mut self, inst: Inst, ty: ScalarTy) -> ValueId {
+    pub(super) fn push(&mut self, inst: Inst, ty: ScalarTy) -> ValueId {
         self.insts.push(inst);
         self.tys.push(ty);
         debug_assert!(self.insts.len() <= u32::MAX as usize);
         (self.insts.len() - 1) as ValueId
     }
 
-    fn param(&mut self, ty: ScalarTy) -> ValueId {
+    /// Parameters so far.
+    pub(super) fn param_count(&self) -> usize {
+        self.params.len()
+    }
+
+    pub(super) fn param(&mut self, ty: ScalarTy) -> ValueId {
         let n = self.params.len() as u32;
         self.params.push(ty);
         self.push(Inst::Param(n), ty)
     }
 
-    fn konst(&mut self, c: Scalar) -> ValueId {
+    pub(super) fn konst(&mut self, c: Scalar) -> ValueId {
         self.push(Inst::Const(c), c.ty())
     }
 
-    fn f32(&mut self, v: f32) -> ValueId {
+    pub(super) fn f32(&mut self, v: f32) -> ValueId {
         self.konst(Scalar::F32(v))
     }
 
-    fn un(&mut self, op: UnOp, ty: ScalarTy, a: ValueId) -> ValueId {
+    pub(super) fn un(&mut self, op: UnOp, ty: ScalarTy, a: ValueId) -> ValueId {
         let out = match op {
             UnOp::F32FromI32 => ScalarTy::F32,
             UnOp::I32FromF32 | UnOp::Not => ScalarTy::I32,
@@ -96,7 +129,7 @@ impl Builder {
         self.push(Inst::Unary(op, ty, a), out)
     }
 
-    fn bin(&mut self, op: BinOp, ty: ScalarTy, a: ValueId, b: ValueId) -> ValueId {
+    pub(super) fn bin(&mut self, op: BinOp, ty: ScalarTy, a: ValueId, b: ValueId) -> ValueId {
         let out = match op {
             BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => ScalarTy::I32,
             _ => ty,
@@ -104,12 +137,18 @@ impl Builder {
         self.push(Inst::Binary(op, ty, a, b), out)
     }
 
-    fn select(&mut self, ty: ScalarTy, c: ValueId, a: ValueId, b: ValueId) -> ValueId {
+    pub(super) fn select(&mut self, ty: ScalarTy, c: ValueId, a: ValueId, b: ValueId) -> ValueId {
         self.push(Inst::Select(ty, c, a, b), ty)
     }
 
     /// Componentwise `op`.
-    fn zip(&mut self, op: BinOp, ty: ScalarTy, a: &[ValueId], b: &[ValueId]) -> Vec<ValueId> {
+    pub(super) fn zip(
+        &mut self,
+        op: BinOp,
+        ty: ScalarTy,
+        a: &[ValueId],
+        b: &[ValueId],
+    ) -> Vec<ValueId> {
         a.iter()
             .zip(b)
             .map(|(&x, &y)| self.bin(op, ty, x, y))
@@ -117,7 +156,7 @@ impl Builder {
     }
 
     /// x₀y₀ + x₁y₁ + … (left to right).
-    fn dot(&mut self, a: &[ValueId], b: &[ValueId]) -> ValueId {
+    pub(super) fn dot(&mut self, a: &[ValueId], b: &[ValueId]) -> ValueId {
         let products = self.zip(BinOp::Mul, ScalarTy::F32, a, b);
         let first = products[0];
         products[1..]
@@ -125,23 +164,23 @@ impl Builder {
             .fold(first, |acc, &p| self.bin(BinOp::Add, ScalarTy::F32, acc, p))
     }
 
-    fn length(&mut self, v: &[ValueId]) -> ValueId {
+    pub(super) fn length(&mut self, v: &[ValueId]) -> ValueId {
         let d = self.dot(v, v);
         self.un(UnOp::Sqrt, ScalarTy::F32, d)
     }
 
     /// max(lo, min(x, hi)).
-    fn clamp(&mut self, ty: ScalarTy, x: ValueId, lo: ValueId, hi: ValueId) -> ValueId {
+    pub(super) fn clamp(&mut self, ty: ScalarTy, x: ValueId, lo: ValueId, hi: ValueId) -> ValueId {
         let m = self.bin(BinOp::Min, ty, x, hi);
         self.bin(BinOp::Max, ty, lo, m)
     }
 
-    fn saturate(&mut self, x: ValueId) -> ValueId {
+    pub(super) fn saturate(&mut self, x: ValueId) -> ValueId {
         let (zero, one) = (self.f32(0.0), self.f32(1.0));
         self.clamp(ScalarTy::F32, x, zero, one)
     }
 
-    fn finish(self, outputs: Vec<ValueId>) -> Function {
+    pub(super) fn finish(self, outputs: Vec<ValueId>) -> Function {
         Function {
             params: self.params,
             insts: self.insts,
@@ -151,19 +190,26 @@ impl Builder {
     }
 }
 
-struct Lower<'g> {
-    graph: &'g Graph,
-    lib: &'g NodeLibrary,
-    report: &'g Report,
-    b: Builder,
+pub(super) struct Lower<'g, S: Sources> {
+    pub(super) graph: &'g Graph,
+    pub(super) lib: &'g NodeLibrary,
+    pub(super) report: &'g Report,
+    pub(super) b: Builder,
     /// Signature input → its parameters.
-    params: BTreeMap<String, Vec<ValueId>>,
-    memo: BTreeMap<String, Outputs>,
-    errors: Vec<Diagnostic>,
+    pub(super) params: BTreeMap<String, Vec<ValueId>>,
+    /// Lowered data nodes (cleared when state changes: a read after a write sees the write).
+    pub(super) memo: BTreeMap<String, Outputs>,
+    pub(super) errors: Vec<Diagnostic>,
+    pub(super) sources: S,
 }
 
-impl Lower<'_> {
-    fn unsupported<T>(
+impl<S: Sources> Lower<'_, S> {
+    /// A pin type's scalar layout, including the sources' types.
+    pub(super) fn layout(&self, ty: &PinType) -> Option<Vec<ScalarTy>> {
+        scalars(ty).or_else(|| self.sources.layout(ty))
+    }
+
+    pub(super) fn unsupported<T>(
         &mut self,
         node: Option<&str>,
         pin: Option<&str>,
@@ -210,7 +256,7 @@ impl Lower<'_> {
     }
 
     /// An input's scalar values, for a pin of type `ty`.
-    fn value_of(&mut self, input: &Input, ty: &PinType) -> Option<Vec<ValueId>> {
+    pub(super) fn value_of(&mut self, input: &Input, ty: &PinType) -> Option<Vec<ValueId>> {
         match input {
             Input::Value(lit) => self.literal(lit, ty),
             Input::Link(src, pin) => match self.graph.nodes[src].op == "graph.input" {
@@ -265,6 +311,16 @@ impl Lower<'_> {
     }
 
     fn lower_node(&mut self, id: &str) -> Option<Outputs> {
+        let graph = self.graph;
+        if let Some(read) = self.sources.read(&mut self.b, graph, id) {
+            return match read {
+                Ok(outputs) => Some(outputs),
+                Err(d) => {
+                    self.errors.push(d);
+                    None
+                }
+            };
+        }
         let op = self.graph.nodes[id].op.clone();
         let def = self.lib.get(&op)?.clone();
         if !def.pure || def.dynamic {
@@ -287,7 +343,7 @@ impl Lower<'_> {
                 PinType::Generic(_) => bound.clone()?,
                 t => t.clone(),
             };
-            if scalars(&ty).is_none() {
+            if self.layout(&ty).is_none() {
                 return self.unsupported(Some(id), Some(&p.name), format!("`{op}`'s `{}` is a {ty}; compiled graphs handle numbers, bools and vectors", p.name));
             }
             let input = input.clone();
