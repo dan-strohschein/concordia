@@ -222,3 +222,24 @@ test("graph_panel_rereads_on_edit_events_and_shows_who_changed_each_node", async
   fireEvent.click(screen.getByRole("button", { name: "view as text" }));
   expect(screen.getByLabelText("graph text").textContent).toBe("Graph(...)");
 });
+
+test("graph_panel_constants_follow_the_graph_when_it_changes_underneath", async () => {
+  let b = 0.01;
+  const engine = engineWith(() => {
+    const changed = structuredClone(graph);
+    const node = changed.nodes[id(2)];
+    if (node) node.inputs["b"] = { Value: { Float: b } };
+    return { text: "Graph(...)", graph: changed, diagnostics: [], authors: {} };
+  });
+  const session = await EditorSession.open(new EngineClient(engine));
+  render(<GraphPanel session={session} path={PATH} />);
+  const field = (await screen.findByLabelText(`${id(2)} b`)) as HTMLInputElement;
+  expect(field.value).toBe("0.01");
+  // An undo (or an agent's SetValue) changes the constant; the field shows the new one.
+  b = 0.75;
+  await act(async () => {
+    engine.event({ topic: "edit", method: "txn.undo" });
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  expect((screen.getByLabelText(`${id(2)} b`) as HTMLInputElement).value).toBe("0.75");
+});
