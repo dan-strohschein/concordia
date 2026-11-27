@@ -91,6 +91,8 @@ pub(crate) struct VsmJob {
     pub(crate) releases: Vec<(u32, u32)>,
     /// Each slot's light (4.7c; its rows carry the slot).
     pub(crate) local_lights: Vec<Option<concordia_core::id::EntityId>>,
+    /// Each slot's light as its maps were made.
+    pub(crate) local_slots: Vec<Option<super::local::SlotLight>>,
     /// Shadowed local lights beyond the slots.
     pub(crate) local_dropped: usize,
 }
@@ -222,6 +224,7 @@ impl VsmJob {
                 .map(|k| (sun_entries + k * map_entries, map_entries))
                 .collect(),
             local_lights: local.entities,
+            local_slots: local.slots.clone(),
             local_dropped: local.dropped,
         })
     }

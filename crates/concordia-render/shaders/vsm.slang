@@ -71,8 +71,14 @@ public int2 vsm_world_page(uint params, uint level, int2 page) {
     return int2(o.x + page.x, o.y + int(VSM_PAGES_PER_SIDE) - 1 - page.y);
 }
 
-// The table slot of in-level page `page` of `level`.
+// The table slot of page `page` of view `level`: a sun level (below `levels`), or a local map's
+// mip (4.7c: view `levels + map * 7 + mip`).
 public uint vsm_page_slot(uint params, uint level, int2 page) {
+    VsmParams* p = vsm_params(params);
+    if (level >= p.counts.x) {
+        uint lv = level - p.counts.x;
+        return vsm_map_entry(p, lv / VSM_LOCAL_MIPS, lv % VSM_LOCAL_MIPS, uint2(page));
+    }
     return vsm_slot(level, vsm_world_page(params, level, page));
 }
 
@@ -91,6 +97,7 @@ public float4 vsm_clip(uint views, uint view, float3 world) {
 // to the level; empty (lo > hi) when the sphere misses the level (`vsm::bin`).
 public int4 vsm_sphere_rect(uint params, uint views, uint level, float3 c, float r) {
     VsmParams* p = vsm_params(params);
+    if (level >= p.counts.x) { return vsm_local_rect(p, views, level - p.counts.x, c, r); }
     float2 t = vsm_texel(vsm_clip(views, 1 + level, c));
     float rt = r / (p.choice.x * exp2(float(level))) + 1.0;
     int2 lo = int2(floor((t - rt) / float(VSM_PAGE_TEXELS)));
@@ -178,6 +185,16 @@ public void vsm_emit_due(uint lane, uint params, uint table, uint level, int4 re
 // the origin). The light view is depth view `1 + levels`.
 public float4 vsm_page_position(uint params, uint views, uint level, uint page, float3 world) {
     VsmParams* p = vsm_params(params);
+    if (level >= p.counts.x) {
+        // A local map's page: its perspective clip position scaled about the page's centre (a
+        // local map never scrolls, so these numbers are the same every frame).
+        uint lv = level - p.counts.x;
+        float4 clip = vsm_clip(views, vsm_local_header(p).y + lv / VSM_LOCAL_MIPS, world);
+        float side = float(vsm_mip_side(lv % VSM_LOCAL_MIPS));
+        float2 at = float2(float(page % VSM_PAGES_PER_SIDE), float(page / VSM_PAGES_PER_SIDE));
+        float2 centre = float2((at.x + 0.5) / side * 2.0 - 1.0, 1.0 - (at.y + 0.5) / side * 2.0);
+        return float4((clip.xy - centre * clip.w) * side, clip.z, clip.w);
+    }
     float3 light = vsm_clip(views, 1 + p.counts.x, world).xyz;
     float size = p.choice.x * exp2(float(level)) * float(VSM_PAGE_TEXELS);
     int2 wp = vsm_world_page(params, level, int2(int(page % VSM_PAGES_PER_SIDE), int(page / VSM_PAGES_PER_SIDE)));
@@ -320,4 +337,31 @@ public bool vsm_local_map(VsmLocal l, float3 world, out uint map, out float dist
 public float2 vsm_local_texel(float4 clip, uint mip) {
     float2 ndc = clip.xy / clip.w;
     return float2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5) * float(VSM_LOCAL_TEXELS >> mip);
+}
+
+// The pages (lo.xy, hi.xy) of mip `lv % 7` of local map `lv / 7` under the world sphere (`c`, `r`):
+// its bounding box's corners projected (the whole mip when one is behind the near plane), one
+// texel wider, clamped; empty outside the light's range or the map.
+public int4 vsm_local_rect(VsmParams* p, uint views, uint lv, float3 c, float r) {
+    uint map = lv / VSM_LOCAL_MIPS;
+    uint mip = lv % VSM_LOCAL_MIPS;
+    VsmLocal l = vsm_local(p, map / VSM_FACES);
+    int last = int(vsm_mip_side(mip)) - 1;
+    int4 none = int4(1, 1, 0, 0);
+    if (l.info.x == 0 || distance(c, l.position_range.xyz) > l.position_range.w + r) { return none; }
+    uint view = vsm_local_header(p).y + map;
+    float2 lo = float2(1e30, 1e30);
+    float2 hi = float2(-1e30, -1e30);
+    for (uint k = 0; k < 8; k++) {
+        float3 corner = c + float3((k & 1) != 0 ? r : -r, (k & 2) != 0 ? r : -r, (k & 4) != 0 ? r : -r);
+        float4 clip = vsm_clip(views, view, corner);
+        if (clip.w <= 0.05) { return int4(0, 0, last, last); }
+        float2 t = vsm_local_texel(clip, mip);
+        lo = min(lo, t);
+        hi = max(hi, t);
+    }
+    int2 plo = int2(floor((lo - 1.0) / float(VSM_PAGE_TEXELS)));
+    int2 phi = int2(floor((hi + 1.0) / float(VSM_PAGE_TEXELS)));
+    if (any(phi < 0) || any(plo > last)) { return none; }
+    return int4(clamp(plo, int2(0, 0), int2(last, last)), clamp(phi, int2(0, 0), int2(last, last)));
 }

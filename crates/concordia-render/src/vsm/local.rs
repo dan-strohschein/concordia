@@ -258,3 +258,24 @@ impl LocalSlots {
         }
     }
 }
+
+/// The local views (`levels + map * LOCAL_MIPS + mip`) a caster with world sphere `sphere` (centre,
+/// radius) may draw into: every mip of every map of each slot whose light's range it reaches.
+pub fn views_in_range(
+    slots: &[Option<SlotLight>],
+    levels: u32,
+    sphere: concordia_core::math::Vec4,
+) -> Vec<u32> {
+    let mut out = Vec::new();
+    for (k, slot) in slots.iter().enumerate() {
+        let Some(l) = slot else { continue };
+        if l.position.distance(sphere.truncate()) > l.range + sphere.w {
+            continue;
+        }
+        for face in 0..l.maps().len() as u32 {
+            let map = k as u32 * FACES + face;
+            out.extend((0..LOCAL_MIPS).map(|mip| levels + map * LOCAL_MIPS + mip));
+        }
+    }
+    out
+}

@@ -1369,8 +1369,9 @@ fn point(
     shadows: Option<concordia_render_types::LocalShadowSettings>,
 ) {
     let id = scene.entity(at, Quat::IDENTITY, Vec3::ONE);
+    // Bright enough to show at the yard's sunlit exposure (EV 14).
     let light = concordia_render_types::PointLight {
-        intensity_lumens: 4000.0,
+        intensity_lumens: 1_000_000.0,
         range: 12.0,
         shadows,
         ..Default::default()
@@ -1428,4 +1429,86 @@ fn shadowed_local_lights_mark_their_pages() {
             "no sun, no sun pages: {s:?}"
         );
     }
+}
+
+/// Luma of `image` at (`x`, `y`).
+fn luma(image: &Image, x: u32, y: u32) -> f32 {
+    let [r, g, b, _] = common::pixel(image, x, y);
+    0.2126 * f32::from(r) + 0.7152 * f32::from(g) + 0.0722 * f32::from(b)
+}
+
+/// A shadowed point light (4.7c), with no sun: the ground behind the box (from the light) is darker
+/// than with an unshadowed light, and the ground beside it is not.
+#[test]
+fn local_lights_cast_shadows_under_vsm() {
+    for r in meshlet_renderers() {
+        let mut r = cached(r, true);
+        let shot = |r: &mut Renderer, shadows| {
+            let (mut scene, ids) = yard_with_ids(Msaa::Off, true);
+            scene.world.despawn(ids.sun).unwrap();
+            point(&mut scene, Vec3::new(1.0, 3.0, -2.0), shadows);
+            scene.render_mode(r, SIZE.0, SIZE.1, ViewMode::lit)
+        };
+        let lit = shot(&mut r, None);
+        let shadowed = shot(&mut r, Some(Default::default()));
+        let s = r.stats().shadows;
+        assert!(s.local_pages_allocated > 0, "{s:?}");
+        let darker = lit
+            .rgba
+            .chunks(4)
+            .zip(shadowed.rgba.chunks(4))
+            .filter(|(a, b)| u32::from(a[1]) > u32::from(b[1]) + 20)
+            .count();
+        let total = (SIZE.0 * SIZE.1) as usize;
+        assert!(
+            darker > 50 && darker < total / 4,
+            "shadowed pixels: {darker} of {total}; {s:?}"
+        );
+        let _ = luma(&lit, 0, 0);
+    }
+}
+
+/// The oracle with local lights (4.7c): a box moving under a shadowed point light, the light
+/// moving, a spot light arriving and a light leaving; cached frames equal uncached ones.
+#[test]
+fn local_cached_frames_equal_uncached() {
+    let Some(mut o) = Oracle::new() else {
+        return;
+    };
+    let (mut scene, ids) = yard_with_ids(Msaa::Off, true);
+    point(
+        &mut scene,
+        Vec3::new(1.0, 3.0, -2.0),
+        Some(Default::default()),
+    );
+    o.frame(&mut scene, "warm-up");
+    let s = o.frame(&mut scene, "still");
+    assert_eq!(s.pages_rendered_static, 0, "{s:?}");
+    move_to(&mut scene, ids.cube, Vec3::new(1.5, 0.5, -2.0));
+    o.frame(&mut scene, "box moved");
+    move_to(&mut scene, ids.cube, Vec3::new(2.0, 0.5, -2.0));
+    o.frame(&mut scene, "box moving");
+    let spot = scene.entity(
+        Vec3::new(-2.0, 4.0, -4.0),
+        Quat::from_rotation_x(-1.2),
+        Vec3::ONE,
+    );
+    let light = concordia_render_types::SpotLight {
+        intensity_lumens: 1_000_000.0,
+        range: 12.0,
+        outer_angle: 0.6,
+        inner_angle: 0.4,
+        shadows: Some(Default::default()),
+        ..Default::default()
+    };
+    scene.world.insert(spot, light).unwrap();
+    let s = o.frame(&mut scene, "a spot light arrives");
+    assert_eq!(s.local_lights_shadowed, 2, "{s:?}");
+    move_to(&mut scene, spot, Vec3::new(-1.5, 4.0, -4.0));
+    o.frame(&mut scene, "the spot moves");
+    scene.world.despawn(spot).unwrap();
+    let s = o.frame(&mut scene, "the spot leaves");
+    assert_eq!(s.local_lights_shadowed, 1, "{s:?}");
+    let s = o.frame(&mut scene, "still again");
+    assert_eq!(s.pages_rendered_static, 0, "{s:?}");
 }

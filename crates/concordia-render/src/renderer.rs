@@ -1069,7 +1069,7 @@ impl Renderer {
             ),
             None => (Vec3::NEG_Y, Vec3::ZERO),
         };
-        let lights = punctual_lights(
+        let mut lights = punctual_lights(
             world,
             &view_m,
             exposure,
@@ -1078,7 +1078,6 @@ impl Renderer {
         if lights.dropped > 0 {
             tracing::warn!(target: "concordia::render", dropped = lights.dropped, "more punctual lights than the frame budget");
         }
-        let light_buf = frame.keep(up.buffer(device, &lights.rows, "lights")?);
         let cluster = self.culler.prepare(&mut up, grid, &lights.bounds)?;
         cluster.buffers().iter().for_each(|b| {
             frame.keep(*b);
@@ -1107,6 +1106,17 @@ impl Renderer {
             },
             false => None,
         };
+        // Shadowed local lights' rows carry their slot (4.7c).
+        if let Some(job) = &vsm {
+            let slot_of = |e: EntityId| job.local_lights.iter().position(|l| *l == Some(e));
+            crate::lighting::mark_shadow_slots(
+                &mut lights.rows,
+                world,
+                grid.settings().max_lights as usize,
+                slot_of,
+            );
+        }
+        let light_buf = frame.keep(up.buffer(device, &lights.rows, "lights")?);
         // Each draw's shadow class (4.7b): drawn into dynamic pages.
         let dynamic_items: Vec<bool> = match &vsm {
             Some(job) => {
@@ -1252,6 +1262,26 @@ impl Renderer {
         let mut prepass_draws: Vec<ShadowDraw> = Vec::new();
         // Each M1 caster instance's world sphere, in caster order (virtual shadow maps).
         let mut caster_spheres = Vec::new();
+        // Every casting meshlet-path instance, drawn whole into the local maps (4.7c, C8).
+        let local_on = vsm
+            .as_ref()
+            .is_some_and(|j| j.local_lights.iter().any(Option::is_some));
+        let mut local_casters: Vec<ShadowDraw> = Vec::new();
+        let mut local_spheres = Vec::new();
+        let caster_draw = |instance: u32, mesh: &crate::gpu::GpuMesh| ShadowDraw {
+            push: ShadowPush {
+                frame: frame_i,
+                instances: inst_i,
+                instance,
+                indices: mesh.indices,
+                positions: mesh.positions,
+                cascade: 0,
+                joints: mesh.joints,
+                weights: mesh.weights,
+            },
+            vertices: mesh.count,
+            instances: 1,
+        };
         // Meshlet-path instances are culled on the GPU (M4 4.4); the CPU culls the M1 path's.
         let culled = order
             .iter()
@@ -1306,6 +1336,14 @@ impl Renderer {
                     casts,
                     double_sided,
                 });
+                if casts && local_on {
+                    // Local maps draw meshlet-path casters whole (4.7c, C8).
+                    local_spheres.push((
+                        crate::vsm::world_sphere(placed.bounds, &placed.world),
+                        dynamic_items[item],
+                    ));
+                    append_caster(&mut local_casters, caster_draw(instance, &mesh));
+                }
                 continue;
             }
             if casts {
@@ -1315,28 +1353,7 @@ impl Renderer {
                         dynamic_items[item],
                     ));
                 }
-                match casters.last_mut() {
-                    Some(c)
-                        if c.push.indices == mesh.indices
-                            && c.push.instance + c.instances == instance =>
-                    {
-                        c.instances += 1;
-                    }
-                    _ => casters.push(ShadowDraw {
-                        push: ShadowPush {
-                            frame: frame_i,
-                            instances: inst_i,
-                            instance,
-                            indices: mesh.indices,
-                            positions: mesh.positions,
-                            cascade: 0,
-                            joints: mesh.joints,
-                            weights: mesh.weights,
-                        },
-                        vertices: mesh.count,
-                        instances: 1,
-                    }),
-                }
+                append_caster(&mut casters, caster_draw(instance, &mesh));
             }
             if !visible {
                 continue;
@@ -1525,7 +1542,10 @@ impl Renderer {
                 (device, &mut up),
                 (c, job),
                 (vsm_meshlets.clone(), vsm_plan.as_ref()),
-                (&casters, &caster_spheres),
+                (
+                    [&casters, &local_casters],
+                    [&caster_spheres, &local_spheres],
+                ),
                 [frame_i, inst_i, index(mesh_buf)?],
                 &mut kept,
             )?),
@@ -1706,12 +1726,29 @@ impl Renderer {
             Option<MeshletJob>,
             Option<&crate::meshlet::MeshletPlan<BucketKey>>,
         ),
-        (casters, spheres): (&[ShadowDraw], &[(concordia_core::math::Vec4, bool)]),
+        ([m1, locals], [m1_spheres, local_spheres]): (
+            [&[ShadowDraw]; 2],
+            [&[(concordia_core::math::Vec4, bool)]; 2],
+        ),
         tables: [u32; 3],
         keep: &mut Vec<Buffer>,
     ) -> Result<crate::vsm::CasterDraws, RenderError> {
         let levels = job.clipmap.levels.len() as u32;
-        let (units, spans) = crate::vsm::units_for(casters, spheres, levels);
+        // The instance casters: the M1 ones (sun levels and local maps), then the meshlet-path
+        // ones (local maps only, 4.7c).
+        let casters: Vec<ShadowDraw> = m1.iter().chain(locals).cloned().collect();
+        let spheres: Vec<_> = m1_spheres.iter().chain(local_spheres).copied().collect();
+        let views = |draw: usize, sphere: concordia_core::math::Vec4| {
+            let sun = if draw < m1.len() { 0..levels } else { 0..0 };
+            sun.chain(crate::vsm::local::views_in_range(
+                &job.local_slots,
+                levels,
+                sphere,
+            ))
+            .collect()
+        };
+        let (units, spans) = crate::vsm::units_for(&casters, &spheres, views);
+        let casters = &casters[..];
         let mut layer = |class: u32| {
             self.vsm_caster_layer(
                 (device, &mut *up),
@@ -3225,6 +3262,20 @@ fn hash_matrix(m: &Mat4, hasher: &mut impl std::hash::Hasher) {
 
 /// Identifies the shadow maps' contents: the casters (meshes and world matrices), the cascades
 /// and the maps themselves.
+/// Appends `draw` (one instance) to `list`, extending the last draw when it is the same mesh's
+/// next instance.
+fn append_caster(list: &mut Vec<ShadowDraw>, draw: ShadowDraw) {
+    match list.last_mut() {
+        Some(c)
+            if c.push.indices == draw.push.indices
+                && c.push.instance + c.instances == draw.push.instance =>
+        {
+            c.instances += 1;
+        }
+        _ => list.push(draw),
+    }
+}
+
 /// Whether the first directional light casts shadows.
 fn sun_casts(world: &RenderWorld) -> bool {
     world

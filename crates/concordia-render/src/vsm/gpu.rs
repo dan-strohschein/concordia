@@ -394,6 +394,12 @@ impl PageWork {
         })
     }
 
+    /// Views: the sun's levels, then every local map's mips (4.7c).
+    pub(crate) fn views(&self) -> u32 {
+        let maps = self.local_entries / super::local::MAP_ENTRIES;
+        self.levels + maps * super::local::LOCAL_MIPS
+    }
+
     /// Table entries: the sun's levels, then the local maps.
     fn entries(&self) -> u32 {
         self.levels * LEVEL_ENTRIES + self.local_entries
@@ -460,7 +466,7 @@ impl PageWork {
             Command::SetPipeline(self.pipelines.invalidate),
             words([spheres, count, params, views, self.index.table, flag, need]),
             Command::Dispatch {
-                groups: [count.min(65_535), rows, self.levels],
+                groups: [count.min(65_535), rows, self.views()],
             },
             compute_barrier(&[self.table]),
         ]
