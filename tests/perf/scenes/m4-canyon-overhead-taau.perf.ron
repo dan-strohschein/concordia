@@ -30,6 +30,7 @@ PerfScene(
     ],
     project: "../../../examples/m4-canyon",
     scene: "scenes/canyon.scene.ron",
+    shadows: Some(vsm),
     temporal: Some((
         backend: own,
         upscale: 1.5,

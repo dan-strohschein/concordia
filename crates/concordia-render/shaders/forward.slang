@@ -208,8 +208,8 @@ float4 shadow_vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform Shado
 
 // The VSM debug views' tint (modes 20-22; M4 4.7): `vsm_pages` a colour per physical page with
 // darkened page borders, `vsm_levels` a hue per level (magenta where a pixel fell back to a coarser
-// one), `vsm_cache` the page's state (yellow drawn this frame, green kept, blue with a dynamic
-// layer); white where no page holds the pixel.
+// one), `vsm_cache` the page's state (green kept, yellow new this frame, red redrawn because a
+// caster under it changed, blue with a dynamic page; 4.7b); white where no page holds the pixel.
 float3 vsm_tint(Frame* frame, float3 world, float3 n, uint mode) {
     if (frame.vsm.x == 0) { return float3(1.0); }
     VsmParams* p = vsm_params(frame.vsm.y);
@@ -223,8 +223,11 @@ float3 vsm_tint(Frame* frame, float3 world, float3 n, uint mode) {
         return saturate(abs(frac(hue + float3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0) * 0.8 + 0.2;
     }
     if (mode == MODE_VSM_CACHE) {
+        // Red first: a page invalidated this frame may also have a dynamic page.
+        if ((entry & VSM_INVALIDATED) != 0) { return float3(1.0, 0.25, 0.2); }
+        if ((entry & VSM_DYNAMIC) != 0) { return float3(0.3, 0.5, 1.0); }
         if ((entry & VSM_DIRTY) != 0) { return float3(1.0, 0.9, 0.2); }
-        return (entry & (8u << 16)) != 0 ? float3(0.3, 0.5, 1.0) : float3(0.3, 1.0, 0.3);
+        return float3(0.3, 1.0, 0.3);
     }
     uint h = mix_id(vsm_physical(entry));
     float3 hue = float3(h & 255, (h >> 8) & 255, (h >> 16) & 255) / 255.0 * 0.7 + 0.3;
@@ -250,7 +253,7 @@ PageVertex vsm_page_vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform
         p = skin_vertex(frame.buffers.w, inst.skin.x, push.joints, push.weights, v, p, float3(0.0, 0.0, 1.0), float3(1.0, 0.0, 0.0)).position;
     }
     PageVertex o;
-    o.position = vsm_to_page(cascade_xform(frame, 1 + pair.y, xform(inst.model, float4(p, 1.0))), pair.z);
+    o.position = vsm_page_position(frame.vsm.y, frame.vsm.x - 1, pair.y, pair.z, xform(inst.model, float4(p, 1.0)).xyz);
     o.page = uint2(pair.w, frame.vsm.y);
     return o;
 }
@@ -262,8 +265,8 @@ void vsm_page_fs(PageVertex v) {
 
 
 // Where the virtual shadow maps hold `world` (offset along `n`): the first level from the pixel's
-// own whose page under it is valid. Returns that level (the level count when none, or beyond max
-// distance), its light clip position and the page's entry.
+// own whose page under it is resident (requested this frame and valid). Returns that level (the
+// level count when none, or beyond max distance), its light clip position and the page's entry.
 uint vsm_find(Frame* frame, float3 world, float3 n, out float4 clip, out uint entry) {
     VsmParams* p = vsm_params(frame.vsm.y);
     clip = float4(0.0);
@@ -275,7 +278,7 @@ uint vsm_find(Frame* frame, float3 world, float3 n, out float4 clip, out uint en
         float2 st = vsm_texel(clip) - 0.5;
         if (any(st < 0.0) || any(st >= float(VSM_VIRTUAL_TEXELS) - 1.0)) { continue; }
         entry = vsm_entry(frame.vsm.y, frame.vsm.z, level, int2(floor(st)));
-        if ((entry & VSM_VALID) != 0 && vsm_physical(entry) != 0) { return level; }
+        if (vsm_resident(entry)) { return level; }
     }
     return p.counts.x;
 }
@@ -310,7 +313,7 @@ float vsm_sun_shadow(Frame* frame, float3 world, float3 n, float3 to_light) {
                 float wx = dx == -k ? 1.0 - f.x : (dx == k + 1 ? f.x : 1.0);
                 int2 t = base + int2(dx, dy);
                 uint entry = vsm_entry(params, table, level, t);
-                if ((entry & VSM_VALID) == 0 || vsm_physical(entry) == 0) {
+                if (!vsm_resident(entry)) {
                     entry = centre;
                     t = clamp(t, page * int(VSM_PAGE_TEXELS), page * int(VSM_PAGE_TEXELS) + int(VSM_PAGE_TEXELS) - 1);
                 }

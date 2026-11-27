@@ -15,6 +15,10 @@ export type PassTiming = "off" | "unsupported" | "measured";
  */
 export type RasterPath = "forward" | "compute_indirect" | "mesh_shader";
 /**
+ * Why the cache was cleared.
+ */
+export type CacheReset = "First" | "View" | "Light" | "Settings" | "DepthRange" | "Off" | "Scene" | "Technique";
+/**
  * The technique asked for (`[render] shadows` or `render.set_shadows`).
  */
 export type ShadowTechnique = "csm" | "vsm";
@@ -255,6 +259,18 @@ export interface PassTime {
  */
 export interface ShadowStats {
   /**
+   * Whether pages are kept across frames (`[render.vsm] cache`, M4 4.7b).
+   */
+  cache: boolean;
+  /**
+   * Why kept pages were last thrown away, if they ever were.
+   */
+  cache_reset?: null | CacheReset;
+  /**
+   * Casters drawn into dynamic pages (skinned, `Movable`, or moved in the last 60 frames).
+   */
+  casters_dynamic: number;
+  /**
    * Clipmap levels.
    */
   levels: number;
@@ -267,9 +283,42 @@ export interface ShadowStats {
    */
   page_draws_dropped: number;
   /**
-   * Requested pages that got a physical page (and were drawn).
+   * Requested pages that hold a physical page this frame (resident).
    */
   pages_allocated: number;
+  /**
+   * Resident pages kept from earlier frames and not drawn.
+   */
+  pages_cached: number;
+  /**
+   * Resident pages with a dynamic page this frame (redrawn with the dynamic casters).
+   */
+  pages_dynamic: number;
+  /**
+   * Pages under dynamic casters without room for a dynamic page (drawn into the static page,
+   * which is redrawn next frame).
+   */
+  pages_dynamic_fallback: number;
+  /**
+   * Kept pages evicted, oldest first, to make room for new ones.
+   */
+  pages_evicted: number;
+  /**
+   * Resident pages redrawn because a caster under them changed.
+   */
+  pages_invalidated: number;
+  /**
+   * Pages held though no pixel asked for them (kept for `keep_frames`).
+   */
+  pages_kept: number;
+  /**
+   * Resident pages that got a physical page this frame (drawn).
+   */
+  pages_new: number;
+  /**
+   * Static pages drawn this frame (new or invalidated).
+   */
+  pages_rendered_static: number;
   /**
    * Pages some pixel asked for.
    */
@@ -283,6 +332,10 @@ export interface ShadowStats {
    */
   pool_pages: number;
   /**
+   * Physical pages in use (resident, kept and dynamic).
+   */
+  pool_used: number;
+  /**
    * Why `vsm` fell back to `csm`, when it did.
    */
   reason?: null | string;
@@ -291,6 +344,10 @@ export interface ShadowStats {
    * Meshlets drawn into the levels (each culled for its level and its pages).
    */
   shadow_meshlets: number;
+  /**
+   * `Static`-hinted casters that moved this frame (their static pages were redrawn).
+   */
+  static_hint_moved: number;
   technique: ShadowTechnique1;
 }
 /**

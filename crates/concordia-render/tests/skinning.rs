@@ -138,6 +138,7 @@ fn renderer_for(mesh: AssetRef, material: AssetRef) -> MeshRenderer {
         mesh,
         material,
         cast_shadows: true,
+        ..Default::default()
     }
 }
 
@@ -455,6 +456,11 @@ fn skinned_draws_match_cpu_skinned_meshes() {
 
 /// The floor seen from above, beside (not under) an arm whose shadow the sun casts across it.
 fn shadow_scene(skinned: bool, pose: &Pose) -> Scene {
+    shadow_scene_with_arm(skinned, pose).0
+}
+
+/// `shadow_scene` and its arm.
+fn shadow_scene_with_arm(skinned: bool, pose: &Pose) -> (Scene, EntityId) {
     let mut s = Scene::new();
     let paint = lit_material(&mut s, "paint", [0.8, 0.3, 0.2]);
     let ground = lit_material(&mut s, "ground", [0.7, 0.7, 0.7]);
@@ -470,7 +476,7 @@ fn shadow_scene(skinned: bool, pose: &Pose) -> Scene {
         true => (Some(skin()), Some(pose.clone())),
         false => (None, None),
     };
-    spawn(&mut s, Vec3::ZERO, &mesh, &paint, skin, posed);
+    let arm = spawn(&mut s, Vec3::ZERO, &mesh, &paint, skin, posed);
     s.mesh(
         "cube",
         ground.clone(),
@@ -502,7 +508,7 @@ fn shadow_scene(skinned: bool, pose: &Pose) -> Scene {
     };
     let eye = Vec3::new(-1.8, 6.0, 0.001);
     s.camera(eye, Vec3::new(-1.8, 0.0, 0.0), camera);
-    s
+    (s, arm)
 }
 
 #[test]
@@ -1084,4 +1090,66 @@ fn skinned_motion_follows_the_pose() {
     );
     let held = frame(&mut s, &mut r);
     assert!(held.uv.iter().all(|m| *m == [0.0, 0.0]), "a held pose");
+}
+
+/// A renderer on virtual shadow maps with the cache `on` (M4 4.7b).
+fn vsm_renderer(on: bool) -> Option<Renderer> {
+    let mut r = renderer()?;
+    r.set_shadows(concordia_render::vsm::ShadowTechnique::vsm);
+    let settings = concordia_render::vsm::VsmSettings {
+        cache: on,
+        ..Default::default()
+    };
+    r.set_vsm_settings(settings).unwrap();
+    Some(r)
+}
+
+/// A skinned arm walking (its pose changing every frame) over a still floor with a still post,
+/// under virtual shadow maps: after the first frame no static page is redrawn, the arm's pages get
+/// dynamic pages, and every frame equals an uncached render.
+#[test]
+fn walker_draws_only_into_dynamic_pages() {
+    let (Some(mut on), Some(mut off)) = (vsm_renderer(true), vsm_renderer(false)) else {
+        return;
+    };
+    let (mut s, arm) = shadow_scene_with_arm(true, &bent(0.0));
+    for k in 0..5 {
+        s.world.insert(arm, bent(-0.3 * k as f32)).unwrap();
+        let a = s.render(&mut on, 192, 160);
+        let stats = on.stats().shadows;
+        let b = s.render(&mut off, 192, 160);
+        assert!(
+            a.rgba == b.rgba,
+            "frame {k}: cached differs from uncached; {stats:?}"
+        );
+        assert_eq!(stats.casters_dynamic, 1, "frame {k}: {stats:?}");
+        if k > 0 {
+            assert_eq!(stats.pages_rendered_static, 0, "frame {k}: {stats:?}");
+            assert!(stats.pages_dynamic > 0, "frame {k}: {stats:?}");
+        }
+    }
+}
+
+/// Review footage (4.7b; not a check; runs only with CONCORDIA_REVIEW_FRAMES=<dir>): the skinned
+/// arm swinging under cached virtual shadow maps, lit and in the cache view, at 640 × 360.
+#[test]
+fn vsm_walker_review_frames() {
+    let Ok(dir) = std::env::var("CONCORDIA_REVIEW_FRAMES") else {
+        return;
+    };
+    std::fs::create_dir_all(&dir).unwrap();
+    for mode in [ViewMode::lit, ViewMode::vsm_cache] {
+        let Some(mut r) = vsm_renderer(true) else {
+            return;
+        };
+        let (mut s, arm) = shadow_scene_with_arm(true, &bent(0.0));
+        let mut raw = Vec::new();
+        for k in 0..48 {
+            let angle = -1.2 * (k as f32 / 48.0 * std::f32::consts::TAU).sin();
+            s.world.insert(arm, bent(angle)).unwrap();
+            raw.extend(s.render_mode(&mut r, 640, 360, mode).rgba);
+        }
+        let path = std::path::Path::new(&dir).join(format!("walker_{mode:?}.rgba"));
+        std::fs::write(path, raw).unwrap();
+    }
 }

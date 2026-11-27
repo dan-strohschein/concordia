@@ -26,6 +26,7 @@ fn cube() -> MeshRenderer {
         mesh: "builtin:mesh/cube".parse::<AssetRef>().unwrap(),
         material: "builtin:material/default".parse().unwrap(),
         cast_shadows: true,
+        ..Default::default()
     }
 }
 

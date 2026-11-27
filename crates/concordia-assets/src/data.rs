@@ -208,6 +208,23 @@ pub struct MeshRenderer {
     /// Casts shadows.
     #[serde(default = "yes")]
     pub cast_shadows: bool,
+    /// Whether it moves, as a hint for the shadow cache (M4 4.7b); `Auto` watches it move.
+    #[serde(default)]
+    pub mobility: Mobility,
+}
+
+/// How a mesh moves, a hint for virtual shadow maps' cache (M4 4.7b). A wrong hint never
+/// changes the picture, only the cost.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect)]
+pub enum Mobility {
+    /// Dynamic while it has moved in the last 60 frames, static otherwise.
+    #[default]
+    Auto,
+    /// Kept in the static pages even when it moves (each move redraws them): for things that
+    /// move once.
+    Static,
+    /// Drawn into the dynamic pages from its first frame: doors, platforms, projectiles.
+    Movable,
 }
 
 fn yes() -> bool {
@@ -225,6 +242,7 @@ impl Default for MeshRenderer {
             mesh: builtin("mesh", "cube"),
             material: builtin("material", "default"),
             cast_shadows: true,
+            mobility: Mobility::Auto,
         }
     }
 }

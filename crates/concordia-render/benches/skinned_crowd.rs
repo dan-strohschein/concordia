@@ -98,6 +98,7 @@ fn crowd(skinned: bool) -> (World, MemoryAssets) {
                     mesh: mesh.clone(),
                     material: material.clone(),
                     cast_shadows: true,
+                    ..Default::default()
                 },
             )
             .unwrap();

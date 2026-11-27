@@ -1,5 +1,5 @@
 # ADR-0091: Shadows: virtual shadow maps by default, cascades as the fallback
-- Status: Proposed (M4 4.7a, 2026-11-26; the 4.7 plan's Q1–Q18, approved by the author). Accepted when 4.7d completes Phase 4.7's done criterion.
+- Status: Proposed (M4 4.7a, 2026-11-26; the 4.7 plan's Q1–Q18, approved by the author; amended by 4.7b, caching). Accepted when 4.7d completes Phase 4.7's done criterion.
 - Date: 2026-11-26
 - Builds on: ADR-0014 (M10's tiled shadow atlas), ADR-0040 (render graph), ADR-0088 (Vulkan backend), ADR-0090 (quality methodology), ADR-0100 (meshlets and GPU culling), ADR-0103 (temporal upscaling)
 
@@ -14,6 +14,13 @@ M1 shadows the sun with three or four stabilized cascades of 2048². Near the ca
 5. **Device requirements:** bindless resources, fragment-shader storage atomics (`RhiCaps::fragment_atomics`) and 16 384-pixel attachment-less render passes (`RhiCaps::max_render_extent`). Without them `vsm` runs CSM, logged once, and `render.stats` `shadows` says why.
 6. **Local lights (4.7c):** virtual shadow maps also cover spot and point lights where the device runs them. M10's tiled atlas becomes their fallback tier, sharing the light selection, the invalidation model and the stats; ADR-0014 and M10's open question 1 are amended to say so.
 7. **Clean room:** built from public papers and talks (adaptive and resolution-matched shadow maps, clipmaps, sparse virtual textures) and Epic's public VSM documentation, read for ideas only; no engine source.
+
+### Amendment (M4 4.7b, 2026-11-26): caching
+- **Residency is decided fresh every frame**, coarse levels first, exactly as without a cache; the cache only decides which resident pages are redrawn. Only resident pages are sampled, so a cached frame is bit-identical to an uncached one (pages are drawn relative to their own light-space corner, so a page drawn in any frame holds the same depth).
+- **Pages persist** in a page store; unrequested pages age out after `[render.vsm] keep_frames` (60) and are evicted oldest first, ties by physical page, when new pages need room. Slots that wrap as a level scrolls are released.
+- **Invalidation**: a ledger compares every caster (sphere, mesh, material, pose) with last frame's and invalidates the static pages under the spheres that changed; a sun turn, a change of levels, pool or depth range, a new view, a scene load or a technique switch clear the cache. Camera cuts keep it.
+- **Static/dynamic split**: skinned and `Movable` casters, and `Auto` casters for 60 frames after they move, draw into a per-frame second page (a copy of the static page, `vsm.composite`); static pages never hold them. Without room for a second page they draw into the static page, which is redrawn the next frame. `MeshRenderer.mobility` (`Auto | Static | Movable`, default `Auto`) is a hint that changes only the cost.
+- **One cached view at a time** (per-view caching is in `later-backlog.md` §12); `[render.vsm] cache = false` redraws everything every frame with every caster static, the oracle.
 
 ## Consequences
 - The frame under `vsm` gains a depth prepass (it also feeds the HZB), page marking, allocation and page rendering; CSM frames are unchanged.

@@ -120,6 +120,7 @@ pub fn crowd(n: u32) -> (World, MemoryAssets) {
             mesh: mesh.clone(),
             material: material.clone(),
             cast_shadows: true,
+            ..Default::default()
         };
         world.insert(e, r).unwrap();
     }

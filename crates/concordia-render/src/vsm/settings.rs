@@ -41,6 +41,10 @@ pub struct VsmSettings {
     pub depth_bias: f32,
     /// Receiver offset along the normal in shadow texels, 0..=10.
     pub normal_bias: f32,
+    /// Frames an unrequested page is kept before it is freed, 0..=255 (M4 4.7b).
+    pub keep_frames: u8,
+    /// Keep pages across frames; off redraws every page every frame (the oracle).
+    pub cache: bool,
 }
 
 impl VsmSettings {
@@ -59,6 +63,8 @@ impl Default for VsmSettings {
             max_distance: 1000.0,
             depth_bias: 1.0,
             normal_bias: 1.0,
+            keep_frames: 60,
+            cache: true,
         }
     }
 }
@@ -73,6 +79,8 @@ struct RawVsm {
     max_distance: f32,
     depth_bias: f32,
     normal_bias: f32,
+    keep_frames: u32,
+    cache: bool,
 }
 
 impl Default for RawVsm {
@@ -90,6 +98,8 @@ impl From<VsmSettings> for RawVsm {
             max_distance: s.max_distance,
             depth_bias: s.depth_bias,
             normal_bias: s.normal_bias,
+            keep_frames: u32::from(s.keep_frames),
+            cache: s.cache,
         }
     }
 }
@@ -103,6 +113,7 @@ impl TryFrom<RawVsm> for VsmSettings {
         within("resolution_bias", f64::from(r.resolution_bias), -4.0, 4.0)?;
         within("depth_bias", f64::from(r.depth_bias), 0.0, 10.0)?;
         within("normal_bias", f64::from(r.normal_bias), 0.0, 10.0)?;
+        within("keep_frames", f64::from(r.keep_frames), 0.0, 255.0)?;
         if !(r.max_distance > 0.0 && r.max_distance <= 100_000.0) {
             return Err(format!(
                 "max_distance must be in (0, 100000], not {}",
@@ -116,6 +127,8 @@ impl TryFrom<RawVsm> for VsmSettings {
             max_distance: r.max_distance,
             depth_bias: r.depth_bias,
             normal_bias: r.normal_bias,
+            keep_frames: r.keep_frames as u8,
+            cache: r.cache,
         })
     }
 }

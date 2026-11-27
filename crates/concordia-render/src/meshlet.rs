@@ -29,6 +29,22 @@ impl MeshletInfo {
     }
 }
 
+/// Each meshlet's bounding sphere (centre, radius) in `blob`; none for an empty or invalid blob.
+pub(crate) fn spheres(blob: &[u8]) -> Vec<(Vec3, f32)> {
+    match blob.is_empty() {
+        true => Vec::new(),
+        false => MeshletMesh::decode(blob).map_or_else(
+            |_| Vec::new(),
+            |m| {
+                m.meshlets
+                    .iter()
+                    .map(|l| (Vec3::from_array(l.bounds.center), l.bounds.radius))
+                    .collect()
+            },
+        ),
+    }
+}
+
 /// Whether a draw takes the meshlet path: the path is on, the mesh has meshlets, and the draw is
 /// neither skinned nor blended (those stay on the M1 path).
 pub(crate) fn takes_path(

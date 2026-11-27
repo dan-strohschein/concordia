@@ -467,6 +467,7 @@ impl Worker {
         if matches!(delta, SceneDelta::Full(_)) {
             // A new or re-sent scene: nothing on screen moved from last frame's.
             self.renderer.reset_motion_history();
+            self.renderer.reset_shadow_cache();
         }
         match scene.tick {
             Some(dt) => {

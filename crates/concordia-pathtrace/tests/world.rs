@@ -84,6 +84,7 @@ impl Fixture {
                     mesh: format!("builtin:mesh/{mesh}").parse().unwrap(),
                     material: "builtin:material/default".parse().unwrap(),
                     cast_shadows: true,
+                    ..Default::default()
                 },
             )
             .unwrap();

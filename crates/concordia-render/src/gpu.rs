@@ -285,6 +285,8 @@ pub(crate) struct GpuMesh {
     pub(crate) count: u32,
     /// Object-space bounds (min, max).
     pub(crate) aabb: (Vec3, Vec3),
+    /// The bounds grown to hold every meshlet sphere (what VSM invalidation covers, M4 4.7b).
+    pub(crate) caster_aabb: (Vec3, Vec3),
     /// The `MeshletBlob` v1 buffer's bindless index and counts, when the mesh has valid meshlets.
     pub(crate) meshlets: Option<(u32, crate::meshlet::MeshletInfo)>,
     buffers: [Option<Buffer>; 8],
@@ -324,6 +326,8 @@ impl GpuMesh {
             false => None,
         };
         let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
+        let aabb = (Vec3::from_array(mesh.aabb.0), Vec3::from_array(mesh.aabb.1));
+        let caster_aabb = crate::vsm::caster_box(aabb, crate::meshlet::spheres(&mesh.meshlets));
         let blob = match meshlet_info(mesh, label) {
             Some(info) => Some((up.buffer(device, &mesh.meshlets, label)?, info)),
             None => None,
@@ -347,7 +351,8 @@ impl GpuMesh {
             weights: skin.map_or(Ok(NO_BUFFER), |(_, w)| index(w))?,
             joint_count,
             count: mesh.indices.len() as u32,
-            aabb: (Vec3::from_array(mesh.aabb.0), Vec3::from_array(mesh.aabb.1)),
+            aabb,
+            caster_aabb,
             meshlets: match blob {
                 Some((b, info)) => Some((index(b)?, info)),
                 None => None,

@@ -54,6 +54,7 @@ PerfScene(
     ],
     project: "../../../examples/m4-canyon",
     scene: "scenes/canyon.scene.ron",
+    shadows: Some(vsm),
     warmup_frames: 120,
     width: 1280,
 )

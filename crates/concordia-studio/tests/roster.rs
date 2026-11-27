@@ -1144,3 +1144,25 @@ fn only_the_modeler_and_tech_artist_read_meshlet_stats() {
     with.sort_unstable();
     assert_eq!(with, ["modeler", "tech-artist"]);
 }
+
+/// The tech artist knows the shadow cache's hint (M4 4.7b): when to use each `mobility` value,
+/// and the stat that says a `Static` hint is wrong.
+#[test]
+fn tech_artist_knows_the_mobility_hint() {
+    let (_dir, roster) = roster();
+    let artist = roster
+        .roles()
+        .iter()
+        .find(|r| r.role.as_str() == "tech-artist")
+        .expect("the tech artist is enabled");
+    for needle in [
+        "mobility",
+        "Auto",
+        "Movable",
+        "Static",
+        "static_hint_moved",
+        "pages_cached",
+    ] {
+        assert!(artist.body.contains(needle), "the prompt explains {needle}");
+    }
+}

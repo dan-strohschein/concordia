@@ -23,12 +23,22 @@ pub(crate) struct Freed {
 }
 
 /// Which view a history belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum HistoryKey {
     /// Offscreen renders (`Renderer::select_history`).
     Offscreen(u64),
     /// A window surface's presents.
     Surface(concordia_rhi::Surface),
+}
+
+impl HistoryKey {
+    /// A number naming the view (the same key gives the same number).
+    pub(crate) fn id(self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::hash::DefaultHasher::new();
+        self.hash(&mut h);
+        h.finish()
+    }
 }
 
 /// The ping-ponged textures of one view.

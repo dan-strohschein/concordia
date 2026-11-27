@@ -180,10 +180,8 @@ pub struct Renderer {
     shadow_technique: crate::vsm::ShadowTechnique,
     /// `[render.vsm]`.
     vsm_settings: crate::vsm::VsmSettings,
-    /// The physical page pool.
-    vsm_pool: crate::vsm::VsmPool,
-    /// The clipmap's light-space depth range, kept while the casters fit in it.
-    vsm_depth_range: Option<(f32, f32)>,
+    /// The pool, the page store, the depth range and the cache's key, kept between frames.
+    vsm_res: crate::vsm::VsmResources,
     /// Materials fitted to the closure budget, as programs.
     programs: Programs,
     /// GPU copies of forgotten assets; the next frame takes them and frees them when it retires,
@@ -193,6 +191,8 @@ pub struct Renderer {
     unskinnable: std::collections::BTreeSet<AssetRef>,
     /// Entities whose invalid `Representation` was logged.
     invalid_representations: std::collections::BTreeSet<EntityId>,
+    /// Entities warned about a `Static` mobility hint that doesn't hold (VSM, 4.7b).
+    hint_warned: std::collections::BTreeSet<EntityId>,
 }
 
 /// A presented frame the GPU may still be working on.
@@ -475,12 +475,12 @@ impl Renderer {
             shadow_key: None,
             shadow_technique: Default::default(),
             vsm_settings: Default::default(),
-            vsm_pool: Default::default(),
-            vsm_depth_range: None,
+            vsm_res: Default::default(),
             programs,
             retired: FrameResources::default(),
             unskinnable: std::collections::BTreeSet::new(),
             invalid_representations: std::collections::BTreeSet::new(),
+            hint_warned: std::collections::BTreeSet::new(),
         })
     }
 
@@ -861,7 +861,16 @@ impl Renderer {
     /// Chooses the sun's shadow technique (`csm` by default; `vsm` falls back to `csm` on devices
     /// that can't run virtual shadow maps; M4 4.7).
     pub fn set_shadows(&mut self, technique: crate::vsm::ShadowTechnique) {
+        if technique != self.shadow_technique {
+            self.vsm_res.cache.reset(crate::vsm::CacheReset::Technique);
+        }
         self.shadow_technique = technique;
+    }
+
+    /// Clears the virtual shadow maps' kept pages before the next frame (a scene opened or re-sent;
+    /// camera cuts keep them, M4 4.7b).
+    pub fn reset_shadow_cache(&mut self) {
+        self.vsm_res.cache.reset(crate::vsm::CacheReset::Scene);
     }
 
     /// Sets the virtual shadow maps' pool, levels and biases (`[render.vsm]`); refuses values out
@@ -872,7 +881,7 @@ impl Renderer {
     ) -> Result<(), RenderError> {
         settings.validate().map_err(RenderError::InvalidSettings)?;
         self.vsm_settings = settings;
-        self.vsm_depth_range = None;
+        self.vsm_res.forget_depth_range();
         Ok(())
     }
 
@@ -1077,19 +1086,38 @@ impl Renderer {
         let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
         let vsm_on = self.vsm_runs(world);
         self.note_shadows(vsm_on);
-        let vsm_casters = self.pipelines.vsm_casters().filter(|_| vsm_on);
+        let vsm_set = match vsm_on {
+            true => self.pipelines.vsm(device)?,
+            false => None,
+        };
+        let vsm_casters = vsm_set.map(|v| v.casters);
         let shadows = match vsm_on {
             true => None,
             false => self.prepare_shadows(world, &skinning.placements, view, aspect, dir)?,
         };
         let vsm = match vsm_on {
-            true => Some(self.prepare_vsm(
-                world,
-                &skinning.placements,
-                (view, dir, view_proj, height),
-                (&mut up, frame),
-            )?),
+            true => match vsm_set {
+                Some(set) => Some(self.prepare_vsm(
+                    world,
+                    &skinning.placements,
+                    (view, dir, view_proj, height, set.page),
+                    (&mut up, frame),
+                )?),
+                None => None,
+            },
             false => None,
+        };
+        // Each draw's shadow class (4.7b): drawn into dynamic pages.
+        let dynamic_items: Vec<bool> = match &vsm {
+            Some(job) => {
+                self.note_casters(world, job);
+                occurrences(world)
+                    .into_iter()
+                    .zip(&world.draws)
+                    .map(|(n, d)| job.dynamic.contains(&(d.entity, d.mesh.clone(), n)))
+                    .collect()
+            }
+            None => vec![false; world.draws.len()],
         };
         let vsm_rows = match &vsm {
             Some(j) => Some([
@@ -1137,7 +1165,7 @@ impl Renderer {
             &skinning.placements,
             &materials,
             &view_m,
-            &crate::cull::Frustum::new(view_proj),
+            (&crate::cull::Frustum::new(view_proj), &dynamic_items),
             &mut visibility,
         );
         self.visibility = visibility;
@@ -1282,7 +1310,10 @@ impl Renderer {
             }
             if casts {
                 if vsm_on {
-                    caster_spheres.push(crate::vsm::world_sphere(placed.bounds, &placed.world));
+                    caster_spheres.push((
+                        crate::vsm::world_sphere(placed.bounds, &placed.world),
+                        dynamic_items[item],
+                    ));
                 }
                 match casters.last_mut() {
                     Some(c)
@@ -1663,8 +1694,9 @@ impl Renderer {
     }
 
     /// The frame's VSM caster draws, one page per pair (M4 4.7a2): the levels' meshlet survivors
-    /// and the M1 casters (`casters`, with each instance's world sphere in `spheres`) binned to the
-    /// pages due to be drawn; `tables` are the frame, instance and mesh tables' bindless indices.
+    /// and the M1 casters (`casters`, with each instance's world sphere and class in `spheres`)
+    /// binned to the pages due to be drawn, one layer per class (static, dynamic; 4.7b); `tables`
+    /// are the frame, instance and mesh tables' bindless indices.
     #[allow(clippy::type_complexity)]
     fn vsm_caster_draws(
         &self,
@@ -1674,24 +1706,60 @@ impl Renderer {
             Option<MeshletJob>,
             Option<&crate::meshlet::MeshletPlan<BucketKey>>,
         ),
-        (casters, spheres): (&[ShadowDraw], &[concordia_core::math::Vec4]),
-        [frame_i, inst_i, meshes_i]: [u32; 3],
+        (casters, spheres): (&[ShadowDraw], &[(concordia_core::math::Vec4, bool)]),
+        tables: [u32; 3],
         keep: &mut Vec<Buffer>,
     ) -> Result<crate::vsm::CasterDraws, RenderError> {
+        let levels = job.clipmap.levels.len() as u32;
+        let (units, spans) = crate::vsm::units_for(casters, spheres, levels);
+        let mut layer = |class: u32| {
+            self.vsm_caster_layer(
+                (device, &mut *up),
+                (pipelines, job),
+                (meshlets.as_ref(), plan),
+                (casters, &units, &spans),
+                (tables, class),
+                &mut *keep,
+            )
+        };
+        let layers = [layer(0)?, layer(1)?];
+        Ok(crate::vsm::CasterDraws {
+            cull: meshlets,
+            pipelines: (pipelines.m1, pipelines.meshlets),
+            layers,
+            composite: job.work.composite(job.params, &job.pool),
+            pool: job.pool.clone(),
+            entries: plan.map_or(0, |p| p.entries),
+        })
+    }
+
+    /// One class's binning (`class` 0 static, 1 dynamic) and page draws.
+    #[allow(clippy::type_complexity)]
+    fn vsm_caster_layer(
+        &self,
+        (device, up): (&dyn Device, &mut Uploads),
+        (pipelines, job): (crate::pipelines::VsmCasters, &crate::vsm::VsmJob),
+        (meshlets, plan): (
+            Option<&MeshletJob>,
+            Option<&crate::meshlet::MeshletPlan<BucketKey>>,
+        ),
+        (casters, units, spans): (&[ShadowDraw], &[crate::vsm::Unit], &[crate::vsm::DrawSpan]),
+        ([frame_i, inst_i, meshes_i], class): ([u32; 3], u32),
+        keep: &mut Vec<Buffer>,
+    ) -> Result<crate::vsm::CasterLayer, RenderError> {
         let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
         let pool = self.vsm_settings.pool_pages;
         let blocks = (job.params, job.views, index(job.work.table)?);
-        let levels = job.clipmap.levels.len() as u32;
-        let (units, spans) = crate::vsm::units_for(casters, spheres, levels);
         let unit_bins = crate::vsm::UnitBins::prepare(
             device,
             up,
             pipelines.bin,
-            (&units, &spans, pool.saturating_mul(32)),
+            (units, spans, pool.saturating_mul(32)),
             blocks,
+            class,
             keep,
         )?;
-        let meshlet_bins = match (meshlets.as_ref().and_then(MeshletJob::bin_inputs), plan) {
+        let meshlet_bins = match (meshlets.and_then(MeshletJob::bin_inputs), plan) {
             (Some(input), Some(plan)) => {
                 let vertices = plan.buckets.iter().map(|b| b.vertices).max().unwrap_or(0);
                 Some(crate::vsm::MeshletBins::prepare(
@@ -1705,6 +1773,7 @@ impl Renderer {
                         vertices,
                     ),
                     blocks,
+                    class,
                     keep,
                 )?)
             }
@@ -1746,15 +1815,11 @@ impl Renderer {
             ]),
             None => Vec::new(),
         };
-        Ok(crate::vsm::CasterDraws {
-            cull: meshlets,
+        Ok(crate::vsm::CasterLayer {
             meshlet_bins,
             unit_bins,
-            pipelines: (pipelines.m1, pipelines.meshlets),
             m1,
             meshlet_push,
-            pool: job.pool.clone(),
-            entries: plan.map_or(0, |p| p.entries),
         })
     }
 
@@ -1764,7 +1829,13 @@ impl Renderer {
         &mut self,
         world: &RenderWorld,
         placements: &[Placement],
-        (view, dir, view_proj, height): (&CameraView, Vec3, Mat4, NonZeroU32),
+        (view, dir, view_proj, height, pipelines): (
+            &CameraView,
+            Vec3,
+            Mat4,
+            NonZeroU32,
+            crate::vsm::VsmPipelines,
+        ),
         (up, frame): (&mut Uploads, &mut FrameResources),
     ) -> Result<crate::vsm::VsmJob, RenderError> {
         let casters = world
@@ -1786,6 +1857,7 @@ impl Renderer {
                 crate::vsm::Footprint::Fixed(h / height.get() as f32)
             }
         };
+        let states = self.caster_states(world, placements);
         let input = crate::vsm::JobIn {
             settings: &self.vsm_settings,
             light_dir: dir,
@@ -1794,20 +1866,88 @@ impl Renderer {
             footprint,
             pcf_radius: pcf,
             casters: world_bounds(casters),
+            view: self.current.as_ref().map_or(0, |v| v.key.id()),
+            states,
         };
         let mut keep = Vec::new();
         let job = crate::vsm::VsmJob::prepare(
             self.device.as_ref(),
             up,
-            self.pipelines.vsm(),
+            pipelines,
             &input,
-            (&mut self.vsm_pool, &mut self.vsm_depth_range),
+            &mut self.vsm_res,
             &mut keep,
         )?;
         keep.into_iter().for_each(|b| {
             frame.keep(b);
         });
+        self.stats.shadows.cache_reset = self.vsm_res.cache.last_reset();
         Ok(job)
+    }
+
+    /// Every shadow caster's key and state for the VSM ledger (M4 4.7b): its world sphere (the
+    /// mesh's caster box, or the posed bounds when skinned) and a hash of its mesh, material and pose.
+    fn caster_states(
+        &self,
+        world: &RenderWorld,
+        placements: &[Placement],
+    ) -> Vec<(crate::visibility::VisKey, crate::vsm::CasterInput)> {
+        use std::hash::{Hash, Hasher};
+        let occurrence = occurrences(world);
+        world
+            .draws
+            .iter()
+            .zip(placements)
+            .zip(occurrence)
+            .filter(|((d, _), _)| d.cast_shadows)
+            .filter_map(|((d, placed), n)| {
+                let mesh = self.assets.meshes.get(&d.mesh)?;
+                let mut shape = std::hash::DefaultHasher::new();
+                d.mesh.hash(&mut shape);
+                d.material.hash(&mut shape);
+                let bounds = match placed.pose {
+                    Some(pose) => {
+                        world.skins[pose]
+                            .palette
+                            .iter()
+                            .for_each(|m| hash_matrix(m, &mut shape));
+                        placed.bounds
+                    }
+                    None => mesh.caster_aabb,
+                };
+                let state = crate::vsm::CasterState {
+                    sphere: crate::vsm::caster_sphere(bounds, &placed.world),
+                    shape: shape.finish(),
+                };
+                let input = crate::vsm::CasterInput {
+                    state,
+                    skinned: placed.pose.is_some(),
+                    hint: d.mobility,
+                };
+                Some(((d.entity, d.mesh.clone(), n), input))
+            })
+            .collect()
+    }
+
+    /// Records the frame's dynamic casters in the stats and warns, once per entity, about a
+    /// `Static` hint on a caster that moved or is skinned (4.7b).
+    fn note_casters(&mut self, world: &RenderWorld, job: &crate::vsm::VsmJob) {
+        let s = &mut self.stats.shadows;
+        s.casters_dynamic = job.dynamic.len() as u64;
+        s.static_hint_moved = job.static_hint_moved.len() as u64;
+        for (entity, mesh, _) in &job.static_hint_moved {
+            if self.hint_warned.insert(*entity) {
+                tracing::warn!(target: "concordia::render", %entity, %mesh, "mobility Static, but it moves: each move redraws its shadow pages; Auto or Movable is cheaper");
+            }
+        }
+        let skinned_static = world.draws.iter().filter(|d| {
+            d.skin.is_some() && d.cast_shadows && d.mobility == concordia_assets::Mobility::Static
+        });
+        for d in skinned_static {
+            if self.hint_warned.insert(d.entity) {
+                tracing::warn!(target: "concordia::render", entity = %d.entity, "mobility Static ignored on a skinned mesh: its shadow is redrawn every frame");
+            }
+        }
     }
 
     /// Cascades, settings and shadow maps when the first directional light casts shadows.
@@ -1914,7 +2054,7 @@ impl Renderer {
         placements: &[Placement],
         materials: &BTreeMap<AssetRef, Material>,
         view: &Mat4,
-        frustum: &crate::cull::Frustum,
+        (frustum, dynamic): (&crate::cull::Frustum, &[bool]),
         visibility: &mut crate::visibility::Visibility<crate::visibility::VisKey>,
     ) -> Result<FrameBlocks, RenderError> {
         let texture = |r: &AssetRef| self.assets.textures.get(r).map(|(_, i)| *i);
@@ -1970,7 +2110,7 @@ impl Renderer {
                 model: placed.world,
                 previous: self.motion.previous_world(draw.entity, &placed.world),
                 skin,
-                motion: [placed.prev_first, *base, 0, 0],
+                motion: [placed.prev_first, *base, u32::from(dynamic[d.item]), 0],
             }
             .write(&mut instances);
         });
@@ -1991,16 +2131,7 @@ impl Renderer {
         order: &[DrawOrder],
         visibility: &mut crate::visibility::Visibility<crate::visibility::VisKey>,
     ) -> Vec<u32> {
-        let mut seen: BTreeMap<(EntityId, &AssetRef), u32> = BTreeMap::new();
-        let occurrence: Vec<u32> = world
-            .draws
-            .iter()
-            .map(|d| {
-                let n = seen.entry((d.entity, &d.mesh)).or_insert(0);
-                *n += 1;
-                *n - 1
-            })
-            .collect();
+        let occurrence = occurrences(world);
         let mut at = Vec::new();
         let mut wanted = Vec::new();
         for (i, d) in order.iter().enumerate() {
@@ -2031,8 +2162,8 @@ impl Renderer {
             true => ShadowTechnique::vsm,
             false => ShadowTechnique::csm,
         };
-        s.reason = match (self.shadow_technique, self.pipelines.vsm_casters()) {
-            (ShadowTechnique::vsm, None) => crate::vsm::supported(self.device.caps())
+        s.reason = match (self.shadow_technique, self.pipelines.vsm_supported()) {
+            (ShadowTechnique::vsm, false) => crate::vsm::supported(self.device.caps())
                 .err()
                 .map(str::to_owned),
             _ => None,
@@ -2045,15 +2176,14 @@ impl Renderer {
             false => (0, 0),
         };
         (s.pool_pages, s.levels) = (pool, levels);
+        s.cache = vsm_on && self.vsm_settings.cache;
         if !vsm_on {
-            (
-                s.pages_requested,
-                s.pages_allocated,
-                s.pages_starved,
-                s.shadow_meshlets,
-                s.page_draws,
-                s.page_draws_dropped,
-            ) = (0, 0, 0, 0, 0, 0);
+            *s = crate::vsm::ShadowStats {
+                requested: s.requested,
+                technique: s.technique,
+                reason: s.reason.take(),
+                ..Default::default()
+            };
         }
     }
 
@@ -2061,7 +2191,7 @@ impl Renderer {
     /// can run them, and the first directional light casts shadows.
     fn vsm_runs(&self, world: &RenderWorld) -> bool {
         self.shadow_technique == crate::vsm::ShadowTechnique::vsm
-            && self.pipelines.vsm_casters().is_some()
+            && self.pipelines.vsm_supported()
             && world
                 .lights
                 .first()
@@ -2207,11 +2337,7 @@ impl Renderer {
                 .as_ref()
                 .and_then(|d| d.cull.as_ref().map(|m| (m.codes, d.entries)));
             let totals: Vec<Buffer> = vsm_draws.as_ref().map_or_else(Vec::new, |d| {
-                d.meshlet_bins
-                    .iter()
-                    .map(|b| b.totals)
-                    .chain(d.unit_bins.iter().map(|b| b.totals))
-                    .collect()
+                d.layers.iter().flat_map(|l| l.totals()).collect()
             });
             (job.work.counts, codes, totals)
         });
@@ -2761,7 +2887,7 @@ impl Drop for Renderer {
         self.assets.destroy(self.device.as_ref());
         self.ui_textures.destroy(self.device.as_ref());
         self.shadow_maps.destroy(self.device.as_ref());
-        self.vsm_pool.destroy(self.device.as_ref());
+        self.vsm_res.destroy(self.device.as_ref());
         self.environments.destroy(self.device.as_ref());
         self.visibility_buffer.destroy(self.device.as_ref());
         self.surfaces
@@ -3097,6 +3223,21 @@ fn hash_matrix(m: &Mat4, hasher: &mut impl std::hash::Hasher) {
 
 /// Identifies the shadow maps' contents: the casters (meshes and world matrices), the cascades
 /// and the maps themselves.
+/// Each draw's occurrence: which of its entity's draws of that mesh it is (the third part of a
+/// [`crate::visibility::VisKey`]).
+fn occurrences(world: &RenderWorld) -> Vec<u32> {
+    let mut seen: BTreeMap<(EntityId, &AssetRef), u32> = BTreeMap::new();
+    world
+        .draws
+        .iter()
+        .map(|d| {
+            let n = seen.entry((d.entity, &d.mesh)).or_insert(0);
+            *n += 1;
+            *n - 1
+        })
+        .collect()
+}
+
 fn shadow_key(casters: u64, cascades: &[Cascade], resolution: u32, maps: &[(Texture, u32)]) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::hash::DefaultHasher::new();

@@ -243,6 +243,14 @@ exports[`schema_to_widget_maps_vec3_number_enum_color_assetref 1`] = `
     "mesh": {
       "kind": "asset",
     },
+    "mobility": {
+      "kind": "enum",
+      "options": [
+        "Auto",
+        "Static",
+        "Movable",
+      ],
+    },
   },
   "Transform": {
     "rotation": {

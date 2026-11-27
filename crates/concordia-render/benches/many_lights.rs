@@ -46,6 +46,7 @@ fn main() {
                 mesh: "builtin:mesh/plane".parse().unwrap(),
                 material: floor,
                 cast_shadows: false,
+                ..Default::default()
             },
         )
         .unwrap();

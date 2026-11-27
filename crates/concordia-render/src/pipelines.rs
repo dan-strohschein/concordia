@@ -114,6 +114,65 @@ pub(crate) struct VsmCasters {
     pub(crate) bin: crate::vsm::BinPipelines,
 }
 
+/// Every virtual-shadow-map pipeline: the page work and the casters.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct VsmSet {
+    pub(crate) page: crate::vsm::VsmPipelines,
+    pub(crate) casters: VsmCasters,
+}
+
+/// Compiles the virtual shadow maps' pipelines.
+fn vsm_set(
+    device: &dyn Device,
+    compiler: &dyn ShaderCompiler,
+    scan: crate::scan::ScanPipelines,
+) -> Result<VsmSet, RenderError> {
+    let kernel = |file: &str, entry: &str| compute_pipeline(device, compiler, file, entry);
+    let source = |file: &str, entry: &str, stage: Stage| {
+        compile(device, compiler, file, entry, stage).map(|m| m.source())
+    };
+    let page = crate::vsm::VsmPipelines::create(|e| kernel("vsm_page.slang", e), scan)?;
+    let page_writer = |vertex: ShaderSource, fragment: ShaderSource, label: &str| {
+        device.create_graphics_pipeline(&GraphicsPipelineDesc {
+            vertex,
+            fragment: Some(fragment),
+            color_formats: Vec::new(),
+            depth: None,
+            samples: SampleCount::X1,
+            cull: CullMode::None,
+            blend: BlendMode::Opaque,
+            color_writes: concordia_rhi::ColorWrites::ALL,
+            label: label.into(),
+        })
+    };
+    let fragment = source("forward.slang", "vsm_page_fs", Stage::Fragment)?;
+    let m1 = page_writer(
+        source("forward.slang", "vsm_page_vs", Stage::Vertex)?,
+        fragment.clone(),
+        "vsm page casters",
+    )?;
+    let meshlets = page_writer(
+        source("meshlet.slang", "meshlet_vsm_page_vs", Stage::Vertex)?,
+        fragment,
+        "vsm page meshlets",
+    )?;
+    let bin = crate::vsm::BinPipelines {
+        unit_count: kernel("vsm_page.slang", "vsm_unit_count")?,
+        unit_emit: kernel("vsm_page.slang", "vsm_unit_emit")?,
+        unit_args: kernel("vsm_page.slang", "vsm_unit_args")?,
+        meshlet_count: kernel("meshlet.slang", "meshlet_vsm_count")?,
+        meshlet_emit: kernel("meshlet.slang", "meshlet_vsm_emit")?,
+        meshlet_args: kernel("meshlet.slang", "meshlet_vsm_args")?,
+        meshlet_ranks: kernel("meshlet.slang", "meshlet_vsm_ranks")?,
+        zero: page.zero,
+        scan,
+    };
+    Ok(VsmSet {
+        page,
+        casters: VsmCasters { m1, meshlets, bin },
+    })
+}
+
 struct MeshStages {
     object: ObjectStage,
     mesh: MeshStage,
@@ -158,10 +217,10 @@ pub(crate) struct Pipelines {
     cull: crate::meshlet_pass::CullPipelines,
     /// The HZB build (`hzb.slang`; two-pass occlusion).
     hzb: Pipeline,
-    /// Virtual shadow maps' page work (`vsm_page.slang`; M4 4.7).
-    vsm: crate::vsm::VsmPipelines,
-    /// Virtual shadow maps' caster pipelines, where the device runs them.
-    vsm_casters: Option<VsmCasters>,
+    /// Whether the device runs virtual shadow maps (M4 4.7).
+    vsm_supported: bool,
+    /// Their pipelines, compiled on the first frame that uses them (4.7b: CSM projects never pay).
+    vsm: Option<VsmSet>,
     /// The own temporal resolve (`temporal.slang`; M4 4.6).
     temporal: crate::temporal::own::OwnPipelines,
     /// The mesh-shader path's stages, when the device takes it.
@@ -250,15 +309,6 @@ impl Pipelines {
             },
         };
         let hzb = kernel("hzb.slang", "hzb_build")?;
-        let vsm = crate::vsm::VsmPipelines {
-            zero: kernel("vsm_page.slang", "vsm_zero")?,
-            mark: kernel("vsm_page.slang", "vsm_mark")?,
-            flags: kernel("vsm_page.slang", "vsm_request_flags")?,
-            allocate: kernel("vsm_page.slang", "vsm_allocate")?,
-            counts: kernel("vsm_page.slang", "vsm_counts")?,
-            clear: kernel("vsm_page.slang", "vsm_clear")?,
-            scan: cull.scan,
-        };
         let temporal = crate::temporal::own::OwnPipelines {
             resolve: kernel("temporal.slang", "taa_resolve")?,
             keep_depth: kernel("temporal.slang", "taa_keep_depth")?,
@@ -274,47 +324,6 @@ impl Pipelines {
             compile("forward.slang", "sky_fs", Stage::Fragment)?,
         );
         let hzb_view = compile("forward.slang", "hzb_view_fs", Stage::Fragment)?;
-        let vsm_casters = match crate::vsm::supported(device.caps()) {
-            Ok(()) => {
-                let page_writer = |vertex: ShaderSource, fragment: ShaderSource, label: &str| {
-                    device.create_graphics_pipeline(&GraphicsPipelineDesc {
-                        vertex,
-                        fragment: Some(fragment),
-                        color_formats: Vec::new(),
-                        depth: None,
-                        samples: SampleCount::X1,
-                        cull: CullMode::None,
-                        blend: BlendMode::Opaque,
-                        color_writes: concordia_rhi::ColorWrites::ALL,
-                        label: label.into(),
-                    })
-                };
-                let fragment = compile("forward.slang", "vsm_page_fs", Stage::Fragment)?;
-                let m1 = page_writer(
-                    compile("forward.slang", "vsm_page_vs", Stage::Vertex)?,
-                    fragment.clone(),
-                    "vsm page casters",
-                )?;
-                let meshlets = page_writer(
-                    compile("meshlet.slang", "meshlet_vsm_page_vs", Stage::Vertex)?,
-                    fragment,
-                    "vsm page meshlets",
-                )?;
-                let bin = crate::vsm::BinPipelines {
-                    unit_count: kernel("vsm_page.slang", "vsm_unit_count")?,
-                    unit_emit: kernel("vsm_page.slang", "vsm_unit_emit")?,
-                    unit_args: kernel("vsm_page.slang", "vsm_unit_args")?,
-                    meshlet_count: kernel("meshlet.slang", "meshlet_vsm_count")?,
-                    meshlet_emit: kernel("meshlet.slang", "meshlet_vsm_emit")?,
-                    meshlet_args: kernel("meshlet.slang", "meshlet_vsm_args")?,
-                    meshlet_ranks: kernel("meshlet.slang", "meshlet_vsm_ranks")?,
-                    zero: vsm.zero,
-                    scan: cull.scan,
-                };
-                Some(VsmCasters { m1, meshlets, bin })
-            }
-            Err(_) => None,
-        };
         Ok(Self {
             compiler,
             forward,
@@ -326,8 +335,8 @@ impl Pipelines {
             meshlet_shadow,
             cull,
             hzb,
-            vsm,
-            vsm_casters,
+            vsm_supported: crate::vsm::supported(device.caps()).is_ok(),
+            vsm: None,
             temporal,
             mesh_stages,
             sky,
@@ -548,14 +557,18 @@ impl Pipelines {
         self.hzb
     }
 
-    /// Virtual shadow maps' caster pipelines (`None` where the device can't run them).
-    pub(crate) fn vsm_casters(&self) -> Option<VsmCasters> {
-        self.vsm_casters
+    /// Whether the device runs virtual shadow maps.
+    pub(crate) fn vsm_supported(&self) -> bool {
+        self.vsm_supported
     }
 
-    /// Virtual shadow maps' page work pipelines.
-    pub(crate) fn vsm(&self) -> crate::vsm::VsmPipelines {
-        self.vsm
+    /// Virtual shadow maps' page work and caster pipelines, compiled on first use (`None` where
+    /// the device can't run them).
+    pub(crate) fn vsm(&mut self, device: &dyn Device) -> Result<Option<VsmSet>, RenderError> {
+        if self.vsm.is_none() && self.vsm_supported {
+            self.vsm = Some(vsm_set(device, self.compiler.as_ref(), self.cull.scan)?);
+        }
+        Ok(self.vsm)
     }
 
     /// The own temporal resolve's compute pipelines.

@@ -111,6 +111,7 @@ fn textures_sample_with_the_frame_mip_bias() {
                 mesh: "builtin:mesh/cube".parse().unwrap(),
                 material: paint,
                 cast_shadows: false,
+                ..Default::default()
             },
         )
         .unwrap();

@@ -73,6 +73,7 @@ fn city(view: (Vec3, Vec3), msaa: Msaa) -> Shot {
                         mesh: ball.clone(),
                         material: stone.clone(),
                         cast_shadows: false,
+                        ..Default::default()
                     },
                 )
                 .unwrap();
@@ -334,6 +335,7 @@ fn field() -> Shot {
                         mesh: ball.clone(),
                         material: red.clone(),
                         cast_shadows: true,
+                        ..Default::default()
                     },
                 )
                 .unwrap();

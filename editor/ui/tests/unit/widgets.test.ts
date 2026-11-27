@@ -28,6 +28,7 @@ test("schema_to_widget_maps_vec3_number_enum_color_assetref", () => {
   const renderer = kinds("MeshRenderer");
   expect(renderer["mesh"]?.kind).toBe("asset");
   expect(renderer["cast_shadows"]).toEqual({ kind: "bool" });
+  expect(renderer["mobility"]).toEqual({ kind: "enum", options: ["Auto", "Static", "Movable"] });
   expect(widgetFor(fixture("Parent"), {})).toEqual({ kind: "entity" });
   expect(
     Object.fromEntries(["Transform", "DirectionalLight", "Camera", "MeshRenderer"].map((n) => [n, kinds(n)])),

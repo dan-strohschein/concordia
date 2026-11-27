@@ -24,6 +24,8 @@ pub struct DrawItem {
     pub material: AssetRef,
     /// Rendered into shadow maps.
     pub cast_shadows: bool,
+    /// The shadow cache's hint (`MeshRenderer.mobility`, M4 4.7b).
+    pub mobility: concordia_assets::Mobility,
     /// The entity whose pose deforms it (itself or an ancestor with the same skin), if any.
     pub skin: Option<EntityId>,
     /// How it is drawn by distance from the camera, and whose it is: its own, else its nearest
@@ -349,6 +351,7 @@ impl EntityItems {
                 mesh: r.mesh.clone(),
                 material: r.material.clone(),
                 cast_shadows: r.cast_shadows,
+                mobility: r.mobility,
                 skin: pose_owner(world, entity),
                 representation: representation_of(world, entity),
                 instanced: false,

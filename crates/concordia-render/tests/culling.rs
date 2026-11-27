@@ -79,6 +79,7 @@ impl Culled {
                     mesh: mesh.0.clone(),
                     material: material.0.clone(),
                     cast_shadows: true,
+                    ..Default::default()
                 },
             )
             .unwrap();

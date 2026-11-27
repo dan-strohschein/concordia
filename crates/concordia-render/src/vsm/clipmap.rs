@@ -45,6 +45,16 @@ impl ClipLevel {
         self.origin_page.as_vec2() * self.page_world()
     }
 
+    /// The world page (light space, y up; the table's key) of in-level page `page` (row 0 at the
+    /// top, as the virtual texels run).
+    pub fn world_page(&self, page: IVec2) -> IVec2 {
+        let last = PAGES_PER_SIDE as i32 - 1;
+        IVec2::new(
+            self.origin_page.x + page.x,
+            self.origin_page.y + last - page.y,
+        )
+    }
+
     /// The camera in light space (m).
     pub fn camera_light(&self) -> Vec2 {
         self.camera_light

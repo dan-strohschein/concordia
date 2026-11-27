@@ -3,29 +3,42 @@
 
 mod api;
 mod bin;
+mod cache;
 mod clipmap;
 mod frame;
 mod gpu;
 mod job;
+mod ledger;
 mod pool;
 mod settings;
 mod stats;
 mod table;
+#[cfg(test)]
+pub(crate) mod testing;
 
 pub use api::{RenderSetShadows, RenderSetShadowsParams, RenderSetShadowsResult};
-pub(crate) use bin::{BinInputs, BinPipelines, MeshletBins, UnitBins, units_for, world_sphere};
+pub use bin::caster_sphere;
+pub(crate) use bin::{
+    BinInputs, BinPipelines, DrawSpan, MeshletBins, Unit, UnitBins, units_for, world_sphere,
+};
+pub use cache::{CacheKey, CacheReset, CacheState};
 pub use clipmap::{
     ClipLevel, Clipmap, LEVEL0_EXTENT, level_for_footprint, pixel_footprint, stable_depth_range,
     texel_world,
 };
 pub use frame::{Footprint, floor_level};
-pub(crate) use gpu::{COUNT_WORDS, VsmPipelines, VsmPool};
-pub(crate) use job::{CasterDraws, JobIn, VsmJob, add_page_passes, add_render_pass};
+pub(crate) use gpu::{COUNT_WORDS, VsmPipelines};
+pub(crate) use job::{
+    CasterDraws, CasterLayer, JobIn, VsmJob, VsmResources, add_page_passes, add_render_pass,
+};
+pub use ledger::{CasterInput, CasterLedger, CasterState, DYNAMIC_FRAMES, LedgerFrame, caster_box};
 pub use pool::{PoolError, PoolLayout};
 pub use settings::{ShadowTechnique, Shadows, VsmSettings};
 pub use stats::ShadowStats;
 pub(crate) use stats::VsmReadback;
-pub use table::{PAGE_TEXELS, PAGES_PER_SIDE, PageEntry, PageFlags, VIRTUAL_TEXELS, table_slot};
+pub use table::{
+    PAGE_TEXELS, PAGES_PER_SIDE, PageEntry, PageFlags, VIRTUAL_TEXELS, slot_page, table_slot,
+};
 
 use concordia_rhi::RhiCaps;
 
