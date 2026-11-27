@@ -37,6 +37,8 @@ pub enum Light {
         intensity: Vec3,
         /// Range.
         range: f32,
+        /// Radius of the emitting sphere (0: a point; M4 4.7d).
+        radius: f32,
     },
     /// Spot light: a point light inside a cone around `axis`.
     Spot {
@@ -50,6 +52,8 @@ pub enum Light {
         range: f32,
         /// The cone.
         cone: SpotCone,
+        /// Radius of the emitting sphere (0: a point; M4 4.7d).
+        radius: f32,
     },
     /// The sun: parallel light travelling along `travel` (unit).
     Sun {
@@ -57,6 +61,8 @@ pub enum Light {
         travel: Vec3,
         /// Illuminance (lux) × color.
         illuminance: Vec3,
+        /// Angular radius of the disc in radians (0: a hard sun; M4 4.7d).
+        angular_radius: f32,
     },
 }
 
@@ -264,6 +270,7 @@ impl SceneBuilder {
             position,
             intensity: Vec3::from_array(light.color) * candela(light.intensity_lumens),
             range: light.range,
+            radius: light.source_radius.max(0.0),
         });
     }
 
@@ -275,6 +282,7 @@ impl SceneBuilder {
             intensity: Vec3::from_array(light.color) * candela(light.intensity_lumens),
             range: light.range,
             cone: SpotCone::new(light.inner_angle, light.outer_angle),
+            radius: light.source_radius.max(0.0),
         });
     }
 
@@ -283,6 +291,7 @@ impl SceneBuilder {
         self.lights.push(Light::Sun {
             travel: travel.normalize_or(Vec3::NEG_Y),
             illuminance: Vec3::from_array(light.color) * light.illuminance_lux,
+            angular_radius: light.angular_radius.max(0.0),
         });
     }
 

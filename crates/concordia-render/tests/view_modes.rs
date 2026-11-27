@@ -68,6 +68,7 @@ fn scene() -> Scene {
                     resolution: 1024,
                     ..CascadeSettings::default()
                 }),
+                ..Default::default()
             },
         )
         .unwrap();

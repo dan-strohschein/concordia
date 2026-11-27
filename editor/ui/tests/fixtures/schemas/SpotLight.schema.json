@@ -53,7 +53,8 @@
     "intensity_lumens": 800.0,
     "outer_angle": 0.5,
     "range": 10.0,
-    "shadows": null
+    "shadows": null,
+    "source_radius": 0.0
   },
   "description": "Cone light along the entity's -Z.",
   "properties": {
@@ -101,6 +102,12 @@
         }
       ],
       "description": "Shadows on virtual shadow maps (M4 4.7c); `None`: unshadowed (the default)."
+    },
+    "source_radius": {
+      "description": "Radius of the emitting sphere in metres (0: a point; softens shadows, M4 4.7d).",
+      "maximum": 5.0,
+      "minimum": 0.0,
+      "type": "number"
     }
   },
   "title": "SpotLight",

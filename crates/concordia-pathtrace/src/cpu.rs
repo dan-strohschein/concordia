@@ -297,9 +297,11 @@ fn direct(scene: &Scene, surf: &Surface, sh: &Shading, v: Vec3, rng: &mut Sample
     for light in &scene.lights {
         if let Some((l, dist, irradiance)) = arriving(light, surf.p)
             && l.dot(surf.ng) > 0.0
-            && !blocked(scene, surf, l, dist)
         {
-            sum += sh.program.eval(surf.n, v, l).color * irradiance;
+            let (shadow_l, shadow_dist) = toward_size(light, surf.p, (l, dist), rng);
+            if shadow_l.dot(surf.ng) > 0.0 && !blocked(scene, surf, shadow_l, shadow_dist) {
+                sum += sh.program.eval(surf.n, v, l).color * irradiance;
+            }
         }
     }
     if let Some(env) = &scene.environment {
@@ -322,6 +324,49 @@ fn direct(scene: &Scene, surf: &Surface, sh: &Shading, v: Vec3, rng: &mut Sample
     sum
 }
 
+/// The shadow ray for a light with a size (M4 4.7d): a direction uniform by solid angle in the cone
+/// the sun's disc or the light's sphere subtends, and the distance to the sphere's near surface
+/// along it; `centre` (direction, distance) unchanged for a hard light or from inside the sphere.
+/// Draws random numbers only for a sized light, so hard lights keep their sample streams.
+fn toward_size(light: &Light, p: Vec3, centre: (Vec3, f32), rng: &mut SampleStream) -> (Vec3, f32) {
+    let (l, dist) = centre;
+    let (cos_max, radius) = match *light {
+        Light::Sun { angular_radius, .. } if angular_radius > 0.0 => (angular_radius.cos(), 0.0),
+        Light::Point {
+            radius, position, ..
+        }
+        | Light::Spot {
+            radius, position, ..
+        } if radius > 0.0 && position.distance(p) > radius => {
+            let s = radius / dist;
+            ((1.0 - s * s).sqrt(), radius)
+        }
+        _ => return centre,
+    };
+    let (u, w) = (rng.next_f32(), rng.next_f32());
+    let cos_t = 1.0 - u * (1.0 - cos_max);
+    let sin_t = (1.0 - cos_t * cos_t).max(0.0).sqrt();
+    let phi = std::f32::consts::TAU * w;
+    let (t, b) = orthonormal(l);
+    let dir = (t * (phi.cos() * sin_t) + b * (phi.sin() * sin_t) + l * cos_t).normalize();
+    let reach = match dist.is_finite() {
+        true => {
+            dist * cos_t
+                - (radius * radius - dist * dist * sin_t * sin_t)
+                    .max(0.0)
+                    .sqrt()
+        }
+        false => f32::INFINITY,
+    };
+    (dir, reach)
+}
+
+/// Two unit vectors perpendicular to `n` and to each other.
+fn orthonormal(n: Vec3) -> (Vec3, Vec3) {
+    let t = n.any_orthonormal_vector();
+    (t, n.cross(t))
+}
+
 /// Direction to the light, distance, and irradiance it delivers (perpendicular to `l`).
 fn arriving(light: &Light, p: Vec3) -> Option<(Vec3, f32, Vec3)> {
     match *light {
@@ -329,6 +374,7 @@ fn arriving(light: &Light, p: Vec3) -> Option<(Vec3, f32, Vec3)> {
             position,
             intensity,
             range,
+            ..
         } => {
             let to = position - p;
             let d2 = to.length_squared();
@@ -341,6 +387,7 @@ fn arriving(light: &Light, p: Vec3) -> Option<(Vec3, f32, Vec3)> {
             intensity,
             range,
             cone,
+            ..
         } => {
             let to = position - p;
             let d2 = to.length_squared();
@@ -352,6 +399,7 @@ fn arriving(light: &Light, p: Vec3) -> Option<(Vec3, f32, Vec3)> {
         Light::Sun {
             travel,
             illuminance,
+            ..
         } => Some((-travel, f32::INFINITY, illuminance)),
     }
 }

@@ -36,6 +36,10 @@ export interface SpotLight {
    * Shadows on virtual shadow maps (M4 4.7c); `None`: unshadowed (the default).
    */
   shadows?: null | LocalShadowSettings;
+  /**
+   * Radius of the emitting sphere in metres (0: a point; softens shadows, M4 4.7d).
+   */
+  source_radius?: number;
 }
 /**
  * Shadow settings of a point or spot light (M4 4.7c; `None` on the light: unshadowed).

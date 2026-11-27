@@ -115,6 +115,10 @@ pub struct DirectionalLight {
     pub illuminance_lux: f32,
     /// Cascaded shadows (off when absent; only the first directional light casts them).
     pub shadows: Option<crate::CascadeSettings>,
+    /// Angular radius of the sun's disc in radians (0: a hard sun; the real sun ≈ 0.0047; M4 4.7d).
+    #[serde(default)]
+    #[reflect(range(min = 0.0, max = 0.2))]
+    pub angular_radius: f32,
 }
 
 impl Default for DirectionalLight {
@@ -123,6 +127,7 @@ impl Default for DirectionalLight {
             color: [1.0; 3],
             illuminance_lux: 100_000.0,
             shadows: None,
+            angular_radius: 0.0,
         }
     }
 }
@@ -143,6 +148,9 @@ pub struct PointLight {
     pub range: f32,
     /// Shadows on virtual shadow maps (M4 4.7c); `None`: unshadowed (the default).
     pub shadows: Option<crate::LocalShadowSettings>,
+    /// Radius of the emitting sphere in metres (0: a point; softens shadows, M4 4.7d).
+    #[reflect(range(min = 0.0, max = 5.0))]
+    pub source_radius: f32,
 }
 
 impl Default for PointLight {
@@ -152,6 +160,7 @@ impl Default for PointLight {
             intensity_lumens: 800.0,
             range: 10.0,
             shadows: None,
+            source_radius: 0.0,
         }
     }
 }
@@ -178,6 +187,9 @@ pub struct SpotLight {
     pub outer_angle: f32,
     /// Shadows on virtual shadow maps (M4 4.7c); `None`: unshadowed (the default).
     pub shadows: Option<crate::LocalShadowSettings>,
+    /// Radius of the emitting sphere in metres (0: a point; softens shadows, M4 4.7d).
+    #[reflect(range(min = 0.0, max = 5.0))]
+    pub source_radius: f32,
 }
 
 impl Default for SpotLight {
@@ -189,6 +201,7 @@ impl Default for SpotLight {
             inner_angle: 0.3,
             outer_angle: 0.5,
             shadows: None,
+            source_radius: 0.0,
         }
     }
 }

@@ -161,6 +161,7 @@ pub fn crowd(n: u32) -> (World, MemoryAssets) {
         color: [1.0; 3],
         illuminance_lux: 20_000.0,
         shadows: Some(CascadeSettings::default()),
+        ..Default::default()
     };
     world.insert(sun, light).unwrap();
     (world, assets)

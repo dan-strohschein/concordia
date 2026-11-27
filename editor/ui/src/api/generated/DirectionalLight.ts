@@ -10,6 +10,10 @@ export type PcfKernel = "X3" | "X5";
  */
 export interface DirectionalLight {
   /**
+   * Angular radius of the sun's disc in radians (0: a hard sun; the real sun ≈ 0.0047; M4 4.7d).
+   */
+  angular_radius?: number;
+  /**
    * Linear color.
    *
    * @minItems 3

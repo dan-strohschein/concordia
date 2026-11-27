@@ -88,3 +88,30 @@ fn local_shadow_settings_default_to_none_and_roundtrip() {
         serde_json::from_value(serde_json::json!({ "pcf": "X5" })).unwrap();
     assert_eq!((partial.pcf, partial.depth_bias), (PcfKernel::X5, 1.0));
 }
+
+/// Light sizes (M4 4.7d): zero unless written (today's hard lights), and they round-trip.
+#[test]
+fn light_sizes_default_to_zero_and_roundtrip() {
+    use concordia_render_types::{DirectionalLight, PointLight, SpotLight};
+    assert_eq!(DirectionalLight::default().angular_radius, 0.0);
+    assert_eq!(PointLight::default().source_radius, 0.0);
+    assert_eq!(SpotLight::default().source_radius, 0.0);
+    let old: DirectionalLight =
+        serde_json::from_value(serde_json::json!({ "illuminance_lux": 1000.0 })).unwrap();
+    assert_eq!(old.angular_radius, 0.0, "existing scenes load unchanged");
+    let sun = DirectionalLight {
+        angular_radius: 0.0047,
+        ..DirectionalLight::default()
+    };
+    let text = serde_json::to_value(&sun).unwrap();
+    assert_eq!(
+        serde_json::from_value::<DirectionalLight>(text).unwrap(),
+        sun
+    );
+    let point = PointLight {
+        source_radius: 0.1,
+        ..PointLight::default()
+    };
+    let text = serde_json::to_value(&point).unwrap();
+    assert_eq!(serde_json::from_value::<PointLight>(text).unwrap(), point);
+}

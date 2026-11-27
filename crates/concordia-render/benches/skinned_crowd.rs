@@ -158,6 +158,7 @@ fn crowd(skinned: bool) -> (World, MemoryAssets) {
                 color: [1.0; 3],
                 illuminance_lux: 20_000.0,
                 shadows: Some(CascadeSettings::default()),
+                ..Default::default()
             },
         )
         .unwrap();

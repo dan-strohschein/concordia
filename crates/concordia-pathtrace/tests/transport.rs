@@ -303,6 +303,7 @@ fn punctual_lights(name: &str, backend: &Backend) {
         color: [1.0, 0.9, 0.8],
         illuminance_lux: 1000.0,
         shadows: None,
+        ..Default::default()
     };
     let travel = Vec3::new(0.0, -1.0, -0.3).normalize();
     let got = direct_only(backend, Vec3::ZERO, |b| b.sun(travel, &sun));
@@ -633,5 +634,118 @@ fn gpu_and_cpu_agree_on_layered_materials() {
                 "{alpha_mode:?}: gpu {gpu_image} vs cpu {cpu}"
             );
         }
+    }
+}
+
+/// A light with a vanishing size delivers the delta light's direct light (M4 4.7d): a point
+/// light, a spot light and the sun, each with a radius of 10⁻⁴, on both backends.
+#[test]
+fn pathtrace_area_lights_converge_to_delta_as_radius_shrinks() {
+    for (name, backend) in backends() {
+        let at = Vec3::new(0.0, 2.0, 0.0);
+        let point = |r: f32| PointLight {
+            intensity_lumens: 800.0,
+            range: 10.0,
+            source_radius: r,
+            ..Default::default()
+        };
+        let delta = direct_only(&backend, Vec3::ZERO, |b| b.point_light(at, &point(0.0)));
+        let small = direct_only(&backend, Vec3::ZERO, |b| b.point_light(at, &point(1e-4)));
+        close(small, delta, &format!("{name}: point"));
+        let spot = |r: f32| SpotLight {
+            intensity_lumens: 800.0,
+            range: 10.0,
+            source_radius: r,
+            ..Default::default()
+        };
+        let delta = direct_only(&backend, Vec3::ZERO, |b| {
+            b.spot_light(at, Vec3::NEG_Y, &spot(0.0))
+        });
+        let small = direct_only(&backend, Vec3::ZERO, |b| {
+            b.spot_light(at, Vec3::NEG_Y, &spot(1e-4))
+        });
+        close(small, delta, &format!("{name}: spot"));
+        let sun = |r: f32| DirectionalLight {
+            illuminance_lux: 1000.0,
+            angular_radius: r,
+            ..Default::default()
+        };
+        let travel = Vec3::new(0.0, -1.0, -0.3).normalize();
+        let delta = direct_only(&backend, Vec3::ZERO, |b| b.sun(travel, &sun(0.0)));
+        let small = direct_only(&backend, Vec3::ZERO, |b| b.sun(travel, &sun(1e-4)));
+        close(small, delta, &format!("{name}: sun"));
+    }
+}
+
+/// A row of radiance across a soft shadow's edge: a white plane under a large board, lit by the
+/// sun of `angular_radius` straight down; the camera looks down on the board's edge from below it.
+fn shadow_edge(backend: &Backend, angular_radius: f32) -> Vec<f32> {
+    let mut b = SceneBuilder::new();
+    let ground = b.mesh(&quad(100.0)).unwrap();
+    let mat = b.material(&material(white_lambert())).unwrap();
+    b.instance(ground, Mat4::IDENTITY, mat);
+    // The board: x < 0, 2 m up, facing down and up (a thin box).
+    let board = b
+        .mesh(&concordia_assets::shapes::cube([10.0, 0.02, 10.0]))
+        .unwrap();
+    b.instance(
+        board,
+        Mat4::from_translation(Vec3::new(-5.0, 2.0, 0.0)),
+        mat,
+    );
+    let sun = DirectionalLight {
+        illuminance_lux: 1000.0,
+        angular_radius,
+        ..Default::default()
+    };
+    b.sun(Vec3::NEG_Y, &sun);
+    // Under the board edge, looking up at the ground isn't possible; look at the ground from a
+    // camera between ground and board, aimed down.
+    let (world, camera) = ortho(Vec3::ZERO, Vec3::new(0.0, 0.2, 0.0002), 0.01);
+    b.camera(world, &camera);
+    let s = Settings {
+        width: 64,
+        height: 1,
+        ..settings(64, 256, 1)
+    };
+    let image = render(&b.build().unwrap(), &s, backend).unwrap();
+    image.pixels.iter().map(|p| p[1]).collect()
+}
+
+/// How many of `row`'s pixels are in the penumbra (between 5 % and 95 % of the lit value).
+fn penumbra(row: &[f32]) -> usize {
+    let lit = row.iter().copied().fold(0.0f32, f32::max);
+    row.iter()
+        .filter(|v| **v > 0.05 * lit && **v < 0.95 * lit)
+        .count()
+}
+
+/// A bigger light, a softer shadow (M4 4.7d): the penumbra across the board's edge widens with the
+/// sun's angular radius on both backends, and a hard sun has (almost) none.
+#[test]
+fn area_light_soft_shadow_widens_with_radius() {
+    for (name, backend) in backends() {
+        let hard = penumbra(&shadow_edge(&backend, 0.0));
+        let soft = penumbra(&shadow_edge(&backend, 0.03));
+        let softer = penumbra(&shadow_edge(&backend, 0.08));
+        assert!(hard <= 2, "{name}: hard sun penumbra {hard}");
+        assert!(
+            soft > hard && softer > soft,
+            "{name}: {hard} {soft} {softer}"
+        );
+    }
+}
+
+/// The two backends agree on area lights (M4 4.7d): the soft edge's row matches within noise.
+#[test]
+fn pathtrace_area_lights_match_on_both_backends() {
+    let all = backends();
+    let [(_, cpu), (_, gpu)] = &all[..] else {
+        return;
+    };
+    let (a, b) = (shadow_edge(cpu, 0.05), shadow_edge(gpu, 0.05));
+    let lit = a.iter().copied().fold(0.0f32, f32::max);
+    for (i, (x, y)) in a.iter().zip(&b).enumerate() {
+        assert!((x - y).abs() <= 0.08 * lit, "pixel {i}: cpu {x} gpu {y}");
     }
 }

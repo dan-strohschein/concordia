@@ -72,6 +72,7 @@ fn sun(s: &mut Scene, direction: Vec3) {
                 color: [1.0; 3],
                 illuminance_lux: 4.0,
                 shadows: Some(CascadeSettings::default()),
+                ..Default::default()
             },
         )
         .unwrap();

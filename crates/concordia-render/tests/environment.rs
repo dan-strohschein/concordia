@@ -109,6 +109,7 @@ fn ibl_lights_the_side_the_sun_does_not_reach() {
                 color: [1.0; 3],
                 illuminance_lux: 3.0,
                 shadows: Some(CascadeSettings::default()),
+                ..Default::default()
             },
         )
         .unwrap();
