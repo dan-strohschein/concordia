@@ -113,3 +113,148 @@ pub fn local_mip(footprint: f32, distance: f32, fov: f32, bias: f32) -> u32 {
         false => 0,
     }
 }
+
+/// A selected light as its slot holds it (M4 4.7c).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SlotLight {
+    /// World position.
+    pub position: Vec3,
+    /// Travel direction (spots).
+    pub direction: Vec3,
+    /// Range (the maps' far plane).
+    pub range: f32,
+    /// A spot's outer half-angle (`None`: a point light).
+    pub spot: Option<f32>,
+    /// Its shadow settings.
+    pub settings: concordia_render_types::LocalShadowSettings,
+}
+
+impl SlotLight {
+    /// Its maps: one for a spot that fits [`MAX_SPOT_FOV`], else six cube faces.
+    pub fn maps(&self) -> Vec<LocalMap> {
+        match self
+            .spot
+            .and_then(|outer| spot_map(self.position, self.direction, outer, self.range))
+        {
+            Some(m) => vec![m],
+            None => cube_faces(self.position, self.range).to_vec(),
+        }
+    }
+}
+
+/// The locals buffer (`VsmLocal` in `vsm.slang`): a header row (slots, first local depth view,
+/// first local table entry, 0), then four rows per slot (position and range; direction and the
+/// cosine of the outer angle; kind, first map, field of view bits, PCF radius; depth and normal
+/// bias). Empty slots have kind 0.
+pub fn local_rows(slots: &[Option<SlotLight>], view_base: u32, entry_base: u32) -> Vec<u8> {
+    let mut out = Vec::with_capacity(16 * (1 + 4 * slots.len()));
+    let mut row = |w: [u32; 4]| w.iter().for_each(|x| out.extend(x.to_le_bytes()));
+    row([slots.len() as u32, view_base, entry_base, 0]);
+    for (s, slot) in slots.iter().enumerate() {
+        let Some(l) = slot else {
+            (0..4).for_each(|_| row([0; 4]));
+            continue;
+        };
+        let maps = l.maps();
+        let (kind, cos) = match (l.spot, maps.len()) {
+            (Some(outer), 1) => (1, outer.cos()),
+            _ => (2, -1.0f32),
+        };
+        let f = |v: f32| v.to_bits();
+        row([
+            f(l.position.x),
+            f(l.position.y),
+            f(l.position.z),
+            f(l.range),
+        ]);
+        row([f(l.direction.x), f(l.direction.y), f(l.direction.z), f(cos)]);
+        row([
+            kind,
+            s as u32 * FACES,
+            f(maps[0].fov),
+            l.settings.pcf.radius(),
+        ]);
+        row([f(l.settings.depth_bias), f(l.settings.normal_bias), 0, 0]);
+    }
+    out
+}
+
+/// Every slot's map views, slot by slot, six per slot (unused ones the identity).
+pub fn local_views(slots: &[Option<SlotLight>]) -> Vec<Mat4> {
+    let mut out = Vec::with_capacity(slots.len() * FACES as usize);
+    for slot in slots {
+        let maps = slot.as_ref().map(SlotLight::maps).unwrap_or_default();
+        (0..FACES as usize)
+            .for_each(|f| out.push(maps.get(f).map_or(Mat4::IDENTITY, |m| m.view_proj)));
+    }
+    out
+}
+
+/// One frame's local slots: each slot's light (or none) and the slots whose pages must go
+/// (their light changed, left or arrived).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct LocalFrame {
+    pub(crate) slots: Vec<Option<SlotLight>>,
+    /// Each slot's light's entity.
+    pub(crate) entities: Vec<Option<concordia_core::id::EntityId>>,
+    /// Slot indices to release at the frame's start.
+    pub(crate) released: Vec<u32>,
+    /// Shadowed lights beyond the slots (shaded unshadowed).
+    pub(crate) dropped: usize,
+}
+
+/// The selected local lights across frames: the selection (its slot count follows the shadowed
+/// lights present, rounded up to a power of two and capped) and each slot's light last frame.
+#[derive(Debug, Default)]
+pub(crate) struct LocalSlots {
+    selection: Option<crate::shadow_select::LocalSelection<concordia_core::id::EntityId>>,
+    last: Vec<Option<SlotLight>>,
+}
+
+impl LocalSlots {
+    /// Selects from `candidates` (entity, light, importance) into at most `max` slots.
+    pub(crate) fn update(
+        &mut self,
+        max: u8,
+        candidates: &[(concordia_core::id::EntityId, SlotLight, f32)],
+    ) -> LocalFrame {
+        let want = match candidates.len() {
+            0 => 0,
+            n => n.next_power_of_two().min(usize::from(max)),
+        };
+        if self.last.len() != want {
+            self.selection = (want > 0).then(|| crate::shadow_select::LocalSelection::new(want));
+            self.last = vec![None; want];
+        }
+        let Some(selection) = &mut self.selection else {
+            return LocalFrame {
+                slots: Vec::new(),
+                entities: Vec::new(),
+                released: Vec::new(),
+                dropped: candidates.len(),
+            };
+        };
+        let ranked: Vec<_> = candidates.iter().map(|(e, _, i)| (*e, *i)).collect();
+        let picked = selection.select(&ranked);
+        let slots: Vec<Option<SlotLight>> = (0..want)
+            .map(|k| {
+                let e = selection.key(k)?;
+                candidates
+                    .iter()
+                    .find(|(c, _, _)| c == e)
+                    .map(|(_, l, _)| *l)
+            })
+            .collect();
+        let entities = (0..want).map(|k| selection.key(k).copied()).collect();
+        let released = (0..want as u32)
+            .filter(|&k| self.last[k as usize] != slots[k as usize])
+            .collect();
+        self.last.clone_from(&slots);
+        LocalFrame {
+            slots,
+            entities,
+            released,
+            dropped: picked.dropped,
+        }
+    }
+}

@@ -23,8 +23,8 @@ const LEVEL_ENTRIES: u32 = PAGES_PER_SIDE * PAGES_PER_SIDE;
 const HISTOGRAM_WORDS: u32 = 256 + 4;
 /// Words of the counts buffer: requested, resident, starved, the clear's dispatch (3 words), new,
 /// drawn, evicted, kept, pool used, the composite's dispatch (3 words), dynamic pages, dynamic
-/// pages without room (drawn into the static page).
-pub(crate) const COUNT_WORDS: u32 = 16;
+/// pages without room (drawn into the static page), local pages requested and resident (4.7c).
+pub(crate) const COUNT_WORDS: u32 = 18;
 /// Marks a physical page's owner word as a dynamic page (freed at the next frame's start; mirrored
 /// by `VSM_DYNAMIC_OWNER`).
 #[cfg(test)]
@@ -37,6 +37,7 @@ pub(crate) struct VsmPipelines {
     pub(crate) age: Pipeline,
     pub(crate) invalidate: Pipeline,
     pub(crate) release_dynamic: Pipeline,
+    pub(crate) release_range: Pipeline,
     pub(crate) entry_flags: Pipeline,
     pub(crate) dynamic_allocate: Pipeline,
     pub(crate) composite: Pipeline,
@@ -67,6 +68,7 @@ impl VsmPipelines {
             age: kernel("vsm_age")?,
             invalidate: kernel("vsm_flag_spheres")?,
             release_dynamic: kernel("vsm_release_dynamic")?,
+            release_range: kernel("vsm_release_range")?,
             entry_flags: kernel("vsm_entry_flags")?,
             dynamic_allocate: kernel("vsm_dynamic_allocate")?,
             composite: kernel("vsm_composite")?,
@@ -139,14 +141,14 @@ pub(crate) struct PageStore {
 }
 
 impl PageStore {
-    /// The table and owner buffers for `levels` levels over `pool` pages, and whether they are new
-    /// (their contents undefined until cleared).
+    /// The table (`entries` entries: the sun's levels, then the local maps) and owner buffers over
+    /// `pool` pages, and whether they are new (their contents undefined until cleared).
     pub(crate) fn ensure(
         &mut self,
         device: &dyn Device,
-        (levels, pool): (u32, u32),
+        (entries, pool): (u32, u32),
     ) -> Result<((Buffer, Buffer), bool), RenderError> {
-        if let (Some(b), true) = (self.buffers, self.shape == Some((levels, pool))) {
+        if let (Some(b), true) = (self.buffers, self.shape == Some((entries, pool))) {
             return Ok((b, false));
         }
         self.destroy(device);
@@ -158,10 +160,10 @@ impl PageStore {
                 label: label.into(),
             })
         };
-        let table = make(levels * LEVEL_ENTRIES, "vsm table")?;
+        let table = make(entries, "vsm table")?;
         let pages = make(pool, "vsm page owners")?;
         self.buffers = Some((table, pages));
-        self.shape = Some((levels, pool));
+        self.shape = Some((entries, pool));
         Ok(((table, pages), true))
     }
 
@@ -188,9 +190,11 @@ fn page_usage() -> BufferUsage {
 pub(crate) struct PageWork {
     pipelines: VsmPipelines,
     levels: u32,
+    /// Table entries of the local maps (after the sun's levels; 4.7c).
+    local_entries: u32,
     pool: u32,
     keep_frames: u32,
-    /// The page table (levels × 128² entries; persistent).
+    /// The page table (levels × 128² entries, then the local maps; persistent).
     pub(crate) table: Buffer,
     /// Physical page → its table entry + 1 (0 free; persistent).
     pub(crate) pages: Buffer,
@@ -287,6 +291,8 @@ fn dispatch(count: u32) -> Command {
 pub(crate) struct WorkShape {
     pub(crate) store: (Buffer, Buffer),
     pub(crate) levels: u32,
+    /// Table entries of the local maps (4.7c).
+    pub(crate) local_entries: u32,
     pub(crate) pool: u32,
     pub(crate) keep_frames: u32,
 }
@@ -302,7 +308,7 @@ impl PageWork {
         keep: &mut Vec<Buffer>,
     ) -> Result<Self, RenderError> {
         let (levels, pool) = (shape.levels, shape.pool);
-        let entries = levels * LEVEL_ENTRIES;
+        let entries = levels * LEVEL_ENTRIES + shape.local_entries;
         let mut make = |words: u32, label: &str| -> Result<Buffer, RenderError> {
             let b = storage(device, up, words, label)?;
             keep.push(b);
@@ -364,6 +370,7 @@ impl PageWork {
         Ok(Self {
             pipelines,
             levels,
+            local_entries: shape.local_entries,
             pool,
             keep_frames: shape.keep_frames,
             table,
@@ -387,15 +394,28 @@ impl PageWork {
         })
     }
 
+    /// Table entries: the sun's levels, then the local maps.
     fn entries(&self) -> u32 {
-        self.levels * LEVEL_ENTRIES
+        self.levels * LEVEL_ENTRIES + self.local_entries
     }
 
-    /// Starts the frame: clears the store when `reset`, then ages the kept pages and releases slots
-    /// scrolled out of their level (origins in parameter block `params`).
-    pub(crate) fn begin(&self, reset: bool, params: u32) -> Vec<Command> {
+    /// Starts the frame: clears the store when `reset`, releases the table ranges in `releases`
+    /// (first entry, count: local lights that changed, 4.7c), then ages the kept pages and releases
+    /// slots scrolled out of their level (origins in parameter block `params`).
+    pub(crate) fn begin(&self, reset: bool, params: u32, releases: &[(u32, u32)]) -> Vec<Command> {
         let (p, i) = (&self.pipelines, &self.index);
         let mut out = Vec::new();
+        for &(first, count) in releases.iter().filter(|r| r.1 > 0 && !reset) {
+            debug_assert!(first + count <= self.entries(), "release {first}+{count}");
+            out.extend([
+                Command::SetPipeline(p.release_range),
+                words([i.table, i.pages, first, count]),
+                dispatch(count),
+            ]);
+        }
+        if !releases.is_empty() {
+            out.push(compute_barrier(&[self.table, self.pages]));
+        }
         if reset {
             out.extend([
                 Command::SetPipeline(p.zero),
@@ -412,7 +432,7 @@ impl PageWork {
             dispatch(self.pool),
             compute_barrier(&[self.pages]),
             Command::SetPipeline(p.age),
-            words([i.table, i.pages, params, self.levels]),
+            words([i.table, i.pages, params, self.levels, self.entries()]),
             dispatch(self.entries()),
             compute_barrier(&[self.table, self.pages]),
         ]);
@@ -450,7 +470,7 @@ impl PageWork {
     fn entry_flags(&self, (buffer, index): (Buffer, u32), mask: u32) -> Vec<Command> {
         vec![
             Command::SetPipeline(self.pipelines.entry_flags),
-            words([self.index.table, index, self.levels, mask]),
+            words([self.index.table, index, self.levels, self.entries(), mask]),
             dispatch(self.entries()),
             compute_barrier(&[buffer]),
         ]
@@ -495,7 +515,7 @@ impl PageWork {
         let (e, n) = (self.entries(), self.pool);
         let mut out = vec![
             Command::SetPipeline(p.flags),
-            words([i.table, i.requests, self.levels]),
+            words([i.table, i.requests, self.levels, e]),
             dispatch(e),
             compute_barrier(&[b.requests]),
         ];
@@ -509,6 +529,7 @@ impl PageWork {
                 i.needs,
                 i.pages,
                 self.levels,
+                e,
                 n,
                 self.keep_frames,
             ]),
@@ -556,6 +577,7 @@ impl PageWork {
                 i.free_list,
                 i.pages,
                 self.levels,
+                e,
             ]),
             dispatch(e),
             compute_barrier(&[self.table, self.pages]),
@@ -584,6 +606,7 @@ impl PageWork {
                 i.dynamic,
                 i.copies,
                 self.levels,
+                e,
                 n,
             ]),
             dispatch(e),
@@ -593,7 +616,7 @@ impl PageWork {
         out.extend_from_slice(self.scans.dirty.commands());
         out.extend([
             Command::SetPipeline(p.draw_list),
-            words([i.table, i.dirty, i.dirty_scan, i.list, self.levels]),
+            words([i.table, i.dirty, i.dirty_scan, i.list, self.levels, e]),
             dispatch(e),
             Command::SetPipeline(p.counts),
             words([
@@ -606,6 +629,7 @@ impl PageWork {
                 i.histogram,
                 i.free_scan,
                 i.mover_scan,
+                self.levels * LEVEL_ENTRIES,
             ]),
             Command::Dispatch { groups: [1, 1, 1] },
             indirect_barrier(&[
@@ -869,6 +893,10 @@ mod tests {
         let s = setup();
         let mut up = Uploads::new();
         let mut keep = Vec::new();
+        let locals = up
+            .buffer(device, &crate::vsm::local::local_rows(&[], 0, 0), "locals")
+            .unwrap();
+        let locals = device.buffer_index(locals).unwrap().0;
         let texels: Vec<u8> = (0..W * H)
             .flat_map(|p| {
                 let b = depth_bits(p).to_le_bytes();
@@ -896,18 +924,22 @@ mod tests {
             chunks: &[],
             inv_view_proj: s.camera.inverse(),
             previous: &origins(&s.clipmap),
-            tables: [0, 0],
+            tables: [0, 0, locals],
+            sun: true,
         });
         let params = up.buffer(device, &params, "params").unwrap();
         let views = up
-            .buffer(device, &depth_views(&s.camera, &s.clipmap), "views")
+            .buffer(device, &depth_views(&s.camera, &s.clipmap, &[]), "views")
             .unwrap();
         let levels = u32::from(s.settings.levels);
         let mut store = PageStore::default();
-        let (store_bufs, _) = store.ensure(device, (levels, 4096)).unwrap();
+        let (store_bufs, _) = store
+            .ensure(device, (levels * LEVEL_ENTRIES, 4096))
+            .unwrap();
         let shape = WorkShape {
             store: store_bufs,
             levels,
+            local_entries: 0,
             pool: 4096,
             keep_frames: 60,
         };
@@ -915,7 +947,7 @@ mod tests {
         up.flush(device).unwrap();
         let index = |b: Buffer| device.buffer_index(b).unwrap().0;
         let depth = device.texture_index(depth).unwrap().0;
-        let mut commands = work.begin(true, index(params));
+        let mut commands = work.begin(true, index(params), &[]);
         commands.extend(work.mark((depth, [W, H]), (index(params), index(views))));
         run_commands(device, commands);
         let table = download(device, work.table, u64::from(levels * LEVEL_ENTRIES) * 4);
@@ -950,6 +982,8 @@ mod tests {
         device: &'d dyn Device,
         store: PageStore,
         levels: u32,
+        /// Local maps' table entries (4.7c).
+        local: u32,
         pool: u32,
         keep_frames: u32,
         clipmap: Clipmap,
@@ -965,6 +999,8 @@ mod tests {
     struct Inputs<'a> {
         stale: &'a [Vec4],
         dynamic: &'a [Vec4],
+        /// Table ranges (first entry, count) released at the frame's start (4.7c).
+        releases: &'a [(u32, u32)],
     }
 
     /// One frame's store and outputs, read back.
@@ -1011,6 +1047,7 @@ mod tests {
                 device,
                 store: PageStore::default(),
                 levels,
+                local: 0,
                 pool,
                 keep_frames,
                 previous: origins(&clipmap),
@@ -1101,14 +1138,24 @@ mod tests {
             };
             let mut up = Uploads::new();
             let mut keep = Vec::new();
-            let (store, fresh) = self.store.ensure(device, (self.levels, self.pool)).unwrap();
+            let (store, fresh) = self
+                .store
+                .ensure(
+                    device,
+                    (self.levels * LEVEL_ENTRIES + self.local, self.pool),
+                )
+                .unwrap();
             let shape = WorkShape {
                 store,
                 levels: self.levels,
+                local_entries: self.local,
                 pool: self.pool,
                 keep_frames: self.keep_frames,
             };
             let work = PageWork::prepare(device, &up, pipelines(device), shape, &mut keep).unwrap();
+            let locals = up
+                .buffer(device, &crate::vsm::local::local_rows(&[], 0, 0), "locals")
+                .unwrap();
             let index = |b: Buffer| device.buffer_index(b).unwrap().0;
             let params = params_rows(&ParamsIn {
                 settings: &settings,
@@ -1119,14 +1166,15 @@ mod tests {
                 chunks: &chunks,
                 inv_view_proj: Mat4::IDENTITY,
                 previous: &self.previous,
-                tables: [index(work.table), index(work.dynamic)],
+                tables: [index(work.table), index(work.dynamic), index(locals)],
+                sun: true,
             });
             self.previous = origins(&self.clipmap);
             let params = up.buffer(device, &params, "params").unwrap();
             let views = up
                 .buffer(
                     device,
-                    &depth_views(&Mat4::IDENTITY, &self.clipmap),
+                    &depth_views(&Mat4::IDENTITY, &self.clipmap, &[]),
                     "views",
                 )
                 .unwrap();
@@ -1145,12 +1193,12 @@ mod tests {
                 .unwrap();
             up.flush(device).unwrap();
             let params = index(params);
-            let mut commands = work.begin(reset || fresh, params);
+            let mut commands = work.begin(reset || fresh, params, inputs.releases);
             commands.extend(
                 work.invalidate((index(spheres), stale.len() as u32), (params, index(views))),
             );
             run_commands(device, commands);
-            let entries = self.levels * LEVEL_ENTRIES;
+            let entries = self.levels * LEVEL_ENTRIES + self.local;
             let mut table = download(device, work.table, u64::from(entries) * 4);
             let flag = PageEntry::new(None, PageFlags::REQUESTED, 0).bits();
             requested.iter().for_each(|e| table[*e as usize] |= flag);
@@ -1211,7 +1259,7 @@ mod tests {
         // composite (0, 1, 1), dynamic, without room
         assert_eq!(
             out.counts,
-            [100, 64, 36, 64, 1, 1, 64, 64, 0, 0, 64, 0, 1, 1, 0, 0]
+            [100, 64, 36, 64, 1, 1, 64, 64, 0, 0, 64, 0, 1, 1, 0, 0, 0, 0]
         );
         for (k, &entry) in alloc_order(&requested).iter().enumerate() {
             let e = out.entry(entry);
@@ -1485,7 +1533,7 @@ mod tests {
         }
         // requested, resident, starved, clear (3), new, drawn, evicted, kept, used, composite (3),
         // dynamic, fallback
-        assert_eq!(out.counts[14..], [under.len() as u32, 0]);
+        assert_eq!(out.counts[14..16], [under.len() as u32, 0]);
         assert_eq!(
             out.counts[11],
             under.len() as u32,
@@ -1557,7 +1605,7 @@ mod tests {
             }
         }
         let fallback = (under.len() - room) as u32;
-        assert_eq!(out.counts[14..], [room as u32, fallback]);
+        assert_eq!(out.counts[14..16], [room as u32, fallback]);
         assert_eq!(out.counts[7], fallback, "fallback pages drawn");
         let next = frames.frame(false, &requested);
         assert_eq!(next.counts[7], fallback, "polluted pages redrawn clean");
@@ -1569,5 +1617,223 @@ mod tests {
             );
             assert!(!flags.contains(PageFlags::POLLUTED));
         }
+    }
+
+    /// The local lights' pages a CPU walk marks over the test depth buffer: for each light whose
+    /// range (and cone) holds the receiver, its map's page at the receiver's mip, widened by the
+    /// PCF footprint and clamped to the map.
+    fn mark_local_reference(
+        s: &Setup,
+        slots: &[Option<crate::vsm::local::SlotLight>],
+    ) -> BTreeSet<u32> {
+        use crate::vsm::local::{LOCAL_TEXELS, cube_face_of, local_mip, map_entry, mip_side};
+        let inv = s.camera.inverse();
+        let base = u32::from(s.settings.levels) * LEVEL_ENTRIES;
+        let mut out = BTreeSet::new();
+        for y in 0..H {
+            for x in 0..W {
+                let depth = half(depth_bits(y * W + x));
+                if depth <= 0.0 {
+                    continue;
+                }
+                let ndc = Vec4::new(
+                    (x as f32 + 0.5) / W as f32 * 2.0 - 1.0,
+                    1.0 - (y as f32 + 0.5) / H as f32 * 2.0,
+                    depth,
+                    1.0,
+                );
+                let h = inv * ndc;
+                let world = h.truncate() / h.w;
+                if world.distance(s.eye) > s.settings.max_distance {
+                    continue;
+                }
+                let footprint = world.distance(s.eye) * s.per_metre;
+                for (k, slot) in slots.iter().enumerate() {
+                    let Some(l) = slot else { continue };
+                    let d = world - l.position;
+                    let dist = d.length();
+                    if dist > l.range || dist <= 0.0 {
+                        continue;
+                    }
+                    let maps = l.maps();
+                    let face = match (l.spot, maps.len()) {
+                        (Some(outer), 1) => {
+                            if (d / dist).dot(l.direction) < outer.cos() {
+                                continue;
+                            }
+                            0
+                        }
+                        _ => cube_face_of(d),
+                    };
+                    let map = k as u32 * 6 + face;
+                    let m = maps[face as usize];
+                    let mip = local_mip(footprint, dist, m.fov, s.settings.resolution_bias);
+                    let clip = m.view_proj * world.extend(1.0);
+                    let n = clip.truncate() / clip.w;
+                    let t = concordia_core::math::Vec2::new(n.x * 0.5 + 0.5, 0.5 - n.y * 0.5)
+                        * (LOCAL_TEXELS >> mip) as f32;
+                    let r = l.settings.pcf.radius() as f32 + 1.0;
+                    let last = mip_side(mip) as i32 - 1;
+                    let lo = ((t - r) / 128.0)
+                        .floor()
+                        .as_ivec2()
+                        .clamp(IVec2::ZERO, IVec2::splat(last));
+                    let hi = ((t + r) / 128.0)
+                        .floor()
+                        .as_ivec2()
+                        .clamp(IVec2::ZERO, IVec2::splat(last));
+                    for py in lo.y..=hi.y {
+                        for px in lo.x..=hi.x {
+                            out.insert(map_entry(base, map, mip, [px as u32, py as u32]));
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// `vsm_mark` also requests the local lights' pages (4.7c): exactly a CPU walk's, for a spot
+    /// light and a point light over the test depth buffer, and nothing for an empty slot.
+    #[test]
+    fn local_marking_requests_only_pages_under_lit_receivers() {
+        use crate::vsm::local::{FACES, MAP_ENTRIES, SlotLight, local_rows, local_views};
+        let Some(device) = test_gpu::device() else {
+            return;
+        };
+        let device = device.as_ref();
+        let s = setup();
+        let slots = [
+            Some(SlotLight {
+                position: Vec3::new(0.0, 2.0, 0.0),
+                direction: Vec3::NEG_Y,
+                range: 30.0,
+                spot: None,
+                settings: Default::default(),
+            }),
+            None,
+            Some(SlotLight {
+                position: Vec3::new(5.0, 8.0, 5.0),
+                direction: (Vec3::ZERO - Vec3::new(5.0, 8.0, 5.0)).normalize(),
+                range: 40.0,
+                spot: Some(0.5),
+                settings: concordia_render_types::LocalShadowSettings {
+                    pcf: concordia_render_types::PcfKernel::X5,
+                    ..Default::default()
+                },
+            }),
+        ];
+        let levels = u32::from(s.settings.levels);
+        let sun = levels * LEVEL_ENTRIES;
+        let local = slots.len() as u32 * FACES * MAP_ENTRIES;
+        let mut up = Uploads::new();
+        let mut keep = Vec::new();
+        let locals = up
+            .buffer(device, &local_rows(&slots, 2 + levels, sun), "locals")
+            .unwrap();
+        let texels: Vec<u8> = (0..W * H)
+            .flat_map(|p| {
+                let b = depth_bits(p).to_le_bytes();
+                [b[0], b[1], 0, 0, 0, 0, 0, 0]
+            })
+            .collect();
+        let depth = up
+            .texture(
+                device,
+                &concordia_assets::TextureData {
+                    width: W,
+                    height: H,
+                    format: concordia_assets::TextureFormat::Rgba16Float,
+                    mips: vec![texels],
+                },
+                "depth",
+            )
+            .unwrap();
+        let mut store = PageStore::default();
+        let (store_bufs, _) = store.ensure(device, (sun + local, 4096)).unwrap();
+        let shape = WorkShape {
+            store: store_bufs,
+            levels,
+            local_entries: local,
+            pool: 4096,
+            keep_frames: 60,
+        };
+        let work = PageWork::prepare(device, &up, pipelines(device), shape, &mut keep).unwrap();
+        let index = |b: Buffer| device.buffer_index(b).unwrap().0;
+        let params = params_rows(&ParamsIn {
+            settings: &s.settings,
+            clipmap: &s.clipmap,
+            eye: s.eye,
+            footprint: Footprint::PerMetre(s.per_metre),
+            pcf_radius: 1,
+            chunks: &[],
+            inv_view_proj: s.camera.inverse(),
+            previous: &origins(&s.clipmap),
+            tables: [index(work.table), index(work.dynamic), index(locals)],
+            sun: true,
+        });
+        let params = up.buffer(device, &params, "params").unwrap();
+        let views = up
+            .buffer(
+                device,
+                &depth_views(&s.camera, &s.clipmap, &local_views(&slots)),
+                "views",
+            )
+            .unwrap();
+        up.flush(device).unwrap();
+        let depth = device.texture_index(depth).unwrap().0;
+        let mut commands = work.begin(true, index(params), &[]);
+        commands.extend(work.mark((depth, [W, H]), (index(params), index(views))));
+        run_commands(device, commands);
+        let table = download(device, work.table, u64::from(sun + local) * 4);
+        let got: BTreeSet<u32> = (sun..sun + local)
+            .filter(|e| {
+                PageEntry::from_bits(table[*e as usize])
+                    .flags()
+                    .contains(PageFlags::REQUESTED)
+            })
+            .collect();
+        let want = mark_local_reference(&s, &slots);
+        assert!(want.len() > 20, "the lights mark something: {}", want.len());
+        assert!(
+            want.iter().any(|e| (e - sun) / MAP_ENTRIES < 6)
+                && want.iter().any(|e| (e - sun) / MAP_ENTRIES == 12),
+            "both lights"
+        );
+        let missing: Vec<_> = want.difference(&got).take(5).collect();
+        let extra: Vec<_> = got.difference(&want).take(5).collect();
+        assert!(
+            missing.is_empty() && extra.is_empty(),
+            "missing {missing:?}, extra {extra:?} of {}",
+            want.len()
+        );
+    }
+
+    /// A local light that changes (or leaves its slot) releases its slot's pages at the next
+    /// frame's start; the other slots and the sun keep theirs.
+    #[test]
+    fn local_light_change_releases_its_pages() {
+        use crate::vsm::local::{FACES, MAP_ENTRIES};
+        let Some(device) = test_gpu::device() else {
+            return;
+        };
+        let mut frames = Frames::new(device.as_ref(), 1, 256, 60);
+        frames.local = 2 * FACES * MAP_ENTRIES;
+        let sun = LEVEL_ENTRIES;
+        let slot = |k: u32| sun + k * FACES * MAP_ENTRIES;
+        let mut requested = spread(0, 10, 1);
+        requested.extend((0..20).map(|i| slot(0) + i * 37));
+        requested.extend((0..20).map(|i| slot(1) + i * 41));
+        frames.frame(true, &requested);
+        let inputs = Inputs {
+            releases: &[(slot(0), FACES * MAP_ENTRIES)],
+            ..Inputs::default()
+        };
+        let out = frames.frame_with(false, &[], inputs);
+        for &e in &requested {
+            let held = out.entry(e).physical().is_some();
+            assert_eq!(held, !(slot(0)..slot(1)).contains(&e), "entry {e}");
+        }
+        assert_eq!(out.counts[9], 30, "the sun's 10 and slot 1's 20 kept");
     }
 }

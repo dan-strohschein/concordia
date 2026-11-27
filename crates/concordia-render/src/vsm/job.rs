@@ -33,6 +33,10 @@ pub(crate) struct JobIn<'a> {
     pub(crate) view: u64,
     /// Every shadow caster this frame, by key (the ledger compares them with last frame's).
     pub(crate) states: Vec<(crate::visibility::VisKey, CasterInput)>,
+    /// Shadowed spot and point lights in view: entity, light, importance (4.7c).
+    pub(crate) locals: Vec<(concordia_core::id::EntityId, super::local::SlotLight, f32)>,
+    /// Whether the sun casts (else only local lights mark pages).
+    pub(crate) sun: bool,
 }
 
 /// What virtual shadow maps keep between frames: the pool, the page store, the depth range, each
@@ -45,6 +49,7 @@ pub(crate) struct VsmResources {
     pub(crate) cache: CacheState,
     origins: Vec<IVec2>,
     ledger: CasterLedger<crate::visibility::VisKey>,
+    locals: super::local::LocalSlots,
 }
 
 impl VsmResources {
@@ -81,6 +86,13 @@ pub(crate) struct VsmJob {
     pub(crate) dynamic: std::collections::BTreeSet<crate::visibility::VisKey>,
     /// `Static`-hinted casters that moved this frame.
     pub(crate) static_hint_moved: Vec<crate::visibility::VisKey>,
+    /// Table ranges (first entry, count) released at the frame's start: local lights that changed
+    /// or left their slot (4.7c).
+    pub(crate) releases: Vec<(u32, u32)>,
+    /// Each slot's light (4.7c; its rows carry the slot).
+    pub(crate) local_lights: Vec<Option<concordia_core::id::EntityId>>,
+    /// Shadowed local lights beyond the slots.
+    pub(crate) local_dropped: usize,
 }
 
 impl VsmJob {
@@ -101,9 +113,13 @@ impl VsmJob {
         let range = stable_depth_range(light_z_range(&light_view, input.casters), res.depth_range);
         res.depth_range = Some(range);
         let clipmap = Clipmap::fit(input.light_dir, input.eye, s.levels, range);
+        let local = res.locals.update(s.max_local_lights, &input.locals);
+        let map_entries = super::local::FACES * super::local::MAP_ENTRIES;
+        let sun_entries = u32::from(s.levels) * super::PAGES_PER_SIDE * super::PAGES_PER_SIDE;
+        let local_entries = local.slots.len() as u32 * map_entries;
         let (store, fresh) = res
             .store
-            .ensure(device, (u32::from(s.levels), s.pool_pages))?;
+            .ensure(device, (sun_entries + local_entries, s.pool_pages))?;
         if fresh {
             res.cache.reset(CacheReset::First);
         }
@@ -159,11 +175,15 @@ impl VsmJob {
             WorkShape {
                 store,
                 levels: u32::from(s.levels),
+                local_entries,
                 pool: s.pool_pages,
                 keep_frames: u32::from(s.keep_frames),
             },
             keep,
         )?;
+        let rows = super::local::local_rows(&local.slots, 2 + u32::from(s.levels), sun_entries);
+        let locals = up.buffer(device, &rows, "vsm locals")?;
+        keep.push(locals);
         let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
         let params = params_rows(&ParamsIn {
             settings: s,
@@ -174,10 +194,16 @@ impl VsmJob {
             chunks: &indices,
             inv_view_proj: input.camera.inverse(),
             previous: &previous,
-            tables: [index(work.table)?, index(work.dynamic)?],
+            tables: [index(work.table)?, index(work.dynamic)?, index(locals)?],
+            sun: input.sun,
         });
         let params = up.buffer(device, &params, "vsm params")?;
-        let views = up.buffer(device, &depth_views(&input.camera, &clipmap), "depth views")?;
+        let local_views = super::local::local_views(&local.slots);
+        let views = up.buffer(
+            device,
+            &depth_views(&input.camera, &clipmap, &local_views),
+            "depth views",
+        )?;
         keep.extend([params, views]);
         Ok(Self {
             clipmap,
@@ -190,6 +216,13 @@ impl VsmJob {
             movers: (index(movers_buf)?, verdict.dynamic_spheres.len() as u32),
             dynamic: verdict.dynamic.into_iter().collect(),
             static_hint_moved: verdict.static_hint_moved,
+            releases: local
+                .released
+                .iter()
+                .map(|k| (sun_entries + k * map_entries, map_entries))
+                .collect(),
+            local_lights: local.entities,
+            local_dropped: local.dropped,
         })
     }
 }
@@ -215,7 +248,9 @@ pub(crate) fn add_page_passes(
     (depth, size): (GraphTexture, [u32; 2]),
     device: Arc<dyn Device>,
 ) {
-    let begin = job.work.begin(job.reset.is_some(), job.params);
+    let begin = job
+        .work
+        .begin(job.reset.is_some(), job.params, &job.releases);
     graph.add_pass_recorded(
         "vsm.age",
         |p| p.side_effect(),

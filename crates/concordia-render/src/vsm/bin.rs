@@ -645,6 +645,9 @@ mod tests {
             let words = |w: &[u32]| -> Vec<u8> { w.iter().flat_map(|w| w.to_le_bytes()).collect() };
             let table = up.buffer(device, &words(self.table), "table").unwrap();
             let dynamic = up.buffer(device, &words(self.dynamic), "dynamic").unwrap();
+            let locals = up
+                .buffer(device, &crate::vsm::local::local_rows(&[], 0, 0), "locals")
+                .unwrap();
             let index = |b: Buffer| device.buffer_index(b).unwrap().0;
             let origins: Vec<IVec2> = self
                 .clipmap
@@ -661,13 +664,14 @@ mod tests {
                 chunks: &[],
                 inv_view_proj: Default::default(),
                 previous: &origins,
-                tables: [index(table), index(dynamic)],
+                tables: [index(table), index(dynamic), index(locals)],
+                sun: true,
             });
             let params = up.buffer(device, &params, "params").unwrap();
             let views = up
                 .buffer(
                     device,
-                    &depth_views(&Default::default(), self.clipmap),
+                    &depth_views(&Default::default(), self.clipmap, &[]),
                     "views",
                 )
                 .unwrap();

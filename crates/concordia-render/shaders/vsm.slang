@@ -44,7 +44,8 @@ public struct VsmParams {
     public float4 eye;
     public uint4 chunks[4];
     public float4 inv_view_proj[4];
-    // the page table, the dynamic table (dynamic physical page + 1 per entry), 0, 0
+    // the page table, the dynamic table (dynamic physical page + 1 per entry), the local lights'
+    // rows (`vsm::local_rows`), 1 when the sun casts (its pages are marked)
     public uint4 tables;
 };
 
@@ -244,3 +245,79 @@ public uint* vsm_word(VsmParams* p, uint page, uint2 t) {
 
 // The physical page + 1 of an entry (0: none).
 public uint vsm_physical(uint entry) { return entry & 0xFFFFu; }
+
+// Local lights (M4 4.7c; `vsm::local`): per slot one spot map or six cube faces of 8192² texels in
+// 64² pages, mips down to one page, in the table after the sun's levels, coarsest mip first.
+public static const uint VSM_LOCAL_TEXELS = 8192;
+public static const uint VSM_LOCAL_PAGES = 64;
+public static const uint VSM_LOCAL_MIPS = 7;
+public static const uint VSM_MAP_ENTRIES = 5461;
+public static const uint VSM_FACES = 6;
+
+// One shadowed local light's slot (`vsm::local_rows`): position and range; direction and the cosine
+// of the outer angle; (kind: 0 empty, 1 spot, 2 point; first map; full field of view as float
+// bits; PCF radius); (depth bias, normal bias, 0, 0) in texels.
+public struct VsmLocal {
+    public float4 position_range;
+    public float4 direction_cos;
+    public uint4 info;
+    public float4 bias;
+};
+
+// (slots, first local depth view, first local table entry, 0): the locals buffer's header row.
+public uint4 vsm_local_header(VsmParams* p) { return ((uint4*)g_buffers.ptr[p.tables.z])[0]; }
+
+// Slot `s`'s light.
+public VsmLocal vsm_local(VsmParams* p, uint s) { return ((VsmLocal*)(((uint4*)g_buffers.ptr[p.tables.z]) + 1))[s]; }
+
+// Pages per side of `mip`.
+public uint vsm_mip_side(uint mip) { return VSM_LOCAL_PAGES >> mip; }
+
+// Where `mip` starts within a map (coarsest first; `mip_offset`).
+public uint vsm_mip_offset(uint mip) {
+    uint o = 0;
+    for (uint m = mip + 1; m < VSM_LOCAL_MIPS; m++) { uint s = VSM_LOCAL_PAGES >> m; o += s * s; }
+    return o;
+}
+
+// The table entry of page `page` of `mip` of local map `map` (`map_entry`).
+public uint vsm_map_entry(VsmParams* p, uint map, uint mip, uint2 page) {
+    return vsm_local_header(p).z + map * VSM_MAP_ENTRIES + vsm_mip_offset(mip) + page.y * vsm_mip_side(mip) + page.x;
+}
+
+// The cube face of direction `d` (`cube_face_of`: +X, −X, +Y, −Y, +Z, −Z).
+public uint vsm_cube_face(float3 d) {
+    float3 a = abs(d);
+    if (a.x >= a.y && a.x >= a.z) { return d.x < 0.0 ? 1 : 0; }
+    if (a.y >= a.z) { return d.y < 0.0 ? 3 : 2; }
+    return d.z < 0.0 ? 5 : 4;
+}
+
+// The finest mip whose texel is at least `footprint · 2^bias` at `distance` from the light
+// (`local_mip`).
+public uint vsm_local_mip(float footprint, float distance, float fov, float bias) {
+    float texel0 = 2.0 * distance * tan(fov * 0.5) / float(VSM_LOCAL_TEXELS);
+    float mip = ceil(log2(footprint / max(texel0, 1e-12)) + bias);
+    return uint(clamp(mip, 0.0, float(VSM_LOCAL_MIPS - 1)));
+}
+
+// The map of light `l` holding `world` (false outside its range or cone), and the distance.
+public bool vsm_local_map(VsmLocal l, float3 world, out uint map, out float dist) {
+    float3 d = world - l.position_range.xyz;
+    dist = length(d);
+    map = 0;
+    if (l.info.x == 0 || dist > l.position_range.w || dist <= 0.0) { return false; }
+    if (l.info.x == 1) {
+        if (dot(d / dist, l.direction_cos.xyz) < l.direction_cos.w) { return false; }
+        map = l.info.y;
+        return true;
+    }
+    map = l.info.y + vsm_cube_face(d);
+    return true;
+}
+
+// Virtual texel coordinates (y down) at `mip` of a local map's clip position `clip`.
+public float2 vsm_local_texel(float4 clip, uint mip) {
+    float2 ndc = clip.xy / clip.w;
+    return float2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5) * float(VSM_LOCAL_TEXELS >> mip);
+}

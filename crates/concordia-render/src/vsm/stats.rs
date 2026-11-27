@@ -62,6 +62,14 @@ pub struct ShadowStats {
     pub casters_dynamic: u64,
     /// `Static`-hinted casters that moved this frame (their static pages were redrawn).
     pub static_hint_moved: u64,
+    /// Spot and point lights given virtual shadow maps this frame (4.7c).
+    pub local_lights_shadowed: u64,
+    /// Shadowed spot and point lights beyond `max_local_lights` (shaded unshadowed).
+    pub local_lights_dropped: u64,
+    /// The local lights' pages some pixel asked for.
+    pub local_pages_requested: u64,
+    /// The local lights' requested pages that hold a physical page.
+    pub local_pages_allocated: u64,
 }
 
 /// A frame's VSM counts and the levels' cull codes on their way back (readback buffers).
@@ -94,6 +102,8 @@ impl VsmReadback {
         stats.pool_used = u64::from(words[10]);
         stats.pages_dynamic = u64::from(words[14]);
         stats.pages_dynamic_fallback = u64::from(words[15]);
+        stats.local_pages_requested = u64::from(words[16]);
+        stats.local_pages_allocated = u64::from(words[17]);
         stats.shadow_meshlets = match self.codes {
             Some((buffer, count)) if count > 0 => words_of(device, buffer, count)?
                 .iter()

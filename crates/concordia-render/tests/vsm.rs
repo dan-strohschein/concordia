@@ -1361,3 +1361,71 @@ fn vsm_cache_review_frames() {
         write(&format!("cross_taa_{temporal}"), raw);
     }
 }
+
+/// Adds a point light at `at` with `shadows`.
+fn point(
+    scene: &mut Scene,
+    at: Vec3,
+    shadows: Option<concordia_render_types::LocalShadowSettings>,
+) {
+    let id = scene.entity(at, Quat::IDENTITY, Vec3::ONE);
+    let light = concordia_render_types::PointLight {
+        intensity_lumens: 4000.0,
+        range: 12.0,
+        shadows,
+        ..Default::default()
+    };
+    scene.world.insert(id, light).unwrap();
+}
+
+/// Unshadowed spot and point lights (the default; spell lights) cost no shadow pages (4.7c).
+#[test]
+fn unshadowed_lights_cost_no_pages() {
+    for r in meshlet_renderers() {
+        let mut r = cached(r, true);
+        let mut scene = yard(Msaa::Off, true);
+        for k in 0..8 {
+            point(
+                &mut scene,
+                Vec3::new(-6.0 + 2.0 * k as f32, 1.5, -3.0),
+                None,
+            );
+        }
+        let (_, s) = frame(&mut r, &mut scene);
+        assert_eq!(
+            (s.local_lights_shadowed, s.local_pages_requested),
+            (0, 0),
+            "{s:?}"
+        );
+    }
+}
+
+/// A shadowed point light marks pages of its own, also with no sun at all; VSM runs for it.
+#[test]
+fn shadowed_local_lights_mark_their_pages() {
+    for r in meshlet_renderers() {
+        let mut r = cached(r, true);
+        let (mut scene, ids) = yard_with_ids(Msaa::Off, true);
+        point(
+            &mut scene,
+            Vec3::new(0.0, 2.5, -3.0),
+            Some(Default::default()),
+        );
+        let (_, s) = frame(&mut r, &mut scene);
+        assert_eq!(s.local_lights_shadowed, 1, "{s:?}");
+        assert!(s.local_pages_requested > 0, "{s:?}");
+        assert_eq!(s.local_pages_allocated, s.local_pages_requested, "{s:?}");
+        assert!(
+            s.pages_requested > s.local_pages_requested,
+            "the sun's pages too: {s:?}"
+        );
+        scene.world.despawn(ids.sun).unwrap();
+        let (_, s) = frame(&mut r, &mut scene);
+        assert_eq!(s.technique, ShadowTechnique::vsm, "{s:?}");
+        assert!(s.local_pages_requested > 0, "{s:?}");
+        assert_eq!(
+            s.pages_requested, s.local_pages_requested,
+            "no sun, no sun pages: {s:?}"
+        );
+    }
+}

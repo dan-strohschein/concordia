@@ -1858,6 +1858,7 @@ impl Renderer {
             }
         };
         let states = self.caster_states(world, placements);
+        let locals = local_candidates(world, view, &view_proj);
         let input = crate::vsm::JobIn {
             settings: &self.vsm_settings,
             light_dir: dir,
@@ -1868,6 +1869,8 @@ impl Renderer {
             casters: world_bounds(casters),
             view: self.current.as_ref().map_or(0, |v| v.key.id()),
             states,
+            locals,
+            sun: sun_casts(world),
         };
         let mut keep = Vec::new();
         let job = crate::vsm::VsmJob::prepare(
@@ -1934,6 +1937,8 @@ impl Renderer {
     fn note_casters(&mut self, world: &RenderWorld, job: &crate::vsm::VsmJob) {
         let s = &mut self.stats.shadows;
         s.casters_dynamic = job.dynamic.len() as u64;
+        s.local_lights_shadowed = job.local_lights.iter().flatten().count() as u64;
+        s.local_lights_dropped = job.local_dropped as u64;
         s.static_hint_moved = job.static_hint_moved.len() as u64;
         for (entity, mesh, _) in &job.static_hint_moved {
             if self.hint_warned.insert(*entity) {
@@ -2192,10 +2197,7 @@ impl Renderer {
     fn vsm_runs(&self, world: &RenderWorld) -> bool {
         self.shadow_technique == crate::vsm::ShadowTechnique::vsm
             && self.pipelines.vsm_supported()
-            && world
-                .lights
-                .first()
-                .is_some_and(|l| l.light.shadows.is_some())
+            && (sun_casts(world) || world.punctual.iter().any(|l| l.shadows.is_some()))
     }
 
     fn splits(&self, samples: SampleCount, meshlets: bool, proj: Mat4) -> bool {
@@ -3223,6 +3225,57 @@ fn hash_matrix(m: &Mat4, hasher: &mut impl std::hash::Hasher) {
 
 /// Identifies the shadow maps' contents: the casters (meshes and world matrices), the cascades
 /// and the maps themselves.
+/// Whether the first directional light casts shadows.
+fn sun_casts(world: &RenderWorld) -> bool {
+    world
+        .lights
+        .first()
+        .is_some_and(|l| l.light.shadows.is_some())
+}
+
+/// The shadowed spot and point lights whose range the view sees, with their importance (M4 4.7c:
+/// the range sphere's view coverage × candela; an orthographic view uses the field of view its
+/// height spans at the light's distance).
+fn local_candidates(
+    world: &RenderWorld,
+    view: &CameraView,
+    view_proj: &Mat4,
+) -> Vec<(EntityId, crate::vsm::local::SlotLight, f32)> {
+    let frustum = crate::cull::Frustum::new(*view_proj);
+    let eye = eye(&view.world);
+    world
+        .punctual
+        .iter()
+        .filter_map(|l| {
+            let settings = l.shadows?;
+            let r = Vec3::splat(l.range);
+            if !frustum.sees(&Mat4::IDENTITY, l.position - r, l.position + r) {
+                return None;
+            }
+            let fov = match view.camera.projection {
+                concordia_render_types::Projection::Perspective { fov_y, .. } => fov_y,
+                concordia_render_types::Projection::Orthographic { height, .. } => {
+                    2.0 * (height / 2.0).atan2(l.position.distance(eye).max(1e-3))
+                }
+            };
+            let importance =
+                crate::shadow_select::importance(l.position, l.range, l.intensity_lumens, eye, fov);
+            let spot = match l.kind {
+                crate::PunctualKind::Spot { outer, .. } => Some(outer),
+                crate::PunctualKind::Point => None,
+            };
+            let light = crate::vsm::local::SlotLight {
+                position: l.position,
+                direction: l.direction,
+                range: l.range,
+                spot,
+                settings,
+            };
+            Some((l.entity, light, importance))
+        })
+        .collect()
+}
+
 /// Each draw's occurrence: which of its entity's draws of that mesh it is (the third part of a
 /// [`crate::visibility::VisKey`]).
 fn occurrences(world: &RenderWorld) -> Vec<u32> {
