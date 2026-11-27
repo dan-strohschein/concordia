@@ -6,14 +6,14 @@ use std::num::NonZeroU64;
 use concordia_bvh::GpuBvh;
 use concordia_core::math::{Mat3, UVec3, Vec3};
 use concordia_rhi::{
-    Buffer, BufferDesc, BufferUsage, Command, CommandList, Device, MemoryLocation, Pipeline,
-    QueueKind, Submit,
+    AccelDesc, AccelInstance, AccelerationStructure, Buffer, BufferDesc, BufferUsage, Command,
+    CommandList, Device, MemoryLocation, Pipeline, QueueKind, Submit, TriangleGeometry,
 };
 use concordia_shaders::ShaderCompiler;
 
 use super::GiScene;
 use crate::RenderError;
-use crate::pipelines::compute_pipeline;
+use crate::pipelines::{compute_pipeline, compute_pipeline_with};
 use crate::scan::compute_barrier;
 
 /// The probe lattice: probe (i, j, k) sits at `origin + (i, j, k) · spacing` (plus its offset).
@@ -104,7 +104,7 @@ impl Default for GiInputs {
 }
 
 /// Rows of the parameter block (`gi.slang`).
-const PARAM_ROWS: usize = 22;
+const PARAM_ROWS: usize = 23;
 /// Bordered tile sizes in texels (`gi.slang`).
 const IRR_TILE: u64 = 10;
 const DIST_TILE: u64 = 18;
@@ -116,6 +116,8 @@ const VIEW_BIAS: f32 = 0.1;
 #[derive(Debug, Clone, Copy)]
 struct Kernels {
     trace: Pipeline,
+    /// The trace on hardware ray queries (devices with ray tracing, M4 4.8c).
+    trace_rq: Option<Pipeline>,
     blend_irradiance: Pipeline,
     blend_distance: Pipeline,
     border: Pipeline,
@@ -184,6 +186,8 @@ pub struct GiProbes {
     events: Slot,
     /// The instance tree's first node and order entry.
     tlas: (u32, u32),
+    /// The scene as acceleration structures (with ray queries).
+    hardware: Option<HardwareScene>,
     /// The lattice the atlases hold (a different one resets them).
     grid: Option<ProbeGrid>,
 }
@@ -192,8 +196,20 @@ impl GiProbes {
     /// Compiles the kernels.
     pub fn new(device: &dyn Device, compiler: &dyn ShaderCompiler) -> Result<Self, RenderError> {
         let kernel = |entry: &str| compute_pipeline(device, compiler, "gi_update.slang", entry);
+        let trace_rq = match device.caps().ray_tracing {
+            true => Some(compute_pipeline_with(
+                device,
+                compiler,
+                "gi_update.slang",
+                "gi_trace",
+                [("GI_RAY_QUERY".to_owned(), "1".to_owned())].into(),
+            )?),
+            false => None,
+        };
         Ok(Self {
+            hardware: trace_rq.map(|_| HardwareScene::default()),
             kernels: Kernels {
+                trace_rq,
                 trace: kernel("gi_trace")?,
                 blend_irradiance: kernel("gi_blend_irradiance")?,
                 blend_distance: kernel("gi_blend_distance")?,
@@ -222,7 +238,7 @@ impl GiProbes {
         device: &dyn Device,
         scene: &GiScene,
         inputs: &GiInputs,
-    ) -> Result<Vec<Command>, RenderError> {
+    ) -> Result<GiPasses, RenderError> {
         let grid = valid(inputs)?;
         let probes = u64::from(grid.counts.x * grid.counts.y * grid.counts.z);
         let rays = u64::from(inputs.rays);
@@ -245,6 +261,10 @@ impl GiProbes {
         }
         self.rays.ensure(device, probes * rays * 16, "gi rays")?;
         self.upload_scene(device, scene)?;
+        let tlas = match self.hardware.as_mut() {
+            Some(hw) => Some(hw.sync(device, scene)?),
+            None => None,
+        };
         self.lights
             .write(device, &bytes(&light_rows(&inputs.lights)), "gi lights")?;
         let events: Vec<[f32; 4]> = inputs
@@ -253,7 +273,8 @@ impl GiProbes {
             .map(|e| e.extend(0.0).to_array())
             .collect();
         self.events.write(device, &bytes(&events), "gi events")?;
-        let rows = self.param_rows(inputs, reset);
+        let mut rows = self.param_rows(inputs, reset);
+        rows[22] = [tlas.unwrap_or(0), u32::from(tlas.is_some()), 0, 0];
         self.params.write(device, &words(&rows), "gi params")?;
         self.commands(probes, rays)
     }
@@ -265,12 +286,17 @@ impl GiProbes {
         scene: &GiScene,
         inputs: &GiInputs,
     ) -> Result<(), RenderError> {
-        let commands = self.prepare(device, scene, inputs)?;
+        let passes = self.prepare(device, scene, inputs)?;
         let mut list = CommandList::new("gi update");
-        for c in commands {
+        for c in passes.into_iter().flat_map(|(_, commands)| commands) {
             list.push(c);
         }
         submit(device, &list)
+    }
+
+    /// Whether the update traces with hardware ray queries (else the software BVH).
+    pub fn ray_queries(&self) -> bool {
+        self.hardware.is_some()
     }
 
     /// Whether `grid` differs from the lattice the atlases hold (the next update starts over).
@@ -398,7 +424,7 @@ impl GiProbes {
     }
 
     /// The update: trace, blend, borders, relocation, with barriers between.
-    fn commands(&self, probes: u64, rays: u64) -> Result<Vec<Command>, RenderError> {
+    fn commands(&self, probes: u64, rays: u64) -> Result<GiPasses, RenderError> {
         let k = self.kernels;
         let push = |pass: u32| {
             Command::PushConstants(
@@ -415,13 +441,19 @@ impl GiProbes {
             self.rays.buffer()?,
             self.probes.buffer()?,
         );
-        Ok(vec![
-            Command::SetPipeline(k.trace),
+        let trace = match self.hardware.is_some() {
+            true => k.trace_rq.unwrap_or(k.trace),
+            false => k.trace,
+        };
+        let trace = vec![
+            Command::SetPipeline(trace),
             push(0),
             Command::Dispatch {
                 groups: groups(probes * rays),
             },
             compute_barrier(&[ray_buf]),
+        ];
+        let blend = vec![
             Command::SetPipeline(k.blend_irradiance),
             push(0),
             Command::Dispatch {
@@ -433,6 +465,8 @@ impl GiProbes {
                 groups: [probes as u32, 1, 1],
             },
             compute_barrier(&[irr, dist]),
+        ];
+        let finish = vec![
             Command::SetPipeline(k.border),
             push(0),
             Command::Dispatch {
@@ -448,11 +482,20 @@ impl GiProbes {
                 groups: groups(probes),
             },
             compute_barrier(&[irr, dist, probe_buf]),
+        ];
+        Ok(vec![
+            ("gi.trace", trace),
+            ("gi.blend", blend),
+            ("gi.finish", finish),
         ])
     }
 }
 
-/// The grid, checked: counts 1..=256, a finite spacing and origin, 1..=1024 rays.
+/// The update's stages, each a named list of commands (a graph pass apiece, so each is timed).
+pub type GiPasses = Vec<(&'static str, Vec<Command>)>;
+
+/// The grid, checked: counts 1..=256, a finite spacing and origin, 1..=512 rays (what the blend
+/// kernels hold in group memory).
 fn valid(inputs: &GiInputs) -> Result<ProbeGrid, RenderError> {
     let g = inputs.grid;
     let bad = |m: String| Err(RenderError::Shader(format!("GI: {m}")));
@@ -465,8 +508,8 @@ fn valid(inputs: &GiInputs) -> Result<ProbeGrid, RenderError> {
             g.spacing, g.origin
         ));
     }
-    if !(1..=1024).contains(&inputs.rays) {
-        return bad(format!("{} rays per probe must be 1..=1024", inputs.rays));
+    if !(1..=512).contains(&inputs.rays) {
+        return bad(format!("{} rays per probe must be 1..=512", inputs.rays));
     }
     Ok(g)
 }
@@ -546,4 +589,112 @@ fn download(device: &dyn Device, buffer: Buffer, size: u64) -> Result<Vec<u8>, R
     let out = device.read_buffer(readback, 0, size)?;
     device.destroy_buffer(readback);
     Ok(out)
+}
+
+/// GI's scene as acceleration structures: one bottom level per proxy (its triangles in the
+/// software BVH's order, so triangle indices agree) and a top level of the placed instances
+/// (instance ids = their indices).
+#[derive(Debug, Default)]
+struct HardwareScene {
+    bottoms: Vec<(AccelerationStructure, Buffer)>,
+    top: Option<AccelerationStructure>,
+    mesh_version: Option<u64>,
+    placed: Vec<(u32, [[f32; 4]; 3])>,
+}
+
+impl HardwareScene {
+    /// Rebuilds what changed and returns the top level's bindless index.
+    fn sync(&mut self, device: &dyn Device, scene: &GiScene) -> Result<u32, RenderError> {
+        if self.mesh_version != Some(scene.mesh_version()) {
+            self.clear(device);
+            for (k, mesh) in scene.accel().meshes().iter().enumerate() {
+                self.bottoms.push(bottom(device, mesh.triangles(), k)?);
+            }
+            self.mesh_version = Some(scene.mesh_version());
+        }
+        let placed: Vec<(u32, [[f32; 4]; 3])> = scene
+            .accel()
+            .instances()
+            .iter()
+            .map(|i| (i.mesh, rows3x4(&i.world)))
+            .collect();
+        if self.top.is_none() || placed != self.placed {
+            if let Some(top) = self.top.take() {
+                device.destroy_acceleration_structure(top);
+            }
+            let instances: Vec<AccelInstance> = placed
+                .iter()
+                .enumerate()
+                .filter_map(|(k, (mesh, transform))| {
+                    self.bottoms
+                        .get(*mesh as usize)
+                        .map(|(blas, _)| AccelInstance {
+                            geometry: *blas,
+                            transform: *transform,
+                            id: k as u32,
+                            mask: 0xff,
+                        })
+                })
+                .collect();
+            self.top = Some(
+                device
+                    .build_acceleration_structure(&AccelDesc::Instances(&instances), "gi scene")?,
+            );
+            self.placed = placed;
+        }
+        let top = self
+            .top
+            .ok_or_else(|| RenderError::Shader("GI's top level wasn't built".into()))?;
+        Ok(device.accel_index(top)?.0)
+    }
+
+    /// Frees every structure and vertex buffer (the top level first).
+    fn clear(&mut self, device: &dyn Device) {
+        if let Some(top) = self.top.take() {
+            device.destroy_acceleration_structure(top);
+        }
+        for (blas, buffer) in self.bottoms.drain(..) {
+            device.destroy_acceleration_structure(blas);
+            device.destroy_buffer(buffer);
+        }
+        self.placed.clear();
+    }
+}
+
+/// A bottom level over `triangles` (a GpuOnly copy of their corners).
+fn bottom(
+    device: &dyn Device,
+    triangles: &[concordia_bvh::Triangle],
+    k: usize,
+) -> Result<(AccelerationStructure, Buffer), RenderError> {
+    let bytes: Vec<u8> = triangles
+        .iter()
+        .flat_map(|t| t.v)
+        .flat_map(|v| [v.x, v.y, v.z])
+        .flat_map(f32::to_le_bytes)
+        .collect();
+    let buffer = device.create_buffer(&BufferDesc {
+        size: NonZeroU64::new(bytes.len().max(16) as u64).unwrap_or(NonZeroU64::MIN),
+        usage: BufferUsage::ACCEL_INPUT | BufferUsage::STORAGE,
+        memory: MemoryLocation::Upload,
+        label: format!("gi proxy {k}"),
+    })?;
+    device.write_buffer(buffer, 0, &bytes)?;
+    let count = triangles.len().max(1) as u32;
+    let geometry = [TriangleGeometry {
+        vertices: buffer,
+        vertex_offset: 0,
+        vertex_stride: 12,
+        vertex_count: count * 3,
+        indices: None,
+        triangle_count: triangles.len() as u32,
+    }];
+    let blas = device.build_acceleration_structure(&AccelDesc::Triangles(&geometry), "gi proxy")?;
+    Ok((blas, buffer))
+}
+
+/// Object → world as three rows of a 3 × 4 matrix.
+fn rows3x4(m: &concordia_core::math::Mat4) -> [[f32; 4]; 3] {
+    let row = |r: usize| [m.x_axis[r], m.y_axis[r], m.z_axis[r], m.w_axis[r]];
+    [row(0), row(1), row(2)]
 }

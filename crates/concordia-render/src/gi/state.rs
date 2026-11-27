@@ -5,16 +5,18 @@ use std::collections::BTreeSet;
 use concordia_assets::{AssetRef, Material, MeshData};
 use concordia_core::id::EntityId;
 use concordia_core::math::{Mat4, UVec3, Vec3};
-use concordia_rhi::{Command, Device};
+use concordia_rhi::Device;
 use concordia_shaders::ShaderCompiler;
 
 use super::{Gi, GiInputs, GiInstance, GiLight, GiProbes, GiScene, GiSun, GiTechnique, ProbeGrid};
 use crate::{PunctualKind, RenderError, RenderWorld};
 
-/// Updates run at once when the lattice resets (each adds a bounce): the first
-/// `WARMUP_FAST` with hysteresis 0.5, the rest with 0.9.
-const WARMUP: u32 = 32;
+/// Updates run at once when the lattice resets (each adds a bounce): the first `WARMUP_FAST` with
+/// hysteresis 0.5, then until `WARMUP_SETTLE` with 0.9, then the steady weight, so the round-robin
+/// frames after it start from quiet distance moments (noisy ones let light through thin walls).
+const WARMUP: u32 = 40;
 const WARMUP_FAST: u32 = 20;
+const WARMUP_SETTLE: u32 = 32;
 
 /// GI as the renderer runs it.
 #[derive(Default)]
@@ -38,6 +40,11 @@ impl GiState {
     /// Whether probes run.
     pub(crate) fn on(&self) -> bool {
         self.gi.technique == GiTechnique::probes
+    }
+
+    /// Whether the probe update traces with ray queries.
+    pub(crate) fn ray_queries(&self) -> bool {
+        self.probes.as_ref().is_some_and(GiProbes::ray_queries)
     }
 
     /// Whether GI has what it needs of mesh `reference` (always, while off).
@@ -75,7 +82,7 @@ impl GiState {
         world: &RenderWorld,
         camera: &Mat4,
         sky: Option<([[f32; 3]; 9], f32)>,
-    ) -> Result<Option<(Vec<Command>, u32)>, RenderError> {
+    ) -> Result<Option<(super::gpu::GiPasses, u32)>, RenderError> {
         if !self.on() {
             return Ok(None);
         }
@@ -102,7 +109,11 @@ impl GiState {
             // converged bounces rather than one.
             for k in 0..WARMUP {
                 // Fast first (each update adds a bounce), then slower to average the noise.
-                let hysteresis = if k < WARMUP_FAST { 0.5 } else { 0.9 };
+                let hysteresis = match k {
+                    k if k < WARMUP_FAST => 0.5,
+                    k if k < WARMUP_SETTLE => 0.9,
+                    _ => super::BASE_HYSTERESIS,
+                };
                 let warm = GiInputs {
                     frame: inputs.frame.wrapping_add(k),
                     hysteresis,

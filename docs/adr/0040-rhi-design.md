@@ -15,6 +15,9 @@ Concordia renders through its own thin RHI (design doc), first on Metal, then Vu
 - **Conformance.** `concordia_rhi::conformance` is the backend-agnostic test suite (feature `conformance`). Each backend instantiates it with one macro; goldens go through `concordia-testkit` (FLIP).
 - **Backends.** Metal through `objc2-metal` (Metal 3 API, macOS 14+; Metal 4 evaluated in M2/M4). Vulkan through `ash` later (phase 1.10 stretch or M2). D3D12 later still. WebGPU is an optional browser backend.
 
+### Amendment (M4 4.8c, 2026-11-27): acceleration structures
+- A fourth bindless table for ray queries: `AccelerationStructure` handles built with `Device::build_acceleration_structure` (`AccelDesc::Triangles` bottom levels, `AccelDesc::Instances` top levels; synchronous builds; `Unsupported` without `caps().ray_tracing`) and read by index through `concordia-shaders`' `raytracing.slang` (`g_accels.accel[i]`, 256 slots). Only shaders that trace rays import it, so the ray-query capability stays out of every other module. Slots 0–3 are unchanged: the table sits at **Metal buffer 4** and **Vulkan descriptor set 3** (`[[vk::binding(0, 3)]]` with `register(b4, space3)`; without the register, Slang gives it buffer 3 and moves the push constants). Metal makes every live structure resident on each compute encoder (a top level's bottom levels must be). Build inputs carry `BufferUsage::ACCEL_INPUT`. Decided under the author's M4 rule; the conformance cases `ray_queries_hit_a_built_scene` and `acceleration_structure_misuse_is_reported` pin it.
+
 ## Consequences
 Rendering code and tests never see Metal or Vulkan types. Recording into a `Vec<Command>` costs an allocation per frame, which is acceptable in M1; arenas can come later. Relying on tracked hazards on Metal costs some CPU, which is acceptable at M1 scale, and the explicit barriers are already recorded for backends that need them.
 

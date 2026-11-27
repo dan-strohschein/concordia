@@ -288,3 +288,49 @@ fn gi_temporal_stability() {
     assert!(mean_sd <= 0.5, "flicker: mean sd {mean_sd}");
     assert!(worst <= 4.0, "flicker: worst sd {worst}");
 }
+
+/// The probe update traces with hardware ray queries where the device has them and the software
+/// BVH otherwise; both see the same scene, so the pictures match (`gi_software_bvh_fallback_
+/// matches_ray_query_path`, mean FLIP ≤ 0.02).
+#[test]
+fn gi_software_bvh_fallback_matches_ray_query_path() {
+    let Some(mut hardware) = common::renderer() else {
+        return;
+    };
+    let software_mask = concordia_rhi::CapsMask {
+        ray_tracing: true,
+        ..Default::default()
+    };
+    let Some(mut software) = common::renderer_masked(&software_mask) else {
+        return;
+    };
+    let shot = |r: &mut concordia_render::Renderer| {
+        let mut scene = room();
+        r.set_gi(probes()).unwrap();
+        let mut image = scene.render(r, SIZE.0, SIZE.1);
+        for _ in 0..10 {
+            image = scene.render(r, SIZE.0, SIZE.1);
+        }
+        image
+    };
+    let (hw, sw) = (shot(&mut hardware), shot(&mut software));
+    let ran = |r: &concordia_render::Renderer| r.gi_ray_queries();
+    println!(
+        "ray queries: hardware renderer {}, masked {}",
+        ran(&hardware),
+        ran(&software)
+    );
+    assert!(!ran(&software), "masked: the software BVH");
+    if common::device().is_some_and(|d| d.caps().ray_tracing) {
+        assert!(ran(&hardware), "the device has ray queries: GI uses them");
+    }
+    let to = |i: &Image| {
+        concordia_testkit::golden::RgbaImage::new(i.width, i.height, i.rgba.clone()).unwrap()
+    };
+    let score = concordia_testkit::golden::flip_score(&to(&sw), &to(&hw)).unwrap();
+    println!(
+        "hardware against software: mean FLIP {:.4}, p99 {:.4}",
+        score.mean, score.p99
+    );
+    assert!(score.mean <= 0.02, "{score:?}");
+}

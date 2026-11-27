@@ -27,6 +27,8 @@ bitflags::bitflags! {
         const COPY_DST = 1 << 4;
         /// Gets a bindless index.
         const BINDLESS = 1 << 5;
+        /// Vertices or indices an acceleration structure is built from (M4 4.8c).
+        const ACCEL_INPUT = 1 << 6;
     }
 }
 

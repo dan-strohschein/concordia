@@ -4,6 +4,8 @@
 //! Compiles everywhere; off macOS every entry point reports [`RhiError::NoDevice`].
 
 #[cfg(target_os = "macos")]
+mod accel;
+#[cfg(target_os = "macos")]
 mod bindless;
 #[cfg(target_os = "macos")]
 mod convert;
@@ -36,6 +38,8 @@ pub mod slots {
     pub const STORAGE_TEXTURES: usize = 2;
     /// Push constants (`setBytes`).
     pub const PUSH: usize = 3;
+    /// The acceleration-structure table (`raytracing.slang`'s `g_accels`, M4 4.8c).
+    pub const ACCELS: usize = 4;
 }
 
 #[cfg(target_os = "macos")]

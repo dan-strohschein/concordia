@@ -284,6 +284,7 @@ impl Recorder<'_> {
                 0,
                 slots::STORAGE_TEXTURES,
             );
+            e.setBuffer_offset_atIndex(Some(self.inner.accel_table.raw()), 0, slots::ACCELS);
         }
         for resource in bindless_resources(self.inner) {
             e.useResource_usage(resource, MTLResourceUsage::Read | MTLResourceUsage::Write);
@@ -826,7 +827,13 @@ fn bindless_resources(inner: &Inner) -> impl Iterator<Item = &ProtocolObject<dyn
         .values()
         .filter(|t| t.bindless.is_some())
         .map(|t| ProtocolObject::from_ref(&*t.raw));
-    buffers.chain(textures)
+    // Acceleration structures (M4 4.8c): a top level's bottom levels must be resident too, and
+    // every live one is in the table.
+    let accels = inner
+        .accels
+        .values()
+        .map(|a| ProtocolObject::from_ref(&*a.raw));
+    buffers.chain(textures).chain(accels)
 }
 
 /// Binds a render pipeline with its depth state and culling.

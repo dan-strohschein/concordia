@@ -68,6 +68,26 @@ pub(crate) fn compute_pipeline(
     })?)
 }
 
+/// [`compute_pipeline`] with preprocessor defines (e.g. GI's ray-query trace, M4 4.8c).
+pub(crate) fn compute_pipeline_with(
+    device: &dyn Device,
+    compiler: &dyn ShaderCompiler,
+    file: &str,
+    entry: &str,
+    defines: BTreeMap<String, String>,
+) -> Result<Pipeline, RenderError> {
+    let module = compile_with(device, compiler, file, entry, Stage::Compute, defines)?;
+    let threads_per_group = module
+        .reflection
+        .threads_per_group
+        .ok_or_else(|| RenderError::Shader(format!("{entry}: no thread group size")))?;
+    Ok(device.create_compute_pipeline(&ComputePipelineDesc {
+        shader: module.source(),
+        threads_per_group,
+        label: entry.into(),
+    })?)
+}
+
 /// [`compile`] with preprocessor defines.
 fn compile_with(
     device: &dyn Device,

@@ -12,7 +12,7 @@ mod state;
 
 pub use api::{RenderSetGi, RenderSetGiParams, RenderSetGiResult};
 pub use error::GiError;
-pub use gpu::{GiInputs, GiLight, GiProbes, GiSun, ProbeGrid};
+pub use gpu::{GiInputs, GiLight, GiPasses, GiProbes, GiSun, ProbeGrid};
 pub use probe::{BASE_HYSTERESIS, ProbeRay, ProbeState, chebyshev, hysteresis, relocate};
 pub use scene::{GiInstance, GiLook, GiScene, UpdateReport, material, proxy};
 pub use settings::{Gi, GiSettings, GiTechnique};

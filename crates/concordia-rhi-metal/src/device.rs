@@ -83,6 +83,9 @@ pub(crate) struct Inner {
     pub(crate) scalers: Slots<crate::metalfx::ScalerEntry>,
     pub(crate) buffer_table: Table,
     pub(crate) texture_table: Table,
+    /// Acceleration structures (M4 4.8c) and their resource-id table.
+    pub(crate) accels: Slots<crate::accel::AccelEntry>,
+    pub(crate) accel_table: Table,
     /// Static samplers referenced from the texture table (kept alive here).
     _samplers: Vec<Retained<MtlSampler>>,
     pub(crate) last: Option<Retained<ProtocolObject<dyn MTLCommandBuffer>>>,
@@ -156,6 +159,13 @@ impl MetalDevice {
         let inner = Inner {
             buffer_table: Table::new(&device, "buffer", 0)?,
             texture_table,
+            accels: Slots::default(),
+            accel_table: Table::with_capacity(
+                &device,
+                "acceleration structure",
+                concordia_rhi::ACCEL_CAPACITY,
+                0,
+            )?,
             _samplers: samplers,
             device,
             queue,
@@ -582,6 +592,33 @@ impl Device for MetalDevice {
                 ),
             )
         })
+    }
+
+    fn build_acceleration_structure(
+        &self,
+        desc: &concordia_rhi::AccelDesc<'_>,
+        label: &str,
+    ) -> Result<concordia_rhi::AccelerationStructure, RhiError> {
+        if !self.caps.ray_tracing {
+            concordia_rhi::validate_accel(desc)?;
+            return Err(RhiError::Unsupported("acceleration structures".into()));
+        }
+        let mut inner = self.lock()?;
+        crate::accel::build(&mut inner, desc, label)
+    }
+
+    fn accel_index(
+        &self,
+        accel: concordia_rhi::AccelerationStructure,
+    ) -> Result<BindlessIndex, RhiError> {
+        let inner = self.lock()?;
+        crate::accel::index(&inner, accel).map(BindlessIndex)
+    }
+
+    fn destroy_acceleration_structure(&self, accel: concordia_rhi::AccelerationStructure) {
+        if let Ok(mut inner) = self.lock() {
+            crate::accel::destroy(&mut inner, accel);
+        }
     }
 
     fn texture_index(&self, texture: Texture) -> Result<BindlessIndex, RhiError> {

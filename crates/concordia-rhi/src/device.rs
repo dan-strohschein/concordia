@@ -68,6 +68,28 @@ pub trait Device: Send + Sync {
     fn read_buffer(&self, buffer: Buffer, offset: u64, len: u64) -> Result<Vec<u8>, RhiError>;
     /// The bindless slot of a buffer created with `BufferUsage::BINDLESS`.
     fn buffer_index(&self, buffer: Buffer) -> Result<BindlessIndex, RhiError>;
+    /// Builds an acceleration structure (waits for the build); `Unsupported` unless
+    /// `caps().ray_tracing`.
+    fn build_acceleration_structure(
+        &self,
+        desc: &crate::AccelDesc<'_>,
+        label: &str,
+    ) -> Result<crate::AccelerationStructure, RhiError> {
+        let _ = (desc, label);
+        Err(RhiError::Unsupported("acceleration structures".into()))
+    }
+
+    /// The bindless slot of an acceleration structure (`raytracing.slang`'s `g_accels`).
+    fn accel_index(&self, accel: crate::AccelerationStructure) -> Result<BindlessIndex, RhiError> {
+        let _ = accel;
+        Err(RhiError::Unsupported("acceleration structures".into()))
+    }
+
+    /// Frees an acceleration structure (top levels holding it must be destroyed first).
+    fn destroy_acceleration_structure(&self, accel: crate::AccelerationStructure) {
+        let _ = accel;
+    }
+
     /// The bindless slot of a texture created with `TextureUsage::BINDLESS`.
     fn texture_index(&self, texture: Texture) -> Result<BindlessIndex, RhiError>;
     /// Creates a timeline at `initial`.
