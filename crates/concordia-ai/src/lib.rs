@@ -5,6 +5,7 @@ mod blackboard;
 mod bt;
 mod engine;
 mod module;
+mod perception;
 mod tick;
 mod utility;
 
@@ -19,6 +20,10 @@ pub use engine::{
 pub use module::{
     AiInspect, AiInspectParams, AiInspectResult, AiModule, AiTrace, AiTraceParams, AiTraceResult,
     RunningNode, TracedTick,
+};
+pub use perception::{
+    AiDamaged, AiNoise, Faction, Memory, Perceiver, Remembered, SENSE, Sense, SenseCursor,
+    add_perception,
 };
 pub use tick::{BtState, Decision, NodeMem, Status, TaskHost, Ticker};
 pub use utility::{Choice, Consideration, Curve, Input, Selection, UtilityOption, choose, score};

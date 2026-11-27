@@ -13,6 +13,7 @@ concordia-anim.workspace = true
 concordia-api.workspace = true
 concordia-core.workspace = true
 concordia-nav.workspace = true
+concordia-physics.workspace = true
 concordia-reflect.workspace = true
 concordia-scene.workspace = true
 concordia-terra.workspace = true
@@ -22,6 +23,7 @@ thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+concordia-scene.workspace = true
 tempfile.workspace = true
 proptest.workspace = true
 

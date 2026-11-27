@@ -117,12 +117,15 @@ pub struct AiCursor(pub usize);
 pub struct AiConfig {
     /// Agents that re-think a tick (the rest keep running their tasks).
     pub agents_per_tick: u32,
+    /// Perceivers that look a tick (sight rays serialize on physics; all still hear and feel).
+    pub sight_per_tick: u32,
 }
 
 impl Default for AiConfig {
     fn default() -> Self {
         Self {
             agents_per_tick: 64,
+            sight_per_tick: 64,
         }
     }
 }
@@ -131,13 +134,15 @@ impl Default for AiConfig {
 pub fn insert_ai_resources(world: &mut World) {
     world.insert_resource(AiStats::default());
     world.insert_resource(AiCursor::default());
+    world.insert_resource(crate::perception::SenseCursor::default());
     if world.resource::<Trees>().is_none() {
         world.insert_resource(Trees::default());
     }
 }
 
-/// Adds `ai.think` to `PostPhysics`.
+/// Adds `ai.sense` and then `ai.think` to `PostPhysics`.
 pub fn add_ai_processors(schedule: &mut Schedule, config: AiConfig) {
+    crate::perception::add_perception(schedule, config);
     schedule.add_processor(
         processor(THINK, Phase::PostPhysics)
             .reads::<Brain>()
