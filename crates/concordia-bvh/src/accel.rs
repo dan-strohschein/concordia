@@ -3,6 +3,7 @@
 
 use concordia_core::math::{Mat4, Vec3};
 
+use crate::BvhError;
 use crate::bvh::{Bvh, Tree};
 use crate::geometry::Ray;
 
@@ -59,6 +60,32 @@ impl Accel {
             meshes,
             instances,
         }
+    }
+
+    /// Moves instances (`(index, world)`) and refits the instance level.
+    pub fn set_transforms(&mut self, moves: &[(u32, Mat4)]) -> Result<(), BvhError> {
+        for &(index, world) in moves {
+            if index as usize >= self.instances.len() {
+                return Err(BvhError::NoInstance {
+                    index,
+                    count: self.instances.len(),
+                });
+            }
+            let det = world.determinant();
+            if det == 0.0 || !det.is_finite() {
+                return Err(BvhError::Singular { index });
+            }
+        }
+        for &(index, world) in moves {
+            self.instances[index as usize].world = world;
+            self.inverse[index as usize] = world.inverse();
+        }
+        let bounds: Vec<_> = self
+            .instances
+            .iter()
+            .map(|i| world_bounds(self.meshes[i.mesh as usize].bounds(), &i.world))
+            .collect();
+        self.tree.refit(&bounds)
     }
 
     /// The nearest hit along `ray`.

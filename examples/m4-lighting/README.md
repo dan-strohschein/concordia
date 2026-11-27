@@ -12,6 +12,15 @@ downloaded.
   difference is shadow error.
 - References: `tests/golden/m4_reference/sun_courtyard_iso` (an isometric-like three-quarter view
   from high up, narrow field of view) and `sun_courtyard_ground` (the scene camera, low).
+- **`spell_arena_direct`**, **`spell_arena_256`**, **`point_seams`** (4.7c) and the soft variants
+  **`sun_courtyard_soft`** and **`spell_arena_soft`** (4.7d): local-light shadows, cube-face seams
+  and sized lights, all direct-only.
+- **`cornell_spell`** (4.8, GI): a 5 m box open towards the camera, red and green side walls, two
+  white blocks, a glowing spell orb (emission in nits) and a ceiling spot light. Most of its light
+  is bounced, so its reference (`max_bounces: 8`, 4096 spp) is the GI target; the renderer without
+  GI is far from it (FLIP 0.39).
+- **`iso_arena`** (4.8, GI): the arena under 32 coloured unshadowed spell lights and four glowing
+  orbs, at a generic isometric camera (`max_bounces: 8`, 1024 spp).
 
 The `.glb` files are not in git. Each sidecar records its recipe (provider, version, request,
 seed) and the BLAKE3 of the bytes it makes; `gen.restore` remakes missing files and checks them.

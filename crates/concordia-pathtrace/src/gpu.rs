@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use concordia_assets::AlphaMode;
-use concordia_core::math::{Mat3, Mat4};
+use concordia_core::math::Mat3;
 use concordia_material::rows::{NO_TEXTURE, Row, material_rows};
 use concordia_render_types::Projection;
 use concordia_rhi::{
@@ -15,6 +15,8 @@ use concordia_rhi::{
 };
 use concordia_shaders::{CompileRequest, ShaderCompiler, Stage, Target};
 
+use concordia_bvh::GpuBvh;
+
 use crate::PathTraceError;
 use crate::cpu::{HdrImage, MAX_SIZE, Settings};
 use crate::scene::{Light, Scene};
@@ -22,7 +24,7 @@ use crate::scene::{Light, Scene};
 /// Samples per dispatch.
 const BATCH: u32 = 16;
 /// Header rows.
-const HEADER_ROWS: usize = 13;
+const HEADER_ROWS: usize = 14;
 
 /// The folder holding `pathtrace.slang`.
 pub fn shader_dir() -> PathBuf {
@@ -63,6 +65,7 @@ impl GpuTracer {
                 defines: Default::default(),
                 include_dirs: vec![
                     concordia_shaders::builtin_dir(),
+                    concordia_bvh::shader_dir(),
                     concordia_material::shader_dir(),
                 ],
             })
@@ -108,6 +111,7 @@ impl GpuTracer {
             &packed.uvs,
             &packed.ttab,
             &packed.texels,
+            &packed.shading,
         ]
         .into_iter()
         .map(|bytes| upload(bytes))
@@ -170,7 +174,10 @@ struct Packed {
     tris: Vec<u8>,
     normals: Vec<u8>,
     meshes: Vec<u8>,
+    /// `concordia-bvh`'s instance rows (world → object, mesh).
     instances: Vec<u8>,
+    /// Per instance: the normal matrix (3 rows) and `[mesh, material]`.
+    shading: Vec<u8>,
     mtab: Vec<u8>,
     mrows: Vec<u8>,
     lights: Vec<u8>,
@@ -207,21 +214,9 @@ fn floats(values: &[f32]) -> Vec<u8> {
 
 impl Packed {
     fn of(scene: &Scene) -> Result<Self, PathTraceError> {
-        let (mut nodes, mut order, mut tris, mut normals, mut meshes, mut uvs) = (
-            Vec::new(),
-            Vec::<u32>::new(),
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-            Vec::new(),
-        );
+        let geometry = GpuBvh::pack(&scene.accel);
+        let (mut normals, mut uvs) = (Vec::new(), Vec::new());
         for (m, bvh) in scene.accel.meshes().iter().enumerate() {
-            let (node_base, tri_base, order_base) = (nodes.len() / 2, tris.len() / 3, order.len());
-            meshes.push([node_base as u32, tri_base as u32, order_base as u32, 0]);
-            push_tree(&mut nodes, &mut order, bvh.nodes(), bvh.order());
-            for t in bvh.triangles() {
-                tris.extend(t.v.map(|v| f4([v.x, v.y, v.z, 0.0])));
-            }
             for n in &scene.normals[m] {
                 normals.extend(n.map(|v| f4([v.x, v.y, v.z, 0.0])));
             }
@@ -230,14 +225,7 @@ impl Packed {
                 uvs.extend(corners.map(|t| f4([t.x, t.y, 0.0, 0.0])));
             }
         }
-        let tlas = scene.accel.tree();
-        let (tlas_node, tlas_order) = if tlas.nodes().is_empty() {
-            (u32::MAX, 0)
-        } else {
-            ((nodes.len() / 2) as u32, order.len() as u32)
-        };
-        push_tree(&mut nodes, &mut order, tlas.nodes(), tlas.order());
-        let instances = instance_rows(scene);
+        let shading = shading_rows(scene);
         let (mtab, mrows) = material_rows_of(scene)?;
         let emitters: Vec<Row> = scene
             .emitters
@@ -269,12 +257,17 @@ impl Packed {
             texels.extend(t.texels.iter().map(|&c| f4(c)));
         }
         Ok(Self {
-            nodes: bytes_of(&nodes),
-            order: order.iter().flat_map(|w| w.to_le_bytes()).collect(),
-            tris: bytes_of(&tris),
+            nodes: bytes_of(&geometry.nodes),
+            order: geometry
+                .order
+                .iter()
+                .flat_map(|w| w.to_le_bytes())
+                .collect(),
+            tris: bytes_of(&geometry.tris),
             normals: bytes_of(&normals),
-            meshes: bytes_of(&meshes),
-            instances: bytes_of(&instances),
+            meshes: bytes_of(&geometry.meshes),
+            instances: bytes_of(&geometry.instances),
+            shading: bytes_of(&shading),
             mtab: bytes_of(&mtab),
             mrows: bytes_of(&mrows),
             lights: bytes_of(&light_rows(&scene.lights)),
@@ -287,8 +280,8 @@ impl Packed {
             uvs: bytes_of(&uvs),
             ttab: bytes_of(&ttab),
             texels: bytes_of(&texels),
-            tlas_node,
-            tlas_order,
+            tlas_node: geometry.tlas_node,
+            tlas_order: geometry.tlas_order,
         })
     }
 
@@ -335,53 +328,19 @@ impl Packed {
             ],
             f4([cam.clear.x, cam.clear.y, cam.clear.z, 0.0]),
             [ids[15], ids[16], ids[17], scene.textures.len() as u32],
+            [ids[18], 0, 0, 0],
         ]
     }
 }
 
-/// Appends `tree`'s nodes (2 rows each: min + first, max + count) and leaf order.
-fn push_tree(
-    nodes: &mut Vec<Row>,
-    order: &mut Vec<u32>,
-    tree: &[crate::bvh::Node],
-    leaves: &[u32],
-) {
-    for n in tree {
-        nodes.push([
-            n.min.x.to_bits(),
-            n.min.y.to_bits(),
-            n.min.z.to_bits(),
-            n.first,
-        ]);
-        nodes.push([
-            n.max.x.to_bits(),
-            n.max.y.to_bits(),
-            n.max.z.to_bits(),
-            n.count,
-        ]);
-    }
-    order.extend_from_slice(leaves);
-}
-
-/// Seven rows per instance: world → object (3 rows), the normal matrix (3), mesh and material.
-fn instance_rows(scene: &Scene) -> Vec<Row> {
+/// Four rows per instance: the normal matrix (3) and `[mesh, material]`.
+fn shading_rows(scene: &Scene) -> Vec<Row> {
     let mut rows = Vec::new();
-    for ((placed, inv), shading) in scene
-        .accel
-        .instances()
-        .iter()
-        .zip(scene.accel.inverses())
-        .zip(&scene.instances)
-    {
-        rows.extend((0..3).map(|r| f4(row4(inv, r))));
+    for (placed, shading) in scene.accel.instances().iter().zip(&scene.instances) {
         rows.extend((0..3).map(|r| f4(row3(&shading.normals, r))));
         rows.push([placed.mesh, shading.material, 0, 0]);
     }
     rows
-}
-
-fn row4(m: &Mat4, r: usize) -> [f32; 4] {
-    [m.x_axis[r], m.y_axis[r], m.z_axis[r], m.w_axis[r]]
 }
 
 fn row3(m: &Mat3, r: usize) -> [f32; 4] {

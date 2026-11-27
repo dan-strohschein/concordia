@@ -1,0 +1,191 @@
+// Concordia scene, format 1. Canonical form: `concordia fmt` rewrites this file.
+Scene(
+    format: 1,
+    id: "01a21d9a-a5e4-76c7-b417-6fcb3c189518",
+    name: "Cornell spell",
+    entities: [
+        Entity(
+            id: "01a21d9a-a5e4-76c7-b417-6fcc008b3a77",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21d9a-9f8c-7382-ae89-36a3d21c2980",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Floor",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (5.4, 0.2, 5.4),
+                    translation: (0.0, -0.1, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a5e7-73b0-b5a4-e52c28641ff2",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21d9a-9f8c-7382-ae89-36a3d21c2980",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Ceiling",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (5.4, 0.2, 5.4),
+                    translation: (0.0, 5.1, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a5ea-743a-9cf1-24186997c521",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21d9a-9f8c-7382-ae89-36a3d21c2980",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Back",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (5.4, 5.4, 0.2),
+                    translation: (0.0, 2.5, -2.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a5ed-774c-9857-2df68d999d86",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21d9a-9f8d-7291-b8d9-b66b81840027",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Left",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.2, 5.4, 5.4),
+                    translation: (-2.6, 2.5, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a5f0-7420-9fb3-7a9b85254eb0",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21d9a-9f8e-7092-abc8-10e2564772c6",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Right",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.2, 5.4, 5.4),
+                    translation: (2.6, 2.5, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a5f3-74d8-b846-2dced57a1a60",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21d9a-9f8c-7382-ae89-36a3d21c2980",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Tall block",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.4, 3.0, 1.4),
+                    translation: (-0.9, 1.5, -0.8),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a5f6-7611-9711-1b82f2286df7",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21d9a-9f8c-7382-ae89-36a3d21c2980",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Short block",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.4, 1.5, 1.4),
+                    translation: (0.9, 0.75, 0.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a5f9-7665-9380-7612f45d1d6a",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21d9a-9f8e-7092-abc8-10e3e9d74284",
+                    mesh: "asset:01a21a26-2bf6-71e4-b3c2-56ba29489dee#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Orb",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.5, 0.5, 0.5),
+                    translation: (-0.6, 0.6, 1.3),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a5fc-7576-9003-9fa1ffc7428c",
+            components: {
+                "Name": "Ceiling spot",
+                "SpotLight": (
+                    color: (1.0, 0.92, 0.8),
+                    inner_angle: 0.5,
+                    intensity_lumens: 3000.0,
+                    outer_angle: 0.8,
+                    range: 12.0,
+                    shadows: Some((
+                        depth_bias: 1.0,
+                        normal_bias: 1.0,
+                        pcf: X3,
+                    )),
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (-0.70710677, -0.0, -0.0, 0.70710677),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.0, 4.9, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a5ff-7048-9e81-db3b723b4550",
+            components: {
+                "Camera": (
+                    clear: (0.0, 0.0, 0.0, 1.0),
+                    exposure_ev100: 6.0,
+                    msaa: X4,
+                    priority: 0,
+                    projection: Perspective(
+                        far: 100.0,
+                        fov_y: 0.7,
+                        near: 0.1,
+                    ),
+                    tonemap: AgX,
+                ),
+                "Name": "Camera",
+                "Transform": (
+                    rotation: (-0.01052457, 0.0, 0.0, 0.9999447),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.0, 2.5, 9.5),
+                ),
+            },
+        ),
+    ],
+)

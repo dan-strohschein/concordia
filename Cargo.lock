@@ -824,6 +824,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "concordia-bvh"
+version = "0.0.0"
+dependencies = [
+ "concordia-core",
+ "concordia-rhi",
+ "concordia-rhi-metal",
+ "concordia-shaders",
+ "concordia-testkit",
+ "proptest",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "concordia-cli"
 version = "0.0.0"
 dependencies = [
@@ -1071,6 +1084,7 @@ dependencies = [
  "base64 0.22.1",
  "concordia-api",
  "concordia-assets",
+ "concordia-bvh",
  "concordia-command",
  "concordia-core",
  "concordia-material",

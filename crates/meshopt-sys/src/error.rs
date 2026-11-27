@@ -23,6 +23,9 @@ pub enum MeshoptError {
     /// `cone_weight` isn't a finite value in 0..=1.
     #[error("cone_weight {0} is outside 0..=1")]
     ConeWeight(f32),
+    /// A simplification's target error isn't a finite value in 0..=1.
+    #[error("target_error {0} is outside 0..=1")]
+    TargetError(f32),
     /// A position has a NaN or infinite coordinate.
     #[error("position {0} is not finite")]
     NonFinitePosition(usize),

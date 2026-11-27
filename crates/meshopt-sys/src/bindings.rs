@@ -59,6 +59,18 @@ unsafe extern "C" {
         vertex_count: usize,
         vertex_positions_stride: usize,
     ) -> meshopt_Bounds;
+    pub fn meshopt_simplify(
+        destination: *mut c_uint,
+        indices: *const c_uint,
+        index_count: usize,
+        vertex_positions: *const c_float,
+        vertex_count: usize,
+        vertex_positions_stride: usize,
+        target_index_count: usize,
+        target_error: c_float,
+        options: c_uint,
+        result_error: *mut c_float,
+    ) -> usize;
 
     /// Concordia's shim: `sizeof` of struct `which` (0 Meshlet, 1 Bounds), 0 past the end.
     pub fn cm_struct_size(which: c_uint) -> usize;

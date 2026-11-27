@@ -4,7 +4,10 @@
 //! and contact shadows), an urn and a rock on the meshlet path, one low sun and no sky, so its
 //! direct light is the sun's alone. `spell_arena_direct` (M4 4.7c): an arena of pillars, an arch
 //! and rubble lit only by eight shadowed spot and point lights of several colours (no sun, sky or
-//! emission); `spell_arena_256` adds 248 small unshadowed spell lights. Our own work (CC0-1.0).
+//! emission); `spell_arena_256` adds 248 small unshadowed spell lights. For GI (M4 4.8):
+//! `cornell_spell`, a box with red and green walls lit by a glowing spell orb and a spot light, and
+//! `iso_arena`, the arena under 32 coloured spell lights and glowing orbs at an isometric camera.
+//! Our own work (CC0-1.0).
 //!
 //! `just lighting-build` (from the repository root). Scenes are written anew each time.
 
@@ -25,11 +28,17 @@ const ARENA_256: &str = "scenes/spell_arena_256.scene.ron";
 const SEAMS: &str = "scenes/point_seams.scene.ron";
 const COURTYARD_SOFT: &str = "scenes/sun_courtyard_soft.scene.ron";
 const ARENA_SOFT: &str = "scenes/spell_arena_soft.scene.ron";
-const MATERIALS: [&str; 4] = [
+const CORNELL: &str = "scenes/cornell_spell.scene.ron";
+const ISO_ARENA: &str = "scenes/iso_arena.scene.ron";
+const MATERIALS: [&str; 8] = [
     "materials/stone.material.ron",
     "materials/plaster.material.ron",
     "materials/wood.material.ron",
     "materials/glaze.material.ron",
+    "materials/matte_white.material.ron",
+    "materials/matte_red.material.ron",
+    "materials/matte_green.material.ron",
+    "materials/spell_glow.material.ron",
 ];
 
 /// The engine on the lighting project, with one session.
@@ -191,6 +200,124 @@ fn main() -> Result<()> {
     )?;
     seams(&mut b)?;
     b.call("scene.save", json!({"actor": ACTOR}))?;
+    fresh(&mut b, &project, CORNELL, "Cornell spell")?;
+    cornell(&mut b, &urn)?;
+    b.call("scene.save", json!({"actor": ACTOR}))?;
+    fresh(&mut b, &project, ISO_ARENA, "Iso arena")?;
+    arena(&mut b, (&rock, &column))?;
+    iso_spells(&mut b, &urn)?;
+    iso_camera(&mut b)?;
+    b.call("scene.save", json!({"actor": ACTOR}))?;
+    Ok(())
+}
+
+/// `cornell_spell` (4.8): a 5 m box open towards the camera, white floor, ceiling and back, a red
+/// left and a green right wall, two white blocks, a glowing spell orb (0.25 m, 2000 nits) and a
+/// spot light through the ceiling. Most of what lights the walls is bounced.
+fn cornell(b: &mut Builder, urn: &str) -> Result<()> {
+    b.block("Floor", "matte_white", [0.0, -0.1, 0.0], [5.4, 0.2, 5.4])?;
+    b.block("Ceiling", "matte_white", [0.0, 5.1, 0.0], [5.4, 0.2, 5.4])?;
+    b.block("Back", "matte_white", [0.0, 2.5, -2.6], [5.4, 5.4, 0.2])?;
+    b.block("Left", "matte_red", [-2.6, 2.5, 0.0], [0.2, 5.4, 5.4])?;
+    b.block("Right", "matte_green", [2.6, 2.5, 0.0], [0.2, 5.4, 5.4])?;
+    b.block(
+        "Tall block",
+        "matte_white",
+        [-0.9, 1.5, -0.8],
+        [1.4, 3.0, 1.4],
+    )?;
+    b.block(
+        "Short block",
+        "matte_white",
+        [0.9, 0.75, 0.6],
+        [1.4, 1.5, 1.4],
+    )?;
+    b.place("Orb", urn, "spell_glow", [-0.6, 0.6, 1.3], [0.5, 0.5, 0.5])?;
+    let rotation = Quat::from_rotation_arc(Vec3::NEG_Z, Vec3::NEG_Y);
+    b.call(
+        "entity.spawn",
+        json!({"components": {
+            "Name": "Ceiling spot",
+            "Transform": {"translation": [0.0, 4.9, 0.0], "rotation": rotation.to_array(), "scale": [1.0, 1.0, 1.0]},
+            "SpotLight": {"color": [1.0, 0.92, 0.8], "intensity_lumens": 3000.0, "range": 12.0,
+                "inner_angle": 0.5, "outer_angle": 0.8,
+                "shadows": {"depth_bias": 1.0, "normal_bias": 1.0, "pcf": "X3"}},
+        }, "actor": ACTOR}),
+    )?;
+    let (eye, target) = (Vec3::new(0.0, 2.5, 9.5), Vec3::new(0.0, 2.3, 0.0));
+    let view = concordia_render::View {
+        eye,
+        target,
+        projection: concordia_render::Projection::default(),
+    };
+    let (_, rotation, _) = view.world_matrix()?.to_scale_rotation_translation();
+    b.call(
+        "entity.spawn",
+        json!({"components": {
+            "Name": "Camera",
+            "Transform": {"translation": eye.to_array(), "rotation": rotation.to_array(), "scale": [1.0, 1.0, 1.0]},
+            "Camera": {"clear": [0.0, 0.0, 0.0, 1.0], "exposure_ev100": 6.0, "msaa": "X4", "priority": 0,
+                "projection": {"Perspective": {"far": 100.0, "fov_y": 0.7, "near": 0.1}}, "tonemap": "AgX"},
+        }, "actor": ACTOR}),
+    )?;
+    Ok(())
+}
+
+/// `iso_arena`'s lights (4.8): 32 unshadowed spell lights of four colours in two rings, and four
+/// glowing spell orbs, over the arena's floor and pillars.
+fn iso_spells(b: &mut Builder, urn: &str) -> Result<()> {
+    let colors = [
+        [1.0f32, 0.45, 0.15],
+        [0.35, 0.6, 1.0],
+        [0.8, 0.3, 1.0],
+        [0.35, 1.0, 0.5],
+    ];
+    for i in 0..32u32 {
+        let (ring, k) = (i / 16, i % 16);
+        let a = std::f32::consts::TAU * (k as f32 + 0.5 * ring as f32) / 16.0;
+        let r = if ring == 0 { 3.5 } else { 9.0 };
+        b.call(
+            "entity.spawn",
+            json!({"components": {
+                "Name": format!("Spell {i}"),
+                "Transform": {"translation": [r * a.cos(), 0.8 + 0.4 * ring as f32, r * a.sin()],
+                    "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]},
+                "PointLight": {"color": colors[i as usize % 4], "intensity_lumens": 900.0, "range": 7.0},
+            }, "actor": ACTOR}),
+        )?;
+    }
+    for (i, at) in [
+        [-2.0f32, 0.5, 1.0],
+        [2.5, 0.5, -0.5],
+        [0.0, 0.5, 4.5],
+        [-4.0, 0.5, -4.0],
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        b.place(&format!("Orb {i}"), urn, "spell_glow", at, [0.6, 0.6, 0.6])?;
+    }
+    Ok(())
+}
+
+/// An isometric camera over the arena (a generic angle: 45° around, about 35° down).
+fn iso_camera(b: &mut Builder) -> Result<()> {
+    let (eye, target) = (Vec3::new(-16.0, 15.0, 16.0), Vec3::new(0.0, 0.5, 0.0));
+    let view = concordia_render::View {
+        eye,
+        target,
+        projection: concordia_render::Projection::default(),
+    };
+    let (_, rotation, _) = view.world_matrix()?.to_scale_rotation_translation();
+    b.call(
+        "entity.spawn",
+        json!({"components": {
+            "Name": "Camera",
+            "Transform": {"translation": eye.to_array(), "rotation": rotation.to_array(), "scale": [1.0, 1.0, 1.0]},
+            "Camera": {"clear": [0.0, 0.0, 0.0, 1.0], "exposure_ev100": 6.5, "msaa": "X4", "priority": 0,
+                "projection": {"Perspective": {"far": 1000.0, "fov_y": 0.75, "near": 0.1}}, "tonemap": "AgX"},
+        }, "actor": ACTOR}),
+    )?;
     Ok(())
 }
 

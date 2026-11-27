@@ -4,9 +4,9 @@
 Raw FFI to meshoptimizer (meshlet building, meshlet optimization, cluster bounds) built with `cc` from the vendored sources, plus a small checked wrapper (`safe`) so that callers such as `concordia-cluster` need no `unsafe` (M4 4.2, R5, Q1).
 
 ## Public entry points
-- `safe::build_meshlets`, `safe::optimize_meshlet`, `safe::meshlet_bounds`; `safe::Meshlets`, `safe::MAX_VERTICES`, `safe::MAX_TRIANGLES`
+- `safe::build_meshlets`, `safe::optimize_meshlet`, `safe::meshlet_bounds`, `safe::simplify` (M4 4.8a, GI proxies; checks every position, since meshoptimizer scales by all of them); `safe::Meshlets`, `safe::Simplified`, `safe::MAX_VERTICES`, `safe::MAX_TRIANGLES`
 - `MeshoptError`, `MESHOPTIMIZER_VERSION`
-- `ffi`: the hand-written C API (`meshopt_buildMeshlets`, `meshopt_buildMeshletsBound`, `meshopt_optimizeMeshlet`, `meshopt_computeMeshletBounds`, the `meshopt_Meshlet` and `meshopt_Bounds` structs) and the shim's `cm_struct_size` / `cm_version`
+- `ffi`: the hand-written C API (`meshopt_buildMeshlets`, `meshopt_buildMeshletsBound`, `meshopt_optimizeMeshlet`, `meshopt_computeMeshletBounds`, `meshopt_simplify`, the `meshopt_Meshlet` and `meshopt_Bounds` structs) and the shim's `cm_struct_size` / `cm_version`
 
 ## Invariants
 - meshoptimizer is pinned at v1.3 (`third_party/meshoptimizer/VENDOR.md`) and unmodified; the build never downloads. Compiled as C++11 with `-O2` in every profile, `-ffp-contract=off` (the same floats on x86 and ARM), no exceptions or RTTI.

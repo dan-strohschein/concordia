@@ -32,6 +32,7 @@ concordia-physics = { path = "crates/concordia-physics" }
 concordia-platform = { path = "crates/concordia-platform" }
 concordia-command = { path = "crates/concordia-command" }
 concordia-gen = { path = "crates/concordia-gen" }
+concordia-bvh = { path = "crates/concordia-bvh" }
 concordia-core = { path = "crates/concordia-core" }
 concordia-import-fbx = { path = "crates/concordia-import-fbx" }
 concordia-import-gltf = { path = "crates/concordia-import-gltf" }

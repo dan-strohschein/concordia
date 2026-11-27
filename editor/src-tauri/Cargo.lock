@@ -755,6 +755,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "concordia-bvh"
+version = "0.0.0"
+dependencies = [
+ "concordia-core",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "concordia-cluster"
 version = "0.0.0"
 dependencies = [
@@ -939,6 +947,7 @@ version = "0.0.0"
 dependencies = [
  "concordia-api",
  "concordia-assets",
+ "concordia-bvh",
  "concordia-command",
  "concordia-core",
  "concordia-material",
