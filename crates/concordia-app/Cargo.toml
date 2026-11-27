@@ -7,6 +7,8 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
+# One test binary (2026-11-27): each links the whole engine; tests/main.rs declares every file.
+autotests = false
 
 [dependencies]
 arboard.workspace = true
@@ -53,6 +55,10 @@ serde_json.workspace = true
 tempfile.workspace = true
 concordia-tests = { path = "../../tests" }
 tracing-subscriber.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/main.rs"
 
 [lints]
 workspace = true

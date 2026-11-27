@@ -352,7 +352,7 @@ fn temporal_pass_budget() {
 /// temporal off, the own resolve and MetalFX (4.6b) at 1.0×, 1.5× and 2.0×; each pass's median and the
 /// frame's (MetalFX's own work shows only in the frame).
 /// Run on the reference Mac:
-/// `cargo nextest run -p concordia-tests --release --test canyon --run-ignored only -E 'test(canyon_temporal_timings)' --no-capture`.
+/// `cargo nextest run -p concordia-tests --release --test integration --run-ignored only -E 'test(=canyon::canyon_temporal_timings)' --no-capture`.
 #[test]
 #[ignore = "timings for the As built, run by hand in release"]
 fn canyon_temporal_timings() {

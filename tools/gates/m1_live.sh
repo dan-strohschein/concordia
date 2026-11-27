@@ -63,7 +63,7 @@ attempt_once() {
   M1_LIVE_PROJECT="$project" M1_LIVE_RESULT="$out/result.json" M1_LIVE_LOG="$out/mcp.log" \
     M1_LIVE_ENV="$out/env-names.txt" \
     cargo nextest run --workspace --manifest-path "$ROOT/Cargo.toml" \
-    --run-ignored only -E 'binary(m1_live_check) & test(m1_live_outcome_check)'
+    --run-ignored only -E 'binary_id(concordia-tests::integration) & test(=m1_live_check::m1_live_outcome_check)'
 }
 
 for n in $(seq 1 "$ATTEMPTS"); do

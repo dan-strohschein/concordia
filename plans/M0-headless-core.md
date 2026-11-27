@@ -697,7 +697,7 @@ Every crate's `AGENTS.md` has these headings: **Purpose** (2–3 sentences), **P
 
 ```
 just gate M0
-# = cargo build -p concordia-mcp -p concordia-cli && cargo nextest run -p concordia-tests --test m0_headless_mcp
+# = cargo build -p concordia-mcp -p concordia-cli && cargo nextest run -p concordia-tests --test integration m0_headless_mcp::
 ```
 
 `m0_gate_agent_workflow_over_mcp` spawns `concordia-mcp --project <tempdir> --actor agent:gate --deterministic-ids 7` as a **subprocess with a cleared environment** (only `PATH`, `HOME`; proving no API key is needed) and drives it with an `rmcp` client over stdio:
@@ -736,7 +736,7 @@ The script:
    ```
    (verify flag names with `claude --help` at execution time; on 2026-11-17 Claude Code 2.1.327 did not list `--max-turns` in `--help`, so if it is gone, bound the run with `timeout` instead). File-writing tools are disallowed so the scene can only be produced through MCP.
 3. Prompt (`tools/gates/m0_live_prompt.md`), fixed: using only the `concordia` tools, create `scenes/courtyard.scene.ron` named "Courtyard"; spawn `Lamp` at translation (2, 0, -3); in one transaction labelled `plant trees` spawn `Tree 1..3` at x = −4, 0, 4, z = 5; spawn `Rock`, then undo that; set the Lamp's scale to (1, 2, 1); save; query entities with a Transform whose z > 1; end with a line `RESULT: <names>`.
-4. `M0_LIVE_PROJECT=… M0_LIVE_RESULT=result.json cargo nextest run -p concordia-tests --test m0_live_check --run-ignored only`, which asserts **outcomes, not transcripts**:
+4. `M0_LIVE_PROJECT=… M0_LIVE_RESULT=result.json cargo nextest run -p concordia-tests --test integration --run-ignored only m0_live_check::`, which asserts **outcomes, not transcripts**:
    - `result.json` has `is_error: false`; its final text contains `RESULT:` naming Tree 1, Tree 2, Tree 3 (any order).
    - The scene file exists, parses, is canonical, has `name: "Courtyard"`, exactly 4 entities named `Lamp`, `Tree 1..3` (no `Rock`), Lamp translation ≈ (2, 0, −3) and scale ≈ (1, 2, 1) (ε = 1e-4), trees at the requested positions.
    - Journal: a commit labelled `plant trees` with 3 spawn ops; an `undo` whose target txn spawned `Rock`; all commit/undo actors start with `agent:`.
@@ -744,7 +744,7 @@ The script:
 
 ### Layer 3 — this session (the literal design gate, manual checklist)
 
-With the repo-root `.mcp.json` registering `concordia` (via `tools/mcp/concordia-mcp.sh`, project `examples/m0-sandbox`), in this Claude Code session on the subscription with no API key set: create a scene, spawn and edit entities, save, and query, using only `mcp__concordia__*` tools; then run `M0_LIVE_PROJECT="$PWD/examples/m0-sandbox" cargo nextest run -p concordia-tests --test m0_live_check --run-ignored only -E 'test(m0_scene_is_valid)'` (a lighter assertion: the saved scene is canonical and its journal is attributed to an `agent:` actor). Use an absolute project path: nextest runs the test from `tests/`. Record the date in Status.
+With the repo-root `.mcp.json` registering `concordia` (via `tools/mcp/concordia-mcp.sh`, project `examples/m0-sandbox`), in this Claude Code session on the subscription with no API key set: create a scene, spawn and edit entities, save, and query, using only `mcp__concordia__*` tools; then run `M0_LIVE_PROJECT="$PWD/examples/m0-sandbox" cargo nextest run -p concordia-tests --test integration --run-ignored only -E 'test(/^m0_live_check::.*m0_scene_is_valid/)'` (a lighter assertion: the saved scene is canonical and its journal is attributed to an `agent:` actor). Use an absolute project path: nextest runs the test from `tests/`. Record the date in Status.
 
 ## Risks & mitigations
 

@@ -26,8 +26,10 @@ class Selection(unittest.TestCase):
         self.assertEqual(s["packages"], ["concordia-render", "concordia-rhi"])
         self.assertIn("rdeps(=concordia-render)", s["filter"])
         self.assertIn("rdeps(=concordia-rhi)", s["filter"])
-        self.assertIn("- binary(/^m[0-9]+s?_/)", s["filter"])
-        self.assertIn("binary(repo_hygiene)", s["filter"])
+        self.assertIn("- (binary_id(concordia-tests::integration) & test(/^m[0-9]+s?_/))",
+                      s["filter"])
+        self.assertIn("(binary_id(concordia-tests::integration) & test(/^repo_hygiene::/))",
+                      s["filter"])
 
     def test_the_deepest_package_folder_owns_a_file(self):
         s = select("tests/fixtures/wasm/hello-guest/src/lib.rs")
@@ -35,7 +37,8 @@ class Selection(unittest.TestCase):
 
     def test_a_changed_gate_runs_that_gate(self):
         s = select("tests/gates/m1_physics_golden.rs")
-        self.assertIn("binary(=m1_physics_golden)", s["filter"])
+        self.assertIn(
+            "(binary_id(concordia-tests::integration) & test(/^m1_physics_golden::/))", s["filter"])
 
     def test_goldens_rerun_the_renderer(self):
         s = select("tests/golden/m4_motion/view_motion.png")
@@ -44,7 +47,8 @@ class Selection(unittest.TestCase):
     def test_docs_and_tooling_run_only_the_hygiene_test(self):
         s = select("plans/M4-unreal-class-visuals.md", ".github/workflows/vulkan.yml", "justfile")
         self.assertEqual(s["packages"], [])
-        self.assertEqual(s["filter"], "binary(repo_hygiene)")
+        self.assertEqual(s["filter"],
+                         "(binary_id(concordia-tests::integration) & test(/^repo_hygiene::/))")
 
     def test_root_manifests_and_locks_mean_the_full_suite(self):
         for root in ["Cargo.toml", "Cargo.lock"]:

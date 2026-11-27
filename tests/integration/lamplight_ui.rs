@@ -20,8 +20,7 @@
 //!   naming Ada. "Another night" goes back to the title; starting again resets the town: every
 //!   lamp dark, no wisps, a full can, 10 spirit, and the record stays (one row).
 
-#[path = "lamplight_world.rs"]
-mod world;
+use crate::lamplight_world as world;
 
 use serde_json::{Value, json};
 use world::Night;

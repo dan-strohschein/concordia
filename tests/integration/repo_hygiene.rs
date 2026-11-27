@@ -812,3 +812,47 @@ fn golden_images_stay_small() {
         "goldens total {total} bytes (limit {MAX_TOTAL}); time for Git LFS?"
     );
 }
+
+/// Folded test binaries (2026-11-27) compile only the files their root declares: a test file
+/// that no root names, and that is not its own `[[test]]` target, would silently never run.
+#[test]
+fn every_test_file_is_compiled_into_a_test_binary() {
+    let folded = [
+        (
+            "tests/integration",
+            "tests/integration/main.rs",
+            "tests/Cargo.toml",
+        ),
+        (
+            "tests/gates",
+            "tests/integration/main.rs",
+            "tests/Cargo.toml",
+        ),
+        (
+            "crates/concordia-app/tests",
+            "crates/concordia-app/tests/main.rs",
+            "crates/concordia-app/Cargo.toml",
+        ),
+        (
+            "crates/concordia-mcp/tests",
+            "crates/concordia-mcp/tests/main.rs",
+            "crates/concordia-mcp/Cargo.toml",
+        ),
+    ];
+    for (dir, root, manifest) in folded {
+        let declared = read_repo_file(root);
+        let targets = read_repo_file(manifest);
+        for entry in std::fs::read_dir(repo_root().join(dir)).unwrap() {
+            let name = entry.unwrap().file_name().into_string().unwrap();
+            let Some(stem) = name.strip_suffix(".rs") else {
+                continue;
+            };
+            let in_root = stem == "main" || declared.contains(&format!("mod {stem};"));
+            let own_target = targets.contains(&format!("/{name}\""));
+            assert!(
+                in_root || own_target,
+                "{dir}/{name} is in no test binary: declare `mod {stem};` in {root}"
+            );
+        }
+    }
+}

@@ -26,8 +26,7 @@
 //! - Fog: the first wave (6 wisps at density 1) comes when the fog's 5 s timer runs out, about
 //!   tick 301, each aimed 4–6 m from the square. On the title screen no wave comes.
 
-#[path = "lamplight_world.rs"]
-mod world;
+use crate::lamplight_world as world;
 
 use serde_json::json;
 use world::{Night, near};

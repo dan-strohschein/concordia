@@ -9,10 +9,12 @@ import json
 import os
 import subprocess
 
-# Milestone gate binaries (tests/gates/m<n>[s]_*.rs).
-GATES = "binary(/^m[0-9]+s?_/)"
+# concordia-tests' one test binary: its tests are named after their file (`m1_physics_golden::`).
+TESTS = "binary_id(concordia-tests::integration)"
+# Milestone gates (tests/gates/m<n>[s]_*.rs).
+GATES = f"({TESTS} & test(/^m[0-9]+s?_/))"
 # Always run: it checks plans, workflows and crate docs, and takes under a second.
-HYGIENE = "binary(repo_hygiene)"
+HYGIENE = f"({TESTS} & test(/^repo_hygiene::/))"
 FULL_ON = {"Cargo.toml", "Cargo.lock"}
 DENY_ON = {"deny.toml", "editor/src-tauri/Cargo.lock", "editor/src-tauri/deny.toml"}
 # Types regenerated from the engine's schemas: the editor's type check and unit tests cover them.
@@ -46,7 +48,7 @@ def select(files, packages):
             changed.add(name)
     terms = [f"rdeps(={name})" for name in sorted(changed)]
     filter_ = f"(({' | '.join(terms)}) - {GATES})" if terms else ""
-    extra = [HYGIENE] + [f"binary(={g})" for g in sorted(gates)]
+    extra = [HYGIENE] + [f"({TESTS} & test(/^{g}::/))" for g in sorted(gates)]
     return {
         "mode": "full" if FULL_ON & set(files) else "affected",
         "packages": sorted(changed),

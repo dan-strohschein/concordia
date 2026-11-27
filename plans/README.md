@@ -142,7 +142,7 @@ examples/             # small sample projects used by tests and docs
 | `concordia-sparx` *(proposed)* | Sparx particles without a GPU: the `.vfx.ron` effect format, attribute layouts, the module contract and built-in modules, template codegen to Slang, the `DataInterface` trait, the CPU reference simulator (test oracle) and the `vfx` engine module; the GPU runtime is `concordia-render::sparx` | M11 |
 | `concordia-rig` *(proposed)* | procedural rigs without a GPU: the `.rig.ron` format, rig units and the `RigUnit` trait, IK solvers (two-bone, FABRIK, CCD), aim, look-at and constraints, the compiler and evaluator, backward solve, baking, the pose library and the `rig` engine module | M12 |
 
-**Test package:** `tests/` is the `concordia-tests` package (`publish = false`, `autotests = false`, explicit `[[test]]` targets). Shared helpers (MCP test client, binary locators, gate checkers) live in its library, `tests/src/`.
+**Test package:** `tests/` is the `concordia-tests` package (`publish = false`, `autotests = false`). Its integration tests and gates fold into one test binary, `integration` (`tests/integration/main.rs` declares each file as a module; 2026-11-27), as do `concordia-app`'s and `concordia-mcp`'s (`tests/main.rs`): select a file's tests with `--test integration <file>::` or `-E 'binary_id(concordia-tests::integration) & test(/^<file>::/)'`. Only `bless_reference` (release-only) keeps its own binary. Shared helpers (MCP test client, binary locators, gate checkers) live in its library, `tests/src/`.
 
 New crates may be proposed in a plan's "Open questions" section; they are added here during the consistency pass.
 

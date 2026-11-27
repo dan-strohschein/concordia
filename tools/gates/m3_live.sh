@@ -86,7 +86,7 @@ attempt_once() {
   if M3_LIVE_PROJECT="$project" M3_LIVE_BASELINE="$base/baseline" M3_LIVE_PRISTINE="$base/pristine" \
     M3_LIVE_RESULT="$out/result.json" M3_LIVE_ENV="$out/env-names.txt" \
     cargo nextest run --workspace --manifest-path "$ROOT/Cargo.toml" \
-    --run-ignored only -E 'binary(m3_live_studio) & test(m3_live_director_gameplay_qa_fix_seeded_bug)'; then
+    --run-ignored only -E 'binary_id(concordia-tests::integration) & test(=m3_live_studio::m3_live_director_gameplay_qa_fix_seeded_bug)'; then
     status=pass
   fi
   cat >"$out/report.ron" <<RON

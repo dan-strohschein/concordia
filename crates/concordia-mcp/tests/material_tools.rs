@@ -1,7 +1,7 @@
 //! Material tools over MCP (M2 phase 2.3c): an agent reads a material, changes a slab and
 //! writes it back; an invalid one is refused naming the node and field.
 
-mod common;
+use crate::common;
 
 use common::{call, connect_with, options, text};
 use serde_json::{Value, json};

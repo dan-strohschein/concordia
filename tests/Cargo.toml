@@ -61,117 +61,18 @@ path = "tools/canyon_build.rs"
 name = "lighting_build"
 path = "tools/lighting_build.rs"
 
+# One binary for the integration tests and milestone gates (2026-11-27): each test binary links
+# the whole engine (about 200 MB). Test names start with their file's module (`m0_headless_mcp::`),
+# so `just gate-tests M<n>` selects `test(/^m<n>_/)` in it.
 [[test]]
-name = "canyon"
-path = "integration/canyon.rs"
+name = "integration"
+path = "integration/main.rs"
 
-[[test]]
-name = "reference_blessing"
-path = "integration/reference_blessing.rs"
-
-[[test]]
-name = "vsm_reference"
-path = "integration/vsm_reference.rs"
-
+# Separate: run only by `just bless-reference`, in release; inside `integration` that release
+# build would compile every other test too.
 [[test]]
 name = "bless_reference"
 path = "integration/bless_reference.rs"
 
-[[test]]
-name = "repo_hygiene"
-path = "integration/repo_hygiene.rs"
-
-[[test]]
-name = "lamplight_ui"
-path = "integration/lamplight_ui.rs"
-
-[[test]]
-name = "lamplight_town"
-path = "integration/lamplight_town.rs"
-
-[[test]]
-name = "lamplight_night"
-path = "integration/lamplight_night.rs"
-
-[[test]]
-name = "lamplight_content"
-path = "integration/lamplight_content.rs"
-
-[[test]]
-name = "replay_m1_physics"
-path = "integration/replay_m1_physics.rs"
-
-[[test]]
-name = "m_minus1_scaffold"
-path = "gates/m_minus1_scaffold.rs"
-
-[[test]]
-name = "m0_headless_mcp"
-path = "gates/m0_headless_mcp.rs"
-
-[[test]]
-name = "m3s_studio_sync"
-path = "gates/m3s_studio_sync.rs"
-
-[[test]]
-name = "m3s_enforcement"
-path = "gates/m3s_enforcement.rs"
-
-[[test]]
-name = "m3s_task_board"
-path = "gates/m3s_task_board.rs"
-
-[[test]]
-name = "m3s_shared_engine"
-path = "gates/m3s_shared_engine.rs"
-
-[[test]]
-name = "m3s_live_check"
-path = "gates/m3s_live_check.rs"
-
-[[test]]
-name = "m3s_team_questions"
-path = "gates/m3s_team_questions.rs"
-
-[[test]]
-name = "m0_live_check"
-path = "gates/m0_live_check.rs"
-
-[[test]]
-name = "m1_physics_golden"
-path = "gates/m1_physics_golden.rs"
-
-[[test]]
-name = "m1_mcp_screenshot"
-path = "gates/m1_mcp_screenshot.rs"
-
-[[test]]
-name = "m1_mcp_coverage"
-path = "gates/m1_mcp_coverage.rs"
-
-[[test]]
-name = "m1_live_check"
-path = "gates/m1_live_check.rs"
-
 [lints]
 workspace = true
-
-[[test]]
-name = "m2_lamplight"
-path = "gates/m2_lamplight.rs"
-
-[[test]]
-name = "m3_replay_assert"
-path = "gates/m3_replay_assert.rs"
-
-[[test]]
-name = "m3_studio_sync"
-path = "gates/m3_studio_sync.rs"
-
-[[test]]
-name = "m3_studio_loop_scripted"
-path = "gates/m3_studio_loop_scripted.rs"
-
-[[test]]
-name = "m3_live_studio"
-path = "gates/m3_live_studio.rs"

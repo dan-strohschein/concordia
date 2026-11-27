@@ -4,7 +4,7 @@ Each mutant is `{"name", "file", "old", "new", "args"}`: `old` must occur exactl
 (repo-relative), and `args` are what follows `cargo nextest run` (a mutant is killed when those
 tests fail). Workers run in git worktrees of the committed HEAD under target/mutants/ (so the tree
 must be clean), each with its own target folder; the main target's toolchains and fixtures are
-linked in. A mutated file is restored, and its mtime refreshed, before the next mutant, so cargo
+linked in; both are removed when the run ends, however it ends. A mutated file is restored, and its mtime refreshed, before the next mutant, so cargo
 never keeps a mutated build. Prints one line per mutant and writes target/mutants/results.json.
 """
 
@@ -55,6 +55,18 @@ def worktree(index):
         if entry not in BUILD_DIRS:
             os.symlink(os.path.join(ROOT, "target", entry), os.path.join(path, "target", entry))
     return path
+
+
+def cleanup(workers):
+    """Removes every worker's worktree and target folder (each takes up to GB_PER_WORKER)."""
+    for i in range(workers):
+        tree = os.path.join(BASE, f"w{i}")
+        if os.path.exists(tree):
+            subprocess.run(["git", "worktree", "remove", "--force", tree], cwd=ROOT,
+                           capture_output=True)
+        shutil.rmtree(tree, ignore_errors=True)
+        shutil.rmtree(os.path.join(BASE, f"target-{i}"), ignore_errors=True)
+    subprocess.run(["git", "worktree", "prune"], cwd=ROOT, capture_output=True)
 
 
 def nextest(tree, target, jobs, args):
@@ -135,13 +147,14 @@ def main():
                 results.append({"name": m["name"], "verdict": verdict})
                 print(f"{m['name']}: {verdict}", flush=True)
 
-    threads = [threading.Thread(target=worker, args=(i,)) for i in range(workers)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-    for i in range(workers):
-        git("worktree", "remove", "--force", os.path.join(BASE, f"w{i}"))
+    threads = [threading.Thread(target=worker, args=(i,), daemon=True) for i in range(workers)]
+    try:
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    finally:
+        cleanup(workers)
     json.dump(results, open(os.path.join(BASE, "results.json"), "w"), indent=1)
     survived = [r["name"] for r in results if r["verdict"] != "killed"
                 and not r["verdict"].startswith("killed")]

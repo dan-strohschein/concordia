@@ -1,7 +1,7 @@
 //! The agent surface (M1 phase 1.12, ADR-0049): with the full M1 module set, every agent method is a
 //! described MCP tool, editor plumbing is not, and the agent guide covers every tool.
 
-mod common;
+use crate::common;
 
 use std::collections::BTreeSet;
 use std::path::Path;

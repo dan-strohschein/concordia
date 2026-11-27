@@ -109,7 +109,8 @@ deny:
     cargo deny --manifest-path {{guest}} check licenses bans sources
     cargo deny --manifest-path tests/fixtures/m3-studio-game/scripts/player_controller/Cargo.toml check licenses bans sources
 
-# Full CI, then the milestone's gate tests (tests/gates/<prefix>_*.rs)
+# Full CI, then the milestone's gate tests (tests/gates/<prefix>_*.rs, in concordia-tests' one
+# `integration` binary, named `<prefix>_<file>::<test>`)
 gate milestone: ci
     just gate-tests {{milestone}}
 
@@ -121,7 +122,7 @@ gate-tests milestone:
         echo "No gate tests for {{milestone}} yet (expected tests/gates/${prefix}_*.rs); they are written when the milestone's gate is built." >&2; \
         exit 1; \
     fi; \
-    cargo nextest run --workspace --no-tests=fail -E "binary(/^${prefix}_/)"
+    cargo nextest run --workspace --no-tests=fail -E "binary_id(concordia-tests::integration) & test(/^${prefix}_/)"
 
 # Live-agent gate: a real Claude Code session on your subscription (no API key), outcomes asserted
 gate-live milestone:
@@ -159,15 +160,17 @@ clean-builds:
     rm -rf target/debug target/release target/lint target/mutants editor/src-tauri/target
 
 # Free space cheaply: old incremental snapshots, the release build (perf and blessing only), golden
-# review output; the next debug build recompiles only what changed
+# review output, build units unused for 3 days (tools/disk/sweep.py); the next debug build
+# recompiles only what changed
 prune-builds:
     rm -rf target/debug/incremental target/release target/golden-review target/perf editor/src-tauri/target/debug/incremental
+    @if [ -d target ]; then python3 -I tools/disk/sweep.py target; fi
     @df -g / | awk 'NR==2 {print $4 " GB free"}'
 
 # Free space and the size of the build folders
 disk:
     @df -g / | awk 'NR==2 {print $4 " GB free"}'
-    @du -sh target/debug target/debug/incremental target/release 2>/dev/null || true
+    @du -sh target target/debug target/debug/build target/debug/incremental target/release 2>/dev/null || true
 
 # Download the pinned Slang toolchain into target/toolchain/slang/ (prints its directory)
 slang-fetch:

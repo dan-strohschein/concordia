@@ -20,8 +20,7 @@
 //!   1.75 (half its length) + 1.5 (its gap) + the lamplighter's radius from them, within the 4.5 m
 //!   refill reach, and fills the can: 100 oil, one refill.
 
-#[path = "lamplight_world.rs"]
-mod world;
+use crate::lamplight_world as world;
 
 use serde_json::{Value, json};
 use world::{Night, near};
