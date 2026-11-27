@@ -141,6 +141,8 @@ pub struct PointLight {
     /// Distance where the light fades to zero (also its clustering bound).
     #[reflect(range(min = 0.01, max = 1000.0))]
     pub range: f32,
+    /// Shadows on virtual shadow maps (M4 4.7c); `None`: unshadowed (the default).
+    pub shadows: Option<crate::LocalShadowSettings>,
 }
 
 impl Default for PointLight {
@@ -149,6 +151,7 @@ impl Default for PointLight {
             color: [1.0; 3],
             intensity_lumens: 800.0,
             range: 10.0,
+            shadows: None,
         }
     }
 }
@@ -173,6 +176,8 @@ pub struct SpotLight {
     /// Half-angle (radians) where the light reaches zero (≥ inner).
     #[reflect(range(min = 0.0, max = 1.57))]
     pub outer_angle: f32,
+    /// Shadows on virtual shadow maps (M4 4.7c); `None`: unshadowed (the default).
+    pub shadows: Option<crate::LocalShadowSettings>,
 }
 
 impl Default for SpotLight {
@@ -183,6 +188,7 @@ impl Default for SpotLight {
             range: 10.0,
             inner_angle: 0.3,
             outer_angle: 0.5,
+            shadows: None,
         }
     }
 }

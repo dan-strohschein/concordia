@@ -73,6 +73,7 @@ fn main() {
                     color: [1.0, 0.8, 0.6],
                     intensity_lumens: 100.0,
                     range: 3.0,
+                    ..Default::default()
                 },
             )
             .unwrap();

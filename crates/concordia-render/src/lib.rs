@@ -37,6 +37,7 @@ mod scan;
 mod scene_cache;
 pub mod shadow;
 mod shadow_pass;
+pub mod shadow_select;
 mod shape;
 mod skinning;
 mod stats;

@@ -266,6 +266,7 @@ fn punctual_lights(name: &str, backend: &Backend) {
         color: [1.0, 0.5, 0.25],
         intensity_lumens: 800.0,
         range: 10.0,
+        ..Default::default()
     };
     let at = Vec3::new(0.0, 2.0, 0.0);
     let got = direct_only(backend, Vec3::ZERO, |b| b.point_light(at, &light));
@@ -281,6 +282,7 @@ fn punctual_lights(name: &str, backend: &Backend) {
         range: 10.0,
         inner_angle: 0.3,
         outer_angle: 0.5,
+        ..Default::default()
     };
     let p = Vec3::new(0.8, 0.0, 0.0);
     let got = direct_only(backend, p, |b| b.spot_light(at, Vec3::NEG_Y, &spot));

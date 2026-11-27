@@ -133,6 +133,7 @@ fn new_project_documents_the_shadow_settings() {
         "# levels = 16",
         "# keep_frames = 60",
         "# cache = true",
+        "# max_local_lights = 64",
     ] {
         assert!(manifest.contains(line), "{line} missing:\n{manifest}");
     }

@@ -1225,6 +1225,7 @@ dependencies = [
  "concordia-reflect",
  "concordia-terra",
  "serde",
+ "serde_json",
  "thiserror 2.0.21",
 ]
 

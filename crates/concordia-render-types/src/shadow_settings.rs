@@ -23,6 +23,30 @@ impl PcfKernel {
     }
 }
 
+/// Shadow settings of a point or spot light (M4 4.7c; `None` on the light: unshadowed).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(default, deny_unknown_fields)]
+pub struct LocalShadowSettings {
+    /// Receiver depth bias in shadow texels.
+    #[reflect(range(min = 0.0, max = 10.0))]
+    pub depth_bias: f32,
+    /// Receiver offset along the normal, in shadow texels.
+    #[reflect(range(min = 0.0, max = 10.0))]
+    pub normal_bias: f32,
+    /// Filter.
+    pub pcf: PcfKernel,
+}
+
+impl Default for LocalShadowSettings {
+    fn default() -> Self {
+        Self {
+            depth_bias: 1.0,
+            normal_bias: 1.0,
+            pcf: PcfKernel::X3,
+        }
+    }
+}
+
 /// Shadow settings of a directional light.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 #[serde(default, deny_unknown_fields)]

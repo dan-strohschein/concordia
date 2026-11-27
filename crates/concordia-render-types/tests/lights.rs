@@ -57,3 +57,34 @@ fn equirect_mapping_round_trips_with_its_landmarks() {
         assert!(back.distance(d) < 1e-5, "{d} → {back}");
     }
 }
+
+/// `shadows` on point and spot lights (M4 4.7c): `None` unless written, so existing scenes load
+/// unchanged; settings round-trip.
+#[test]
+fn local_shadow_settings_default_to_none_and_roundtrip() {
+    use concordia_render_types::{LocalShadowSettings, PcfKernel, PointLight, SpotLight};
+    assert_eq!(PointLight::default().shadows, None);
+    assert_eq!(SpotLight::default().shadows, None);
+    let old: PointLight = serde_json::from_value(serde_json::json!({
+        "color": [1.0, 0.5, 0.2], "intensity_lumens": 800.0, "range": 6.0
+    }))
+    .unwrap();
+    assert_eq!(old.shadows, None, "existing scenes load unchanged");
+    let s = LocalShadowSettings::default();
+    assert_eq!(
+        (s.depth_bias, s.normal_bias, s.pcf),
+        (1.0, 1.0, PcfKernel::X3)
+    );
+    let spot = SpotLight {
+        shadows: Some(LocalShadowSettings {
+            depth_bias: 2.0,
+            ..s
+        }),
+        ..SpotLight::default()
+    };
+    let text = serde_json::to_value(&spot).unwrap();
+    assert_eq!(serde_json::from_value::<SpotLight>(text).unwrap(), spot);
+    let partial: LocalShadowSettings =
+        serde_json::from_value(serde_json::json!({ "pcf": "X5" })).unwrap();
+    assert_eq!((partial.pcf, partial.depth_bias), (PcfKernel::X5, 1.0));
+}
