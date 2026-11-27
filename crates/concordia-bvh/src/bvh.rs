@@ -3,6 +3,7 @@
 
 use concordia_core::math::Vec3;
 
+use crate::BvhError;
 use crate::geometry::{Hit, Ray, Triangle};
 
 /// Bins per split axis.
@@ -58,6 +59,32 @@ impl Tree {
     /// Primitive indices in leaf order.
     pub fn order(&self) -> &[u32] {
         &self.order
+    }
+
+    /// Recomputes every node's bounds from the primitives' new `bounds` (same count and order as
+    /// the build), keeping the tree's shape.
+    pub fn refit(&mut self, bounds: &[(Vec3, Vec3)]) -> Result<(), BvhError> {
+        if bounds.len() != self.order.len() {
+            return Err(BvhError::CountMismatch {
+                expected: self.order.len(),
+                got: bounds.len(),
+            });
+        }
+        // Depth-first: both children come after their parent, so reverse order sees them first.
+        for index in (0..self.nodes.len()).rev() {
+            let node = self.nodes[index];
+            let (min, max) = if node.count > 0 {
+                let leaves = &self.order[node.first as usize..(node.first + node.count) as usize];
+                leaves
+                    .iter()
+                    .fold(EMPTY, |acc, &p| merge(acc, bounds[p as usize]))
+            } else {
+                let (l, r) = (&self.nodes[index + 1], &self.nodes[node.first as usize]);
+                merge((l.min, l.max), (r.min, r.max))
+            };
+            (self.nodes[index].min, self.nodes[index].max) = (min, max);
+        }
+        Ok(())
     }
 
     /// Visits the primitives whose boxes `ray` crosses, nearest box first. `leaf` may shorten
@@ -123,6 +150,15 @@ impl Bvh {
         }
     }
 
+    /// Moves the triangles to `triangles` (same count and order) and refits the bounds, keeping
+    /// the tree's shape: cheaper than a rebuild, slower to trace as the motion grows.
+    pub fn refit(&mut self, triangles: &[Triangle]) -> Result<(), BvhError> {
+        let bounds: Vec<_> = triangles.iter().map(Triangle::bounds).collect();
+        self.tree.refit(&bounds)?;
+        self.triangles.copy_from_slice(triangles);
+        Ok(())
+    }
+
     /// The nearest hit along `ray`.
     pub fn intersect(&self, ray: &Ray) -> Option<Hit> {
         let mut nearest = None;
@@ -181,6 +217,14 @@ fn slab(node: &Node, ray: &Ray, inv: Vec3) -> Option<f32> {
     (near <= exit.min(ray.t_max)).then_some(near)
 }
 
+/// Bounds containing nothing.
+const EMPTY: (Vec3, Vec3) = (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY));
+
+/// The bounds of both.
+fn merge(a: (Vec3, Vec3), b: (Vec3, Vec3)) -> (Vec3, Vec3) {
+    (a.0.min(b.0), a.1.max(b.1))
+}
+
 /// Builds nodes over `order[start..end]`.
 struct Builder {
     centroids: Vec<Vec3>,
@@ -211,13 +255,9 @@ impl Builder {
     }
 
     fn span(&self, prims: &[u32]) -> (Vec3, Vec3) {
-        prims.iter().fold(
-            (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)),
-            |(lo, hi), &p| {
-                let (a, b) = self.bounds[p as usize];
-                (lo.min(a), hi.max(b))
-            },
-        )
+        prims
+            .iter()
+            .fold(EMPTY, |acc, &p| merge(acc, self.bounds[p as usize]))
     }
 
     /// Partitions `order[start..end]` at the cheapest binned SAH split; None when no split beats a
@@ -248,8 +288,7 @@ impl Builder {
             let f = (self.centroids[p as usize][axis] - cmin[axis]) / extent[axis];
             ((f * BINS as f32) as usize).min(BINS - 1)
         };
-        let empty = (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY));
-        let mut bins = [(empty, 0usize); BINS];
+        let mut bins = [(EMPTY, 0usize); BINS];
         for &p in prims {
             let b = &mut bins[bin_of(p)];
             let (lo, hi) = self.bounds[p as usize];
@@ -260,15 +299,14 @@ impl Builder {
             let d = (hi - lo).max(Vec3::ZERO);
             d.x * d.y + d.y * d.z + d.z * d.x
         };
-        let merge = |a: (Vec3, Vec3), b: (Vec3, Vec3)| (a.0.min(b.0), a.1.max(b.1));
         let (mut best_cost, mut best) = (area(self.span(prims)) * prims.len() as f32, None);
         for split in 1..BINS {
             let (l, nl) = bins[..split]
                 .iter()
-                .fold((empty, 0), |(b, n), (bb, c)| (merge(b, *bb), n + c));
+                .fold((EMPTY, 0), |(b, n), (bb, c)| (merge(b, *bb), n + c));
             let (r, nr) = bins[split..]
                 .iter()
-                .fold((empty, 0), |(b, n), (bb, c)| (merge(b, *bb), n + c));
+                .fold((EMPTY, 0), |(b, n), (bb, c)| (merge(b, *bb), n + c));
             if nl == 0 || nr == 0 {
                 continue;
             }

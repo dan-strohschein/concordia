@@ -1,7 +1,7 @@
 //! The BVH finds exactly what testing every triangle finds (M4 4.1b2).
 
+use concordia_bvh::{Bvh, Ray, Triangle};
 use concordia_core::math::Vec3;
-use concordia_pathtrace::{Bvh, Ray, Triangle};
 use proptest::prelude::*;
 
 fn brute_force(triangles: &[Triangle], ray: &Ray) -> Option<(f32, u32)> {
@@ -39,7 +39,7 @@ proptest! {
     #![proptest_config(ProptestConfig::with_cases(256))]
 
     #[test]
-    fn pathtrace_bvh_traversal_matches_brute_force(triangles in soup(), rays in proptest::collection::vec(ray(), 1..16)) {
+    fn bvh_traversal_matches_brute_force(triangles in soup(), rays in proptest::collection::vec(ray(), 1..16)) {
         let bvh = Bvh::build(&triangles);
         for ray in &rays {
             let want = brute_force(&triangles, ray);

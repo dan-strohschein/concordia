@@ -12,6 +12,7 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+concordia-bvh.workspace = true
 concordia-api.workspace = true
 concordia-reflect.workspace = true
 serde.workspace = true

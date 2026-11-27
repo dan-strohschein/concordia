@@ -1,7 +1,7 @@
 //! Instancing: the two-level structure finds what testing every placed triangle finds.
 
+use concordia_bvh::{Accel, Bvh, Instance, Ray, Triangle};
 use concordia_core::math::{Mat4, Quat, Vec3};
-use concordia_pathtrace::{Accel, Bvh, Instance, Ray, Triangle};
 use proptest::prelude::*;
 
 fn v3(r: f32) -> impl Strategy<Value = Vec3> {

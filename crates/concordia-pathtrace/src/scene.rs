@@ -77,7 +77,7 @@ pub struct SceneMaterial {
     pub alpha: AlphaMode,
     /// Unlit: shows its albedo and emission, reflects nothing.
     pub unlit: bool,
-    /// Emission as authored (display-referred, like the renderer's).
+    /// Emission in nits (ADR-0102), as the renderer reads it.
     pub emission: Vec3,
     /// GGX alphas of its slabs (for sampling directions).
     pub lobes: Vec<f32>,
