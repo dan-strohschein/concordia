@@ -106,6 +106,7 @@ impl GiState {
                 let warm = GiInputs {
                     frame: inputs.frame.wrapping_add(k),
                     hysteresis,
+                    relocate: true,
                     ..inputs.clone()
                 };
                 probes.update(device, &self.scene, &warm)?;
@@ -142,6 +143,7 @@ impl GiState {
             sky: sky.map(|(sh, intensity)| sh.map(|c| Vec3::from(c) * intensity)),
             light_events,
             hysteresis: super::BASE_HYSTERESIS,
+            relocate: false,
         }
     }
 }

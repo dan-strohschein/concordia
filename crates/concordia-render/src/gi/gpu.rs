@@ -82,6 +82,9 @@ pub struct GiInputs {
     pub light_events: Vec<Vec3>,
     /// The old value's weight when nothing changes (a warm-up lowers it to converge fast).
     pub hysteresis: f32,
+    /// Move probes out of geometry this update (the renderer does it while a lattice settles;
+    /// relocating every frame on rotating rays jitters probes near the threshold).
+    pub relocate: bool,
 }
 
 impl Default for GiInputs {
@@ -95,6 +98,7 @@ impl Default for GiInputs {
             sky: None,
             light_events: Vec::new(),
             hysteresis: super::BASE_HYSTERESIS,
+            relocate: true,
         }
     }
 }
@@ -363,7 +367,12 @@ impl GiProbes {
             self.bvh[2].index,
             self.bvh[3].index,
         ];
-        rows[7] = [self.bvh[4].index, self.tlas.0, self.tlas.1, 0];
+        rows[7] = [
+            self.bvh[4].index,
+            self.tlas.0,
+            self.tlas.1,
+            u32::from(inputs.relocate),
+        ];
         let rotation = ray_rotation(inputs.frame);
         for (k, r) in rows[8..11].iter_mut().enumerate() {
             *r = f(rotation.row(k).extend(0.0).to_array());

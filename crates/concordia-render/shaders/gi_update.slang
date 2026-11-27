@@ -225,6 +225,8 @@ void gi_border(uint3 id : SV_DispatchThreadID, uniform Push push) {
 void gi_relocate(uint3 id : SV_DispatchThreadID, uniform Push push) {
     GiVolume v = gi_volume(push.params);
     if (id.x >= gi_probe_count(v)) return;
+    uint4* u = (uint4*)g_buffers.ptr[push.params];
+    if (u[7].w == 0) return;
     float4* p = (float4*)g_buffers.ptr[push.params];
     uint backs = 0, hits = 0;
     float near_back = GI_MISS, near_front = GI_MISS;

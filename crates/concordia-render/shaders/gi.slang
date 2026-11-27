@@ -19,7 +19,7 @@ public static const float GI_BACKFACE = 0.2;
 //  2 probes, rays, irradiance, distance (buffer indices)
 //  3 sun direction.xyz, has sun   4 sun illuminance.xyz, frame
 //  5 lights, light count, looks, instance looks (buffer indices)
-//  6-7 the BVH's rows (`bvh_from_rows`)
+//  6-7 the BVH's rows (`bvh_from_rows`; 7.w: relocate probes this update)
 //  8-10 the rays' rotation (rows)  11 has sky, events, event count, reset
 //  12-20 the sky's SH9 irradiance  21 base hysteresis, max distance, normal bias, view bias
 public struct GiVolume {
@@ -156,8 +156,6 @@ public float3 gi_irradiance(GiVolume v, float3 p, float3 n, float3 to_eye) {
         float d = length(from_probe);
         w *= gi_chebyshev(gi_tile_dist(v, probe, from_probe / max(d, 1e-6)), d);
         w = max(w, 1e-7);
-        // Crush tiny weights (RTXGI's practice), so far-off probes don't tint.
-        if (w < 0.2) { w *= w * w / (0.2 * 0.2); }
         sum += gi_tile_irr(v, probe, n).rgb * w;
         wsum += w;
     }

@@ -4,7 +4,7 @@ mod common;
 
 use concordia_assets::{AssetRef, Material, Slab, shapes};
 use concordia_core::math::{Mat4, UVec3, Vec3};
-use concordia_render::gi::{GiInputs, GiInstance, GiProbes, GiScene, GiSun, ProbeGrid};
+use concordia_render::gi::{GiInputs, GiInstance, GiLight, GiProbes, GiScene, GiSun, ProbeGrid};
 use concordia_shaders::{SlangToolchain, SlangcCompiler};
 
 fn mesh_ref(name: &str) -> AssetRef {
@@ -169,4 +169,94 @@ fn probes_see_a_sunlit_floor_and_its_shadow() {
         dark < 0.3 * lit,
         "the roof shades the floor: {dark} vs {lit}"
     );
+}
+
+/// A spell light appearing over a dark floor: probes near it reach 90% of their converged
+/// irradiance within 4 updates (the light event), and with the light steady they hold within
+/// ±1% (`adaptive_hysteresis_reacts_within_4_frames_to_spell_light`, the GPU half). Open ground,
+/// not a closed room: each update adds one bounce, so in a room of 70% walls (converged ≈ 3.3 ×
+/// the first bounce) no update scheme reaches 90% in four.
+#[test]
+fn adaptive_hysteresis_reacts_within_4_frames_to_spell_light() {
+    let Some(device) = common::device() else {
+        return;
+    };
+    let mut scene = GiScene::default();
+    let white = mat_ref("white");
+    scene.add_material(
+        &white,
+        &Material::from_slab(Slab {
+            base_color: [0.7, 0.7, 0.7, 1.0],
+            metallic: 0.0,
+            ..Default::default()
+        }),
+    );
+    scene
+        .add_mesh(&mesh_ref("ground"), &shapes::cube([40.0, 0.2, 40.0]))
+        .unwrap();
+    scene.update(&[GiInstance {
+        mesh: mesh_ref("ground"),
+        material: white.clone(),
+        world: Mat4::from_translation(Vec3::new(0.0, -1.1, 0.0)),
+    }]);
+    let mut gi = probes(device.as_ref());
+    let grid = ProbeGrid {
+        origin: Vec3::new(-1.0, 0.0, -1.0),
+        counts: UVec3::new(3, 1, 3),
+        spacing: 1.0,
+    };
+    let light = GiLight {
+        position: Vec3::new(0.5, 0.5, 0.5),
+        range: 10.0,
+        direction: Vec3::NEG_Y,
+        intensity: Vec3::splat(200.0),
+        spot: (0.0, 1.0),
+        shadowed: false,
+    };
+    let inputs = |frame: u32, lit: bool, event: bool| GiInputs {
+        grid,
+        frame,
+        lights: if lit { vec![light] } else { Vec::new() },
+        light_events: if event {
+            vec![light.position]
+        } else {
+            Vec::new()
+        },
+        ..Default::default()
+    };
+    // Dark and settled.
+    for f in 0..20 {
+        gi.update(device.as_ref(), &scene, &inputs(f, false, false))
+            .unwrap();
+    }
+    // The probe at the centre, its mean irradiance over all texels.
+    let centre = 4;
+    let mean = |gi: &GiProbes| {
+        let e = gi.irradiance(device.as_ref(), centre).unwrap();
+        e.iter().map(|c| c.x).sum::<f32>() / e.len() as f32
+    };
+    let mut after = Vec::new();
+    for f in 20..24 {
+        gi.update(device.as_ref(), &scene, &inputs(f, true, f == 20))
+            .unwrap();
+        after.push(mean(&gi));
+    }
+    // Converge with the light steady, then watch it hold.
+    for f in 24..160 {
+        gi.update(device.as_ref(), &scene, &inputs(f, true, false))
+            .unwrap();
+    }
+    let converged = mean(&gi);
+    let mut drift = 0.0f32;
+    for f in 160..200 {
+        gi.update(device.as_ref(), &scene, &inputs(f, true, false))
+            .unwrap();
+        drift = drift.max((mean(&gi) / converged - 1.0).abs());
+    }
+    println!("after the light: {after:?}; converged {converged}; drift {drift}");
+    assert!(
+        after[3] >= 0.9 * converged,
+        "90% within 4 updates: {after:?} of {converged}"
+    );
+    assert!(drift <= 0.01, "steady within ±1%: {drift}");
 }

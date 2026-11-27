@@ -80,3 +80,28 @@ fn gi_improves_flip_over_no_gi_by_40_percent() {
         assert!(on <= 0.6 * off, "{name}: GI {on} against no GI {off}");
     }
 }
+
+/// Regression goldens (`tests/golden/m4_gi/`, tight): both scenes rendered with GI as their
+/// reference tests run it, so a change to probe GI shows here before it shows in FLIP.
+#[test]
+fn gi_regression_goldens() {
+    if !has_gpu() {
+        return;
+    }
+    let root = concordia_tests::repo_root();
+    std::env::set_current_dir(&root).expect("the repository root");
+    let golden = root.join("tests/golden");
+    let store = concordia_testkit::golden::Golden::from_env();
+    for name in ["cornell_spell", "iso_arena"] {
+        let (image, _) = concordia_tests::reference::render_with(
+            name,
+            None,
+            &golden,
+            "vsm",
+            Some(gi_params(name)),
+        )
+        .unwrap();
+        let score = store.check("m4_gi", name, &image).unwrap();
+        println!("{name}: {score:?}");
+    }
+}
