@@ -20,6 +20,7 @@ uuid.workspace = true
 wasm-encoder.workspace = true
 
 [dev-dependencies]
+uuid.workspace = true
 insta.workspace = true
 jsonschema.workspace = true
 proptest.workspace = true

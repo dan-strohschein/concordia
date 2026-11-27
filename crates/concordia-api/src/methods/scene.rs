@@ -153,6 +153,7 @@ impl Method for SceneNew {
         let (journal, _) = open_journal(engine, id)?;
         let mut log = CommandLog::new();
         log.attach_journal(journal);
+        log.attach_documents(project_documents(engine));
         let meta = SceneMeta { id, name: p.name };
         engine.play = None;
         engine.scene = Some(OpenScene {
@@ -195,6 +196,7 @@ impl Method for SceneOpen {
         let (mut log, history) =
             CommandLog::resume(&loaded.entries, world.state_hash().map_err(internal)?);
         log.attach_journal(journal);
+        log.attach_documents(project_documents(engine));
         let history = match history {
             History::Restored => "restored",
             History::Stale { .. } => "stale",
@@ -358,6 +360,11 @@ fn project_path(engine: &Engine, path: &str) -> Result<PathBuf, ApiError> {
     engine
         .project_file(path, ".scene.ron")
         .map_err(|e| e.suggest(["e.g. \"scenes/main.scene.ron\"".to_owned()]))
+}
+
+/// The project folder, for document ops (M4 4.10c).
+fn project_documents(engine: &Engine) -> std::sync::Arc<dyn concordia_command::Documents> {
+    std::sync::Arc::new(concordia_command::ProjectDocuments::new(engine.project()))
 }
 
 fn open_journal(

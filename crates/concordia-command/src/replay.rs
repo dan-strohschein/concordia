@@ -6,7 +6,7 @@ use concordia_core::id::TxnId;
 use concordia_reflect::TypeRegistry;
 use concordia_terra::{World, WorldHash};
 
-use crate::apply::{reapply, revert};
+use crate::apply::{Docs, reapply, revert};
 use crate::error::CommandError;
 use crate::journal::{Event, JournalEntry};
 use crate::op::AppliedOp;
@@ -36,11 +36,11 @@ pub fn replay_journal(
                 ..
             } => {
                 check(world, entry.seq, *hash_before)?;
-                reapply(world, reg, applied)?;
+                reapply(world, reg, Docs::Skip, applied)?;
                 txns.insert(*txn, applied);
             }
-            Event::Undo { target, .. } => revert(world, reg, ops(target)?)?,
-            Event::Redo { target, .. } => reapply(world, reg, ops(target)?)?,
+            Event::Undo { target, .. } => revert(world, reg, Docs::Skip, ops(target)?)?,
+            Event::Redo { target, .. } => reapply(world, reg, Docs::Skip, ops(target)?)?,
             Event::Abort { .. } | Event::Save { .. } => {}
         }
         if let Some(expected) = entry.event.hash_after() {

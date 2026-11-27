@@ -2,6 +2,7 @@
 //! the engine exposes, and a type checker whose diagnostics an agent can act on.
 
 mod check;
+mod edit;
 mod error;
 pub mod fns;
 mod format;
@@ -11,6 +12,7 @@ pub mod runtime;
 mod types;
 
 pub use check::{Code, Diagnostic, Report, check};
+pub use edit::{EditError, GraphEdit, apply_edits, fresh_id, new_graph};
 pub use error::GraphError;
 pub use format::{
     ExecLink, Graph, GraphKind, Input, Literal, Node, PinDecl, Signature, Variable, read_graph,

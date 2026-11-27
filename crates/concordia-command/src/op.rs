@@ -47,6 +47,16 @@ pub enum EditOp {
         /// The new version's `TypeDesc`, as JSON.
         to: Value,
     },
+    /// Replace a project text file (M4 4.10c): `before` must match what it holds now (`None`:
+    /// absent); `after` is the new text (`None`: delete it). Full texts, so undo is byte-exact.
+    Document {
+        /// Project-relative path (`/`-separated, inside the project).
+        path: String,
+        /// The text it holds now.
+        before: Option<String>,
+        /// The text it will hold.
+        after: Option<String>,
+    },
 }
 
 impl EditOp {
@@ -58,7 +68,7 @@ impl EditOp {
             | Self::Despawn { id }
             | Self::SetComponent { id, .. }
             | Self::RemoveComponent { id, .. } => Some(*id),
-            Self::MigrateType { .. } => None,
+            Self::MigrateType { .. } | Self::Document { .. } => None,
         }
     }
 
@@ -70,6 +80,7 @@ impl EditOp {
             Self::SetComponent { .. } => "set_component",
             Self::RemoveComponent { .. } => "remove_component",
             Self::MigrateType { .. } => "migrate_type",
+            Self::Document { .. } => "document",
         }
     }
 }

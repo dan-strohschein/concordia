@@ -8,7 +8,8 @@ use concordia_script::{HostConfig, ModuleDesc, ScriptHost, TypeMigration, change
 use concordia_terra::World;
 use serde::{Deserialize, Serialize};
 
-use crate::state::{Loaded, Scripts, ScriptsState};
+use crate::config::ScriptKind;
+use crate::state::{Loaded, Scripts, ScriptsState, Source, graph_module_name};
 
 /// Reload the project's gameplay modules from disk (WASM components and native libraries;
 /// this never builds). Changed component types are migrated: in the edit world as one undoable
@@ -121,33 +122,71 @@ fn retry_failed(
 ) -> Result<Vec<ReloadedModule>, ApiError> {
     let mut joined = Vec::new();
     for (source, _) in std::mem::take(&mut scripts.failed) {
-        let config = HostConfig {
-            session_seed: scripts.config.session_seed,
-        };
-        let (registry, _) = engine.registry_and_play_mut();
-        let host = scripts.load(&source, registry).and_then(|build| {
-            let host =
-                ScriptHost::load(build.module, registry, config).map_err(|e| e.to_string())?;
-            Ok((host, build.hash))
-        });
-        let (host, hash) = match host {
-            Ok(loaded) => loaded,
-            Err(reason) => {
-                scripts.failed.push((source, reason.clone()));
-                return Err(failed(reason));
-            }
-        };
-        let desc = host.desc();
-        joined.push(ReloadedModule {
-            name: desc.name,
-            backend: source.backend().to_owned(),
-            version: desc.version,
-            migrated: Vec::new(),
-            edit_txn: None,
-        });
-        scripts.loaded.push(Loaded { source, host, hash });
+        joined.push(join(engine, scripts, source)?);
     }
     Ok(joined)
+}
+
+/// Loads one module that failed earlier (it stays failed if it fails again).
+fn join(
+    engine: &mut Engine,
+    scripts: &mut Scripts,
+    source: Source,
+) -> Result<ReloadedModule, ApiError> {
+    let config = HostConfig {
+        session_seed: scripts.config.session_seed,
+    };
+    let (registry, _) = engine.registry_and_play_mut();
+    let host = scripts.load(&source, registry).and_then(|build| {
+        let host = ScriptHost::load(build.module, registry, config).map_err(|e| e.to_string())?;
+        Ok((host, build.hash, build.graph))
+    });
+    let (host, hash, graph) = match host {
+        Ok(loaded) => loaded,
+        Err(reason) => {
+            scripts.failed.push((source, reason.clone()));
+            return Err(failed(reason));
+        }
+    };
+    let desc = host.desc();
+    scripts.adopt(desc.name.clone(), graph);
+    let joined = ReloadedModule {
+        name: desc.name,
+        backend: source.backend().to_owned(),
+        version: desc.version,
+        migrated: Vec::new(),
+        edit_txn: None,
+    };
+    scripts.loaded.push(Loaded { source, host, hash });
+    Ok(joined)
+}
+
+/// Reloads (or, if it failed to load before, loads) the graph module `name`; false if no
+/// configured module has that name.
+pub(crate) fn reload_graph(
+    engine: &mut Engine,
+    scripts: &mut Scripts,
+    name: &str,
+    actor: &str,
+) -> Result<bool, ApiError> {
+    if let Ok(index) = position(scripts, name) {
+        reload_one(engine, scripts, index, actor)?;
+        return Ok(true);
+    }
+    let failed_graph = scripts.failed.iter().position(|(source, _)| match source {
+        Source::File(entry) => {
+            entry.kind == ScriptKind::Graph && graph_module_name(&entry.file()) == name
+        }
+        Source::Linked(_) => false,
+    });
+    match failed_graph {
+        Some(k) => {
+            let (source, _) = scripts.failed.remove(k);
+            join(engine, scripts, source)?;
+            Ok(true)
+        }
+        None => Ok(false),
+    }
 }
 
 /// Reloads loaded module `index`: edit world first (as `script:<module>`), then the registry
@@ -163,6 +202,7 @@ fn reload_one(
     let crate::state::Build {
         module: build,
         hash,
+        graph,
     } = scripts.load(&source, engine.registry()).map_err(failed)?;
     let desc = build
         .describe()
@@ -188,6 +228,7 @@ fn reload_one(
         }
     };
     scripts.loaded[index].hash = hash;
+    scripts.adopt(old.name.clone(), graph);
     let migrated: Vec<MigratedType> = report.migrated.into_iter().map(migrated_type).collect();
     tracing::info!(
         target: "concordia::script",

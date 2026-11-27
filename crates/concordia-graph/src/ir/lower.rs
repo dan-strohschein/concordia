@@ -62,6 +62,7 @@ pub(super) fn lower(
         memo: BTreeMap::new(),
         errors: Vec::new(),
         sources: NoSources,
+        lowered: Vec::new(),
     };
     l.params();
     let outputs = l.outputs();
@@ -201,6 +202,8 @@ pub(super) struct Lower<'g, S: Sources> {
     pub(super) memo: BTreeMap<String, Outputs>,
     pub(super) errors: Vec<Diagnostic>,
     pub(super) sources: S,
+    /// Every data node as lowered, in order (a node lowers again after each write): for traces.
+    pub(super) lowered: Vec<(String, Outputs)>,
 }
 
 impl<S: Sources> Lower<'_, S> {
@@ -285,6 +288,7 @@ impl<S: Sources> Lower<'_, S> {
     fn node(&mut self, id: &str) -> Option<&Outputs> {
         if !self.memo.contains_key(id) {
             let outputs = self.lower_node(id)?;
+            self.lowered.push((id.to_owned(), outputs.clone()));
             self.memo.insert(id.to_owned(), outputs);
         }
         self.memo.get(id)

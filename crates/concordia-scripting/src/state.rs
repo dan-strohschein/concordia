@@ -2,7 +2,10 @@
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use concordia_graph_script::{GraphBackend, Mode};
+use std::collections::BTreeMap;
+use std::path::Path;
+
+use concordia_graph_script::{GraphBackend, GraphModule, Mode};
 use concordia_reflect::TypeRegistry;
 use concordia_script::{ModuleSource, ScriptBackend, ScriptHost, ScriptModule, TestBackend};
 use concordia_script_native::{NativeBackend, check_module_source};
@@ -45,6 +48,8 @@ pub(crate) struct Loaded {
 pub(crate) struct Build {
     pub(crate) module: Arc<dyn ScriptModule>,
     pub(crate) hash: String,
+    /// The same module, for a graph (so `graph.trace` can reach it).
+    pub(crate) graph: Option<Arc<GraphModule>>,
 }
 
 /// Backends and loaded modules.
@@ -54,6 +59,8 @@ pub(crate) struct Scripts {
     pub(crate) native: NativeBackend,
     wasm: Option<WasmBackend>,
     graph: Option<GraphBackend>,
+    /// Loaded graph modules by name (for traces).
+    pub(crate) graphs: BTreeMap<String, Arc<GraphModule>>,
     pub(crate) linked_names: Vec<String>,
     pub(crate) loaded: Vec<Loaded>,
     /// Sources that failed to load, with why (reported by `script.reload`).
@@ -73,6 +80,7 @@ impl Handle {
             native,
             wasm: None,
             graph: None,
+            graphs: BTreeMap::new(),
             linked_names: Vec::new(),
             loaded: Vec::new(),
             failed: Vec::new(),
@@ -106,25 +114,39 @@ impl Scripts {
                 Ok(Build {
                     module,
                     hash: blake3::hash(&json).to_hex().to_string(),
+                    graph: None,
                 })
             }
             Source::File(entry) => {
                 let file = entry.file();
                 let bytes = std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-                let module = self.load_file(entry, registry)?;
+                let hash = blake3::hash(&bytes).to_hex().to_string();
+                if entry.kind == ScriptKind::Graph {
+                    let text =
+                        String::from_utf8(bytes).map_err(|e| format!("{}: {e}", file.display()))?;
+                    let name = graph_module_name(&file);
+                    let graph = self
+                        .graph()?
+                        .load_graph(&name, &text, registry)
+                        .map_err(|e| format!("{}: {e}", file.display()))?;
+                    let module: Arc<dyn ScriptModule> = graph.clone();
+                    return Ok(Build {
+                        module,
+                        hash,
+                        graph: Some(graph),
+                    });
+                }
+                let module = self.load_file(entry)?;
                 Ok(Build {
                     module,
-                    hash: blake3::hash(&bytes).to_hex().to_string(),
+                    hash,
+                    graph: None,
                 })
             }
         }
     }
 
-    fn load_file(
-        &mut self,
-        entry: &ScriptEntry,
-        registry: &TypeRegistry,
-    ) -> Result<Arc<dyn ScriptModule>, String> {
+    fn load_file(&mut self, entry: &ScriptEntry) -> Result<Arc<dyn ScriptModule>, String> {
         let file = entry.file();
         let fail = |e: &dyn std::fmt::Display| format!("{}: {e}", file.display());
         match entry.kind {
@@ -132,10 +154,7 @@ impl Scripts {
                 .wasm()?
                 .load(&ModuleSource::File(file.clone()))
                 .map_err(|e| fail(&e)),
-            ScriptKind::Graph => self
-                .graph()?
-                .load(&ModuleSource::File(file.clone()), registry)
-                .map_err(|e| fail(&e)),
+            ScriptKind::Graph => Err(fail(&"graphs load through Scripts::load")),
             ScriptKind::Native => {
                 if let Some(source) = &entry.source {
                     check_module_source(source).map_err(|e| fail(&e))?;
@@ -184,5 +203,23 @@ impl Scripts {
         };
         let linked = self.linked_names.iter().cloned().map(Source::Linked);
         files(false).chain(linked).chain(files(true)).collect()
+    }
+}
+
+/// A graph module's name: its file's, without `.graph.ron` (`graphs/enemy.graph.ron` → `enemy`).
+pub(crate) fn graph_module_name(file: &Path) -> String {
+    let name = file
+        .file_name()
+        .map(|f| f.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    name.trim_end_matches(".graph.ron").to_owned()
+}
+
+impl Scripts {
+    /// Keeps a successfully loaded build's graph module, under its module name.
+    pub(crate) fn adopt(&mut self, name: String, graph: Option<Arc<GraphModule>>) {
+        if let Some(graph) = graph {
+            self.graphs.insert(name, graph);
+        }
     }
 }

@@ -31,6 +31,9 @@ Path: `<project>/.concordia/journal/<scene-id>.cmdlog.jsonl`. One object per lin
 
 A truncated last line (crash mid-write) is reported as `JournalWarning::TruncatedTail` and cut on the next `Journal::open`; any other bad line is an error. `CommandLog::resume` restores the undo/redo stacks only when the journal's last recorded hash equals the loaded scene's hash; otherwise history is `Stale` and only new changes can be undone.
 
+## Documents (M4 4.10c)
+`EditOp::Document { path, before, after }` changes a project text file with full texts (byte-exact undo; refused if the file no longer holds `before`). The log needs `attach_documents` (the engine attaches the project folder); replay skips document ops.
+
 ## How to test
 `cargo nextest run -p concordia-command`
 

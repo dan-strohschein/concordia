@@ -21,6 +21,7 @@
 
 mod actor;
 mod apply;
+mod documents;
 mod error;
 mod journal;
 mod log;
@@ -29,6 +30,7 @@ mod replay;
 mod txn;
 
 pub use actor::{ACTOR_PATTERN, Actor, ActorError, ActorKind, Author};
+pub use documents::{Documents, MemoryDocuments, ProjectDocuments, check_document_path};
 pub use error::CommandError;
 pub use journal::{
     Event, JOURNAL_VERSION, Journal, JournalConfig, JournalEntry, JournalError, JournalWarning,

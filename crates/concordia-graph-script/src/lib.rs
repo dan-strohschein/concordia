@@ -5,5 +5,5 @@
 mod backend;
 mod module;
 
-pub use backend::{GraphBackend, Mode};
-pub use module::GraphModule;
+pub use backend::{GraphBackend, Mode, engine_library};
+pub use module::{GraphModule, TickTrace};

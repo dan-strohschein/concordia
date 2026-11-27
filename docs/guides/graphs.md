@@ -37,6 +37,12 @@ Graph(
 - Signature: `graph.input` outputs and `graph.output` inputs are the signature's pins.
 - Core: flow (`branch`, `sequence`, `for_each`, `gate`, `query.each`), `entity.self`, `math.*` (generic over `Numeric` = i32, i64, f32, Vec2–4, or `Scalar` = i32, i64, f32), `logic.*`, `conv.*`, `vector.*`, `behavior.*`, `utility.curve`. The full list with pin types is the core snapshot `crates/concordia-graph/tests/snapshots/library__core_library.snap`.
 
+## Authoring over MCP
+1. `graph_list_nodes` for the ops and their pins.
+2. `graph_apply` with `{path, kind, edits}`: add nodes (give UUIDv7 ids, or let it pick and read `added`), connect data pins (`Connect`) and exec pins (`ConnectExec`), set constants (`SetValue`) and variables. Each call is one undo step; build in several calls and read the `diagnostics` each returns.
+3. `graph_check` / `graph_compile` to confirm; `entity_spawn` or `component_set` with `graph.<name>.Vars` to attach; `sim_step`; `component_get` on the play world.
+4. `graph_trace {module, entity, ticks}` shows what ran and the values on each pin.
+
 ## Running graphs
 - List the graph in `concordia.toml`: `[[scripts.module]] kind = "graph", path = "graphs/enemy.graph.ron"`. It compiles to WebAssembly when the project loads and runs like a script module (same sandbox, fuel and faults).
 - Attach it to an entity by adding `graph.<name>.Vars` (`{}` gives every variable its default). Each event node is a processor: `event.on_tick` every tick, `on.<Signal>` per delivered signal, in order.

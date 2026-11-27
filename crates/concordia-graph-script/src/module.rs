@@ -2,6 +2,12 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, PoisonError};
+
+use concordia_core::id::EntityId;
+use concordia_graph::runtime::JobTrace;
+use concordia_reflect::Reflect;
+use serde::{Deserialize, Serialize};
 
 use concordia_graph::runtime::{Entry, EventModule, Image, Program, RuntimeError};
 use concordia_script::{ModuleStats, RunReport, ScriptError, ScriptFault, ScriptModule};
@@ -29,6 +35,24 @@ pub struct GraphModule {
     desc: ModuleDesc,
     processors: HashMap<String, (Program, Runner)>,
     calls: AtomicU64,
+    trace: Mutex<Option<Tracing>>,
+}
+
+/// An entity being traced and what was recorded so far.
+struct Tracing {
+    entity: EntityId,
+    records: Vec<TickTrace>,
+}
+
+/// One run's trace for the traced entity (M4 4.10c, `graph.trace`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct TickTrace {
+    /// The tick.
+    pub tick: u64,
+    /// The processor (one per event node).
+    pub processor: String,
+    /// Per job on the entity (one for a tick; one per delivered signal): what ran and the values.
+    pub jobs: Vec<JobTrace>,
 }
 
 impl std::fmt::Debug for GraphModule {
@@ -70,7 +94,48 @@ impl GraphModule {
             desc,
             processors,
             calls: AtomicU64::new(0),
+            trace: Mutex::new(None),
         })
+    }
+
+    /// Starts recording what this module's processors do for `entity` (replacing any trace).
+    pub fn start_trace(&self, entity: EntityId) {
+        *self.trace.lock().unwrap_or_else(PoisonError::into_inner) = Some(Tracing {
+            entity,
+            records: Vec::new(),
+        });
+    }
+
+    /// Stops recording and returns what was recorded, in run order.
+    pub fn take_trace(&self) -> Vec<TickTrace> {
+        self.trace
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+            .map(|t| t.records)
+            .unwrap_or_default()
+    }
+
+    /// Records the traced entity's jobs in `image` (before the run changes it).
+    fn record(&self, p: &Program, tick: u64, ids: &[EntityId], image: &Image) {
+        let mut guard = self.trace.lock().unwrap_or_else(PoisonError::into_inner);
+        let Some(tracing) = guard.as_mut() else {
+            return;
+        };
+        let Some(row) = ids.iter().position(|id| *id == tracing.entity) else {
+            return;
+        };
+        let jobs: Vec<JobTrace> = (0..p.jobs(image).unwrap_or(0))
+            .filter(|&j| p.job_row(image, j).ok() == Some(row))
+            .filter_map(|j| p.trace_job(image, j).ok())
+            .collect();
+        if !jobs.is_empty() {
+            tracing.records.push(TickTrace {
+                tick,
+                processor: p.name.clone(),
+                jobs,
+            });
+        }
     }
 }
 
@@ -110,7 +175,9 @@ impl ScriptModule for GraphModule {
     fn run(&self, processor: &str, ctx: &TickContext, batch: &Batch) -> RunReport {
         self.calls.fetch_add(1, Ordering::Relaxed);
         let result = match self.processors.get(processor) {
-            Some((program, runner)) => run(program, runner, ctx, batch),
+            Some((program, runner)) => run(program, runner, ctx, batch, |image| {
+                self.record(program, ctx.tick, &batch.ids, image);
+            }),
             None => Err(ScriptFault::Returned(format!("no processor {processor:?}"))),
         };
         RunReport {
@@ -133,6 +200,7 @@ fn run(
     runner: &Runner,
     ctx: &TickContext,
     batch: &Batch,
+    record: impl FnOnce(&Image),
 ) -> Result<RunOutput, ScriptFault> {
     let rows = batch.ids.len();
     let mut arenas = HashMap::new();
@@ -176,6 +244,7 @@ fn run(
             )
         }
     };
+    record(&image);
     execute(p, runner, &mut image, rows)?;
     let writes = p
         .writes

@@ -10,7 +10,9 @@ use concordia_reflect::{
 
 use crate::check::{Code, Diagnostic};
 use crate::library::field_pin;
-use crate::runtime::{ColumnSlot, Entry, EventModule, Kind, Load, Program, RaiseSite, Store};
+use crate::runtime::{
+    ColumnSlot, Entry, EventModule, Kind, Load, Program, RaiseSite, Store, TraceMap,
+};
 use crate::{Graph, GraphKind, Input, Literal, NodeLibrary, PinType};
 
 use super::lower::{Builder, Lower, Outputs, Sources};
@@ -58,6 +60,7 @@ pub fn compile_event(
             memo: BTreeMap::new(),
             errors: Vec::new(),
             sources,
+            lowered: Vec::new(),
         };
         match lower_entry(&mut l, id) {
             Some(()) if l.errors.is_empty() => {
@@ -191,6 +194,8 @@ struct EventSources<'r> {
     state: BTreeMap<(usize, usize), Vec<ValueId>>,
     written: BTreeSet<(usize, usize)>,
     raises: Vec<(RaiseSite, ValueId, Vec<ValueId>)>,
+    /// Statements in exec order, with the predicate under which each runs (for traces).
+    statements: Vec<(String, ValueId)>,
 }
 
 /// A load's identity (for reusing its parameter).
@@ -219,6 +224,7 @@ impl<'r> EventSources<'r> {
             state: BTreeMap::new(),
             written: BTreeSet::new(),
             raises: Vec::new(),
+            statements: Vec::new(),
         }
     }
 
@@ -536,6 +542,7 @@ fn statement(
     stack: &mut Vec<String>,
 ) -> Option<()> {
     let op = l.graph.nodes[id].op.clone();
+    l.sources.statements.push((id.to_owned(), pred));
     match op.as_str() {
         "branch" => {
             let c = input(l, id, "cond", &PinType::Bool)?[0];
@@ -671,6 +678,16 @@ fn raise(l: &mut Lower<'_, EventSources<'_>>, id: &str, signal: &str, pred: Valu
 
 /// The program: stores for written fields, then each raise's flag and payload.
 fn finish(l: Lower<'_, EventSources<'_>>, name: &str, entry: &Entry, index: usize) -> Program {
+    let pins: Vec<(String, String, Vec<ValueId>)> = l
+        .lowered
+        .iter()
+        .flat_map(|(node, outputs)| {
+            outputs
+                .iter()
+                .filter(|(_, v)| !v.is_empty())
+                .map(move |(pin, v)| (node.clone(), pin.clone(), v.clone()))
+        })
+        .collect();
     let s = l.sources;
     let mut stores = Vec::new();
     let mut results = Vec::new();
@@ -714,6 +731,7 @@ fn finish(l: Lower<'_, EventSources<'_>>, name: &str, entry: &Entry, index: usiz
             stride: wire::layout(c.info).map_or(0, |l| l.stride()),
         })
         .collect();
+    let raw = l.b.finish(results);
     Program {
         name: match index {
             0 => format!("graph.{name}.{entry_name}"),
@@ -727,6 +745,11 @@ fn finish(l: Lower<'_, EventSources<'_>>, name: &str, entry: &Entry, index: usiz
         loads: s.loads,
         stores,
         raises,
-        func: opt::optimize(l.b.finish(results)),
+        func: opt::optimize(raw.clone()),
+        trace: TraceMap {
+            raw,
+            statements: s.statements,
+            pins,
+        },
     }
 }

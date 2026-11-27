@@ -1,0 +1,631 @@
+---
+source: crates/concordia-scripting/tests/scripting.rs
+expression: schemas
+---
+[
+  {
+    "docs": "List every node a graph can use in this project: the built-in core, the vector functions, and\nfor every registered component `get.<C>`, `set.<C>`, `get.<C>.<field>`, `set.<C>.<field>` and\nfor every signal `raise.<S>` and `on.<S>`, with their typed pins and docs.",
+    "mutates": false,
+    "name": "graph.list_nodes",
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`graph.list_nodes` params.",
+      "properties": {},
+      "title": "GraphListNodesParams",
+      "type": "object",
+      "x-concordia-type": "GraphListNodesParams"
+    }
+  },
+  {
+    "docs": "Type-check a graph (a `.graph.ron` file, or its text) against this project's nodes. Each\ndiagnostic names the node and pin to fix, with the closest valid names as a suggestion.",
+    "mutates": false,
+    "name": "graph.check",
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`graph.check` params: `path` or `text`.",
+      "properties": {
+        "path": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Project-relative `.graph.ron` file."
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Graph text (instead of a file)."
+        }
+      },
+      "title": "GraphCheckParams",
+      "type": "object",
+      "x-concordia-type": "GraphCheckParams"
+    }
+  },
+  {
+    "docs": "Compile an Event graph file to WASM processors (without loading it): its diagnostics, or each\nprocessor with what it reads and writes, its module size and the compile time.",
+    "mutates": false,
+    "name": "graph.compile",
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`graph.compile` params.",
+      "properties": {
+        "path": {
+          "description": "Project-relative `.graph.ron` file.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "GraphCompileParams",
+      "type": "object",
+      "x-concordia-type": "GraphCompileParams"
+    }
+  },
+  {
+    "docs": "Edit a graph file with structured edits (add/remove nodes, connect/disconnect data and exec\npins, set constants, declare variables), as one undoable transaction by your actor. A missing\nfile starts a new graph of `kind`. The result is written even when it doesn't check yet (build\ngraphs in steps); its diagnostics come back, and once it checks clean a graph listed in\n`[scripts]` is reloaded.",
+    "mutates": true,
+    "name": "graph.apply",
+    "params": {
+      "$defs": {
+        "GraphEdit": {
+          "description": "One edit.",
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "description": "Adds a node (a fresh UUIDv7 id when `id` is absent), optionally placed in the editor.",
+              "properties": {
+                "AddNode": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "at": {
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "items": false,
+                          "maxItems": 2,
+                          "minItems": 2,
+                          "prefixItems": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ],
+                          "type": "array"
+                        }
+                      ],
+                      "description": "Its position."
+                    },
+                    "id": {
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ],
+                      "description": "Its id (UUIDv7)."
+                    },
+                    "op": {
+                      "description": "Its operation.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "op"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "AddNode"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "description": "Removes a node, its layout and every link to or from it.",
+              "properties": {
+                "RemoveNode": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "description": "The node.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "RemoveNode"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "description": "Links `from`'s output to `to`'s input (replacing what was there).",
+              "properties": {
+                "Connect": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "from": {
+                      "description": "Source node.",
+                      "type": "string"
+                    },
+                    "from_pin": {
+                      "description": "Its output pin.",
+                      "type": "string"
+                    },
+                    "to": {
+                      "description": "Target node.",
+                      "type": "string"
+                    },
+                    "to_pin": {
+                      "description": "Its input pin.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "from",
+                    "from_pin",
+                    "to",
+                    "to_pin"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "Connect"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "description": "Clears an input (link or value).",
+              "properties": {
+                "Disconnect": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "to": {
+                      "description": "The node.",
+                      "type": "string"
+                    },
+                    "to_pin": {
+                      "description": "The input pin.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "to",
+                    "to_pin"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "Disconnect"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "description": "Adds control flow from `from`'s exec output to `to`'s exec input.",
+              "properties": {
+                "ConnectExec": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "from": {
+                      "description": "Source node.",
+                      "type": "string"
+                    },
+                    "from_pin": {
+                      "description": "Its exec output.",
+                      "type": "string"
+                    },
+                    "to": {
+                      "description": "Target node.",
+                      "type": "string"
+                    },
+                    "to_pin": {
+                      "description": "Its exec input.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "from",
+                    "from_pin",
+                    "to",
+                    "to_pin"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "ConnectExec"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "description": "Removes that control flow.",
+              "properties": {
+                "DisconnectExec": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "from": {
+                      "description": "Source node.",
+                      "type": "string"
+                    },
+                    "from_pin": {
+                      "description": "Its exec output.",
+                      "type": "string"
+                    },
+                    "to": {
+                      "description": "Target node.",
+                      "type": "string"
+                    },
+                    "to_pin": {
+                      "description": "Its exec input.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "from",
+                    "from_pin",
+                    "to",
+                    "to_pin"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "DisconnectExec"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "description": "Gives an input a constant.",
+              "properties": {
+                "SetValue": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "node": {
+                      "description": "The node.",
+                      "type": "string"
+                    },
+                    "pin": {
+                      "description": "The input pin.",
+                      "type": "string"
+                    },
+                    "value": {
+                      "$ref": "#/$defs/Literal",
+                      "description": "The constant."
+                    }
+                  },
+                  "required": [
+                    "node",
+                    "pin",
+                    "value"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "SetValue"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "description": "Declares a variable (or replaces its declaration).",
+              "properties": {
+                "SetVariable": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "default": {
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "$ref": "#/$defs/Literal"
+                        }
+                      ],
+                      "description": "Starting value."
+                    },
+                    "name": {
+                      "description": "Name.",
+                      "type": "string"
+                    },
+                    "ty": {
+                      "description": "Type.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "ty"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "SetVariable"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "description": "Removes a variable.",
+              "properties": {
+                "RemoveVariable": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "description": "Name.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "RemoveVariable"
+              ],
+              "type": "object"
+            }
+          ],
+          "title": "GraphEdit",
+          "x-concordia-type": "GraphEdit"
+        },
+        "GraphKind": {
+          "description": "What a graph is.",
+          "oneOf": [
+            {
+              "const": "Event",
+              "description": "Entry points (`event.on_tick`, `on.<Signal>`): a processor."
+            },
+            {
+              "const": "Function",
+              "description": "Callable from other graphs; pure or impure."
+            },
+            {
+              "const": "Behavior",
+              "description": "A behavior tree."
+            },
+            {
+              "const": "Utility",
+              "description": "Utility considerations and response curves."
+            }
+          ],
+          "title": "GraphKind",
+          "x-concordia-type": "GraphKind"
+        },
+        "Literal": {
+          "description": "A constant value.",
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "description": "`bool`.",
+              "properties": {
+                "Bool": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "Bool"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "description": "An integer (`i32` or `i64`).",
+              "properties": {
+                "Int": {
+                  "maximum": 9223372036854775807,
+                  "minimum": -9223372036854775808,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "Int"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "description": "A number (`f32`).",
+              "properties": {
+                "Float": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "Float"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "description": "`String` (also asset references and enum variants by name).",
+              "properties": {
+                "Text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "Text"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "description": "`Vec2`.",
+              "properties": {
+                "Vec2": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "Vec2"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "description": "`Vec3`.",
+              "properties": {
+                "Vec3": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "maxItems": 3,
+                  "minItems": 3,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "Vec3"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "description": "`Vec4`.",
+              "properties": {
+                "Vec4": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "maxItems": 4,
+                  "minItems": 4,
+                  "type": "array"
+                }
+              },
+              "required": [
+                "Vec4"
+              ],
+              "type": "object"
+            }
+          ],
+          "title": "Literal",
+          "x-concordia-type": "Literal"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`graph.apply` params.",
+      "properties": {
+        "actor": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "description": "Who makes a change: <human|agent|system|tool|script>:<name>[#n], e.g. agent:claude-code.",
+              "pattern": "^(human|agent|system|tool|script):[a-z0-9][a-z0-9._-]{0,63}(#[1-9][0-9]*)?$",
+              "type": "string"
+            }
+          ],
+          "description": "Who is editing (default: the session's actor)."
+        },
+        "edits": {
+          "description": "The edits, applied in order, all or nothing.",
+          "items": {
+            "$ref": "#/$defs/GraphEdit"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/GraphKind"
+            }
+          ],
+          "description": "A new graph's kind (default `Event`)."
+        },
+        "path": {
+          "description": "Project-relative `.graph.ron` file.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "edits"
+      ],
+      "title": "GraphApplyParams",
+      "type": "object",
+      "x-concordia-type": "GraphApplyParams"
+    }
+  },
+  {
+    "docs": "Step play `ticks` ticks while graph module `module` records, for `entity`, each tick's\nexecuted statement nodes (in exec order) and the values on every data pin they used.",
+    "mutates": false,
+    "name": "graph.trace",
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`graph.trace` params.",
+      "properties": {
+        "entity": {
+          "description": "The entity to follow.\n\nEntity id (UUID string). If you pass a name instead, the error suggests the matching id.",
+          "format": "uuid",
+          "type": "string"
+        },
+        "module": {
+          "description": "The graph module (its file name without `.graph.ron`).",
+          "type": "string"
+        },
+        "ticks": {
+          "description": "Ticks to step (1 to 600).",
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "module",
+        "entity",
+        "ticks"
+      ],
+      "title": "GraphTraceParams",
+      "type": "object",
+      "x-concordia-type": "GraphTraceParams"
+    }
+  }
+]

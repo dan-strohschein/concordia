@@ -122,7 +122,21 @@ fn binary_serves_script_reload_when_scripts_are_configured() {
     let mut child = spawn(&dir, false);
     let (frames, _) = session(&mut child);
     let tools = frames[1]["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 36, "35 core tools plus script_reload");
+    // 35 core tools, script_reload and the five graph tools (M4 4.10c).
+    assert_eq!(
+        tools.len(),
+        41,
+        "35 core tools plus the scripts module's six"
+    );
+    for name in [
+        "graph_list_nodes",
+        "graph_check",
+        "graph_compile",
+        "graph_apply",
+        "graph_trace",
+    ] {
+        assert!(tools.iter().any(|t| t["name"] == name), "{name}: {tools:?}");
+    }
     let reload = tools
         .iter()
         .find(|t| t["name"] == "script_reload")
