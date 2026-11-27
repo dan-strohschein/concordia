@@ -963,6 +963,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "concordia-graph-script"
+version = "0.0.0"
+dependencies = [
+ "concordia-core",
+ "concordia-graph",
+ "concordia-reflect",
+ "concordia-script",
+ "concordia-script-protocol",
+ "concordia-script-wasm",
+ "concordia-terra",
+ "concordia-terra-sim",
+ "serde",
+ "serde_json",
+ "wasmtime",
+]
+
+[[package]]
 name = "concordia-import-fbx"
 version = "0.0.0"
 dependencies = [
@@ -1467,6 +1484,8 @@ dependencies = [
  "concordia-api",
  "concordia-command",
  "concordia-core",
+ "concordia-graph",
+ "concordia-graph-script",
  "concordia-reflect",
  "concordia-script",
  "concordia-script-guest",

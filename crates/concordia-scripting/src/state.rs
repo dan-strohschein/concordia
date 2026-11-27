@@ -2,6 +2,8 @@
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use concordia_graph_script::{GraphBackend, Mode};
+use concordia_reflect::TypeRegistry;
 use concordia_script::{ModuleSource, ScriptBackend, ScriptHost, ScriptModule, TestBackend};
 use concordia_script_native::{NativeBackend, check_module_source};
 use concordia_script_wasm::{WasmBackend, WasmConfig};
@@ -21,8 +23,11 @@ impl Source {
     /// The backend's name, for reports.
     pub(crate) fn backend(&self) -> &'static str {
         match self {
-            Self::File(entry) if entry.kind == ScriptKind::Wasm => "wasm",
-            Self::File(_) => "native",
+            Self::File(entry) => match entry.kind {
+                ScriptKind::Wasm => "wasm",
+                ScriptKind::Native => "native",
+                ScriptKind::Graph => "graph",
+            },
             Self::Linked(_) => "linked",
         }
     }
@@ -48,6 +53,7 @@ pub(crate) struct Scripts {
     pub(crate) linked: TestBackend,
     pub(crate) native: NativeBackend,
     wasm: Option<WasmBackend>,
+    graph: Option<GraphBackend>,
     pub(crate) linked_names: Vec<String>,
     pub(crate) loaded: Vec<Loaded>,
     /// Sources that failed to load, with why (reported by `script.reload`).
@@ -66,6 +72,7 @@ impl Handle {
             linked,
             native,
             wasm: None,
+            graph: None,
             linked_names: Vec::new(),
             loaded: Vec::new(),
             failed: Vec::new(),
@@ -82,8 +89,12 @@ pub(crate) struct ScriptsState(pub(crate) Handle);
 
 impl Scripts {
     /// Loads the current build of `source` from disk (checking a native module's source
-    /// first) or from the linked modules, and hashes it.
-    pub(crate) fn load(&mut self, source: &Source) -> Result<Build, String> {
+    /// first; compiling a graph against `registry`) or from the linked modules, and hashes it.
+    pub(crate) fn load(
+        &mut self,
+        source: &Source,
+        registry: &TypeRegistry,
+    ) -> Result<Build, String> {
         match source {
             Source::Linked(name) => {
                 let module = self
@@ -100,7 +111,7 @@ impl Scripts {
             Source::File(entry) => {
                 let file = entry.file();
                 let bytes = std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-                let module = self.load_file(entry)?;
+                let module = self.load_file(entry, registry)?;
                 Ok(Build {
                     module,
                     hash: blake3::hash(&bytes).to_hex().to_string(),
@@ -109,13 +120,21 @@ impl Scripts {
         }
     }
 
-    fn load_file(&mut self, entry: &ScriptEntry) -> Result<Arc<dyn ScriptModule>, String> {
+    fn load_file(
+        &mut self,
+        entry: &ScriptEntry,
+        registry: &TypeRegistry,
+    ) -> Result<Arc<dyn ScriptModule>, String> {
         let file = entry.file();
         let fail = |e: &dyn std::fmt::Display| format!("{}: {e}", file.display());
         match entry.kind {
             ScriptKind::Wasm => self
                 .wasm()?
                 .load(&ModuleSource::File(file.clone()))
+                .map_err(|e| fail(&e)),
+            ScriptKind::Graph => self
+                .graph()?
+                .load(&ModuleSource::File(file.clone()), registry)
                 .map_err(|e| fail(&e)),
             ScriptKind::Native => {
                 if let Some(source) = &entry.source {
@@ -126,6 +145,16 @@ impl Scripts {
                     .map_err(|e| fail(&e))
             }
         }
+    }
+
+    /// The graph backend, created on first use.
+    fn graph(&mut self) -> Result<&GraphBackend, String> {
+        if self.graph.is_none() {
+            self.graph = Some(GraphBackend::new(Mode::default()).map_err(|e| e.to_string())?);
+        }
+        self.graph
+            .as_ref()
+            .ok_or_else(|| "no graph backend".to_owned())
     }
 
     /// The WASM backend, created on first use.
@@ -142,10 +171,18 @@ impl Scripts {
             .ok_or_else(|| "no WASM backend".to_owned())
     }
 
-    /// Every configured source: files in order, then linked modules.
+    /// Every configured source: script files in order, linked modules, then graphs (which may
+    /// use the others' types).
     pub(crate) fn sources(&self) -> Vec<Source> {
-        let files = self.config.modules.iter().cloned().map(Source::File);
+        let files = |graphs: bool| {
+            self.config
+                .modules
+                .iter()
+                .filter(move |m| (m.kind == ScriptKind::Graph) == graphs)
+                .cloned()
+                .map(Source::File)
+        };
         let linked = self.linked_names.iter().cloned().map(Source::Linked);
-        files.chain(linked).collect()
+        files(false).chain(linked).chain(files(true)).collect()
     }
 }

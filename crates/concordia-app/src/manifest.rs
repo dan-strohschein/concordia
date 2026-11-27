@@ -129,13 +129,15 @@ pub enum ScriptModuleKind {
     Wasm,
     /// A native module library (trusted, hot-reloadable).
     Native,
+    /// A `.graph.ron` Event graph (compiled to WASM; M4 4.10b).
+    Graph,
 }
 
 /// `[[scripts.module]]`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScriptModuleSection {
-    /// `wasm` or `native`.
+    /// `wasm`, `native` or `graph`.
     pub kind: ScriptModuleKind,
     /// Project-relative module file (a native library may omit its extension).
     pub path: String,

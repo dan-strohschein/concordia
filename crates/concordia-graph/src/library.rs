@@ -507,7 +507,7 @@ fn component_nodes(r: &TypeRegistration) -> Vec<NodeDef> {
 }
 
 /// A signal field's pin: its name, or `field_<name>` where that is a fixed pin's name.
-fn field_pin(field: &str) -> String {
+pub(crate) fn field_pin(field: &str) -> String {
     match ["target", "entity", "signal"].contains(&field) {
         true => format!("field_{field}"),
         false => field.to_owned(),

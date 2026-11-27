@@ -20,6 +20,6 @@ mod bindings {
     wasmtime::component::bindgen!({ world: "gameplay", path: "../../wit/concordia-game" });
 }
 
-pub use backend::{WASMTIME_VERSION, WasmBackend, WasmModule};
+pub use backend::{WASMTIME_VERSION, WasmBackend, WasmModule, engine_config};
 pub use config::{Fuel, WasmConfig};
 pub use wasi::sim_nanos;

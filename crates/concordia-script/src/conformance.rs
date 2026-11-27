@@ -111,6 +111,17 @@ impl Rig {
     ) -> Self {
         let mut registry = TypeRegistry::default();
         concordia_terra_sim::register(&mut registry).unwrap();
+        Self::with_host_in(module, registry, threads, templates, extra)
+    }
+
+    /// As [`Rig::with_host`], starting from `registry` (which must hold the sim's types).
+    pub fn with_host_in(
+        module: Arc<dyn ScriptModule>,
+        mut registry: TypeRegistry,
+        threads: usize,
+        templates: &[Template],
+        extra: impl FnOnce(&mut Schedule),
+    ) -> Self {
         let config = HostConfig {
             session_seed: SESSION_SEED,
         };

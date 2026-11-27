@@ -7,6 +7,7 @@ pub mod fns;
 mod format;
 pub mod ir;
 mod library;
+pub mod runtime;
 mod types;
 
 pub use check::{Code, Diagnostic, Report, check};
@@ -15,6 +16,6 @@ pub use format::{
     ExecLink, Graph, GraphKind, Input, Literal, Node, PinDecl, Signature, Variable, read_graph,
     write_graph,
 };
-pub use ir::{CompiledFunction, compile_function};
+pub use ir::{CompiledFunction, compile_event, compile_function};
 pub use library::{NodeDef, NodeLibrary, PinDef};
 pub use types::{GenericKind, PinType};

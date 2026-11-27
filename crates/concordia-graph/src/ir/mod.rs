@@ -2,11 +2,14 @@
 //! components when a graph is lowered, so every value is an `i32` (also bools), `i64` or `f32`.
 
 mod eval;
+mod event;
 mod lower;
 mod opt;
 mod wasm;
 
 pub use eval::EvalError;
+pub use event::compile_event;
+pub(crate) use wasm::emit_program;
 
 use crate::{Diagnostic, Graph, NodeLibrary};
 

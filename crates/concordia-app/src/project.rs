@@ -346,6 +346,7 @@ impl Project {
                 kind: match m.kind {
                     ScriptModuleKind::Wasm => ScriptKind::Wasm,
                     ScriptModuleKind::Native => ScriptKind::Native,
+                    ScriptModuleKind::Graph => ScriptKind::Graph,
                 },
                 path: self.root.join(&m.path),
                 source: m.source.as_ref().map(|s| self.root.join(s)),

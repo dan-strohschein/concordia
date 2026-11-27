@@ -26,9 +26,31 @@ trait SignalList: Send + Sync {
     fn hash(&self, h: &mut blake3::Hasher) -> Result<(), EcsError>;
     /// Every (target, payload), in list order.
     fn entries(&self) -> Vec<(EntityId, &dyn DynReflect)>;
+    /// Appends a payload of another Rust type with the same stable name (a typed and a dynamic
+    /// raise of one signal), converted through its JSON form; false if it doesn't convert.
+    fn push_dyn(&mut self, target: EntityId, value: &dyn DynReflect) -> bool;
 }
 
-struct Typed<S>(Vec<(EntityId, S)>);
+/// A signal type's list, with how to convert a payload raised as another Rust type into `S`.
+struct Typed<S> {
+    items: Vec<(EntityId, S)>,
+    from_dyn: fn(&dyn DynReflect) -> Option<S>,
+}
+
+/// A payload as JSON.
+fn json_of(value: &dyn DynReflect) -> Option<serde_json::Value> {
+    serde_json::to_value(value.as_serialize()).ok()
+}
+
+/// Any reflected payload as the Rust type `S`.
+fn concrete<S: Component>(value: &dyn DynReflect) -> Option<S> {
+    serde_json::from_value(json_of(value)?).ok()
+}
+
+/// Any reflected payload as a dynamic value of its own type.
+fn dynamic(value: &dyn DynReflect) -> Option<DynamicValue> {
+    DynamicValue::from_json(value.info(), json_of(value)?).ok()
+}
 
 impl<S: DynReflect + Clone> SignalList for Typed<S> {
     fn as_any(&self) -> &dyn Any {
@@ -38,31 +60,43 @@ impl<S: DynReflect + Clone> SignalList for Typed<S> {
         self
     }
     fn clone_box(&self) -> Box<dyn SignalList> {
-        Box::new(Typed(self.0.clone()))
+        Box::new(Typed {
+            items: self.items.clone(),
+            from_dyn: self.from_dyn,
+        })
     }
     fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.items.is_empty()
     }
     fn count_for(&self, id: EntityId) -> usize {
-        self.0.iter().filter(|(t, _)| *t == id).count()
+        self.items.iter().filter(|(t, _)| *t == id).count()
     }
     fn prepare(&mut self, entities: &EntityTable) {
-        self.0.retain(|(id, _)| entities.contains(*id));
-        self.0.sort_by_key(|(id, _)| *id);
+        self.items.retain(|(id, _)| entities.contains(*id));
+        self.items.sort_by_key(|(id, _)| *id);
     }
     fn hash(&self, h: &mut blake3::Hasher) -> Result<(), EcsError> {
-        let mut order: Vec<usize> = (0..self.0.len()).collect();
-        order.sort_by_key(|&i| self.0[i].0);
+        let mut order: Vec<usize> = (0..self.items.len()).collect();
+        order.sort_by_key(|&i| self.items[i].0);
         h.update(&(order.len() as u64).to_le_bytes());
         for i in order {
-            let (id, payload) = &self.0[i];
+            let (id, payload) = &self.items[i];
             h.update(id.as_uuid().as_bytes());
             canonical_hash(payload, h)?;
         }
         Ok(())
     }
+    fn push_dyn(&mut self, target: EntityId, value: &dyn DynReflect) -> bool {
+        match (self.from_dyn)(value) {
+            Some(v) => {
+                self.items.push((target, v));
+                true
+            }
+            None => false,
+        }
+    }
     fn entries(&self) -> Vec<(EntityId, &dyn DynReflect)> {
-        self.0
+        self.items
             .iter()
             .map(|(id, s)| (*id, s as &dyn DynReflect))
             .collect()
@@ -92,8 +126,33 @@ impl Clone for SignalQueue {
 }
 
 impl SignalQueue {
+    /// Raises a Rust-typed signal. A list raised dynamically first becomes typed, so typed
+    /// readers see every raise.
     fn raise<S: Component>(&mut self, target: EntityId, signal: S) {
-        self.raise_value(S::type_info().name, target, signal);
+        let name = S::type_info().name;
+        let typed = self.pending.get(name).map(|l| l.as_any().is::<Typed<S>>());
+        if typed == Some(false) {
+            let converted: Option<Vec<(EntityId, S)>> = self.pending[name]
+                .entries()
+                .into_iter()
+                .map(|(id, v)| concrete::<S>(v).map(|s| (id, s)))
+                .collect();
+            if let Some(items) = converted {
+                self.pending.insert(
+                    name,
+                    Box::new(Typed {
+                        items,
+                        from_dyn: concrete::<S>,
+                    }),
+                );
+            }
+        }
+        self.raise_value(name, target, signal, concrete::<S>);
+    }
+
+    /// Raises a dynamic (script or API) signal.
+    fn raise_dynamic(&mut self, target: EntityId, signal: DynamicValue) {
+        self.raise_value(signal.info().name, target, signal, dynamic);
     }
 
     fn raise_value<S: DynReflect + Clone>(
@@ -101,14 +160,21 @@ impl SignalQueue {
         name: &'static str,
         target: EntityId,
         signal: S,
+        from_dyn: fn(&dyn DynReflect) -> Option<S>,
     ) {
-        let list = self
-            .pending
-            .entry(name)
-            .or_insert_with(|| Box::new(Typed::<S>(Vec::new())));
-        // Two types sharing a stable name can't share a list; the component index forbids it too.
-        if let Some(typed) = list.as_any_mut().downcast_mut::<Typed<S>>() {
-            typed.0.push((target, signal));
+        let list = self.pending.entry(name).or_insert_with(|| {
+            Box::new(Typed::<S> {
+                items: Vec::new(),
+                from_dyn,
+            })
+        });
+        match list.as_any_mut().downcast_mut::<Typed<S>>() {
+            Some(typed) => typed.items.push((target, signal)),
+            None => {
+                // Types sharing a stable name are one type (the component index forbids others).
+                let pushed = list.push_dyn(target, &signal);
+                debug_assert!(pushed, "signal {name} raised as an incompatible Rust type");
+            }
         }
     }
 
@@ -128,8 +194,8 @@ impl SignalQueue {
             else {
                 return Ok(None);
             };
-            let mut out = Vec::with_capacity(typed.0.len());
-            for (id, payload) in &typed.0 {
+            let mut out = Vec::with_capacity(typed.items.len());
+            for (id, payload) in &typed.items {
                 out.push((*id, convert(payload)?));
             }
             Ok(Some(out))
@@ -156,7 +222,7 @@ impl SignalQueue {
                     .get_mut(name)
                     .and_then(|l| l.as_any_mut().downcast_mut::<Typed<DynamicValue>>())
             {
-                typed.0 = list;
+                typed.items = list;
             }
         }
     }
@@ -167,7 +233,7 @@ impl SignalQueue {
             .pending
             .get(S::type_info().name)
             .and_then(|l| l.as_any().downcast_ref::<Typed<S>>())
-            .map(|t| t.0.iter().map(|(id, s)| (*id, s)).collect())
+            .map(|t| t.items.iter().map(|(id, s)| (*id, s)).collect())
             .unwrap_or_default();
         out.sort_by_key(|(id, _)| *id);
         out
@@ -178,7 +244,7 @@ impl SignalQueue {
         self.delivered
             .get(S::type_info().name)
             .and_then(|l| l.as_any().downcast_ref::<Typed<S>>())
-            .map_or(&[], |t| &t.0)
+            .map_or(&[], |t| &t.items)
     }
 
     /// This tick's signals of the type named `name` (static or runtime-described).
@@ -238,7 +304,7 @@ impl World {
 
     /// Raises a signal of a runtime-described (script) type; delivered like [`World::signal`].
     pub fn signal_dynamic(&mut self, target: EntityId, signal: DynamicValue) {
-        self.signals.raise_value(signal.info().name, target, signal);
+        self.signals.raise_dynamic(target, signal);
     }
 
     /// This tick's delivered `S` signals, by entity then raise order.

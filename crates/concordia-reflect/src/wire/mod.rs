@@ -125,6 +125,18 @@ pub fn layout(info: &'static TypeInfo) -> Result<Layout, WireError> {
     layout::of(info)
 }
 
+/// Byte offsets of a struct's fields within one value, in declaration order (M4 4.10b: compiled
+/// graphs read and write fields in place). Other shapes have no fields.
+pub fn field_offsets(info: &'static TypeInfo) -> Result<Vec<usize>, WireError> {
+    match &layout::peel(info).shape {
+        crate::Shape::Struct { fields, .. } => layout::offsets(fields.iter().map(|f| f.ty)),
+        _ => Err(WireError::Unsupported {
+            type_name: info.name.to_owned(),
+            reason: "only structs have field offsets".into(),
+        }),
+    }
+}
+
 /// Encodes one value (fixed part, then its arena); `value` may be the Rust type or JSON.
 pub fn encode<T: Serialize + ?Sized>(
     value: &T,

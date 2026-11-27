@@ -37,5 +37,11 @@ Graph(
 - Signature: `graph.input` outputs and `graph.output` inputs are the signature's pins.
 - Core: flow (`branch`, `sequence`, `for_each`, `gate`, `query.each`), `entity.self`, `math.*` (generic over `Numeric` = i32, i64, f32, Vec2–4, or `Scalar` = i32, i64, f32), `logic.*`, `conv.*`, `vector.*`, `behavior.*`, `utility.curve`. The full list with pin types is the core snapshot `crates/concordia-graph/tests/snapshots/library__core_library.snap`.
 
+## Running graphs
+- List the graph in `concordia.toml`: `[[scripts.module]] kind = "graph", path = "graphs/enemy.graph.ron"`. It compiles to WebAssembly when the project loads and runs like a script module (same sandbox, fuel and faults).
+- Attach it to an entity by adding `graph.<name>.Vars` (`{}` gives every variable its default). Each event node is a processor: `event.on_tick` every tick, `on.<Signal>` per delivered signal, in order.
+- Edit the file, then `script.reload`: variables keep their values (by name and type), new ones start at their defaults. A graph that doesn't check keeps the old version running and the error lists the diagnostics. Reading or writing components the graph didn't touch before needs a new play session (as for scripts).
+- Compiled in 4.10: the graph's own entity (its components and fields, variables, `dt`, signal fields), math, logic, conversions, vectors, `branch`, `sequence`, `gate`, `set`, `raise` on itself. Not yet (`unsupported_node`): other entities, `query.each`, `for_each`, exec loops.
+
 ## Diagnostics
 Each is `{ code, node_id, pin, message, suggestion }` (JSON Schema from `concordia-reflect`). Codes: `unknown_op`, `unknown_variable`, `unknown_type`, `unknown_pin`, `unknown_node`, `type_mismatch`, `unconnected_input`, `data_cycle`, `impure_in_pure`, `generic_unresolved`, `kind_rule`, `exec_mismatch`, and from the compiler `unsupported_node` (a node or type it can't lower yet). Fix the named node and pin; a `suggestion` lists the closest valid names.

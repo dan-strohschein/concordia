@@ -125,7 +125,7 @@ fn retry_failed(
             session_seed: scripts.config.session_seed,
         };
         let (registry, _) = engine.registry_and_play_mut();
-        let host = scripts.load(&source).and_then(|build| {
+        let host = scripts.load(&source, registry).and_then(|build| {
             let host =
                 ScriptHost::load(build.module, registry, config).map_err(|e| e.to_string())?;
             Ok((host, build.hash))
@@ -163,7 +163,7 @@ fn reload_one(
     let crate::state::Build {
         module: build,
         hash,
-    } = scripts.load(&source).map_err(failed)?;
+    } = scripts.load(&source, engine.registry()).map_err(failed)?;
     let desc = build
         .describe()
         .map_err(|e| failed(format!("describe: {e}")))?;

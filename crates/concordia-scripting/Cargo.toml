@@ -13,6 +13,7 @@ blake3.workspace = true
 concordia-api.workspace = true
 concordia-command.workspace = true
 concordia-core.workspace = true
+concordia-graph-script.workspace = true
 concordia-reflect.workspace = true
 concordia-script.workspace = true
 concordia-script-guest.workspace = true
@@ -25,6 +26,7 @@ serde_json.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+concordia-graph.workspace = true
 blake3.workspace = true
 concordia-tests = { path = "../../tests" }
 conformance-guest = { path = "../../tests/fixtures/script/conformance-guest" }
