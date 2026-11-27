@@ -167,6 +167,11 @@ pub(crate) fn command(e: CommandError, component: Option<&str>, hints: &Hints<'_
         CommandError::NotUndoable { .. } => ApiError::new(ApiErrorKind::TxnNotFound, e.to_string())
             .suggest(["pick a commit with \"undone\": false from txn.history".to_owned()]),
         CommandError::Journal(j) => ApiError::new(ApiErrorKind::SceneIo, j.to_string()),
+        CommandError::Document { ref reason, .. } if reason.contains("changed since") => {
+            ApiError::new(ApiErrorKind::TxnConflict, e.to_string())
+                .suggest(["read the file again and apply the edit to what it holds now".to_owned()])
+        }
+        CommandError::Document { .. } => ApiError::new(ApiErrorKind::InvalidParams, e.to_string()),
         other => crate::engine::internal(other),
     }
 }

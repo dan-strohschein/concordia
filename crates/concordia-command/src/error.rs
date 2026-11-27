@@ -30,6 +30,14 @@ pub enum CommandError {
         /// Why.
         source: EcsError,
     },
+    /// A document op failed (the transaction was rolled back).
+    #[error("document {path}: {reason}")]
+    Document {
+        /// The document.
+        path: String,
+        /// Why.
+        reason: String,
+    },
     /// The undo stack is empty.
     #[error("nothing to undo: {reason}")]
     NothingToUndo {

@@ -7,7 +7,10 @@ use concordia_reflect::TypeRegistry;
 use concordia_terra::{World, WorldHash};
 
 use crate::actor::Author;
-use crate::apply::{apply, reapply, revert};
+use std::sync::Arc;
+
+use crate::apply::{ApplyError, Docs, apply, reapply, revert};
+use crate::documents::Documents;
 use crate::error::CommandError;
 use crate::journal::{Event, JOURNAL_VERSION, Journal, JournalEntry};
 use crate::op::{AppliedOp, EditOp};
@@ -23,6 +26,7 @@ pub struct CommandLog {
     history: Vec<HistoryEntry>,
     next_seq: u64,
     stale: Option<String>,
+    documents: Option<Arc<dyn Documents>>,
 }
 
 impl CommandLog {
@@ -32,6 +36,11 @@ impl CommandLog {
             next_seq: 1,
             ..Self::default()
         }
+    }
+
+    /// Reads and writes document ops' files through `documents` (M4 4.10c).
+    pub fn attach_documents(&mut self, documents: Arc<dyn Documents>) {
+        self.documents = Some(documents);
     }
 
     /// Persists every future event to `journal`.
@@ -100,7 +109,7 @@ impl CommandLog {
     ) -> Result<(), CommandError> {
         let open = self.open.as_mut().ok_or(CommandError::NoOpenTxn)?;
         let index = open.ops.len();
-        match apply(world, reg, &op) {
+        match apply(world, reg, docs_of(&self.documents), &op) {
             Ok(inverse) => {
                 open.ops.push(AppliedOp { op, inverse });
                 Ok(())
@@ -108,7 +117,7 @@ impl CommandLog {
             Err(source) => {
                 // The failure is the error to report; a journal problem while recording the abort is secondary.
                 let _ = self.abort(world, reg, "op_failed");
-                Err(CommandError::OpFailed { index, source })
+                Err(source.op_failed(index))
             }
         }
     }
@@ -132,7 +141,8 @@ impl CommandLog {
             return Ok(txn.id);
         }
         if let Err(e) = self.record(commit_event(&txn), &txn.author) {
-            revert(world, reg, &txn.ops).map_err(CommandError::Inconsistent)?;
+            revert(world, reg, docs_of(&self.documents), &txn.ops)
+                .map_err(ApplyError::inconsistent)?;
             return Err(e);
         }
         let id = txn.id;
@@ -150,7 +160,8 @@ impl CommandLog {
         reason: &str,
     ) -> Result<(), CommandError> {
         let open = self.open.take().ok_or(CommandError::NoOpenTxn)?;
-        revert(world, reg, &open.ops).map_err(CommandError::Inconsistent)?;
+        revert(world, reg, docs_of(&self.documents), &open.ops)
+            .map_err(ApplyError::inconsistent)?;
         let event = Event::Abort {
             txn: open.id,
             actor: open.author.actor.clone(),
@@ -173,8 +184,8 @@ impl CommandLog {
         self.ensure_closed()?;
         let id = ids.next_id()?;
         let hash_before = world.state_hash()?;
-        let inverse =
-            apply(world, reg, &op).map_err(|source| CommandError::OpFailed { index: 0, source })?;
+        let inverse = apply(world, reg, docs_of(&self.documents), &op)
+            .map_err(|source| source.op_failed(0))?;
         let ops = vec![AppliedOp { op, inverse }];
         self.open = Some(OpenTxn {
             id,
@@ -197,9 +208,9 @@ impl CommandLog {
         let txn = self.done.pop().ok_or_else(|| CommandError::NothingToUndo {
             reason: self.nothing_to_undo(),
         })?;
-        if let Err(e) = revert(world, reg, &txn.ops) {
+        if let Err(e) = revert(world, reg, docs_of(&self.documents), &txn.ops) {
             self.done.push(txn);
-            return Err(CommandError::Inconsistent(e));
+            return Err(e.inconsistent());
         }
         let event = Event::Undo {
             target: txn.id,
@@ -207,7 +218,8 @@ impl CommandLog {
             hash_after: world.state_hash()?,
         };
         if let Err(e) = self.record(event, &author) {
-            reapply(world, reg, &txn.ops).map_err(CommandError::Inconsistent)?;
+            reapply(world, reg, docs_of(&self.documents), &txn.ops)
+                .map_err(ApplyError::inconsistent)?;
             self.done.push(txn);
             return Err(e);
         }
@@ -244,9 +256,9 @@ impl CommandLog {
     ) -> Result<TxnId, CommandError> {
         self.ensure_closed()?;
         let txn = self.undone.pop().ok_or(CommandError::NothingToRedo)?;
-        if let Err(e) = reapply(world, reg, &txn.ops) {
+        if let Err(e) = reapply(world, reg, docs_of(&self.documents), &txn.ops) {
             self.undone.push(txn);
-            return Err(CommandError::Inconsistent(e));
+            return Err(e.inconsistent());
         }
         let event = Event::Redo {
             target: txn.id,
@@ -254,7 +266,8 @@ impl CommandLog {
             hash_after: world.state_hash()?,
         };
         if let Err(e) = self.record(event, &author) {
-            revert(world, reg, &txn.ops).map_err(CommandError::Inconsistent)?;
+            revert(world, reg, docs_of(&self.documents), &txn.ops)
+                .map_err(ApplyError::inconsistent)?;
             self.undone.push(txn);
             return Err(e);
         }
@@ -488,4 +501,12 @@ fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
+}
+
+/// Document access for the log's ops.
+fn docs_of(documents: &Option<Arc<dyn Documents>>) -> Docs<'_> {
+    match documents {
+        Some(d) => Docs::Use(d.as_ref()),
+        None => Docs::Missing,
+    }
 }

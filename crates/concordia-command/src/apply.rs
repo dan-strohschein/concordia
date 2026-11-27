@@ -9,36 +9,138 @@ use concordia_terra::{
 };
 use serde_json::Value;
 
+use crate::documents::Documents;
+use crate::error::CommandError;
 use crate::op::{AppliedOp, EditOp};
 
-/// Applies `op`; on error the world is unchanged.
+/// Why an op didn't apply.
+#[derive(Debug)]
+pub(crate) enum ApplyError {
+    /// The world refused it.
+    Ecs(EcsError),
+    /// A document op failed.
+    Document {
+        /// The document.
+        path: String,
+        /// Why.
+        reason: String,
+    },
+}
+
+impl From<EcsError> for ApplyError {
+    fn from(e: EcsError) -> Self {
+        Self::Ecs(e)
+    }
+}
+
+impl ApplyError {
+    /// As a failed op `index` (world errors keep their `OpFailed` shape).
+    pub(crate) fn op_failed(self, index: usize) -> CommandError {
+        match self {
+            Self::Ecs(source) => CommandError::OpFailed { index, source },
+            Self::Document { path, reason } => CommandError::Document { path, reason },
+        }
+    }
+
+    /// As a failed rollback.
+    pub(crate) fn inconsistent(self) -> CommandError {
+        match self {
+            Self::Ecs(e) => CommandError::Inconsistent(e),
+            Self::Document { path, reason } => CommandError::Document {
+                path,
+                reason: format!("rollback failed, the file and history may disagree: {reason}"),
+            },
+        }
+    }
+}
+
+impl From<ApplyError> for CommandError {
+    fn from(e: ApplyError) -> Self {
+        match e {
+            ApplyError::Ecs(e) => Self::Ecs(e),
+            ApplyError::Document { path, reason } => Self::Document { path, reason },
+        }
+    }
+}
+
+/// Where document ops go: a log's documents, none attached, or skipped (journal replay, when
+/// files already hold their final text).
+#[derive(Clone, Copy)]
+pub(crate) enum Docs<'a> {
+    /// Read and write here.
+    Use(&'a dyn Documents),
+    /// None attached: document ops fail.
+    Missing,
+    /// Skip them (the world is all that's rebuilt).
+    Skip,
+}
+
+/// Applies `op`; on error the world (and any document) is unchanged.
 pub(crate) fn apply(
     world: &mut World,
     reg: &mut TypeRegistry,
+    docs: Docs<'_>,
     op: &EditOp,
-) -> Result<Vec<EditOp>, EcsError> {
-    match op {
-        EditOp::Spawn { id, components } => spawn(world, reg, *id, components),
-        EditOp::Despawn { id } => despawn(world, *id),
+) -> Result<Vec<EditOp>, ApplyError> {
+    Ok(match op {
+        EditOp::Spawn { id, components } => spawn(world, reg, *id, components)?,
+        EditOp::Despawn { id } => despawn(world, *id)?,
         EditOp::SetComponent {
             id,
             component,
             value,
-        } => set(world, reg, *id, component, value.clone()),
-        EditOp::RemoveComponent { id, component } => remove(world, reg, *id, component),
-        EditOp::MigrateType { component, to } => migrate_type(world, reg, component, to),
+        } => set(world, reg, *id, component, value.clone())?,
+        EditOp::RemoveComponent { id, component } => remove(world, reg, *id, component)?,
+        EditOp::MigrateType { component, to } => migrate_type(world, reg, component, to)?,
+        EditOp::Document {
+            path,
+            before,
+            after,
+        } => document(docs, path, before.as_deref(), after.as_deref())?,
+    })
+}
+
+/// Replaces a document if it still holds `before`; the inverse swaps the texts.
+fn document(
+    docs: Docs<'_>,
+    path: &str,
+    before: Option<&str>,
+    after: Option<&str>,
+) -> Result<Vec<EditOp>, ApplyError> {
+    let fail = |reason: String| ApplyError::Document {
+        path: path.to_owned(),
+        reason,
+    };
+    let inverse = vec![EditOp::Document {
+        path: path.to_owned(),
+        before: after.map(str::to_owned),
+        after: before.map(str::to_owned),
+    }];
+    let docs = match docs {
+        Docs::Skip => return Ok(inverse),
+        Docs::Missing => return Err(fail("no documents are attached to this command log".into())),
+        Docs::Use(docs) => docs,
+    };
+    let now = docs.read(path).map_err(&fail)?;
+    if now.as_deref() != before {
+        return Err(fail(
+            "changed since it was read (another edit happened); read it again and retry".into(),
+        ));
     }
+    docs.write(path, after).map_err(fail)?;
+    Ok(inverse)
 }
 
 /// Reverts applied ops, newest first.
 pub(crate) fn revert(
     world: &mut World,
     reg: &mut TypeRegistry,
+    docs: Docs<'_>,
     ops: &[AppliedOp],
-) -> Result<(), EcsError> {
+) -> Result<(), ApplyError> {
     for applied in ops.iter().rev() {
         for inverse in &applied.inverse {
-            apply(world, reg, inverse)?;
+            apply(world, reg, docs, inverse)?;
         }
     }
     Ok(())
@@ -48,10 +150,11 @@ pub(crate) fn revert(
 pub(crate) fn reapply(
     world: &mut World,
     reg: &mut TypeRegistry,
+    docs: Docs<'_>,
     ops: &[AppliedOp],
-) -> Result<(), EcsError> {
+) -> Result<(), ApplyError> {
     ops.iter()
-        .try_for_each(|applied| apply(world, reg, &applied.op).map(|_| ()))
+        .try_for_each(|applied| apply(world, reg, docs, &applied.op).map(|_| ()))
 }
 
 fn spawn(
