@@ -38,5 +38,6 @@ max_attempts_per_task = 3
 [paths]
 deny = [".env", "**/*.key"]
 # Scenes are shared for now: the level designer lays them out; others (the tech artist, the sound
-# designer, the composer and the UI/UX designer) save what they change in them.
-shared = ["assets/blender/**", "assets/models/**/*.import.ron", "scenes/**", "scenes/**/*.scene.ron", "tests/playtests/**"]
+# designer, the composer and the UI/UX designer) save what they change in them. Gameplay graphs are
+# shared by the gameplay programmer (mechanics, decisions) and the level designer (level logic).
+shared = ["graphs/**", "assets/blender/**", "assets/models/**/*.import.ron", "scenes/**", "scenes/**/*.scene.ron", "tests/playtests/**"]

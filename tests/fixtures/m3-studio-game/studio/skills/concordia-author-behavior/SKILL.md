@@ -1,0 +1,20 @@
+---
+name: concordia-author-behavior
+description: "Authors behavior-tree and utility graphs (.graph.ron Behavior and Utility kinds) through graph_apply and checks them with graph_check, ready for the AI runtime that runs them."
+when_to_use: "Use when a task asks for an enemy or NPC's decision logic (what to do next: patrol, chase, flee, attack) or a utility score (how much an option is worth), as a Behavior or Utility graph."
+user-invocable: false
+---
+# Authoring behavior and utility graphs
+
+Decision logic is a graph too. A **Behavior** graph is a behavior tree: exactly one `behavior.root`, whose `child` exec pin leads into composites (`behavior.sequence`: children in order until one fails; `behavior.selector`: until one succeeds) and leaves. A **Utility** graph is a consideration: pure, taking inputs from its signature and returning `f32` scores, each straight from `utility.curve` (`linear`, `quadratic`, `inverse`; always in [0, 1]) or `math.saturate`.
+
+These graphs check today; the AI runtime that runs them (behavior trees, utility selection) comes with the engine's next phase, so write and check them now and attach them when it lands.
+
+## Steps
+1. List the nodes: `mcp__concordia__graph_list_nodes {}` (`behavior.*`, `utility.curve`, `math.*`).
+2. Write the graph with `mcp__concordia__graph_apply` (`"kind": "Behavior"` or `"Utility"`), as in `concordia-author-graph`: add nodes, `ConnectExec` the tree (`root.child` → a composite's `in`; its `child0`, `child1`, … → each child's `in`), `Connect` data pins, `SetValue` constants.
+3. Check it: `mcp__concordia__graph_check {"path": ...}`. The kind rules: a Behavior graph has exactly one `behavior.root`; a Utility graph is pure and each `f32` score comes straight from `utility.curve` or `math.saturate`. `mcp__concordia__graph_read {"path": ...}` shows the result and who changed each node.
+
+## Rules
+- One decision per graph: a tree per archetype, a consideration per score.
+- Name considerations' inputs for what they measure (`distance`, `health`), and keep scores in [0, 1]: the checker enforces it.
