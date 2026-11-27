@@ -9,6 +9,9 @@ pub enum ScriptKind {
     Wasm,
     /// A native module library (trusted; ADR-0061).
     Native,
+    /// A `.graph.ron` Event graph, compiled to WASM (sandboxed; M4 4.10b). Loads after the
+    /// other modules, so it can use their types.
+    Graph,
 }
 
 /// One module file.

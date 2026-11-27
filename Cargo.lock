@@ -1484,6 +1484,8 @@ dependencies = [
  "concordia-api",
  "concordia-command",
  "concordia-core",
+ "concordia-graph",
+ "concordia-graph-script",
  "concordia-reflect",
  "concordia-script",
  "concordia-script-guest",

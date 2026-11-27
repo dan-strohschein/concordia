@@ -111,7 +111,8 @@ fn vars_desc(name: &str, graph: &Graph, errors: &mut Vec<Diagnostic>) -> TypeDes
             default: v.default.as_ref().and_then(literal_json),
             range: None,
             widget: None,
-            optional: false,
+            // Absent on input takes the default, so `{}` attaches the graph.
+            optional: true,
         })
         .collect();
     TypeDesc {

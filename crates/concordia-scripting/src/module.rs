@@ -66,7 +66,7 @@ impl EngineModule for ScriptsModule {
             session_seed: scripts.config.session_seed,
         };
         for source in scripts.sources() {
-            let loaded = scripts.load(&source).and_then(|build| {
+            let loaded = scripts.load(&source, registry).and_then(|build| {
                 let host =
                     ScriptHost::load(build.module, registry, config).map_err(|e| e.to_string())?;
                 Ok((host, build.hash))

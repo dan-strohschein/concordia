@@ -34,6 +34,7 @@ concordia-command = { path = "crates/concordia-command" }
 concordia-gen = { path = "crates/concordia-gen" }
 concordia-bvh = { path = "crates/concordia-bvh" }
 concordia-graph = { path = "crates/concordia-graph" }
+concordia-graph-script = { path = "crates/concordia-graph-script" }
 concordia-core = { path = "crates/concordia-core" }
 concordia-import-fbx = { path = "crates/concordia-import-fbx" }
 concordia-import-gltf = { path = "crates/concordia-import-gltf" }

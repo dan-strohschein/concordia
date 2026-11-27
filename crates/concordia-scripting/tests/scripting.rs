@@ -509,3 +509,156 @@ fn linked_modules_are_fingerprinted_by_their_description() {
     );
     assert_eq!(prints[0].hash, blake3::hash(&desc).to_hex().to_string());
 }
+
+/// A graph module (M4 4.10b): counts ticks in a variable and moves up by dt (× `bonus` in v2).
+fn mover_graph(version: u32) -> String {
+    use concordia_graph::{ExecLink, Graph, GraphKind, Input, Literal, Node, Signature, Variable};
+    let id = |n: u32| format!("0193b0f2-0000-7000-8000-{n:012x}");
+    let link = |n: u32, pin: &str| Input::Link(id(n), pin.into());
+    let float = |v: f64| Input::Value(Literal::Float(v));
+    let mut variables = vec![Variable {
+        name: "ticks".into(),
+        ty: "i32".into(),
+        default: Some(Literal::Int(0)),
+    }];
+    let mut speed = link(1, "dt");
+    let mut nodes = vec![
+        (1, Node::new("event.on_tick")),
+        (2, Node::new("sequence")),
+        (3, Node::new("var.get.ticks")),
+        (
+            4,
+            Node::new("math.add")
+                .with_input("a", link(3, "value"))
+                .with_input("b", Input::Value(Literal::Int(1))),
+        ),
+        (
+            5,
+            Node::new("var.set.ticks").with_input("value", link(4, "out")),
+        ),
+        (6, Node::new("get.Transform.translation")),
+    ];
+    if version >= 2 {
+        variables.push(Variable {
+            name: "bonus".into(),
+            ty: "f32".into(),
+            default: Some(Literal::Float(2.0)),
+        });
+        nodes.push((9, Node::new("var.get.bonus")));
+        nodes.push((
+            10,
+            Node::new("math.mul")
+                .with_input("a", link(1, "dt"))
+                .with_input("b", link(9, "value")),
+        ));
+        speed = link(10, "out");
+    }
+    nodes.push((
+        7,
+        Node::new("conv.vec3")
+            .with_input("x", float(0.0))
+            .with_input("y", speed)
+            .with_input("z", float(0.0)),
+    ));
+    let add = if version == 3 {
+        "math.addd"
+    } else {
+        "math.add"
+    };
+    nodes.push((
+        8,
+        Node::new(add)
+            .with_input("a", link(6, "value"))
+            .with_input("b", link(7, "out")),
+    ));
+    nodes.push((
+        11,
+        Node::new("set.Transform.translation").with_input("value", link(8, "out")),
+    ));
+    let graph = Graph {
+        id: id(100),
+        kind: GraphKind::Event,
+        version: 1,
+        signature: Signature::default(),
+        variables,
+        nodes: nodes.into_iter().map(|(n, node)| (id(n), node)).collect(),
+        exec: vec![
+            ExecLink(id(1), "out".into(), id(2), "in".into()),
+            ExecLink(id(2), "then0".into(), id(5), "in".into()),
+            ExecLink(id(2), "then1".into(), id(11), "in".into()),
+        ],
+        layout: std::collections::BTreeMap::new(),
+    };
+    concordia_graph::write_graph(&graph).unwrap()
+}
+
+fn graph_project() -> Project {
+    Project::new(
+        1,
+        |dir| {
+            std::fs::create_dir_all(dir.join("graphs")).unwrap();
+            std::fs::write(dir.join("graphs/mover.graph.ron"), mover_graph(1)).unwrap();
+            vec![entry(dir, ScriptKind::Graph, "graphs/mover.graph.ron")]
+        },
+        |m| m,
+        None,
+    )
+}
+
+fn y(p: &mut Project, id: &str) -> f64 {
+    p.get("play", id, "Transform")["translation"][1]
+        .as_f64()
+        .unwrap()
+}
+
+#[test]
+fn graph_modules_load_and_run_in_play() {
+    let mut p = graph_project();
+    let moved = p.spawn(json!({"Transform": {"translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]}, "graph.mover.Vars": {}}));
+    let still = p.spawn(json!({"Transform": {"translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]}}));
+    p.step(60);
+    assert!(
+        (y(&mut p, &moved) - 1.0).abs() < 1e-4,
+        "{}",
+        y(&mut p, &moved)
+    );
+    assert_eq!(y(&mut p, &still), 0.0);
+    assert_eq!(p.get("play", &moved, "graph.mover.Vars")["ticks"], 60);
+}
+
+#[test]
+fn hot_reload_preserves_variables_with_same_name_and_type() {
+    let mut p = graph_project();
+    let e = p.spawn(json!({"Transform": {"translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]}, "graph.mover.Vars": {}}));
+    p.step(30);
+    std::fs::write(p.dir.path().join("graphs/mover.graph.ron"), mover_graph(2)).unwrap();
+    let result = p.ok("script.reload", json!({}));
+    assert_eq!(result["modules"][0]["backend"], "graph");
+    p.step(30);
+    let vars = p.get("play", &e, "graph.mover.Vars");
+    assert_eq!(vars["ticks"], 60, "kept across the reload: {vars}");
+    assert_eq!(vars["bonus"], 2.0, "a new variable starts at its default");
+    // 30 ticks at 1×, then 30 at 2×.
+    assert!((y(&mut p, &e) - 1.5).abs() < 1e-4, "{}", y(&mut p, &e));
+}
+
+#[test]
+fn hot_reload_of_broken_graph_keeps_previous_version_and_reports_diagnostics() {
+    let mut p = graph_project();
+    let e = p.spawn(json!({"Transform": {"translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]}, "graph.mover.Vars": {}}));
+    p.step(30);
+    std::fs::write(p.dir.path().join("graphs/mover.graph.ron"), mover_graph(3)).unwrap();
+    let err = p.call("script.reload", json!({})).unwrap_err();
+    assert_eq!(err.kind, ApiErrorKind::ScriptFailed);
+    assert!(
+        err.message.contains("unknown_op") && err.message.contains("math.add"),
+        "{}",
+        err.message
+    );
+    p.step(30);
+    assert_eq!(
+        p.get("play", &e, "graph.mover.Vars")["ticks"],
+        60,
+        "the previous version keeps running"
+    );
+}
