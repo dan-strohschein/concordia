@@ -158,8 +158,14 @@ fn probes_see_a_sunlit_floor_and_its_shadow() {
     let down = concordia_render::gi::octa::texel_of(Vec3::NEG_Y, 8);
     let up = concordia_render::gi::octa::texel_of(Vec3::Y, 8);
     let texel = |e: &[Vec3], t: concordia_core::math::UVec2| e[(t.y * 8 + t.x) as usize];
-    let sunny = gi.irradiance(device.as_ref(), 15).unwrap();
-    let shaded = gi.irradiance(device.as_ref(), 0).unwrap();
+    // By world cell (slots are cells modulo the counts since 4.8d's scrolling): x = -4 is cell -1,
+    // x = 56 is cell 14.
+    let sunny = gi
+        .irradiance(device.as_ref(), gi.probe_at(&grid, [14, 0, 0]).unwrap())
+        .unwrap();
+    let shaded = gi
+        .irradiance(device.as_ref(), gi.probe_at(&grid, [-1, 0, 0]).unwrap())
+        .unwrap();
     let lit = texel(&sunny, down).x;
     assert!((lit - 800.0).abs() < 80.0, "sunlit floor: {lit}");
     let sky = texel(&sunny, up).x;
@@ -229,8 +235,8 @@ fn adaptive_hysteresis_reacts_within_4_frames_to_spell_light() {
         gi.update(device.as_ref(), &scene, &inputs(f, false, false))
             .unwrap();
     }
-    // The probe at the centre, its mean irradiance over all texels.
-    let centre = 4;
+    // The probe at the centre (world cell (0, 0, 0)), its mean irradiance over all texels.
+    let centre = gi.probe_at(&grid, [0, 0, 0]).unwrap();
     let mean = |gi: &GiProbes| {
         let e = gi.irradiance(device.as_ref(), centre).unwrap();
         e.iter().map(|c| c.x).sum::<f32>() / e.len() as f32
@@ -259,4 +265,77 @@ fn adaptive_hysteresis_reacts_within_4_frames_to_spell_light() {
         "90% within 4 updates: {after:?} of {converged}"
     );
     assert!(drift <= 0.01, "steady within ±1%: {drift}");
+}
+
+/// Moving the lattice by whole cells scrolls it (M4 4.8d): probes still inside keep what they
+/// learned (no reset, no warm-up); only the cells that entered start over.
+#[test]
+fn scrolling_keeps_probes_that_stay_in_the_volume() {
+    let Some(device) = common::device() else {
+        return;
+    };
+    let mut scene = GiScene::default();
+    let glow = mat_ref("furnace");
+    scene.add_material(
+        &glow,
+        &Material::from_slab(Slab {
+            base_color: [0.5, 0.5, 0.5, 1.0],
+            metallic: 0.0,
+            emissive: [1.0, 1.0, 1.0],
+            emissive_strength: 1.0,
+            ..Default::default()
+        }),
+    );
+    let instances = room(&mut scene, &glow);
+    scene.update(&instances);
+    let mut gi = probes(device.as_ref());
+    let at = |x: f32| ProbeGrid {
+        origin: Vec3::new(x, -1.0, -1.0),
+        counts: UVec3::splat(3),
+        spacing: 1.0,
+    };
+    for frame in 0..60 {
+        let inputs = GiInputs {
+            grid: at(-1.0),
+            frame,
+            ..Default::default()
+        };
+        gi.update(device.as_ref(), &scene, &inputs).unwrap();
+    }
+    // The probe at world cell (0, 0, 0) before and after the lattice moves +1 cell in x.
+    let centre = |gi: &GiProbes, grid: &ProbeGrid| {
+        let e = gi
+            .irradiance(device.as_ref(), gi.probe_at(grid, [0, 0, 0]).unwrap())
+            .unwrap();
+        e.iter().map(|c| c.x).sum::<f32>() / e.len() as f32
+    };
+    let before = centre(&gi, &at(-1.0));
+    assert!(
+        !gi.resets_for(&at(0.0)),
+        "a move by whole cells scrolls, not resets"
+    );
+    gi.update(
+        device.as_ref(),
+        &scene,
+        &GiInputs {
+            grid: at(0.0),
+            frame: 60,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let after = centre(&gi, &at(0.0));
+    assert!(
+        (after / before - 1.0).abs() < 0.02,
+        "kept: {before} → {after}"
+    );
+    // A cell that left the lattice is gone; one that entered (x = 2) has a probe of its own.
+    assert!(gi.probe_at(&at(0.0), [-1, 0, 0]).is_none());
+    assert!(gi.probe_at(&at(0.0), [2, 0, 0]).is_some());
+    // Counts or spacing changing still resets.
+    let denser = ProbeGrid {
+        spacing: 0.5,
+        ..at(0.0)
+    };
+    assert!(gi.resets_for(&denser));
 }

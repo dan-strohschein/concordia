@@ -157,7 +157,7 @@ bool light_event(GiVolume v, uint4* u, uint probe) {
 static const uint GI_ROUND_ROBIN = 1;
 
 bool skipped(GiVolume v, uint4* u, uint probe) {
-    if (u[7].w != 0 || u[11].w != 0) return false;
+    if (u[7].w != 0 || u[11].w != 0 || gi_probe_fresh(v, probe)) return false;
     if (!gi_probe_active(v, probe)) return true;
     return probe % GI_ROUND_ROBIN != u[4].w % GI_ROUND_ROBIN && !light_event(v, u, probe);
 }
@@ -213,7 +213,7 @@ void gi_blend_irradiance(uint3 group : SV_GroupID, uint3 tid : SV_GroupThreadID,
     float2 mean = float2(0.0);
     for (uint k = 0; k < GI_IRR * GI_IRR; k++) { mean += g_luma[k]; }
     mean /= float(GI_IRR * GI_IRR);
-    float h = u[11].w != 0 ? 0.0 : gi_hysteresis(mean.x, mean.y, v.base_hysteresis, light_event(v, u, probe));
+    float h = u[11].w != 0 || gi_probe_fresh(v, probe) ? 0.0 : gi_hysteresis(mean.x, mean.y, v.base_hysteresis, light_event(v, u, probe));
     gi_irr(v)[at] = float4(lerp(fresh, old, h), 1.0);
 }
 
@@ -247,7 +247,7 @@ void gi_blend_distance(uint3 group : SV_GroupID, uint3 tid : SV_GroupThreadID, u
     float2 old = gi_dist(v)[at];
     // Distance moments blend steadily: each narrow texel sees few rays a frame, and that noise
     // taken for change would keep visibility noisy (light leaks).
-    float h = u[11].w != 0 ? 0.0 : (light_event(v, u, probe) ? min(v.base_hysteresis, 0.5) : v.base_hysteresis);
+    float h = u[11].w != 0 || gi_probe_fresh(v, probe) ? 0.0 : (light_event(v, u, probe) ? min(v.base_hysteresis, 0.5) : v.base_hysteresis);
     gi_dist(v)[at] = lerp(fresh, old, h);
 }
 
@@ -291,7 +291,7 @@ void gi_relocate(uint3 id : SV_DispatchThreadID, uniform Push push) {
     GiVolume v = gi_volume(push.params);
     if (id.x >= gi_probe_count(v)) return;
     uint4* u = (uint4*)g_buffers.ptr[push.params];
-    if (u[7].w == 0) return;
+    if (u[7].w == 0 && !gi_probe_fresh(v, id.x)) return;
     float4* p = (float4*)g_buffers.ptr[push.params];
     uint backs = 0, hits = 0;
     float near_back = GI_MISS, near_front = GI_MISS;
@@ -321,4 +321,24 @@ void gi_relocate(uint3 id : SV_DispatchThreadID, uniform Push push) {
     if (len > most) offset *= most / len;
     bool active = hits > 0 && backs < v.rays;
     gi_probes(v)[id.x] = float4(offset, active ? 1.0 : 0.0);
+}
+
+// One thread per probe, after the lattice scrolled (M4 4.8d): a probe whose world cell wasn't in
+// the lattice before (row 23: the old origin cell) starts over: its tiles are cleared and it's
+// marked fresh.
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void gi_scroll(uint3 id : SV_DispatchThreadID, uniform Push push) {
+    GiVolume v = gi_volume(push.params);
+    if (id.x >= gi_probe_count(v)) return;
+    uint4* u = (uint4*)g_buffers.ptr[push.params];
+    int3 old = int3(asint(u[23].x), asint(u[23].y), asint(u[23].z));
+    int3 w = gi_world_cell(v, id.x);
+    int3 rel = w - old;
+    if (all(rel >= 0) && all(rel < int3(v.counts))) return;
+    gi_probes(v)[id.x] = float4(0.0, 0.0, 0.0, 2.0);
+    uint irr = id.x * GI_IRR_TILE * GI_IRR_TILE;
+    for (uint k = 0; k < GI_IRR_TILE * GI_IRR_TILE; k++) { gi_irr(v)[irr + k] = float4(0.0); }
+    uint dist = id.x * GI_DIST_TILE * GI_DIST_TILE;
+    for (uint k = 0; k < GI_DIST_TILE * GI_DIST_TILE; k++) { gi_dist(v)[dist + k] = float2(0.0); }
 }
