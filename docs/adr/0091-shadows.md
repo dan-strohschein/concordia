@@ -1,5 +1,5 @@
 # ADR-0091: Shadows: virtual shadow maps by default, cascades as the fallback
-- Status: Proposed (M4 4.7a, 2026-11-26; the 4.7 plan's Q1–Q18, approved by the author; amended by 4.7b, caching, and 4.7c, local lights). Accepted when 4.7d completes Phase 4.7's done criterion.
+- Status: **Accepted** (M4 4.7d, 2026-11-27; proposed in 4.7a, amended by 4.7b (caching), 4.7c (local lights) and 4.7d (soft shadows); accepted under the author's M4 rule once Phase 4.7's done criterion held: the canyon and the courtyard run VSM by default, the reference and regression goldens pass; the port arena's private check and the budget tests run at M4's gate).
 - Date: 2026-11-26
 - Builds on: ADR-0014 (M10's tiled shadow atlas), ADR-0040 (render graph), ADR-0088 (Vulkan backend), ADR-0090 (quality methodology), ADR-0100 (meshlets and GPU culling), ADR-0103 (temporal upscaling)
 
@@ -26,6 +26,10 @@ M1 shadows the sun with three or four stabilized cascades of 2048². Near the ca
 - `shadows: Option<LocalShadowSettings>` on `PointLight` and `SpotLight` (`None` by default; spell lights stay unshadowed unless they opt in). `[render.vsm] max_local_lights` (64) lights are selected per frame by `shadow_select` (view coverage × candela, 10 % hysteresis, stable slots); the rest shade unshadowed and are counted.
 - A spot light is one map (field of view twice its outer angle, up to 120°), a point light six cube faces (90° plus a 2-texel guard band); each map is 8192² texels in 64² pages with mips down to one page, reverse-Z perspective, in the same page table (after the sun's levels, sized to the lights present) and pool. One view index covers sun levels and local mips, so marking, residency, caching, invalidation, the static/dynamic split, binning and drawing are the sun's. Local casters are drawn as whole instances (no per-meshlet culling across hundreds of local views yet). VSM runs for shadowed local lights without a sun.
 - Against the path tracer (`spell_arena_direct`): FLIP 0.0027 and 0.0032, a fifth of the unshadowed error; no cube seams (`point_seams`). Cost on `spell_arena_256` about 5.4 ms (above the provisional 2.5 ms; recorded for M4's recalibration).
+
+### Amendment (M4 4.7d, 2026-11-27): soft shadows
+- `DirectionalLight.angular_radius` and `source_radius` on point and spot lights (0 by default: hard). A sized light's shadow is **percentage-closer soft shadows** over the stored depth (a blocker search, the penumbra from the light's size and the blocker gap, a filter of that width, interleaved-gradient-noise rotation, per frame under TAA), not the SMRT the 4.7 plan proposed: SMRT's fixed reach misses farther occluders without tuned extrapolation. `[render.vsm] soft_samples` (16). Sized local lights shade from a mip wide enough for their penumbra. The path tracer samples the same disc and sphere lights, so soft references exist.
+- Against them: the courtyard under a broad sun 0.019–0.020 (hard 0.027–0.036); the arena's 0.4 m lights 0.007–0.009, about equal to hard: PCSS under-softens large local lights near short occluders (later work). Cost: about 1.3–1.6 ms a frame.
 
 ## Consequences
 - The frame under `vsm` gains a depth prepass (it also feeds the HZB), page marking, allocation and page rendering; CSM frames are unchanged.
