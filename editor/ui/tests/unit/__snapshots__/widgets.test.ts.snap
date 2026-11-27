@@ -120,6 +120,12 @@ exports[`schema_to_widget_maps_vec3_number_enum_color_assetref 1`] = `
     },
   },
   "DirectionalLight": {
+    "angular_radius": {
+      "integer": false,
+      "kind": "number",
+      "max": 0.2,
+      "min": 0,
+    },
     "color": {
       "alpha": false,
       "kind": "color",

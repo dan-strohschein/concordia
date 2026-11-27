@@ -109,6 +109,8 @@ pub struct PunctualLight {
     pub range: f32,
     /// Shadow settings (`None`: unshadowed; M4 4.7c).
     pub shadows: Option<concordia_render_types::LocalShadowSettings>,
+    /// The emitting sphere's radius (M4 4.7d).
+    pub source_radius: f32,
 }
 
 /// A camera.
@@ -331,6 +333,7 @@ impl EntityItems {
                 intensity_lumens: p.intensity_lumens,
                 range: p.range,
                 shadows: p.shadows,
+                source_radius: p.source_radius,
             });
         }
         if let Some(s) = world.get::<SpotLight>(entity) {
@@ -346,6 +349,7 @@ impl EntityItems {
                 intensity_lumens: s.intensity_lumens,
                 range: s.range,
                 shadows: s.shadows,
+                source_radius: s.source_radius,
             });
         }
         Self {

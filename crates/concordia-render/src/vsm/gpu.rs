@@ -932,6 +932,7 @@ mod tests {
             previous: &origins(&s.clipmap),
             tables: [0, 0, locals],
             sun: true,
+            soft: (16, 0.0, 0),
         });
         let params = up.buffer(device, &params, "params").unwrap();
         let views = up
@@ -1174,6 +1175,7 @@ mod tests {
                 previous: &self.previous,
                 tables: [index(work.table), index(work.dynamic), index(locals)],
                 sun: true,
+                soft: (16, 0.0, 0),
             });
             self.previous = origins(&self.clipmap);
             let params = up.buffer(device, &params, "params").unwrap();
@@ -1716,6 +1718,7 @@ mod tests {
                 range: 30.0,
                 spot: None,
                 settings: Default::default(),
+                source_radius: 0.0,
             }),
             None,
             Some(SlotLight {
@@ -1727,6 +1730,7 @@ mod tests {
                     pcf: concordia_render_types::PcfKernel::X5,
                     ..Default::default()
                 },
+                source_radius: 0.0,
             }),
         ];
         let levels = u32::from(s.settings.levels);
@@ -1777,6 +1781,7 @@ mod tests {
             previous: &origins(&s.clipmap),
             tables: [index(work.table), index(work.dynamic), index(locals)],
             sun: true,
+            soft: (16, 0.0, 0),
         });
         let params = up.buffer(device, &params, "params").unwrap();
         let views = up

@@ -520,6 +520,13 @@ bool blocked(Ctx c, Surface s, float3 l, float dist) {
     return intersect(c, r, true).found;
 }
 
+// Two unit vectors perpendicular to `n` and to each other (`orthonormal`).
+void orthonormal_basis(float3 n, out float3 t, out float3 b) {
+    float3 a = abs(n.x) > 0.9 ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0);
+    t = normalize(cross(n, a));
+    b = cross(n, t);
+}
+
 float window(float d2, float range) { float q = d2 / (range * range); float w = saturate(1.0 - q * q); return w * w / max(d2, 1e-4); }
 
 // Direct light from every light, one sky sample and one emitting triangle.
@@ -544,8 +551,28 @@ float3 direct(Ctx c, Surface s, float3 v, inout Rng rng) {
                 irradiance *= t * t;
             }
         }
-        if (dot(l, s.ng) > 0.0 && !blocked(c, s, l, dist)) {
-            sum += eval_program(c, s.mat, s.uv, s.n, v, l) * irradiance;
+        if (dot(l, s.ng) > 0.0) {
+            // A sized light (M4 4.7d, `toward_size`): the shadow ray aims at a point on it.
+            float3 sl = l;
+            float sdist = dist;
+            float size = e.w;
+            float cos_max = 1.0;
+            float radius = 0.0;
+            if (kind == 2 && size > 0.0) { cos_max = cos(size); }
+            else if (kind != 2 && size > 0.0 && dist > size) { float r = size / dist; cos_max = sqrt(1.0 - r * r); radius = size; }
+            if (cos_max < 1.0) {
+                float u = next(rng), w = next(rng);
+                float cos_t = 1.0 - u * (1.0 - cos_max);
+                float sin_t = sqrt(max(1.0 - cos_t * cos_t, 0.0));
+                float phi = 6.28318530718 * w;
+                float3 t, b;
+                orthonormal_basis(l, t, b);
+                sl = normalize(t * (cos(phi) * sin_t) + b * (sin(phi) * sin_t) + l * cos_t);
+                if (!isinf(dist)) { sdist = dist * cos_t - sqrt(max(radius * radius - dist * dist * sin_t * sin_t, 0.0)); }
+            }
+            if (dot(sl, s.ng) > 0.0 && !blocked(c, s, sl, sdist)) {
+                sum += eval_program(c, s.mat, s.uv, s.n, v, l) * irradiance;
+            }
         }
     }
     if (c.has_env != 0) {

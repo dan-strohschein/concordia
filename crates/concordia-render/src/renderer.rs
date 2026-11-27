@@ -1908,6 +1908,17 @@ impl Renderer {
             states,
             locals,
             sun: sun_casts(world),
+            soft: (
+                world
+                    .lights
+                    .first()
+                    .map_or(0.0, |l| l.light.angular_radius.max(0.0)),
+                if self.temporal.is_on() {
+                    self.frames as u32
+                } else {
+                    0
+                },
+            ),
         };
         let mut keep = Vec::new();
         let job = crate::vsm::VsmJob::prepare(
@@ -3321,6 +3332,7 @@ fn local_candidates(
                 range: l.range,
                 spot,
                 settings,
+                source_radius: l.source_radius,
             };
             Some((l.entity, light, importance))
         })

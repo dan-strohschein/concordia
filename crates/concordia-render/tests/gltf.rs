@@ -131,6 +131,7 @@ fn render_model(model: &str, variant: &str, file: &str) -> Option<Image> {
                 color: [1.0, 0.97, 0.92],
                 illuminance_lux: 2.0,
                 shadows: None,
+                ..Default::default()
             },
         )
         .unwrap();

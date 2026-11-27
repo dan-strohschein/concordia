@@ -321,6 +321,7 @@ fn stage() -> Scene {
                 color: [1.0; 3],
                 illuminance_lux: 20_000.0,
                 shadows: Some(concordia_render::shadow::CascadeSettings::default()),
+                ..Default::default()
             },
         )
         .unwrap();

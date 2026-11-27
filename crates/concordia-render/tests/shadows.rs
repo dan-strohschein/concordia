@@ -62,6 +62,7 @@ fn scene(
                 color: [1.0; 3],
                 illuminance_lux: 100_000.0,
                 shadows,
+                ..Default::default()
             },
         )
         .unwrap();

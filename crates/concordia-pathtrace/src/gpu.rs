@@ -437,10 +437,11 @@ fn light_rows(lights: &[Light]) -> Vec<Row> {
                 position,
                 intensity,
                 range,
+                radius,
             } => [
                 f4([position.x, position.y, position.z, range]),
                 f4([0.0, 0.0, 0.0, kind(0)]),
-                f4([intensity.x, intensity.y, intensity.z, 0.0]),
+                f4([intensity.x, intensity.y, intensity.z, radius]),
                 f4([0.0, 1.0, 0.0, 0.0]),
             ],
             Light::Spot {
@@ -449,19 +450,21 @@ fn light_rows(lights: &[Light]) -> Vec<Row> {
                 intensity,
                 range,
                 cone,
+                radius,
             } => [
                 f4([position.x, position.y, position.z, range]),
                 f4([axis.x, axis.y, axis.z, kind(1)]),
-                f4([intensity.x, intensity.y, intensity.z, 0.0]),
+                f4([intensity.x, intensity.y, intensity.z, radius]),
                 f4([cone.scale, cone.offset, 0.0, 0.0]),
             ],
             Light::Sun {
                 travel,
                 illuminance,
+                angular_radius,
             } => [
                 f4([0.0; 4]),
                 f4([travel.x, travel.y, travel.z, kind(2)]),
-                f4([illuminance.x, illuminance.y, illuminance.z, 0.0]),
+                f4([illuminance.x, illuminance.y, illuminance.z, angular_radius]),
                 f4([0.0; 4]),
             ],
         })

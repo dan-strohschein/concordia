@@ -140,3 +140,65 @@ fn cube_faces_have_no_seams() {
         unshadowed.p99
     );
 }
+
+/// The soft references (M4 4.7d): the courtyard under a sun of angular radius 0.02 and the arena
+/// with lights of radius 0.15 m, both cameras, with their hard twins.
+const SOFT: [(&str, &str); 4] = [
+    ("sun_courtyard_soft_iso", "scenes/sun_courtyard.scene.ron"),
+    (
+        "sun_courtyard_soft_ground",
+        "scenes/sun_courtyard.scene.ron",
+    ),
+    (
+        "spell_arena_soft_iso",
+        "scenes/spell_arena_direct.scene.ron",
+    ),
+    (
+        "spell_arena_soft_ground",
+        "scenes/spell_arena_direct.scene.ron",
+    ),
+];
+
+/// Soft shadows from sized lights are within mean FLIP 0.05 of the path tracer's area lights.
+#[test]
+fn soft_shadow_matches_path_traced_area_light() {
+    if !has_gpu() {
+        return;
+    }
+    for (name, _) in SOFT {
+        let soft = flip(name, "vsm");
+        assert!(soft <= 0.05, "{name}: FLIP {soft}");
+    }
+}
+
+/// Soft shadows beat hard ones against the soft reference: for the courtyard's soft sun by a
+/// margin, FLIP(soft) ≤ 0.8 × FLIP(hard) (a guard against a tolerance a hard shadow would pass);
+/// for the arena's 0.4 m lights, no worse than hard (both sit near the tracer's noise there, and
+/// PCSS under-softens large local lights against the tracer: `later-backlog.md` §12).
+#[test]
+fn soft_shadows_beat_hard_ones_on_soft_references() {
+    if !has_gpu() {
+        return;
+    }
+    let root = concordia_tests::repo_root();
+    std::env::set_current_dir(&root).expect("the repository root");
+    let golden = root.join("tests/golden");
+    for (name, hard_scene) in SOFT {
+        let soft = flip(name, "vsm");
+        let (image, reference) = concordia_tests::reference::render_scene_against(
+            name,
+            Some(hard_scene),
+            &golden,
+            "vsm",
+        )
+        .unwrap();
+        keep(name, "vsm_hard", (&reference, &image));
+        let hard = flip_score(&reference, &image).unwrap().mean;
+        println!("{name}: soft {soft:.4}, hard {hard:.4}");
+        let margin = if name.starts_with("sun_") { 0.8 } else { 1.0 };
+        assert!(
+            soft <= margin * hard,
+            "{name}: soft {soft} against hard {hard}"
+        );
+    }
+}

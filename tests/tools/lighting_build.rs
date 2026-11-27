@@ -23,6 +23,8 @@ const SCENE: &str = "scenes/sun_courtyard.scene.ron";
 const ARENA: &str = "scenes/spell_arena_direct.scene.ron";
 const ARENA_256: &str = "scenes/spell_arena_256.scene.ron";
 const SEAMS: &str = "scenes/point_seams.scene.ron";
+const COURTYARD_SOFT: &str = "scenes/sun_courtyard_soft.scene.ron";
+const ARENA_SOFT: &str = "scenes/spell_arena_soft.scene.ron";
 const MATERIALS: [&str; 4] = [
     "materials/stone.material.ron",
     "materials/plaster.material.ron",
@@ -144,8 +146,20 @@ fn main() -> Result<()> {
         json!({"path": SCENE, "name": "Sun courtyard", "actor": ACTOR}),
     )?;
     courtyard(&mut b, (&urn, &rock, &column))?;
-    sun(&mut b)?;
+    sun(&mut b, 0.0)?;
     camera(&mut b)?;
+    b.call("scene.save", json!({"actor": ACTOR}))?;
+    // The soft variants (4.7d): the courtyard under a sun of angular radius 0.02 (soft enough to
+    // see at review size), the arena with lights of radius 0.4 m (spell orbs).
+    fresh(&mut b, &project, COURTYARD_SOFT, "Sun courtyard (soft)")?;
+    courtyard(&mut b, (&urn, &rock, &column))?;
+    sun(&mut b, 0.02)?;
+    camera(&mut b)?;
+    b.call("scene.save", json!({"actor": ACTOR}))?;
+    fresh(&mut b, &project, ARENA_SOFT, "Spell arena (soft)")?;
+    arena(&mut b, (&rock, &column))?;
+    arena_lights(&mut b, 0.4)?;
+    arena_camera(&mut b)?;
     b.call("scene.save", json!({"actor": ACTOR}))?;
     for (path, name, spells) in [
         (ARENA, "Spell arena (direct)", false),
@@ -160,7 +174,7 @@ fn main() -> Result<()> {
             json!({"path": path, "name": name, "actor": ACTOR}),
         )?;
         arena(&mut b, (&rock, &column))?;
-        arena_lights(&mut b)?;
+        arena_lights(&mut b, 0.0)?;
         if spells {
             spell_lights(&mut b)?;
         }
@@ -272,8 +286,22 @@ fn arena(b: &mut Builder, (rock, column): (&str, &str)) -> Result<()> {
     Ok(())
 }
 
-/// Four shadowed spot lights and four shadowed point lights of several colours.
-fn arena_lights(b: &mut Builder) -> Result<()> {
+/// Starts the scene `path` anew (removing an old file).
+fn fresh(b: &mut Builder, project: &Path, path: &str, name: &str) -> Result<()> {
+    let file = project.join(path);
+    if file.exists() {
+        std::fs::remove_file(&file)?;
+    }
+    b.call(
+        "scene.new",
+        json!({"path": path, "name": name, "actor": ACTOR}),
+    )?;
+    Ok(())
+}
+
+/// Four shadowed spot lights and four shadowed point lights of several colours, each a sphere of
+/// `radius` metres (0: points).
+fn arena_lights(b: &mut Builder, radius: f32) -> Result<()> {
     let shadows = json!({"depth_bias": 1.0, "normal_bias": 1.0, "pcf": "X3"});
     let spots = [
         (
@@ -293,7 +321,7 @@ fn arena_lights(b: &mut Builder) -> Result<()> {
                 "Name": format!("Spot {i}"),
                 "Transform": {"translation": at, "rotation": rotation.to_array(), "scale": [1.0, 1.0, 1.0]},
                 "SpotLight": {"color": color, "intensity_lumens": 12000.0, "range": 16.0,
-                    "inner_angle": 0.45, "outer_angle": 0.7, "shadows": shadows},
+                    "inner_angle": 0.45, "outer_angle": 0.7, "shadows": shadows, "source_radius": radius},
             }, "actor": ACTOR}),
         )?;
     }
@@ -309,7 +337,7 @@ fn arena_lights(b: &mut Builder) -> Result<()> {
             json!({"components": {
                 "Name": format!("Point {i}"),
                 "Transform": {"translation": at, "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [1.0, 1.0, 1.0]},
-                "PointLight": {"color": color, "intensity_lumens": 3000.0, "range": 10.0, "shadows": shadows},
+                "PointLight": {"color": color, "intensity_lumens": 3000.0, "range": 10.0, "shadows": shadows, "source_radius": radius},
             }, "actor": ACTOR}),
         )?;
     }
@@ -462,8 +490,8 @@ fn courtyard(b: &mut Builder, (urn, rock, column): (&str, &str, &str)) -> Result
 }
 
 /// A low afternoon sun from the north-west, so the walls and windows cast into the courtyard, with
-/// CSM's settings for the fallback.
-fn sun(b: &mut Builder) -> Result<()> {
+/// CSM's settings for the fallback; its disc `angular_radius` radians wide (0: hard).
+fn sun(b: &mut Builder, angular_radius: f32) -> Result<()> {
     let rotation = Quat::from_rotation_arc(Vec3::NEG_Z, Vec3::new(0.55, -0.6, 0.5).normalize());
     b.call(
         "entity.spawn",
@@ -472,7 +500,7 @@ fn sun(b: &mut Builder) -> Result<()> {
             "Transform": {"translation": [0.0, 0.0, 0.0], "rotation": rotation.to_array(), "scale": [1.0, 1.0, 1.0]},
             "DirectionalLight": {"color": [1.0, 0.96, 0.9], "illuminance_lux": 100000.0, "shadows": {
                 "cascades": 3, "depth_bias": 0.02, "max_distance": 60.0, "normal_bias": 1.5, "pcf": "X3",
-                "resolution": 2048, "split_lambda": 0.75, "stabilize": true}},
+                "resolution": 2048, "split_lambda": 0.75, "stabilize": true}, "angular_radius": angular_radius},
         }, "actor": ACTOR}),
     )?;
     Ok(())

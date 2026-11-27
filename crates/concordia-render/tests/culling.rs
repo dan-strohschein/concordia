@@ -146,6 +146,7 @@ fn row(eye: Vec3, target: Vec3) -> Culled {
                 color: [1.0; 3],
                 illuminance_lux: 4.0,
                 shadows: Some(CascadeSettings::default()),
+                ..Default::default()
             },
         )
         .unwrap();

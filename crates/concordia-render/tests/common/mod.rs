@@ -175,6 +175,7 @@ impl Scene {
                     color: [1.0; 3],
                     illuminance_lux: lux,
                     shadows: None,
+                    ..Default::default()
                 },
             )
             .unwrap();

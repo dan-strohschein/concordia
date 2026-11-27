@@ -127,6 +127,8 @@ pub struct SlotLight {
     pub spot: Option<f32>,
     /// Its shadow settings.
     pub settings: concordia_render_types::LocalShadowSettings,
+    /// The emitting sphere's radius (4.7d; 0: a point).
+    pub source_radius: f32,
 }
 
 impl SlotLight {
@@ -174,7 +176,12 @@ pub fn local_rows(slots: &[Option<SlotLight>], view_base: u32, entry_base: u32) 
             f(maps[0].fov),
             l.settings.pcf.radius(),
         ]);
-        row([f(l.settings.depth_bias), f(l.settings.normal_bias), 0, 0]);
+        row([
+            f(l.settings.depth_bias),
+            f(l.settings.normal_bias),
+            f(l.source_radius.max(0.0)),
+            0,
+        ]);
     }
     out
 }

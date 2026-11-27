@@ -34,7 +34,8 @@ void vsm_mark(uint3 id : SV_DispatchThreadID, uniform MarkPush push) {
     float4 h = p.inv_view_proj[0] * ndc.x + p.inv_view_proj[1] * ndc.y + p.inv_view_proj[2] * depth + p.inv_view_proj[3];
     float3 world = h.xyz / h.w;
     if (distance(world, p.eye.xyz) > p.bias.z) return;
-    float radius = float(p.counts.w) + 1.0;
+    // A sized sun searches and filters up to VSM_SOFT_MAX_TEXELS wide (4.7d).
+    float radius = float(p.counts.w) + 1.0 + (asfloat(p.soft.y) > 0.0 ? VSM_SOFT_MAX_TEXELS : 0.0);
     if (p.tables.w != 0) {
         request(push.params, push.table, push.views, vsm_level(p, world), world, radius);
         request(push.params, push.table, push.views, p.counts.y, world, radius);
@@ -53,9 +54,9 @@ void request_local(VsmParams* p, uint table, uint views, float3 world) {
         uint map;
         float dist;
         if (!vsm_local_map(l, world, map, dist)) continue;
-        uint mip = vsm_local_mip(footprint, dist, asfloat(l.info.z), p.choice.y);
+        uint mip = vsm_local_pixel_mip(l, footprint, dist, p.choice.y);
         float2 t = vsm_local_texel(vsm_clip(views, header.y + map, world), mip);
-        float radius = float(l.info.w) + 1.0;
+        float radius = float(l.info.w) + 1.0 + (l.bias.z > 0.0 ? VSM_SOFT_MAX_TEXELS : 0.0);
         int last = int(vsm_mip_side(mip)) - 1;
         int2 lo = clamp(int2(floor((t - radius) / float(VSM_PAGE_TEXELS))), int2(0, 0), int2(last, last));
         int2 hi = clamp(int2(floor((t + radius) / float(VSM_PAGE_TEXELS))), int2(0, 0), int2(last, last));

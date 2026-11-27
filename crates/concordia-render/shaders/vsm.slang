@@ -30,7 +30,7 @@ public bool vsm_resident(uint entry) {
 // Parameter rows (`vsm::frame::params_rows`): counts; the level choice; biases; the eye; pool
 // chunks (4 rows); the camera's inverse view-projection (4 rows); the tables; then one row per
 // level (its origin in pages), then one per level (its origin last frame).
-public static const uint VSM_ROW_LEVELS = 13;
+public static const uint VSM_ROW_LEVELS = 14;
 
 // The parameter block (`uint4` rows, floats as bits).
 public struct VsmParams {
@@ -47,6 +47,8 @@ public struct VsmParams {
     // the page table, the dynamic table (dynamic physical page + 1 per entry), the local lights'
     // rows (`vsm::local_rows`), 1 when the sun casts (its pages are marked)
     public uint4 tables;
+    // soft shadows (4.7d): samples, the sun's angular radius as float bits, the noise frame, 0
+    public uint4 soft;
 };
 
 public VsmParams* vsm_params(uint params) { return (VsmParams*)g_buffers.ptr[params]; }
@@ -364,4 +366,38 @@ public int4 vsm_local_rect(VsmParams* p, uint views, uint lv, float3 c, float r)
     int2 phi = int2(floor((hi + 1.0) / float(VSM_PAGE_TEXELS)));
     if (any(phi < 0) || any(plo > last)) { return none; }
     return int4(clamp(plo, int2(0, 0), int2(last, last)), clamp(phi, int2(0, 0), int2(last, last)));
+}
+
+// Soft shadows (M4 4.7d): percentage-closer soft shadows over the stored depth (Fernando 2005,
+// "Percentage-Closer Soft Shadows"): a blocker search, the penumbra from the light's size, a
+// filter of that width; samples on a Vogel disc rotated per pixel by interleaved gradient noise
+// (Jimenez 2014), per frame when the noise frame is set.
+
+// The widest search and filter, in texels (marking widens by it for sized lights).
+public static const float VSM_SOFT_MAX_TEXELS = 64.0;
+
+// Interleaved gradient noise at pixel `px`, shifted by `frame`.
+public float vsm_ign(float2 px, uint frame) {
+    float2 q = px + 5.588238 * float(frame & 63);
+    return frac(52.9829189 * frac(0.06711056 * q.x + 0.00583715 * q.y));
+}
+
+// Point `i` of `n` on a unit Vogel disc rotated by `turn` (in turns).
+public float2 vsm_vogel(uint i, uint n, float turn) {
+    float r = sqrt((float(i) + 0.5) / float(n));
+    float a = float(i) * 2.39996323 + turn * 6.28318530718;
+    return float2(cos(a), sin(a)) * r;
+}
+
+// The mip a local light shades a pixel from: the texel-density mip (`vsm_local_mip`), or for a sized
+// light (4.7d) a coarser one whose texel is at least its radius / 32, so the blocker search and the
+// penumbra fit in VSM_SOFT_MAX_TEXELS.
+public uint vsm_local_pixel_mip(VsmLocal l, float footprint, float dist, float bias) {
+    float fov = asfloat(l.info.z);
+    uint mip = vsm_local_mip(footprint, dist, fov, bias);
+    float radius = l.bias.z;
+    if (radius <= 0.0) { return mip; }
+    float texel0 = 2.0 * dist * tan(fov * 0.5) / float(VSM_LOCAL_TEXELS);
+    float soft = ceil(log2(radius / 32.0 / max(texel0, 1e-12)));
+    return uint(clamp(max(float(mip), soft), 0.0, float(VSM_LOCAL_MIPS - 1)));
 }
