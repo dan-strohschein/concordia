@@ -828,6 +828,10 @@ name = "concordia-bvh"
 version = "0.0.0"
 dependencies = [
  "concordia-core",
+ "concordia-rhi",
+ "concordia-rhi-metal",
+ "concordia-shaders",
+ "concordia-testkit",
  "proptest",
  "thiserror 2.0.21",
 ]

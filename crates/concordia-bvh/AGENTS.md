@@ -8,15 +8,17 @@ Bounding-volume hierarchies for ray queries on the CPU: a binned-SAH tree over b
 - `Bvh` (triangles: `build`, `refit`, `intersect`, `occluded`).
 - `Accel` / `Instance` / `InstanceHit` (two levels: `build`, `set_transforms`, `intersect`, `occluded`).
 - `Triangle`, `Ray`, `Hit`, `BvhError`.
+- GPU: `GpuBvh::pack` (the row layout) and `shaders/bvh.slang` (`bvh_from_rows`, `bvh_intersect`, `bvh_walk_mesh`, `bvh_triangle`; add `shader_dir()` to the include dirs). The path tracer and the renderer's GI both trace through it.
 
 ## Invariants
 - Nodes are flattened depth-first: an inner node (`count == 0`) has its left child next and its right child at `first`; a leaf holds `count` primitives from `order[first..]`. The GPU traversal depends on this layout.
 - Builds are deterministic (ties broken by primitive index).
 - Refit keeps the tree's shape and gives the same hits as a rebuild (tested against brute force); it never changes the primitive count or order. Bad input returns `BvhError`, never panics.
-- Depends only on `concordia-core` (no GPU, no engine crates).
+- Depends only on `concordia-core` (no GPU, no engine crates); its GPU test uses the RHI as a dev-dependency.
+- `bvh.slang` is the CPU traversal step for step; `gpu_bvh_matches_cpu_hits` holds them together. Instances are `INSTANCE_ROWS` (4) rows: world → object, then `[mesh, …]`; callers keep per-instance shading in their own buffer.
 
 ## How to test
-`cargo nextest run -p concordia-bvh` (property tests against brute force; the path tracer's transport suites use it too).
+`cargo nextest run -p concordia-bvh` (property tests against brute force; the GPU test runs on Metal, required with `CONCORDIA_REQUIRE_GPU=1`; the path tracer's transport suites cover it too).
 
 ## Common tasks
 - Moving objects: `Accel::set_transforms` for the instance level; `Bvh::refit` for a deformed mesh with the same triangles.

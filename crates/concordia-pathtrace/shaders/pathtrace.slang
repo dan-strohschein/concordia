@@ -2,6 +2,7 @@
 // the scene packed by `src/gpu.rs`. One thread per pixel adds samples [first, first + count) to
 // its running sum; the CPU divides and exposes after the last batch.
 import bindless;
+import bvh;
 import material;
 
 static const uint OP_SLAB = 0;
@@ -13,7 +14,6 @@ static const uint CLOSURE_ROWS = 8;
 static const uint MAX_STACK = 8;
 static const uint MAX_PASSES = 64;
 static const float TABLE = 32.0;
-static const float ROBUST = 1.0 + 2.0 * (3.0 * 5.96046448e-8) / (1.0 - 3.0 * 5.96046448e-8);
 static const float INF = 1.0 / 0.0;
 static const uint NO_TEXTURE = 0xffffffff;
 // What `run_program` evaluates: lit by one light, or the unlit surface (`MaterialProgram::unlit`).
@@ -24,10 +24,10 @@ struct Push { uint header; uint first; uint count; uint out; };
 
 // Everything the kernel reads, resolved from the header once per thread.
 struct Ctx {
-    float4* nodes; uint* order; float4* tris; float4* normals; uint4* meshes; float4* insts;
+    Bvh bvh; float4* tris; float4* normals; uint4* meshes; float4* shading;
     uint4* mtab; uint4* mrows; float4* lights; float4* emitters; float* ecdf; float4* tables;
     float4* env; float* erows; float* ecols; float4* uvs; uint4* ttab; float4* texels;
-    uint has_env; uint sky_visible; uint tlas_node; uint tlas_order; uint light_count;
+    uint has_env; uint sky_visible; uint light_count;
     uint emitter_count; uint env_w; uint env_h; uint width; uint height; uint seed; uint max_bounces;
     uint proj_kind; float proj_param; float exposure; float emitter_area; float3 clear;
     float4 cam0; float4 cam1; float4 cam2; uint texture_count;
@@ -36,12 +36,11 @@ struct Ctx {
 Ctx context(uint header) {
     uint4* h = (uint4*)g_buffers.ptr[header];
     Ctx c;
-    c.nodes = (float4*)g_buffers.ptr[h[0].x];
-    c.order = (uint*)g_buffers.ptr[h[0].y];
     c.tris = (float4*)g_buffers.ptr[h[0].z];
     c.normals = (float4*)g_buffers.ptr[h[0].w];
     c.meshes = (uint4*)g_buffers.ptr[h[1].x];
-    c.insts = (float4*)g_buffers.ptr[h[1].y];
+    c.bvh = bvh_from_rows(uint4(h[0].x, h[0].y, h[0].z, h[1].x), uint4(h[1].y, h[4].x, h[4].y, 0));
+    c.shading = (float4*)g_buffers.ptr[h[13].x];
     c.mtab = (uint4*)g_buffers.ptr[h[1].z];
     c.mrows = (uint4*)g_buffers.ptr[h[1].w];
     c.lights = (float4*)g_buffers.ptr[h[2].x];
@@ -53,8 +52,6 @@ Ctx context(uint header) {
     c.ecols = (float*)g_buffers.ptr[h[3].z];
     c.has_env = h[3].w & 1;
     c.sky_visible = (h[3].w >> 1) & 1;
-    c.tlas_node = h[4].x;
-    c.tlas_order = h[4].y;
     c.light_count = h[4].z;
     c.emitter_count = h[4].w;
     c.env_w = h[5].x;
@@ -112,137 +109,11 @@ struct Tables : IAlbedoTables {
 };
 
 // ---- Rays and the two-level hierarchy (`bvh.rs`, `accel.rs`).
-struct Ray { float3 o; float3 d; float tmin; float tmax; };
-struct Hit { float t; float u; float w; uint prim; uint inst; bool found; };
+typealias Ray = BvhRay;
+typealias Hit = BvhHit;
 
 float max3v(float3 v) { return max(v.x, max(v.y, v.z)); }
 float min3v(float3 v) { return min(v.x, min(v.y, v.z)); }
-
-float3 inverse_dir(float3 d) {
-    float3 s = select(d < 0.0, float3(-1.0), float3(1.0));
-    return 1.0 / select(abs(d) < 1e-30, s * 1e-30, d);
-}
-
-bool slab(Ctx c, uint node, Ray r, float3 inv, out float near) {
-    float4 a = c.nodes[node * 2];
-    float4 b = c.nodes[node * 2 + 1];
-    float3 t0 = (a.xyz - r.o) * inv;
-    float3 t1 = (b.xyz - r.o) * inv;
-    near = max(max3v(min(t0, t1)), r.tmin);
-    float exit = min3v(max(t0, t1)) * ROBUST;
-    return near <= min(exit, r.tmax);
-}
-
-// Möller & Trumbore, both faces (`geometry.rs`).
-bool triangle(float3 a, float3 b, float3 cc, Ray r, out float t, out float u, out float w) {
-    t = 0.0; u = 0.0; w = 0.0;
-    float3 e1 = b - a, e2 = cc - a;
-    float3 p = cross(r.d, e2);
-    float det = dot(e1, p);
-    if (abs(det) < 1.17549435e-38) return false;
-    float inv = 1.0 / det;
-    float3 s = r.o - a;
-    u = dot(s, p) * inv;
-    if (u < 0.0 || u > 1.0) return false;
-    float3 q = cross(s, e1);
-    w = dot(r.d, q) * inv;
-    if (w < 0.0 || u + w > 1.0) return false;
-    t = dot(e2, q) * inv;
-    return t > r.tmin && t < r.tmax;
-}
-
-// Walks one mesh's tree; shortens `r` to each hit. `any`: stop at the first.
-bool walk_mesh(Ctx c, uint mesh, inout Ray r, bool any, inout Hit hit) {
-    uint4 m = c.meshes[mesh];
-    float3 inv = inverse_dir(r.d);
-    uint stack[64];
-    uint top = 1;
-    stack[0] = 0;
-    bool found = false;
-    while (top > 0) {
-        top--;
-        uint index = stack[top];
-        float near;
-        if (!slab(c, m.x + index, r, inv, near)) continue;
-        uint first = asuint(c.nodes[(m.x + index) * 2].w);
-        uint count = asuint(c.nodes[(m.x + index) * 2 + 1].w);
-        if (count > 0) {
-            for (uint k = 0; k < count; k++) {
-                uint prim = c.order[m.z + first + k];
-                uint base = (m.y + prim) * 3;
-                float t, u, w;
-                if (triangle(c.tris[base].xyz, c.tris[base + 1].xyz, c.tris[base + 2].xyz, r, t, u, w)) {
-                    r.tmax = t;
-                    hit.t = t; hit.u = u; hit.w = w; hit.prim = prim;
-                    found = true;
-                    if (any) return true;
-                }
-            }
-            continue;
-        }
-        uint left = index + 1, right = first;
-        float nl, nr;
-        bool hl = slab(c, m.x + left, r, inv, nl);
-        bool hr = slab(c, m.x + right, r, inv, nr);
-        if (hl && hr) {
-            if (nl <= nr) { stack[top++] = right; stack[top++] = left; }
-            else { stack[top++] = left; stack[top++] = right; }
-        } else if (hl) { stack[top++] = left; }
-        else if (hr) { stack[top++] = right; }
-    }
-    return found;
-}
-
-// The instance level: rays move into each instance's object space (same t).
-Hit intersect(Ctx c, Ray world, bool any) {
-    Hit hit;
-    hit.found = false; hit.t = 0.0; hit.u = 0.0; hit.w = 0.0; hit.prim = 0; hit.inst = 0;
-    if (c.tlas_node == 0xffffffff) return hit;
-    Ray r = world;
-    float3 inv = inverse_dir(r.d);
-    uint stack[64];
-    uint top = 1;
-    stack[0] = 0;
-    while (top > 0) {
-        top--;
-        uint index = stack[top];
-        float near;
-        if (!slab(c, c.tlas_node + index, r, inv, near)) continue;
-        uint first = asuint(c.nodes[(c.tlas_node + index) * 2].w);
-        uint count = asuint(c.nodes[(c.tlas_node + index) * 2 + 1].w);
-        if (count > 0) {
-            for (uint k = 0; k < count; k++) {
-                uint i = c.order[c.tlas_order + first + k];
-                float4 r0 = c.insts[i * 7], r1 = c.insts[i * 7 + 1], r2 = c.insts[i * 7 + 2];
-                Ray local;
-                local.o = float3(dot(r0, float4(r.o, 1.0)), dot(r1, float4(r.o, 1.0)), dot(r2, float4(r.o, 1.0)));
-                local.d = float3(dot(r0.xyz, r.d), dot(r1.xyz, r.d), dot(r2.xyz, r.d));
-                local.tmin = r.tmin;
-                local.tmax = r.tmax;
-                Hit h = hit;
-                uint mesh = asuint(c.insts[i * 7 + 6].x);
-                if (walk_mesh(c, mesh, local, any, h)) {
-                    h.inst = i;
-                    h.found = true;
-                    hit = h;
-                    r.tmax = h.t;
-                    if (any) return hit;
-                }
-            }
-            continue;
-        }
-        uint left = index + 1, right = first;
-        float nl, nr;
-        bool hl = slab(c, c.tlas_node + left, r, inv, nl);
-        bool hr = slab(c, c.tlas_node + right, r, inv, nr);
-        if (hl && hr) {
-            if (nl <= nr) { stack[top++] = right; stack[top++] = left; }
-            else { stack[top++] = left; stack[top++] = right; }
-        } else if (hl) { stack[top++] = left; }
-        else if (hr) { stack[top++] = right; }
-    }
-    return hit;
-}
 
 // ---- Textures (`texture.rs`): bilinear between the nearest texel centres, repeating, rows from
 // the top; `fallback` without a texture.
@@ -487,12 +358,12 @@ Ray camera_ray(Ctx c, uint x, uint y, inout Rng rng) {
 struct Surface { float3 p; float3 n; float3 ng; uint mat; float t; float2 uv; };
 
 Surface surface(Ctx c, Ray r, Hit h) {
-    uint mesh = asuint(c.insts[h.inst * 7 + 6].x);
+    uint mesh = asuint(c.shading[h.inst * 4 + 3].x);
     uint base = (c.meshes[mesh].y + h.prim) * 3;
     float b0 = 1.0 - h.u - h.w;
     float3 n_obj = c.normals[base].xyz * b0 + c.normals[base + 1].xyz * h.u + c.normals[base + 2].xyz * h.w;
     float3 g_obj = cross(c.tris[base + 1].xyz - c.tris[base].xyz, c.tris[base + 2].xyz - c.tris[base].xyz);
-    float3 m0 = c.insts[h.inst * 7 + 3].xyz, m1 = c.insts[h.inst * 7 + 4].xyz, m2 = c.insts[h.inst * 7 + 5].xyz;
+    float3 m0 = c.shading[h.inst * 4].xyz, m1 = c.shading[h.inst * 4 + 1].xyz, m2 = c.shading[h.inst * 4 + 2].xyz;
     float3 ng = float3(dot(m0, g_obj), dot(m1, g_obj), dot(m2, g_obj));
     ng = dot(ng, ng) > 0.0 ? normalize(ng) : float3(0, 1, 0);
     float3 n = float3(dot(m0, n_obj), dot(m1, n_obj), dot(m2, n_obj));
@@ -503,7 +374,7 @@ Surface surface(Ctx c, Ray r, Hit h) {
     s.p = r.o + r.d * h.t;
     s.n = n;
     s.ng = ng;
-    s.mat = asuint(c.insts[h.inst * 7 + 6].y);
+    s.mat = asuint(c.shading[h.inst * 4 + 3].y);
     s.t = h.t;
     s.uv = surface_uv(c, mesh, h.prim, h.u, h.w);
     return s;
@@ -517,7 +388,7 @@ bool blocked(Ctx c, Surface s, float3 l, float dist) {
     r.tmin = 0.0;
     if (isinf(dist)) { r.d = l; r.tmax = INF; }
     else { r.d = s.p + l * dist - r.o; r.tmax = 1.0 - 1e-4; }
-    return intersect(c, r, true).found;
+    return bvh_intersect(c.bvh, r, true).found;
 }
 
 // Two unit vectors perpendicular to `n` and to each other (`orthonormal`).
@@ -598,8 +469,8 @@ float3 direct(Ctx c, Surface s, float3 v, inout Rng rng) {
             float cos_l = abs(dot(normal, l));
             if (cos_l > 0.0 && dot(l, s.ng) > 0.0 && !blocked(c, s, l, dist)) {
                 uint inst = asuint(a.w);
-                uint mat = asuint(c.insts[inst * 7 + 6].y);
-                uint mesh = asuint(c.insts[inst * 7 + 6].x);
+                uint mat = asuint(c.shading[inst * 4 + 3].y);
+                uint mesh = asuint(c.shading[inst * 4 + 3].x);
                 float2 at = surface_uv(c, mesh, asuint(b.w), su * (1.0 - u2), su * u2);
                 float3 le = shown(c, mat, at).emissive;
                 float pdf = d2 / (cos_l * c.emitter_area);
@@ -618,7 +489,7 @@ float3 trace(Ctx c, Ray ray, inout Rng rng) {
     float last_pdf = -1.0;
     uint bounce = 0, passes = 0;
     for (;;) {
-        Hit h = intersect(c, ray, false);
+        Hit h = bvh_intersect(c.bvh, ray, false);
         if (!h.found) {
             if (bounce == 0 && last_pdf < 0.0 && c.sky_visible == 0) {
                 radiance += beta * c.clear / exposure;
