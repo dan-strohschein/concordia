@@ -137,6 +137,12 @@ test("graph_panel_renders_nodes_and_edges_from_fixture", async () => {
   for (const op of ["event.on_tick", "math.gt", "branch", "set.Health.value"]) {
     expect(await screen.findByText(op)).toBeTruthy();
   }
+  // Constants only where a constant fits: not on entity pins.
+  expect(screen.getByLabelText(`${id(2)} b`)).toBeTruthy();
+  expect(screen.queryByLabelText(`${id(4)} entity`)).toBeNull();
+  // Long ops widen their node.
+  const wide = flow.nodes.find((n) => n.id === id(4))?.width ?? 0;
+  expect(wide).toBeGreaterThan(flow.nodes.find((n) => n.id === id(3))?.width ?? 0);
 });
 
 test("graph_panel_edit_sends_graph_apply_with_human_actor", async () => {
