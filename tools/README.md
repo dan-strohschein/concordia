@@ -1,5 +1,17 @@
 Developer scripts (`doctor.sh`), crate templates, and exporter plugins (M5).
 
+## Disk (2026-11-27)
+
+- `just disk`: free space and the size of the build folders. `just prune-builds`: removes old
+  incremental snapshots, the release build, golden review output and perf reports (the next debug
+  build recompiles only what changed). `just clean-builds` only when pruning is not enough.
+- `disk/guard.sh`: a Claude Code `PreToolUse` hook (register it in your git-ignored
+  `.claude/settings.local.json` under `Bash`, command `"$CLAUDE_PROJECT_DIR"/tools/disk/guard.sh`).
+  Below 30 GB free (`DISK_STOP_GB`) it blocks cargo and `just` build commands and says why; below
+  40 GB (`DISK_WARN_GB`) it asks the agent to prune first. Pruning and listing recipes always pass.
+- Debug builds carry line tables only, and dependencies no debug info (root `Cargo.toml`); use
+  `CARGO_PROFILE_DEV_DEBUG=true` for a build you step through in a debugger.
+
 ## Checks (2026-11-25)
 
 - Per phase (author decision 2026-11-25, later): only the phase's new tests and the few existing

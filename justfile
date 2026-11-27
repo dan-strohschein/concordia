@@ -158,6 +158,17 @@ bench *args:
 clean-builds:
     rm -rf target/debug target/release target/lint target/mutants editor/src-tauri/target
 
+# Free space cheaply: old incremental snapshots, the release build (perf and blessing only), golden
+# review output; the next debug build recompiles only what changed
+prune-builds:
+    rm -rf target/debug/incremental target/release target/golden-review target/perf editor/src-tauri/target/debug/incremental
+    @df -g / | awk 'NR==2 {print $4 " GB free"}'
+
+# Free space and the size of the build folders
+disk:
+    @df -g / | awk 'NR==2 {print $4 " GB free"}'
+    @du -sh target/debug target/debug/incremental target/release 2>/dev/null || true
+
 # Download the pinned Slang toolchain into target/toolchain/slang/ (prints its directory)
 slang-fetch:
     tools/slang/fetch.sh
