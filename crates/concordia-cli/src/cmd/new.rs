@@ -105,6 +105,9 @@ fn manifest(name: &str, features: &Features) -> String {
         );
         text.push_str("\n[render]\n");
         text.push_str(concat!(
+            "# Bounced light: off (the default) or probes around the camera (M4 4.8; [render.probes]\n",
+            "# sizes them: rays, probes = [32, 8, 32], spacing = 1.5, center for a fixed volume).\n",
+            "# gi = \"probes\"\n",
             "# Shadows: cascaded (csm, the default) or virtual shadow maps (vsm; M4 4.7).\n",
             "# shadows = \"vsm\"\n",
             "# [render.vsm]\n",

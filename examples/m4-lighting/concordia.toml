@@ -12,3 +12,5 @@ main = "scenes/sun_courtyard.scene.ron"
 [gen]
 
 [render]
+# Bounced light from probes (M4 4.8): these scenes' 8-bounce references measure it.
+gi = "probes"
