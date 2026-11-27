@@ -70,3 +70,10 @@ pub fn table_slot(level: u32, page: [i32; 2]) -> u32 {
     let [x, y] = page.map(|p| p.rem_euclid(side) as u32);
     level * PAGES_PER_SIDE * PAGES_PER_SIDE + y * PAGES_PER_SIDE + x
 }
+
+/// The world page slot `slot` (x, y in 0..128) holds while its level's origin is `origin`: the one
+/// world page of the level's 128 × 128 that maps to it.
+pub fn slot_page(origin: [i32; 2], slot: [u32; 2]) -> [i32; 2] {
+    let side = PAGES_PER_SIDE as i32;
+    [0, 1].map(|i| origin[i] + (slot[i] as i32 - origin[i]).rem_euclid(side))
+}

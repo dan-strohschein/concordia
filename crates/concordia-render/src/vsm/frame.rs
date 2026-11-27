@@ -1,7 +1,7 @@
 //! The per-frame VSM blocks: the parameter rows (`VsmParams` in `vsm.slang`) and the depth views
 //! (the camera, then one per clipmap level).
 
-use concordia_core::math::{Mat4, Vec3, Vec4};
+use concordia_core::math::{IVec2, Mat4, Vec3, Vec4};
 
 use super::clipmap::{Clipmap, LEVEL0_EXTENT, texel_world};
 use super::settings::VsmSettings;
@@ -32,6 +32,8 @@ pub(crate) struct ParamsIn<'a> {
     pub(crate) chunks: &'a [u32],
     /// The camera's (unjittered) inverse view-projection.
     pub(crate) inv_view_proj: Mat4,
+    /// Each level's origin (in pages) last frame, for releasing slots scrolled out (4.7b).
+    pub(crate) previous: &'a [IVec2],
 }
 
 /// The coarse floor: the finest level at least eight times `max_distance` wide, so a frame's
@@ -41,7 +43,8 @@ pub fn floor_level(max_distance: f32, levels: u8) -> u32 {
     (need as u32).min(u32::from(levels.max(1)) - 1)
 }
 
-/// The parameter rows (mirrors `VsmParams` and `vsm_origin` in `vsm.slang`).
+/// The parameter rows (mirrors `VsmParams`, `vsm_origin` and `vsm_previous_origin` in `vsm.slang`):
+/// the fixed rows, each level's origin, then each level's origin last frame.
 pub(crate) fn params_rows(p: &ParamsIn<'_>) -> Vec<u8> {
     debug_assert!(
         p.chunks.len() <= MAX_CHUNKS,
@@ -86,16 +89,25 @@ pub(crate) fn params_rows(p: &ParamsIn<'_>) -> Vec<u8> {
         })
         .collect();
     push_rows_u32(&mut out, &origins);
-    debug_assert_eq!(out.len(), (ROW_LEVELS + p.clipmap.levels.len()) * 16);
+    debug_assert_eq!(p.previous.len(), p.clipmap.levels.len(), "previous origins");
+    let previous: Vec<[u32; 4]> = p
+        .previous
+        .iter()
+        .map(|o| [o.x as u32, o.y as u32, 0, 0])
+        .collect();
+    push_rows_u32(&mut out, &previous);
+    debug_assert_eq!(out.len(), (ROW_LEVELS + 2 * p.clipmap.levels.len()) * 16);
     out
 }
 
-/// The depth views: the camera's view-projection, then each level's (`cascade_xform` rows).
+/// The depth views: the camera's view-projection, each level's (`cascade_xform` rows), then the
+/// light view (`vsm_page_position`).
 pub(crate) fn depth_views(camera: &Mat4, clipmap: &Clipmap) -> Vec<u8> {
     let mut out = Vec::new();
     push_rows(&mut out, &columns(camera));
     for level in &clipmap.levels {
         push_rows(&mut out, &columns(&level.view_proj));
     }
+    push_rows(&mut out, &columns(&clipmap.light_view));
     out
 }

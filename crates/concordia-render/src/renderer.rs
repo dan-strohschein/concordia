@@ -180,10 +180,8 @@ pub struct Renderer {
     shadow_technique: crate::vsm::ShadowTechnique,
     /// `[render.vsm]`.
     vsm_settings: crate::vsm::VsmSettings,
-    /// The physical page pool.
-    vsm_pool: crate::vsm::VsmPool,
-    /// The clipmap's light-space depth range, kept while the casters fit in it.
-    vsm_depth_range: Option<(f32, f32)>,
+    /// The pool, the page store, the depth range and the cache's key, kept between frames.
+    vsm_res: crate::vsm::VsmResources,
     /// Materials fitted to the closure budget, as programs.
     programs: Programs,
     /// GPU copies of forgotten assets; the next frame takes them and frees them when it retires,
@@ -475,8 +473,7 @@ impl Renderer {
             shadow_key: None,
             shadow_technique: Default::default(),
             vsm_settings: Default::default(),
-            vsm_pool: Default::default(),
-            vsm_depth_range: None,
+            vsm_res: Default::default(),
             programs,
             retired: FrameResources::default(),
             unskinnable: std::collections::BTreeSet::new(),
@@ -861,7 +858,16 @@ impl Renderer {
     /// Chooses the sun's shadow technique (`csm` by default; `vsm` falls back to `csm` on devices
     /// that can't run virtual shadow maps; M4 4.7).
     pub fn set_shadows(&mut self, technique: crate::vsm::ShadowTechnique) {
+        if technique != self.shadow_technique {
+            self.vsm_res.cache.reset(crate::vsm::CacheReset::Technique);
+        }
         self.shadow_technique = technique;
+    }
+
+    /// Clears the virtual shadow maps' kept pages before the next frame (a scene opened or re-sent;
+    /// camera cuts keep them, M4 4.7b).
+    pub fn reset_shadow_cache(&mut self) {
+        self.vsm_res.cache.reset(crate::vsm::CacheReset::Scene);
     }
 
     /// Sets the virtual shadow maps' pool, levels and biases (`[render.vsm]`); refuses values out
@@ -872,7 +878,7 @@ impl Renderer {
     ) -> Result<(), RenderError> {
         settings.validate().map_err(RenderError::InvalidSettings)?;
         self.vsm_settings = settings;
-        self.vsm_depth_range = None;
+        self.vsm_res.forget_depth_range();
         Ok(())
     }
 
@@ -1077,18 +1083,25 @@ impl Renderer {
         let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
         let vsm_on = self.vsm_runs(world);
         self.note_shadows(vsm_on);
-        let vsm_casters = self.pipelines.vsm_casters().filter(|_| vsm_on);
+        let vsm_set = match vsm_on {
+            true => self.pipelines.vsm(device)?,
+            false => None,
+        };
+        let vsm_casters = vsm_set.map(|v| v.casters);
         let shadows = match vsm_on {
             true => None,
             false => self.prepare_shadows(world, &skinning.placements, view, aspect, dir)?,
         };
         let vsm = match vsm_on {
-            true => Some(self.prepare_vsm(
-                world,
-                &skinning.placements,
-                (view, dir, view_proj, height),
-                (&mut up, frame),
-            )?),
+            true => match vsm_set {
+                Some(set) => Some(self.prepare_vsm(
+                    world,
+                    &skinning.placements,
+                    (view, dir, view_proj, height, set.page),
+                    (&mut up, frame),
+                )?),
+                None => None,
+            },
             false => None,
         };
         let vsm_rows = match &vsm {
@@ -1764,7 +1777,13 @@ impl Renderer {
         &mut self,
         world: &RenderWorld,
         placements: &[Placement],
-        (view, dir, view_proj, height): (&CameraView, Vec3, Mat4, NonZeroU32),
+        (view, dir, view_proj, height, pipelines): (
+            &CameraView,
+            Vec3,
+            Mat4,
+            NonZeroU32,
+            crate::vsm::VsmPipelines,
+        ),
         (up, frame): (&mut Uploads, &mut FrameResources),
     ) -> Result<crate::vsm::VsmJob, RenderError> {
         let casters = world
@@ -1794,19 +1813,21 @@ impl Renderer {
             footprint,
             pcf_radius: pcf,
             casters: world_bounds(casters),
+            view: self.current.as_ref().map_or(0, |v| v.key.id()),
         };
         let mut keep = Vec::new();
         let job = crate::vsm::VsmJob::prepare(
             self.device.as_ref(),
             up,
-            self.pipelines.vsm(),
+            pipelines,
             &input,
-            (&mut self.vsm_pool, &mut self.vsm_depth_range),
+            &mut self.vsm_res,
             &mut keep,
         )?;
         keep.into_iter().for_each(|b| {
             frame.keep(b);
         });
+        self.stats.shadows.cache_reset = self.vsm_res.cache.last_reset();
         Ok(job)
     }
 
@@ -2031,8 +2052,8 @@ impl Renderer {
             true => ShadowTechnique::vsm,
             false => ShadowTechnique::csm,
         };
-        s.reason = match (self.shadow_technique, self.pipelines.vsm_casters()) {
-            (ShadowTechnique::vsm, None) => crate::vsm::supported(self.device.caps())
+        s.reason = match (self.shadow_technique, self.pipelines.vsm_supported()) {
+            (ShadowTechnique::vsm, false) => crate::vsm::supported(self.device.caps())
                 .err()
                 .map(str::to_owned),
             _ => None,
@@ -2045,15 +2066,14 @@ impl Renderer {
             false => (0, 0),
         };
         (s.pool_pages, s.levels) = (pool, levels);
+        s.cache = vsm_on && self.vsm_settings.cache;
         if !vsm_on {
-            (
-                s.pages_requested,
-                s.pages_allocated,
-                s.pages_starved,
-                s.shadow_meshlets,
-                s.page_draws,
-                s.page_draws_dropped,
-            ) = (0, 0, 0, 0, 0, 0);
+            *s = crate::vsm::ShadowStats {
+                requested: s.requested,
+                technique: s.technique,
+                reason: s.reason.take(),
+                ..Default::default()
+            };
         }
     }
 
@@ -2061,7 +2081,7 @@ impl Renderer {
     /// can run them, and the first directional light casts shadows.
     fn vsm_runs(&self, world: &RenderWorld) -> bool {
         self.shadow_technique == crate::vsm::ShadowTechnique::vsm
-            && self.pipelines.vsm_casters().is_some()
+            && self.pipelines.vsm_supported()
             && world
                 .lights
                 .first()
@@ -2761,7 +2781,7 @@ impl Drop for Renderer {
         self.assets.destroy(self.device.as_ref());
         self.ui_textures.destroy(self.device.as_ref());
         self.shadow_maps.destroy(self.device.as_ref());
-        self.vsm_pool.destroy(self.device.as_ref());
+        self.vsm_res.destroy(self.device.as_ref());
         self.environments.destroy(self.device.as_ref());
         self.visibility_buffer.destroy(self.device.as_ref());
         self.surfaces

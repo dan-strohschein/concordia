@@ -131,6 +131,8 @@ fn new_project_documents_the_shadow_settings() {
         "# [render.vsm]",
         "# pool_pages = 4096",
         "# levels = 16",
+        "# keep_frames = 60",
+        "# cache = false",
     ] {
         assert!(manifest.contains(line), "{line} missing:\n{manifest}");
     }

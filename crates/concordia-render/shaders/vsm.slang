@@ -13,6 +13,15 @@ public static const uint VSM_PAGE_WORDS = VSM_PAGE_TEXELS * VSM_PAGE_TEXELS;
 public static const uint VSM_REQUESTED = 1u << 16;
 public static const uint VSM_VALID = 2u << 16;
 public static const uint VSM_DIRTY = 4u << 16;
+public static const uint VSM_FLAGS = 0xFFu << 16;
+public static const uint VSM_AGE_SHIFT = 24;
+
+// Whether an entry holds a page this frame's pixels may read: requested and valid (4.7b: a kept,
+// unrequested page is never sampled, so the picture can't depend on what was cached).
+public bool vsm_resident(uint entry) {
+    uint both = VSM_REQUESTED | VSM_VALID;
+    return (entry & both) == both && (entry & 0xFFFFu) != 0;
+}
 // Parameter rows (`vsm::frame::params_rows`): counts; the level choice; biases; the eye; pool
 // chunks (4 rows); the camera's inverse view-projection (4 rows); then one row per level (its
 // origin in pages).
@@ -38,6 +47,25 @@ public VsmParams* vsm_params(uint params) { return (VsmParams*)g_buffers.ptr[par
 public int2 vsm_origin(uint params, uint level) {
     uint4 row = ((uint4*)g_buffers.ptr[params])[VSM_ROW_LEVELS + level];
     return int2(asint(row.x), asint(row.y));
+}
+
+// Level `level`'s origin in pages last frame (`ParamsIn::previous`).
+public int2 vsm_previous_origin(uint params, uint level) {
+    VsmParams* p = vsm_params(params);
+    uint4 row = ((uint4*)g_buffers.ptr[params])[VSM_ROW_LEVELS + p.counts.x + level];
+    return int2(asint(row.x), asint(row.y));
+}
+
+// The world page (light space, y up: the table's key) of in-level page `page` (row 0 at the top,
+// as virtual texels run) of `level` (`ClipLevel::world_page`).
+public int2 vsm_world_page(uint params, uint level, int2 page) {
+    int2 o = vsm_origin(params, level);
+    return int2(o.x + page.x, o.y + int(VSM_PAGES_PER_SIDE) - 1 - page.y);
+}
+
+// The table slot of in-level page `page` of `level`.
+public uint vsm_page_slot(uint params, uint level, int2 page) {
+    return vsm_slot(level, vsm_world_page(params, level, page));
 }
 
 // Level `level`'s light-space depth span in metres (clip z per metre is its inverse).
@@ -67,7 +95,7 @@ public int4 vsm_sphere_rect(uint params, uint views, uint level, float3 c, float
 // The physical page + 1 of page `page` (in the level) of `level` when it is due to be drawn (dirty,
 // with a physical page), else 0.
 public uint vsm_due(uint params, uint table, uint level, int2 page) {
-    uint entry = g_buffers.ptr[table][vsm_slot(level, vsm_origin(params, level) + page)];
+    uint entry = g_buffers.ptr[table][vsm_page_slot(params, level, page)];
     return (entry & VSM_DIRTY) != 0 ? vsm_physical(entry) : 0;
 }
 
@@ -130,13 +158,17 @@ public void vsm_emit_due(uint lane, uint params, uint table, uint level, int4 re
     }
 }
 
-// `clip` (a level's orthographic clip position) placed in page `page` (in the level, row by row)
-// of a 128 × 128 pass: the level scaled by 128 about the page's centre, so the rasterizer clips to it.
-public float4 vsm_to_page(float4 clip, uint page) {
-    float2 p = float2(float(page % VSM_PAGES_PER_SIDE), float(page / VSM_PAGES_PER_SIDE));
-    float side = float(VSM_PAGES_PER_SIDE);
-    float2 centre = float2((p.x + 0.5) / side * 2.0 - 1.0, 1.0 - (p.y + 0.5) / side * 2.0);
-    return float4((clip.xy - centre * clip.w) * side, clip.z, clip.w);
+// `world` placed in in-level page `page` (row by row) of `level` in a 128 × 128 pass, relative to
+// the page's own light-space corner (4.7b), so a page is drawn through the same numbers wherever
+// its level sits; the rasterizer clips to the page. Depth is the level's (it doesn't depend on
+// the origin). The light view is depth view `1 + levels`.
+public float4 vsm_page_position(uint params, uint views, uint level, uint page, float3 world) {
+    VsmParams* p = vsm_params(params);
+    float3 light = vsm_clip(views, 1 + p.counts.x, world).xyz;
+    float size = p.choice.x * exp2(float(level)) * float(VSM_PAGE_TEXELS);
+    int2 wp = vsm_world_page(params, level, int2(int(page % VSM_PAGES_PER_SIDE), int(page / VSM_PAGES_PER_SIDE)));
+    float2 xy = (light.xy / size - float2(wp)) * 2.0 - 1.0;
+    return float4(xy, vsm_clip(views, 1 + level, world).z, 1.0);
 }
 
 // A caster vertex placed in its page; `page` = (physical page, parameter block) for the fragment.
@@ -148,7 +180,7 @@ public struct PageVertex {
 // The table entry for virtual texel `t` of `level`.
 public uint vsm_entry(uint params, uint table, uint level, int2 t) {
     int2 page = int2(floor(float2(t) / float(VSM_PAGE_TEXELS)));
-    return g_buffers.ptr[table][vsm_slot(level, vsm_origin(params, level) + page)];
+    return g_buffers.ptr[table][vsm_page_slot(params, level, page)];
 }
 
 // Keeps the nearest depth of a caster fragment at texel `pos.xy` of physical page `page` (in
@@ -163,6 +195,12 @@ public uint vsm_level(VsmParams* p, float3 world) {
     float footprint = p.choice.z > 0.0 ? distance(world, p.eye.xyz) * p.choice.z : p.choice.w;
     float level = ceil(log2(footprint / p.choice.x) + p.choice.y);
     return uint(clamp(level, 0.0, float(p.counts.x - 1)));
+}
+
+// The world page slot `xy` holds while its level's origin is `origin` (`slot_page`).
+public int2 vsm_slot_page(int2 origin, int2 xy) {
+    int side = int(VSM_PAGES_PER_SIDE);
+    return origin + ((xy - origin) % side + side) % side;
 }
 
 // A level's table slot for world page `page` (toroidal, `table_slot`).

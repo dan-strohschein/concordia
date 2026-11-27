@@ -3,12 +3,13 @@
 
 use std::sync::Arc;
 
-use concordia_core::math::{Mat4, Vec3};
+use concordia_core::math::{IVec2, Mat4, Vec3};
 use concordia_rhi::{Buffer, Device};
 
+use super::cache::{CacheKey, CacheReset, CacheState};
 use super::clipmap::{Clipmap, stable_depth_range};
 use super::frame::{Footprint, ParamsIn, depth_views, params_rows};
-use super::gpu::{PageWork, VsmPipelines, VsmPool};
+use super::gpu::{PageStore, PageWork, VsmPipelines, VsmPool, WorkShape};
 use super::pool::PoolLayout;
 use super::settings::VsmSettings;
 use crate::RenderError;
@@ -27,6 +28,32 @@ pub(crate) struct JobIn<'a> {
     pub(crate) pcf_radius: u32,
     /// Every caster's world bounds (min, max).
     pub(crate) casters: (Vec3, Vec3),
+    /// The view the frame is for (one cached view at a time).
+    pub(crate) view: u64,
+}
+
+/// What virtual shadow maps keep between frames: the pool, the page store, the depth range, each
+/// level's last origin and the cache's key.
+#[derive(Default)]
+pub(crate) struct VsmResources {
+    pub(crate) pool: VsmPool,
+    pub(crate) store: PageStore,
+    pub(crate) depth_range: Option<(f32, f32)>,
+    pub(crate) cache: CacheState,
+    origins: Vec<IVec2>,
+}
+
+impl VsmResources {
+    /// Frees the GPU buffers.
+    pub(crate) fn destroy(&mut self, device: &dyn Device) {
+        self.pool.destroy(device);
+        self.store.destroy(device);
+    }
+
+    /// Forgets the depth range (its settings changed).
+    pub(crate) fn forget_depth_range(&mut self) {
+        self.depth_range = None;
+    }
 }
 
 /// One frame's VSM work.
@@ -40,6 +67,8 @@ pub(crate) struct VsmJob {
     pub(crate) views: u32,
     /// The pool's buffers.
     pub(crate) pool: Vec<Buffer>,
+    /// Why the store is cleared before this frame, if it is.
+    pub(crate) reset: Option<CacheReset>,
 }
 
 impl VsmJob {
@@ -50,17 +79,39 @@ impl VsmJob {
         up: &mut Uploads,
         pipelines: VsmPipelines,
         input: &JobIn<'_>,
-        (pool, depth_range): (&mut VsmPool, &mut Option<(f32, f32)>),
+        res: &mut VsmResources,
         keep: &mut Vec<Buffer>,
     ) -> Result<Self, RenderError> {
         let s = input.settings;
         let layout = PoolLayout::new(s.pool_pages)
             .map_err(|e| RenderError::InvalidSettings(format!("[render.vsm] {e}")))?;
         let light_view = crate::shadow::light_rotation(input.light_dir);
-        let range = stable_depth_range(light_z_range(&light_view, input.casters), *depth_range);
-        *depth_range = Some(range);
+        let range = stable_depth_range(light_z_range(&light_view, input.casters), res.depth_range);
+        res.depth_range = Some(range);
         let clipmap = Clipmap::fit(input.light_dir, input.eye, s.levels, range);
-        let chunks = pool.ensure(device, layout)?;
+        let (store, fresh) = res
+            .store
+            .ensure(device, (u32::from(s.levels), s.pool_pages))?;
+        if fresh {
+            res.cache.reset(CacheReset::First);
+        }
+        let key = CacheKey {
+            view: input.view,
+            light_dir: input.light_dir,
+            levels: s.levels,
+            pool_pages: s.pool_pages,
+            depth: range,
+        };
+        let reset = res.cache.begin(key, s.cache);
+        let origins: Vec<IVec2> = clipmap.levels.iter().map(|l| l.origin_page()).collect();
+        let previous = match (reset, res.origins.len() == origins.len()) {
+            (None, true) => std::mem::replace(&mut res.origins, origins.clone()),
+            _ => {
+                res.origins.clone_from(&origins);
+                origins
+            }
+        };
+        let chunks = res.pool.ensure(device, layout)?;
         let indices: Vec<u32> = chunks.iter().map(|(_, i)| *i).collect();
         let pool: Vec<Buffer> = chunks.iter().map(|(b, _)| *b).collect();
         let params = params_rows(&ParamsIn {
@@ -71,6 +122,7 @@ impl VsmJob {
             pcf_radius: input.pcf_radius,
             chunks: &indices,
             inv_view_proj: input.camera.inverse(),
+            previous: &previous,
         });
         let params = up.buffer(device, &params, "vsm params")?;
         let views = up.buffer(device, &depth_views(&input.camera, &clipmap), "depth views")?;
@@ -79,7 +131,12 @@ impl VsmJob {
             device,
             up,
             pipelines,
-            (u32::from(s.levels), s.pool_pages),
+            WorkShape {
+                store,
+                levels: u32::from(s.levels),
+                pool: s.pool_pages,
+                keep_frames: u32::from(s.keep_frames),
+            },
             keep,
         )?;
         let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
@@ -89,6 +146,7 @@ impl VsmJob {
             params: index(params)?,
             views: index(views)?,
             pool,
+            reset,
         })
     }
 }
@@ -106,14 +164,23 @@ fn light_z_range(light_view: &Mat4, (lo, hi): (Vec3, Vec3)) -> (f32, f32) {
     })
 }
 
-/// `vsm.mark` (from the camera's single-sample `depth`, `size` pixels), `vsm.allocate` and
-/// `vsm.clear`, in that order after the prepass.
+/// `vsm.age`, `vsm.mark` (from the camera's single-sample `depth`, `size` pixels), `vsm.allocate`
+/// and `vsm.clear`, in that order after the prepass.
 pub(crate) fn add_page_passes(
     graph: &mut RenderGraph,
     job: &VsmJob,
     (depth, size): (GraphTexture, [u32; 2]),
     device: Arc<dyn Device>,
 ) {
+    let begin = job.work.begin(job.reset.is_some(), job.params);
+    graph.add_pass_recorded(
+        "vsm.age",
+        |p| p.side_effect(),
+        Some(Box::new(move |ctx: &mut PassContext<'_>| {
+            ctx.commands.commands.extend(begin.iter().cloned());
+            Ok(())
+        })),
+    );
     let mark = job.work.clone();
     let (params, views) = (job.params, job.views);
     graph.add_pass_recorded(

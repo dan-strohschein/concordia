@@ -18,9 +18,19 @@ fn lit(base: [f32; 3]) -> M1 {
     }
 }
 
+/// The yard's camera, sun and box.
+struct Yard {
+    camera: concordia_core::id::EntityId,
+    sun: concordia_core::id::EntityId,
+}
+
 /// A ground (M1 path), a row of meshlet balls with a box among them (M1), a shadowed sun, and a
 /// camera looking down the row with `msaa`; with `casts` false nothing casts a shadow.
 fn yard(msaa: Msaa, casts: bool) -> Scene {
+    yard_with_ids(msaa, casts).0
+}
+
+fn yard_with_ids(msaa: Msaa, casts: bool) -> (Scene, Yard) {
     let mut scene = Scene::new();
     let ball = scene.assets.insert_mesh(
         "ball",
@@ -73,7 +83,7 @@ fn yard(msaa: Msaa, casts: bool) -> Scene {
     let mut light = scene.world.get::<DirectionalLight>(sun).unwrap().clone();
     light.shadows = Some(Default::default());
     scene.world.insert(sun, light).unwrap();
-    scene.camera(
+    let camera = scene.camera(
         Vec3::new(0.0, 3.0, 6.0),
         Vec3::new(0.0, 0.5, -10.0),
         Camera {
@@ -82,7 +92,7 @@ fn yard(msaa: Msaa, casts: bool) -> Scene {
             ..Camera::default()
         },
     );
-    scene
+    (scene, Yard { camera, sun })
 }
 
 fn render(r: &mut Renderer, scene: &mut Scene, shadows: ShadowTechnique, mode: ViewMode) -> Image {
@@ -506,5 +516,156 @@ fn vsm_review_frames() {
             raw.extend(scene.render_mode(&mut r, 640, 360, mode).rgba);
         }
         std::fs::write(dir.join(format!("ball_{mode:?}.rgba")), raw).unwrap();
+    }
+}
+
+/// A renderer on VSM with the cache `on` (M4 4.7b).
+fn cached(mut r: Renderer, on: bool) -> Renderer {
+    r.set_shadows(ShadowTechnique::vsm);
+    let settings = concordia_render::vsm::VsmSettings {
+        cache: on,
+        ..Default::default()
+    };
+    r.set_vsm_settings(settings).unwrap();
+    r
+}
+
+fn frame(r: &mut Renderer, scene: &mut Scene) -> (Image, concordia_render::vsm::ShadowStats) {
+    let image = scene.render_mode(r, SIZE.0, SIZE.1, ViewMode::lit);
+    (image, r.stats().shadows)
+}
+
+/// After the first frame a still scene draws no pages: every resident page is kept.
+#[test]
+fn still_scene_renders_no_pages_after_warmup() {
+    for r in meshlet_renderers() {
+        let mut r = cached(r, true);
+        let mut scene = yard(Msaa::Off, true);
+        let (_, first) = frame(&mut r, &mut scene);
+        assert!(
+            first.pages_new > 0 && first.pages_new == first.pages_rendered_static,
+            "{first:?}"
+        );
+        for _ in 0..3 {
+            let (_, s) = frame(&mut r, &mut scene);
+            assert!(s.cache && s.pages_allocated > 0, "{s:?}");
+            assert_eq!(
+                (s.pages_new, s.pages_rendered_static, s.page_draws),
+                (0, 0, 0),
+                "{s:?}"
+            );
+            assert_eq!(s.pages_cached, s.pages_allocated, "{s:?}");
+        }
+    }
+}
+
+/// With the cache off every frame starts empty and draws every resident page (4.7a's frame).
+#[test]
+fn cache_off_redraws_every_page_every_frame() {
+    for r in meshlet_renderers() {
+        let mut r = cached(r, false);
+        let mut scene = yard(Msaa::Off, true);
+        for _ in 0..3 {
+            let (_, s) = frame(&mut r, &mut scene);
+            assert!(!s.cache, "{s:?}");
+            assert_eq!(s.cache_reset, Some(concordia_render::vsm::CacheReset::Off));
+            assert_eq!(s.pages_new, s.pages_allocated, "{s:?}");
+            assert_eq!(s.pages_cached, 0, "{s:?}");
+        }
+    }
+}
+
+/// A 1 m camera move keeps every page still in range: only pages scrolled in or newly seen are
+/// drawn, and the picture equals an uncached render of the same frames.
+#[test]
+fn clipmap_snapping_keeps_cached_pages_valid_under_camera_translation() {
+    let fresh = || meshlet_renderers().into_iter().next();
+    let (Some(on), Some(off)) = (fresh(), fresh()) else {
+        return;
+    };
+    let (mut on, mut off) = (cached(on, true), cached(off, false));
+    let (mut scene, ids) = yard_with_ids(Msaa::Off, true);
+    frame(&mut on, &mut scene);
+    frame(&mut on, &mut scene);
+    scene.aim(
+        ids.camera,
+        Vec3::new(1.0, 3.0, 6.0),
+        Vec3::new(1.0, 0.5, -10.0),
+    );
+    let (cached_image, s) = frame(&mut on, &mut scene);
+    assert_eq!(
+        s.cache_reset,
+        Some(concordia_render::vsm::CacheReset::First),
+        "no reset"
+    );
+    assert!(s.pages_cached > 0, "most pages kept: {s:?}");
+    assert_eq!(
+        s.pages_rendered_static, s.pages_new,
+        "only new pages drawn: {s:?}"
+    );
+    assert!(s.pages_new < s.pages_allocated / 2, "{s:?}");
+    frame(&mut off, &mut scene);
+    let (uncached_image, _) = frame(&mut off, &mut scene);
+    assert!(
+        cached_image.rgba == uncached_image.rgba,
+        "cached equals uncached"
+    );
+}
+
+/// A turning sun clears the cache; its colour and brightness don't.
+#[test]
+fn sun_change_clears_the_cache_and_colour_change_does_not() {
+    use concordia_render::vsm::CacheReset;
+    for r in meshlet_renderers() {
+        let mut r = cached(r, true);
+        let (mut scene, ids) = yard_with_ids(Msaa::Off, true);
+        frame(&mut r, &mut scene);
+        frame(&mut r, &mut scene);
+        let mut light = scene
+            .world
+            .get::<DirectionalLight>(ids.sun)
+            .unwrap()
+            .clone();
+        light.color = [1.0, 0.8, 0.6];
+        light.illuminance_lux *= 0.5;
+        scene.world.insert(ids.sun, light).unwrap();
+        let (_, s) = frame(&mut r, &mut scene);
+        assert_eq!(s.pages_rendered_static, 0, "colour: {s:?}");
+        let mut t = scene
+            .world
+            .get::<concordia_scene::builtin::Transform>(ids.sun)
+            .copied()
+            .unwrap();
+        t.rotation = Quat::from_rotation_y(0.05) * t.rotation;
+        scene.world.insert(ids.sun, t).unwrap();
+        let (_, s) = frame(&mut r, &mut scene);
+        assert_eq!(s.cache_reset, Some(CacheReset::Light), "{s:?}");
+        assert_eq!(s.pages_new, s.pages_allocated, "everything redrawn: {s:?}");
+    }
+}
+
+/// A camera cut (motion history forgotten) keeps the kept pages; drawing another view clears them.
+#[test]
+fn camera_cut_keeps_the_cache_and_a_view_change_resets_it() {
+    use concordia_render::vsm::CacheReset;
+    for r in meshlet_renderers() {
+        let mut r = cached(r, true);
+        let mut scene = yard(Msaa::Off, true);
+        frame(&mut r, &mut scene);
+        frame(&mut r, &mut scene);
+        r.reset_motion_history();
+        let (_, s) = frame(&mut r, &mut scene);
+        assert_eq!(
+            (s.pages_rendered_static, s.cache_reset),
+            (0, Some(CacheReset::First)),
+            "{s:?}"
+        );
+        r.select_history(9);
+        let (_, s) = frame(&mut r, &mut scene);
+        assert_eq!(s.cache_reset, Some(CacheReset::View), "{s:?}");
+        assert_eq!(s.pages_new, s.pages_allocated, "{s:?}");
+        r.reset_shadow_cache();
+        let (_, s) = frame(&mut r, &mut scene);
+        assert_eq!(s.cache_reset, Some(CacheReset::Scene), "{s:?}");
     }
 }

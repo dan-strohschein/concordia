@@ -430,7 +430,7 @@ mod tests {
         let mut out = Vec::new();
         for y in lo.y..=hi.y {
             for x in lo.x..=hi.x {
-                let slot = table_slot(level, (l.origin_page() + IVec2::new(x, y)).into());
+                let slot = table_slot(level, l.world_page(IVec2::new(x, y)).into());
                 let e = PageEntry::from_bits(table[slot as usize]);
                 if let (Some(p), true) = (e.physical(), e.flags().contains(PageFlags::DIRTY)) {
                     out.push(((y * 128 + x) as u32, u32::from(p)));
@@ -459,10 +459,10 @@ mod tests {
         let mut table = vec![0u32; 4 * 128 * 128];
         let mut physical = 0u16;
         for level in 0..4u32 {
-            let origin = clipmap.levels[level as usize].origin_page();
+            let l = &clipmap.levels[level as usize];
             for y in 56..72 {
                 for x in 56..72 {
-                    let slot = table_slot(level, (origin + IVec2::new(x, y)).into());
+                    let slot = table_slot(level, l.world_page(IVec2::new(x, y)).into());
                     let entry = match (x + y) % 5 {
                         0 => PageEntry::new(None, PageFlags::REQUESTED, 0),
                         1 => PageEntry::new(Some(physical), PageFlags::VALID, 0),
@@ -508,6 +508,7 @@ mod tests {
         }
         let wanted: usize = want.values().map(Vec::len).sum();
         assert!(wanted > 20, "the scene pairs something: {wanted}");
+        let origins: Vec<IVec2> = clipmap.levels.iter().map(|l| l.origin_page()).collect();
         let run = |capacity: u32| {
             let mut up = Uploads::new();
             let mut keep = Vec::new();
@@ -519,6 +520,7 @@ mod tests {
                 pcf_radius: 1,
                 chunks: &[],
                 inv_view_proj: Default::default(),
+                previous: &origins,
             });
             let params = up.buffer(device, &params, "params").unwrap();
             let views = up

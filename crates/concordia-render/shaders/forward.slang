@@ -250,7 +250,7 @@ PageVertex vsm_page_vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform
         p = skin_vertex(frame.buffers.w, inst.skin.x, push.joints, push.weights, v, p, float3(0.0, 0.0, 1.0), float3(1.0, 0.0, 0.0)).position;
     }
     PageVertex o;
-    o.position = vsm_to_page(cascade_xform(frame, 1 + pair.y, xform(inst.model, float4(p, 1.0))), pair.z);
+    o.position = vsm_page_position(frame.vsm.y, frame.vsm.x - 1, pair.y, pair.z, xform(inst.model, float4(p, 1.0)).xyz);
     o.page = uint2(pair.w, frame.vsm.y);
     return o;
 }
@@ -262,8 +262,8 @@ void vsm_page_fs(PageVertex v) {
 
 
 // Where the virtual shadow maps hold `world` (offset along `n`): the first level from the pixel's
-// own whose page under it is valid. Returns that level (the level count when none, or beyond max
-// distance), its light clip position and the page's entry.
+// own whose page under it is resident (requested this frame and valid). Returns that level (the
+// level count when none, or beyond max distance), its light clip position and the page's entry.
 uint vsm_find(Frame* frame, float3 world, float3 n, out float4 clip, out uint entry) {
     VsmParams* p = vsm_params(frame.vsm.y);
     clip = float4(0.0);
@@ -275,7 +275,7 @@ uint vsm_find(Frame* frame, float3 world, float3 n, out float4 clip, out uint en
         float2 st = vsm_texel(clip) - 0.5;
         if (any(st < 0.0) || any(st >= float(VSM_VIRTUAL_TEXELS) - 1.0)) { continue; }
         entry = vsm_entry(frame.vsm.y, frame.vsm.z, level, int2(floor(st)));
-        if ((entry & VSM_VALID) != 0 && vsm_physical(entry) != 0) { return level; }
+        if (vsm_resident(entry)) { return level; }
     }
     return p.counts.x;
 }
@@ -310,7 +310,7 @@ float vsm_sun_shadow(Frame* frame, float3 world, float3 n, float3 to_light) {
                 float wx = dx == -k ? 1.0 - f.x : (dx == k + 1 ? f.x : 1.0);
                 int2 t = base + int2(dx, dy);
                 uint entry = vsm_entry(params, table, level, t);
-                if ((entry & VSM_VALID) == 0 || vsm_physical(entry) == 0) {
+                if (!vsm_resident(entry)) {
                     entry = centre;
                     t = clamp(t, page * int(VSM_PAGE_TEXELS), page * int(VSM_PAGE_TEXELS) + int(VSM_PAGE_TEXELS) - 1);
                 }

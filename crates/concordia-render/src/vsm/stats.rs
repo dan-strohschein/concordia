@@ -5,6 +5,7 @@ use concordia_reflect::Reflect;
 use concordia_rhi::{Buffer, Device};
 use serde::{Deserialize, Serialize};
 
+use super::cache::CacheReset;
 use super::gpu::COUNT_WORDS;
 use super::settings::ShadowTechnique;
 use crate::RenderError;
@@ -24,7 +25,7 @@ pub struct ShadowStats {
     pub levels: u32,
     /// Pages some pixel asked for.
     pub pages_requested: u64,
-    /// Requested pages that got a physical page (and were drawn).
+    /// Requested pages that hold a physical page this frame (resident).
     pub pages_allocated: u64,
     /// Requested pages the pool had no room for (their pixels read a coarser level).
     pub pages_starved: u64,
@@ -34,6 +35,22 @@ pub struct ShadowStats {
     pub page_draws: u64,
     /// Pairs past the pair buffers' room, not drawn (their pages lose those casters' shadows).
     pub page_draws_dropped: u64,
+    /// Whether pages are kept across frames (`[render.vsm] cache`, M4 4.7b).
+    pub cache: bool,
+    /// Why kept pages were last thrown away, if they ever were.
+    pub cache_reset: Option<CacheReset>,
+    /// Resident pages kept from earlier frames and not drawn.
+    pub pages_cached: u64,
+    /// Resident pages that got a physical page this frame (drawn).
+    pub pages_new: u64,
+    /// Static pages drawn this frame (new or invalidated).
+    pub pages_rendered_static: u64,
+    /// Pages held though no pixel asked for them (kept for `keep_frames`).
+    pub pages_kept: u64,
+    /// Kept pages evicted, oldest first, to make room for new ones.
+    pub pages_evicted: u64,
+    /// Physical pages in use (resident and kept).
+    pub pool_used: u64,
 }
 
 /// A frame's VSM counts and the levels' cull codes on their way back (readback buffers).
@@ -57,6 +74,12 @@ impl VsmReadback {
         stats.pages_requested = u64::from(words[0]);
         stats.pages_allocated = u64::from(words[1]);
         stats.pages_starved = u64::from(words[2]);
+        stats.pages_new = u64::from(words[6]);
+        stats.pages_rendered_static = u64::from(words[7]);
+        stats.pages_cached = u64::from(words[1].saturating_sub(words[7]));
+        stats.pages_evicted = u64::from(words[8]);
+        stats.pages_kept = u64::from(words[9]);
+        stats.pool_used = u64::from(words[10]);
         stats.shadow_meshlets = match self.codes {
             Some((buffer, count)) if count > 0 => words_of(device, buffer, count)?
                 .iter()

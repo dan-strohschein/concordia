@@ -191,10 +191,9 @@ bool on_dirty_pages(CullView view, float3 c, float r) {
     int2 lo = clamp(int2(floor((t - rt) / float(VSM_PAGE_TEXELS))), int2(0, 0), int2(last, last));
     int2 hi = clamp(int2(floor((t + rt) / float(VSM_PAGE_TEXELS))), int2(0, 0), int2(last, last));
     if (any(hi - lo >= 8)) { return true; }
-    int2 origin = vsm_origin(ids.y, ids.z);
     for (int y = lo.y; y <= hi.y; y++) {
         for (int x = lo.x; x <= hi.x; x++) {
-            uint entry = g_buffers.ptr[ids.x][vsm_slot(ids.z, origin + int2(x, y))];
+            uint entry = g_buffers.ptr[ids.x][vsm_page_slot(ids.y, ids.z, int2(x, y))];
             if ((entry & VSM_DIRTY) != 0) { return true; }
         }
     }
@@ -557,7 +556,7 @@ PageVertex meshlet_vsm_page_vs(uint vid : SV_VertexID, uint iid : SV_InstanceID,
         return o;
     }
     float3 p = read3(at.row_a.y, mesh_vertex(at, local_corner(at, vid)));
-    o.position = vsm_to_page(cascade_xform(frame, 1 + pair.y, xform(inst.model, float4(p, 1.0))), pair.z);
+    o.position = vsm_page_position(frame.vsm.y, frame.vsm.x - 1, pair.y, pair.z, xform(inst.model, float4(p, 1.0)).xyz);
     return o;
 }
 

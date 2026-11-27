@@ -186,3 +186,134 @@ fn the_pool_is_split_into_64_mb_chunks() {
         "page indices must fit 16 bits"
     );
 }
+
+/// The in-level page (row 0 at the top, as the virtual texels run) under `world`.
+fn page_under(
+    level: &concordia_render::vsm::ClipLevel,
+    world: Vec3,
+) -> concordia_core::math::IVec2 {
+    let clip = level.view_proj * world.extend(1.0);
+    let t = Vec2::new(clip.x * 0.5 + 0.5, 0.5 - clip.y * 0.5) * VIRTUAL_TEXELS as f32;
+    (t / PAGE_TEXELS as f32).floor().as_ivec2()
+}
+
+/// A world point keeps its world page (the table's key, M4 4.7b) while its level scrolls in both
+/// directions: the key doesn't depend on where the level sits.
+#[test]
+fn world_pages_stay_put_when_a_level_scrolls() {
+    let light = Vec3::new(-0.3, -1.0, 0.2);
+    let a = Clipmap::fit(light, Vec3::new(10.0, 2.0, -20.0), 6, (-50.0, 50.0));
+    let b = Clipmap::fit(light, Vec3::new(10.7, 2.0, -20.9), 6, (-50.0, 50.0));
+    let mut moved = 0;
+    for (la, lb) in a.levels.iter().zip(&b.levels) {
+        moved += i32::from(la.origin_page() != lb.origin_page());
+        for p in [Vec3::new(10.2, 0.0, -20.1), Vec3::new(9.5, 1.0, -19.4)] {
+            let (pa, pb) = (page_under(la, p), page_under(lb, p));
+            assert_eq!(
+                la.world_page(pa),
+                lb.world_page(pb),
+                "level {} at {p}",
+                la.index
+            );
+        }
+    }
+    assert!(moved > 0, "some level scrolled");
+}
+
+/// A level that scrolls from `a` to `b` releases exactly the slots whose world page left it.
+#[test]
+fn scroll_releases_only_wrapped_slots() {
+    use concordia_render::vsm::slot_page;
+    let side = PAGES_PER_SIDE as i32;
+    for (a, b) in [
+        ([3, -7], [5, -10]),
+        ([0, 0], [0, 0]),
+        ([-200, 40], [-60, 41]),
+    ] {
+        let inside = |o: [i32; 2], p: [i32; 2]| (0..2).all(|i| (o[i]..o[i] + side).contains(&p[i]));
+        for y in 0..PAGES_PER_SIDE {
+            for x in 0..PAGES_PER_SIDE {
+                let (pa, pb) = (slot_page(a, [x, y]), slot_page(b, [x, y]));
+                assert!(inside(a, pa) && inside(b, pb), "slot {x},{y}");
+                assert_eq!(table_slot(0, pa), table_slot(0, [x as i32, y as i32]));
+                assert_eq!(pa != pb, !inside(b, pa), "slot {x},{y} from {a:?} to {b:?}");
+            }
+        }
+    }
+}
+
+/// `[render.vsm] keep_frames` (0..=255) and `cache` parse with their defaults and reject bad values.
+#[test]
+fn keep_frames_and_cache_parse_and_reject_out_of_range() {
+    let s = VsmSettings::default();
+    assert_eq!((s.keep_frames, s.cache), (60, false));
+    let parsed: VsmSettings = toml::from_str("keep_frames = 0\ncache = true").unwrap();
+    assert_eq!((parsed.keep_frames, parsed.cache), (0, true));
+    let err = toml::from_str::<VsmSettings>("keep_frames = 300").unwrap_err();
+    assert!(err.to_string().contains("keep_frames"), "{err}");
+    assert!(toml::from_str::<VsmSettings>("cache = 1").is_err());
+}
+
+/// What clears the cache (M4 4.7b Q5, Q7): the first frame, a new view, a new sun direction, levels,
+/// pool or depth range, the cache switched off, or an explicit reset; nothing else (the sun's colour
+/// and the receiver biases never reach the key).
+#[test]
+fn sun_and_settings_changes_that_clear_the_cache() {
+    use concordia_render::vsm::{CacheKey, CacheReset, CacheState};
+    let key = CacheKey {
+        view: 1,
+        light_dir: Vec3::new(-0.3, -1.0, 0.2),
+        levels: 16,
+        pool_pages: 4096,
+        depth: (-64.0, 64.0),
+    };
+    let mut state = CacheState::default();
+    assert_eq!(state.begin(key, true), Some(CacheReset::First));
+    assert_eq!(state.begin(key, true), None, "same key");
+    let changes = [
+        (CacheKey { view: 2, ..key }, CacheReset::View),
+        (
+            CacheKey {
+                light_dir: Vec3::new(-0.3, -1.0, 0.21),
+                ..key
+            },
+            CacheReset::Light,
+        ),
+        (CacheKey { levels: 12, ..key }, CacheReset::Settings),
+        (
+            CacheKey {
+                pool_pages: 512,
+                ..key
+            },
+            CacheReset::Settings,
+        ),
+        (
+            CacheKey {
+                depth: (-128.0, 128.0),
+                ..key
+            },
+            CacheReset::DepthRange,
+        ),
+    ];
+    for (changed, why) in changes {
+        let mut s = CacheState::default();
+        s.begin(key, true);
+        assert_eq!(s.begin(changed, true), Some(why), "{changed:?}");
+        assert_eq!(s.begin(changed, true), None);
+    }
+    assert_eq!(
+        state.begin(key, false),
+        Some(CacheReset::Off),
+        "uncached: every frame"
+    );
+    assert_eq!(state.begin(key, false), Some(CacheReset::Off));
+    assert_eq!(
+        state.begin(key, true),
+        Some(CacheReset::Off),
+        "first cached frame after off"
+    );
+    assert_eq!(state.begin(key, true), None);
+    state.reset(CacheReset::Scene);
+    assert_eq!(state.begin(key, true), Some(CacheReset::Scene));
+    assert_eq!(state.last_reset(), Some(CacheReset::Scene));
+}

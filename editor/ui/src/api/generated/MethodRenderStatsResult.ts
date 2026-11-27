@@ -15,6 +15,10 @@ export type PassTiming = "off" | "unsupported" | "measured";
  */
 export type RasterPath = "forward" | "compute_indirect" | "mesh_shader";
 /**
+ * Why the cache was cleared.
+ */
+export type CacheReset = "First" | "View" | "Light" | "Settings" | "DepthRange" | "Off" | "Scene" | "Technique";
+/**
  * The technique asked for (`[render] shadows` or `render.set_shadows`).
  */
 export type ShadowTechnique = "csm" | "vsm";
@@ -255,6 +259,14 @@ export interface PassTime {
  */
 export interface ShadowStats {
   /**
+   * Whether pages are kept across frames (`[render.vsm] cache`, M4 4.7b).
+   */
+  cache: boolean;
+  /**
+   * Why kept pages were last thrown away, if they ever were.
+   */
+  cache_reset?: null | CacheReset;
+  /**
    * Clipmap levels.
    */
   levels: number;
@@ -267,9 +279,29 @@ export interface ShadowStats {
    */
   page_draws_dropped: number;
   /**
-   * Requested pages that got a physical page (and were drawn).
+   * Requested pages that hold a physical page this frame (resident).
    */
   pages_allocated: number;
+  /**
+   * Resident pages kept from earlier frames and not drawn.
+   */
+  pages_cached: number;
+  /**
+   * Kept pages evicted, oldest first, to make room for new ones.
+   */
+  pages_evicted: number;
+  /**
+   * Pages held though no pixel asked for them (kept for `keep_frames`).
+   */
+  pages_kept: number;
+  /**
+   * Resident pages that got a physical page this frame (drawn).
+   */
+  pages_new: number;
+  /**
+   * Static pages drawn this frame (new or invalidated).
+   */
+  pages_rendered_static: number;
   /**
    * Pages some pixel asked for.
    */
@@ -282,6 +314,10 @@ export interface ShadowStats {
    * Physical pages in the pool (virtual shadow maps).
    */
   pool_pages: number;
+  /**
+   * Physical pages in use (resident and kept).
+   */
+  pool_used: number;
   /**
    * Why `vsm` fell back to `csm`, when it did.
    */

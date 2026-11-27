@@ -1,6 +1,8 @@
-//! The GPU side of virtual shadow maps' pages (M4 4.7a): the physical pool, and one frame's page
-//! work (`vsm_page.slang`): zero the table, mark from the camera's depth, flag the requests in
-//! allocation order (coarse levels first), scan them, allocate, count, and clear the pages to draw.
+//! The GPU side of virtual shadow maps' pages (M4 4.7a, 4.7b): the physical pool, the persistent
+//! page store, and one frame's page work (`vsm_page.slang`): age the kept pages (releasing slots
+//! scrolled out), mark from the camera's depth, decide residency coarse levels first, release the
+//! starved and the old, evict the oldest when new pages need room, allocate from the free list,
+//! list the pages to draw and clear them.
 
 use std::num::NonZeroU64;
 
@@ -17,19 +19,60 @@ use crate::scan::{Scan, ScanPipelines, compute_barrier};
 
 /// Table entries per level.
 const LEVEL_ENTRIES: u32 = PAGES_PER_SIDE * PAGES_PER_SIDE;
-/// Words of the counts buffer: requested, allocated, starved, then the clear's dispatch.
-pub(crate) const COUNT_WORDS: u32 = 6;
+/// Words of the eviction histogram (one per age) and its result (threshold, quota, deficit).
+const HISTOGRAM_WORDS: u32 = 256 + 4;
+/// Words of the counts buffer: requested, resident, starved, the clear's dispatch (3 words), new,
+/// drawn, evicted, kept, pool used.
+pub(crate) const COUNT_WORDS: u32 = 11;
 
 /// The page work's compute pipelines.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct VsmPipelines {
     pub(crate) zero: Pipeline,
+    pub(crate) age: Pipeline,
     pub(crate) mark: Pipeline,
     pub(crate) flags: Pipeline,
+    pub(crate) update: Pipeline,
+    pub(crate) free_flags: Pipeline,
+    pub(crate) age_histogram: Pipeline,
+    pub(crate) threshold: Pipeline,
+    pub(crate) age_flags: Pipeline,
+    pub(crate) evict: Pipeline,
+    pub(crate) free_list: Pipeline,
     pub(crate) allocate: Pipeline,
+    pub(crate) dirty_flags: Pipeline,
+    pub(crate) draw_list: Pipeline,
     pub(crate) counts: Pipeline,
     pub(crate) clear: Pipeline,
     pub(crate) scan: ScanPipelines,
+}
+
+impl VsmPipelines {
+    /// Every page-work kernel of `vsm_page.slang`, made by `kernel`, with the shared scan.
+    pub(crate) fn create(
+        mut kernel: impl FnMut(&str) -> Result<Pipeline, RenderError>,
+        scan: ScanPipelines,
+    ) -> Result<Self, RenderError> {
+        Ok(Self {
+            zero: kernel("vsm_zero")?,
+            age: kernel("vsm_age")?,
+            mark: kernel("vsm_mark")?,
+            flags: kernel("vsm_request_flags")?,
+            update: kernel("vsm_update")?,
+            free_flags: kernel("vsm_free_flags")?,
+            age_histogram: kernel("vsm_age_histogram")?,
+            threshold: kernel("vsm_evict_threshold")?,
+            age_flags: kernel("vsm_age_flags")?,
+            evict: kernel("vsm_evict")?,
+            free_list: kernel("vsm_free_list")?,
+            allocate: kernel("vsm_allocate")?,
+            dirty_flags: kernel("vsm_dirty_flags")?,
+            draw_list: kernel("vsm_draw_list")?,
+            counts: kernel("vsm_counts")?,
+            clear: kernel("vsm_clear")?,
+            scan,
+        })
+    }
 }
 
 /// The physical page pool: persistent buffers of at most 1024 pages, re-made when its size changes.
@@ -71,30 +114,117 @@ impl VsmPool {
     }
 }
 
+/// The pages kept across frames (M4 4.7b): the page table and the physical pages' owners (entry
+/// + 1, 0 free), re-made (and so cleared) when the levels or the pool change.
+#[derive(Default)]
+pub(crate) struct PageStore {
+    shape: Option<(u32, u32)>,
+    buffers: Option<(Buffer, Buffer)>,
+}
+
+impl PageStore {
+    /// The table and owner buffers for `levels` levels over `pool` pages, and whether they are new
+    /// (their contents undefined until cleared).
+    pub(crate) fn ensure(
+        &mut self,
+        device: &dyn Device,
+        (levels, pool): (u32, u32),
+    ) -> Result<((Buffer, Buffer), bool), RenderError> {
+        if let (Some(b), true) = (self.buffers, self.shape == Some((levels, pool))) {
+            return Ok((b, false));
+        }
+        self.destroy(device);
+        let make = |words: u32, label: &str| {
+            device.create_buffer(&BufferDesc {
+                size: NonZeroU64::new(u64::from(words) * 4).unwrap_or(NonZeroU64::MIN),
+                usage: page_usage(),
+                memory: MemoryLocation::GpuOnly,
+                label: label.into(),
+            })
+        };
+        let table = make(levels * LEVEL_ENTRIES, "vsm table")?;
+        let pages = make(pool, "vsm page owners")?;
+        self.buffers = Some((table, pages));
+        self.shape = Some((levels, pool));
+        Ok(((table, pages), true))
+    }
+
+    /// Frees the buffers.
+    pub(crate) fn destroy(&mut self, device: &dyn Device) {
+        if let Some((t, p)) = self.buffers.take() {
+            device.destroy_buffer(t);
+            device.destroy_buffer(p);
+        }
+        self.shape = None;
+    }
+}
+
+fn page_usage() -> BufferUsage {
+    BufferUsage::STORAGE
+        | BufferUsage::BINDLESS
+        | BufferUsage::COPY_SRC
+        | BufferUsage::COPY_DST
+        | BufferUsage::INDIRECT
+}
+
 /// One frame's page buffers and their recorded work.
 #[derive(Debug, Clone)]
 pub(crate) struct PageWork {
     pipelines: VsmPipelines,
     levels: u32,
     pool: u32,
-    /// The page table (levels × 128² entries).
+    keep_frames: u32,
+    /// The page table (levels × 128² entries; persistent).
     pub(crate) table: Buffer,
-    requests: Buffer,
-    /// Physical page → its table entry.
+    /// Physical page → its table entry + 1 (0 free; persistent).
     pub(crate) pages: Buffer,
     /// [`COUNT_WORDS`] words.
     pub(crate) counts: Buffer,
-    scan: Scan,
+    /// The physical pages to draw this frame, in allocation order.
+    pub(crate) list: Buffer,
+    bufs: Bufs,
+    scans: Scans,
     index: Indices,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Bufs {
+    requests: Buffer,
+    needs: Buffer,
+    free: Buffer,
+    histogram: Buffer,
+    eq: Buffer,
+    dirty: Buffer,
+    free_list: Buffer,
+}
+
+#[derive(Debug, Clone)]
+struct Scans {
+    requests: Scan,
+    needs: Scan,
+    free: Scan,
+    eq: Scan,
+    dirty: Scan,
 }
 
 #[derive(Debug, Clone, Copy)]
 struct Indices {
     table: u32,
-    requests: u32,
-    scanned: u32,
     pages: u32,
     counts: u32,
+    list: u32,
+    requests: u32,
+    scanned: u32,
+    needs: u32,
+    need_scan: u32,
+    free: u32,
+    free_scan: u32,
+    free_list: u32,
+    histogram: u32,
+    eq: u32,
+    eq_scan: u32,
+    dirty: u32,
+    dirty_scan: u32,
 }
 
 fn storage(
@@ -107,11 +237,7 @@ fn storage(
         device,
         &BufferDesc {
             size: NonZeroU64::new(u64::from(words) * 4).unwrap_or(NonZeroU64::MIN),
-            usage: BufferUsage::STORAGE
-                | BufferUsage::BINDLESS
-                | BufferUsage::COPY_SRC
-                | BufferUsage::COPY_DST
-                | BufferUsage::INDIRECT,
+            usage: page_usage(),
             memory: MemoryLocation::GpuOnly,
             label: label.into(),
         },
@@ -129,48 +255,96 @@ fn dispatch(count: u32) -> Command {
     }
 }
 
+/// What a frame's page work keeps and sizes: the persistent table and owners, the levels, the pool
+/// and `keep_frames`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct WorkShape {
+    pub(crate) store: (Buffer, Buffer),
+    pub(crate) levels: u32,
+    pub(crate) pool: u32,
+    pub(crate) keep_frames: u32,
+}
+
 impl PageWork {
-    /// Allocates a frame's table, request, scan, page and count buffers (returned in `keep`) for
-    /// `levels` levels over a pool of `pool` pages.
+    /// Allocates a frame's request, scan, free, eviction, list and count buffers (returned in
+    /// `keep`) around the persistent `shape.store`.
     pub(crate) fn prepare(
         device: &dyn Device,
         up: &Uploads,
         pipelines: VsmPipelines,
-        (levels, pool): (u32, u32),
+        shape: WorkShape,
         keep: &mut Vec<Buffer>,
     ) -> Result<Self, RenderError> {
+        let (levels, pool) = (shape.levels, shape.pool);
         let entries = levels * LEVEL_ENTRIES;
-        let table = storage(device, up, entries, "vsm table")?;
-        let requests = storage(device, up, entries, "vsm requests")?;
-        let scanned = storage(device, up, entries + 1, "vsm request scan")?;
-        let pages = storage(device, up, pool, "vsm pages")?;
-        let counts = storage(device, up, COUNT_WORDS, "vsm counts")?;
-        keep.extend([table, requests, scanned, pages, counts]);
-        let scan = Scan::prepare(
-            device,
-            up,
-            pipelines.scan,
-            (requests, scanned),
-            entries,
-            keep,
-        )?;
+        let mut make = |words: u32, label: &str| -> Result<Buffer, RenderError> {
+            let b = storage(device, up, words, label)?;
+            keep.push(b);
+            Ok(b)
+        };
+        let requests = make(entries, "vsm requests")?;
+        let scanned = make(entries + 1, "vsm request scan")?;
+        let needs = make(entries, "vsm needs")?;
+        let need_scan = make(entries + 1, "vsm need scan")?;
+        let free = make(pool, "vsm free")?;
+        let free_scan = make(pool + 1, "vsm free scan")?;
+        let free_list = make(pool, "vsm free list")?;
+        let histogram = make(HISTOGRAM_WORDS, "vsm age histogram")?;
+        let eq = make(pool, "vsm evict ties")?;
+        let eq_scan = make(pool + 1, "vsm evict tie scan")?;
+        let dirty = make(entries, "vsm dirty")?;
+        let dirty_scan = make(entries + 1, "vsm dirty scan")?;
+        let list = make(pool, "vsm draw list")?;
+        let counts = make(COUNT_WORDS, "vsm counts")?;
+        let scan = |(i, o), n, keep: &mut Vec<Buffer>| {
+            Scan::prepare(device, up, pipelines.scan, (i, o), n, keep)
+        };
+        let scans = Scans {
+            requests: scan((requests, scanned), entries, keep)?,
+            needs: scan((needs, need_scan), entries, keep)?,
+            free: scan((free, free_scan), pool, keep)?,
+            eq: scan((eq, eq_scan), pool, keep)?,
+            dirty: scan((dirty, dirty_scan), entries, keep)?,
+        };
         let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
+        let (table, pages) = shape.store;
         let index = Indices {
             table: index(table)?,
-            requests: index(requests)?,
-            scanned: index(scanned)?,
             pages: index(pages)?,
             counts: index(counts)?,
+            list: index(list)?,
+            requests: index(requests)?,
+            scanned: index(scanned)?,
+            needs: index(needs)?,
+            need_scan: index(need_scan)?,
+            free: index(free)?,
+            free_scan: index(free_scan)?,
+            free_list: index(free_list)?,
+            histogram: index(histogram)?,
+            eq: index(eq)?,
+            eq_scan: index(eq_scan)?,
+            dirty: index(dirty)?,
+            dirty_scan: index(dirty_scan)?,
         };
         Ok(Self {
             pipelines,
             levels,
             pool,
+            keep_frames: shape.keep_frames,
             table,
-            requests,
             pages,
             counts,
-            scan,
+            list,
+            bufs: Bufs {
+                requests,
+                needs,
+                free,
+                histogram,
+                eq,
+                dirty,
+                free_list,
+            },
+            scans,
             index,
         })
     }
@@ -179,20 +353,39 @@ impl PageWork {
         self.levels * LEVEL_ENTRIES
     }
 
-    /// Zeroes the table, then marks it from depth texture `depth` (bindless, `size` pixels) with
-    /// parameter block `params` and depth views `views`.
+    /// Starts the frame: clears the store when `reset`, then ages the kept pages and releases slots
+    /// scrolled out of their level (origins in parameter block `params`).
+    pub(crate) fn begin(&self, reset: bool, params: u32) -> Vec<Command> {
+        let (p, i) = (&self.pipelines, &self.index);
+        let mut out = Vec::new();
+        if reset {
+            out.extend([
+                Command::SetPipeline(p.zero),
+                words([i.table, self.entries()]),
+                dispatch(self.entries()),
+                words([i.pages, self.pool]),
+                dispatch(self.pool),
+                compute_barrier(&[self.table, self.pages]),
+            ]);
+        }
+        out.extend([
+            Command::SetPipeline(p.age),
+            words([i.table, i.pages, params, self.levels]),
+            dispatch(self.entries()),
+            compute_barrier(&[self.table, self.pages]),
+        ]);
+        out
+    }
+
+    /// Marks the table from depth texture `depth` (bindless, `size` pixels) with parameter block
+    /// `params` and depth views `views`.
     pub(crate) fn mark(
         &self,
         (depth, size): (u32, [u32; 2]),
         (params, views): (u32, u32),
     ) -> Vec<Command> {
-        let p = &self.pipelines;
         vec![
-            Command::SetPipeline(p.zero),
-            words([self.index.table, self.entries()]),
-            dispatch(self.entries()),
-            compute_barrier(&[self.table]),
-            Command::SetPipeline(p.mark),
+            Command::SetPipeline(self.pipelines.mark),
             words([depth, params, self.index.table, views, size[0], size[1]]),
             Command::Dispatch {
                 groups: [size[0].div_ceil(8), size[1].div_ceil(8), 1],
@@ -201,37 +394,118 @@ impl PageWork {
         ]
     }
 
-    /// Flags, scans and allocates the requests, then writes the counts.
+    /// Decides residency, releases, evicts and allocates, lists the pages to draw and writes the
+    /// counts.
     pub(crate) fn allocate(&self) -> Vec<Command> {
-        let p = &self.pipelines;
-        let i = &self.index;
+        let (p, i, b) = (&self.pipelines, &self.index, &self.bufs);
+        let (e, n) = (self.entries(), self.pool);
         let mut out = vec![
             Command::SetPipeline(p.flags),
             words([i.table, i.requests, self.levels]),
-            dispatch(self.entries()),
-            compute_barrier(&[self.requests]),
+            dispatch(e),
+            compute_barrier(&[b.requests]),
         ];
-        out.extend_from_slice(self.scan.commands());
+        out.extend_from_slice(self.scans.requests.commands());
         out.extend([
-            Command::SetPipeline(p.allocate),
+            Command::SetPipeline(p.update),
             words([
                 i.table,
                 i.requests,
                 i.scanned,
+                i.needs,
                 i.pages,
                 self.levels,
-                self.pool,
+                n,
+                self.keep_frames,
             ]),
-            dispatch(self.entries()),
-            Command::SetPipeline(p.counts),
-            words([i.scanned, i.counts, self.entries(), self.pool]),
+            dispatch(e),
+            compute_barrier(&[self.table, self.pages, b.needs]),
+        ]);
+        out.extend_from_slice(self.scans.needs.commands());
+        out.extend(self.free_scan());
+        out.extend([
+            Command::SetPipeline(p.zero),
+            words([i.histogram, HISTOGRAM_WORDS]),
+            dispatch(HISTOGRAM_WORDS),
+            compute_barrier(&[b.histogram]),
+            Command::SetPipeline(p.age_histogram),
+            words([i.pages, i.table, i.histogram, n]),
+            dispatch(n),
+            compute_barrier(&[b.histogram]),
+            Command::SetPipeline(p.threshold),
+            words([i.histogram, i.need_scan, e, i.free_scan, n]),
             Command::Dispatch { groups: [1, 1, 1] },
-            indirect_barrier(&[self.table, self.pages, self.counts]),
+            compute_barrier(&[b.histogram]),
+            Command::SetPipeline(p.age_flags),
+            words([i.pages, i.table, i.histogram, i.eq, n]),
+            dispatch(n),
+            compute_barrier(&[b.eq]),
+        ]);
+        out.extend_from_slice(self.scans.eq.commands());
+        out.extend([
+            Command::SetPipeline(p.evict),
+            words([i.pages, i.table, i.histogram, i.eq_scan, n]),
+            dispatch(n),
+            compute_barrier(&[self.table, self.pages]),
+        ]);
+        out.extend(self.free_scan());
+        out.extend([
+            Command::SetPipeline(p.free_list),
+            words([i.free, i.free_scan, i.free_list, n]),
+            dispatch(n),
+            compute_barrier(&[b.free_list]),
+            Command::SetPipeline(p.allocate),
+            words([
+                i.table,
+                i.needs,
+                i.need_scan,
+                i.free_list,
+                i.pages,
+                self.levels,
+            ]),
+            dispatch(e),
+            compute_barrier(&[self.table, self.pages]),
+            Command::SetPipeline(p.dirty_flags),
+            words([i.table, i.dirty, self.levels]),
+            dispatch(e),
+            compute_barrier(&[b.dirty]),
+        ]);
+        out.extend_from_slice(self.scans.dirty.commands());
+        out.extend([
+            Command::SetPipeline(p.draw_list),
+            words([i.table, i.dirty, i.dirty_scan, i.list, self.levels]),
+            dispatch(e),
+            Command::SetPipeline(p.counts),
+            words([
+                i.scanned,
+                i.counts,
+                e,
+                n,
+                i.need_scan,
+                i.dirty_scan,
+                i.histogram,
+                i.free_scan,
+            ]),
+            Command::Dispatch { groups: [1, 1, 1] },
+            indirect_barrier(&[self.table, self.pages, self.counts, self.list]),
         ]);
         out
     }
 
-    /// Clears the allocated pages of the pool described by `params` (one group per page).
+    /// The free flags of the pool's pages and their scan.
+    fn free_scan(&self) -> Vec<Command> {
+        let i = &self.index;
+        let mut out = vec![
+            Command::SetPipeline(self.pipelines.free_flags),
+            words([i.pages, i.free, self.pool]),
+            dispatch(self.pool),
+            compute_barrier(&[self.bufs.free]),
+        ];
+        out.extend_from_slice(self.scans.free.commands());
+        out
+    }
+
+    /// Clears the listed pages of the pool described by `params` (one group per page).
     pub(crate) fn clear(&self, params: u32, pool: &[Buffer]) -> Vec<Command> {
         let after = Access {
             stages: Stages::FRAGMENT | Stages::COMPUTE,
@@ -245,7 +519,7 @@ impl PageWork {
         };
         vec![
             Command::SetPipeline(self.pipelines.clear),
-            words([params]),
+            words([params, self.index.list]),
             Command::DispatchIndirect {
                 buffer: self.counts,
                 offset: 12,
@@ -292,9 +566,9 @@ pub(crate) fn indirect_barrier(buffers: &[Buffer]) -> Command {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
 
-    use concordia_core::math::{Mat4, Vec3, Vec4};
+    use concordia_core::math::{IVec2, Mat4, Vec3, Vec4};
     use concordia_render_types::Projection;
 
     use super::*;
@@ -306,19 +580,15 @@ mod tests {
     const H: u32 = 48;
 
     fn pipelines(device: &dyn Device) -> VsmPipelines {
-        let k = |entry| test_gpu::compute(device, "vsm_page.slang", entry);
-        VsmPipelines {
-            zero: k("vsm_zero"),
-            mark: k("vsm_mark"),
-            flags: k("vsm_request_flags"),
-            allocate: k("vsm_allocate"),
-            counts: k("vsm_counts"),
-            clear: k("vsm_clear"),
-            scan: ScanPipelines {
-                groups: test_gpu::compute(device, "scan.slang", "scan_groups"),
-                add: test_gpu::compute(device, "scan.slang", "scan_add"),
-            },
-        }
+        let scan = ScanPipelines {
+            groups: test_gpu::compute(device, "scan.slang", "scan_groups"),
+            add: test_gpu::compute(device, "scan.slang", "scan_add"),
+        };
+        VsmPipelines::create(
+            |entry| Ok(test_gpu::compute(device, "vsm_page.slang", entry)),
+            scan,
+        )
+        .unwrap()
     }
 
     /// Depth of pixel `p`: 0 (sky) every 7th, else `(1 + j/1024) · 2^-e`, exact in half floats.
@@ -415,7 +685,7 @@ mod tests {
                             if px < 0 || py < 0 || px >= 128 || py >= 128 {
                                 continue;
                             }
-                            let page = l.origin_page() + concordia_core::math::IVec2::new(px, py);
+                            let page = l.world_page(concordia_core::math::IVec2::new(px, py));
                             out.insert(table_slot(level, page.into()));
                         }
                     }
@@ -463,21 +733,28 @@ mod tests {
             pcf_radius: 1,
             chunks: &[],
             inv_view_proj: s.camera.inverse(),
+            previous: &origins(&s.clipmap),
         });
         let params = up.buffer(device, &params, "params").unwrap();
         let views = up
             .buffer(device, &depth_views(&s.camera, &s.clipmap), "views")
             .unwrap();
         let levels = u32::from(s.settings.levels);
-        let work =
-            PageWork::prepare(device, &up, pipelines(device), (levels, 4096), &mut keep).unwrap();
+        let mut store = PageStore::default();
+        let (store_bufs, _) = store.ensure(device, (levels, 4096)).unwrap();
+        let shape = WorkShape {
+            store: store_bufs,
+            levels,
+            pool: 4096,
+            keep_frames: 60,
+        };
+        let work = PageWork::prepare(device, &up, pipelines(device), shape, &mut keep).unwrap();
         up.flush(device).unwrap();
         let index = |b: Buffer| device.buffer_index(b).unwrap().0;
         let depth = device.texture_index(depth).unwrap().0;
-        run_commands(
-            device,
-            work.mark((depth, [W, H]), (index(params), index(views))),
-        );
+        let mut commands = work.begin(true, index(params));
+        commands.extend(work.mark((depth, [W, H]), (index(params), index(views))));
+        run_commands(device, commands);
         let table = download(device, work.table, u64::from(levels * LEVEL_ENTRIES) * 4);
         let got: BTreeSet<u32> = table
             .iter()
@@ -499,55 +776,318 @@ mod tests {
         assert_eq!(got, want, "requested pages");
     }
 
-    /// Requests are allocated coarse levels first, then by slot, while the pool lasts; the rest
-    /// stay requested without a page, the counts say so, and two runs agree exactly.
+    /// Each level's origin in `clipmap`.
+    fn origins(clipmap: &Clipmap) -> Vec<IVec2> {
+        clipmap.levels.iter().map(|l| l.origin_page()).collect()
+    }
+
+    /// Page work run frame by frame against one store, with requests written straight into the
+    /// table after `begin` (in place of marking).
+    struct Frames<'d> {
+        device: &'d dyn Device,
+        store: PageStore,
+        levels: u32,
+        pool: u32,
+        keep_frames: u32,
+        clipmap: Clipmap,
+        previous: Vec<IVec2>,
+    }
+
+    /// One frame's store and outputs, read back.
+    #[derive(Debug, PartialEq)]
+    struct Out {
+        table: Vec<u32>,
+        pages: Vec<u32>,
+        counts: Vec<u32>,
+        list: Vec<u32>,
+    }
+
+    impl Out {
+        fn entry(&self, e: u32) -> PageEntry {
+            PageEntry::from_bits(self.table[e as usize])
+        }
+
+        /// The entries holding a page, with it.
+        fn held(&self) -> BTreeMap<u32, u16> {
+            (0..self.table.len() as u32)
+                .filter_map(|e| self.entry(e).physical().map(|p| (e, p)))
+                .collect()
+        }
+
+        /// The resident entries (requested, with a page).
+        fn resident(&self) -> BTreeSet<u32> {
+            self.held()
+                .into_keys()
+                .filter(|e| self.entry(*e).flags().contains(PageFlags::REQUESTED))
+                .collect()
+        }
+    }
+
+    impl<'d> Frames<'d> {
+        fn new(device: &'d dyn Device, levels: u32, pool: u32, keep_frames: u32) -> Self {
+            let clipmap = Clipmap::fit(
+                Vec3::new(-0.3, -1.0, 0.2),
+                Vec3::new(1.0, 2.0, 3.0),
+                levels as u8,
+                (-50.0, 50.0),
+            );
+            Self {
+                device,
+                store: PageStore::default(),
+                levels,
+                pool,
+                keep_frames,
+                previous: origins(&clipmap),
+                clipmap,
+            }
+        }
+
+        /// Moves the camera to `eye` for the next frame.
+        fn move_to(&mut self, eye: Vec3) {
+            self.clipmap = Clipmap::fit(
+                Vec3::new(-0.3, -1.0, 0.2),
+                eye,
+                self.levels as u8,
+                (-50.0, 50.0),
+            );
+        }
+
+        fn frame(&mut self, reset: bool, requested: &[u32]) -> Out {
+            let device = self.device;
+            let settings = VsmSettings {
+                levels: self.levels as u8,
+                pool_pages: self.pool,
+                ..VsmSettings::default()
+            };
+            let mut up = Uploads::new();
+            let mut keep = Vec::new();
+            let params = params_rows(&ParamsIn {
+                settings: &settings,
+                clipmap: &self.clipmap,
+                eye: Vec3::ZERO,
+                footprint: Footprint::Fixed(0.01),
+                pcf_radius: 1,
+                chunks: &[],
+                inv_view_proj: Mat4::IDENTITY,
+                previous: &self.previous,
+            });
+            self.previous = origins(&self.clipmap);
+            let params = up.buffer(device, &params, "params").unwrap();
+            let (store, fresh) = self.store.ensure(device, (self.levels, self.pool)).unwrap();
+            let shape = WorkShape {
+                store,
+                levels: self.levels,
+                pool: self.pool,
+                keep_frames: self.keep_frames,
+            };
+            let work = PageWork::prepare(device, &up, pipelines(device), shape, &mut keep).unwrap();
+            up.flush(device).unwrap();
+            let params = device.buffer_index(params).unwrap().0;
+            run_commands(device, work.begin(reset || fresh, params));
+            let entries = self.levels * LEVEL_ENTRIES;
+            let mut table = download(device, work.table, u64::from(entries) * 4);
+            let flag = PageEntry::new(None, PageFlags::REQUESTED, 0).bits();
+            requested.iter().for_each(|e| table[*e as usize] |= flag);
+            let bytes: Vec<u8> = table.iter().flat_map(|w| w.to_le_bytes()).collect();
+            let mut up = Uploads::new();
+            up.write_into(device, work.table, &bytes).unwrap();
+            up.flush(device).unwrap();
+            run_commands(device, work.allocate());
+            let pool = u64::from(self.pool) * 4;
+            Out {
+                table: download(device, work.table, u64::from(entries) * 4),
+                pages: download(device, work.pages, pool),
+                counts: download(device, work.counts, u64::from(COUNT_WORDS) * 4),
+                list: download(device, work.list, pool),
+            }
+        }
+    }
+
+    /// `count` entries of `level`, spread over its slots.
+    fn spread(level: u32, count: u32, salt: u32) -> Vec<u32> {
+        (0..count)
+            .map(|i| level * LEVEL_ENTRIES + (i * 397 + salt * 7919) % LEVEL_ENTRIES)
+            .collect()
+    }
+
+    /// Allocation order: coarse levels first, then by slot.
+    fn alloc_order(entries: &[u32]) -> Vec<u32> {
+        let mut order = entries.to_vec();
+        order.sort_by_key(|e| (std::cmp::Reverse(e / LEVEL_ENTRIES), *e));
+        order
+    }
+
+    /// On an empty store, requests get pages coarse levels first, then by slot, while the pool
+    /// lasts; the rest stay requested without a page, the counts say so, and two runs agree.
     #[test]
     fn allocation_is_coarse_first_and_deterministic() {
         let Some(device) = test_gpu::device() else {
             return;
         };
         let device = device.as_ref();
-        let levels = 4u32;
-        let mut table = vec![0u32; (levels * LEVEL_ENTRIES) as usize];
-        let mut requested = Vec::new();
-        for (level, count) in [(3u32, 10u32), (2, 20), (1, 30), (0, 40)] {
-            for i in 0..count {
-                let entry = level * LEVEL_ENTRIES + (i * 397) % LEVEL_ENTRIES;
-                table[entry as usize] = PageEntry::new(None, PageFlags::REQUESTED, 0).bits();
-                requested.push(entry);
-            }
-        }
-        let bytes: Vec<u8> = table.iter().flat_map(|w| w.to_le_bytes()).collect();
-        let run = || {
-            let mut up = Uploads::new();
-            let mut keep = Vec::new();
-            let work =
-                PageWork::prepare(device, &up, pipelines(device), (levels, 64), &mut keep).unwrap();
-            up.write_into(device, work.table, &bytes).unwrap();
-            up.flush(device).unwrap();
-            run_commands(device, work.allocate());
-            (
-                download(device, work.table, bytes.len() as u64),
-                download(device, work.pages, 64 * 4),
-                download(device, work.counts, u64::from(COUNT_WORDS) * 4),
-            )
-        };
-        let (table, pages, counts) = run();
-        assert_eq!(counts, [100, 64, 36, 64, 1, 1]);
-        // Allocation order: level 3, 2, 1, then 0, each by slot.
-        let mut order: Vec<u32> = requested.clone();
-        order.sort_by_key(|e| (std::cmp::Reverse(e / LEVEL_ENTRIES), *e));
-        for (k, &entry) in order.iter().enumerate() {
-            let e = PageEntry::from_bits(table[entry as usize]);
+        let requested: Vec<u32> = [(3u32, 10u32), (2, 20), (1, 30), (0, 40)]
+            .iter()
+            .flat_map(|&(l, n)| spread(l, n, 0))
+            .collect();
+        let run = || Frames::new(device, 4, 64, 60).frame(true, &requested);
+        let out = run();
+        // requested, resident, starved, dispatch (drawn, 1, 1), new, drawn, evicted, kept, used
+        assert_eq!(out.counts, [100, 64, 36, 64, 1, 1, 64, 64, 0, 0, 64]);
+        for (k, &entry) in alloc_order(&requested).iter().enumerate() {
+            let e = out.entry(entry);
             match k < 64 {
                 true => {
                     assert_eq!(e.physical(), Some(k as u16), "entry {entry}");
-                    assert_eq!(pages[k], entry);
+                    assert_eq!(out.pages[k], entry + 1);
+                    assert_eq!(out.list[k], k as u32);
                     assert!(e.flags().contains(PageFlags::VALID | PageFlags::DIRTY));
                 }
                 false => assert_eq!(e.physical(), None, "starved entry {entry}"),
             }
         }
-        assert_eq!(run(), (table, pages, counts), "deterministic");
+        assert_eq!(run(), out, "deterministic");
+    }
+
+    /// A page requested again keeps its physical page and isn't drawn; nothing new is allocated.
+    #[test]
+    fn cached_pages_are_kept_and_not_drawn() {
+        let Some(device) = test_gpu::device() else {
+            return;
+        };
+        let mut frames = Frames::new(device.as_ref(), 4, 256, 60);
+        let requested: Vec<u32> = (0..4).flat_map(|l| spread(l, 12, l)).collect();
+        let first = frames.frame(true, &requested);
+        let second = frames.frame(false, &requested);
+        assert_eq!(first.counts[6], 48, "all new");
+        assert_eq!(second.counts[..3], [48, 48, 0]);
+        assert_eq!(
+            (second.counts[3], second.counts[6], second.counts[7]),
+            (0, 0, 0),
+            "nothing new, nothing drawn"
+        );
+        assert_eq!(second.held(), first.held(), "same pages");
+        for e in &requested {
+            let f = second.entry(*e).flags();
+            assert_eq!(f, PageFlags::REQUESTED | PageFlags::VALID, "entry {e}");
+            assert_eq!(second.entry(*e).age(), 0);
+        }
+    }
+
+    /// Unrequested pages are kept, ageing by one a frame, and freed once older than `keep_frames`;
+    /// they are never resident while kept.
+    #[test]
+    fn unrequested_pages_age_and_free_after_keep_frames() {
+        let Some(device) = test_gpu::device() else {
+            return;
+        };
+        let mut frames = Frames::new(device.as_ref(), 2, 64, 2);
+        let requested = spread(1, 10, 3);
+        frames.frame(true, &requested);
+        for age in 1..=2u8 {
+            let out = frames.frame(false, &[]);
+            assert_eq!(out.held().len(), 10, "kept at age {age}");
+            assert!(out.resident().is_empty());
+            assert_eq!((out.counts[9], out.counts[10]), (10, 10), "kept, used");
+            for e in &requested {
+                assert_eq!(out.entry(*e).age(), age);
+                assert_eq!(out.entry(*e).flags(), PageFlags::VALID);
+            }
+        }
+        let out = frames.frame(false, &[]);
+        assert!(out.held().is_empty(), "freed past keep_frames");
+        assert!(out.pages.iter().all(|p| *p == 0), "{:?}", out.pages);
+        assert_eq!((out.counts[9], out.counts[10]), (0, 0));
+    }
+
+    /// When new pages outnumber the free ones, kept pages are evicted oldest first, ties by
+    /// physical page; the new pages get the freed ones in page order; two runs agree.
+    #[test]
+    fn eviction_takes_the_oldest_first_and_is_deterministic() {
+        let Some(device) = test_gpu::device() else {
+            return;
+        };
+        let device = device.as_ref();
+        let (a, b, c) = (spread(0, 32, 1), spread(1, 32, 2), spread(2, 20, 3));
+        let (a1, a2) = a.split_at(16);
+        let run = || {
+            let mut frames = Frames::new(device, 4, 64, 60);
+            let all: Vec<u32> = a.iter().chain(&b).copied().collect();
+            let first = frames.frame(true, &all);
+            frames.frame(false, &b);
+            frames.frame(false, a1);
+            // Ages now: a1 1, b 2, a2 3 (none requested); 20 new pages need room.
+            (first, frames.frame(false, &c))
+        };
+        let (first, last) = run();
+        let page_of = |e: &u32| first.entry(*e).physical().unwrap();
+        let mut b_pages: Vec<u16> = b.iter().map(page_of).collect();
+        b_pages.sort_unstable();
+        let mut freed: BTreeSet<u16> = a2.iter().map(page_of).collect();
+        freed.extend(&b_pages[..4]);
+        assert_eq!(last.counts[8], 20, "evicted");
+        let got: BTreeSet<u16> = c
+            .iter()
+            .map(|e| last.entry(*e).physical().unwrap())
+            .collect();
+        assert_eq!(got, freed, "oldest first, ties by page");
+        for (k, e) in alloc_order(&c).iter().enumerate() {
+            let want = *freed.iter().nth(k).unwrap();
+            assert_eq!(last.entry(*e).physical(), Some(want), "page order");
+        }
+        for e in a2.iter().chain(&b) {
+            let evicted = freed.contains(&page_of(e));
+            assert_eq!(last.entry(*e).physical().is_none(), evicted, "entry {e}");
+        }
+        assert_eq!(run().1, last, "deterministic");
+    }
+
+    /// The same requests make the same entries resident whatever was kept before, also when the
+    /// pool is too small for them all (residency is decided fresh, coarse levels first).
+    #[test]
+    fn residency_is_independent_of_history() {
+        let Some(device) = test_gpu::device() else {
+            return;
+        };
+        let device = device.as_ref();
+        let wanted: Vec<u32> = (0..4).flat_map(|l| spread(l, 25, 5)).collect();
+        let cold = Frames::new(device, 4, 64, 60).frame(true, &wanted);
+        let mut frames = Frames::new(device, 4, 64, 60);
+        frames.frame(true, &spread(0, 64, 9));
+        frames.frame(
+            false,
+            &(0..4).flat_map(|l| spread(l, 15, l)).collect::<Vec<_>>(),
+        );
+        let warm = frames.frame(false, &wanted);
+        assert_eq!(cold.counts[..3], [100, 64, 36]);
+        assert_eq!(warm.counts[..3], cold.counts[..3]);
+        assert_eq!(warm.resident(), cold.resident(), "resident set");
+        assert_eq!(warm.counts[10], 64, "the pool is full");
+    }
+
+    /// When a level scrolls, a kept page whose slot now holds another world page is released; the
+    /// rest keep their pages.
+    #[test]
+    fn age_releases_slots_scrolled_out() {
+        let Some(device) = test_gpu::device() else {
+            return;
+        };
+        let mut frames = Frames::new(device.as_ref(), 1, LEVEL_ENTRIES, 60);
+        let all: Vec<u32> = (0..LEVEL_ENTRIES).collect();
+        frames.frame(true, &all);
+        let before = frames.clipmap.levels[0].origin_page();
+        frames.move_to(Vec3::new(1.4, 2.0, 2.3));
+        let after = frames.clipmap.levels[0].origin_page();
+        assert_ne!(before, after, "the level scrolled");
+        let out = frames.frame(false, &[]);
+        let mut released = 0;
+        for slot in 0..LEVEL_ENTRIES {
+            let xy = [slot % PAGES_PER_SIDE, slot / PAGES_PER_SIDE];
+            let gone =
+                crate::vsm::slot_page(before.into(), xy) != crate::vsm::slot_page(after.into(), xy);
+            released += u32::from(gone);
+            assert_eq!(out.entry(slot).physical().is_none(), gone, "slot {xy:?}");
+        }
+        assert!(released > 0 && released < LEVEL_ENTRIES, "{released}");
+        assert_eq!(out.counts[9], LEVEL_ENTRIES - released, "kept");
     }
 }
