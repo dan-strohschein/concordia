@@ -670,6 +670,7 @@ mod tests {
                 previous: &origins,
                 tables: [index(table), index(dynamic), index(locals)],
                 sun: true,
+                soft: (16, 0.0, 0),
             });
             let params = up.buffer(device, &params, "params").unwrap();
             let views = up

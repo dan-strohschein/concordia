@@ -1512,3 +1512,124 @@ fn local_cached_frames_equal_uncached() {
     let s = o.frame(&mut scene, "still again");
     assert_eq!(s.pages_rendered_static, 0, "{s:?}");
 }
+
+/// Pixels of `mask` (the `shadow_mask` view) in the penumbra (neither lit nor shadowed), in
+/// column `x` between rows `y0` and `y1`.
+fn penumbra_in_column(mask: &Image, x: u32, (y0, y1): (u32, u32)) -> usize {
+    (y0..y1)
+        .filter(|y| {
+            let v = common::pixel(mask, x, *y)[0];
+            v > 25 && v < 230
+        })
+        .count()
+}
+
+/// A tall thin pole on the ground and a sun of `angular_radius` from the side, seen straight down
+/// (orthographic): its shadow runs along +x from the pole's foot.
+fn pole_scene(angular_radius: f32) -> Scene {
+    let mut scene = Scene::new();
+    let grey = scene.material("grey", lit([0.6, 0.6, 0.6]));
+    scene.mesh(
+        "plane",
+        grey.clone(),
+        Vec3::ZERO,
+        Quat::IDENTITY,
+        Vec3::new(40.0, 1.0, 40.0),
+    );
+    scene.mesh(
+        "cube",
+        grey,
+        Vec3::new(0.0, 3.0, 0.0),
+        Quat::IDENTITY,
+        Vec3::new(0.1, 6.0, 0.1),
+    );
+    let sun = scene.sun(Vec3::new(1.0, -1.0, 0.0), 50_000.0);
+    let mut light = scene.world.get::<DirectionalLight>(sun).unwrap().clone();
+    light.shadows = Some(Default::default());
+    light.angular_radius = angular_radius;
+    scene.world.insert(sun, light).unwrap();
+    scene.camera(
+        Vec3::new(3.0, 20.0, 0.001),
+        Vec3::new(3.0, 0.0, 0.0),
+        Camera {
+            exposure_ev100: 14.0,
+            msaa: Msaa::Off,
+            projection: concordia_render::Projection::Orthographic {
+                height: 4.5,
+                near: 0.1,
+                far: 100.0,
+            },
+            ..Camera::default()
+        },
+    );
+    scene
+}
+
+/// A sized sun (M4 4.7d) gives the pole's shadow a penumbra that widens away from its foot
+/// (contact hardening); a hard sun's shadow has almost none anywhere.
+#[test]
+fn soft_shadows_contact_harden() {
+    for r in meshlet_renderers() {
+        let mut r = cached(r, true);
+        let shot = |r: &mut Renderer, radius| {
+            let mut scene = pole_scene(radius);
+            scene.render_mode(r, SIZE.0, SIZE.1, ViewMode::shadow_mask);
+            scene.render_mode(r, SIZE.0, SIZE.1, ViewMode::shadow_mask)
+        };
+        let column = |x_m: f32| ((x_m - 3.0) / 8.0 * SIZE.0 as f32 + SIZE.0 as f32 / 2.0) as u32;
+        let rows = (SIZE.1 / 2 - 40, SIZE.1 / 2 + 40);
+        let hard = shot(&mut r, 0.0);
+        let soft = shot(&mut r, 0.06);
+        let (near, far) = (column(0.6), column(5.5));
+        let hard_far = penumbra_in_column(&hard, far, rows);
+        let (soft_near, soft_far) = (
+            penumbra_in_column(&soft, near, rows),
+            penumbra_in_column(&soft, far, rows),
+        );
+        println!("penumbra: hard far {hard_far}; soft near {soft_near}, far {soft_far}");
+        assert!(hard_far <= 3, "a hard sun: {hard_far}");
+        assert!(
+            soft_far > soft_near + 3,
+            "contact hardening: near {soft_near}, far {soft_far}"
+        );
+        assert!(
+            soft_far > hard_far + 4,
+            "softer than the hard sun: {soft_far} vs {hard_far}"
+        );
+    }
+}
+
+/// A sized point light softens its shadow too (4.7d): the box's shadow from a 0.3 m sphere has
+/// more penumbra than from a point.
+#[test]
+fn sized_local_lights_soften_their_shadows() {
+    for r in meshlet_renderers() {
+        let mut r = cached(r, true);
+        let shot = |r: &mut Renderer, radius: f32| {
+            let (mut scene, ids) = yard_with_ids(Msaa::Off, true);
+            scene.world.despawn(ids.sun).unwrap();
+            let id = scene.entity(Vec3::new(1.0, 3.0, -2.0), Quat::IDENTITY, Vec3::ONE);
+            let light = concordia_render_types::PointLight {
+                intensity_lumens: 1_000_000.0,
+                range: 12.0,
+                shadows: Some(Default::default()),
+                source_radius: radius,
+                ..Default::default()
+            };
+            scene.world.insert(id, light).unwrap();
+            scene.render_mode(r, SIZE.0, SIZE.1, ViewMode::lit);
+            scene.render_mode(r, SIZE.0, SIZE.1, ViewMode::lit)
+        };
+        let (hard, soft) = (shot(&mut r, 0.0), shot(&mut r, 0.3));
+        let differ = hard
+            .rgba
+            .chunks(4)
+            .zip(soft.rgba.chunks(4))
+            .filter(|(a, b)| a[1].abs_diff(b[1]) > 8)
+            .count();
+        assert!(
+            differ > 30,
+            "the sphere softens the shadow: {differ} pixels changed"
+        );
+    }
+}

@@ -37,6 +37,8 @@ pub(crate) struct JobIn<'a> {
     pub(crate) locals: Vec<(concordia_core::id::EntityId, super::local::SlotLight, f32)>,
     /// Whether the sun casts (else only local lights mark pages).
     pub(crate) sun: bool,
+    /// The sun's angular radius (4.7d) and the soft shadows' noise frame (0: a fixed pattern).
+    pub(crate) soft: (f32, u32),
 }
 
 /// What virtual shadow maps keep between frames: the pool, the page store, the depth range, each
@@ -198,6 +200,7 @@ impl VsmJob {
             previous: &previous,
             tables: [index(work.table)?, index(work.dynamic)?, index(locals)?],
             sun: input.sun,
+            soft: (u32::from(s.soft_samples), input.soft.0, input.soft.1),
         });
         let params = up.buffer(device, &params, "vsm params")?;
         let local_views = super::local::local_views(&local.slots);

@@ -47,6 +47,8 @@ pub struct VsmSettings {
     pub cache: bool,
     /// Shadowed spot and point lights given virtual shadow maps per frame, 0..=64 (M4 4.7c).
     pub max_local_lights: u8,
+    /// Samples of a sized light's soft shadow (blocker search and filter each), 1..=64 (M4 4.7d).
+    pub soft_samples: u8,
 }
 
 impl VsmSettings {
@@ -68,6 +70,7 @@ impl Default for VsmSettings {
             keep_frames: 60,
             cache: true,
             max_local_lights: 64,
+            soft_samples: 16,
         }
     }
 }
@@ -85,6 +88,7 @@ struct RawVsm {
     keep_frames: u32,
     cache: bool,
     max_local_lights: u32,
+    soft_samples: u32,
 }
 
 impl Default for RawVsm {
@@ -105,6 +109,7 @@ impl From<VsmSettings> for RawVsm {
             keep_frames: u32::from(s.keep_frames),
             cache: s.cache,
             max_local_lights: u32::from(s.max_local_lights),
+            soft_samples: u32::from(s.soft_samples),
         }
     }
 }
@@ -120,6 +125,7 @@ impl TryFrom<RawVsm> for VsmSettings {
         within("normal_bias", f64::from(r.normal_bias), 0.0, 10.0)?;
         within("keep_frames", f64::from(r.keep_frames), 0.0, 255.0)?;
         within("max_local_lights", f64::from(r.max_local_lights), 0.0, 64.0)?;
+        within("soft_samples", f64::from(r.soft_samples), 1.0, 64.0)?;
         if !(r.max_distance > 0.0 && r.max_distance <= 100_000.0) {
             return Err(format!(
                 "max_distance must be in (0, 100000], not {}",
@@ -136,6 +142,7 @@ impl TryFrom<RawVsm> for VsmSettings {
             keep_frames: r.keep_frames as u8,
             cache: r.cache,
             max_local_lights: r.max_local_lights as u8,
+            soft_samples: r.soft_samples as u8,
         })
     }
 }

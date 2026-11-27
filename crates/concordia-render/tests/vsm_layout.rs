@@ -505,3 +505,15 @@ fn max_local_lights_parses_and_rejects_out_of_range() {
     let err = toml::from_str::<VsmSettings>("max_local_lights = 65").unwrap_err();
     assert!(err.to_string().contains("max_local_lights"), "{err}");
 }
+
+/// `[render.vsm] soft_samples` (M4 4.7d): 16 by default, 1..=64, refused beyond.
+#[test]
+fn soft_samples_parse_and_reject_out_of_range() {
+    assert_eq!(VsmSettings::default().soft_samples, 16);
+    let parsed: VsmSettings = toml::from_str("soft_samples = 32").unwrap();
+    assert_eq!(parsed.soft_samples, 32);
+    for bad in ["soft_samples = 0", "soft_samples = 65"] {
+        let err = toml::from_str::<VsmSettings>(bad).unwrap_err();
+        assert!(err.to_string().contains("soft_samples"), "{err}");
+    }
+}

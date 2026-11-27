@@ -286,7 +286,7 @@ uint vsm_find(Frame* frame, float3 world, float3 n, out float4 clip, out uint en
 // Fraction of sunlight reaching `world` through the virtual shadow maps (M4 4.7): at `vsm_find`'s
 // level, PCF in that level's texels, each tap reading its own page (clamped to the centre page
 // where a neighbour has none); 1 where no level holds it.
-float vsm_sun_shadow(Frame* frame, float3 world, float3 n, float3 to_light) {
+float vsm_sun_shadow(Frame* frame, float3 world, float3 n, float3 to_light, float2 px) {
     uint params = frame.vsm.y;
     uint table = frame.vsm.z;
     VsmParams* p = vsm_params(params);
@@ -304,6 +304,11 @@ float vsm_sun_shadow(Frame* frame, float3 world, float3 n, float3 to_light) {
         // Clamped: past the casters' far bound only a stored caster (> 0) shadows; nearer than
         // their near bound nothing does.
         float depth = saturate(clip.z + (p.bias.x * texel + slope) / vsm_span(params, level));
+        float tan_r = tan(asfloat(p.soft.y));
+        if (tan_r > 0.0) {
+            float turn = vsm_ign(px, p.soft.z);
+            return vsm_sun_soft(p, params, table, level, vsm_texel(clip) - 0.5, depth, texel, vsm_span(params, level), tan_r, turn);
+        }
         float2 f = st - float2(base);
         int2 page = base / int(VSM_PAGE_TEXELS);
         float lit = 0.0;
@@ -328,6 +333,36 @@ float vsm_sun_shadow(Frame* frame, float3 world, float3 n, float3 to_light) {
     return 1.0;
 }
 
+// The sun's stored depth at texel `t` of `level` (-1 where no resident page holds it).
+float vsm_sun_depth_at(VsmParams* p, uint params, uint table, uint level, int2 t) {
+    uint e = vsm_entry(params, table, level, t);
+    if (!vsm_resident(e)) { return -1.0; }
+    return asfloat(vsm_word(p, vsm_physical(e) - 1, uint2(t % int(VSM_PAGE_TEXELS)))[0]);
+}
+
+// The sun's soft shadow (4.7d) at virtual texel `st` of `level`, the receiver at depth `depth`
+// (reverse-Z, the level's span in `span` metres), its texel `texel` metres wide, the sun's disc
+// `tan_r` wide per metre of distance; `turn` rotates the samples.
+float vsm_sun_soft(VsmParams* p, uint params, uint table, uint level, float2 st, float depth, float texel, float span, float tan_r, float turn) {
+    uint n = max(p.soft.x, 1u);
+    float search = clamp(tan_r * 8.0 / texel, 1.0, VSM_SOFT_MAX_TEXELS);
+    float blockers = 0.0;
+    uint found = 0;
+    for (uint i = 0; i < n; i++) {
+        float d = vsm_sun_depth_at(p, params, table, level, int2(floor(st + vsm_vogel(i, n, turn) * search)));
+        if (d > depth) { blockers += d; found++; }
+    }
+    if (found == 0) { return 1.0; }
+    float gap = (blockers / float(found) - depth) * span; // metres between receiver and blockers
+    float width = clamp(gap * tan_r / texel, 1.0, VSM_SOFT_MAX_TEXELS);
+    float lit = 0.0;
+    for (uint i = 0; i < n; i++) {
+        float d = vsm_sun_depth_at(p, params, table, level, int2(floor(st + vsm_vogel(i, n, turn + 0.5) * width)));
+        lit += d <= depth ? 1.0 : 0.0;
+    }
+    return lit / float(n);
+}
+
 // The local map entry of page `page` of `mip` of `map`, naming its dynamic page when it has one.
 uint vsm_local_entry(VsmParams* p, uint table, uint map, uint mip, uint2 page) {
     uint slot = vsm_map_entry(p, map, mip, page);
@@ -336,11 +371,51 @@ uint vsm_local_entry(VsmParams* p, uint table, uint map, uint mip, uint2 page) {
     return entry;
 }
 
+// A local map's stored depth at texel `t` of `mip` (-1 where no resident page holds it; `t` is
+// clamped to the map).
+float vsm_local_depth_at(VsmParams* p, uint table, uint map, uint mip, int2 t) {
+    int side = int(VSM_LOCAL_TEXELS >> mip);
+    t = clamp(t, int2(0, 0), int2(side - 1, side - 1));
+    uint e = vsm_local_entry(p, table, map, mip, uint2(t) / VSM_PAGE_TEXELS);
+    if (!vsm_resident(e)) { return -1.0; }
+    return asfloat(vsm_word(p, vsm_physical(e) - 1, uint2(t % int(VSM_PAGE_TEXELS)))[0]);
+}
+
+// Distance from the light of reverse-Z depth `d` in a local map reaching `range` (`local::map`'s
+// projection: near 0.05 m at depth 1, the range at 0).
+float vsm_local_distance(float d, float range) {
+    float near = 0.05;
+    return range * near / max(d * (range - near) + near, 1e-6);
+}
+
+// A sized local light's soft shadow (4.7d) at texel `st` of `mip` of `map`, the receiver at depth
+// `depth`; `geo` = (receiver's distance from the light, texel size there, light radius, range).
+float vsm_local_soft(VsmParams* p, uint table, uint map, uint mip, float2 st, float depth, float4 geo, float turn) {
+    uint n = max(p.soft.x, 1u);
+    float search = clamp(geo.z / geo.y, 1.0, VSM_SOFT_MAX_TEXELS);
+    float blockers = 0.0;
+    uint found = 0;
+    for (uint i = 0; i < n; i++) {
+        float d = vsm_local_depth_at(p, table, map, mip, int2(floor(st + vsm_vogel(i, n, turn) * search)));
+        if (d > depth) { blockers += vsm_local_distance(d, geo.w); found++; }
+    }
+    if (found == 0) { return 1.0; }
+    float blocker = blockers / float(found);
+    float penumbra = geo.z * max(geo.x - blocker, 0.0) / max(blocker, 1e-3); // metres at the receiver
+    float width = clamp(penumbra / geo.y, 1.0, VSM_SOFT_MAX_TEXELS);
+    float lit = 0.0;
+    for (uint i = 0; i < n; i++) {
+        float d = vsm_local_depth_at(p, table, map, mip, int2(floor(st + vsm_vogel(i, n, turn + 0.5) * width)));
+        lit += d <= depth ? 1.0 : 0.0;
+    }
+    return lit / float(n);
+}
+
 // Fraction of slot `slot`'s local light reaching `world` (normal `n`, `to_light` toward it; M4
 // 4.7c): its map at the pixel's mip (walking to coarser mips while the page isn't resident), PCF
 // in that mip's texels with per-tap pages clamped to the map, the receiver offset along the normal
 // and toward the light in texels; 1 outside the light or where no mip holds it.
-float vsm_local_shadow(Frame* frame, uint slot, float3 world, float3 n, float3 to_light) {
+float vsm_local_shadow(Frame* frame, uint slot, float3 world, float3 n, float3 to_light, float2 px) {
     if (frame.vsm.x == 0) { return 1.0; }
     VsmParams* p = vsm_params(frame.vsm.y);
     uint table = frame.vsm.z;
@@ -366,6 +441,10 @@ float vsm_local_shadow(Frame* frame, uint slot, float3 world, float3 n, float3 t
         if (!vsm_resident(centre)) { continue; }
         float4 cd = vsm_clip(views, view, offset + to_light * texel * (l.bias.x + float(k + 1) * tan_theta));
         float depth = saturate(cd.z / cd.w);
+        float radius = l.bias.z;
+        if (radius > 0.0) {
+            return vsm_local_soft(p, table, map, mip, st, depth, (dist, texel, radius, l.position_range.w), vsm_ign(px, p.soft.z));
+        }
         float2 f = st - float2(base);
         float lit = 0.0;
         for (int dy = -k; dy <= k + 1; dy++) {
@@ -736,7 +815,7 @@ float3 punctual(Frame* frame, float4 frag, float3 world, float3 n, uint4* rows, 
         float spot = saturate(dot(-l, light.direction.xyz) * light.spot.x + light.spot.y);
         float atten = distance_attenuation(d2, light.position_range.w) * spot * spot;
         uint shadow_slot = asuint(light.spot.z);
-        if (shadow_slot != 0 && atten > 0.0) { atten *= vsm_local_shadow(frame, shadow_slot - 1, world, n, l); }
+        if (shadow_slot != 0 && atten > 0.0) { atten *= vsm_local_shadow(frame, shadow_slot - 1, world, n, l, frag.xy); }
         sum += run(frame, rows, EVAL_LIGHT, v, l, uv, 0, blend).color * light.radiance.rgb * atten;
     }
     return sum;
@@ -788,7 +867,7 @@ float3 punctual_single(Frame* frame, float4 frag, float3 world, float3 n, Closur
         float spot = saturate(dot(-l, light.direction.xyz) * light.spot.x + light.spot.y);
         float atten = distance_attenuation(d2, light.position_range.w) * spot * spot;
         uint shadow_slot = asuint(light.spot.z);
-        if (shadow_slot != 0 && atten > 0.0) { atten *= vsm_local_shadow(frame, shadow_slot - 1, world, n, l); }
+        if (shadow_slot != 0 && atten > 0.0) { atten *= vsm_local_shadow(frame, shadow_slot - 1, world, n, l, frag.xy); }
         sum += lit_single(frame, c, v, l, blend) * light.radiance.rgb * atten;
     }
     return sum;
@@ -866,7 +945,7 @@ float4 shade_pixel(VsOut i, bool front, DrawPush push) {
     float3 lit = float3(0.0);
     if (any(frame.light_radiance.rgb > 0.0)) {
         float3 sun = single ? lit_single(frame, c0, v, to_sun, blend) : run(frame, rows, EVAL_LIGHT, v, to_sun, i.uv, 0, blend).color;
-        float shadow = frame.vsm.x != 0 ? vsm_sun_shadow(frame, i.world, geometric, to_sun) : sun_shadow(frame, i.world, geometric, to_sun);
+        float shadow = frame.vsm.x != 0 ? vsm_sun_shadow(frame, i.world, geometric, to_sun, i.position.xy) : sun_shadow(frame, i.world, geometric, to_sun);
         if (mode == MODE_SHADOW_MASK) { return float4(float3(shadow), 1.0); }
         lit = sun * frame.light_radiance.rgb * shadow;
     } else if (mode == MODE_SHADOW_MASK) {
