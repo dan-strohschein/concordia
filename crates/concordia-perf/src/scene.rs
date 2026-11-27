@@ -50,6 +50,9 @@ pub struct PerfScene {
     /// The temporal resolve to measure with (absent: the project's setting).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temporal: Option<PerfTemporal>,
+    /// The sun's shadow technique to measure with (absent: the project's setting; M4 4.7).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shadows: Option<concordia_render::vsm::ShadowTechnique>,
 }
 
 impl PerfScene {

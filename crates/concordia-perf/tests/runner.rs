@@ -126,6 +126,34 @@ fn runner_measures_with_the_scenes_temporal_setting() {
     }
 }
 
+/// A perf scene's shadow technique reaches the renderer: with `vsm` and a shadowed sun, the page
+/// passes are timed (M4 4.7).
+#[test]
+fn runner_measures_with_the_scenes_shadow_technique() {
+    let Ok(caps) = concordia_rhi_metal::probe() else {
+        assert!(!concordia_testkit::gpu_required(), "no Metal device");
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let scene = perf_folder(dir.path(), &SystemProbe.host(&caps));
+    let text = std::fs::read_to_string(&scene).unwrap();
+    std::fs::write(
+        &scene,
+        text.replace("fov_y: 0.9,", "fov_y: 0.9, shadows: Some(vsm),"),
+    )
+    .unwrap();
+    let options = RunOptions {
+        warmup_frames: None,
+        frames: Some(4),
+    };
+    let run = run(&scene, &options, &SystemProbe).expect("a run");
+    let names: Vec<&str> = run.report.passes.keys().map(String::as_str).collect();
+    let vsm = concordia_render::vsm::supported(&caps).is_ok();
+    for pass in ["forward.prepass", "vsm.mark", "vsm.allocate", "vsm.render"] {
+        assert_eq!(names.contains(&pass), vsm, "{pass} in {names:?}");
+    }
+}
+
 /// Copies `from` into `to`, leaving out the derived data (`.concordia/`).
 fn copy_project(from: &Path, to: &Path) {
     for entry in std::fs::read_dir(from).unwrap().flatten() {
