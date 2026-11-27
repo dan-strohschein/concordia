@@ -76,6 +76,67 @@ pub fn build_meshlets(
     })
 }
 
+/// A simplified triangle list.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Simplified {
+    /// The kept triangles' corners (into the same positions).
+    pub indices: Vec<u32>,
+    /// The error reached, relative to the mesh's extent.
+    pub error: f32,
+}
+
+/// Simplifies a triangle list toward `target_index_count` corners (0: as few as the error
+/// allows) without moving its surface more than `target_error` of its extent
+/// (`meshopt_simplify`).
+pub fn simplify(
+    indices: &[u32],
+    positions: &[[f32; 3]],
+    target_index_count: usize,
+    target_error: f32,
+) -> Result<Simplified, MeshoptError> {
+    if !(0.0..=1.0).contains(&target_error) {
+        return Err(MeshoptError::TargetError(target_error));
+    }
+    if !indices.len().is_multiple_of(3) {
+        return Err(MeshoptError::IndexCount(indices.len()));
+    }
+    check_refs(indices, positions)?;
+    // It scales by every vertex's extent, referenced or not.
+    if let Some(bad) = positions
+        .iter()
+        .position(|p| !p.iter().all(|c| c.is_finite()))
+    {
+        return Err(MeshoptError::NonFinitePosition(bad));
+    }
+    if indices.is_empty() {
+        return Ok(Simplified::default());
+    }
+    let mut out = vec![0u32; indices.len()];
+    let mut error = 0.0f32;
+    // SAFETY: `out` holds index_count entries (the documented worst case); indices are in range
+    // and the positions they reference finite; no option bits are set.
+    let count = unsafe {
+        ffi::meshopt_simplify(
+            out.as_mut_ptr(),
+            indices.as_ptr(),
+            indices.len(),
+            positions.as_ptr().cast(),
+            positions.len(),
+            STRIDE,
+            target_index_count.min(indices.len()),
+            target_error,
+            0,
+            &mut error,
+        )
+    };
+    debug_assert!(count <= indices.len() && count.is_multiple_of(3));
+    out.truncate(count);
+    Ok(Simplified {
+        indices: out,
+        error,
+    })
+}
+
 /// Reorders one meshlet's vertices and triangles for locality (`meshopt_optimizeMeshlet`).
 pub fn optimize_meshlet(vertices: &mut [u32], triangles: &mut [u8]) -> Result<(), MeshoptError> {
     check_meshlet(vertices, triangles)?;
