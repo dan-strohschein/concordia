@@ -165,6 +165,7 @@ fn scripts_module_registers_module_types_and_adds_script_reload() {
     let added = [
         "script.reload",
         "graph.list_nodes",
+        "graph.read",
         "graph.check",
         "graph.compile",
         "graph.apply",
@@ -784,6 +785,45 @@ fn mcp_graph_tools_schemas_generated_from_reflect() {
         .filter(|m| m.name.starts_with("graph."))
         .map(|m| json!({"name": m.name, "mutates": m.mutates, "docs": m.docs, "params": concordia_api::params_schema(m)}))
         .collect();
-    assert_eq!(schemas.len(), 5, "{schemas:?}");
+    assert_eq!(schemas.len(), 6, "{schemas:?}");
     insta::assert_json_snapshot!(schemas);
+}
+
+#[test]
+fn graph_read_attributes_nodes_to_their_last_editor() {
+    let mut p = empty_graph_project();
+    let edits = rise_edits();
+    let (first, rest) = edits.as_array().unwrap().split_at(5);
+    p.ok("graph.apply", json!({"path": "graphs/rise.graph.ron", "kind": "Event", "edits": first, "actor": "agent:gameplay-programmer"}));
+    p.ok(
+        "graph.apply",
+        json!({"path": "graphs/rise.graph.ron", "edits": rest, "actor": "human:local"}),
+    );
+    let id = |n: u32| format!("0193b0f2-0000-7000-8000-{n:012x}");
+    let read = p.ok("graph.read", json!({"path": "graphs/rise.graph.ron"}));
+    let text = std::fs::read_to_string(p.dir.path().join("graphs/rise.graph.ron")).unwrap();
+    assert_eq!(read["text"], text.as_str(), "the file's canonical text");
+    assert_eq!(read["graph"]["kind"], "Event");
+    assert_eq!(read["diagnostics"], json!([]));
+    // Node 2 (a getter) was only added; nodes 3–5 were changed again by the human.
+    assert_eq!(
+        read["authors"][id(2)],
+        "agent:gameplay-programmer",
+        "{read}"
+    );
+    assert_eq!(read["authors"][id(3)], "human:local");
+    assert_eq!(read["authors"][id(5)], "human:local");
+    // Undoing the human's edit gives the nodes back to the agent.
+    p.ok("txn.undo", json!({"actor": "human:local"}));
+    let read = p.ok("graph.read", json!({"path": "graphs/rise.graph.ron"}));
+    assert_eq!(
+        read["authors"][id(3)],
+        "agent:gameplay-programmer",
+        "{read}"
+    );
+    // A file that doesn't exist is an error naming how to create it.
+    let err = p
+        .call("graph.read", json!({"path": "graphs/none.graph.ron"}))
+        .unwrap_err();
+    assert!(err.message.contains("doesn't exist"), "{}", err.message);
 }

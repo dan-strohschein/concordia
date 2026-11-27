@@ -19,8 +19,8 @@ pub use config::{ScriptEntry, ScriptKind, ScriptsConfig};
 pub use graph_api::{
     CompiledProcessor, GraphApply, GraphApplyParams, GraphApplyResult, GraphCheck,
     GraphCheckParams, GraphCheckResult, GraphCompile, GraphCompileParams, GraphCompileResult,
-    GraphListNodes, GraphListNodesParams, GraphListNodesResult, GraphTrace, GraphTraceParams,
-    GraphTraceResult,
+    GraphListNodes, GraphListNodesParams, GraphListNodesResult, GraphRead, GraphReadParams,
+    GraphReadResult, GraphTrace, GraphTraceParams, GraphTraceResult,
 };
 pub use module::ScriptsModule;
 pub use reload::{

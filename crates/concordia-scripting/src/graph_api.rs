@@ -1,6 +1,7 @@
 //! The `graph.*` methods (M4 4.10c, J18–J19): agents list nodes, edit graph files as undoable
 //! transactions, check, compile and trace them, all as text over the Engine API.
 
+use std::collections::BTreeMap;
 use std::time::Instant;
 
 use concordia_api::{ApiError, ApiErrorKind, CallCtx, Engine, EntityRef, Method, WorldSel};
@@ -82,6 +83,95 @@ impl Method for GraphListNodes {
             nodes: engine_library(engine.registry()).to_json(),
         })
     }
+}
+
+/// Read a graph file for display: its canonical text, the graph as JSON, its diagnostics, and for
+/// each node the actor whose committed `graph.apply` last changed it (from the command log).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct GraphRead;
+
+/// `graph.read` params.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct GraphReadParams {
+    /// Project-relative `.graph.ron` file.
+    pub path: String,
+}
+
+/// `graph.read` result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+pub struct GraphReadResult {
+    /// The file's text.
+    pub text: String,
+    /// The graph (the `.graph.ron` structure as JSON).
+    pub graph: Value,
+    /// What to fix.
+    pub diagnostics: Vec<Diagnostic>,
+    /// Node id → the actor who last changed it (nodes no committed edit touched are absent).
+    pub authors: BTreeMap<String, String>,
+}
+
+impl Method for GraphRead {
+    const NAME: &'static str = "graph.read";
+    const MUTATES: bool = false;
+    type Params = GraphReadParams;
+    type Result = GraphReadResult;
+
+    fn call(
+        engine: &mut Engine,
+        _: &CallCtx,
+        p: GraphReadParams,
+    ) -> Result<GraphReadResult, ApiError> {
+        let text = read_file(engine, &p.path)?
+            .ok_or_else(|| invalid(format!("{} doesn't exist", p.path)))?;
+        let graph = parse(&text)?;
+        let diagnostics = check(&graph, &engine_library(engine.registry())).diagnostics;
+        let authors = authors(&engine.document_history(&p.path));
+        let graph = serde_json::to_value(&graph).map_err(|e| invalid(e.to_string()))?;
+        Ok(GraphReadResult {
+            text,
+            graph,
+            diagnostics,
+            authors,
+        })
+    }
+}
+
+/// For each node, the actor of the last edit that changed its definition, position or exec links.
+fn authors(history: &[concordia_api::DocumentEdit]) -> BTreeMap<String, String> {
+    let graph_of = |t: &Option<String>| t.as_deref().and_then(|t| read_graph(t).ok());
+    let mut authors = BTreeMap::new();
+    for edit in history {
+        let (before, after) = (graph_of(&edit.before), graph_of(&edit.after));
+        let Some(after) = after else {
+            authors.clear();
+            continue;
+        };
+        authors.retain(|id: &String, _| after.nodes.contains_key(id));
+        for id in after.nodes.keys() {
+            if node_changed(before.as_ref(), &after, id) {
+                authors.insert(id.clone(), edit.actor.to_string());
+            }
+        }
+    }
+    authors
+}
+
+/// Whether node `id` differs between the graphs (definition, position, or an exec link on it).
+fn node_changed(before: Option<&Graph>, after: &Graph, id: &str) -> bool {
+    let Some(before) = before else {
+        return true;
+    };
+    let links = |g: &Graph| -> Vec<concordia_graph::ExecLink> {
+        g.exec
+            .iter()
+            .filter(|e| e.0 == id || e.2 == id)
+            .cloned()
+            .collect()
+    };
+    before.nodes.get(id) != after.nodes.get(id)
+        || before.layout.get(id) != after.layout.get(id)
+        || links(before) != links(after)
 }
 
 /// Type-check a graph (a `.graph.ron` file, or its text) against this project's nodes. Each
