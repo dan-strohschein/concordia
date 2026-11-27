@@ -23,6 +23,7 @@ public static const float GI_BACKFACE = 0.2;
 //  8-10 the rays' rotation (rows)  11 has sky, events, event count, reset
 //  12-20 the sky's SH9 irradiance  21 base hysteresis, max distance, normal bias, view bias
 //  22 the top level's acceleration-structure index (ray queries, M4 4.8c), 1 when used
+//  23 the old origin cell (int xyz) and 1 when the lattice scrolled this update (M4 4.8d)
 public struct GiVolume {
     public float3 origin; public float spacing;
     public uint3 counts; public uint rays;
@@ -55,12 +56,40 @@ public uint3 gi_probe_cell(GiVolume v, uint index) {
     return uint3(index % v.counts.x, (index / v.counts.x) % v.counts.y, index / (v.counts.x * v.counts.y));
 }
 
-// Probe `index`'s position: its grid point plus its relocation offset.
-public float3 gi_probe_position(GiVolume v, uint index) {
-    return v.origin + float3(gi_probe_cell(v, index)) * v.spacing + gi_probes(v)[index].xyz;
+// Toroidal addressing (M4 4.8d): a probe's slot is its world cell modulo the counts, so moving the
+// lattice by whole cells keeps every probe still inside in its slot.
+public int3 gi_origin_cell(GiVolume v) { return int3(round(v.origin / v.spacing)); }
+
+int3 gi_wrap(int3 a, int3 n) { return ((a % n) + n) % n; }
+
+// The world cell the probe in slot `index` stands for.
+public int3 gi_world_cell(GiVolume v, uint index) {
+    int3 o = gi_origin_cell(v);
+    int3 n = int3(v.counts);
+    return o + gi_wrap(int3(gi_probe_cell(v, index)) - o, n);
 }
 
-public bool gi_probe_active(GiVolume v, uint index) { return gi_probes(v)[index].w > 0.5; }
+// The slot of world cell `w` (inside the lattice).
+public uint gi_slot(GiVolume v, int3 w) {
+    uint3 c = uint3(gi_wrap(w, int3(v.counts)));
+    return gi_probe_index(v, c);
+}
+
+// Probe `index`'s position: its world cell's grid point (keeping the origin's offset within a
+// cell, so origins needn't sit on multiples of the spacing) plus its relocation offset.
+public float3 gi_probe_position(GiVolume v, uint index) {
+    float3 within = v.origin - float3(gi_origin_cell(v)) * v.spacing;
+    return float3(gi_world_cell(v, index)) * v.spacing + within + gi_probes(v)[index].xyz;
+}
+
+// Probe states (`.w` of the probe buffer): 0 inactive, 1 active, 2 fresh (entered by a scroll:
+// traced, blended from scratch and relocated before it's sampled).
+public bool gi_probe_active(GiVolume v, uint index) {
+    float s = gi_probes(v)[index].w;
+    return s > 0.5 && s < 1.5;
+}
+
+public bool gi_probe_fresh(GiVolume v, uint index) { return gi_probes(v)[index].w > 1.5; }
 
 float2 gi_sign(float2 p) { return float2(p.x >= 0.0 ? 1.0 : -1.0, p.y >= 0.0 ? 1.0 : -1.0); }
 
@@ -145,7 +174,7 @@ public float3 gi_irradiance(GiVolume v, float3 p, float3 n, float3 to_eye) {
     for (uint k = 0; k < 8; k++) {
         uint3 o = uint3(k & 1, (k >> 1) & 1, (k >> 2) & 1);
         uint3 cell = min(uint3(base) + o, v.counts - 1);
-        uint probe = gi_probe_index(v, cell);
+        uint probe = gi_slot(v, gi_origin_cell(v) + int3(cell));
         if (!gi_probe_active(v, probe)) continue;
         float3 at = gi_probe_position(v, probe);
         float3 tri = lerp(1.0 - alpha, alpha, float3(o));

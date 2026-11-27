@@ -4,7 +4,7 @@
 use std::num::NonZeroU64;
 
 use concordia_bvh::GpuBvh;
-use concordia_core::math::{Mat3, UVec3, Vec3};
+use concordia_core::math::{IVec3, Mat3, UVec3, Vec3};
 use concordia_rhi::{
     AccelDesc, AccelInstance, AccelerationStructure, Buffer, BufferDesc, BufferUsage, Command,
     CommandList, Device, MemoryLocation, Pipeline, QueueKind, Submit, TriangleGeometry,
@@ -104,7 +104,7 @@ impl Default for GiInputs {
 }
 
 /// Rows of the parameter block (`gi.slang`).
-const PARAM_ROWS: usize = 23;
+const PARAM_ROWS: usize = 24;
 /// Bordered tile sizes in texels (`gi.slang`).
 const IRR_TILE: u64 = 10;
 const DIST_TILE: u64 = 18;
@@ -122,6 +122,7 @@ struct Kernels {
     blend_distance: Pipeline,
     border: Pipeline,
     relocate: Pipeline,
+    scroll: Pipeline,
 }
 
 /// A bindless buffer GI writes from the CPU or the GPU (Upload memory, grown as needed).
@@ -215,6 +216,7 @@ impl GiProbes {
                 blend_distance: kernel("gi_blend_distance")?,
                 border: kernel("gi_border")?,
                 relocate: kernel("gi_relocate")?,
+                scroll: kernel("gi_scroll")?,
             },
             params: Slot::default(),
             probes: Slot::default(),
@@ -242,7 +244,12 @@ impl GiProbes {
         let grid = valid(inputs)?;
         let probes = u64::from(grid.counts.x * grid.counts.y * grid.counts.z);
         let rays = u64::from(inputs.rays);
-        let reset = self.grid != Some(grid);
+        let reset = self.resets_for(&grid);
+        // A move by whole cells scrolls: probes still inside keep their slots (M4 4.8d).
+        let scrolled = match self.grid {
+            Some(old) if !reset && old.origin != grid.origin => Some(origin_cell(&old)),
+            _ => None,
+        };
         if reset {
             let zeros = |n: u64| vec![0u8; n as usize];
             self.probes
@@ -273,10 +280,14 @@ impl GiProbes {
             .map(|e| e.extend(0.0).to_array())
             .collect();
         self.events.write(device, &bytes(&events), "gi events")?;
+        self.grid = Some(grid);
         let mut rows = self.param_rows(inputs, reset);
         rows[22] = [tlas.unwrap_or(0), u32::from(tlas.is_some()), 0, 0];
+        if let Some(old) = scrolled {
+            rows[23] = [old[0] as u32, old[1] as u32, old[2] as u32, 1];
+        }
         self.params.write(device, &words(&rows), "gi params")?;
-        self.commands(probes, rays)
+        self.commands(probes, rays, scrolled.is_some())
     }
 
     /// Runs one update (uploads, traces, blends; waits for the GPU).
@@ -299,9 +310,29 @@ impl GiProbes {
         self.hardware.is_some()
     }
 
-    /// Whether `grid` differs from the lattice the atlases hold (the next update starts over).
+    /// Whether the next update with `grid` starts over: the first one, or different counts or
+    /// spacing, or an origin moved by less than whole cells (a move by whole cells scrolls).
     pub fn resets_for(&self, grid: &ProbeGrid) -> bool {
-        self.grid != Some(*grid)
+        let Some(old) = self.grid else {
+            return true;
+        };
+        if old.counts != grid.counts || old.spacing != grid.spacing {
+            return true;
+        }
+        let cells = (grid.origin - old.origin) / grid.spacing;
+        (cells - cells.round()).abs().max_element() > 1e-3
+    }
+
+    /// The slot of world cell `cell` in lattice `grid` (`None` outside it).
+    pub fn probe_at(&self, grid: &ProbeGrid, cell: [i32; 3]) -> Option<u32> {
+        let origin = origin_cell(grid);
+        let counts = grid.counts.as_ivec3();
+        let rel = IVec3::from(cell) - IVec3::from(origin);
+        if rel.min_element() < 0 || (rel - counts).max_element() >= 0 {
+            return None;
+        }
+        let slot = IVec3::from(cell).rem_euclid(counts).as_uvec3();
+        Some(slot.x + grid.counts.x * (slot.y + grid.counts.y * slot.z))
     }
 
     /// The parameter block's bindless index (what sampling reads; valid after `prepare`).
@@ -424,7 +455,7 @@ impl GiProbes {
     }
 
     /// The update: trace, blend, borders, relocation, with barriers between.
-    fn commands(&self, probes: u64, rays: u64) -> Result<GiPasses, RenderError> {
+    fn commands(&self, probes: u64, rays: u64, scrolled: bool) -> Result<GiPasses, RenderError> {
         let k = self.kernels;
         let push = |pass: u32| {
             Command::PushConstants(
@@ -445,14 +476,29 @@ impl GiProbes {
             true => k.trace_rq.unwrap_or(k.trace),
             false => k.trace,
         };
-        let trace = vec![
-            Command::SetPipeline(trace),
-            push(0),
-            Command::Dispatch {
-                groups: groups(probes * rays),
-            },
-            compute_barrier(&[ray_buf]),
-        ];
+        let mut first = Vec::new();
+        if scrolled {
+            first.extend([
+                Command::SetPipeline(k.scroll),
+                push(0),
+                Command::Dispatch {
+                    groups: groups(probes),
+                },
+                compute_barrier(&[irr, dist, probe_buf]),
+            ]);
+        }
+        let trace = [
+            first,
+            vec![
+                Command::SetPipeline(trace),
+                push(0),
+                Command::Dispatch {
+                    groups: groups(probes * rays),
+                },
+                compute_barrier(&[ray_buf]),
+            ],
+        ]
+        .concat();
         let blend = vec![
             Command::SetPipeline(k.blend_irradiance),
             push(0),
@@ -493,6 +539,11 @@ impl GiProbes {
 
 /// The update's stages, each a named list of commands (a graph pass apiece, so each is timed).
 pub type GiPasses = Vec<(&'static str, Vec<Command>)>;
+
+/// The world cell of the lattice's probe (0, 0, 0).
+fn origin_cell(grid: &ProbeGrid) -> [i32; 3] {
+    (grid.origin / grid.spacing).round().as_ivec3().to_array()
+}
 
 /// The grid, checked: counts 1..=256, a finite spacing and origin, 1..=512 rays (what the blend
 /// kernels hold in group memory).

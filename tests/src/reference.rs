@@ -134,9 +134,12 @@ pub fn render_with(
     }
     let mut session = Session::open(&file)?;
     session.call("render.set_shadows", json!({"technique": technique}))?;
-    if let Some(params) = gi {
-        session.call("render.set_gi", params)?;
-    }
+    // GI is set explicitly (off unless asked), so direct-only references measure direct light
+    // whatever the project's default.
+    session.call(
+        "render.set_gi",
+        gi.unwrap_or_else(|| json!({"technique": "off"})),
+    )?;
     Ok((session.screenshot(&file)?, reference))
 }
 
