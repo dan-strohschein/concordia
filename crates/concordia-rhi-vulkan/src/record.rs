@@ -73,6 +73,10 @@ pub struct Features {
     /// `independentBlend` (per-target write masks; absent in records made before 4.3b2).
     #[serde(default)]
     pub independent_blend: bool,
+    /// `fragmentStoresAndAtomics` (optional; virtual shadow maps, M4 4.7a); false in records made
+    /// before 4.7a.
+    #[serde(default)]
+    pub fragment_stores_and_atomics: bool,
 }
 
 impl Features {
@@ -234,6 +238,10 @@ pub struct ProbeRecord {
     /// `supportedDepthResolveModes`, ascending; empty in records made before 4.4b.
     #[serde(default)]
     pub depth_resolve_modes: Vec<ResolveMode>,
+    /// The smaller of `maxFramebufferWidth` and `maxFramebufferHeight`; 0 in records made before
+    /// 4.7a.
+    #[serde(default)]
+    pub max_framebuffer_extent: u32,
 }
 
 impl ProbeRecord {
@@ -292,6 +300,12 @@ pub fn caps_from_record(record: &ProbeRecord) -> RhiCaps {
         hw_ray_tracing: false,
         metalfx_temporal: false,
         depth_resolve_min: usable && record.depth_resolve_modes.contains(&ResolveMode::Min),
+        fragment_atomics: usable && record.features.fragment_stores_and_atomics,
+        max_render_extent: if usable {
+            record.max_framebuffer_extent
+        } else {
+            0
+        },
         timestamp_granularity: match record.queue_timestamp_valid_bits {
             0 => TimestampGranularity::None,
             _ => TimestampGranularity::DrawBoundary,

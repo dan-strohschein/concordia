@@ -116,6 +116,13 @@ pub struct RhiCaps {
     /// Multisampled depth resolves to the smallest sample ([`crate::DepthResolve::Min`]; M4 4.4b).
     #[serde(default)]
     pub depth_resolve_min: bool,
+    /// Fragment shaders may write storage buffers with atomics (M4 4.7a; Vulkan
+    /// `fragmentStoresAndAtomics`).
+    #[serde(default)]
+    pub fragment_atomics: bool,
+    /// Largest width and height of an attachment-less render pass (0: none; M4 4.7a).
+    #[serde(default)]
+    pub max_render_extent: u32,
     /// The finest point at which GPU timestamps can be sampled.
     pub timestamp_granularity: TimestampGranularity,
     /// Most vertices one mesh-shader threadgroup may output (0 without mesh shaders).
@@ -169,6 +176,10 @@ pub struct CapsMask {
     pub timestamps: bool,
     /// Hide min depth resolves (and so occlusion culling with MSAA).
     pub depth_resolve_min: bool,
+    /// Hide fragment-shader storage atomics (and so virtual shadow maps).
+    pub fragment_atomics: bool,
+    /// Hide attachment-less render passes (and so virtual shadow maps).
+    pub attachmentless_passes: bool,
 }
 
 /// A capability bar a milestone needs.
@@ -199,6 +210,12 @@ impl RhiCaps {
         }
         if mask.depth_resolve_min {
             caps.depth_resolve_min = false;
+        }
+        if mask.fragment_atomics {
+            caps.fragment_atomics = false;
+        }
+        if mask.attachmentless_passes {
+            caps.max_render_extent = 0;
         }
         if mask.timestamps {
             caps.timestamp_granularity = caps

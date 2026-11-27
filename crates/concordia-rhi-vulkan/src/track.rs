@@ -298,6 +298,7 @@ mod tests {
                 load: LoadOp::Load,
                 store: StoreOp::Store,
             }),
+            extent: None,
         })
     }
 

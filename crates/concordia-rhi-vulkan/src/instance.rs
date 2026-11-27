@@ -184,6 +184,9 @@ impl Instance {
             surface_extensions: self.surface_names(),
             mesh: None,
             depth_resolve_modes: resolve_modes(v12.supported_depth_resolve_modes),
+            max_framebuffer_extent: limits
+                .max_framebuffer_width
+                .min(limits.max_framebuffer_height),
         };
         let record = ProbeRecord {
             mesh: record
@@ -277,6 +280,7 @@ impl Instance {
                 v12.shader_storage_image_array_non_uniform_indexing
             ),
             independent_blend: on(core.independent_blend),
+            fragment_stores_and_atomics: on(core.fragment_stores_and_atomics),
         }
     }
 

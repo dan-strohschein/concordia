@@ -635,6 +635,45 @@ fn render_set_temporal_switches_the_resolve_and_validates() {
     assert_eq!(temporal["backend"], "off", "{temporal}");
 }
 
+/// `render.set_shadows` (session-scoped, M4 4.7) switches the sun's shadows between `csm` and
+/// `vsm`; `render.stats` `shadows` reports what was asked for and what ran; anything else is
+/// refused naming `/technique`.
+#[test]
+fn render_set_shadows_switches_and_reports() {
+    let Some(mut h) = Harness::gpu() else { return };
+    h.ok("entity.spawn", json!({"actor": "agent:test", "components": {
+        "Transform": {"translation": [0.0, -1.0, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0], "scale": [10.0, 1.0, 10.0]},
+        "MeshRenderer": {"mesh": "builtin:mesh/plane", "material": "builtin:material/default"},
+    }}));
+    h.ok("entity.spawn", json!({"actor": "agent:test", "components": {
+        "Transform": {"translation": [0.0, 0.0, 0.0], "rotation": [-0.38, 0.2, 0.0, 0.9], "scale": [1.0, 1.0, 1.0]},
+        "DirectionalLight": {"shadows": {}},
+    }}));
+    h.cube_scene();
+    let err = h
+        .call("render.set_shadows", json!({"technique": "rt"}))
+        .unwrap_err();
+    assert_eq!(
+        err.kind,
+        concordia_api::ApiErrorKind::InvalidParams,
+        "{err:?}"
+    );
+    let set = h.ok("render.set_shadows", json!({"technique": "vsm"}));
+    assert_eq!(set, json!({"technique": "vsm"}));
+    h.ok("capture.screenshot", json!({"width": 160, "height": 90}));
+    let shadows = h.ok("render.stats", json!({}))["frame"]["shadows"].clone();
+    assert_eq!(shadows["requested"], "vsm", "{shadows}");
+    let ran = shadows["technique"].as_str().unwrap();
+    match common::device().is_some_and(|d| concordia_render::vsm::supported(d.caps()).is_ok()) {
+        true => assert_eq!(ran, "vsm", "{shadows}"),
+        false => assert!(shadows["reason"].is_string(), "{shadows}"),
+    }
+    h.ok("render.set_shadows", json!({"technique": "csm"}));
+    h.ok("capture.screenshot", json!({"width": 160, "height": 90}));
+    let shadows = h.ok("render.stats", json!({}))["frame"]["shadows"].clone();
+    assert_eq!(shadows["technique"], "csm", "{shadows}");
+}
+
 /// With temporal on, a capture renders its still pose a whole jitter cycle from a fresh history
 /// (its own), so it is converged and repeatable; `temporal_frames: 1` is one aliased frame.
 #[test]

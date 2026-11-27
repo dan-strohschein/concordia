@@ -50,6 +50,7 @@ mod ui_pass;
 mod view;
 mod view_mode;
 mod visibility;
+pub mod vsm;
 
 pub use assets::{AssetSource, MemoryAssets, resolve};
 pub use budget::{effective_closure_budget, platform_closure_budget};

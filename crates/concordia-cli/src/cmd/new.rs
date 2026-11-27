@@ -104,6 +104,14 @@ fn manifest(name: &str, features: &Features) -> String {
             "\n# In-game UI: UiRoot trees, .theme.ron themes and fonts, ui.inspect (drawn by the render module).\n[ui]\n",
         );
         text.push_str("\n[render]\n");
+        text.push_str(concat!(
+            "# Shadows: cascaded (csm, the default) or virtual shadow maps (vsm; M4 4.7).\n",
+            "# shadows = \"vsm\"\n",
+            "# [render.vsm]\n",
+            "# pool_pages = 4096      # physical pages, 64 KB each\n",
+            "# levels = 16            # sun clipmap levels, 8 m wide at level 0\n",
+            "# resolution_bias = -1.0 # finer below, coarser above\n",
+        ));
         text.push_str(
             "\n# Gameplay modules: add [[scripts.module]] entries (kind = \"wasm\" or \"native\", path).\n[scripts]\n",
         );

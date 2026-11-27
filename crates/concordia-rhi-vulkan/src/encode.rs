@@ -31,6 +31,8 @@ pub(crate) struct Target<'a> {
     pub queries: Option<(vk::QueryPool, &'a Queries)>,
     /// The device resolves depth with the min mode.
     pub depth_resolve_min: bool,
+    /// `RhiCaps::max_render_extent`, checked against attachment-less passes.
+    pub max_render_extent: u32,
 }
 
 /// Records `commands` after `inits` (new textures' moves to their home layouts). Returns the
@@ -524,6 +526,13 @@ impl Recorder<'_> {
             }
             None => None,
         };
+        if let Some([width, height]) = desc.extent {
+            check::render_extent([width, height], self.t.max_render_extent)?;
+            extent = vk::Extent2D {
+                width: width.get(),
+                height: height.get(),
+            };
+        }
         let area = vk::Rect2D {
             offset: vk::Offset2D::default(),
             extent,

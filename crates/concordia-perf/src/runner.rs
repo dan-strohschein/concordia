@@ -170,6 +170,9 @@ impl Session {
             let params = json!({"backend": t.backend, "upscale": t.upscale});
             self.call("render.set_temporal", params)?;
         }
+        if let Some(technique) = scene.shadows {
+            self.call("render.set_shadows", json!({"technique": technique}))?;
+        }
         for _ in 0..warmup {
             self.frame(scene, scene.pose(0, frames))?;
         }

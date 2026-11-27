@@ -4,6 +4,9 @@
 //! M1 opaque draws (occluders) and pass 1's buckets, keeps every target and resolves depth with min;
 //! `meshlet.hzb` builds the HZB from that depth and `meshlet.cull_late` culls pass 2 (compute route);
 //! `forward_late` loads the targets and draws pass 2's buckets, the blended draws and the grid.
+//! With virtual shadow maps (M4 4.7) the camera's depth is drawn first instead: `forward.prepass`
+//! (the M1 opaque draws and pass 1's buckets, depth only), the HZB from it, `forward.prepass_late`
+//! (pass 2's buckets), and then one `forward` pass shades everything.
 
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -19,6 +22,7 @@ use crate::hzb::Hzb;
 use crate::meshlet_pass::{BucketDraw, MeshletJob};
 use crate::pipelines::{DEPTH, HDR, MOTION};
 use crate::renderer::desc;
+use crate::shadow_pass::ShadowDraw;
 
 /// One draw call, ready to record: `instances` consecutive instances of one mesh and material.
 #[derive(Debug, Clone)]
@@ -53,6 +57,102 @@ pub(crate) struct Split {
     pub(crate) pipeline: Pipeline,
     pub(crate) device: Arc<dyn Device>,
     pub(crate) view: FullDraw,
+}
+
+/// The camera's depth-only prepass (virtual shadow maps mark pages from it): the depth pipeline, the
+/// M1 opaque draws as depth draws, and pass 1's and pass 2's buckets on the depth pipelines.
+pub(crate) struct Prepass {
+    pub(crate) pipeline: Pipeline,
+    pub(crate) draws: Vec<ShadowDraw>,
+    pub(crate) early: Vec<BucketDraw>,
+    pub(crate) late: Vec<BucketDraw>,
+}
+
+/// Adds the prepass (and, with `split`, the HZB from its depth, pass 2's culling and pass 2's
+/// prepass); returns the single-sample depth (sampled) and the `hzb` view's draw for `forward`.
+pub(crate) fn add_prepass(
+    graph: &mut RenderGraph,
+    size: (NonZeroU32, NonZeroU32),
+    prepass: Prepass,
+    split: Option<Split>,
+    meshlets: Option<&MeshletJob>,
+) -> (GraphTexture, FullDraw) {
+    let usage = TextureUsage::RENDER_TARGET | TextureUsage::SAMPLED | TextureUsage::BINDLESS;
+    let depth = graph.create_texture(desc(size, DEPTH, SampleCount::X1, usage, "prepass_depth"));
+    let Prepass {
+        pipeline,
+        draws,
+        early,
+        late,
+    } = prepass;
+    add_depth_part(
+        graph,
+        "forward.prepass",
+        depth,
+        true,
+        (pipeline, draws, early),
+    );
+    let Some(split) = split else {
+        return (depth, None);
+    };
+    let view = split.view.clone();
+    add_hzb(graph, depth, split);
+    if let Some(m) = meshlets {
+        m.add_late_pass(graph);
+    }
+    add_depth_part(
+        graph,
+        "forward.prepass_late",
+        depth,
+        false,
+        (pipeline, Vec::new(), late),
+    );
+    (depth, view)
+}
+
+/// One depth-only pass into `depth` (cleared when `clear`): `draws` then `buckets`.
+fn add_depth_part(
+    graph: &mut RenderGraph,
+    name: &str,
+    depth: GraphTexture,
+    clear: bool,
+    (pipeline, draws, buckets): (Pipeline, Vec<ShadowDraw>, Vec<BucketDraw>),
+) {
+    graph.add_pass_recorded(
+        name,
+        |p| {
+            p.uses(depth, Use::DepthWrite);
+            p.side_effect();
+        },
+        Some(Box::new(move |ctx: &mut PassContext<'_>| {
+            ctx.commands.push(Command::BeginRenderPass(RenderPassDesc {
+                colors: Vec::new(),
+                depth: Some(DepthAttachment {
+                    texture: ctx.texture(depth),
+                    resolve: None,
+                    load: match clear {
+                        true => LoadOp::Clear(ClearValue::Depth(0.0)),
+                        false => LoadOp::Load,
+                    },
+                    store: StoreOp::Store,
+                }),
+                extent: None,
+            }));
+            if !draws.is_empty() {
+                ctx.commands.push(Command::SetPipeline(pipeline));
+            }
+            for draw in &draws {
+                ctx.commands.push(Command::PushConstants(draw.push.bytes()));
+                ctx.commands.push(Command::Draw {
+                    vertices: 0..draw.vertices,
+                    instances: 0..draw.instances,
+                });
+            }
+            draw_buckets(&buckets, &mut ctx.commands.commands, None);
+            ctx.commands.push(Command::EndRenderPass);
+            Ok(())
+        })),
+    );
 }
 
 /// What one forward pass draws: the sky, M1 draws (opaque first), buckets, the grid, and a
@@ -98,7 +198,7 @@ pub(crate) fn add_forward(
     (draws, meshlets): (Vec<Draw>, Option<MeshletJob>),
     (samples, size): (SampleCount, (NonZeroU32, NonZeroU32)),
     shadow_maps: &[GraphTexture],
-    (sky, grid): (FullDraw, FullDraw),
+    (sky, grid, over): (FullDraw, FullDraw, FullDraw),
     (split, keep_depth): (Option<Split>, bool),
 ) -> ForwardTargets {
     let targets = create_targets(graph, samples, size, (split.is_some(), keep_depth));
@@ -112,12 +212,13 @@ pub(crate) fn add_forward(
     };
     match split {
         None => {
+            // After a prepass, pass 2's buckets are drawn here too (empty otherwise).
             let all = Contents {
                 sky,
                 draws,
-                buckets: forward,
+                buckets: forward.into_iter().chain(late).collect(),
                 grid,
-                over: None,
+                over,
             };
             add_part(
                 graph,
@@ -329,6 +430,7 @@ fn pass_desc(ctx: &PassContext<'_>, part: Part, t: Targets, clear: [f32; 4]) -> 
                 _ => StoreOp::DontCare,
             },
         }),
+        extent: None,
     }
 }
 

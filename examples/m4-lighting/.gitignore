@@ -1,0 +1,4 @@
+# Generated meshes are restored from their sidecars' recipes (gen.restore); only the sidecars are
+# in git.
+assets/**/*.glb
+.concordia/

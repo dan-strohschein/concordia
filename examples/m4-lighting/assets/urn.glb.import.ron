@@ -1,0 +1,26 @@
+Sidecar(
+    id: "01a21a26-2bf6-71e4-b3c2-56ba29489dee",
+    importer: "gltf",
+    importer_version: 5,
+    provenance: Some((
+        inputs_hash: "f301bb2b26c47dda9c4393095dcf90553f9f2884d68cc2e75a703e9ec4032cd9",
+        output: Some("69828c9e6844c891dfe005d68a97e01257110fda215209e34bd34de54cbb9a0e"),
+        provider: "mesh",
+        provider_version: 1,
+        request: {
+            "Sphere": {
+                "radius": 0.5,
+                "rings": 64,
+                "segments": 128,
+            },
+        },
+        seed: 1,
+    )),
+    settings: {
+        "emissive_reference_ev100": None,
+        "meshlets": "auto",
+    },
+    sub_assets: {
+        "mesh/mesh/0": "83cfabd3-eab8-53a8-a438-50c7bca86aac",
+    },
+)

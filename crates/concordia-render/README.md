@@ -6,4 +6,6 @@ Static meshes with meshlets (ADR-0100) are drawn into the same forward pass with
 
 With `[render] temporal = "own"` (M4 4.6) the camera jitters by a sub-pixel each frame and a temporal resolve gathers the frames into an anti-aliased image, optionally rendering at a lower internal size and upscaling (`[render] upscale` 1.5 or 2.0). On Apple GPUs `temporal = "metalfx"` uses Apple's MetalFX scaler instead (elsewhere it falls back to the engine's own). `render.set_temporal` changes it for a session.
 
+With `[render] shadows = "vsm"` (M4 4.7) the sun's shadows come from virtual shadow maps instead of cascades: a clipmap of 16 huge virtual shadow maps around the camera, cut into 128-texel pages, of which only the pages some visible pixel needs are drawn, into a pool of physical pages (`[render.vsm]` sizes it). Shadows stay sharp near the camera, including thin casters. Devices without fragment atomics or 16 384-pixel attachment-less passes draw cascades instead, and `render.stats` `shadows` says which ran and why. `render.set_shadows` changes it for a session; the `shadow_mask`, `vsm_pages`, `vsm_levels` and `vsm_cache` views show the sun's visibility and the pages.
+
 See `AGENTS.md` for invariants, tests, performance notes and references.

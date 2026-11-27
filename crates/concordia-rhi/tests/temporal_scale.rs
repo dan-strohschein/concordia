@@ -78,6 +78,7 @@ fn temporal_scale_is_validated() {
             store: StoreOp::Store,
         }],
         depth: None,
+        extent: None,
     });
     let err = list(vec![
         pass,

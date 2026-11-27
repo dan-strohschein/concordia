@@ -88,7 +88,7 @@ pub(crate) fn push_rows_u32(out: &mut Vec<u8>, rows: &[[u32; 4]]) {
     out.extend(rows.iter().flatten().flat_map(|w| w.to_le_bytes()));
 }
 
-fn columns(m: &Mat4) -> [Vec4; 4] {
+pub(crate) fn columns(m: &Mat4) -> [Vec4; 4] {
     [m.x_axis, m.y_axis, m.z_axis, m.w_axis]
 }
 
@@ -123,6 +123,9 @@ pub(crate) struct FrameParams<'a> {
     pub(crate) jitter: [f32; 2],
     /// Added to material textures' mip levels.
     pub(crate) mip_bias: f32,
+    /// Virtual shadow maps' bindless indices: depth views, parameters, page table, and the level
+    /// count (None: off).
+    pub(crate) vsm: Option<[u32; 4]>,
 }
 
 /// The environment as the shader sees it.
@@ -173,6 +176,10 @@ pub(crate) fn frame_block(p: &FrameParams<'_>) -> Vec<u8> {
         &mut out,
         &[Vec4::new(p.jitter[0], p.jitter[1], p.mip_bias, 0.0)],
     );
+    let vsm = p.vsm.map_or([0; 4], |[views, params, table, levels]| {
+        [views + 1, params, table, levels]
+    });
+    out.extend(vsm.iter().flat_map(|w| w.to_le_bytes()));
     out
 }
 

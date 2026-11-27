@@ -30,6 +30,7 @@ fn begin() -> Command {
             store: StoreOp::Store,
         }],
         depth: None,
+        extent: None,
     })
 }
 

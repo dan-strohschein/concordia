@@ -492,3 +492,11 @@ pub fn render_timed(
         .expect("timing");
     (image, timing)
 }
+
+/// FLIP of `actual` against `expected`.
+pub fn flip(expected: &Image, actual: &Image) -> concordia_testkit::golden::FlipScore {
+    let img = |i: &Image| {
+        concordia_testkit::golden::RgbaImage::new(i.width, i.height, i.rgba.clone()).unwrap()
+    };
+    concordia_testkit::golden::flip_score(&img(expected), &img(actual)).unwrap()
+}

@@ -855,6 +855,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-tungstenite",
+ "toml",
 ]
 
 [[package]]
@@ -1180,6 +1181,7 @@ name = "concordia-render"
 version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
+ "bitflags 2.13.2",
  "concordia-anim",
  "concordia-api",
  "concordia-assets",
@@ -1209,6 +1211,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",
+ "toml",
  "tracing",
  "tracing-subscriber",
 ]

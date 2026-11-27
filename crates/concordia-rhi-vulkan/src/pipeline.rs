@@ -114,14 +114,12 @@ fn check_graphics(desc: &GraphicsPipelineDesc, caps: &RhiCaps) -> Result<(), Rhi
             format!("{:?}: {reason}", desc.label),
         ))
     };
-    if desc.color_formats.len() > 8 {
-        return bad(format!(
-            "{} color targets; at most 8",
-            desc.color_formats.len()
-        ));
-    }
-    if desc.color_formats.is_empty() && desc.depth.is_none() {
-        return bad("no color or depth target".into());
+    if let Err(why) = concordia_rhi::pipeline_targets(
+        &desc.color_formats,
+        desc.depth.as_ref(),
+        desc.fragment.is_some(),
+    ) {
+        return bad(why);
     }
     if desc.fragment.is_none() && !desc.color_formats.is_empty() {
         return bad("color targets need a fragment shader".into());

@@ -262,6 +262,7 @@ fn write_perf_scene(
             })
             .collect(),
         temporal,
+        shadows: None,
     };
     scene.validate()?;
     let file: PathBuf = dir.join(format!("{name}.perf.ron"));

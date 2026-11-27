@@ -59,6 +59,8 @@ struct Recorder<'a> {
     mesh_stages: bool,
     /// The device resolves depth with the min filter.
     depth_resolve_min: bool,
+    /// `RhiCaps::max_render_extent`, checked against attachment-less passes.
+    max_render_extent: u32,
 }
 
 /// The pipeline bound in a render pass: draws must match it.
@@ -100,6 +102,7 @@ pub(crate) fn record(
         bound: Bound::None,
         mesh_stages: caps.mesh_shaders,
         depth_resolve_min: caps.depth_resolve_min,
+        max_render_extent: caps.max_render_extent,
     };
     for command in &submit.commands.commands {
         if let Err(e) = recorder.command(command) {
@@ -304,8 +307,15 @@ impl Recorder<'_> {
             .or(desc.depth.as_ref().map(|d| d.texture));
         self.pass_size = first
             .map(|t| texture_entry(self.inner, t).map(|e| [e.desc.width, e.desc.height]))
-            .transpose()?;
+            .transpose()?
+            .or(desc.extent);
         let rp = MTLRenderPassDescriptor::renderPassDescriptor();
+        if let Some(extent) = desc.extent {
+            concordia_rhi::check::render_extent(extent, self.max_render_extent)?;
+            rp.setRenderTargetWidth(extent[0].get() as usize);
+            rp.setRenderTargetHeight(extent[1].get() as usize);
+            rp.setDefaultRasterSampleCount(1);
+        }
         for (i, color) in desc.colors.iter().enumerate() {
             // SAFETY: at most 8 attachments (validated).
             let a = unsafe { rp.colorAttachments().objectAtIndexedSubscript(i) };

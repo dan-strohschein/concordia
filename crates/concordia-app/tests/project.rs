@@ -430,6 +430,37 @@ fn temporal_settings_read_from_the_manifest() {
     }
 }
 
+/// `[render] shadows` (`csm` by default during M4 4.7) picks the shadow technique and `[render.vsm]`
+/// sizes the virtual shadow maps; bad values and unknown keys are refused when the project loads,
+/// naming the key.
+#[test]
+fn shadows_setting_parses_and_rejects_unknown_keys() {
+    use concordia_render::vsm::ShadowTechnique;
+    let render = |text: &str| {
+        let (_dir, project) = project_with(text);
+        project.map(|p| p.manifest.render.unwrap_or_default())
+    };
+    let default = render("[render]\n").unwrap();
+    assert_eq!(default.shadows, ShadowTechnique::csm);
+    assert_eq!(default.vsm.pool_pages, 4096);
+    let on = render("[render]\nshadows = \"vsm\"\n[render.vsm]\npool_pages = 512\nlevels = 10\n")
+        .unwrap();
+    assert_eq!(on.shadows, ShadowTechnique::vsm);
+    assert_eq!((on.vsm.pool_pages, on.vsm.levels), (512, 10));
+    for (bad, words) in [
+        ("[render]\nshadows = \"rt\"\n", ["shadows", "rt"]),
+        ("[render.vsm]\npool_pages = 1\n", ["pool_pages", "64"]),
+        ("[render.vsm]\nclipmaps = 3\n", ["clipmaps", "unknown"]),
+    ] {
+        let err = render(bad).unwrap_err();
+        assert!(matches!(err, AppError::Manifest { .. }), "{err}");
+        let text = err.to_string();
+        for w in words {
+            assert!(text.contains(w), "{bad}: {text}");
+        }
+    }
+}
+
 /// `[render] closure_budget` may lower the platform's closure budget (8 on Metal) but never raise
 /// it: values outside 1..=8 are refused when the project loads (ADR-0068).
 #[test]
@@ -696,6 +727,19 @@ fn the_projects_temporal_setting_reaches_the_renderer() {
     assert_eq!(on["internal"], serde_json::json!([16, 16]), "{on}");
     let off = ball_frame("[assets]\n[render]\n")["temporal"].clone();
     assert_eq!(off["backend"], "off", "{off}");
+}
+
+/// `[render] shadows` (`csm` by default) reaches the renderer: `render.stats` `shadows` reports
+/// what the project asked for (M4 4.7).
+#[test]
+fn the_projects_shadow_setting_reaches_the_renderer() {
+    if mesh_shaders().is_none() {
+        return;
+    }
+    let vsm = ball_frame("[assets]\n[render]\nshadows = \"vsm\"\n")["shadows"].clone();
+    assert_eq!(vsm["requested"], "vsm", "{vsm}");
+    let csm = ball_frame("[assets]\n[render]\n")["shadows"].clone();
+    assert_eq!(csm["requested"], "csm", "{csm}");
 }
 
 /// `[render] culling` (on by default) culls the ball's far side on the GPU (M4 4.4); `false`

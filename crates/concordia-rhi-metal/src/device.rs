@@ -433,12 +433,14 @@ impl Device for MetalDevice {
     }
 
     fn create_graphics_pipeline(&self, desc: &GraphicsPipelineDesc) -> Result<Pipeline, RhiError> {
-        if desc.color_formats.is_empty() && desc.depth.is_none() || desc.color_formats.len() > 8 {
-            return Err(RhiError::invalid(
-                "graphics pipeline",
-                "needs 1..=8 color targets or a depth target",
-            ));
-        }
+        concordia_rhi::pipeline_targets(
+            &desc.color_formats,
+            desc.depth.as_ref(),
+            desc.fragment.is_some(),
+        )
+        .map_err(|why| {
+            RhiError::invalid("graphics pipeline", format!("{:?}: {why}", desc.label))
+        })?;
         let mut inner = self.lock()?;
         let d = MTLRenderPipelineDescriptor::new();
         d.setLabel(Some(&NSString::from_str(&desc.label)));

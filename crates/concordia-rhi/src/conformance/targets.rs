@@ -68,6 +68,7 @@ fn draw(
     list.push(Command::BeginRenderPass(RenderPassDesc {
         colors,
         depth: None,
+        extent: None,
     }))
     .push(Command::SetPipeline(pipeline))
     .push(push(&[], &[first, RED].concat()))

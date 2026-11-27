@@ -15,6 +15,14 @@ export type PassTiming = "off" | "unsupported" | "measured";
  */
 export type RasterPath = "forward" | "compute_indirect" | "mesh_shader";
 /**
+ * The technique asked for (`[render] shadows` or `render.set_shadows`).
+ */
+export type ShadowTechnique = "csm" | "vsm";
+/**
+ * The technique that ran (`csm` when `vsm` can't run on the device).
+ */
+export type ShadowTechnique1 = "csm" | "vsm";
+/**
  * What ran: `off` (temporal off, or a debug view), `own` or `metalfx`.
  */
 export type TemporalBackend = "off" | "own" | "metalfx";
@@ -41,7 +49,11 @@ export type ViewMode =
   | "triangles"
   | "motion"
   | "occlusion"
-  | "hzb";
+  | "hzb"
+  | "vsm_pages"
+  | "vsm_levels"
+  | "vsm_cache"
+  | "shadow_mask";
 
 /**
  * `render.stats` result.
@@ -108,6 +120,7 @@ export interface FrameStats {
    */
   punctual_lights: number;
   raster_path: RasterPath;
+  shadows: ShadowStats;
   /**
    * The sun's shadow maps were reused from the previous frame.
    */
@@ -235,6 +248,50 @@ export interface PassTime {
    * When it started, in ms from the frame's first timed pass.
    */
   start_ms: number;
+}
+/**
+ * The sun's shadows: the technique that ran (and why `vsm` fell back) and the virtual shadow
+ * maps' page counts (M4 4.7).
+ */
+export interface ShadowStats {
+  /**
+   * Clipmap levels.
+   */
+  levels: number;
+  /**
+   * Caster-page pairs drawn: each caster drawn once per page due under it (4.7a2).
+   */
+  page_draws: number;
+  /**
+   * Pairs past the pair buffers' room, not drawn (their pages lose those casters' shadows).
+   */
+  page_draws_dropped: number;
+  /**
+   * Requested pages that got a physical page (and were drawn).
+   */
+  pages_allocated: number;
+  /**
+   * Pages some pixel asked for.
+   */
+  pages_requested: number;
+  /**
+   * Requested pages the pool had no room for (their pixels read a coarser level).
+   */
+  pages_starved: number;
+  /**
+   * Physical pages in the pool (virtual shadow maps).
+   */
+  pool_pages: number;
+  /**
+   * Why `vsm` fell back to `csm`, when it did.
+   */
+  reason?: null | string;
+  requested: ShadowTechnique;
+  /**
+   * Meshlets drawn into the levels (each culled for its level and its pages).
+   */
+  shadow_meshlets: number;
+  technique: ShadowTechnique1;
 }
 /**
  * What the temporal resolve did: the backend that ran, the internal and output sizes, the

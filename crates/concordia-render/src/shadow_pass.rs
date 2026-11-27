@@ -91,7 +91,7 @@ concordia_shaders::shader_struct!(ShadowPush {
 });
 
 impl ShadowPush {
-    fn bytes(&self) -> Vec<u8> {
+    pub(crate) fn bytes(&self) -> Vec<u8> {
         [
             self.frame,
             self.instances,
@@ -109,6 +109,7 @@ impl ShadowPush {
 }
 
 /// A shadow caster: its push constants (cascade filled per pass) and vertex count.
+#[derive(Clone)]
 pub(crate) struct ShadowDraw {
     pub(crate) push: ShadowPush,
     pub(crate) vertices: u32,
@@ -167,6 +168,7 @@ pub(crate) fn add_shadow_passes(graph: &mut RenderGraph, job: ShadowJob) -> Vec<
                         load: LoadOp::Clear(ClearValue::Depth(0.0)),
                         store: StoreOp::Store,
                     }),
+                    extent: None,
                 }));
                 ctx.commands.push(Command::SetPipeline(pipeline));
                 for draw in casters.iter() {

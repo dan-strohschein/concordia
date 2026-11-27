@@ -40,6 +40,7 @@ fn clear(texture: Texture) -> CommandList {
             store: StoreOp::Store,
         }],
         depth: None,
+        extent: None,
     }))
     .push(Command::EndRenderPass);
     list

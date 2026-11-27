@@ -1,0 +1,20 @@
+PerfScene(
+    fov_y: 1.05,
+    frames: 300,
+    height: 720,
+    path: [
+        (
+            eye: (-5.5, 1.7, -6.5),
+            target: (3.0, 0.6, 4.5),
+        ),
+        (
+            eye: (-1.5, 1.7, -6.5),
+            target: (5.0, 0.6, 4.5),
+        ),
+    ],
+    project: "../../../examples/m4-lighting",
+    scene: "scenes/sun_courtyard.scene.ron",
+    shadows: Some(csm),
+    warmup_frames: 120,
+    width: 1280,
+)

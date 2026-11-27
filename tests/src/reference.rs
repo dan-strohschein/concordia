@@ -89,6 +89,26 @@ fn git_hash(project: &Path) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_owned())
 }
 
+/// Reference `name`'s view rendered by the renderer with the sun's shadows as `technique` (`csm` or
+/// `vsm`; M4 4.7), and the blessed reference image, from the golden store at `golden`.
+pub fn render_against(
+    name: &str,
+    golden: &Path,
+    technique: &str,
+) -> Result<(RgbaImage, RgbaImage), String> {
+    let store = Golden::new(golden.to_path_buf(), golden.join("../review"), false, false);
+    let file = store.reference(name).map_err(fail)?;
+    let reference = std::fs::read(golden.join(SUITE).join(format!("{name}.png"))).map_err(|e| {
+        fail(format!(
+            "{name}.png: {e} (bless it with `just bless-reference {name}`)"
+        ))
+    })?;
+    let reference = RgbaImage::from_png(&reference).map_err(fail)?;
+    let mut session = Session::open(&file)?;
+    session.call("render.set_shadows", json!({"technique": technique}))?;
+    Ok((session.screenshot(&file)?, reference))
+}
+
 /// The view as `capture.screenshot` and `capture.reference` take it (None: the scene camera).
 fn view(file: &ReferenceFile) -> Option<Value> {
     file.view.as_ref().map(|v| {
@@ -117,6 +137,7 @@ impl Session {
                     project.display()
                 ))
             })?;
+        let generated = loaded.manifest.generators.is_some();
         let mut engine = Engine::new(loaded.engine_config().map_err(fail)?)
             .map_err(|e| fail(format!("{e:?}")))?;
         let session = engine.open_session();
@@ -125,6 +146,10 @@ impl Session {
             "session.open",
             json!({"client": "bless-reference", "actor": "tool:bless-reference"}),
         )?;
+        // Generated meshes aren't in git: remake missing ones from their sidecars' recipes.
+        if generated {
+            opened.call("gen.restore", json!({"actor": "tool:bless-reference"}))?;
+        }
         opened.call("scene.open", json!({"path": scene}))?;
         Ok(opened)
     }

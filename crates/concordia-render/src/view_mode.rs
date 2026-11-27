@@ -50,6 +50,17 @@ pub enum ViewMode {
     occlusion,
     /// The HZB's finest level as grey depth (brighter: nearer); black when the frame has no HZB.
     hzb,
+    /// The lit image tinted by the virtual-shadow-map page each pixel reads (one colour per
+    /// physical page, page borders dark); untinted without virtual shadow maps (M4 4.7).
+    vsm_pages,
+    /// The lit image tinted by the clipmap level each pixel reads (a hue per level, magenta where it
+    /// fell back to a coarser level).
+    vsm_levels,
+    /// The lit image tinted by the page's cache state: yellow drawn this frame, green kept from an
+    /// earlier frame, blue with a dynamic layer.
+    vsm_cache,
+    /// The sun's visibility alone: white lit, black shadowed (CSM or VSM; not tonemapped).
+    shadow_mask,
 }
 
 impl ViewMode {
@@ -62,7 +73,12 @@ impl ViewMode {
     pub(crate) fn tonemapped(self) -> bool {
         matches!(
             self,
-            Self::lit | Self::shadow_cascades | Self::light_clusters
+            Self::lit
+                | Self::shadow_cascades
+                | Self::light_clusters
+                | Self::vsm_pages
+                | Self::vsm_levels
+                | Self::vsm_cache
         )
     }
 
@@ -70,7 +86,13 @@ impl ViewMode {
     pub(crate) fn draws_sky(self) -> bool {
         matches!(
             self,
-            Self::lit | Self::unlit | Self::shadow_cascades | Self::light_clusters
+            Self::lit
+                | Self::unlit
+                | Self::shadow_cascades
+                | Self::light_clusters
+                | Self::vsm_pages
+                | Self::vsm_levels
+                | Self::vsm_cache
         )
     }
 }

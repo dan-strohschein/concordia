@@ -112,6 +112,7 @@ fn frame(
             store: StoreOp::Store,
         }],
         depth: None,
+        extent: None,
     }))
     .push(Command::SetPipeline(pipeline))
     .push(Command::Draw {

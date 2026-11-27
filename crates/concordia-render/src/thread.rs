@@ -58,6 +58,8 @@ enum Job {
     },
     /// Switch the temporal resolve (`render.set_temporal`).
     Temporal(crate::temporal::Temporal),
+    /// Switch the sun's shadows (`render.set_shadows`).
+    Shadows(crate::vsm::Shadows),
     Attach {
         target: SurfaceTarget,
         reply: mpsc::Sender<Result<(), RenderError>>,
@@ -131,6 +133,11 @@ impl RenderThread {
         temporal: crate::temporal::Temporal,
     ) -> Result<(), RenderError> {
         self.send(Job::Temporal(temporal))
+    }
+
+    /// Switches the sun's shadows; returns at once.
+    pub(crate) fn set_shadows(&self, shadows: crate::vsm::Shadows) -> Result<(), RenderError> {
+        self.send(Job::Shadows(shadows))
     }
 
     /// Makes `target` the viewport surface (replacing any earlier one).
@@ -428,6 +435,13 @@ impl Worker {
             }
             Job::Temporal(temporal) => {
                 self.renderer.set_temporal(temporal);
+                latest
+            }
+            Job::Shadows(shadows) => {
+                self.renderer.set_shadows(shadows.technique);
+                if let Err(e) = self.renderer.set_vsm_settings(shadows.vsm) {
+                    tracing::warn!(target: "concordia::render", error = %e, "VSM settings refused");
+                }
                 latest
             }
             Job::Detach { reply } => {

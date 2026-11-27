@@ -178,6 +178,11 @@ pub struct RenderSection {
     pub temporal: concordia_render::temporal::TemporalBackend,
     /// Output over internal size while `temporal` is on: 1.0 (the default), 1.5 or 2.0.
     pub upscale: concordia_render::temporal::Upscale,
+    /// The sun's shadows: `csm` (the default during M4 4.7) or `vsm` (falls back to `csm` where
+    /// the device can't run virtual shadow maps).
+    pub shadows: concordia_render::vsm::ShadowTechnique,
+    /// `[render.vsm]`: the virtual shadow maps' pool, levels and biases.
+    pub vsm: concordia_render::vsm::VsmSettings,
 }
 
 impl Default for RenderSection {
@@ -190,6 +195,8 @@ impl Default for RenderSection {
             culling: true,
             temporal: Default::default(),
             upscale: Default::default(),
+            shadows: Default::default(),
+            vsm: Default::default(),
         }
     }
 }

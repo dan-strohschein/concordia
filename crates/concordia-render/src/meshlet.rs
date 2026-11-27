@@ -753,6 +753,8 @@ pub(crate) mod tests {
             hw_ray_tracing: false,
             metalfx_temporal: false,
             depth_resolve_min: false,
+            fragment_atomics: false,
+            max_render_extent: 0,
             timestamp_granularity: concordia_rhi::TimestampGranularity::StageBoundary,
             max_mesh_output_vertices: 256,
             max_mesh_output_primitives: 512,

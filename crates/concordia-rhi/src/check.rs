@@ -148,6 +148,20 @@ fn region_in(
     }
 }
 
+/// An attachment-less pass's `extent` is within the device's `max_render_extent`.
+pub fn render_extent(extent: [NonZeroU32; 2], max: u32) -> Result<(), RhiError> {
+    match extent.iter().all(|side| side.get() <= max) {
+        true => Ok(()),
+        false => Err(RhiError::invalid(
+            "render pass",
+            format!(
+                "extent {}×{} is beyond the device's {max}×{max}",
+                extent[0], extent[1]
+            ),
+        )),
+    }
+}
+
 /// `viewport` lies inside a pass whose targets are `size` (width, height).
 pub fn viewport_in(viewport: &Viewport, size: [NonZeroU32; 2]) -> Result<(), RhiError> {
     let inside = viewport.x + viewport.width <= size[0].get() as f32

@@ -242,6 +242,13 @@ impl Project {
                             backend: r.temporal,
                             upscale: r.upscale,
                         },
+                    ))
+                    .with_shadows(self.manifest.render.as_ref().map_or_else(
+                        Default::default,
+                        |r| concordia_render::vsm::Shadows {
+                            technique: r.shadows,
+                            vsm: r.vsm,
+                        },
                     )),
             ));
             // Reference renders with the path tracer (ADR-0090, ADR-0101): GPU by default.

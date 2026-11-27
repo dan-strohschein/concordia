@@ -42,6 +42,10 @@ export const VIEW_MODES = [
   { id: "motion", label: "Motion Vectors" },
   { id: "occlusion", label: "Occlusion Passes" },
   { id: "hzb", label: "HZB Depth" },
+  { id: "vsm_pages", label: "Shadow Pages" },
+  { id: "vsm_levels", label: "Shadow Levels" },
+  { id: "vsm_cache", label: "Shadow Cache" },
+  { id: "shadow_mask", label: "Sun Visibility" },
 ] as const;
 export type ViewModeId = (typeof VIEW_MODES)[number]["id"];
 

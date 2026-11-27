@@ -5,7 +5,7 @@
 //! assert_eq!(Quat::IDENTITY * Vec3::X, Vec3::X);
 //! ```
 
-pub use glam::{Affine3A, EulerRot, Mat3, Mat4, Quat, Vec2, Vec3, Vec4};
+pub use glam::{Affine3A, EulerRot, IVec2, Mat3, Mat4, Quat, Vec2, Vec3, Vec4};
 
 /// View and projection constructors (Metal uses the `rh::proj::directx` convention: Z in [0, 1], Y-up).
 pub use glam::camera;

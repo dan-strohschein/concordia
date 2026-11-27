@@ -1,0 +1,888 @@
+// Concordia scene, format 1. Canonical form: `concordia fmt` rewrites this file.
+Scene(
+    format: 1,
+    id: "01a21a28-7bdd-75ab-a7b7-704bcc1d80d1",
+    name: "Sun courtyard",
+    entities: [
+        Entity(
+            id: "01a21a28-7bde-7763-9600-617ee9bcd6bc",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf0-7082-a373-36dea4f7afad",
+                    mesh: "builtin:mesh/plane",
+                ),
+                "Name": "Floor",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (20.0, 1.0, 20.0),
+                    translation: (0.0, 0.0, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7be5-75b4-acd1-1e9c56fe4a6a",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Wall N west",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (6.0, 4.0, 0.4),
+                    translation: (-5.0, 2.0, -8.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7be8-77a8-bfce-90f2d497ecc7",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Wall N east",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (6.0, 4.0, 0.4),
+                    translation: (5.0, 2.0, -8.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7bea-70f8-b80c-85a2a68619c2",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Arch lintel",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (4.0, 0.8, 0.4),
+                    translation: (0.0, 3.6, -8.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7bf1-756b-a4d5-ede4a464f4db",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Wall W base",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.4, 1.0, 16.4),
+                    translation: (-8.0, 0.5, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7bf4-7280-b416-a4216b33d91c",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Wall W top",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.4, 1.2, 16.4),
+                    translation: (-8.0, 3.4, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7bf5-753b-8f55-83c228ba4d3b",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Pier 0",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.4, 1.8, 1.0),
+                    translation: (-8.0, 1.9, -7.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7bf9-7193-b13b-a2a61c95f8a0",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Pier 1",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.4, 1.8, 1.0),
+                    translation: (-8.0, 1.9, -2.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7bfc-7700-848b-2f4beaf56478",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Pier 2",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.4, 1.8, 1.0),
+                    translation: (-8.0, 1.9, 2.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7bff-7701-8195-61f89acc0e11",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Pier 3",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.4, 1.8, 1.0),
+                    translation: (-8.0, 1.9, 7.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c03-7496-b7c9-2ce48c771673",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "asset:01a21a26-2e9e-7277-9721-95cd3530ee6f#mesh/mesh/0",
+                ),
+                "Name": "Column 0",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.0, 1.75, -3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c06-7536-957a-ff67b85f1781",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "asset:01a21a26-2e9e-7277-9721-95cd3530ee6f#mesh/mesh/0",
+                ),
+                "Name": "Column 1",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.0, 1.75, -3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c09-750e-8b48-8cec7ea1e0a6",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "asset:01a21a26-2e9e-7277-9721-95cd3530ee6f#mesh/mesh/0",
+                ),
+                "Name": "Column 2",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.0, 1.75, 3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c0c-7641-b72a-b8e3c9de1c29",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "asset:01a21a26-2e9e-7277-9721-95cd3530ee6f#mesh/mesh/0",
+                ),
+                "Name": "Column 3",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.0, 1.75, 3.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c0f-7752-9501-2d97997d114b",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Beam 0",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.16, 0.2, 7.0),
+                    translation: (-3.0, 3.6, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c12-7647-8508-a6766d183256",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Beam 1",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.16, 0.2, 7.0),
+                    translation: (3.0, 3.6, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c14-74c7-a882-6cf376c3c033",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Slat 0",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (6.6, 0.06, 0.12),
+                    translation: (0.0, 3.76, -3.4),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c17-7266-a898-62a3408111c0",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Slat 1",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (6.6, 0.06, 0.12),
+                    translation: (0.0, 3.76, -2.95),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c1a-7498-9a48-2426451ceb55",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Slat 2",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (6.6, 0.06, 0.12),
+                    translation: (0.0, 3.76, -2.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c1d-76c8-ad68-c64d29bb7639",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Slat 3",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (6.6, 0.06, 0.12),
+                    translation: (0.0, 3.76, -2.0500002),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c20-767b-a352-e8b58b20e4d1",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Slat 4",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (6.6, 0.06, 0.12),
+                    translation: (0.0, 3.76, -1.6000001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c23-77b9-a262-e7bf441ba359",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Slat 5",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (6.6, 0.06, 0.12),
+                    translation: (0.0, 3.76, -1.1500001),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c24-7261-8bfb-e422ff8ef6ac",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Slat 6",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (6.6, 0.06, 0.12),
+                    translation: (0.0, 3.76, -0.7000003),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c26-7181-a16e-066693cd514e",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Slat 7",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (6.6, 0.06, 0.12),
+                    translation: (0.0, 3.76, -0.25000024),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c28-7492-8806-e24c751e5a5c",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Slat 8",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (6.6, 0.06, 0.12),
+                    translation: (0.0, 3.76, 0.19999981),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c29-7569-9933-969c95ec6d2b",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Slat 9",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (6.6, 0.06, 0.12),
+                    translation: (0.0, 3.76, 0.6499996),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c2d-75f7-a91a-0706a6defdd8",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Slat 10",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (6.6, 0.06, 0.12),
+                    translation: (0.0, 3.76, 1.0999999),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c30-75cd-8d28-4a5ef2d9bf93",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Slat 11",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (6.6, 0.06, 0.12),
+                    translation: (0.0, 3.76, 1.5499997),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c33-733a-b2e1-4522001acf81",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Slat 12",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (6.6, 0.06, 0.12),
+                    translation: (0.0, 3.76, 1.9999995),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c36-734b-ab57-e5c8d7a95dee",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Slat 13",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (6.6, 0.06, 0.12),
+                    translation: (0.0, 3.76, 2.4499998),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c39-73a5-9073-d3cb43b919d5",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Slat 14",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (6.6, 0.06, 0.12),
+                    translation: (0.0, 3.76, 2.8999996),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c3c-70f7-b03e-310f4e1121f2",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Slat 15",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (6.6, 0.06, 0.12),
+                    translation: (0.0, 3.76, 3.35),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c3f-7154-bd16-70242077c42f",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Bench seat",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.6, 0.06, 0.45),
+                    translation: (4.5, 0.47, 4.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c42-709d-bd08-c5e4b578f253",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Bench leg 0",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.05, 0.44, 0.05),
+                    translation: (3.78, 0.22, 4.32),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c45-74bf-8ce4-9aa6cd8544ad",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Bench leg 1",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.05, 0.44, 0.05),
+                    translation: (5.2200003, 0.22, 4.32),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c48-7163-bc73-080c72d81ef3",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Bench leg 2",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.05, 0.44, 0.05),
+                    translation: (3.78, 0.22, 4.68),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c4a-7678-8f5a-b1fa8bdf0bc8",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Bench leg 3",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.05, 0.44, 0.05),
+                    translation: (5.2200003, 0.22, 4.68),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c4d-730a-b0aa-761a45518069",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Screen post 0",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.04, 2.0, 0.04),
+                    translation: (-4.6, 1.0, 4.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c50-7562-a95c-18ba06e05e66",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Screen post 1",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.04, 2.0, 0.04),
+                    translation: (-4.35, 1.0, 4.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c53-71fe-9ef8-be3b667b7db2",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Screen post 2",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.04, 2.0, 0.04),
+                    translation: (-4.1, 1.0, 4.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c56-769f-9057-5d66af308dfe",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Screen post 3",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.04, 2.0, 0.04),
+                    translation: (-3.85, 1.0, 4.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c59-71da-ac15-dedd53094493",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Screen post 4",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.04, 2.0, 0.04),
+                    translation: (-3.6, 1.0, 4.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c5b-77be-8d03-600fc6beaeee",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Screen post 5",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.04, 2.0, 0.04),
+                    translation: (-3.35, 1.0, 4.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c5c-750d-83db-f58615435345",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Screen rail 0",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.35, 0.04, 0.04),
+                    translation: (-3.975, 0.3, 4.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c5e-70f0-8dd9-7ef0b97bf173",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Screen rail 1",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.35, 0.04, 0.04),
+                    translation: (-3.975, 0.6, 4.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c60-741f-970a-793dcde399c4",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Screen rail 2",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.35, 0.04, 0.04),
+                    translation: (-3.975, 0.90000004, 4.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c63-75e1-b701-b74065fa22db",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Screen rail 3",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.35, 0.04, 0.04),
+                    translation: (-3.975, 1.2, 4.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c66-75cc-ba71-8065f104b782",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Screen rail 4",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.35, 0.04, 0.04),
+                    translation: (-3.975, 1.5, 4.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c69-7248-a161-905440d409fa",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Screen rail 5",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.35, 0.04, 0.04),
+                    translation: (-3.975, 1.8, 4.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c6c-75cb-a095-263a5a9e3fd0",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a8361ef56be",
+                    mesh: "builtin:mesh/cube",
+                ),
+                "Name": "Pole",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.06, 3.0, 0.06),
+                    translation: (2.0, 1.5, 5.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c6f-77a7-a0d8-fa2b74de5d8c",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf2-715f-941f-8a842214963d",
+                    mesh: "asset:01a21a26-2bf6-71e4-b3c2-56ba29489dee#mesh/mesh/0",
+                ),
+                "Name": "Urn",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.5, 0.5, 5.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c72-714d-b9e3-1ae2ff7997f0",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf0-7082-a373-36dea4f7afad",
+                    mesh: "asset:01a21a26-2c4a-70eb-ac9f-e53bdafabf1c#mesh/mesh/0",
+                ),
+                "Name": "Rock",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (5.0, 0.35, -4.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c75-7390-a02c-24cdc3e2cb71",
+            components: {
+                "DirectionalLight": (
+                    color: (1.0, 0.96, 0.9),
+                    illuminance_lux: 100000.0,
+                    shadows: Some((
+                        cascades: 3,
+                        depth_bias: 0.02,
+                        max_distance: 60.0,
+                        normal_bias: 1.5,
+                        pcf: X3,
+                        resolution: 2048,
+                        split_lambda: 0.75,
+                        stabilize: true,
+                    )),
+                ),
+                "Name": "Sun",
+                "Transform": (
+                    rotation: (-0.6433595, -0.5897462, -0.0, 0.48814756),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (0.0, 0.0, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21a28-7c78-717c-adba-3534ed4421e0",
+            components: {
+                "Camera": (
+                    clear: (0.0, 0.0, 0.0, 1.0),
+                    exposure_ev100: 15.0,
+                    msaa: X4,
+                    priority: 0,
+                    projection: Perspective(
+                        far: 1000.0,
+                        fov_y: 1.05,
+                        near: 0.1,
+                    ),
+                    tonemap: AgX,
+                ),
+                "Name": "Camera",
+                "Transform": (
+                    rotation: (0.012751111, 0.94564646, 0.037355404, -0.32279232),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-5.5, 1.7, -6.5),
+                ),
+            },
+        ),
+    ],
+)

@@ -41,7 +41,7 @@ pub use handle::{
 pub use pipeline::{
     BlendMode, ColorWrites, CompareOp, ComputePipelineDesc, CullMode, DepthState,
     GraphicsPipelineDesc, MAX_MESH_PAYLOAD_BYTES, MAX_MESH_STAGE_THREADS, MeshPipelineDesc,
-    MeshStage, ObjectStage, ShaderSource, StaticSampler,
+    MeshStage, ObjectStage, ShaderSource, StaticSampler, pipeline_targets,
 };
 pub use resource::{BufferDesc, BufferUsage, HeapDesc, MemoryLocation, TextureDesc, TextureUsage};
 pub use slots::Slots;

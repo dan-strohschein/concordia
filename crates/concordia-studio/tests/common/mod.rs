@@ -52,6 +52,7 @@ pub const PROJECT_TOOLS: &[&str] = &[
     "prefab_instantiate",
     "project_files",
     "query_run",
+    "render_set_shadows",
     "render_set_temporal",
     "render_stats",
     "replay_record",

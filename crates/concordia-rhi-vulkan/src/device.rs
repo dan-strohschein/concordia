@@ -896,6 +896,7 @@ impl Inner {
             mesh: self.mesh.as_ref(),
             queries,
             depth_resolve_min: self.caps.depth_resolve_min,
+            max_render_extent: self.caps.max_render_extent,
         };
         let begin = vk::CommandBufferBeginInfo::default()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
@@ -1111,6 +1112,7 @@ fn create_logical(
         .shader_storage_image_write_without_format(true)
         .shader_int64(true)
         .independent_blend(true)
+        .fragment_stores_and_atomics(caps.fragment_atomics)
         .sampler_anisotropy(chosen.record.features.sampler_anisotropy);
     let mut mesh = vk::PhysicalDeviceMeshShaderFeaturesEXT::default()
         .mesh_shader(true)

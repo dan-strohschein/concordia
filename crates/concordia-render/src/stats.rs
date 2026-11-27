@@ -61,6 +61,9 @@ pub struct FrameStats {
     /// What the temporal resolve did: the backend that ran, the internal and output sizes, the
     /// jitter phase, and whether history started fresh (M4 4.6).
     pub temporal: crate::temporal::TemporalStats,
+    /// The sun's shadows: the technique that ran (and why `vsm` fell back) and the virtual shadow
+    /// maps' page counts (M4 4.7).
+    pub shadows: crate::vsm::ShadowStats,
 }
 
 /// How the frame's opaque static geometry reached the rasterizer (ADR-0100).
@@ -207,6 +210,7 @@ pub(crate) fn record(
             .map(|(material, report)| downgrade(material, report))
             .collect(),
         temporal: stats.temporal,
+        shadows: stats.shadows,
     });
     if let Some(timing) = early {
         last.apply(&timing);

@@ -21,6 +21,7 @@ fn begin_pass() -> Command {
             store: StoreOp::Store,
         }],
         depth: None,
+        extent: None,
     })
 }
 

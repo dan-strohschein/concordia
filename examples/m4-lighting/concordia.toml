@@ -1,0 +1,14 @@
+# Concordia project manifest.
+[project]
+name = "m4-lighting"
+
+[scene]
+main = "scenes/sun_courtyard.scene.ron"
+
+[assets]
+
+# The urn, rock and columns are generated (gen.run) and restored from their sidecars' recipes
+# (gen.restore); the .glb files are not in git.
+[gen]
+
+[render]

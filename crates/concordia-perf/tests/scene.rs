@@ -61,6 +61,16 @@ fn measured_frames_move_evenly_through_the_keys() {
     );
 }
 
+/// A perf scene may set the sun's shadow technique (M4 4.7); absent, the project's setting stands.
+#[test]
+fn perf_scene_reads_an_optional_shadow_technique() {
+    use concordia_render::vsm::ShadowTechnique;
+    assert_eq!(PerfScene::read(TEXT).unwrap().shadows, None);
+    let with = TEXT.replace("fov_y: 0.9,", "fov_y: 0.9,\n    shadows: Some(vsm),");
+    let scene = PerfScene::read(&with).expect("reads");
+    assert_eq!(scene.shadows, Some(ShadowTechnique::vsm));
+}
+
 /// A perf scene may set the temporal resolve (4.6 plan Q13); absent, the project's setting stands.
 #[test]
 fn perf_scene_reads_an_optional_temporal_setting() {

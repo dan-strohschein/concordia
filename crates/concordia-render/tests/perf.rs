@@ -44,6 +44,7 @@ fn clear_pass(texture: concordia_render::graph::GraphTexture) -> concordia_rende
                     store: StoreOp::Store,
                 }],
                 depth: None,
+                extent: None,
             }))
             .push(Command::EndRenderPass);
         Ok(())
