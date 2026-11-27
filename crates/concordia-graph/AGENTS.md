@@ -7,6 +7,7 @@ Text-first gameplay graphs (M4 4.9, D6): the `.graph.ron` format, the node libra
 - Format: `Graph`, `GraphKind`, `Node`, `Input`, `Literal`, `ExecLink`, `Signature`, `PinDecl`, `Variable`; `read_graph`, `write_graph` (canonical through `concordia-scene`), `Graph::semantic_hash`, `Graph::normalized`.
 - Library: `NodeLibrary::core()` (built-in nodes and `fns::graph_fns()`), `NodeLibrary::build(registry, is_component)` (plus `get.`/`set.` per component and field, `raise.`/`on.` per signal), `NodeDef`, `PinDef`, `PinType`, `GenericKind`.
 - Checker: `check(graph, library) -> Report` (`diagnostics`, `pin_type`), `Diagnostic`, `Code`.
+- Compiler (4.10a): `compile_function(graph, library) -> CompiledFunction { ir, wasm, params, results }`; `ir::{Function, Inst, Scalar, ScalarTy, UnOp, BinOp}`; `Function::eval` is the interpreter.
 
 ## Invariants
 - Graph and node ids are UUIDv7 (checked on read and write).
@@ -15,6 +16,7 @@ Text-first gameplay graphs (M4 4.9, D6): the `.graph.ron` format, the node libra
 - Library ops are stable names; the core's are snapshotted (`library__core_library.snap`): a change there is an API change for every graph.
 - Every diagnostic names a code and, where it can, the node and pin to fix; suggestions come from `concordia_core::suggest::did_you_mean`.
 - No pin name repeats on a node (signal fields that share a fixed pin's name become `field_<name>`).
+- The IR is scalar (vectors are components); `ir/eval.rs` defines every operation once (WASM semantics with NaN canonicalization: canonical NaN from arithmetic, `neg`/`abs` as bit operations, f32 min/max NaN-propagating with −0 < +0, integer ÷0 = 0 and MIN ÷ −1 = MIN, saturating float→int). The interpreter and constant folding use it; the emitter must match it bit for bit (`compiled_graph_matches_interpreter`).
 
 ## How to test
 `cargo nextest run -p concordia-graph`; the engine-wide library check is `cargo nextest run -p concordia-tests --test integration graph_library`. Example graphs live in `tests/graphs/{ok,broken}`; `CONCORDIA_GRAPH_CANONICALIZE=1` rewrites the `ok` ones in canonical form after an intended format change.
@@ -26,10 +28,10 @@ Text-first gameplay graphs (M4 4.9, D6): the `.graph.ron` format, the node libra
 - **Add a diagnostic:** a `Code` variant, the pass that finds it (`src/check/`), and a broken example graph.
 
 ## References
-Unreal's public Blueprint documentation for UX expectations only (no code). Type checking follows the usual bidirectional approach (annotated signatures and variables, inference inward). No engine source consulted.
+Unreal's public Blueprint documentation for UX expectations only (no code). Type checking follows the usual bidirectional approach (annotated signatures and variables, inference inward). Cytron et al. 1991 (SSA form) for the IR; the WebAssembly core specification (numeric semantics) for the interpreter and emitter. No engine source consulted.
 
 ## Status
-M4 4.9: format, library and checker done. Compiling, running, hot reload and MCP authoring are 4.10.
+M4 4.9: format, library and checker done. 4.10a: IR, interpreter and the WASM emitter for pure Function graphs. Running graphs as script modules, hot reload and MCP authoring are 4.10b–c.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

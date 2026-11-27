@@ -31,6 +31,8 @@ pub enum Code {
     kind_rule,
     /// An exec link from or to a node that has no such control flow.
     exec_mismatch,
+    /// A node or type the compiler can't lower yet (M4 4.10).
+    unsupported_node,
 }
 
 /// One problem, located.
