@@ -37,6 +37,11 @@ impl EngineModule for AiModule {
         register_component::<Brain>(registry)?;
         register_component::<Blackboard>(registry)?;
         register_component::<BtState>(registry)?;
+        register_component::<crate::Perceiver>(registry)?;
+        register_component::<crate::Faction>(registry)?;
+        register_component::<crate::Memory>(registry)?;
+        register_component::<crate::AiNoise>(registry)?;
+        register_component::<crate::AiDamaged>(registry)?;
         register_component::<AiDecision>(registry)?;
         register_component::<AiCast>(registry)?;
         register_component::<AiRun>(registry)
@@ -78,6 +83,15 @@ impl EngineModule for AiModule {
             }
             if world.get::<BtState>(id).is_none() {
                 let _ = world.insert(id, BtState::new(tree));
+            }
+        }
+        let mut perceivers = Vec::new();
+        if let Ok(mut query) = world.query::<&crate::Perceiver>() {
+            query.for_each(world, |id, _| perceivers.push(id));
+        }
+        for id in perceivers {
+            if world.get::<crate::Memory>(id).is_none() {
+                let _ = world.insert(id, crate::Memory::default());
             }
         }
         world.insert_resource(Trees::with_failures(trees, failed));

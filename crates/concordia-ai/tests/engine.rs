@@ -157,6 +157,7 @@ fn crowd(threads: usize) -> WorldHash {
         &[("fidget.bt.ron", fidget())],
         AiConfig {
             agents_per_tick: 64,
+            ..AiConfig::default()
         },
     );
     for _ in 0..500 {
@@ -179,6 +180,7 @@ fn bt_time_slicing_respects_budget() {
         &[("fidget.bt.ron", fidget())],
         AiConfig {
             agents_per_tick: 64,
+            ..AiConfig::default()
         },
     );
     for _ in 0..500 {

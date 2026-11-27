@@ -671,6 +671,7 @@ dependencies = [
  "concordia-api",
  "concordia-core",
  "concordia-nav",
+ "concordia-physics",
  "concordia-reflect",
  "concordia-scene",
  "concordia-terra",

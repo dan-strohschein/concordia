@@ -218,6 +218,7 @@ impl Project {
         if let Some(ai) = &self.manifest.ai {
             let config = concordia_ai::AiConfig {
                 agents_per_tick: ai.agents_per_tick.get(),
+                ..Default::default()
             };
             modules.push(Arc::new(concordia_ai::AiModule::new(config)));
         }
