@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "How a mesh moves, a hint for virtual shadow maps' cache (M4 4.7b). A wrong hint never\nchanges the picture, only the cost.",
+  "oneOf": [
+    {
+      "const": "Auto",
+      "description": "Dynamic while it has moved in the last 60 frames, static otherwise."
+    },
+    {
+      "const": "Static",
+      "description": "Kept in the static pages even when it moves (each move redraws them): for things that\nmove once."
+    },
+    {
+      "const": "Movable",
+      "description": "Drawn into the dynamic pages from its first frame: doors, platforms, projectiles."
+    }
+  ],
+  "title": "Mobility",
+  "x-concordia-type": "Mobility"
+}

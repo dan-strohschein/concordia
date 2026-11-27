@@ -63,6 +63,7 @@ fn yard_with_ids(msaa: Msaa, casts: bool) -> (Scene, Yard) {
                     mesh: ball.clone(),
                     material: stone.clone(),
                     cast_shadows: casts,
+                    ..Default::default()
                 },
             )
             .unwrap();
@@ -372,6 +373,7 @@ fn page_rect_culling_skips_meshlets_over_clean_pages() {
                         mesh: ball.clone(),
                         material: stone.clone(),
                         cast_shadows: true,
+                        ..Default::default()
                     },
                 )
                 .unwrap();
@@ -511,6 +513,7 @@ fn vsm_review_frames() {
                 mesh: "builtin:mesh/sphere".parse().unwrap(),
                 material: red,
                 cast_shadows: true,
+                ..Default::default()
             },
         )
         .unwrap();
@@ -801,7 +804,14 @@ fn cached_frames_equal_uncached() {
             Vec3::new(1.0 + 0.25 * k as f32, 0.5, -2.0),
         );
         let s = o.frame(&mut scene, &format!("slide {k}"));
-        assert!(s.pages_invalidated > 0, "slide {k}: {s:?}");
+        // The first move invalidates the static pages it was drawn into; then it is dynamic (4.7b).
+        match k {
+            1 => assert!(s.pages_invalidated > 0, "slide {k}: {s:?}"),
+            _ => assert!(
+                s.pages_rendered_static == 0 && s.pages_dynamic > 0,
+                "slide {k}: {s:?}"
+            ),
+        }
     }
     move_to(&mut scene, ids.balls[1], Vec3::new(-2.0, 1.0, -6.0));
     o.frame(&mut scene, "a meshlet ball moved");
@@ -858,4 +868,143 @@ fn cached_frames_equal_uncached() {
     assert_eq!(s.cache_reset, Some(CacheReset::DepthRange), "{s:?}");
     let s = o.frame(&mut scene, "still again");
     assert_eq!(s.pages_rendered_static, 0, "{s:?}");
+}
+
+/// Sets `id`'s mobility hint.
+fn hint(scene: &mut Scene, id: concordia_core::id::EntityId, mobility: concordia_assets::Mobility) {
+    let mut r = scene
+        .world
+        .get::<concordia_assets::MeshRenderer>(id)
+        .unwrap()
+        .clone();
+    r.mobility = mobility;
+    scene.world.insert(id, r).unwrap();
+}
+
+/// An `Auto` box that keeps moving: the first move redraws the static pages it was drawn into
+/// (it becomes dynamic), later moves redraw no static page, only dynamic ones; it settles after
+/// 60 still frames and its static pages are redrawn once. Every frame equals the uncached one.
+#[test]
+fn auto_mover_draws_only_into_dynamic_pages() {
+    let Some(mut o) = Oracle::new() else {
+        return;
+    };
+    let (mut scene, ids) = yard_with_ids(Msaa::Off, true);
+    o.frame(&mut scene, "warm-up");
+    let s = o.frame(&mut scene, "still");
+    assert_eq!((s.casters_dynamic, s.pages_dynamic), (0, 0), "{s:?}");
+    move_to(&mut scene, ids.cube, Vec3::new(1.2, 0.5, -2.0));
+    let s = o.frame(&mut scene, "starts moving");
+    assert!(s.pages_invalidated > 0 && s.casters_dynamic == 1, "{s:?}");
+    for k in 2..6 {
+        move_to(
+            &mut scene,
+            ids.cube,
+            Vec3::new(1.0 + 0.2 * k as f32, 0.5, -2.0),
+        );
+        let s = o.frame(&mut scene, &format!("moving {k}"));
+        assert_eq!(s.pages_rendered_static, 0, "moving {k}: {s:?}");
+        assert!(s.pages_dynamic > 0, "moving {k}: {s:?}");
+    }
+    // Dynamic until 60 frames after its last move (the 4th move above): 59 more frames.
+    for k in 0..59 {
+        let s = o.frame(&mut scene, &format!("still {k}"));
+        assert_eq!(s.casters_dynamic, 1, "still {k}: {s:?}");
+    }
+    let s = o.frame(&mut scene, "settles");
+    assert_eq!(s.casters_dynamic, 0, "{s:?}");
+    assert!(
+        s.pages_invalidated > 0,
+        "its static pages redrawn once: {s:?}"
+    );
+    let s = o.frame(&mut scene, "static again");
+    assert_eq!(s.pages_rendered_static, 0, "{s:?}");
+}
+
+/// `Movable` is dynamic from its first frame: its moves never redraw a static page.
+#[test]
+fn movable_hint_is_dynamic_from_the_first_frame() {
+    let Some(mut o) = Oracle::new() else {
+        return;
+    };
+    let (mut scene, ids) = yard_with_ids(Msaa::Off, true);
+    hint(&mut scene, ids.cube, concordia_assets::Mobility::Movable);
+    o.frame(&mut scene, "warm-up");
+    let s = o.frame(&mut scene, "still");
+    assert_eq!(s.casters_dynamic, 1, "{s:?}");
+    assert!(s.pages_dynamic > 0, "{s:?}");
+    for k in 1..4 {
+        move_to(
+            &mut scene,
+            ids.cube,
+            Vec3::new(1.0 + 0.25 * k as f32, 0.5, -2.0),
+        );
+        let s = o.frame(&mut scene, &format!("moved {k}"));
+        assert_eq!(s.pages_rendered_static, 0, "moved {k}: {s:?}");
+    }
+}
+
+/// `Static` stays static when it moves: each move redraws its static pages, and it is reported.
+#[test]
+fn static_hint_that_moves_invalidates_and_is_reported() {
+    let Some(mut o) = Oracle::new() else {
+        return;
+    };
+    let (mut scene, ids) = yard_with_ids(Msaa::Off, true);
+    hint(&mut scene, ids.cube, concordia_assets::Mobility::Static);
+    o.frame(&mut scene, "warm-up");
+    o.frame(&mut scene, "still");
+    for k in 1..4 {
+        move_to(
+            &mut scene,
+            ids.cube,
+            Vec3::new(1.0 + 0.25 * k as f32, 0.5, -2.0),
+        );
+        let s = o.frame(&mut scene, &format!("moved {k}"));
+        assert!(s.pages_invalidated > 0, "moved {k}: {s:?}");
+        assert_eq!(
+            (s.casters_dynamic, s.static_hint_moved),
+            (0, 1),
+            "moved {k}: {s:?}"
+        );
+    }
+    let s = o.frame(&mut scene, "still again");
+    assert_eq!(s.static_hint_moved, 0, "{s:?}");
+}
+
+/// With a pool too small for dynamic pages, movers draw into the static pages, which are redrawn
+/// clean the next frame: never a missing or stale shadow.
+#[test]
+fn dynamic_fallback_without_room_has_no_missing_shadows() {
+    let fresh = |cache: bool| {
+        let mut r = meshlet_renderers().into_iter().next()?;
+        r.set_shadows(ShadowTechnique::vsm);
+        let pool_pages = 64;
+        r.set_vsm_settings(concordia_render::vsm::VsmSettings {
+            cache,
+            pool_pages,
+            // Finer levels: more pages than the smallest pool holds.
+            resolution_bias: -3.0,
+            ..Default::default()
+        })
+        .unwrap();
+        Some(r)
+    };
+    let (Some(on), Some(off)) = (fresh(true), fresh(false)) else {
+        return;
+    };
+    let mut o = Oracle { on, off };
+    let (mut scene, ids) = yard_with_ids(Msaa::Off, true);
+    hint(&mut scene, ids.cube, concordia_assets::Mobility::Movable);
+    let mut fell_back = 0;
+    for k in 0..4 {
+        move_to(
+            &mut scene,
+            ids.cube,
+            Vec3::new(1.0 + 0.25 * k as f32, 0.5, -2.0),
+        );
+        let s = o.frame(&mut scene, &format!("frame {k}"));
+        fell_back += s.pages_dynamic_fallback;
+    }
+    assert!(fell_back > 0, "the pool really ran out of dynamic pages");
 }

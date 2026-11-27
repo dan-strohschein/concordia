@@ -1019,6 +1019,7 @@ fn reload_scene(mesh: &str, color: [u8; 4], sky: [u8; 4]) -> Scene {
                 mesh,
                 material,
                 cast_shadows: false,
+                ..Default::default()
             },
         )
         .unwrap();

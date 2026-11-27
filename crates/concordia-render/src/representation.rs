@@ -103,6 +103,7 @@ impl RenderWorld {
                     mesh: cheap.mesh.clone(),
                     material: cheap.material.clone(),
                     cast_shadows: cheap.cast_shadows,
+                    mobility: cheap.mobility,
                     skin: None,
                     instanced: true,
                     ..draw.clone()

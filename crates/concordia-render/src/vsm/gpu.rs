@@ -12,7 +12,7 @@ use concordia_rhi::{
 };
 
 use super::pool::PoolLayout;
-use super::table::PAGES_PER_SIDE;
+use super::table::{PAGES_PER_SIDE, PageFlags};
 use crate::RenderError;
 use crate::gpu::Uploads;
 use crate::scan::{Scan, ScanPipelines, compute_barrier};
@@ -22,8 +22,13 @@ const LEVEL_ENTRIES: u32 = PAGES_PER_SIDE * PAGES_PER_SIDE;
 /// Words of the eviction histogram (one per age) and its result (threshold, quota, deficit).
 const HISTOGRAM_WORDS: u32 = 256 + 4;
 /// Words of the counts buffer: requested, resident, starved, the clear's dispatch (3 words), new,
-/// drawn, evicted, kept, pool used.
-pub(crate) const COUNT_WORDS: u32 = 11;
+/// drawn, evicted, kept, pool used, the composite's dispatch (3 words), dynamic pages, dynamic
+/// pages without room (drawn into the static page).
+pub(crate) const COUNT_WORDS: u32 = 16;
+/// Marks a physical page's owner word as a dynamic page (freed at the next frame's start; mirrored
+/// by `VSM_DYNAMIC_OWNER`).
+#[cfg(test)]
+pub(crate) const DYNAMIC_OWNER: u32 = 1 << 31;
 
 /// The page work's compute pipelines.
 #[derive(Debug, Clone, Copy)]
@@ -31,6 +36,10 @@ pub(crate) struct VsmPipelines {
     pub(crate) zero: Pipeline,
     pub(crate) age: Pipeline,
     pub(crate) invalidate: Pipeline,
+    pub(crate) release_dynamic: Pipeline,
+    pub(crate) entry_flags: Pipeline,
+    pub(crate) dynamic_allocate: Pipeline,
+    pub(crate) composite: Pipeline,
     pub(crate) mark: Pipeline,
     pub(crate) flags: Pipeline,
     pub(crate) update: Pipeline,
@@ -41,7 +50,6 @@ pub(crate) struct VsmPipelines {
     pub(crate) evict: Pipeline,
     pub(crate) free_list: Pipeline,
     pub(crate) allocate: Pipeline,
-    pub(crate) dirty_flags: Pipeline,
     pub(crate) draw_list: Pipeline,
     pub(crate) counts: Pipeline,
     pub(crate) clear: Pipeline,
@@ -57,7 +65,11 @@ impl VsmPipelines {
         Ok(Self {
             zero: kernel("vsm_zero")?,
             age: kernel("vsm_age")?,
-            invalidate: kernel("vsm_invalidate")?,
+            invalidate: kernel("vsm_flag_spheres")?,
+            release_dynamic: kernel("vsm_release_dynamic")?,
+            entry_flags: kernel("vsm_entry_flags")?,
+            dynamic_allocate: kernel("vsm_dynamic_allocate")?,
+            composite: kernel("vsm_composite")?,
             mark: kernel("vsm_mark")?,
             flags: kernel("vsm_request_flags")?,
             update: kernel("vsm_update")?,
@@ -68,7 +80,6 @@ impl VsmPipelines {
             evict: kernel("vsm_evict")?,
             free_list: kernel("vsm_free_list")?,
             allocate: kernel("vsm_allocate")?,
-            dirty_flags: kernel("vsm_dirty_flags")?,
             draw_list: kernel("vsm_draw_list")?,
             counts: kernel("vsm_counts")?,
             clear: kernel("vsm_clear")?,
@@ -96,7 +107,10 @@ impl VsmPool {
             for chunk in 0..layout.chunks() {
                 let buffer = device.create_buffer(&BufferDesc {
                     size: NonZeroU64::new(layout.chunk_bytes(chunk)).unwrap_or(NonZeroU64::MIN),
-                    usage: BufferUsage::STORAGE | BufferUsage::BINDLESS | BufferUsage::COPY_SRC,
+                    usage: BufferUsage::STORAGE
+                        | BufferUsage::BINDLESS
+                        | BufferUsage::COPY_SRC
+                        | BufferUsage::COPY_DST,
                     memory: MemoryLocation::GpuOnly,
                     label: format!("vsm pool {chunk}"),
                 })?;
@@ -184,6 +198,10 @@ pub(crate) struct PageWork {
     pub(crate) counts: Buffer,
     /// The physical pages to draw this frame, in allocation order.
     pub(crate) list: Buffer,
+    /// Each entry's dynamic physical page + 1 this frame (0: none).
+    pub(crate) dynamic: Buffer,
+    /// (static page, dynamic page) per dynamic page, for the composite.
+    pub(crate) copies: Buffer,
     bufs: Bufs,
     scans: Scans,
     index: Indices,
@@ -198,6 +216,7 @@ struct Bufs {
     eq: Buffer,
     dirty: Buffer,
     free_list: Buffer,
+    movers: Buffer,
 }
 
 #[derive(Debug, Clone)]
@@ -207,6 +226,7 @@ struct Scans {
     free: Scan,
     eq: Scan,
     dirty: Scan,
+    movers: Scan,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -227,6 +247,10 @@ struct Indices {
     eq_scan: u32,
     dirty: u32,
     dirty_scan: u32,
+    dynamic: u32,
+    copies: u32,
+    movers: u32,
+    mover_scan: u32,
 }
 
 fn storage(
@@ -297,6 +321,10 @@ impl PageWork {
         let dirty = make(entries, "vsm dirty")?;
         let dirty_scan = make(entries + 1, "vsm dirty scan")?;
         let list = make(pool, "vsm draw list")?;
+        let dynamic = make(entries, "vsm dynamic table")?;
+        let copies = make(pool * 2, "vsm composite copies")?;
+        let movers = make(entries, "vsm dynamic flags")?;
+        let mover_scan = make(entries + 1, "vsm dynamic scan")?;
         let counts = make(COUNT_WORDS, "vsm counts")?;
         let scan = |(i, o), n, keep: &mut Vec<Buffer>| {
             Scan::prepare(device, up, pipelines.scan, (i, o), n, keep)
@@ -307,6 +335,7 @@ impl PageWork {
             free: scan((free, free_scan), pool, keep)?,
             eq: scan((eq, eq_scan), pool, keep)?,
             dirty: scan((dirty, dirty_scan), entries, keep)?,
+            movers: scan((movers, mover_scan), entries, keep)?,
         };
         let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
         let (table, pages) = shape.store;
@@ -327,6 +356,10 @@ impl PageWork {
             eq_scan: index(eq_scan)?,
             dirty: index(dirty)?,
             dirty_scan: index(dirty_scan)?,
+            dynamic: index(dynamic)?,
+            copies: index(copies)?,
+            movers: index(movers)?,
+            mover_scan: index(mover_scan)?,
         };
         Ok(Self {
             pipelines,
@@ -337,6 +370,8 @@ impl PageWork {
             pages,
             counts,
             list,
+            dynamic,
+            copies,
             bufs: Bufs {
                 requests,
                 needs,
@@ -345,6 +380,7 @@ impl PageWork {
                 eq,
                 dirty,
                 free_list,
+                movers,
             },
             scans,
             index,
@@ -371,6 +407,10 @@ impl PageWork {
             ]);
         }
         out.extend([
+            Command::SetPipeline(p.release_dynamic),
+            words([i.pages, self.pool]),
+            dispatch(self.pool),
+            compute_barrier(&[self.pages]),
             Command::SetPipeline(p.age),
             words([i.table, i.pages, params, self.levels]),
             dispatch(self.entries()),
@@ -381,10 +421,16 @@ impl PageWork {
 
     /// Flags the held pages under each of `count` world spheres (bindless buffer `spheres`, one
     /// `float4` each) in every level as invalidated (parameter block `params`, depth views `views`).
-    pub(crate) fn invalidate(
+    pub(crate) fn invalidate(&self, spheres: (u32, u32), blocks: (u32, u32)) -> Vec<Command> {
+        self.flag_spheres(spheres, blocks, (FLAG_INVALIDATED, FLAG_HELD))
+    }
+
+    /// Ors `flag` into every entry under each of `count` spheres that holds a page and has `need`.
+    fn flag_spheres(
         &self,
         (spheres, count): (u32, u32),
         (params, views): (u32, u32),
+        (flag, need): (u32, u32),
     ) -> Vec<Command> {
         if count == 0 {
             return Vec::new();
@@ -392,11 +438,35 @@ impl PageWork {
         let rows = count.div_ceil(65_535);
         vec![
             Command::SetPipeline(self.pipelines.invalidate),
-            words([spheres, count, params, views, self.index.table]),
+            words([spheres, count, params, views, self.index.table, flag, need]),
             Command::Dispatch {
                 groups: [count.min(65_535), rows, self.levels],
             },
             compute_barrier(&[self.table]),
+        ]
+    }
+
+    /// `out[j]` = 1 for each entry (allocation order) holding a page with `mask` set.
+    fn entry_flags(&self, (buffer, index): (Buffer, u32), mask: u32) -> Vec<Command> {
+        vec![
+            Command::SetPipeline(self.pipelines.entry_flags),
+            words([self.index.table, index, self.levels, mask]),
+            dispatch(self.entries()),
+            compute_barrier(&[buffer]),
+        ]
+    }
+
+    /// Copies each dynamic page's static page into it (one group per page), before the dynamic
+    /// casters draw.
+    pub(crate) fn composite(&self, params: u32, pool: &[Buffer]) -> Vec<Command> {
+        vec![
+            Command::SetPipeline(self.pipelines.composite),
+            words([params, self.index.copies]),
+            Command::DispatchIndirect {
+                buffer: self.counts,
+                offset: 44,
+            },
+            pool_barrier(pool),
         ]
     }
 
@@ -417,9 +487,10 @@ impl PageWork {
         ]
     }
 
-    /// Decides residency, releases, evicts and allocates, lists the pages to draw and writes the
-    /// counts.
-    pub(crate) fn allocate(&self) -> Vec<Command> {
+    /// Decides residency, releases, evicts and allocates; gives resident pages under the dynamic
+    /// casters' `movers` spheres a dynamic page (or, without room, marks them polluted); lists the
+    /// pages to draw and writes the counts.
+    pub(crate) fn allocate(&self, movers: (u32, u32), blocks: (u32, u32)) -> Vec<Command> {
         let (p, i, b) = (&self.pipelines, &self.index, &self.bufs);
         let (e, n) = (self.entries(), self.pool);
         let mut out = vec![
@@ -488,11 +559,37 @@ impl PageWork {
             ]),
             dispatch(e),
             compute_barrier(&[self.table, self.pages]),
-            Command::SetPipeline(p.dirty_flags),
-            words([i.table, i.dirty, self.levels]),
+            Command::SetPipeline(p.zero),
+            words([i.dynamic, e]),
             dispatch(e),
-            compute_barrier(&[b.dirty]),
+            compute_barrier(&[self.dynamic]),
         ]);
+        out.extend(self.flag_spheres(movers, blocks, (FLAG_DYNAMIC, FLAG_RESIDENT)));
+        out.extend(self.entry_flags((b.movers, i.movers), FLAG_DYNAMIC));
+        out.extend_from_slice(self.scans.movers.commands());
+        out.extend(self.free_scan());
+        out.extend([
+            Command::SetPipeline(p.free_list),
+            words([i.free, i.free_scan, i.free_list, n]),
+            dispatch(n),
+            compute_barrier(&[b.free_list]),
+            Command::SetPipeline(p.dynamic_allocate),
+            words([
+                i.table,
+                i.movers,
+                i.mover_scan,
+                i.free_list,
+                i.free_scan,
+                i.pages,
+                i.dynamic,
+                i.copies,
+                self.levels,
+                n,
+            ]),
+            dispatch(e),
+            compute_barrier(&[self.table, self.pages, self.dynamic, self.copies]),
+        ]);
+        out.extend(self.entry_flags((b.dirty, i.dirty), FLAG_DIRTY));
         out.extend_from_slice(self.scans.dirty.commands());
         out.extend([
             Command::SetPipeline(p.draw_list),
@@ -508,9 +605,17 @@ impl PageWork {
                 i.dirty_scan,
                 i.histogram,
                 i.free_scan,
+                i.mover_scan,
             ]),
             Command::Dispatch { groups: [1, 1, 1] },
-            indirect_barrier(&[self.table, self.pages, self.counts, self.list]),
+            indirect_barrier(&[
+                self.table,
+                self.pages,
+                self.counts,
+                self.list,
+                self.dynamic,
+                self.copies,
+            ]),
         ]);
         out
     }
@@ -562,6 +667,38 @@ impl PageWork {
     }
 }
 
+/// Entry flags as the kernels take them (`PageFlags` in bits 16–23).
+const FLAG_DIRTY: u32 = (PageFlags::DIRTY.bits() as u32) << 16;
+const FLAG_DYNAMIC: u32 = (PageFlags::DYNAMIC.bits() as u32) << 16;
+const FLAG_INVALIDATED: u32 = (PageFlags::INVALIDATED.bits() as u32) << 16;
+/// `flag_spheres`' need: any entry holding a page.
+const FLAG_HELD: u32 = 0;
+/// `flag_spheres`' need: resident entries (requested and valid).
+const FLAG_RESIDENT: u32 = ((PageFlags::REQUESTED.bits() | PageFlags::VALID.bits()) as u32) << 16;
+
+/// Compute writes of the pool before page draws, composites and `forward`'s reads.
+fn pool_barrier(pool: &[Buffer]) -> Command {
+    let access = |stages, access| Access {
+        stages,
+        access,
+        layout: Layout::General,
+    };
+    Command::Barrier {
+        buffers: pool
+            .iter()
+            .map(|&buffer| BufferBarrier {
+                buffer,
+                before: access(Stages::COMPUTE, AccessFlags::SHADER_WRITE),
+                after: access(
+                    Stages::FRAGMENT | Stages::COMPUTE,
+                    AccessFlags::SHADER_READ | AccessFlags::SHADER_WRITE,
+                ),
+            })
+            .collect(),
+        textures: Vec::new(),
+    }
+}
+
 /// Compute writes of `buffers` before indirect dispatches and later shader reads.
 pub(crate) fn indirect_barrier(buffers: &[Buffer]) -> Command {
     let written = Access {
@@ -597,7 +734,9 @@ mod tests {
     use super::*;
     use crate::test_gpu::{self, download, run_commands};
     use crate::vsm::frame::{Footprint, ParamsIn, depth_views, floor_level, params_rows};
-    use crate::vsm::{Clipmap, PageEntry, PageFlags, VsmSettings, level_for_footprint, table_slot};
+    use crate::vsm::{
+        Clipmap, PageEntry, PageFlags, PoolLayout, VsmSettings, level_for_footprint, table_slot,
+    };
 
     const W: u32 = 64;
     const H: u32 = 48;
@@ -757,6 +896,7 @@ mod tests {
             chunks: &[],
             inv_view_proj: s.camera.inverse(),
             previous: &origins(&s.clipmap),
+            tables: [0, 0],
         });
         let params = up.buffer(device, &params, "params").unwrap();
         let views = up
@@ -814,6 +954,17 @@ mod tests {
         keep_frames: u32,
         clipmap: Clipmap,
         previous: Vec<IVec2>,
+        /// A real pool (only the composite tests need one).
+        pool_buffers: Option<VsmPool>,
+        /// The last frame's work and parameter block (for `composite`).
+        last: Option<(PageWork, u32)>,
+    }
+
+    /// What a frame invalidates and which spheres hold dynamic casters.
+    #[derive(Default, Clone, Copy)]
+    struct Inputs<'a> {
+        stale: &'a [Vec4],
+        dynamic: &'a [Vec4],
     }
 
     /// One frame's store and outputs, read back.
@@ -823,6 +974,8 @@ mod tests {
         pages: Vec<u32>,
         counts: Vec<u32>,
         list: Vec<u32>,
+        /// Dynamic physical page + 1 per entry (0: none).
+        dynamic: Vec<u32>,
     }
 
     impl Out {
@@ -862,7 +1015,64 @@ mod tests {
                 keep_frames,
                 previous: origins(&clipmap),
                 clipmap,
+                pool_buffers: None,
+                last: None,
             }
+        }
+
+        /// With a real pool (`pool` pages of depth).
+        fn with_pool(mut self) -> Self {
+            let mut pool = VsmPool::default();
+            pool.ensure(self.device, PoolLayout::new(self.pool).unwrap())
+                .unwrap();
+            self.pool_buffers = Some(pool);
+            self
+        }
+
+        /// The pool's buffers and bindless indices.
+        fn chunks(&mut self) -> Vec<(Buffer, u32)> {
+            match &mut self.pool_buffers {
+                Some(p) => p
+                    .ensure(self.device, PoolLayout::new(self.pool).unwrap())
+                    .unwrap()
+                    .to_vec(),
+                None => Vec::new(),
+            }
+        }
+
+        /// Runs the last frame's composite (static → dynamic copies).
+        fn composite(&mut self) {
+            let chunks = self.chunks();
+            let pool: Vec<Buffer> = chunks.iter().map(|(b, _)| *b).collect();
+            let (work, params) = self.last.clone().unwrap();
+            run_commands(self.device, work.composite(params, &pool));
+        }
+
+        /// Words of physical page `page`.
+        fn page_words(&mut self, page: u32) -> Vec<u32> {
+            let chunks = self.chunks();
+            let (buffer, _) = chunks[(page / 1024) as usize];
+            let words = u64::from(crate::vsm::PAGE_TEXELS * crate::vsm::PAGE_TEXELS);
+            let all = download(
+                self.device,
+                buffer,
+                (u64::from(page % 1024) + 1) * words * 4,
+            );
+            all[((page % 1024) as u64 * words) as usize..].to_vec()
+        }
+
+        /// Writes `words` into physical page `page`.
+        fn fill_page(&mut self, page: u32, words: &[u32]) {
+            let chunks = self.chunks();
+            let (buffer, _) = chunks[(page / 1024) as usize];
+            let page_words = (crate::vsm::PAGE_TEXELS * crate::vsm::PAGE_TEXELS) as usize;
+            let at = (page % 1024) as usize * page_words;
+            let mut all = download(self.device, buffer, ((at + page_words) * 4) as u64);
+            all[at..].copy_from_slice(words);
+            let data: Vec<u8> = all.iter().flat_map(|w| w.to_le_bytes()).collect();
+            let mut up = Uploads::new();
+            up.write_into(self.device, buffer, &data).unwrap();
+            up.flush(self.device).unwrap();
         }
 
         /// Moves the camera to `eye` for the next frame.
@@ -876,12 +1086,14 @@ mod tests {
         }
 
         fn frame(&mut self, reset: bool, requested: &[u32]) -> Out {
-            self.frame_with(reset, requested, &[])
+            self.frame_with(reset, requested, Inputs::default())
         }
 
-        /// A frame that invalidates the pages under `stale` (world spheres) before the requests.
-        fn frame_with(&mut self, reset: bool, requested: &[u32], stale: &[Vec4]) -> Out {
+        /// A frame that invalidates the pages under `inputs.stale` (world spheres) before the
+        /// requests and gives the resident pages under `inputs.dynamic` a dynamic page.
+        fn frame_with(&mut self, reset: bool, requested: &[u32], inputs: Inputs<'_>) -> Out {
             let device = self.device;
+            let chunks: Vec<u32> = self.chunks().iter().map(|(_, i)| *i).collect();
             let settings = VsmSettings {
                 levels: self.levels as u8,
                 pool_pages: self.pool,
@@ -889,15 +1101,25 @@ mod tests {
             };
             let mut up = Uploads::new();
             let mut keep = Vec::new();
+            let (store, fresh) = self.store.ensure(device, (self.levels, self.pool)).unwrap();
+            let shape = WorkShape {
+                store,
+                levels: self.levels,
+                pool: self.pool,
+                keep_frames: self.keep_frames,
+            };
+            let work = PageWork::prepare(device, &up, pipelines(device), shape, &mut keep).unwrap();
+            let index = |b: Buffer| device.buffer_index(b).unwrap().0;
             let params = params_rows(&ParamsIn {
                 settings: &settings,
                 clipmap: &self.clipmap,
                 eye: Vec3::ZERO,
                 footprint: Footprint::Fixed(0.01),
                 pcf_radius: 1,
-                chunks: &[],
+                chunks: &chunks,
                 inv_view_proj: Mat4::IDENTITY,
                 previous: &self.previous,
+                tables: [index(work.table), index(work.dynamic)],
             });
             self.previous = origins(&self.clipmap);
             let params = up.buffer(device, &params, "params").unwrap();
@@ -908,23 +1130,20 @@ mod tests {
                     "views",
                 )
                 .unwrap();
-            let rows: Vec<u8> = stale
-                .iter()
-                .flat_map(|v| v.to_array())
-                .flat_map(f32::to_le_bytes)
-                .chain([0; 16])
-                .collect();
-            let spheres = up.buffer(device, &rows, "stale spheres").unwrap();
-            let (store, fresh) = self.store.ensure(device, (self.levels, self.pool)).unwrap();
-            let shape = WorkShape {
-                store,
-                levels: self.levels,
-                pool: self.pool,
-                keep_frames: self.keep_frames,
+            let rows = |spheres: &[Vec4]| -> Vec<u8> {
+                spheres
+                    .iter()
+                    .flat_map(|v| v.to_array())
+                    .flat_map(f32::to_le_bytes)
+                    .chain([0; 16])
+                    .collect()
             };
-            let work = PageWork::prepare(device, &up, pipelines(device), shape, &mut keep).unwrap();
+            let stale = inputs.stale;
+            let spheres = up.buffer(device, &rows(stale), "stale spheres").unwrap();
+            let movers = up
+                .buffer(device, &rows(inputs.dynamic), "dynamic spheres")
+                .unwrap();
             up.flush(device).unwrap();
-            let index = |b: Buffer| device.buffer_index(b).unwrap().0;
             let params = index(params);
             let mut commands = work.begin(reset || fresh, params);
             commands.extend(
@@ -939,14 +1158,24 @@ mod tests {
             let mut up = Uploads::new();
             up.write_into(device, work.table, &bytes).unwrap();
             up.flush(device).unwrap();
-            run_commands(device, work.allocate());
+            let views = index(views);
+            run_commands(
+                device,
+                work.allocate(
+                    (index(movers), inputs.dynamic.len() as u32),
+                    (params, views),
+                ),
+            );
             let pool = u64::from(self.pool) * 4;
-            Out {
+            let out = Out {
                 table: download(device, work.table, u64::from(entries) * 4),
                 pages: download(device, work.pages, pool),
                 counts: download(device, work.counts, u64::from(COUNT_WORDS) * 4),
                 list: download(device, work.list, pool),
-            }
+                dynamic: download(device, work.dynamic, u64::from(entries) * 4),
+            };
+            self.last = Some((work, params));
+            out
         }
     }
 
@@ -978,8 +1207,12 @@ mod tests {
             .collect();
         let run = || Frames::new(device, 4, 64, 60).frame(true, &requested);
         let out = run();
-        // requested, resident, starved, dispatch (drawn, 1, 1), new, drawn, evicted, kept, used
-        assert_eq!(out.counts, [100, 64, 36, 64, 1, 1, 64, 64, 0, 0, 64]);
+        // requested, resident, starved, clear (drawn, 1, 1), new, drawn, evicted, kept, used,
+        // composite (0, 1, 1), dynamic, without room
+        assert_eq!(
+            out.counts,
+            [100, 64, 36, 64, 1, 1, 64, 64, 0, 0, 64, 0, 1, 1, 0, 0]
+        );
         for (k, &entry) in alloc_order(&requested).iter().enumerate() {
             let e = out.entry(entry);
             match k < 64 {
@@ -1163,7 +1396,11 @@ mod tests {
         }
         assert!(under.len() > 20, "{}", under.len());
         let requested: Vec<u32> = all.iter().copied().filter(|e| e % 2 == 0).collect();
-        let out = frames.frame_with(false, &requested, &stale);
+        let inputs = Inputs {
+            stale: &stale,
+            ..Inputs::default()
+        };
+        let out = frames.frame_with(false, &requested, inputs);
         let mut redrawn = 0;
         for &e in &all {
             let (before, after) = (first.entry(e), out.entry(e));
@@ -1190,5 +1427,147 @@ mod tests {
             }
         }
         assert_eq!((out.counts[6], out.counts[7]), (0, redrawn), "new, drawn");
+    }
+
+    /// The entries of `level` under `sphere` (CPU reference).
+    fn entries_under(clipmap: &Clipmap, level: u32, sphere: Vec4) -> BTreeSet<u32> {
+        let l = &clipmap.levels[level as usize];
+        crate::vsm::testing::pages_under(clipmap, level, sphere)
+            .into_iter()
+            .map(|p| table_slot(level, l.world_page(p).into()))
+            .collect()
+    }
+
+    /// Resident pages under a dynamic caster's sphere get a second (dynamic) page from the free
+    /// ones, owned with the dynamic mark; the composite copies each static page into it; the next
+    /// frame frees the dynamic pages and leaves the static ones alone.
+    #[test]
+    fn dynamic_pages_get_a_second_page_and_a_copy() {
+        let Some(device) = test_gpu::device() else {
+            return;
+        };
+        let mut frames = Frames::new(device.as_ref(), 2, 256, 60).with_pool();
+        let mover = Vec4::new(1.2, 0.5, 2.6, 0.4);
+        let under = entries_under(&frames.clipmap, 1, mover);
+        let mut requested: Vec<u32> = under.iter().copied().collect();
+        requested.extend(spread(1, 30, 4));
+        requested.sort_unstable();
+        requested.dedup();
+        let first = frames.frame(true, &requested);
+        let inputs = Inputs {
+            dynamic: &[mover],
+            ..Inputs::default()
+        };
+        let out = frames.frame_with(false, &requested, inputs);
+        let statics: BTreeSet<u16> = first.held().into_values().collect();
+        let mut seen = BTreeSet::new();
+        for &e in &requested {
+            let entry = out.entry(e);
+            let d = out.dynamic[e as usize];
+            match under.contains(&e) {
+                true => {
+                    assert!(entry.flags().contains(PageFlags::DYNAMIC), "entry {e}");
+                    assert_ne!(d, 0, "entry {e} has a dynamic page");
+                    let p = d - 1;
+                    assert!(!statics.contains(&(p as u16)) && seen.insert(p), "page {p}");
+                    assert_eq!(out.pages[p as usize], (e + 1) | DYNAMIC_OWNER);
+                }
+                false => {
+                    assert!(!entry.flags().contains(PageFlags::DYNAMIC), "entry {e}");
+                    assert_eq!(d, 0);
+                }
+            }
+            assert_eq!(
+                entry.physical(),
+                first.entry(e).physical(),
+                "static page kept"
+            );
+        }
+        // requested, resident, starved, clear (3), new, drawn, evicted, kept, used, composite (3),
+        // dynamic, fallback
+        assert_eq!(out.counts[14..], [under.len() as u32, 0]);
+        assert_eq!(
+            out.counts[11],
+            under.len() as u32,
+            "one copy per dynamic page"
+        );
+        assert_eq!(
+            out.counts[10],
+            requested.len() as u32 + under.len() as u32,
+            "used"
+        );
+        let pattern = |page: u32| -> Vec<u32> {
+            (0..crate::vsm::PAGE_TEXELS * crate::vsm::PAGE_TEXELS)
+                .map(|w| page * 100_003 + w)
+                .collect()
+        };
+        for &e in &under {
+            frames.fill_page(u32::from(out.entry(e).physical().unwrap()), &pattern(e));
+        }
+        frames.composite();
+        for &e in &under {
+            let d = out.dynamic[e as usize] - 1;
+            assert!(frames.page_words(d) == pattern(e), "copied into page {d}");
+        }
+        let next = frames.frame(false, &requested);
+        assert!(
+            next.pages.iter().all(|o| o & DYNAMIC_OWNER == 0),
+            "dynamic pages freed"
+        );
+        assert_eq!(next.held(), first.held(), "static pages untouched");
+        assert!(next.dynamic.iter().all(|d| *d == 0));
+    }
+
+    /// Without room for a second page, the movers draw into the static page itself: it is redrawn
+    /// this frame (with the static casters) and invalidated for the next, so it comes back clean.
+    #[test]
+    fn dynamic_without_room_draws_into_the_static_page() {
+        let Some(device) = test_gpu::device() else {
+            return;
+        };
+        let mut frames = Frames::new(device.as_ref(), 2, 64, 60);
+        let mover = Vec4::new(1.2, 0.5, 2.6, 0.25);
+        let under: Vec<u32> = entries_under(&frames.clipmap, 1, mover)
+            .into_iter()
+            .collect();
+        assert!((9..=40).contains(&under.len()), "{}", under.len());
+        let mut requested: Vec<u32> = under.clone();
+        let fill = spread(1, 60, 6).into_iter().filter(|e| !under.contains(e));
+        requested.extend(fill.take(60 - under.len()));
+        requested.sort_unstable();
+        frames.frame(true, &requested);
+        let inputs = Inputs {
+            dynamic: &[mover],
+            ..Inputs::default()
+        };
+        let out = frames.frame_with(false, &requested, inputs);
+        let room = 4usize;
+        let order = alloc_order(&under);
+        for (k, &e) in order.iter().enumerate() {
+            let flags = out.entry(e).flags();
+            match k < room {
+                true => assert!(flags.contains(PageFlags::DYNAMIC), "entry {e}"),
+                false => {
+                    assert!(!flags.contains(PageFlags::DYNAMIC), "entry {e}");
+                    assert!(
+                        flags.contains(PageFlags::DIRTY | PageFlags::POLLUTED),
+                        "entry {e}"
+                    );
+                }
+            }
+        }
+        let fallback = (under.len() - room) as u32;
+        assert_eq!(out.counts[14..], [room as u32, fallback]);
+        assert_eq!(out.counts[7], fallback, "fallback pages drawn");
+        let next = frames.frame(false, &requested);
+        assert_eq!(next.counts[7], fallback, "polluted pages redrawn clean");
+        for &e in &order[room..] {
+            let flags = next.entry(e).flags();
+            assert!(
+                flags.contains(PageFlags::DIRTY | PageFlags::INVALIDATED),
+                "entry {e}"
+            );
+            assert!(!flags.contains(PageFlags::POLLUTED));
+        }
     }
 }

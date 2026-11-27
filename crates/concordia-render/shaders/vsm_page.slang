@@ -75,17 +75,20 @@ void vsm_age(uint3 id : SV_DispatchThreadID, uniform AgePush push) {
         return;
     }
     uint age = min((entry >> VSM_AGE_SHIFT) + 1, 255u);
-    g_buffers.ptr[push.table][i] = page | VSM_VALID | (age << VSM_AGE_SHIFT);
+    // A page that held dynamic casters last frame (no room for a dynamic page) is redrawn clean.
+    uint stale = (entry & VSM_POLLUTED) != 0 ? VSM_INVALIDATED : 0;
+    g_buffers.ptr[push.table][i] = page | VSM_VALID | stale | (age << VSM_AGE_SHIFT);
 }
 
-// Invalidation (4.7b): one 64-lane group per (sphere, level) flags every held page under the
-// sphere's rect (binning's rect, exactly) as invalidated; `vsm_update` then redraws it if it is
-// requested and releases it if not. Atomic OR: the result doesn't depend on order.
-struct InvalidatePush { uint spheres; uint count; uint params; uint views; uint table; };
+// Flagging pages under spheres (4.7b), one 64-lane group per (sphere, level), over binning's rect
+// exactly: every entry holding a page and having `need` gets `flag` (atomic OR: order-free).
+// Invalidation flags held pages `INVALIDATED` (`vsm_update` redraws or releases them); the dynamic
+// casters flag resident pages `DYNAMIC`.
+struct FlagSpheresPush { uint spheres; uint count; uint params; uint views; uint table; uint flag; uint need; };
 
 [shader("compute")]
 [numthreads(64, 1, 1)]
-void vsm_invalidate(uint lane : SV_GroupThreadID, uint3 group : SV_GroupID, uniform InvalidatePush push) {
+void vsm_flag_spheres(uint lane : SV_GroupThreadID, uint3 group : SV_GroupID, uniform FlagSpheresPush push) {
     uint i = group.y * 65535 + group.x;
     if (i >= push.count) return;
     float4 s = ((float4*)g_buffers.ptr[push.spheres])[i];
@@ -96,9 +99,10 @@ void vsm_invalidate(uint lane : SV_GroupThreadID, uint3 group : SV_GroupID, unif
     for (uint k = lane; k < area; k += 64) {
         int2 p = int2(rect.x + int(k % w), rect.y + int(k / w));
         uint slot = vsm_page_slot(push.params, level, p);
-        if (vsm_physical(g_buffers.ptr[push.table][slot]) != 0) {
+        uint entry = g_buffers.ptr[push.table][slot];
+        if (vsm_physical(entry) != 0 && (entry & push.need) == push.need) {
             uint old;
-            InterlockedOr(g_buffers.ptr[push.table][slot], VSM_INVALIDATED, old);
+            InterlockedOr(g_buffers.ptr[push.table][slot], push.flag, old);
         }
     }
 }
@@ -168,7 +172,7 @@ void vsm_free_flags(uint3 id : SV_DispatchThreadID, uniform FreePush push) {
 // The age of physical page `p` when it is kept (owned, unrequested), else 256.
 uint kept_age(uint pages, uint table, uint p) {
     uint owner = g_buffers.ptr[pages][p];
-    if (owner == 0) { return 256; }
+    if (owner == 0 || (owner & VSM_DYNAMIC_OWNER) != 0) { return 256; }
     uint entry = g_buffers.ptr[table][owner - 1];
     return (entry & VSM_REQUESTED) != 0 ? 256 : entry >> VSM_AGE_SHIFT;
 }
@@ -273,16 +277,66 @@ void vsm_allocate(uint3 id : SV_DispatchThreadID, uniform AllocatePush push) {
     g_buffers.ptr[push.pages][page] = e + 1;
 }
 
-// dirty[j] = 1 when entry j' (allocation order) has a page to draw this frame.
-struct DirtyPush { uint table; uint dirty; uint levels; };
+// out[j] = 1 when entry j' (allocation order) holds a page with any of `mask` (`DIRTY`: to draw
+// this frame; `DYNAMIC`: wants a dynamic page).
+struct EntryFlagsPush { uint table; uint out; uint levels; uint mask; };
 
 [shader("compute")]
 [numthreads(256, 1, 1)]
-void vsm_dirty_flags(uint3 id : SV_DispatchThreadID, uniform DirtyPush push) {
+void vsm_entry_flags(uint3 id : SV_DispatchThreadID, uniform EntryFlagsPush push) {
     uint j = thread_of(id);
     if (j >= push.levels * VSM_TABLE_LEVEL) return;
     uint entry = g_buffers.ptr[push.table][entry_of(j, push.levels)];
-    g_buffers.ptr[push.dirty][j] = (entry & VSM_DIRTY) != 0 && vsm_physical(entry) != 0 ? 1 : 0;
+    g_buffers.ptr[push.out][j] = (entry & push.mask) != 0 && vsm_physical(entry) != 0 ? 1 : 0;
+}
+
+// Frame start: dynamic pages (owner word marked `VSM_DYNAMIC_OWNER`) are freed; they're rebuilt
+// every frame.
+struct ReleasePush { uint pages; uint pool; };
+
+[shader("compute")]
+[numthreads(256, 1, 1)]
+void vsm_release_dynamic(uint3 id : SV_DispatchThreadID, uniform ReleasePush push) {
+    uint p = thread_of(id);
+    if (p >= push.pool) return;
+    if ((g_buffers.ptr[push.pages][p] & VSM_DYNAMIC_OWNER) != 0) { g_buffers.ptr[push.pages][p] = 0; }
+}
+
+// The k-th entry (allocation order) wanting a dynamic page gets the k-th free page while they last
+// (dynamic[e] = page + 1; copies[k] = (static page, dynamic page)); the rest draw their dynamic
+// casters into the static page, which is redrawn now and next frame (`DIRTY | POLLUTED`).
+struct DynamicPush { uint table; uint movers; uint mover_scan; uint free_list; uint free_scan; uint pages; uint dynamic; uint copies; uint levels; uint pool; };
+
+[shader("compute")]
+[numthreads(256, 1, 1)]
+void vsm_dynamic_allocate(uint3 id : SV_DispatchThreadID, uniform DynamicPush push) {
+    uint j = thread_of(id);
+    if (j >= push.levels * VSM_TABLE_LEVEL || g_buffers.ptr[push.movers][j] == 0) return;
+    uint e = entry_of(j, push.levels);
+    uint k = g_buffers.ptr[push.mover_scan][j];
+    uint entry = g_buffers.ptr[push.table][e];
+    if (k < g_buffers.ptr[push.free_scan][push.pool]) {
+        uint page = g_buffers.ptr[push.free_list][k];
+        g_buffers.ptr[push.dynamic][e] = page + 1;
+        g_buffers.ptr[push.pages][page] = (e + 1) | VSM_DYNAMIC_OWNER;
+        ((uint2*)g_buffers.ptr[push.copies])[k] = uint2(vsm_physical(entry) - 1, page);
+    } else {
+        g_buffers.ptr[push.table][e] = (entry & ~VSM_DYNAMIC) | VSM_DIRTY | VSM_POLLUTED;
+    }
+}
+
+// One group per dynamic page: its static page's texels copied in (the composite).
+struct CompositePush { uint params; uint copies; };
+
+[shader("compute")]
+[numthreads(256, 1, 1)]
+void vsm_composite(uint lane : SV_GroupThreadID, uint3 group : SV_GroupID, uniform CompositePush push) {
+    VsmParams* p = vsm_params(push.params);
+    uint2 pair = ((uint2*)g_buffers.ptr[push.copies])[group.x];
+    for (uint i = lane; i < VSM_PAGE_WORDS; i += 256) {
+        uint2 t = uint2(i % VSM_PAGE_TEXELS, i / VSM_PAGE_TEXELS);
+        *vsm_word(p, pair.y, t) = *vsm_word(p, pair.x, t);
+    }
 }
 
 // list[rank] = the physical page of each entry to draw, in allocation order.
@@ -299,7 +353,7 @@ void vsm_draw_list(uint3 id : SV_DispatchThreadID, uniform ListPush push) {
 
 // counts = requested, resident, starved, the clear's dispatch (drawn, 1, 1), new, drawn, evicted,
 // kept, pool used.
-struct CountsPush { uint scanned; uint counts; uint entries; uint pool; uint need_scan; uint dirty_scan; uint histogram; uint free_scan; };
+struct CountsPush { uint scanned; uint counts; uint entries; uint pool; uint need_scan; uint dirty_scan; uint histogram; uint free_scan; uint mover_scan; };
 
 [shader("compute")]
 [numthreads(1, 1, 1)]
@@ -309,7 +363,11 @@ void vsm_counts(uniform CountsPush push) {
     uint fresh = g_buffers.ptr[push.need_scan][push.entries];
     uint drawn = g_buffers.ptr[push.dirty_scan][push.entries];
     uint evicted = g_buffers.ptr[push.histogram][258];
-    uint used = push.pool - g_buffers.ptr[push.free_scan][push.pool] + fresh;
+    // The free scan was last run after the static allocation.
+    uint free = g_buffers.ptr[push.free_scan][push.pool];
+    uint used = push.pool - free;
+    uint movers = g_buffers.ptr[push.mover_scan][push.entries];
+    uint dynamic = min(movers, free);
     uint* c = (uint*)g_buffers.ptr[push.counts];
     c[0] = requested;
     c[1] = resident;
@@ -321,7 +379,12 @@ void vsm_counts(uniform CountsPush push) {
     c[7] = drawn;
     c[8] = evicted;
     c[9] = used - resident;
-    c[10] = used;
+    c[10] = used + dynamic;
+    c[11] = dynamic;
+    c[12] = 1;
+    c[13] = 1;
+    c[14] = dynamic;
+    c[15] = movers - dynamic;
 }
 
 // One group per listed page: its texels to 0 (the far plane, reverse-Z).
@@ -340,7 +403,7 @@ void vsm_clear(uint lane : SV_GroupThreadID, uint3 group : SV_GroupID, uniform C
 // Binning non-meshlet casters to pages (4.7a2, `vsm::bin`). units: per unit a world sphere row
 // and (draw, level, instance, 0), ordered by draw; counts: dirty pages per unit; scanned: their
 // exclusive sums; pairs: (unit, level, page in level, physical) in unit order, row by row.
-struct UnitPush { uint units; uint count; uint params; uint views; uint table; uint counts; uint scanned; uint pairs; uint capacity; };
+struct UnitPush { uint units; uint count; uint params; uint views; uint table; uint counts; uint scanned; uint pairs; uint capacity; uint class; };
 
 struct UnitRows { float4 sphere; uint4 at; };
 
@@ -351,8 +414,9 @@ void vsm_unit_count(uint lane : SV_GroupThreadID, uint3 group : SV_GroupID, unif
     uint i = group.y * 65535 + group.x;
     if (i >= push.count) return;
     UnitRows u = ((UnitRows*)g_buffers.ptr[push.units])[i];
-    int4 rect = vsm_sphere_rect(push.params, push.views, u.at.y, u.sphere.xyz, u.sphere.w);
-    uint n = vsm_count_due(lane, push.params, push.table, u.at.y, rect);
+    // Units of the other class bin nothing (an empty rect).
+    int4 rect = u.at.w == push.class ? vsm_sphere_rect(push.params, push.views, u.at.y, u.sphere.xyz, u.sphere.w) : int4(1, 1, 0, 0);
+    uint n = vsm_count_due(lane, push.params, push.table, u.at.y, rect, push.class);
     if (lane == 0) { g_buffers.ptr[push.counts][i] = n; }
 }
 
@@ -362,8 +426,8 @@ void vsm_unit_emit(uint lane : SV_GroupThreadID, uint3 group : SV_GroupID, unifo
     uint i = group.y * 65535 + group.x;
     if (i >= push.count) return;
     UnitRows u = ((UnitRows*)g_buffers.ptr[push.units])[i];
-    int4 rect = vsm_sphere_rect(push.params, push.views, u.at.y, u.sphere.xyz, u.sphere.w);
-    vsm_emit_due(lane, push.params, push.table, u.at.y, rect, i, g_buffers.ptr[push.scanned][i], push.pairs, push.capacity);
+    int4 rect = u.at.w == push.class ? vsm_sphere_rect(push.params, push.views, u.at.y, u.sphere.xyz, u.sphere.w) : int4(1, 1, 0, 0);
+    vsm_emit_due(lane, push.params, push.table, u.at.y, rect, i, g_buffers.ptr[push.scanned][i], push.pairs, push.capacity, push.class);
 }
 
 // Per draw: spans (first unit, units, vertices, 0); args: a `DrawIndirect` record of its kept

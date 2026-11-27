@@ -8,7 +8,7 @@ use super::settings::VsmSettings;
 use crate::frame::{columns, push_rows, push_rows_u32};
 
 /// Row of the first level's origin (`VSM_ROW_LEVELS`).
-pub(crate) const ROW_LEVELS: usize = 12;
+pub(crate) const ROW_LEVELS: usize = 13;
 /// Most pool buffers (16 384 pages of 1024).
 pub(crate) const MAX_CHUNKS: usize = 16;
 
@@ -34,6 +34,8 @@ pub(crate) struct ParamsIn<'a> {
     pub(crate) inv_view_proj: Mat4,
     /// Each level's origin (in pages) last frame, for releasing slots scrolled out (4.7b).
     pub(crate) previous: &'a [IVec2],
+    /// Bindless indices of the page table and the dynamic table (4.7b).
+    pub(crate) tables: [u32; 2],
 }
 
 /// The coarse floor: the finest level at least eight times `max_distance` wide, so a frame's
@@ -79,6 +81,7 @@ pub(crate) fn params_rows(p: &ParamsIn<'_>) -> Vec<u8> {
     chunks[..p.chunks.len()].copy_from_slice(p.chunks);
     push_rows_u32(&mut out, chunks.as_chunks::<4>().0);
     push_rows(&mut out, &columns(&p.inv_view_proj));
+    push_rows_u32(&mut out, &[[p.tables[0], p.tables[1], 0, 0]]);
     let origins: Vec<[u32; 4]> = p
         .clipmap
         .levels

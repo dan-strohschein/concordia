@@ -318,51 +318,164 @@ fn sun_and_settings_changes_that_clear_the_cache() {
     assert_eq!(state.last_reset(), Some(CacheReset::Scene));
 }
 
-/// The ledger lists, per frame, the spheres whose pages are stale: a moved caster's old and new,
-/// an added one's new, a removed (or no longer casting) one's old, and a reshaped one's (mesh,
-/// alpha mode or pose) old and new; nothing for a still caster; in key order.
+/// A caster with its hint (`Static` here, so every change invalidates static pages).
+fn caster(
+    x: f32,
+    shape: u64,
+    hint: concordia_assets::Mobility,
+) -> concordia_render::vsm::CasterInput {
+    concordia_render::vsm::CasterInput {
+        state: concordia_render::vsm::CasterState {
+            sphere: concordia_core::math::Vec4::new(x, 0.0, 0.0, 1.0),
+            shape,
+        },
+        skinned: false,
+        hint,
+    }
+}
+
+/// The ledger lists, per frame, the spheres whose static pages are stale: for static casters, a
+/// moved one's old and new, an added one's new, a removed (or no longer casting) one's old, and a
+/// reshaped one's old and new; nothing for a still caster; in key order.
 #[test]
 fn ledger_lists_moved_added_removed_and_changed_draws() {
+    use concordia_assets::Mobility::Static;
     use concordia_core::math::Vec4;
-    use concordia_render::vsm::{CasterLedger, CasterState};
+    use concordia_render::vsm::CasterLedger;
     let at = |x: f32| Vec4::new(x, 0.0, 0.0, 1.0);
-    let state = |x: f32, shape: u64| CasterState {
-        sphere: at(x),
-        shape,
-    };
     let mut ledger = CasterLedger::default();
+    let stale = |l: &mut CasterLedger<u32>, now: Vec<(u32, concordia_render::vsm::CasterInput)>| {
+        l.update(now).stale
+    };
     assert_eq!(
-        ledger.diff([(1u32, state(1.0, 7)), (2, state(2.0, 7))]),
+        stale(
+            &mut ledger,
+            vec![(1u32, caster(1.0, 7, Static)), (2, caster(2.0, 7, Static))]
+        ),
         vec![at(1.0), at(2.0)],
         "first frame: everything is added"
     );
     assert!(
-        ledger
-            .diff([(1, state(1.0, 7)), (2, state(2.0, 7))])
-            .is_empty(),
-        "still"
+        stale(
+            &mut ledger,
+            vec![(1, caster(1.0, 7, Static)), (2, caster(2.0, 7, Static))]
+        )
+        .is_empty()
     );
     assert_eq!(
-        ledger.diff([(1, state(1.5, 7)), (2, state(2.0, 7))]),
+        stale(
+            &mut ledger,
+            vec![(1, caster(1.5, 7, Static)), (2, caster(2.0, 7, Static))]
+        ),
         vec![at(1.0), at(1.5)],
         "moved: old and new"
     );
     assert_eq!(
-        ledger.diff([(1, state(1.5, 8)), (2, state(2.0, 7)), (3, state(3.0, 7))]),
+        stale(
+            &mut ledger,
+            vec![
+                (1, caster(1.5, 8, Static)),
+                (2, caster(2.0, 7, Static)),
+                (3, caster(3.0, 7, Static))
+            ]
+        ),
         vec![at(1.5), at(1.5), at(3.0)],
         "reshaped in place, and added"
     );
     assert_eq!(
-        ledger.diff([(1, state(1.5, 8)), (3, state(3.0, 7))]),
+        stale(
+            &mut ledger,
+            vec![(1, caster(1.5, 8, Static)), (3, caster(3.0, 7, Static))]
+        ),
         vec![at(2.0)],
         "removed: old"
     );
     ledger.clear();
     assert_eq!(
-        ledger.diff([(3, state(3.0, 7))]),
+        stale(&mut ledger, vec![(3, caster(3.0, 7, Static))]),
         vec![at(3.0)],
         "after a clear"
     );
+}
+
+/// `Auto` casters are static until they move, dynamic while they moved in the last 60 frames,
+/// then static again: starting to move invalidates the static pages they were drawn into (old),
+/// settling the ones they now need (current). Skinned casters are always dynamic and never
+/// touch static pages.
+#[test]
+fn ledger_classifies_skinned_moved_and_still_draws() {
+    use concordia_assets::Mobility::Auto;
+    use concordia_core::math::Vec4;
+    use concordia_render::vsm::{CasterLedger, DYNAMIC_FRAMES};
+    let at = |x: f32| Vec4::new(x, 0.0, 0.0, 1.0);
+    let skin = |x: f32| concordia_render::vsm::CasterInput {
+        skinned: true,
+        ..caster(x, 1, Auto)
+    };
+    let mut ledger = CasterLedger::default();
+    let f = ledger.update(vec![(1u32, caster(1.0, 7, Auto)), (2, skin(5.0))]);
+    assert_eq!(
+        (f.stale, f.dynamic),
+        (vec![at(1.0)], vec![2]),
+        "still: static; skinned: dynamic"
+    );
+    let f = ledger.update(vec![(1, caster(1.5, 7, Auto)), (2, skin(5.5))]);
+    assert_eq!(
+        (f.stale, f.dynamic.clone()),
+        (vec![at(1.0)], vec![1, 2]),
+        "starts moving: old"
+    );
+    assert_eq!(f.dynamic_spheres, vec![at(1.5), at(5.5)]);
+    for k in 1..DYNAMIC_FRAMES {
+        let f = ledger.update(vec![(1, caster(1.5, 7, Auto)), (2, skin(5.5))]);
+        assert!(f.stale.is_empty(), "frame {k}");
+        assert_eq!(
+            f.dynamic,
+            vec![1, 2],
+            "still dynamic {k} frames after its move"
+        );
+    }
+    let f = ledger.update(vec![(1, caster(1.5, 7, Auto)), (2, skin(5.5))]);
+    assert_eq!(
+        (f.stale, f.dynamic),
+        (vec![at(1.5)], vec![2]),
+        "settles: current"
+    );
+    let f = ledger.update(vec![(2, skin(6.0))]);
+    assert_eq!(f.stale, vec![at(1.5)], "a static caster removed");
+    let f = ledger.update(Vec::new());
+    assert!(
+        f.stale.is_empty(),
+        "a dynamic caster removed touches no static page"
+    );
+}
+
+/// The hint: `Movable` is dynamic from its first frame and never touches static pages; `Static`
+/// stays static when it moves (old and new invalidated) and is reported; skinned ignores `Static`.
+#[test]
+fn ledger_honours_the_mobility_hint() {
+    use concordia_assets::Mobility::{Movable, Static};
+    use concordia_core::math::Vec4;
+    use concordia_render::vsm::CasterLedger;
+    let at = |x: f32| Vec4::new(x, 0.0, 0.0, 1.0);
+    let mut ledger = CasterLedger::default();
+    let skinned_static = concordia_render::vsm::CasterInput {
+        skinned: true,
+        ..caster(9.0, 1, Static)
+    };
+    let f = ledger.update(vec![
+        (1u32, caster(1.0, 7, Movable)),
+        (2, caster(2.0, 7, Static)),
+        (3, skinned_static),
+    ]);
+    assert_eq!((f.stale, f.dynamic), (vec![at(2.0)], vec![1, 3]));
+    let f = ledger.update(vec![
+        (1, caster(1.2, 7, Movable)),
+        (2, caster(2.2, 7, Static)),
+        (3, skinned_static),
+    ]);
+    assert_eq!(f.stale, vec![at(2.0), at(2.2)], "only the static one");
+    assert_eq!((f.dynamic, f.static_hint_moved), (vec![1, 3], vec![2]));
 }
 
 /// A caster's box for invalidation holds its mesh's bounds and every meshlet's sphere, so every

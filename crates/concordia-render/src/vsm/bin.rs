@@ -66,6 +66,7 @@ impl MeshletBins {
         pipelines: BinPipelines,
         (input, buckets, capacity, vertices): (BinInputs, u32, u32, u32),
         (params, views, table): (u32, u32, u32),
+        class: u32,
         keep: &mut Vec<Buffer>,
     ) -> Result<Self, RenderError> {
         let total = input.total;
@@ -98,6 +99,7 @@ impl MeshletBins {
             index(scanned)?,
             index(pairs)?,
             capacity,
+            class,
         ]);
         let per_survivor = Command::DispatchIndirect {
             buffer: dispatch,
@@ -166,6 +168,8 @@ pub(crate) struct Unit {
     pub(crate) level: u32,
     /// Its row in the frame's instance table.
     pub(crate) instance: u32,
+    /// Drawn into dynamic pages (4.7b).
+    pub(crate) dynamic: bool,
 }
 
 /// One caster draw's units (consecutive) and vertex count.
@@ -201,6 +205,7 @@ impl UnitBins {
         pipelines: BinPipelines,
         (units, spans, capacity): (&[Unit], &[DrawSpan], u32),
         (params, views, table): (u32, u32, u32),
+        class: u32,
         keep: &mut Vec<Buffer>,
     ) -> Result<Option<Self>, RenderError> {
         if units.is_empty() || spans.is_empty() {
@@ -216,7 +221,10 @@ impl UnitBins {
         let mut rows = Vec::with_capacity(units.len() * 32);
         for u in units {
             push_rows(&mut rows, &[u.sphere]);
-            push_rows_u32(&mut rows, &[[u.draw, u.level, u.instance, 0]]);
+            push_rows_u32(
+                &mut rows,
+                &[[u.draw, u.level, u.instance, u32::from(u.dynamic)]],
+            );
         }
         let mut span_rows = Vec::with_capacity(spans.len() * 16);
         let span_words: Vec<[u32; 4]> = spans
@@ -253,6 +261,7 @@ impl UnitBins {
             index(scanned)?,
             index(pairs)?,
             capacity,
+            class,
         ]);
         let args_push = words(&[
             index(spans_buf)?,
@@ -302,12 +311,12 @@ impl UnitBins {
     }
 }
 
-/// The units of M1 caster draws `casters` (consecutive instances each, whose world spheres are
-/// `spheres` in caster order) in `levels` levels, ordered by draw, then level, then instance; and
-/// each draw's span with its vertex count.
+/// The units of M1 caster draws `casters` (consecutive instances each, whose world spheres and
+/// dynamic flags are `spheres` in caster order) in `levels` levels, ordered by draw, then level,
+/// then instance; and each draw's span with its vertex count.
 pub(crate) fn units_for(
     casters: &[crate::shadow_pass::ShadowDraw],
-    spheres: &[Vec4],
+    spheres: &[(Vec4, bool)],
     levels: u32,
 ) -> (Vec<Unit>, Vec<DrawSpan>) {
     let (mut units, mut spans) = (Vec::new(), Vec::with_capacity(casters.len()));
@@ -316,14 +325,16 @@ pub(crate) fn units_for(
         let first = units.len() as u32;
         for level in 0..levels {
             for k in 0..draw.instances {
+                let (s, dynamic) = spheres
+                    .get(sphere + k as usize)
+                    .copied()
+                    .unwrap_or((Vec4::ZERO, false));
                 units.push(Unit {
-                    sphere: spheres
-                        .get(sphere + k as usize)
-                        .copied()
-                        .unwrap_or(Vec4::ZERO),
+                    sphere: s,
                     draw: d as u32,
                     level,
                     instance: draw.push.instance + k,
+                    dynamic,
                 });
             }
         }
@@ -463,9 +474,6 @@ mod tests {
             .collect()
     }
 
-    /// Every unit gets one pair per page due to be drawn under its sphere, in unit order and row by
-    /// row; pages without a physical page or not due are skipped; each draw's arguments count its
-    /// pairs and its base is where they start; pairs past the capacity are dropped and counted.
     /// Under rotations and non-uniform scales, the invalidation sphere holds the box's world sphere
     /// and every sphere inside the box as binning places it (centre transformed, radius times the
     /// largest column).
@@ -514,6 +522,9 @@ mod tests {
         }
     }
 
+    /// Every unit gets one pair per page due to be drawn under its sphere, in unit order and row by
+    /// row; pages without a physical page or not due are skipped; each draw's arguments count its
+    /// pairs and its base is where they start; pairs past the capacity are dropped and counted.
     #[test]
     fn binning_pairs_each_caster_with_its_dirty_pages() {
         let Some(device) = test_gpu::device() else {
@@ -560,6 +571,7 @@ mod tests {
                         draw,
                         level,
                         instance,
+                        dynamic: false,
                     });
                 }
             }
@@ -579,46 +591,14 @@ mod tests {
         }
         let wanted: usize = want.values().map(Vec::len).sum();
         assert!(wanted > 20, "the scene pairs something: {wanted}");
-        let origins: Vec<IVec2> = clipmap.levels.iter().map(|l| l.origin_page()).collect();
-        let run = |capacity: u32| {
-            let mut up = Uploads::new();
-            let mut keep = Vec::new();
-            let params = params_rows(&ParamsIn {
-                settings: &settings,
-                clipmap: &clipmap,
-                eye,
-                footprint: Footprint::PerMetre(0.001),
-                pcf_radius: 1,
-                chunks: &[],
-                inv_view_proj: Default::default(),
-                previous: &origins,
-            });
-            let params = up.buffer(device, &params, "params").unwrap();
-            let views = up
-                .buffer(device, &depth_views(&Default::default(), &clipmap), "views")
-                .unwrap();
-            let bytes: Vec<u8> = table.iter().flat_map(|w| w.to_le_bytes()).collect();
-            let table = up.buffer(device, &bytes, "table").unwrap();
-            let index = |b: Buffer| device.buffer_index(b).unwrap().0;
-            let bins = UnitBins::prepare(
-                device,
-                &mut up,
-                pipelines(device),
-                (&units, &spans, capacity),
-                (index(params), index(views), index(table)),
-                &mut keep,
-            )
-            .unwrap()
-            .expect("units");
-            up.flush(device).unwrap();
-            run_commands(device, bins.commands().to_vec());
-            (
-                download(device, bins.pairs, u64::from(capacity) * PAIR_BYTES),
-                download(device, bins.args, 2 * 16),
-                download(device, bins.bases, 2 * 4),
-                download(device, bins.totals, 2 * 4),
-            )
+        let setup = BinSetup {
+            settings: &settings,
+            clipmap: &clipmap,
+            eye,
+            table: &table,
+            dynamic: &vec![0; table.len()],
         };
+        let run = |capacity: u32| setup.run(device, (&units, &spans), 0, capacity);
         let (pairs, args, bases, totals) = run(4096);
         assert_eq!(totals, [wanted as u32, wanted as u32]);
         for (draw, span) in spans.iter().enumerate() {
@@ -640,5 +620,181 @@ mod tests {
         let (_, args, _, totals) = run(small);
         assert_eq!(totals, [wanted as u32, small], "dropped pairs are counted");
         assert!(args[1] + args[5] <= small, "never drawn past the capacity");
+    }
+
+    /// A table, its dynamic table and the clipmap, for running unit binning on the GPU.
+    struct BinSetup<'a> {
+        settings: &'a VsmSettings,
+        clipmap: &'a Clipmap,
+        eye: Vec3,
+        table: &'a [u32],
+        dynamic: &'a [u32],
+    }
+
+    impl BinSetup<'_> {
+        /// Bins `units` for `class` into `capacity` pairs: (pairs, args, bases, totals).
+        fn run(
+            &self,
+            device: &dyn Device,
+            (units, spans): (&[Unit], &[DrawSpan]),
+            class: u32,
+            capacity: u32,
+        ) -> (Vec<u32>, Vec<u32>, Vec<u32>, Vec<u32>) {
+            let mut up = Uploads::new();
+            let mut keep = Vec::new();
+            let words = |w: &[u32]| -> Vec<u8> { w.iter().flat_map(|w| w.to_le_bytes()).collect() };
+            let table = up.buffer(device, &words(self.table), "table").unwrap();
+            let dynamic = up.buffer(device, &words(self.dynamic), "dynamic").unwrap();
+            let index = |b: Buffer| device.buffer_index(b).unwrap().0;
+            let origins: Vec<IVec2> = self
+                .clipmap
+                .levels
+                .iter()
+                .map(|l| l.origin_page())
+                .collect();
+            let params = params_rows(&ParamsIn {
+                settings: self.settings,
+                clipmap: self.clipmap,
+                eye: self.eye,
+                footprint: Footprint::PerMetre(0.001),
+                pcf_radius: 1,
+                chunks: &[],
+                inv_view_proj: Default::default(),
+                previous: &origins,
+                tables: [index(table), index(dynamic)],
+            });
+            let params = up.buffer(device, &params, "params").unwrap();
+            let views = up
+                .buffer(
+                    device,
+                    &depth_views(&Default::default(), self.clipmap),
+                    "views",
+                )
+                .unwrap();
+            let bins = UnitBins::prepare(
+                device,
+                &mut up,
+                pipelines(device),
+                (units, spans, capacity),
+                (index(params), index(views), index(table)),
+                class,
+                &mut keep,
+            )
+            .unwrap()
+            .expect("units");
+            up.flush(device).unwrap();
+            run_commands(device, bins.commands().to_vec());
+            let draws = spans.len() as u64;
+            (
+                download(device, bins.pairs, u64::from(capacity) * PAIR_BYTES),
+                download(device, bins.args, draws * 16),
+                download(device, bins.bases, draws * 4),
+                download(device, bins.totals, 2 * 4),
+            )
+        }
+    }
+
+    /// Binning by class (4.7b): static casters pair with pages to redraw (their static page);
+    /// dynamic casters pair with pages that have a dynamic page (that page) and with polluted ones
+    /// (no room for a dynamic page: the static page); neither sees the other's casters.
+    #[test]
+    fn binning_pairs_by_class() {
+        let Some(device) = test_gpu::device() else {
+            return;
+        };
+        let device = device.as_ref();
+        let settings = VsmSettings {
+            levels: 2,
+            ..VsmSettings::default()
+        };
+        let eye = Vec3::new(1.0, 3.0, 2.0);
+        let clipmap = Clipmap::fit(Vec3::new(-0.3, -1.0, 0.2), eye, 2, (-50.0, 50.0));
+        let mut table = vec![0u32; 2 * 128 * 128];
+        let mut dynamic = vec![0u32; table.len()];
+        let resident = PageFlags::REQUESTED | PageFlags::VALID;
+        let mut physical = 0u16;
+        for level in 0..2u32 {
+            let l = &clipmap.levels[level as usize];
+            for y in 50..78 {
+                for x in 50..78 {
+                    let slot = table_slot(level, l.world_page(IVec2::new(x, y)).into()) as usize;
+                    let flags = match (x * 7 + y) % 4 {
+                        0 => resident | PageFlags::DIRTY,
+                        1 => resident | PageFlags::DYNAMIC,
+                        2 => resident | PageFlags::DIRTY | PageFlags::POLLUTED,
+                        _ => resident,
+                    };
+                    table[slot] = PageEntry::new(Some(physical), flags, 0).bits();
+                    if flags.contains(PageFlags::DYNAMIC) {
+                        dynamic[slot] = 5000 + u32::from(physical) + 1;
+                    }
+                    physical += 1;
+                }
+            }
+        }
+        let spheres = [Vec4::new(1.0, 0.0, 2.0, 0.5), Vec4::new(1.5, 0.5, 1.0, 0.8)];
+        let mut units = Vec::new();
+        for level in 0..2 {
+            for (instance, sphere) in spheres.iter().enumerate() {
+                units.push(Unit {
+                    sphere: *sphere,
+                    draw: 0,
+                    level,
+                    instance: instance as u32,
+                    dynamic: instance == 1,
+                });
+            }
+        }
+        let spans = [DrawSpan {
+            first: 0,
+            units: units.len() as u32,
+            vertices: 36,
+        }];
+        let want = |class: u32| -> Vec<[u32; 4]> {
+            let mut out = Vec::new();
+            for (i, u) in units.iter().enumerate() {
+                if u32::from(u.dynamic) != class {
+                    continue;
+                }
+                let l = &clipmap.levels[u.level as usize];
+                for p in crate::vsm::testing::pages_under(&clipmap, u.level, u.sphere) {
+                    let slot = table_slot(u.level, l.world_page(p).into()) as usize;
+                    let e = PageEntry::from_bits(table[slot]);
+                    let f = e.flags();
+                    let phys = u32::from(e.physical().unwrap_or(0));
+                    let target = match class {
+                        0 if f.contains(PageFlags::DIRTY) => Some(phys),
+                        1 if f.contains(PageFlags::DYNAMIC) => Some(dynamic[slot] - 1),
+                        1 if f.contains(PageFlags::POLLUTED) => Some(phys),
+                        _ => None,
+                    };
+                    if let (Some(t), true) = (target, e.physical().is_some()) {
+                        out.push([i as u32, u.level, (p.y * 128 + p.x) as u32, t]);
+                    }
+                }
+            }
+            out
+        };
+        let setup = BinSetup {
+            settings: &settings,
+            clipmap: &clipmap,
+            eye,
+            table: &table,
+            dynamic: &dynamic,
+        };
+        for class in [0, 1] {
+            let w = want(class);
+            assert!(w.len() > 10, "class {class} pairs something: {}", w.len());
+            let (pairs, _, _, totals) = setup.run(device, (&units, &spans), class, 4096);
+            assert_eq!(totals, [w.len() as u32; 2], "class {class}");
+            let got: Vec<[u32; 4]> = pairs
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .take(w.len())
+                .copied()
+                .collect();
+            assert_eq!(got, w, "class {class}");
+        }
     }
 }

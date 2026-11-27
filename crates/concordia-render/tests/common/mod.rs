@@ -142,6 +142,7 @@ impl Scene {
                     mesh,
                     material,
                     cast_shadows: true,
+                    ..Default::default()
                 },
             )
             .unwrap();

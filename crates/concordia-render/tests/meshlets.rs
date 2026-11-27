@@ -53,6 +53,7 @@ fn place(s: &mut Scene, mesh: &AssetRef, material: &AssetRef, at: Vec3, scale: f
                 mesh: mesh.clone(),
                 material: material.clone(),
                 cast_shadows: true,
+                ..Default::default()
             },
         )
         .unwrap();

@@ -32,6 +32,7 @@ fn far_cube(s: &mut Scene) -> Representation {
             mesh: cube(),
             material,
             cast_shadows: false,
+            ..Default::default()
         }),
         instanced_from: 20.0,
         hidden_from: 50.0,
@@ -46,6 +47,7 @@ fn at(s: &mut Scene, x: f32, representation: Option<Representation>) -> EntityId
         mesh: sphere(),
         material,
         cast_shadows: true,
+        ..Default::default()
     };
     s.world.insert(id, r).unwrap();
     if let Some(rep) = representation {
@@ -359,6 +361,7 @@ fn cheap(s: &mut Scene, from: f32, hidden: f32) -> Representation {
             mesh: cube(),
             material: blue,
             cast_shadows: true,
+            ..Default::default()
         }),
         instanced_from: from,
         hidden_from: hidden,
@@ -466,6 +469,7 @@ fn instanced_representation_draws_100k_in_one_pass() {
             mesh: cube(),
             material: blue,
             cast_shadows: false,
+            ..Default::default()
         }),
         instanced_from: 365.0,
         hidden_from: 520.0,
@@ -506,6 +510,7 @@ fn lod_view_mode_colors_simulation_lod_and_representation() {
             mesh: cube(),
             material: s.material("white", M1::default()),
             cast_shadows: true,
+            ..Default::default()
         }),
         instanced_from: from,
         hidden_from: hidden,

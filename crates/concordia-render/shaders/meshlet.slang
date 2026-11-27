@@ -194,7 +194,7 @@ bool on_dirty_pages(CullView view, float3 c, float r) {
     for (int y = lo.y; y <= hi.y; y++) {
         for (int x = lo.x; x <= hi.x; x++) {
             uint entry = g_buffers.ptr[ids.x][vsm_page_slot(ids.y, ids.z, int2(x, y))];
-            if ((entry & VSM_DIRTY) != 0) { return true; }
+            if ((entry & (VSM_DIRTY | VSM_DYNAMIC)) != 0) { return true; }
         }
     }
     return false;
@@ -481,7 +481,7 @@ void meshlet_vsm_ranks(uniform MeshletRanksPush push) {
     d[2] = 1;
 }
 
-struct MeshletBinPush { uint buckets; uint bucket_count; uint ranks; uint entries; uint instances; uint meshes; uint params; uint views; uint table; uint counts; uint scanned; uint pairs; uint capacity; };
+struct MeshletBinPush { uint buckets; uint bucket_count; uint ranks; uint entries; uint instances; uint meshes; uint params; uint views; uint table; uint counts; uint scanned; uint pairs; uint capacity; uint class; };
 
 // Survivor `g`'s slot, level and pages (lo.xy, hi.xy); false past the last survivor.
 bool survivor(MeshletBinPush push, uint g, out uint slot, out uint level, out int4 rect) {
@@ -497,6 +497,8 @@ bool survivor(MeshletBinPush push, uint g, out uint slot, out uint level, out in
     slot = bucket.x + g - ranks[b];
     uint2 entry = ((uint2*)g_buffers.ptr[push.entries])[slot];
     Instance* inst = ((Instance*)g_buffers.ptr[push.instances]) + entry.x;
+    // Survivors of the other class (instance row's motion.z bit 0: dynamic) bin nothing.
+    if ((inst.motion.z & 1) != push.class) { return true; }
     float4 sphere = world_sphere(inst, push.meshes, entry.y);
     rect = vsm_sphere_rect(push.params, push.views, level, sphere.xyz, sphere.w);
     return true;
@@ -510,7 +512,7 @@ void meshlet_vsm_count(uint lane : SV_GroupThreadID, uint3 group : SV_GroupID, u
     uint level;
     int4 rect;
     if (!survivor(push, g, slot, level, rect)) { return; }
-    uint n = vsm_count_due(lane, push.params, push.table, level, rect);
+    uint n = vsm_count_due(lane, push.params, push.table, level, rect, push.class);
     if (lane == 0) { g_buffers.ptr[push.counts][g] = n; }
 }
 
@@ -522,7 +524,7 @@ void meshlet_vsm_emit(uint lane : SV_GroupThreadID, uint3 group : SV_GroupID, un
     uint level;
     int4 rect;
     if (!survivor(push, g, slot, level, rect)) { return; }
-    vsm_emit_due(lane, push.params, push.table, level, rect, slot, g_buffers.ptr[push.scanned][g], push.pairs, push.capacity);
+    vsm_emit_due(lane, push.params, push.table, level, rect, slot, g_buffers.ptr[push.scanned][g], push.pairs, push.capacity, push.class);
 }
 
 // One `DrawIndirect` record for every kept pair (`vertices` per pair), and (pairs wanted, kept).

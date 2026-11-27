@@ -191,6 +191,8 @@ pub struct Renderer {
     unskinnable: std::collections::BTreeSet<AssetRef>,
     /// Entities whose invalid `Representation` was logged.
     invalid_representations: std::collections::BTreeSet<EntityId>,
+    /// Entities warned about a `Static` mobility hint that doesn't hold (VSM, 4.7b).
+    hint_warned: std::collections::BTreeSet<EntityId>,
 }
 
 /// A presented frame the GPU may still be working on.
@@ -478,6 +480,7 @@ impl Renderer {
             retired: FrameResources::default(),
             unskinnable: std::collections::BTreeSet::new(),
             invalid_representations: std::collections::BTreeSet::new(),
+            hint_warned: std::collections::BTreeSet::new(),
         })
     }
 
@@ -1104,6 +1107,18 @@ impl Renderer {
             },
             false => None,
         };
+        // Each draw's shadow class (4.7b): drawn into dynamic pages.
+        let dynamic_items: Vec<bool> = match &vsm {
+            Some(job) => {
+                self.note_casters(world, job);
+                occurrences(world)
+                    .into_iter()
+                    .zip(&world.draws)
+                    .map(|(n, d)| job.dynamic.contains(&(d.entity, d.mesh.clone(), n)))
+                    .collect()
+            }
+            None => vec![false; world.draws.len()],
+        };
         let vsm_rows = match &vsm {
             Some(j) => Some([
                 j.views,
@@ -1150,7 +1165,7 @@ impl Renderer {
             &skinning.placements,
             &materials,
             &view_m,
-            &crate::cull::Frustum::new(view_proj),
+            (&crate::cull::Frustum::new(view_proj), &dynamic_items),
             &mut visibility,
         );
         self.visibility = visibility;
@@ -1295,7 +1310,10 @@ impl Renderer {
             }
             if casts {
                 if vsm_on {
-                    caster_spheres.push(crate::vsm::world_sphere(placed.bounds, &placed.world));
+                    caster_spheres.push((
+                        crate::vsm::world_sphere(placed.bounds, &placed.world),
+                        dynamic_items[item],
+                    ));
                 }
                 match casters.last_mut() {
                     Some(c)
@@ -1676,8 +1694,9 @@ impl Renderer {
     }
 
     /// The frame's VSM caster draws, one page per pair (M4 4.7a2): the levels' meshlet survivors
-    /// and the M1 casters (`casters`, with each instance's world sphere in `spheres`) binned to the
-    /// pages due to be drawn; `tables` are the frame, instance and mesh tables' bindless indices.
+    /// and the M1 casters (`casters`, with each instance's world sphere and class in `spheres`)
+    /// binned to the pages due to be drawn, one layer per class (static, dynamic; 4.7b); `tables`
+    /// are the frame, instance and mesh tables' bindless indices.
     #[allow(clippy::type_complexity)]
     fn vsm_caster_draws(
         &self,
@@ -1687,24 +1706,60 @@ impl Renderer {
             Option<MeshletJob>,
             Option<&crate::meshlet::MeshletPlan<BucketKey>>,
         ),
-        (casters, spheres): (&[ShadowDraw], &[concordia_core::math::Vec4]),
-        [frame_i, inst_i, meshes_i]: [u32; 3],
+        (casters, spheres): (&[ShadowDraw], &[(concordia_core::math::Vec4, bool)]),
+        tables: [u32; 3],
         keep: &mut Vec<Buffer>,
     ) -> Result<crate::vsm::CasterDraws, RenderError> {
+        let levels = job.clipmap.levels.len() as u32;
+        let (units, spans) = crate::vsm::units_for(casters, spheres, levels);
+        let mut layer = |class: u32| {
+            self.vsm_caster_layer(
+                (device, &mut *up),
+                (pipelines, job),
+                (meshlets.as_ref(), plan),
+                (casters, &units, &spans),
+                (tables, class),
+                &mut *keep,
+            )
+        };
+        let layers = [layer(0)?, layer(1)?];
+        Ok(crate::vsm::CasterDraws {
+            cull: meshlets,
+            pipelines: (pipelines.m1, pipelines.meshlets),
+            layers,
+            composite: job.work.composite(job.params, &job.pool),
+            pool: job.pool.clone(),
+            entries: plan.map_or(0, |p| p.entries),
+        })
+    }
+
+    /// One class's binning (`class` 0 static, 1 dynamic) and page draws.
+    #[allow(clippy::type_complexity)]
+    fn vsm_caster_layer(
+        &self,
+        (device, up): (&dyn Device, &mut Uploads),
+        (pipelines, job): (crate::pipelines::VsmCasters, &crate::vsm::VsmJob),
+        (meshlets, plan): (
+            Option<&MeshletJob>,
+            Option<&crate::meshlet::MeshletPlan<BucketKey>>,
+        ),
+        (casters, units, spans): (&[ShadowDraw], &[crate::vsm::Unit], &[crate::vsm::DrawSpan]),
+        ([frame_i, inst_i, meshes_i], class): ([u32; 3], u32),
+        keep: &mut Vec<Buffer>,
+    ) -> Result<crate::vsm::CasterLayer, RenderError> {
         let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
         let pool = self.vsm_settings.pool_pages;
         let blocks = (job.params, job.views, index(job.work.table)?);
-        let levels = job.clipmap.levels.len() as u32;
-        let (units, spans) = crate::vsm::units_for(casters, spheres, levels);
         let unit_bins = crate::vsm::UnitBins::prepare(
             device,
             up,
             pipelines.bin,
-            (&units, &spans, pool.saturating_mul(32)),
+            (units, spans, pool.saturating_mul(32)),
             blocks,
+            class,
             keep,
         )?;
-        let meshlet_bins = match (meshlets.as_ref().and_then(MeshletJob::bin_inputs), plan) {
+        let meshlet_bins = match (meshlets.and_then(MeshletJob::bin_inputs), plan) {
             (Some(input), Some(plan)) => {
                 let vertices = plan.buckets.iter().map(|b| b.vertices).max().unwrap_or(0);
                 Some(crate::vsm::MeshletBins::prepare(
@@ -1718,6 +1773,7 @@ impl Renderer {
                         vertices,
                     ),
                     blocks,
+                    class,
                     keep,
                 )?)
             }
@@ -1759,15 +1815,11 @@ impl Renderer {
             ]),
             None => Vec::new(),
         };
-        Ok(crate::vsm::CasterDraws {
-            cull: meshlets,
+        Ok(crate::vsm::CasterLayer {
             meshlet_bins,
             unit_bins,
-            pipelines: (pipelines.m1, pipelines.meshlets),
             m1,
             meshlet_push,
-            pool: job.pool.clone(),
-            entries: plan.map_or(0, |p| p.entries),
         })
     }
 
@@ -1839,7 +1891,7 @@ impl Renderer {
         &self,
         world: &RenderWorld,
         placements: &[Placement],
-    ) -> Vec<(crate::visibility::VisKey, crate::vsm::CasterState)> {
+    ) -> Vec<(crate::visibility::VisKey, crate::vsm::CasterInput)> {
         use std::hash::{Hash, Hasher};
         let occurrence = occurrences(world);
         world
@@ -1867,9 +1919,35 @@ impl Renderer {
                     sphere: crate::vsm::caster_sphere(bounds, &placed.world),
                     shape: shape.finish(),
                 };
-                Some(((d.entity, d.mesh.clone(), n), state))
+                let input = crate::vsm::CasterInput {
+                    state,
+                    skinned: placed.pose.is_some(),
+                    hint: d.mobility,
+                };
+                Some(((d.entity, d.mesh.clone(), n), input))
             })
             .collect()
+    }
+
+    /// Records the frame's dynamic casters in the stats and warns, once per entity, about a
+    /// `Static` hint on a caster that moved or is skinned (4.7b).
+    fn note_casters(&mut self, world: &RenderWorld, job: &crate::vsm::VsmJob) {
+        let s = &mut self.stats.shadows;
+        s.casters_dynamic = job.dynamic.len() as u64;
+        s.static_hint_moved = job.static_hint_moved.len() as u64;
+        for (entity, mesh, _) in &job.static_hint_moved {
+            if self.hint_warned.insert(*entity) {
+                tracing::warn!(target: "concordia::render", %entity, %mesh, "mobility Static, but it moves: each move redraws its shadow pages; Auto or Movable is cheaper");
+            }
+        }
+        let skinned_static = world.draws.iter().filter(|d| {
+            d.skin.is_some() && d.cast_shadows && d.mobility == concordia_assets::Mobility::Static
+        });
+        for d in skinned_static {
+            if self.hint_warned.insert(d.entity) {
+                tracing::warn!(target: "concordia::render", entity = %d.entity, "mobility Static ignored on a skinned mesh: its shadow is redrawn every frame");
+            }
+        }
     }
 
     /// Cascades, settings and shadow maps when the first directional light casts shadows.
@@ -1976,7 +2054,7 @@ impl Renderer {
         placements: &[Placement],
         materials: &BTreeMap<AssetRef, Material>,
         view: &Mat4,
-        frustum: &crate::cull::Frustum,
+        (frustum, dynamic): (&crate::cull::Frustum, &[bool]),
         visibility: &mut crate::visibility::Visibility<crate::visibility::VisKey>,
     ) -> Result<FrameBlocks, RenderError> {
         let texture = |r: &AssetRef| self.assets.textures.get(r).map(|(_, i)| *i);
@@ -2032,7 +2110,7 @@ impl Renderer {
                 model: placed.world,
                 previous: self.motion.previous_world(draw.entity, &placed.world),
                 skin,
-                motion: [placed.prev_first, *base, 0, 0],
+                motion: [placed.prev_first, *base, u32::from(dynamic[d.item]), 0],
             }
             .write(&mut instances);
         });
@@ -2259,11 +2337,7 @@ impl Renderer {
                 .as_ref()
                 .and_then(|d| d.cull.as_ref().map(|m| (m.codes, d.entries)));
             let totals: Vec<Buffer> = vsm_draws.as_ref().map_or_else(Vec::new, |d| {
-                d.meshlet_bins
-                    .iter()
-                    .map(|b| b.totals)
-                    .chain(d.unit_bins.iter().map(|b| b.totals))
-                    .collect()
+                d.layers.iter().flat_map(|l| l.totals()).collect()
             });
             (job.work.counts, codes, totals)
         });

@@ -18,7 +18,9 @@ pub(crate) mod testing;
 
 pub use api::{RenderSetShadows, RenderSetShadowsParams, RenderSetShadowsResult};
 pub use bin::caster_sphere;
-pub(crate) use bin::{BinInputs, BinPipelines, MeshletBins, UnitBins, units_for, world_sphere};
+pub(crate) use bin::{
+    BinInputs, BinPipelines, DrawSpan, MeshletBins, Unit, UnitBins, units_for, world_sphere,
+};
 pub use cache::{CacheKey, CacheReset, CacheState};
 pub use clipmap::{
     ClipLevel, Clipmap, LEVEL0_EXTENT, level_for_footprint, pixel_footprint, stable_depth_range,
@@ -26,8 +28,10 @@ pub use clipmap::{
 };
 pub use frame::{Footprint, floor_level};
 pub(crate) use gpu::{COUNT_WORDS, VsmPipelines};
-pub(crate) use job::{CasterDraws, JobIn, VsmJob, VsmResources, add_page_passes, add_render_pass};
-pub use ledger::{CasterLedger, CasterState, caster_box};
+pub(crate) use job::{
+    CasterDraws, CasterLayer, JobIn, VsmJob, VsmResources, add_page_passes, add_render_pass,
+};
+pub use ledger::{CasterInput, CasterLedger, CasterState, DYNAMIC_FRAMES, LedgerFrame, caster_box};
 pub use pool::{PoolError, PoolLayout};
 pub use settings::{ShadowTechnique, Shadows, VsmSettings};
 pub use stats::ShadowStats;

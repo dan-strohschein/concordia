@@ -173,6 +173,7 @@ fn renderer(part: &MeshPart, asset: AssetId) -> Result<MeshRenderer, AssetError>
         mesh: parse(format!("asset:{asset}#{}", part.mesh))?,
         material,
         cast_shadows: true,
+        ..Default::default()
     })
 }
 

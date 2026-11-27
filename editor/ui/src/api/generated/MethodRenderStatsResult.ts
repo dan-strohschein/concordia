@@ -267,6 +267,10 @@ export interface ShadowStats {
    */
   cache_reset?: null | CacheReset;
   /**
+   * Casters drawn into dynamic pages (skinned, `Movable`, or moved in the last 60 frames).
+   */
+  casters_dynamic: number;
+  /**
    * Clipmap levels.
    */
   levels: number;
@@ -286,6 +290,15 @@ export interface ShadowStats {
    * Resident pages kept from earlier frames and not drawn.
    */
   pages_cached: number;
+  /**
+   * Resident pages with a dynamic page this frame (redrawn with the dynamic casters).
+   */
+  pages_dynamic: number;
+  /**
+   * Pages under dynamic casters without room for a dynamic page (drawn into the static page,
+   * which is redrawn next frame).
+   */
+  pages_dynamic_fallback: number;
   /**
    * Kept pages evicted, oldest first, to make room for new ones.
    */
@@ -319,7 +332,7 @@ export interface ShadowStats {
    */
   pool_pages: number;
   /**
-   * Physical pages in use (resident and kept).
+   * Physical pages in use (resident, kept and dynamic).
    */
   pool_used: number;
   /**
@@ -331,6 +344,10 @@ export interface ShadowStats {
    * Meshlets drawn into the levels (each culled for its level and its pages).
    */
   shadow_meshlets: number;
+  /**
+   * `Static`-hinted casters that moved this frame (their static pages were redrawn).
+   */
+  static_hint_moved: number;
   technique: ShadowTechnique1;
 }
 /**

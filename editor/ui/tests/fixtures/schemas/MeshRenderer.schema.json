@@ -1,10 +1,32 @@
 {
+  "$defs": {
+    "Mobility": {
+      "description": "How a mesh moves, a hint for virtual shadow maps' cache (M4 4.7b). A wrong hint never\nchanges the picture, only the cost.",
+      "oneOf": [
+        {
+          "const": "Auto",
+          "description": "Dynamic while it has moved in the last 60 frames, static otherwise."
+        },
+        {
+          "const": "Static",
+          "description": "Kept in the static pages even when it moves (each move redraws them): for things that\nmove once."
+        },
+        {
+          "const": "Movable",
+          "description": "Drawn into the dynamic pages from its first frame: doors, platforms, projectiles."
+        }
+      ],
+      "title": "Mobility",
+      "x-concordia-type": "Mobility"
+    }
+  },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "default": {
     "cast_shadows": true,
     "material": "builtin:material/default",
-    "mesh": "builtin:mesh/cube"
+    "mesh": "builtin:mesh/cube",
+    "mobility": "Auto"
   },
   "description": "Draws an imported or built-in mesh with a material (read by the renderer).",
   "properties": {
@@ -21,6 +43,10 @@
       "description": "The mesh.\n\nAsset reference: \"asset:<uuid>\", \"asset:<uuid>#<sub-path>\" or \"builtin:<kind>/<name>\" (see asset.list).",
       "pattern": "^(asset:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(#.+)?|builtin:[a-z]+/[a-z0-9_]+)$",
       "type": "string"
+    },
+    "mobility": {
+      "$ref": "#/$defs/Mobility",
+      "description": "Whether it moves, as a hint for the shadow cache (M4 4.7b); `Auto` watches it move."
     }
   },
   "required": [

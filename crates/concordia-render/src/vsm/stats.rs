@@ -51,8 +51,17 @@ pub struct ShadowStats {
     pub pages_kept: u64,
     /// Kept pages evicted, oldest first, to make room for new ones.
     pub pages_evicted: u64,
-    /// Physical pages in use (resident and kept).
+    /// Physical pages in use (resident, kept and dynamic).
     pub pool_used: u64,
+    /// Resident pages with a dynamic page this frame (redrawn with the dynamic casters).
+    pub pages_dynamic: u64,
+    /// Pages under dynamic casters without room for a dynamic page (drawn into the static page,
+    /// which is redrawn next frame).
+    pub pages_dynamic_fallback: u64,
+    /// Casters drawn into dynamic pages (skinned, `Movable`, or moved in the last 60 frames).
+    pub casters_dynamic: u64,
+    /// `Static`-hinted casters that moved this frame (their static pages were redrawn).
+    pub static_hint_moved: u64,
 }
 
 /// A frame's VSM counts and the levels' cull codes on their way back (readback buffers).
@@ -83,6 +92,8 @@ impl VsmReadback {
         stats.pages_evicted = u64::from(words[8]);
         stats.pages_kept = u64::from(words[9]);
         stats.pool_used = u64::from(words[10]);
+        stats.pages_dynamic = u64::from(words[14]);
+        stats.pages_dynamic_fallback = u64::from(words[15]);
         stats.shadow_meshlets = match self.codes {
             Some((buffer, count)) if count > 0 => words_of(device, buffer, count)?
                 .iter()

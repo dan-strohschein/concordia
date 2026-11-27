@@ -61,6 +61,7 @@ fn quads(material: M1) -> Quads {
             mesh,
             material: paint.clone(),
             cast_shadows: false,
+            ..Default::default()
         };
         scene.world.insert(id, renderer).unwrap();
         id
@@ -274,6 +275,7 @@ fn blended_draws_leave_motion_untouched() {
             mesh: pane,
             material: glass,
             cast_shadows: false,
+            ..Default::default()
         };
         q.scene.world.insert(id, renderer).unwrap();
         let eye = view(Vec3::new(0.0, 0.0, 5.0));

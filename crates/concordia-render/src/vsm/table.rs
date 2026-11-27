@@ -22,6 +22,8 @@ bitflags::bitflags! {
         const DYNAMIC = 1 << 3;
         /// Something under it changed this frame (4.7b): redrawn if requested, else released.
         const INVALIDATED = 1 << 4;
+        /// Holds dynamic casters this frame (no room for a dynamic page): redrawn next frame.
+        const POLLUTED = 1 << 5;
     }
 }
 

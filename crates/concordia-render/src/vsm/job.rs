@@ -10,7 +10,7 @@ use super::cache::{CacheKey, CacheReset, CacheState};
 use super::clipmap::{Clipmap, stable_depth_range};
 use super::frame::{Footprint, ParamsIn, depth_views, params_rows};
 use super::gpu::{PageStore, PageWork, VsmPipelines, VsmPool, WorkShape};
-use super::ledger::{CasterLedger, CasterState};
+use super::ledger::{CasterInput, CasterLedger};
 use super::pool::PoolLayout;
 use super::settings::VsmSettings;
 use crate::RenderError;
@@ -32,7 +32,7 @@ pub(crate) struct JobIn<'a> {
     /// The view the frame is for (one cached view at a time).
     pub(crate) view: u64,
     /// Every shadow caster this frame, by key (the ledger compares them with last frame's).
-    pub(crate) states: Vec<(crate::visibility::VisKey, CasterState)>,
+    pub(crate) states: Vec<(crate::visibility::VisKey, CasterInput)>,
 }
 
 /// What virtual shadow maps keep between frames: the pool, the page store, the depth range, each
@@ -75,6 +75,12 @@ pub(crate) struct VsmJob {
     pub(crate) reset: Option<CacheReset>,
     /// Bindless index and count of the spheres whose pages are stale.
     pub(crate) stale: (u32, u32),
+    /// Bindless index and count of the dynamic casters' spheres.
+    pub(crate) movers: (u32, u32),
+    /// The dynamic casters' keys (the renderer draws them into dynamic pages).
+    pub(crate) dynamic: std::collections::BTreeSet<crate::visibility::VisKey>,
+    /// `Static`-hinted casters that moved this frame.
+    pub(crate) static_hint_moved: Vec<crate::visibility::VisKey>,
 }
 
 impl VsmJob {
@@ -109,19 +115,32 @@ impl VsmJob {
             depth: range,
         };
         let reset = res.cache.begin(key, s.cache);
-        let mut stale = res.ledger.diff(input.states.iter().cloned());
+        let mut verdict = res.ledger.update(input.states.iter().cloned());
+        if !s.cache {
+            // Uncached, every caster draws into the static pages (4.7a's frame, the oracle).
+            verdict.dynamic.clear();
+            verdict.dynamic_spheres.clear();
+        }
+        let mut stale = verdict.stale;
         if reset.is_some() {
             stale.clear(); // the store starts empty: nothing to invalidate
         }
         let stale_count = stale.len() as u32;
-        let rows: Vec<u8> = stale
-            .iter()
-            .flat_map(|v: &Vec4| v.to_array())
-            .flat_map(f32::to_le_bytes)
-            .chain([0; 16])
-            .collect();
-        let stale_buf = up.buffer(device, &rows, "vsm stale spheres")?;
-        keep.push(stale_buf);
+        let rows = |spheres: &[Vec4]| -> Vec<u8> {
+            spheres
+                .iter()
+                .flat_map(|v| v.to_array())
+                .flat_map(f32::to_le_bytes)
+                .chain([0; 16])
+                .collect()
+        };
+        let stale_buf = up.buffer(device, &rows(&stale), "vsm stale spheres")?;
+        let movers_buf = up.buffer(
+            device,
+            &rows(&verdict.dynamic_spheres),
+            "vsm dynamic spheres",
+        )?;
+        keep.extend([stale_buf, movers_buf]);
         let origins: Vec<IVec2> = clipmap.levels.iter().map(|l| l.origin_page()).collect();
         let previous = match (reset, res.origins.len() == origins.len()) {
             (None, true) => std::mem::replace(&mut res.origins, origins.clone()),
@@ -133,19 +152,6 @@ impl VsmJob {
         let chunks = res.pool.ensure(device, layout)?;
         let indices: Vec<u32> = chunks.iter().map(|(_, i)| *i).collect();
         let pool: Vec<Buffer> = chunks.iter().map(|(b, _)| *b).collect();
-        let params = params_rows(&ParamsIn {
-            settings: s,
-            clipmap: &clipmap,
-            eye: input.eye,
-            footprint: input.footprint,
-            pcf_radius: input.pcf_radius,
-            chunks: &indices,
-            inv_view_proj: input.camera.inverse(),
-            previous: &previous,
-        });
-        let params = up.buffer(device, &params, "vsm params")?;
-        let views = up.buffer(device, &depth_views(&input.camera, &clipmap), "depth views")?;
-        keep.extend([params, views]);
         let work = PageWork::prepare(
             device,
             up,
@@ -159,6 +165,20 @@ impl VsmJob {
             keep,
         )?;
         let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
+        let params = params_rows(&ParamsIn {
+            settings: s,
+            clipmap: &clipmap,
+            eye: input.eye,
+            footprint: input.footprint,
+            pcf_radius: input.pcf_radius,
+            chunks: &indices,
+            inv_view_proj: input.camera.inverse(),
+            previous: &previous,
+            tables: [index(work.table)?, index(work.dynamic)?],
+        });
+        let params = up.buffer(device, &params, "vsm params")?;
+        let views = up.buffer(device, &depth_views(&input.camera, &clipmap), "depth views")?;
+        keep.extend([params, views]);
         Ok(Self {
             clipmap,
             work,
@@ -167,6 +187,9 @@ impl VsmJob {
             pool,
             reset,
             stale: (index(stale_buf)?, stale_count),
+            movers: (index(movers_buf)?, verdict.dynamic_spheres.len() as u32),
+            dynamic: verdict.dynamic.into_iter().collect(),
+            static_hint_moved: verdict.static_hint_moved,
         })
     }
 }
@@ -226,7 +249,7 @@ pub(crate) fn add_page_passes(
             Ok(())
         })),
     );
-    let allocate = job.work.allocate();
+    let allocate = job.work.allocate(job.movers, (job.params, job.views));
     graph.add_pass_recorded(
         "vsm.allocate",
         |p| p.side_effect(),
@@ -247,38 +270,89 @@ pub(crate) fn add_page_passes(
 }
 
 /// What draws a frame's VSM casters, one page per pair (M4 4.7a2): the levels' meshlet job (its
-/// cull runs as `vsm.cull`), the binning of its survivors and of the M1 casters (`vsm.bin`), and
-/// each draw's push constants and arguments (`vsm.render`).
+/// cull runs as `vsm.cull`), then per layer (static, dynamic; 4.7b) the binning of its casters
+/// (`vsm.bin`) and each draw's push constants and arguments (`vsm.render`); the composite copies
+/// static pages into dynamic ones between the two.
 pub(crate) struct CasterDraws {
     pub(crate) cull: Option<crate::meshlet_pass::MeshletJob>,
-    pub(crate) meshlet_bins: Option<super::bin::MeshletBins>,
-    pub(crate) unit_bins: Option<super::bin::UnitBins>,
     /// The page pipelines (M1 casters, meshlets).
     pub(crate) pipelines: (concordia_rhi::Pipeline, concordia_rhi::Pipeline),
-    /// Per M1 caster draw: its push constants (`VsmPagePush`) and vertex count's record.
-    pub(crate) m1: Vec<Vec<u8>>,
-    /// The meshlet pairs' push constants (`MeshletPagePush`).
-    pub(crate) meshlet_push: Vec<u8>,
+    /// Static casters into pages to redraw, then dynamic casters into dynamic (or polluted) pages.
+    pub(crate) layers: [CasterLayer; 2],
+    /// The composite's dispatch (static → dynamic copies).
+    pub(crate) composite: Vec<concordia_rhi::Command>,
     /// The pool, written here and read by `forward`.
     pub(crate) pool: Vec<Buffer>,
     /// Slots in the levels' meshlet plan (their cull codes are read back).
     pub(crate) entries: u32,
 }
 
-/// `vsm.cull` (compute route), `vsm.bin` and `vsm.render`: a 128 × 128 attachment-less pass in
-/// which each pair's caster is drawn into its own page.
+/// One class of casters' binning and draws.
+#[derive(Default)]
+pub(crate) struct CasterLayer {
+    pub(crate) meshlet_bins: Option<super::bin::MeshletBins>,
+    pub(crate) unit_bins: Option<super::bin::UnitBins>,
+    /// Per M1 caster draw: its push constants (`VsmPagePush`).
+    pub(crate) m1: Vec<Vec<u8>>,
+    /// The meshlet pairs' push constants (`MeshletPagePush`).
+    pub(crate) meshlet_push: Vec<u8>,
+}
+
+impl CasterLayer {
+    /// The binning's dispatches.
+    fn bin(&self) -> impl Iterator<Item = &concordia_rhi::Command> {
+        let meshlets = self.meshlet_bins.iter().flat_map(|b| b.commands());
+        meshlets.chain(self.unit_bins.iter().flat_map(|b| b.commands()))
+    }
+
+    /// The layer's page draws, inside a 128 × 128 attachment-less pass.
+    fn draw(
+        &self,
+        (m1, meshlets): (concordia_rhi::Pipeline, concordia_rhi::Pipeline),
+    ) -> Vec<concordia_rhi::Command> {
+        use concordia_rhi::Command;
+        let mut out = Vec::new();
+        if let Some(units) = &self.unit_bins {
+            out.push(Command::SetPipeline(m1));
+            for (d, push) in self.m1.iter().enumerate() {
+                out.push(Command::PushConstants(push.clone()));
+                out.push(Command::DrawIndirect {
+                    args: units.args,
+                    offset: d as u64 * concordia_rhi::DRAW_INDIRECT_BYTES,
+                });
+            }
+        }
+        if let Some(m) = &self.meshlet_bins {
+            out.push(Command::SetPipeline(meshlets));
+            out.push(Command::PushConstants(self.meshlet_push.clone()));
+            out.push(Command::DrawIndirect {
+                args: m.args,
+                offset: 0,
+            });
+        }
+        out
+    }
+
+    /// The pair totals' buffers (for the stats).
+    pub(crate) fn totals(&self) -> impl Iterator<Item = Buffer> + '_ {
+        let meshlets = self.meshlet_bins.iter().map(|b| b.totals);
+        meshlets.chain(self.unit_bins.iter().map(|b| b.totals))
+    }
+}
+
+/// `vsm.cull` (compute route), `vsm.bin` (both layers) and `vsm.render`: a 128 × 128
+/// attachment-less pass of the static layer, the composite, then a pass of the dynamic layer.
 pub(crate) fn add_render_pass(graph: &mut RenderGraph, draws: CasterDraws) {
     use concordia_rhi::{Command, RenderPassDesc};
     if let Some(job) = &draws.cull {
         job.add_named_pass(graph, "vsm.cull");
     }
-    let mut bin: Vec<Command> = Vec::new();
-    if let Some(b) = &draws.meshlet_bins {
-        bin.extend_from_slice(b.commands());
-    }
-    if let Some(b) = &draws.unit_bins {
-        bin.extend_from_slice(b.commands());
-    }
+    let bin: Vec<Command> = draws
+        .layers
+        .iter()
+        .flat_map(CasterLayer::bin)
+        .cloned()
+        .collect();
     graph.add_pass_recorded(
         "vsm.bin",
         |p| p.side_effect(),
@@ -289,34 +363,27 @@ pub(crate) fn add_render_pass(graph: &mut RenderGraph, draws: CasterDraws) {
     );
     let side =
         std::num::NonZeroU32::new(super::table::PAGE_TEXELS).unwrap_or(std::num::NonZeroU32::MIN);
+    let pass = move || {
+        Command::BeginRenderPass(RenderPassDesc {
+            colors: Vec::new(),
+            depth: None,
+            extent: Some([side, side]),
+        })
+    };
     graph.add_pass_recorded(
         "vsm.render",
         |p| p.side_effect(),
         Some(Box::new(move |ctx: &mut PassContext<'_>| {
-            ctx.commands.push(Command::BeginRenderPass(RenderPassDesc {
-                colors: Vec::new(),
-                depth: None,
-                extent: Some([side, side]),
-            }));
-            if let Some(units) = &draws.unit_bins {
-                ctx.commands.push(Command::SetPipeline(draws.pipelines.0));
-                for (d, push) in draws.m1.iter().enumerate() {
-                    ctx.commands.push(Command::PushConstants(push.clone()));
-                    ctx.commands.push(Command::DrawIndirect {
-                        args: units.args,
-                        offset: d as u64 * concordia_rhi::DRAW_INDIRECT_BYTES,
-                    });
-                }
-            }
-            if let Some(m) = &draws.meshlet_bins {
-                ctx.commands.push(Command::SetPipeline(draws.pipelines.1));
-                ctx.commands
-                    .push(Command::PushConstants(draws.meshlet_push.clone()));
-                ctx.commands.push(Command::DrawIndirect {
-                    args: m.args,
-                    offset: 0,
-                });
-            }
+            let [statics, dynamics] = &draws.layers;
+            ctx.commands.push(pass());
+            ctx.commands.commands.extend(statics.draw(draws.pipelines));
+            ctx.commands.push(Command::EndRenderPass);
+            ctx.commands.push(pool_written(&draws.pool));
+            ctx.commands
+                .commands
+                .extend(draws.composite.iter().cloned());
+            ctx.commands.push(pass());
+            ctx.commands.commands.extend(dynamics.draw(draws.pipelines));
             ctx.commands.push(Command::EndRenderPass);
             ctx.commands.push(pool_written(&draws.pool));
             Ok(())
@@ -324,11 +391,11 @@ pub(crate) fn add_render_pass(graph: &mut RenderGraph, draws: CasterDraws) {
     );
 }
 
-/// Fragment writes of the pool before `forward`'s fragment reads.
+/// Fragment writes of the pool before the composite's and `forward`'s reads and the next draws.
 fn pool_written(pool: &[Buffer]) -> concordia_rhi::Command {
     use concordia_rhi::{Access, AccessFlags, BufferBarrier, Layout, Stages};
-    let access = |access| Access {
-        stages: Stages::FRAGMENT,
+    let access = |stages, access| Access {
+        stages,
         access,
         layout: Layout::General,
     };
@@ -337,8 +404,11 @@ fn pool_written(pool: &[Buffer]) -> concordia_rhi::Command {
             .iter()
             .map(|&buffer| BufferBarrier {
                 buffer,
-                before: access(AccessFlags::SHADER_WRITE),
-                after: access(AccessFlags::SHADER_READ),
+                before: access(Stages::FRAGMENT, AccessFlags::SHADER_WRITE),
+                after: access(
+                    Stages::FRAGMENT | Stages::COMPUTE,
+                    AccessFlags::SHADER_READ | AccessFlags::SHADER_WRITE,
+                ),
             })
             .collect(),
         textures: Vec::new(),
