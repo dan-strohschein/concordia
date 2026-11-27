@@ -221,7 +221,7 @@ impl UiList {
 
 /// The text a box changed to (signal).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Reflect)]
-#[reflect(category = "UI")]
+#[reflect(signal, category = "UI")]
 pub struct UiTextChanged {
     /// The new text.
     pub text: String,
@@ -229,7 +229,7 @@ pub struct UiTextChanged {
 
 /// Enter in a single-line box (signal).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Reflect)]
-#[reflect(category = "UI")]
+#[reflect(signal, category = "UI")]
 pub struct UiTextSubmitted {
     /// The text submitted.
     pub text: String,

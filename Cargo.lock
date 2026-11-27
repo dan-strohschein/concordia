@@ -1609,6 +1609,7 @@ dependencies = [
  "concordia-cluster",
  "concordia-core",
  "concordia-gen",
+ "concordia-graph",
  "concordia-input",
  "concordia-mcp",
  "concordia-pathtrace",

@@ -23,6 +23,12 @@ pub fn register_module(registry: &mut TypeRegistry, desc: &ModuleDesc) -> Result
     for ty in desc.components.iter().chain(&desc.signals) {
         register_dynamic_component(registry, ty).map_err(|e| fail(&ty.name, e.to_string()))?;
     }
+    // Script signals can't carry `#[reflect(signal)]`: mark their registrations (M4 4.9).
+    for ty in &desc.signals {
+        if let Some(r) = registry.get_by_name_mut(&ty.name) {
+            r.insert_data(concordia_reflect::SignalMarker);
+        }
+    }
     crate::reload::register_traits(registry, desc)
 }
 

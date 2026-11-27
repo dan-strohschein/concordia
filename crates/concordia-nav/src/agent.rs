@@ -135,7 +135,7 @@ pub struct NavAgentState {
 /// Raised on an agent when it reaches its target, or the closest reachable point; delivered next
 /// tick.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Reflect)]
-#[reflect(category = "Navigation")]
+#[reflect(signal, category = "Navigation")]
 #[serde(deny_unknown_fields)]
 pub struct NavArrived {
     /// The target it was asked to reach.
@@ -161,7 +161,7 @@ pub enum NavFailure {
 
 /// Raised on an agent, once per target, when no path can be planned; delivered next tick.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
-#[reflect(category = "Navigation")]
+#[reflect(signal, category = "Navigation")]
 #[serde(deny_unknown_fields)]
 pub struct NavPathFailed {
     /// The target it was asked to reach.
