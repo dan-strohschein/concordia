@@ -1,5 +1,5 @@
 ---
-source: tests/gates/m1_mcp_screenshot.rs
+source: tests/integration/../gates/m1_mcp_screenshot.rs
 assertion_line: 60
 expression: capture.input_schema.as_ref()
 ---
@@ -198,6 +198,22 @@ expression: capture.input_schema.as_ref()
         {
           "const": "hzb",
           "description": "The HZB's finest level as grey depth (brighter: nearer); black when the frame has no HZB."
+        },
+        {
+          "const": "vsm_pages",
+          "description": "The lit image tinted by the virtual-shadow-map page each pixel reads (one colour per\nphysical page, page borders dark); untinted without virtual shadow maps (M4 4.7)."
+        },
+        {
+          "const": "vsm_levels",
+          "description": "The lit image tinted by the clipmap level each pixel reads (a hue per level, magenta where it\nfell back to a coarser level)."
+        },
+        {
+          "const": "vsm_cache",
+          "description": "The lit image tinted by the page's cache state: yellow drawn this frame, green kept from an\nearlier frame, blue with a dynamic layer."
+        },
+        {
+          "const": "shadow_mask",
+          "description": "The sun's visibility alone: white lit, black shadowed (CSM or VSM; not tonemapped)."
         }
       ],
       "title": "ViewMode",

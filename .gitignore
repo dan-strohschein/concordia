@@ -9,3 +9,4 @@ editor/ui/dist/
 .claude/settings.local.json
 *.pending-snap
 .env*
+__pycache__/

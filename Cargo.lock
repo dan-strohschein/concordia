@@ -1608,6 +1608,7 @@ dependencies = [
  "concordia-testkit",
  "concordia-ui",
  "insta",
+ "lamplight-types",
  "regex",
  "rmcp",
  "serde_json",

@@ -1,5 +1,6 @@
 ---
-source: tests/gates/m1_physics_golden.rs
+source: tests/integration/../gates/m1_physics_golden.rs
+assertion_line: 252
 expression: hash
 ---
-3cde4a19a5f777730ec0e50078053a0bb6ca589f756c06d228d2d2947f3895ce
+475f421004b483201beb35bf5abebd3bc66efddd86a15613d19d71da8c679e97
