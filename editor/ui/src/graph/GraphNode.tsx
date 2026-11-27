@@ -4,7 +4,7 @@ import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import { createContext, useContext, useState } from "react";
 
 import { RoleBadge } from "../studio/RoleBadge";
-import { handle, literalText, parseLiteral, type GraphEdit, type NodeData, type PinDef } from "./model";
+import { handle, literalText, parseLiteral, takesConstant, type GraphEdit, type NodeData, type PinDef } from "./model";
 
 /** What a node can do: the panel applies its edits. */
 export interface GraphActions {
@@ -108,7 +108,7 @@ export function GraphNode({ id, data }: NodeProps<Node<NodeData>>) {
             <div key={pin.name} style={pinStyle}>
               <Handle type="target" position={Position.Left} id={handle.input(pin.name)} />
               {pin.name}
-              {!linked(pin.name) && (
+              {!linked(pin.name) && takesConstant(pin.ty) && (
                 // Keyed by the value: a change from elsewhere (an undo, an agent) resets the field.
                 <ConstantField
                   key={literalText(data.inputs[pin.name])}

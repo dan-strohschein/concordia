@@ -70,6 +70,31 @@ export interface Connection {
 }
 
 const WIDTH = 200;
+
+/** A node's width: room for its op, the author badge and the delete button. */
+function width(op: string): number {
+  return Math.max(WIDTH, op.length * 7 + 190);
+}
+
+/** Pin types a typed-in constant can be (others only link). */
+const CONSTANT_TYPES = new Set([
+  "bool",
+  "i32",
+  "i64",
+  "f32",
+  "Scalar",
+  "Numeric",
+  "Vec2",
+  "Vec3",
+  "Vec4",
+  "Quat",
+  "String",
+]);
+
+/** Whether an unlinked input of type `ty` shows a constant field. */
+export function takesConstant(ty: string): boolean {
+  return CONSTANT_TYPES.has(ty);
+}
 const ROW = 22;
 
 /** Handle ids: `in:<pin>`, `out:<pin>`, `exec-in:<pin>`, `exec-out:<pin>`. */
@@ -92,7 +117,7 @@ function positions(graph: GraphJson, library: Library, edges: Edge[]): Record<st
   g.setGraph({ rankdir: "LR", nodesep: 30, ranksep: 70 });
   g.setDefaultEdgeLabel(() => ({}));
   for (const [nodeId, node] of Object.entries(graph.nodes)) {
-    g.setNode(nodeId, { width: WIDTH, height: height(library[node.op]) });
+    g.setNode(nodeId, { width: width(node.op), height: height(library[node.op]) });
   }
   for (const e of edges) g.setEdge(e.source, e.target);
   dagre.layout(g);
@@ -161,7 +186,7 @@ export function toFlow(
     type: "graph",
     position: at[nodeId] ?? { x: 0, y: 0 },
     // Known sizes: nodes paint before React Flow measures them (and in tests, which never do).
-    width: WIDTH,
+    width: width(node.op),
     height: height(library[node.op]),
     data: {
       op: node.op,

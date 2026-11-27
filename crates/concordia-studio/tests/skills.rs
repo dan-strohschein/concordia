@@ -8,9 +8,11 @@ use concordia_studio::{CLAUDE_SKILL_FIELDS, Roster, SkillFile, default_roster, i
 
 /// The eight built-in skills the plan names (3.6), plus team comms (3.6b), animation (M2 2.4.5)
 /// navigation (M2 2.5a), sound design and music (M2 2.7a.2), and the sample tour (M3 3.9a).
-const PLANNED: [&str; 19] = [
+const PLANNED: [&str; 21] = [
     "concordia-add-material",
     "concordia-animation-graphs",
+    "concordia-author-behavior",
+    "concordia-author-graph",
     "concordia-director-planning",
     "concordia-fix-bug-with-replay",
     "concordia-generate-mesh-blender",
