@@ -45,6 +45,8 @@ pub struct NodeMem {
 pub struct BtState {
     /// Seconds the tree has run.
     pub time: f32,
+    /// The last tick the agent thought (0: never; time slicing catches up from it).
+    pub last_tick: u64,
     /// Per node, in tree order.
     pub nodes: Vec<NodeMem>,
 }
@@ -54,6 +56,7 @@ impl BtState {
     pub fn new(tree: &BehaviorTree) -> Self {
         Self {
             time: 0.0,
+            last_tick: 0,
             nodes: vec![NodeMem::default(); tree.nodes.len()],
         }
     }
@@ -111,7 +114,9 @@ impl Ticker<'_> {
     /// Ticks the tree from its root.
     pub fn tick(&mut self) -> Status {
         if self.state.nodes.len() != self.tree.nodes.len() {
+            let last_tick = self.state.last_tick;
             *self.state = BtState::new(self.tree);
+            self.state.last_tick = last_tick;
         }
         self.state.time += self.dt;
         self.exec(0)

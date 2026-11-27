@@ -91,3 +91,18 @@ fn non_finite_values_are_not_written() {
         Err(SceneError::NonFiniteValue { .. })
     ));
 }
+
+/// A document whose type has a dotted stable name (`ai.BehaviorTree`, M4 4.12b).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "t.Dotted")]
+struct Dotted {
+    /// A value.
+    n: u32,
+}
+
+#[test]
+fn documents_with_dotted_type_names_round_trip() {
+    let text = write_document(&Dotted { n: 3 }).unwrap();
+    assert!(text.starts_with("t.Dotted("), "{text}");
+    assert_eq!(read_document::<Dotted>(&text).unwrap(), Dotted { n: 3 });
+}

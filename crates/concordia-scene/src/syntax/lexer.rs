@@ -130,13 +130,23 @@ impl Lexer {
         }
     }
 
+    /// An identifier; a `.` followed by a letter continues it, so dotted stable type names
+    /// (`ai.BehaviorTree`) read back as the printer writes them.
     fn ident(&mut self) -> Tok {
         let mut text = String::new();
-        while let Some(c) = self.peek().filter(|c| c.is_alphanumeric() || *c == '_') {
-            text.push(c);
-            self.bump();
+        loop {
+            match self.peek() {
+                Some(c) if c.is_alphanumeric() || c == '_' => {
+                    text.push(c);
+                    self.bump();
+                }
+                Some('.') if self.peek2().is_some_and(char::is_alphabetic) => {
+                    text.push('.');
+                    self.bump();
+                }
+                _ => return Tok::Ident(text),
+            }
         }
-        Tok::Ident(text)
     }
 
     fn number(&mut self) -> Tok {

@@ -799,3 +799,30 @@ fn the_projects_culling_setting_reaches_the_renderer() {
     assert_eq!(off["after_cone"], off["candidates"], "{off}");
     assert_eq!(off["meshlets"], off["candidates"], "{off}");
 }
+
+#[test]
+fn an_ai_section_adds_the_ai_module_with_its_budget() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("concordia.toml"),
+        "[ai]\nagents_per_tick = 16\n",
+    )
+    .unwrap();
+    let project = Project::load(dir.path()).unwrap();
+    let names: Vec<&str> = project
+        .modules()
+        .unwrap()
+        .iter()
+        .map(|m| m.name())
+        .collect();
+    assert!(names.contains(&"ai"), "{names:?}");
+    std::fs::write(
+        dir.path().join("concordia.toml"),
+        "[ai]\nagents_per_tick = 0\n",
+    )
+    .unwrap();
+    assert!(
+        Project::load(dir.path()).is_err(),
+        "a zero budget is refused"
+    );
+}

@@ -36,6 +36,9 @@ pub struct Manifest {
     pub generators: Option<concordia_gen::GenConfig>,
     /// `[anim]`; animation components and play processors exist only if this section exists (needs `[assets]`).
     pub anim: Option<AnimSection>,
+    /// `[ai]`; brains (`ai.Brain`, behavior trees from `.bt.ron` files), `ai.*` and `ai.think`
+    /// exist only if this section exists (M4 4.12).
+    pub ai: Option<AiSection>,
     /// `[audio]`; audio components, `audio.*` and the mixer exist only if this section exists
     /// (cues load through `[assets]`).
     pub audio: Option<AudioSection>,
@@ -107,6 +110,22 @@ pub enum AudioBackendChoice {
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct AnimSection {}
+
+/// `[ai]` (M4 4.12).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AiSection {
+    /// Agents that re-think their tree a tick (the rest keep running their tasks).
+    pub agents_per_tick: std::num::NonZeroU32,
+}
+
+impl Default for AiSection {
+    fn default() -> Self {
+        Self {
+            agents_per_tick: std::num::NonZeroU32::new(64).unwrap_or(std::num::NonZeroU32::MIN),
+        }
+    }
+}
 
 /// `[replay]` (no settings yet; ADR-0072).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
