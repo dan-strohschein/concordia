@@ -1,0 +1,1015 @@
+// Concordia scene, format 1. Canonical form: `concordia fmt` rewrites this file.
+Scene(
+    format: 1,
+    id: "01a21d9a-a605-711e-85a7-2aa12668b1ed",
+    name: "Iso arena",
+    entities: [
+        Entity(
+            id: "01a21d9a-a605-711e-85a7-2aa22e14be2e",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf0-7082-a373-36dea4f7afad",
+                    mesh: "builtin:mesh/plane",
+                    mobility: Auto,
+                ),
+                "Name": "Floor",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (24.0, 1.0, 24.0),
+                    translation: (0.0, 0.0, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a606-71e3-94e0-7fff6c0145b8",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "asset:01a21a26-2e9e-7277-9721-95cd3530ee6f#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Pillar 0",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.3, 1.0, 1.3),
+                    translation: (7.0, 1.75, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a607-7115-823a-d766a2d2cc56",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "asset:01a21a26-2e9e-7277-9721-95cd3530ee6f#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Pillar 1",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.3, 1.0, 1.3),
+                    translation: (4.9497476, 1.75, 4.9497476),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a609-738e-b703-801bb6a2d4e1",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "asset:01a21a26-2e9e-7277-9721-95cd3530ee6f#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Pillar 2",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.3, 1.0, 1.3),
+                    translation: (-3.059797e-7, 1.75, 7.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a60c-777d-ba2f-41f2c6038210",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "asset:01a21a26-2e9e-7277-9721-95cd3530ee6f#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Pillar 3",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.3, 1.0, 1.3),
+                    translation: (-4.9497476, 1.75, 4.9497476),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a60f-72e6-bf06-a3db4d0db9e5",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "asset:01a21a26-2e9e-7277-9721-95cd3530ee6f#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Pillar 4",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.3, 1.0, 1.3),
+                    translation: (-7.0, 1.75, -6.119594e-7),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a612-7730-9ab3-486bbe49f25c",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "asset:01a21a26-2e9e-7277-9721-95cd3530ee6f#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Pillar 5",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.3, 1.0, 1.3),
+                    translation: (-4.9497466, 1.75, -4.949748),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a615-74cd-a2bd-08322e156a90",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "asset:01a21a26-2e9e-7277-9721-95cd3530ee6f#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Pillar 6",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.3, 1.0, 1.3),
+                    translation: (8.347416e-8, 1.75, -7.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a618-7568-93d2-ca53760bef3e",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "asset:01a21a26-2e9e-7277-9721-95cd3530ee6f#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Pillar 7",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.3, 1.0, 1.3),
+                    translation: (4.949749, 1.75, -4.9497457),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a61b-7587-aee5-61a20181473c",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Arch west",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.5, 2.8, 0.8),
+                    translation: (-1.6, 1.4, -2.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a61e-75fc-86bf-35de79b15767",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Arch east",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.5, 2.8, 0.8),
+                    translation: (1.6, 1.4, -2.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a622-73f8-991a-90c2fd6a01fb",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf1-7103-a331-967a0fbcc4da",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Arch lintel",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (3.7, 0.4, 0.8),
+                    translation: (0.0, 3.0, -2.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a625-74f8-8c88-d08ed89364ea",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf0-7082-a373-36dea4f7afad",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Rubble 0",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.6, 0.3, 0.5),
+                    translation: (-3.0, 0.15, 2.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a628-70b3-8053-bbc6fd4392f7",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf0-7082-a373-36dea4f7afad",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Rubble 1",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.3, 0.2, 0.4),
+                    translation: (-2.4, 0.1, 2.6),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a62b-74b4-bd6d-acab0a0370b0",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf0-7082-a373-36dea4f7afad",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Rubble 2",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.5, 0.4, 0.5),
+                    translation: (2.8, 0.2, 1.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a62d-708a-9d33-e60e709faea0",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf0-7082-a373-36dea4f7afad",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Rubble 3",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.4, 0.2, 0.3),
+                    translation: (3.4, 0.1, 2.2),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a631-7164-af31-9b54090135ad",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf0-7082-a373-36dea4f7afad",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Rubble 4",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.8, 0.5, 0.4),
+                    translation: (0.5, 0.25, 3.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a634-76bc-9d42-ed9979602e4f",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf0-7082-a373-36dea4f7afad",
+                    mesh: "builtin:mesh/cube",
+                    mobility: Auto,
+                ),
+                "Name": "Rubble 5",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.35, 0.24, 0.35),
+                    translation: (-0.6, 0.12, 4.2),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a635-7304-bf85-1e4b9d96424a",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf0-7082-a373-36dea4f7afad",
+                    mesh: "asset:01a21a26-2c4a-70eb-ac9f-e53bdafabf1c#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Rock west",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-4.5, 0.35, -3.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a637-702f-a82e-1364be6ff357",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21a26-2bf0-7082-a373-36dea4f7afad",
+                    mesh: "asset:01a21a26-2c4a-70eb-ac9f-e53bdafabf1c#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Rock east",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.2, 1.0, 0.9),
+                    translation: (4.0, 0.35, 4.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a63b-75e0-8d5f-a6b6f10bccb2",
+            components: {
+                "Name": "Spell 0",
+                "PointLight": (
+                    color: (1.0, 0.45, 0.15),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.5, 0.8, 0.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a63c-7149-95a2-22feca0b8eab",
+            components: {
+                "Name": "Spell 1",
+                "PointLight": (
+                    color: (0.35, 0.6, 1.0),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.2335782, 0.8, 1.3393921),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a63e-73df-a022-4cf34b6cfc18",
+            components: {
+                "Name": "Spell 2",
+                "PointLight": (
+                    color: (0.8, 0.3, 1.0),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (2.4748738, 0.8, 2.4748738),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a63f-7366-874d-80da32fb8829",
+            components: {
+                "Name": "Spell 3",
+                "PointLight": (
+                    color: (0.35, 1.0, 0.5),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (1.339392, 0.8, 3.2335782),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a643-732d-bc47-954c3590a1eb",
+            components: {
+                "Name": "Spell 4",
+                "PointLight": (
+                    color: (1.0, 0.45, 0.15),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.5298986e-7, 0.8, 3.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a644-71c7-bb33-52a4b7a84f52",
+            components: {
+                "Name": "Spell 5",
+                "PointLight": (
+                    color: (0.35, 0.6, 1.0),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.3393923, 0.8, 3.2335782),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a646-76b3-9198-d9abee48b9f8",
+            components: {
+                "Name": "Spell 6",
+                "PointLight": (
+                    color: (0.8, 0.3, 1.0),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-2.4748738, 0.8, 2.4748738),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a649-721b-b263-4848e561cc44",
+            components: {
+                "Name": "Spell 7",
+                "PointLight": (
+                    color: (0.35, 1.0, 0.5),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.2335787, 0.8, 1.3393915),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a64c-718d-a71c-f7d30672372f",
+            components: {
+                "Name": "Spell 8",
+                "PointLight": (
+                    color: (1.0, 0.45, 0.15),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.5, 0.8, -3.059797e-7),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a64f-765d-b8b9-1a11dce6f6d7",
+            components: {
+                "Name": "Spell 9",
+                "PointLight": (
+                    color: (0.35, 0.6, 1.0),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-3.2335782, 0.8, -1.3393921),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a652-746a-9080-0b1058886426",
+            components: {
+                "Name": "Spell 10",
+                "PointLight": (
+                    color: (0.8, 0.3, 1.0),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-2.4748733, 0.8, -2.474874),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a656-7296-bff2-02914b6cc0ae",
+            components: {
+                "Name": "Spell 11",
+                "PointLight": (
+                    color: (0.35, 1.0, 0.5),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.339391, 0.8, -3.233579),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a659-733b-8f59-93cab5397357",
+            components: {
+                "Name": "Spell 12",
+                "PointLight": (
+                    color: (1.0, 0.45, 0.15),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (4.173708e-8, 0.8, -3.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a65c-755c-93fe-df6cc24ed30d",
+            components: {
+                "Name": "Spell 13",
+                "PointLight": (
+                    color: (0.35, 0.6, 1.0),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (1.3393927, 0.8, -3.233578),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a65f-72e5-9672-74ed6f356817",
+            components: {
+                "Name": "Spell 14",
+                "PointLight": (
+                    color: (0.8, 0.3, 1.0),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (2.4748745, 0.8, -2.4748728),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a662-73cf-b425-f3a561177fb1",
+            components: {
+                "Name": "Spell 15",
+                "PointLight": (
+                    color: (0.35, 1.0, 0.5),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (3.2335784, 0.8, -1.339392),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a665-7104-b766-642135bc593e",
+            components: {
+                "Name": "Spell 16",
+                "PointLight": (
+                    color: (1.0, 0.45, 0.15),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (8.827067, 1.2, 1.7558129),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a668-76f3-925f-59895e68630a",
+            components: {
+                "Name": "Spell 17",
+                "PointLight": (
+                    color: (0.35, 0.6, 1.0),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (7.4832263, 1.2, 5.000132),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a66b-74e2-a6df-c9d9f5071a76",
+            components: {
+                "Name": "Spell 18",
+                "PointLight": (
+                    color: (0.8, 0.3, 1.0),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (5.0001316, 1.2, 7.483227),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a66c-76d7-8a3e-5f1cd3c209ea",
+            components: {
+                "Name": "Spell 19",
+                "PointLight": (
+                    color: (0.35, 1.0, 0.5),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (1.7558122, 1.2, 8.827067),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a66e-77eb-80bb-44efc0dec6f4",
+            components: {
+                "Name": "Spell 20",
+                "PointLight": (
+                    color: (1.0, 0.45, 0.15),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.7558129, 1.2, 8.827067),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a671-7582-bea7-afc5e7e404df",
+            components: {
+                "Name": "Spell 21",
+                "PointLight": (
+                    color: (0.35, 0.6, 1.0),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-5.0001335, 1.2, 7.483226),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a674-7324-acc1-18df724a3129",
+            components: {
+                "Name": "Spell 22",
+                "PointLight": (
+                    color: (0.8, 0.3, 1.0),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-7.483227, 1.2, 5.0001316),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a675-733b-8655-21ccdb6b3c66",
+            components: {
+                "Name": "Spell 23",
+                "PointLight": (
+                    color: (0.35, 1.0, 0.5),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-8.827067, 1.2, 1.7558128),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a677-77d1-82b8-d477b57770f1",
+            components: {
+                "Name": "Spell 24",
+                "PointLight": (
+                    color: (1.0, 0.45, 0.15),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-8.827067, 1.2, -1.7558144),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a679-723e-87cb-603d26231f68",
+            components: {
+                "Name": "Spell 25",
+                "PointLight": (
+                    color: (0.35, 0.6, 1.0),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-7.483226, 1.2, -5.0001326),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a67d-709b-b35a-0b6742f4f5d7",
+            components: {
+                "Name": "Spell 26",
+                "PointLight": (
+                    color: (0.8, 0.3, 1.0),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-5.00013, 1.2, -7.4832277),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a67f-71d6-837b-e95221ccc1ee",
+            components: {
+                "Name": "Spell 27",
+                "PointLight": (
+                    color: (0.35, 1.0, 0.5),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-1.7558135, 1.2, -8.827067),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a682-763c-b651-e87d484bb624",
+            components: {
+                "Name": "Spell 28",
+                "PointLight": (
+                    color: (1.0, 0.45, 0.15),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (1.7558137, 1.2, -8.827067),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a686-7268-bbdb-fa13ad949bb4",
+            components: {
+                "Name": "Spell 29",
+                "PointLight": (
+                    color: (0.35, 0.6, 1.0),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (5.000134, 1.2, -7.4832253),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a68a-75b0-b8ff-42282b3767c5",
+            components: {
+                "Name": "Spell 30",
+                "PointLight": (
+                    color: (0.8, 0.3, 1.0),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (7.4832263, 1.2, -5.0001326),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a68d-7451-bd81-a2d2cc13412c",
+            components: {
+                "Name": "Spell 31",
+                "PointLight": (
+                    color: (0.35, 1.0, 0.5),
+                    intensity_lumens: 900.0,
+                    range: 7.0,
+                    shadows: None,
+                    source_radius: 0.0,
+                ),
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (8.827067, 1.2, -1.7558122),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a690-71e3-bfd2-e680256f5bf1",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21d9a-9f8e-7092-abc8-10e3e9d74284",
+                    mesh: "asset:01a21a26-2bf6-71e4-b3c2-56ba29489dee#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Orb 0",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.6, 0.6, 0.6),
+                    translation: (-2.0, 0.5, 1.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a693-7439-b983-d152ee4e200f",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21d9a-9f8e-7092-abc8-10e3e9d74284",
+                    mesh: "asset:01a21a26-2bf6-71e4-b3c2-56ba29489dee#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Orb 1",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.6, 0.6, 0.6),
+                    translation: (2.5, 0.5, -0.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a696-759e-be8e-d02b392f180b",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21d9a-9f8e-7092-abc8-10e3e9d74284",
+                    mesh: "asset:01a21a26-2bf6-71e4-b3c2-56ba29489dee#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Orb 2",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.6, 0.6, 0.6),
+                    translation: (0.0, 0.5, 4.5),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a699-77da-a40e-89cc17de4efd",
+            components: {
+                "MeshRenderer": (
+                    cast_shadows: true,
+                    material: "asset:01a21d9a-9f8e-7092-abc8-10e3e9d74284",
+                    mesh: "asset:01a21a26-2bf6-71e4-b3c2-56ba29489dee#mesh/mesh/0",
+                    mobility: Auto,
+                ),
+                "Name": "Orb 3",
+                "Transform": (
+                    rotation: (0.0, 0.0, 0.0, 1.0),
+                    scale: (0.6, 0.6, 0.6),
+                    translation: (-4.0, 0.5, -4.0),
+                ),
+            },
+        ),
+        Entity(
+            id: "01a21d9a-a69c-714f-b906-13e3e0cd9a7e",
+            components: {
+                "Camera": (
+                    clear: (0.0, 0.0, 0.0, 1.0),
+                    exposure_ev100: 6.5,
+                    msaa: X4,
+                    priority: 0,
+                    projection: Perspective(
+                        far: 1000.0,
+                        fov_y: 0.75,
+                        near: 0.1,
+                    ),
+                    tonemap: AgX,
+                ),
+                "Name": "Camera",
+                "Transform": (
+                    rotation: (-0.25970757, -0.3672525, -0.107574396, 0.8866259),
+                    scale: (1.0, 1.0, 1.0),
+                    translation: (-16.0, 15.0, 16.0),
+                ),
+            },
+        ),
+    ],
+)
