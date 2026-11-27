@@ -1,0 +1,22 @@
+[package]
+name = "concordia-ai"
+description = "Runtime AI without an LLM: blackboard, behavior trees, utility scoring, perception (M4 4.12)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+concordia-core.workspace = true
+concordia-reflect.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true
