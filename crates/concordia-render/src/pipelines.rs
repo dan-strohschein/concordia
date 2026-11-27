@@ -28,12 +28,13 @@ pub fn shader_dir() -> PathBuf {
     PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/shaders"))
 }
 
-/// Where render shaders' imports resolve: the shader builtins and `concordia-material`'s
-/// `material.slang` (the shared BSDF).
+/// Where render shaders' imports resolve: the shader builtins, `concordia-material`'s
+/// `material.slang` (the shared BSDF) and `concordia-bvh`'s `bvh.slang` (GI's rays).
 pub fn include_dirs() -> Vec<PathBuf> {
     vec![
         concordia_shaders::builtin_dir(),
         concordia_material::shader_dir(),
+        concordia_bvh::shader_dir(),
     ]
 }
 
@@ -49,7 +50,7 @@ pub(crate) fn compile(
 }
 
 /// A compute pipeline for `entry` of render shader `file`.
-fn compute_pipeline(
+pub(crate) fn compute_pipeline(
     device: &dyn Device,
     compiler: &dyn ShaderCompiler,
     file: &str,
@@ -569,6 +570,11 @@ impl Pipelines {
             self.vsm = Some(vsm_set(device, self.compiler.as_ref(), self.cull.scan)?);
         }
         Ok(self.vsm)
+    }
+
+    /// The shader compiler (pipelines built on demand elsewhere, e.g. GI's).
+    pub(crate) fn compiler(&self) -> &dyn ShaderCompiler {
+        self.compiler.as_ref()
     }
 
     /// The own temporal resolve's compute pipelines.

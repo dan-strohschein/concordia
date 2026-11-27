@@ -46,6 +46,8 @@ pub struct RenderModule {
     temporal: crate::temporal::Temporal,
     /// The sun's shadows (M4 4.7; `[render] shadows`, `[render.vsm]`).
     shadows: crate::vsm::Shadows,
+    /// Diffuse GI (M4 4.8; `[render] gi`, `[render.probes]`).
+    gi: crate::gi::Gi,
 }
 
 impl std::fmt::Debug for RenderModule {
@@ -65,12 +67,18 @@ impl RenderModule {
             culling: crate::Culling::default(),
             temporal: Default::default(),
             shadows: Default::default(),
+            gi: Default::default(),
         }
     }
 
     /// Sets the sun's shadows (`[render] shadows`, `[render.vsm]`; `csm` by default).
     pub fn with_shadows(self, shadows: crate::vsm::Shadows) -> Self {
         Self { shadows, ..self }
+    }
+
+    /// Sets diffuse GI (`[render] gi`, `[render.probes]`; off by default).
+    pub fn with_gi(self, gi: crate::gi::Gi) -> Self {
+        Self { gi, ..self }
     }
 
     /// Sets the temporal resolve (`[render] temporal`, `upscale`; off by default).
@@ -118,6 +126,8 @@ pub(crate) struct RenderState {
     temporal: crate::temporal::Temporal,
     /// The sun's shadows, as set by the project or `render.set_shadows`.
     shadows: crate::vsm::Shadows,
+    /// Diffuse GI, as set by the project.
+    gi: crate::gi::Gi,
     thread: Option<RenderThread>,
     /// Whether a host attached the editor's native viewport.
     surface: bool,
@@ -178,6 +188,7 @@ impl EngineModule for RenderModule {
             MethodInfo::of::<crate::stats::RenderStatsGet>(),
             MethodInfo::of::<crate::temporal::RenderSetTemporal>(),
             MethodInfo::of::<crate::vsm::RenderSetShadows>(),
+            MethodInfo::of::<crate::gi::RenderSetGi>(),
         ]
     }
 
@@ -215,6 +226,7 @@ impl EngineModule for RenderModule {
             culling: self.culling,
             temporal: self.temporal,
             shadows: self.shadows,
+            gi: self.gi,
             thread: None,
             surface: false,
             shipped: BTreeSet::new(),
@@ -472,6 +484,34 @@ pub(crate) fn set_temporal(
     }
 }
 
+/// Diffuse GI as the session runs it.
+pub(crate) fn gi(engine: &mut Engine) -> Result<crate::gi::Gi, ApiError> {
+    engine
+        .state_mut::<RenderState>()
+        .map(|s| s.gi)
+        .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render module has no state"))
+}
+
+/// Sets diffuse GI for the rest of the session (`render.set_gi`); returns what now runs.
+pub(crate) fn set_gi(
+    engine: &mut Engine,
+    technique: crate::gi::GiTechnique,
+    settings: Option<crate::gi::GiSettings>,
+) -> Result<crate::gi::Gi, ApiError> {
+    let state = engine
+        .state_mut::<RenderState>()
+        .ok_or_else(|| ApiError::new(ApiErrorKind::Internal, "the render module has no state"))?;
+    state.gi.technique = technique;
+    if let Some(s) = settings {
+        state.gi.settings = s;
+    }
+    let gi = state.gi;
+    if let Some(thread) = &state.thread {
+        thread.set_gi(gi).map_err(api_error)?;
+    }
+    Ok(gi)
+}
+
 /// Sets the sun's shadow technique for the rest of the session (`render.set_shadows`).
 pub(crate) fn set_shadow_technique(
     engine: &mut Engine,
@@ -501,6 +541,7 @@ fn render_thread(engine: &mut Engine) -> Result<&RenderThread, ApiError> {
             state.culling,
             state.temporal,
             state.shadows,
+            state.gi,
         );
         let last = state.last.clone();
         state.thread = Some(
@@ -520,12 +561,13 @@ fn make_renderer(
     factory: &DeviceFactory,
     ddc: std::path::PathBuf,
     closure_budget: Option<crate::ClosureBudget>,
-    (perf_mode, meshlets, culling, temporal, shadows): (
+    (perf_mode, meshlets, culling, temporal, shadows, gi): (
         bool,
         bool,
         crate::Culling,
         crate::temporal::Temporal,
         crate::vsm::Shadows,
+        crate::gi::Gi,
     ),
 ) -> Result<Renderer, RenderError> {
     let device = factory().map_err(RenderError::Gpu)?;
@@ -542,6 +584,7 @@ fn make_renderer(
     renderer.set_temporal(temporal);
     renderer.set_shadows(shadows.technique);
     renderer.set_vsm_settings(shadows.vsm)?;
+    renderer.set_gi(gi)?;
     Ok(renderer)
 }
 

@@ -178,6 +178,8 @@ pub struct Renderer {
     shadow_key: Option<u64>,
     /// The sun's shadow technique as asked for (M4 4.7; `csm` by default).
     shadow_technique: crate::vsm::ShadowTechnique,
+    /// Diffuse GI (M4 4.8).
+    gi: crate::gi::GiState,
     /// `[render.vsm]`.
     vsm_settings: crate::vsm::VsmSettings,
     /// The pool, the page store, the depth range and the cache's key, kept between frames.
@@ -287,6 +289,8 @@ struct FramePlan<'a> {
     vsm: Option<crate::vsm::VsmJob>,
     /// Their casters.
     vsm_draws: Option<crate::vsm::CasterDraws>,
+    /// The GI probes' update (M4 4.8).
+    gi: Option<Vec<Command>>,
     /// Skybox pipeline and push constants, drawn first in the forward pass.
     sky: Option<(Pipeline, Vec<u8>)>,
     output: Output,
@@ -474,6 +478,7 @@ impl Renderer {
             recycle: Recycler::default(),
             shadow_key: None,
             shadow_technique: Default::default(),
+            gi: Default::default(),
             vsm_settings: Default::default(),
             vsm_res: Default::default(),
             programs,
@@ -867,6 +872,12 @@ impl Renderer {
         self.shadow_technique = technique;
     }
 
+    /// Chooses diffuse GI (`off` by default; `probes`, M4 4.8) and its probe volume; refuses
+    /// settings out of range.
+    pub fn set_gi(&mut self, gi: crate::gi::Gi) -> Result<(), RenderError> {
+        self.gi.set(gi)
+    }
+
     /// Clears the virtual shadow maps' kept pages before the next frame (a scene opened or re-sent;
     /// camera cuts keep them, M4 4.7b).
     pub fn reset_shadow_cache(&mut self) {
@@ -1211,6 +1222,18 @@ impl Renderer {
             (None, Some(s)) => (s.offset, s.mip_bias),
             (None, None) => ([0.0; 2], 0.0),
         };
+        let sky_sh = environment
+            .as_ref()
+            .map(|(sh, _, _)| (*sh, world.environment.as_ref().map_or(0.0, |e| e.intensity)));
+        let gi = self.gi.prepare(
+            device,
+            self.pipelines.compiler(),
+            world,
+            &view.world,
+            sky_sh,
+        )?;
+        let gi_params = gi.as_ref().map(|(_, index)| *index);
+        let mut gi_update = gi.map(|(commands, _)| commands);
         let block = frame_block(&FrameParams {
             view_proj,
             view: view_m,
@@ -1244,6 +1267,7 @@ impl Renderer {
                 None => None,
             },
             vsm: vsm_rows,
+            gi: gi_params,
         });
         let frame_buf = frame.keep(up.buffer(device, &block, "frame")?);
         let inst_buf = frame.keep(up.buffer(device, &instances, "instances")?);
@@ -1650,6 +1674,7 @@ impl Renderer {
             prepass,
             vsm,
             vsm_draws,
+            gi: gi_update.take(),
             sky,
             output,
             uploads,
@@ -2046,6 +2071,11 @@ impl Renderer {
     ) -> Result<BTreeMap<AssetRef, Material>, RenderError> {
         let device = self.device.as_ref();
         for (reference, data) in resolved.meshes() {
+            self.gi.add_mesh(reference, data)?;
+            if self.assets.meshes.contains_key(reference) {
+                // Resolved again only for GI's proxy (GI turned on after the upload).
+                continue;
+            }
             let mesh = GpuMesh::upload(device, up, data, &reference.to_string())?;
             if mesh.joint_count > 0 {
                 let bounds = concordia_anim::joint_bounds(data);
@@ -2062,6 +2092,9 @@ impl Renderer {
                 reference.clone(),
                 (texture, device.texture_index(texture)?.0),
             );
+        }
+        for (reference, material) in resolved.materials() {
+            self.gi.add_material(reference, material);
         }
         Ok(resolved
             .materials()
@@ -2094,7 +2127,7 @@ impl Renderer {
 
     /// Whether the GPU already holds the mesh, texture or environment `reference`.
     fn holds(&self, reference: &AssetRef) -> bool {
-        self.assets.meshes.contains_key(reference)
+        (self.assets.meshes.contains_key(reference) && self.gi.holds_mesh(reference))
             || self.assets.textures.contains_key(reference)
             || self.environments.holds(reference)
     }
@@ -2315,6 +2348,7 @@ impl Renderer {
             prepass,
             vsm,
             vsm_draws,
+            gi,
             sky,
             output,
             uploads,
@@ -2416,6 +2450,16 @@ impl Renderer {
             }
             None => None,
         };
+        if let Some(commands) = gi {
+            graph.add_pass_recorded(
+                "gi.update",
+                |p| p.side_effect(),
+                Some(Box::new(move |ctx: &mut PassContext<'_>| {
+                    ctx.commands.commands.extend(commands.iter().cloned());
+                    Ok(())
+                })),
+            );
+        }
         let targets = add_forward(
             &mut graph,
             view,

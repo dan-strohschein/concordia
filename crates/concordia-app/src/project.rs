@@ -249,7 +249,16 @@ impl Project {
                             technique: r.shadows,
                             vsm: r.vsm,
                         },
-                    )),
+                    ))
+                    .with_gi(
+                        self.manifest
+                            .render
+                            .as_ref()
+                            .map_or_else(Default::default, |r| concordia_render::gi::Gi {
+                                technique: r.gi,
+                                settings: r.probes,
+                            }),
+                    ),
             ));
             // Reference renders with the path tracer (ADR-0090, ADR-0101): GPU by default.
             modules.push(Arc::new(concordia_pathtrace::PathTraceModule::new(Some(

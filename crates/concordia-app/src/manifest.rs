@@ -183,6 +183,10 @@ pub struct RenderSection {
     pub shadows: concordia_render::vsm::ShadowTechnique,
     /// `[render.vsm]`: the virtual shadow maps' pool, levels and biases.
     pub vsm: concordia_render::vsm::VsmSettings,
+    /// Diffuse GI: `off` (the default) or `probes` (M4 4.8).
+    pub gi: concordia_render::gi::GiTechnique,
+    /// `[render.probes]`: GI's probe volume (rays, probe counts, spacing, an optional fixed centre).
+    pub probes: concordia_render::gi::GiSettings,
 }
 
 impl Default for RenderSection {
@@ -197,6 +201,8 @@ impl Default for RenderSection {
             upscale: Default::default(),
             shadows: Default::default(),
             vsm: Default::default(),
+            gi: Default::default(),
+            probes: Default::default(),
         }
     }
 }

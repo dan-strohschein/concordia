@@ -6,11 +6,18 @@ import bindless;
 public struct BvhRay { public float3 o; public float3 d; public float tmin; public float tmax; };
 public struct BvhHit { public float t; public float u; public float w; public uint prim; public uint inst; public bool found; };
 
-// The buffers and the instance tree's offsets (`GpuBvh`).
+// The buffers (bindless indices: structs passed by value must not hold pointers on Vulkan) and
+// the instance tree's offsets (`GpuBvh`).
 public struct Bvh {
-    public float4* nodes; public uint* order; public float4* tris; public uint4* meshes;
-    public float4* insts; public uint tlas_node; public uint tlas_order;
+    public uint nodes; public uint order; public uint tris; public uint meshes;
+    public uint insts; public uint tlas_node; public uint tlas_order;
 };
+
+public float4* bvh_nodes(Bvh b) { return (float4*)g_buffers.ptr[b.nodes]; }
+public uint* bvh_order(Bvh b) { return (uint*)g_buffers.ptr[b.order]; }
+public float4* bvh_tris(Bvh b) { return (float4*)g_buffers.ptr[b.tris]; }
+public uint4* bvh_meshes(Bvh b) { return (uint4*)g_buffers.ptr[b.meshes]; }
+public float4* bvh_insts(Bvh b) { return (float4*)g_buffers.ptr[b.insts]; }
 
 // Rows per instance (`INSTANCE_ROWS`).
 public static const uint BVH_INSTANCE_ROWS = 4;
@@ -18,14 +25,7 @@ public static const uint BVH_INSTANCE_ROWS = 4;
 // A hierarchy from two header rows: [nodes, order, tris, meshes] and [instances, tlas_node,
 // tlas_order, _] (bindless buffer indices and offsets).
 public Bvh bvh_from_rows(uint4 a, uint4 b) {
-    Bvh h;
-    h.nodes = (float4*)g_buffers.ptr[a.x];
-    h.order = (uint*)g_buffers.ptr[a.y];
-    h.tris = (float4*)g_buffers.ptr[a.z];
-    h.meshes = (uint4*)g_buffers.ptr[a.w];
-    h.insts = (float4*)g_buffers.ptr[b.x];
-    h.tlas_node = b.y;
-    h.tlas_order = b.z;
+    Bvh h = { a.x, a.y, a.z, a.w, b.x, b.y, b.z };
     return h;
 }
 
@@ -41,8 +41,8 @@ float3 bvh_inverse_dir(float3 d) {
 }
 
 bool bvh_slab(Bvh b, uint node, BvhRay r, float3 inv, out float near) {
-    float4 lo = b.nodes[node * 2];
-    float4 hi = b.nodes[node * 2 + 1];
+    float4 lo = bvh_nodes(b)[node * 2];
+    float4 hi = bvh_nodes(b)[node * 2 + 1];
     float3 t0 = (lo.xyz - r.o) * inv;
     float3 t1 = (hi.xyz - r.o) * inv;
     near = max(bvh_max3(min(t0, t1)), r.tmin);
@@ -83,7 +83,7 @@ void bvh_push_children(Bvh b, uint base, uint index, uint first, BvhRay r, float
 
 // Walks mesh `mesh`'s tree in its object space; shortens `r` to each hit. `any`: stop at the first.
 public bool bvh_walk_mesh(Bvh b, uint mesh, inout BvhRay r, bool any, inout BvhHit hit) {
-    uint4 m = b.meshes[mesh];
+    uint4 m = bvh_meshes(b)[mesh];
     float3 inv = bvh_inverse_dir(r.d);
     uint stack[64];
     uint top = 1;
@@ -94,17 +94,17 @@ public bool bvh_walk_mesh(Bvh b, uint mesh, inout BvhRay r, bool any, inout BvhH
         uint index = stack[top];
         float near;
         if (!bvh_slab(b, m.x + index, r, inv, near)) continue;
-        uint first = asuint(b.nodes[(m.x + index) * 2].w);
-        uint count = asuint(b.nodes[(m.x + index) * 2 + 1].w);
+        uint first = asuint(bvh_nodes(b)[(m.x + index) * 2].w);
+        uint count = asuint(bvh_nodes(b)[(m.x + index) * 2 + 1].w);
         if (count == 0) {
             bvh_push_children(b, m.x, index, first, r, inv, stack, top);
             continue;
         }
         for (uint k = 0; k < count; k++) {
-            uint prim = b.order[m.z + first + k];
+            uint prim = bvh_order(b)[m.z + first + k];
             uint base = (m.y + prim) * 3;
             float t, u, w;
-            if (bvh_triangle(b.tris[base].xyz, b.tris[base + 1].xyz, b.tris[base + 2].xyz, r, t, u, w)) {
+            if (bvh_triangle(bvh_tris(b)[base].xyz, bvh_tris(b)[base + 1].xyz, bvh_tris(b)[base + 2].xyz, r, t, u, w)) {
                 r.tmax = t;
                 hit.t = t; hit.u = u; hit.w = w; hit.prim = prim;
                 found = true;
@@ -131,23 +131,23 @@ public BvhHit bvh_intersect(Bvh b, BvhRay world, bool any) {
         uint index = stack[top];
         float near;
         if (!bvh_slab(b, b.tlas_node + index, r, inv, near)) continue;
-        uint first = asuint(b.nodes[(b.tlas_node + index) * 2].w);
-        uint count = asuint(b.nodes[(b.tlas_node + index) * 2 + 1].w);
+        uint first = asuint(bvh_nodes(b)[(b.tlas_node + index) * 2].w);
+        uint count = asuint(bvh_nodes(b)[(b.tlas_node + index) * 2 + 1].w);
         if (count == 0) {
             bvh_push_children(b, b.tlas_node, index, first, r, inv, stack, top);
             continue;
         }
         for (uint k = 0; k < count; k++) {
-            uint i = b.order[b.tlas_order + first + k];
+            uint i = bvh_order(b)[b.tlas_order + first + k];
             uint row = i * BVH_INSTANCE_ROWS;
-            float4 r0 = b.insts[row], r1 = b.insts[row + 1], r2 = b.insts[row + 2];
+            float4 r0 = bvh_insts(b)[row], r1 = bvh_insts(b)[row + 1], r2 = bvh_insts(b)[row + 2];
             BvhRay local;
             local.o = float3(dot(r0, float4(r.o, 1.0)), dot(r1, float4(r.o, 1.0)), dot(r2, float4(r.o, 1.0)));
             local.d = float3(dot(r0.xyz, r.d), dot(r1.xyz, r.d), dot(r2.xyz, r.d));
             local.tmin = r.tmin;
             local.tmax = r.tmax;
             BvhHit h = hit;
-            if (bvh_walk_mesh(b, asuint(b.insts[row + 3].x), local, any, h)) {
+            if (bvh_walk_mesh(b, asuint(bvh_insts(b)[row + 3].x), local, any, h)) {
                 h.inst = i;
                 h.found = true;
                 hit = h;

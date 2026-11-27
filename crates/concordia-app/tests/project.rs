@@ -461,6 +461,39 @@ fn shadows_setting_parses_and_rejects_unknown_keys() {
     }
 }
 
+/// `[render] gi` (`off` by default) turns probe GI on and `[render.probes]` sizes its volume (M4
+/// 4.8); bad values and unknown keys are refused when the project loads, naming the key.
+#[test]
+fn gi_setting_parses_and_rejects_bad_values() {
+    use concordia_render::gi::GiTechnique;
+    let render = |text: &str| {
+        let (_dir, project) = project_with(text);
+        project.map(|p| p.manifest.render.unwrap_or_default())
+    };
+    let default = render("[render]\n").unwrap();
+    assert_eq!(default.gi, GiTechnique::off);
+    assert_eq!(default.probes.rays, 256);
+    let on = render("[render]\ngi = \"probes\"\n[render.probes]\nrays = 64\nprobes = [16, 4, 16]\nspacing = 2.0\n")
+        .unwrap();
+    assert_eq!(on.gi, GiTechnique::probes);
+    assert_eq!(
+        (on.probes.rays, on.probes.probes, on.probes.spacing),
+        (64, [16, 4, 16], 2.0)
+    );
+    for (bad, words) in [
+        ("[render]\ngi = \"lumen\"\n", ["gi", "lumen"]),
+        ("[render.probes]\nrays = 0\n", ["rays", "1..=1024"]),
+        ("[render.probes]\ncascades = 2\n", ["cascades", "unknown"]),
+    ] {
+        let err = render(bad).unwrap_err();
+        assert!(matches!(err, AppError::Manifest { .. }), "{err}");
+        let text = err.to_string();
+        for w in words {
+            assert!(text.contains(w), "{bad}: {text}");
+        }
+    }
+}
+
 /// `[render] closure_budget` may lower the platform's closure budget (8 on Metal) but never raise
 /// it: values outside 1..=8 are refused when the project loads (ADR-0068).
 #[test]

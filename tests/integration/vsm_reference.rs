@@ -34,20 +34,12 @@ fn flip(name: &str, technique: &str) -> f32 {
 /// With CONCORDIA_GOLDEN_KEEP=1, keeps the reference, `technique`'s render of `name` and their FLIP
 /// map for review (`target/golden-review/m4_vsm_reference/`).
 fn keep(name: &str, technique: &str, (reference, image): (&RgbaImage, &RgbaImage)) {
-    if std::env::var("CONCORDIA_GOLDEN_KEEP").as_deref() != Ok("1") {
-        return;
-    }
-    let root = concordia_tests::repo_root();
-    let store = concordia_testkit::golden::Golden::new(
-        root.join("tests/golden"),
-        root.join("target/golden-review"),
-        false,
-        false,
+    concordia_tests::reference::keep(
+        "m4_vsm_reference",
+        &format!("{name}_{technique}"),
+        reference,
+        image,
     );
-    let name = format!("{name}_{technique}");
-    store
-        .write_comparison("m4_vsm_reference", &name, reference, image)
-        .unwrap();
 }
 
 /// VSM's direct light is within mean FLIP 0.05 of the path tracer's on both views.
