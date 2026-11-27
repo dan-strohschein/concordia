@@ -290,7 +290,7 @@ struct FramePlan<'a> {
     /// Their casters.
     vsm_draws: Option<crate::vsm::CasterDraws>,
     /// The GI probes' update (M4 4.8).
-    gi: Option<Vec<Command>>,
+    gi: Option<crate::gi::GiPasses>,
     /// Skybox pipeline and push constants, drawn first in the forward pass.
     sky: Option<(Pipeline, Vec<u8>)>,
     output: Output,
@@ -876,6 +876,12 @@ impl Renderer {
     /// settings out of range.
     pub fn set_gi(&mut self, gi: crate::gi::Gi) -> Result<(), RenderError> {
         self.gi.set(gi)
+    }
+
+    /// Whether GI's probe update traces with hardware ray queries (false while off or on the
+    /// software BVH; M4 4.8c).
+    pub fn gi_ray_queries(&self) -> bool {
+        self.gi.ray_queries()
     }
 
     /// Clears the virtual shadow maps' kept pages before the next frame (a scene opened or re-sent;
@@ -2450,9 +2456,9 @@ impl Renderer {
             }
             None => None,
         };
-        if let Some(commands) = gi {
+        for (name, commands) in gi.into_iter().flatten() {
             graph.add_pass_recorded(
-                "gi.update",
+                name,
                 |p| p.side_effect(),
                 Some(Box::new(move |ctx: &mut PassContext<'_>| {
                     ctx.commands.commands.extend(commands.iter().cloned());

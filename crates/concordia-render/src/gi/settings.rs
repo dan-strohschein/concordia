@@ -20,7 +20,7 @@ pub enum GiTechnique {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(try_from = "RawGiSettings", into = "RawGiSettings")]
 pub struct GiSettings {
-    /// Rays per probe per frame (1..=1024).
+    /// Rays per probe per frame (1..=512).
     pub rays: u32,
     /// Probes along x, y and z (each 1..=256).
     pub probes: [u32; 3],
@@ -45,8 +45,8 @@ impl GiSettings {
     /// Refuses values out of range.
     pub fn validate(&self) -> Result<(), RenderError> {
         let bad = |m: String| Err(RenderError::InvalidSettings(format!("[render.probes] {m}")));
-        if !(1..=1024).contains(&self.rays) {
-            return bad(format!("rays {} must be 1..=1024", self.rays));
+        if !(1..=512).contains(&self.rays) {
+            return bad(format!("rays {} must be 1..=512", self.rays));
         }
         if self.probes.iter().any(|&n| !(1..=256).contains(&n)) {
             return bad(format!("probes {:?} must each be 1..=256", self.probes));

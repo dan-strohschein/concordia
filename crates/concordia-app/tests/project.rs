@@ -482,7 +482,7 @@ fn gi_setting_parses_and_rejects_bad_values() {
     );
     for (bad, words) in [
         ("[render]\ngi = \"lumen\"\n", ["gi", "lumen"]),
-        ("[render.probes]\nrays = 0\n", ["rays", "1..=1024"]),
+        ("[render.probes]\nrays = 0\n", ["rays", "1..=512"]),
         ("[render.probes]\ncascades = 2\n", ["cascades", "unknown"]),
     ] {
         let err = render(bad).unwrap_err();

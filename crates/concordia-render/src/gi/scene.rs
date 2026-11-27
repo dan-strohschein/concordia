@@ -45,6 +45,8 @@ pub struct UpdateReport {
 pub struct GiScene {
     meshes: BTreeMap<AssetRef, u32>,
     proxies: Vec<Bvh>,
+    /// Bumped whenever a proxy is added or replaced (hardware structures rebuild).
+    mesh_version: u64,
     materials: BTreeMap<AssetRef, u32>,
     looks: Vec<GiLook>,
     /// The look of a material GI doesn't know (a mid grey), once needed.
@@ -153,6 +155,7 @@ impl GiScene {
         }
         // The instance level holds copies of the proxies: rebuild it next update.
         self.placed.clear();
+        self.mesh_version += 1;
         Ok(())
     }
 
@@ -223,6 +226,11 @@ impl GiScene {
             self.looks.push(FALLBACK);
             (self.looks.len() - 1) as u32
         })
+    }
+
+    /// Changes whenever a proxy is added or replaced.
+    pub fn mesh_version(&self) -> u64 {
+        self.mesh_version
     }
 
     /// Whether `reference` has a proxy.

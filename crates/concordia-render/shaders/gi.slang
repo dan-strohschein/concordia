@@ -22,6 +22,7 @@ public static const float GI_BACKFACE = 0.2;
 //  6-7 the BVH's rows (`bvh_from_rows`; 7.w: relocate probes this update)
 //  8-10 the rays' rotation (rows)  11 has sky, events, event count, reset
 //  12-20 the sky's SH9 irradiance  21 base hysteresis, max distance, normal bias, view bias
+//  22 the top level's acceleration-structure index (ray queries, M4 4.8c), 1 when used
 public struct GiVolume {
     public float3 origin; public float spacing;
     public uint3 counts; public uint rays;

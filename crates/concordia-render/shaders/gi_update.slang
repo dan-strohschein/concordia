@@ -6,6 +6,9 @@ import bindless;
 import bvh;
 import gi;
 import light;
+#ifdef GI_RAY_QUERY
+import raytracing;
+#endif
 
 struct Push { uint params; uint pass; uint _a; uint _b; };
 
@@ -16,13 +19,39 @@ float3 rotated(float4* p, float3 d) {
 // Ray `r` of a probe this frame.
 float3 ray_dir(float4* p, uint r, uint n) { return rotated(p, gi_fibonacci(r, n)); }
 
-bool blocked(Bvh b, float3 from, float3 to_light, float dist) {
+// The nearest hit along `ray` (`any`: the first, for shadow rays): hardware ray queries against
+// the top level in parameter row 22 when built with GI_RAY_QUERY (M4 4.8c), else the software
+// BVH. Both give the instance's index and its proxy triangle's index, so what follows is shared.
+BvhHit cast(uint4* u, Bvh b, BvhRay ray, bool any) {
+#ifdef GI_RAY_QUERY
+    RayDesc r;
+    r.Origin = ray.o;
+    r.Direction = ray.d;
+    r.TMin = ray.tmin;
+    r.TMax = ray.tmax;
+    RayQuery<RAY_FLAG_FORCE_OPAQUE> q;
+    q.TraceRayInline(g_accels.accel[u[22].x], any ? RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH : RAY_FLAG_NONE, 0xff, r);
+    while (q.Proceed()) {}
+    BvhHit h;
+    h.found = q.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
+    h.t = h.found ? q.CommittedRayT() : 0.0;
+    h.inst = h.found ? q.CommittedInstanceID() : 0;
+    h.prim = h.found ? q.CommittedPrimitiveIndex() : 0;
+    h.u = 0.0;
+    h.w = 0.0;
+    return h;
+#else
+    return bvh_intersect(b, ray, any);
+#endif
+}
+
+bool blocked(uint4* u, Bvh b, float3 from, float3 to_light, float dist) {
     BvhRay s;
     s.o = from;
     s.d = to_light;
     s.tmin = 0.0;
     s.tmax = dist;
-    return bvh_intersect(b, s, true).found;
+    return cast(u, b, s, true).found;
 }
 
 float3 sky(float4* p, uint4* u, float3 d) {
@@ -44,7 +73,7 @@ float3 direct(float4* p, uint4* u, Bvh b, float3 x, float3 n) {
     if (u[3].w != 0) {
         float3 l = -normalize(p[3].xyz);
         float ndl = dot(n, l);
-        if (ndl > 0.0 && !blocked(b, from, l, GI_MISS)) e += p[4].rgb * ndl;
+        if (ndl > 0.0 && !blocked(u, b, from, l, GI_MISS)) e += p[4].rgb * ndl;
     }
     float4* lights = (float4*)g_buffers.ptr[u[5].x];
     for (uint i = 0; i < u[5].y; i++) {
@@ -58,7 +87,7 @@ float3 direct(float4* p, uint4* u, Bvh b, float3 x, float3 n) {
         float4 spot = lights[i * 4 + 3];
         float att = distance_attenuation(d2, pr.w) * spot_attenuation(dot(-l, lights[i * 4 + 1].xyz), spot.x, spot.y);
         if (att <= 0.0) continue;
-        if (spot.z > 0.5 && blocked(b, from, l, sqrt(d2) - eps)) continue;
+        if (spot.z > 0.5 && blocked(u, b, from, l, sqrt(d2) - eps)) continue;
         e += lights[i * 4 + 2].rgb * att * ndl;
     }
     return e;
@@ -75,13 +104,14 @@ void gi_trace(uint3 id : SV_DispatchThreadID, uniform Push push) {
     uint4* u = (uint4*)g_buffers.ptr[push.params];
     uint probe = id.x / v.rays;
     uint r = id.x % v.rays;
+    if (skipped(v, u, probe)) return;
     Bvh b = bvh_from_rows(u[6], u[7]);
     BvhRay ray;
     ray.o = gi_probe_position(v, probe);
     ray.d = ray_dir(p, r, v.rays);
     ray.tmin = 0.0;
     ray.tmax = GI_MISS;
-    BvhHit h = bvh_intersect(b, ray, false);
+    BvhHit h = cast(u, b, ray, false);
     if (!h.found) {
         gi_rays(v)[id.x] = float4(sky(p, u, ray.d), GI_MISS);
         return;
@@ -118,10 +148,38 @@ bool light_event(GiVolume v, uint4* u, uint probe) {
     return false;
 }
 
+// One probe in GI_ROUND_ROBIN updates each frame (round-robin), all of them while a lattice
+// settles, and any near a light that just appeared. At 4 the canyon's update fell from about 16 to
+// 4.9 ms, but the thin-wall test's leak rose from 1.9% to 2.25% at steady state (bound 2%), cause
+// not yet found (M4 4.8c; 4.8d), so it stays 1. Probes buried in geometry or seeing nothing stay
+// inactive until the lattice settles again (only then does relocation run), so they aren't traced
+// or blended otherwise.
+static const uint GI_ROUND_ROBIN = 1;
+
+bool skipped(GiVolume v, uint4* u, uint probe) {
+    if (u[7].w != 0 || u[11].w != 0) return false;
+    if (!gi_probe_active(v, probe)) return true;
+    return probe % GI_ROUND_ROBIN != u[4].w % GI_ROUND_ROBIN && !light_event(v, u, probe);
+}
+
 float luminance(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
 // Each irradiance texel's (old, fresh) luminance, for the probe's mean.
 groupshared float2 g_luma[64];
+// The probe's rays, loaded once per group (M4 4.8c: every texel reads every ray): radiance and
+// hit distance, and the direction.
+static const uint GI_MAX_RAYS = 512;
+groupshared float4 g_ray[GI_MAX_RAYS];
+groupshared float3 g_dir[GI_MAX_RAYS];
+
+// Loads probe `probe`'s rays into the group's memory (`lane` of `lanes` threads).
+void load_rays(GiVolume v, float4* p, uint probe, uint lane, uint lanes) {
+    for (uint r = lane; r < v.rays; r += lanes) {
+        g_ray[r] = gi_rays(v)[probe * v.rays + r];
+        g_dir[r] = ray_dir(p, r, v.rays);
+    }
+    GroupMemoryBarrierWithGroupSync();
+}
 
 // One group per probe, one thread per interior irradiance texel.
 [shader("compute")]
@@ -132,13 +190,15 @@ void gi_blend_irradiance(uint3 group : SV_GroupID, uint3 tid : SV_GroupThreadID,
     if (probe >= gi_probe_count(v)) return;
     float4* p = (float4*)g_buffers.ptr[push.params];
     uint4* u = (uint4*)g_buffers.ptr[push.params];
+    if (skipped(v, u, probe)) return;
+    load_rays(v, p, probe, tid.y * GI_IRR + tid.x, GI_IRR * GI_IRR);
     float3 td = gi_octa_decode((float2(tid.xy) + 0.5) / float(GI_IRR) * 2.0 - 1.0);
     float3 sum = float3(0.0);
     float wsum = 0.0;
     for (uint r = 0; r < v.rays; r++) {
-        float4 ray = gi_rays(v)[probe * v.rays + r];
+        float4 ray = g_ray[r];
         if (ray.w < 0.0) continue;
-        float w = max(dot(td, ray_dir(p, r, v.rays)), 0.0);
+        float w = max(dot(td, g_dir[r]), 0.0);
         sum += ray.rgb * w;
         wsum += w;
     }
@@ -166,12 +226,17 @@ void gi_blend_distance(uint3 group : SV_GroupID, uint3 tid : SV_GroupThreadID, u
     if (probe >= gi_probe_count(v)) return;
     float4* p = (float4*)g_buffers.ptr[push.params];
     uint4* u = (uint4*)g_buffers.ptr[push.params];
+    if (skipped(v, u, probe)) return;
+    load_rays(v, p, probe, tid.y * GI_DIST + tid.x, GI_DIST * GI_DIST);
     float3 td = gi_octa_decode((float2(tid.xy) + 0.5) / float(GI_DIST) * 2.0 - 1.0);
     float2 sum = float2(0.0);
     float wsum = 0.0;
     for (uint r = 0; r < v.rays; r++) {
-        float4 ray = gi_rays(v)[probe * v.rays + r];
-        float w = pow(max(dot(td, ray_dir(p, r, v.rays)), 0.0), 50.0);
+        float c = dot(td, g_dir[r]);
+        // cos⁵⁰ is under 0.5% below 0.9: skip the pow.
+        if (c < 0.9) continue;
+        float4 ray = g_ray[r];
+        float w = pow(c, 50.0);
         float d = min(abs(ray.w), v.max_distance);
         sum += float2(d, d * d) * w;
         wsum += w;

@@ -19,7 +19,7 @@ pub struct RenderSetGi;
 pub struct RenderSetGiParams {
     /// `off` or `probes`.
     pub technique: GiTechnique,
-    /// Rays per probe per frame, 1..=1024.
+    /// Rays per probe per frame, 1..=512.
     #[serde(default)]
     pub rays: Option<u32>,
     /// Probes along x, y and z, each 1..=256.

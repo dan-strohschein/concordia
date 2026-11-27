@@ -18,7 +18,7 @@ export interface MethodRenderSetGiParams {
    */
   probes?: null | [number, number, number];
   /**
-   * Rays per probe per frame, 1..=1024.
+   * Rays per probe per frame, 1..=512.
    */
   rays?: null | number;
   /**
