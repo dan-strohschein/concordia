@@ -18,3 +18,13 @@ Bundled fonts (files, not code; OFL-1.1 is accepted for font files only, ADR-006
 | Directory | Upstream | Version | License |
 |---|---|---|---|
 | `crates/concordia-ui/fonts/` | notofonts/latin-greek-cyrillic (Noto Sans, Noto Sans Mono; unhinted TTF) | NotoSans-v2.015, NotoSansMono-v2.014 | SIL OFL 1.1 |
+
+Editor UI runtime npm dependencies (`editor/ui/package.json`, exact pins, `pnpm-lock.yaml`; not vendored; checked by hand against ADR-0022's permissive-only rule, as nothing checks npm licences yet):
+
+| Package | Version | License |
+|---|---|---|
+| `@tauri-apps/api` | 2.12.4 | Apache-2.0 OR MIT |
+| `react`, `react-dom` | 19.3.1 | MIT |
+| `zustand` | 5.1.0 | MIT |
+| `@xyflow/react` (graph panel, M4 4.11) | 12.12.1 | MIT |
+| `@dagrejs/dagre` (graph auto-layout, M4 4.11; depends on `@dagrejs/graphlib`, MIT) | 1.1.8 | MIT |

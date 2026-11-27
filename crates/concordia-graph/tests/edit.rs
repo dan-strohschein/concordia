@@ -13,7 +13,7 @@ fn authored() -> Vec<GraphEdit> {
     let node = |n: u32, op: &str| GraphEdit::AddNode {
         id: Some(id(n)),
         op: op.into(),
-        at: Some((n as f32 * 100.0, 0.0)),
+        at: Some([n as f32 * 100.0, 0.0]),
     };
     vec![
         GraphEdit::SetVariable {
@@ -198,4 +198,31 @@ fn added_nodes_without_ids_get_fresh_uuid_v7s() {
         7
     );
     write_graph(&g).unwrap();
+}
+
+#[test]
+fn moving_a_node_changes_only_the_layout() {
+    let mut g = new_graph(GraphKind::Event, id(100));
+    apply_edits(&mut g, &authored()).unwrap();
+    let hash = g.semantic_hash().unwrap();
+    apply_edits(
+        &mut g,
+        &[GraphEdit::SetPosition {
+            node: id(3),
+            at: [12.0, 34.0],
+        }],
+    )
+    .unwrap();
+    assert_eq!(g.layout[&id(3)], (12.0, 34.0));
+    assert_eq!(g.semantic_hash().unwrap(), hash, "cosmetic");
+    assert!(
+        apply_edits(
+            &mut g,
+            &[GraphEdit::SetPosition {
+                node: id(99),
+                at: [0.0, 0.0]
+            }]
+        )
+        .is_err()
+    );
 }

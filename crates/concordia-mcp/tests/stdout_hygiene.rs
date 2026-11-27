@@ -122,14 +122,15 @@ fn binary_serves_script_reload_when_scripts_are_configured() {
     let mut child = spawn(&dir, false);
     let (frames, _) = session(&mut child);
     let tools = frames[1]["result"]["tools"].as_array().unwrap();
-    // 35 core tools, script_reload and the five graph tools (M4 4.10c).
+    // 35 core tools, script_reload and the six graph tools (M4 4.10c, 4.11).
     assert_eq!(
         tools.len(),
-        41,
-        "35 core tools plus the scripts module's six"
+        42,
+        "35 core tools plus the scripts module's seven"
     );
     for name in [
         "graph_list_nodes",
+        "graph_read",
         "graph_check",
         "graph_compile",
         "graph_apply",

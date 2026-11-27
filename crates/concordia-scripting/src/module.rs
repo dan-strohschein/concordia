@@ -86,10 +86,13 @@ impl EngineModule for ScriptsModule {
     }
 
     fn methods(&self) -> Vec<MethodInfo> {
-        use crate::graph_api::{GraphApply, GraphCheck, GraphCompile, GraphListNodes, GraphTrace};
+        use crate::graph_api::{
+            GraphApply, GraphCheck, GraphCompile, GraphListNodes, GraphRead, GraphTrace,
+        };
         vec![
             MethodInfo::of::<crate::reload::ScriptReload>(),
             MethodInfo::of::<GraphListNodes>(),
+            MethodInfo::of::<GraphRead>(),
             MethodInfo::of::<GraphCheck>(),
             MethodInfo::of::<GraphCompile>(),
             MethodInfo::of::<GraphApply>(),

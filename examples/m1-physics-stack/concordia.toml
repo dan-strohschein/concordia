@@ -31,3 +31,6 @@ gravity = [0.0, -9.81, 0.0]
 [ui]
 
 [render]
+
+# Gameplay modules: none here; listed so the editor's generated API covers script.* and graph.*.
+[scripts]

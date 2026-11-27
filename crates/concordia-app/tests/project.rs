@@ -72,7 +72,15 @@ fn m1_example_modules_follow_core_in_manifest_order() {
         .collect();
     assert_eq!(
         names,
-        ["input", "physics", "assets", "ui", "render", "pathtrace"]
+        [
+            "input",
+            "physics",
+            "assets",
+            "ui",
+            "render",
+            "pathtrace",
+            "scripts"
+        ]
     );
     assert_eq!(
         project.manifest.physics.as_ref().unwrap().gravity,

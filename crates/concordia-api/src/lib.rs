@@ -39,7 +39,7 @@ mod ui_draw;
 
 pub use concordia_terra_sim::Template;
 pub use debug_draw::{DebugGeometry, DebugLine, DebugTriangle};
-pub use engine::{Engine, EngineConfig};
+pub use engine::{DocumentEdit, Engine, EngineConfig};
 pub use error::{ApiError, ApiErrorKind, ErrorData};
 pub use events::{EventSink, Topic};
 pub use handle::{EngineHandle, join_engine};

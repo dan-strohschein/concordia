@@ -136,7 +136,7 @@ Replay(
     header: (
         checkpoint_every: 60,
         engine: "0.0.0",
-        manifest_hash: Some("6ddfe660ad91b7f722feb4a169952eac24c26cb7f66eacad97c8b0e2701b1570"),
+        manifest_hash: Some("699a8416954bcb89bb922fb72ab67b92d11b1564a340702c7441fb81b22b28c8"),
         modules: [
             (
                 hash: "73e7cb50a831b23cc51d5caadcbc1afe53cfb6aeb511af4951fca5bb465bf3d4",

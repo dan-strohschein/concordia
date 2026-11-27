@@ -18,6 +18,28 @@ expression: schemas
     }
   },
   {
+    "docs": "Read a graph file for display: its canonical text, the graph as JSON, its diagnostics, and for\neach node the actor whose committed `graph.apply` last changed it (from the command log).",
+    "mutates": false,
+    "name": "graph.read",
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "description": "`graph.read` params.",
+      "properties": {
+        "path": {
+          "description": "Project-relative `.graph.ron` file.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "GraphReadParams",
+      "type": "object",
+      "x-concordia-type": "GraphReadParams"
+    }
+  },
+  {
     "docs": "Type-check a graph (a `.graph.ron` file, or its text) against this project's nodes. Each\ndiagnostic names the node and pin to fix, with the closest valid names as a suggestion.",
     "mutates": false,
     "name": "graph.check",
@@ -98,21 +120,15 @@ expression: schemas
                           "type": "null"
                         },
                         {
-                          "items": false,
+                          "items": {
+                            "type": "number"
+                          },
                           "maxItems": 2,
                           "minItems": 2,
-                          "prefixItems": [
-                            {
-                              "type": "number"
-                            },
-                            {
-                              "type": "number"
-                            }
-                          ],
                           "type": "array"
                         }
                       ],
-                      "description": "Its position."
+                      "description": "Its position, `[x, y]`."
                     },
                     "id": {
                       "anyOf": [
@@ -138,6 +154,39 @@ expression: schemas
               },
               "required": [
                 "AddNode"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "description": "Moves a node in the editor (layout only: never changes what the graph means).",
+              "properties": {
+                "SetPosition": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "at": {
+                      "description": "Its position, `[x, y]`.",
+                      "items": {
+                        "type": "number"
+                      },
+                      "maxItems": 2,
+                      "minItems": 2,
+                      "type": "array"
+                    },
+                    "node": {
+                      "description": "The node.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "node",
+                    "at"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "SetPosition"
               ],
               "type": "object"
             },

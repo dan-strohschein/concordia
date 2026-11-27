@@ -93,6 +93,17 @@ pub(crate) struct TxnHold {
 }
 
 /// The open scene: its edit world and history.
+/// One committed edit of a document: who, and the texts before and after (`None`: absent).
+#[derive(Debug, Clone, PartialEq)]
+pub struct DocumentEdit {
+    /// Who made it.
+    pub actor: concordia_command::Actor,
+    /// The text before.
+    pub before: Option<String>,
+    /// The text after.
+    pub after: Option<String>,
+}
+
 pub(crate) struct OpenScene {
     pub(crate) meta: SceneMeta,
     pub(crate) path: String,
@@ -282,6 +293,33 @@ impl Engine {
         ops: Vec<concordia_command::EditOp>,
     ) -> Result<(), ApiError> {
         crate::methods::edit_all(self, ctx, label, ops, None)
+    }
+
+    /// The open scene's committed (not undone) edits of document `path`, oldest first: who made
+    /// each and the texts before and after (M4 4.11: attribution in the graph panel).
+    pub fn document_history(&self, path: &str) -> Vec<DocumentEdit> {
+        let Some(scene) = self.scene.as_ref() else {
+            return Vec::new();
+        };
+        scene
+            .log
+            .done()
+            .iter()
+            .flat_map(|txn| {
+                txn.ops.iter().filter_map(move |applied| match &applied.op {
+                    concordia_command::EditOp::Document {
+                        path: p,
+                        before,
+                        after,
+                    } if p == path => Some(DocumentEdit {
+                        actor: txn.author.actor.clone(),
+                        before: before.clone(),
+                        after: after.clone(),
+                    }),
+                    _ => None,
+                })
+            })
+            .collect()
     }
 
     /// Undoes `txn`, which must be the latest commit, attributed to `actor`.
