@@ -200,6 +200,43 @@ pub struct PointLight {
     pub intensity_lumens: f32,
     /// Reach in meters.
     pub range: f32,
+    /// Shadows (`None`: unshadowed).
+    pub shadows: Option<LocalShadowSettings>,
+    /// Radius of the emitting sphere in metres.
+    pub source_radius: f32,
+}
+
+/// The engine's `PcfKernel`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Reflect)]
+#[reflect(name = "PcfKernel")]
+pub enum PcfKernel {
+    /// 3×3 texels.
+    #[default]
+    X3,
+    /// 5×5 texels.
+    X5,
+}
+
+/// The engine's `LocalShadowSettings`.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "LocalShadowSettings", default)]
+pub struct LocalShadowSettings {
+    /// Receiver depth bias in shadow texels.
+    pub depth_bias: f32,
+    /// Receiver offset along the normal, in shadow texels.
+    pub normal_bias: f32,
+    /// Filter.
+    pub pcf: PcfKernel,
+}
+
+impl Default for LocalShadowSettings {
+    fn default() -> Self {
+        Self {
+            depth_bias: 1.0,
+            normal_bias: 1.0,
+            pcf: PcfKernel::X3,
+        }
+    }
 }
 
 /// The engine's `PlayCue` signal.

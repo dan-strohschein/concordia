@@ -4,6 +4,7 @@
 
 mod canyon;
 mod lamplight_content;
+mod lamplight_mirrors;
 mod lamplight_night;
 mod lamplight_town;
 mod lamplight_ui;
