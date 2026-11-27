@@ -388,3 +388,16 @@ public float2 vsm_vogel(uint i, uint n, float turn) {
     float a = float(i) * 2.39996323 + turn * 6.28318530718;
     return float2(cos(a), sin(a)) * r;
 }
+
+// The mip a local light shades a pixel from: the texel-density mip (`vsm_local_mip`), or for a sized
+// light (4.7d) a coarser one whose texel is at least its radius / 32, so the blocker search and the
+// penumbra fit in VSM_SOFT_MAX_TEXELS.
+public uint vsm_local_pixel_mip(VsmLocal l, float footprint, float dist, float bias) {
+    float fov = asfloat(l.info.z);
+    uint mip = vsm_local_mip(footprint, dist, fov, bias);
+    float radius = l.bias.z;
+    if (radius <= 0.0) { return mip; }
+    float texel0 = 2.0 * dist * tan(fov * 0.5) / float(VSM_LOCAL_TEXELS);
+    float soft = ceil(log2(radius / 32.0 / max(texel0, 1e-12)));
+    return uint(clamp(max(float(mip), soft), 0.0, float(VSM_LOCAL_MIPS - 1)));
+}

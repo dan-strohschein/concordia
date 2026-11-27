@@ -430,7 +430,7 @@ float vsm_local_shadow(Frame* frame, uint slot, float3 world, float3 n, float3 t
     int k = int(l.info.w);
     float nol = saturate(dot(n, to_light));
     float tan_theta = min(sqrt(1.0 - nol * nol) / max(nol, 1e-3), 10.0);
-    for (uint mip = vsm_local_mip(footprint, dist, fov, p.choice.y); mip < VSM_LOCAL_MIPS; mip++) {
+    for (uint mip = vsm_local_pixel_mip(l, footprint, dist, p.choice.y); mip < VSM_LOCAL_MIPS; mip++) {
         float texel = 2.0 * dist * tan(fov * 0.5) / float(VSM_LOCAL_TEXELS) * exp2(float(mip));
         float3 offset = world + n * l.bias.y * texel;
         float2 st = vsm_local_texel(vsm_clip(views, view, offset), mip) - 0.5;

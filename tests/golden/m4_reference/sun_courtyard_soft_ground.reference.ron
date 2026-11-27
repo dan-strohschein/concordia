@@ -1,0 +1,26 @@
+ReferenceFile(
+    blessed: Some((
+        backend: "gpu",
+        baseline: (
+            mean: 0.03565548,
+            p99: 0.71558356,
+        ),
+        git: "ff18215",
+        noise: (
+            mean: 0.00491314,
+            p99: 0.06301513,
+        ),
+    )),
+    height: 720,
+    max_bounces: 1,
+    project: "examples/m4-lighting",
+    scene: Some("scenes/sun_courtyard_soft.scene.ron"),
+    seed: 1,
+    spp: 256,
+    view: Some((
+        eye: (-5.5, 1.7, -6.5),
+        fov_y_degrees: 60.0,
+        target: (3.0, 0.6, 4.5),
+    )),
+    width: 1280,
+)

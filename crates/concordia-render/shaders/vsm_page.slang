@@ -54,7 +54,7 @@ void request_local(VsmParams* p, uint table, uint views, float3 world) {
         uint map;
         float dist;
         if (!vsm_local_map(l, world, map, dist)) continue;
-        uint mip = vsm_local_mip(footprint, dist, asfloat(l.info.z), p.choice.y);
+        uint mip = vsm_local_pixel_mip(l, footprint, dist, p.choice.y);
         float2 t = vsm_local_texel(vsm_clip(views, header.y + map, world), mip);
         float radius = float(l.info.w) + 1.0 + (l.bias.z > 0.0 ? VSM_SOFT_MAX_TEXELS : 0.0);
         int last = int(vsm_mip_side(mip)) - 1;

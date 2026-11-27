@@ -1,0 +1,26 @@
+ReferenceFile(
+    blessed: Some((
+        backend: "gpu",
+        baseline: (
+            mean: 0.015683748,
+            p99: 0.2651549,
+        ),
+        git: "ff18215",
+        noise: (
+            mean: 0.0011430345,
+            p99: 0.017313048,
+        ),
+    )),
+    height: 720,
+    max_bounces: 1,
+    project: "examples/m4-lighting",
+    scene: Some("scenes/spell_arena_soft.scene.ron"),
+    seed: 1,
+    spp: 256,
+    view: Some((
+        eye: (-6.5, 2.2, 8.5),
+        fov_y_degrees: 60.0,
+        target: (1.0, 0.8, -1.0),
+    )),
+    width: 1280,
+)

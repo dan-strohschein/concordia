@@ -96,6 +96,18 @@ pub fn render_against(
     golden: &Path,
     technique: &str,
 ) -> Result<(RgbaImage, RgbaImage), String> {
+    render_scene_against(name, None, golden, technique)
+}
+
+/// As [`render_against`], rendering `scene` (a path in the reference's project) instead of the
+/// reference's own scene when given: the same view of another version of it (M4 4.7d compares
+/// hard lights against a soft reference).
+pub fn render_scene_against(
+    name: &str,
+    scene: Option<&str>,
+    golden: &Path,
+    technique: &str,
+) -> Result<(RgbaImage, RgbaImage), String> {
     let store = Golden::new(golden.to_path_buf(), golden.join("../review"), false, false);
     let file = store.reference(name).map_err(fail)?;
     let reference = std::fs::read(golden.join(SUITE).join(format!("{name}.png"))).map_err(|e| {
@@ -104,6 +116,10 @@ pub fn render_against(
         ))
     })?;
     let reference = RgbaImage::from_png(&reference).map_err(fail)?;
+    let mut file = file;
+    if let Some(scene) = scene {
+        file.scene = Some(scene.to_owned());
+    }
     let mut session = Session::open(&file)?;
     session.call("render.set_shadows", json!({"technique": technique}))?;
     Ok((session.screenshot(&file)?, reference))
