@@ -160,6 +160,11 @@ pub struct Image {
 }
 
 impl Program {
+    /// The program as a core WASM module exporting `memory` and `run()` (the image goes at 0).
+    pub fn wasm(&self) -> Vec<u8> {
+        crate::ir::emit_program(self)
+    }
+
     /// The columns the image carries, in slot order.
     pub fn columns(&self) -> &[ColumnSlot] {
         &self.columns

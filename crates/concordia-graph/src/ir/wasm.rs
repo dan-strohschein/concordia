@@ -3,10 +3,11 @@
 
 use wasm_encoder::{
     BlockType, CodeSection, ExportKind, ExportSection, Function as WasmFn, FunctionSection, Ieee32,
-    InstructionSink, Module, TypeSection, ValType,
+    InstructionSink, MemArg, MemArgTarget, MemorySection, MemoryType, Module, TypeSection, ValType,
 };
 
 use super::{BinOp, Function, Inst, Scalar, ScalarTy, UnOp, ValueId};
+use crate::runtime::{Kind, Load, Program};
 
 fn val(ty: ScalarTy) -> ValType {
     match ty {
@@ -50,31 +51,32 @@ fn body(f: &Function) -> WasmFn {
     let mut wf = WasmFn::new(f.tys.iter().map(|&t| (1, val(t))));
     let mut sink = wf.instructions();
     for (k, inst) in f.insts.iter().enumerate() {
-        if matches!(inst, Inst::Param(_)) {
-            continue;
+        if !matches!(inst, Inst::Param(_)) {
+            compute(&mut sink, inst, &|v| local(f, v));
+            sink.local_set(local(f, k as ValueId));
         }
-        let get = |s: &mut InstructionSink, v: ValueId| {
-            s.local_get(local(f, v));
-        };
-        match *inst {
-            Inst::Param(_) => unreachable!(),
-            Inst::Const(c) => konst(&mut sink, c),
-            Inst::Unary(op, ty, a) => unary(&mut sink, op, ty, || local(f, a)),
-            Inst::Binary(op, ty, a, b) => binary(&mut sink, op, ty, local(f, a), local(f, b)),
-            Inst::Select(_, c, a, b) => {
-                get(&mut sink, a);
-                get(&mut sink, b);
-                get(&mut sink, c);
-                sink.select();
-            }
-        }
-        sink.local_set(local(f, k as ValueId));
     }
     for &o in &f.outputs {
         sink.local_get(local(f, o));
     }
     sink.end();
     wf
+}
+
+/// Pushes a (non-parameter) instruction's value; `loc` maps values to locals.
+fn compute(sink: &mut InstructionSink, inst: &Inst, loc: &dyn Fn(ValueId) -> u32) {
+    match *inst {
+        Inst::Param(_) => unreachable!("parameters are loaded, not computed"),
+        Inst::Const(c) => konst(sink, c),
+        Inst::Unary(op, ty, a) => unary(sink, op, ty, || loc(a)),
+        Inst::Binary(op, ty, a, b) => binary(sink, op, ty, loc(a), loc(b)),
+        Inst::Select(_, c, a, b) => {
+            sink.local_get(loc(a))
+                .local_get(loc(b))
+                .local_get(loc(c))
+                .select();
+        }
+    }
 }
 
 fn konst(s: &mut InstructionSink, c: Scalar) {
@@ -235,4 +237,182 @@ fn int_div(s: &mut InstructionSink, ty: ScalarTy, a: u32, b: u32) {
                 .end();
         }
     }
+}
+
+/// Locals of a program's `run`: job, row, raise count, record address, then one per value.
+const JOB: u32 = 0;
+const ROW: u32 = 1;
+const COUNT: u32 = 2;
+const RECORD: u32 = 3;
+const FIRST_VALUE: u32 = 4;
+
+/// Header word addresses (see `runtime`'s image layout).
+const JOBS: u64 = 0;
+const DT: u64 = 4;
+const ROWS: i32 = 8;
+const SIGNALS: i32 = 12;
+const SIGNAL_STRIDE: i32 = 16;
+const RAISES: i32 = 20;
+const RAISE_COUNT: i32 = 24;
+const RECORD_SIZE: i32 = 28;
+const COLUMNS: i32 = 36;
+
+fn mem(offset: u64, align: u32) -> MemArg {
+    MemArg {
+        offset,
+        align,
+        target: MemArgTarget::Memory(0),
+        ordering: None,
+    }
+}
+
+/// A program as a module exporting `memory` and `run()`, which runs every job of the image.
+pub(crate) fn emit_program(p: &Program) -> Vec<u8> {
+    let mut types = TypeSection::new();
+    types.ty().function([], []);
+    let mut funcs = FunctionSection::new();
+    funcs.function(0);
+    let mut memories = MemorySection::new();
+    memories.memory(MemoryType {
+        minimum: 1,
+        maximum: None,
+        memory64: false,
+        shared: false,
+        page_size_log2: None,
+    });
+    let mut exports = ExportSection::new();
+    exports
+        .export("run", ExportKind::Func, 0)
+        .export("memory", ExportKind::Memory, 0);
+    let mut code = CodeSection::new();
+    code.function(&program_body(p));
+    let mut module = Module::new();
+    module
+        .section(&types)
+        .section(&funcs)
+        .section(&memories)
+        .section(&exports)
+        .section(&code);
+    module.finish()
+}
+
+fn program_body(p: &Program) -> WasmFn {
+    let f = &p.func;
+    let mut locals = vec![(4, ValType::I32)];
+    locals.extend(f.tys.iter().map(|&t| (1, val(t))));
+    let mut wf = WasmFn::new(locals);
+    let loc = |v: ValueId| FIRST_VALUE + v;
+    let mut s = wf.instructions();
+    s.block(BlockType::Empty).loop_(BlockType::Empty);
+    s.local_get(JOB)
+        .i32_const(0)
+        .i32_load(mem(JOBS, 2))
+        .i32_ge_u()
+        .br_if(1);
+    // row = rows[job]
+    s.i32_const(ROWS)
+        .i32_load(mem(0, 2))
+        .local_get(JOB)
+        .i32_const(4)
+        .i32_mul()
+        .i32_add()
+        .i32_load(mem(0, 2))
+        .local_set(ROW);
+    for (k, inst) in f.insts.iter().enumerate() {
+        match inst {
+            Inst::Param(n) => load(&mut s, p, p.loads[*n as usize]),
+            other => compute(&mut s, other, &loc),
+        }
+        s.local_set(loc(k as ValueId));
+    }
+    for (store, &v) in p.stores.iter().zip(&f.outputs) {
+        row_address(&mut s, p, store.slot);
+        s.local_get(loc(v));
+        put(&mut s, store.kind, store.offset as u64);
+    }
+    let mut at = p.stores.len();
+    for (site, r) in p.raises.iter().enumerate() {
+        let flag = f.outputs[at];
+        let payload = &f.outputs[at + 1..at + 1 + r.payload.len()];
+        at += 1 + r.payload.len();
+        s.local_get(loc(flag)).if_(BlockType::Empty);
+        s.i32_const(RAISES)
+            .i32_load(mem(0, 2))
+            .local_get(COUNT)
+            .i32_const(RECORD_SIZE)
+            .i32_load(mem(0, 2))
+            .i32_mul()
+            .i32_add()
+            .local_set(RECORD);
+        s.local_get(RECORD).local_get(JOB).i32_store(mem(0, 0));
+        s.local_get(RECORD)
+            .i32_const(site as i32)
+            .i32_store(mem(4, 0));
+        for (&(offset, kind), &v) in r.payload.iter().zip(payload) {
+            s.local_get(RECORD).local_get(loc(v));
+            put(&mut s, kind, 8 + offset as u64);
+        }
+        s.local_get(COUNT).i32_const(1).i32_add().local_set(COUNT);
+        s.end();
+    }
+    s.local_get(JOB).i32_const(1).i32_add().local_set(JOB).br(0);
+    s.end().end();
+    s.i32_const(RAISE_COUNT)
+        .local_get(COUNT)
+        .i32_store(mem(0, 2));
+    s.end();
+    wf
+}
+
+/// Pushes the address of the job's row in column `slot`.
+fn row_address(s: &mut InstructionSink, p: &Program, slot: usize) {
+    let stride = p.columns[slot].stride as i32;
+    s.i32_const(COLUMNS + 4 * slot as i32)
+        .i32_load(mem(0, 2))
+        .local_get(ROW)
+        .i32_const(stride)
+        .i32_mul()
+        .i32_add();
+}
+
+/// Pushes a parameter's value.
+fn load(s: &mut InstructionSink, p: &Program, l: Load) {
+    match l {
+        Load::Dt => {
+            s.i32_const(0).f32_load(mem(DT, 2));
+        }
+        Load::Column { slot, offset, kind } => {
+            row_address(s, p, slot);
+            get(s, kind, offset as u64);
+        }
+        Load::Signal { offset, kind } => {
+            s.i32_const(SIGNALS)
+                .i32_load(mem(0, 2))
+                .local_get(JOB)
+                .i32_const(SIGNAL_STRIDE)
+                .i32_load(mem(0, 2))
+                .i32_mul()
+                .i32_add();
+            get(s, kind, offset as u64);
+        }
+    }
+}
+
+fn get(s: &mut InstructionSink, kind: Kind, offset: u64) {
+    match kind {
+        Kind::Bool => s.i32_load8_u(mem(offset, 0)),
+        Kind::I32 => s.i32_load(mem(offset, 0)),
+        Kind::I64 => s.i64_load(mem(offset, 0)),
+        Kind::F32 => s.f32_load(mem(offset, 0)),
+    };
+}
+
+/// Stores the value on the stack at the address below it; bools as one byte (0 or 1).
+fn put(s: &mut InstructionSink, kind: Kind, offset: u64) {
+    match kind {
+        Kind::Bool => s.i32_const(0).i32_ne().i32_store8(mem(offset, 0)),
+        Kind::I32 => s.i32_store(mem(offset, 0)),
+        Kind::I64 => s.i64_store(mem(offset, 0)),
+        Kind::F32 => s.f32_store(mem(offset, 0)),
+    };
 }

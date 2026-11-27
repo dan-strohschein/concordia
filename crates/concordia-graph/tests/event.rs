@@ -256,3 +256,88 @@ fn unsupported_event_nodes_are_located() {
         "{errors:?}"
     );
 }
+
+/// Runs `wasm`'s `run` on a copy of `image` in its own memory and returns the memory's image part.
+fn run_wasm(wasm: &[u8], image: &Image) -> Vec<u8> {
+    let mut config = wasmtime::Config::new();
+    config.cranelift_nan_canonicalization(true);
+    let engine = wasmtime::Engine::new(&config).unwrap();
+    let module = wasmtime::Module::new(&engine, wasm).unwrap();
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let memory = instance
+        .get_memory(&mut store, "memory")
+        .expect("a `memory` export");
+    let pages = image.bytes.len().div_ceil(65536) as u64;
+    let have = memory.size(&store);
+    if pages > have {
+        memory.grow(&mut store, pages - have).unwrap();
+    }
+    memory.write(&mut store, 0, &image.bytes).unwrap();
+    let run = instance
+        .get_typed_func::<(), ()>(&mut store, "run")
+        .unwrap();
+    run.call(&mut store, ()).unwrap();
+    memory.data(&store)[..image.bytes.len()].to_vec()
+}
+
+fn f32s() -> impl proptest::strategy::Strategy<Value = f32> {
+    use proptest::prelude::*;
+    prop_oneof![6 => -100f32..100f32, 1 => Just(0.0f32), 1 => Just(-0.0f32), 1 => Just(f32::NAN), 1 => Just(f32::INFINITY)]
+}
+
+proptest::proptest! {
+    #![proptest_config(proptest::prelude::ProptestConfig { cases: 64, ..Default::default() })]
+
+    #[test]
+    fn interpreted_and_compiled_event_graphs_agree(
+        values in proptest::collection::vec(f32s(), 12),
+        counts in proptest::collection::vec(-100i32..100, 4),
+        dt in 0.0f32..0.1,
+    ) {
+        let reg = registry();
+        let lib = library(&reg);
+        let health = column(&[0, 1, 2, 3].map(|k| Health { value: values[2 * k], max: values[2 * k + 1] }));
+        let mover = column(&[0, 1].map(|k| Mover { velocity: Vec3::new(values[8 + k], values[9 + k], values[10]) }));
+        let ticks: Vec<u8> = counts.iter().flat_map(|t| t.to_le_bytes()).collect();
+        for name in ["regenerate", "take_damage", "burn", "tick_counter", "steer"] {
+            let module = compile_event(name, &example(name), &lib, &reg).unwrap();
+            let vars = module.vars.name.clone();
+            for p in &module.processors {
+                let (n, given) = match name {
+                    "steer" => (2, vec![("Mover", mover.clone())]),
+                    "tick_counter" => (4, vec![(vars.as_str(), ticks.clone())]),
+                    _ => (4, vec![("Health", health.clone())]),
+                };
+                let columns = slots(p, &given, n);
+                let image = match &p.entry {
+                    Entry::Tick => Image::tick(p, n, dt, &columns).unwrap(),
+                    Entry::Signal(_) => {
+                        let payload = column(&[Damaged { amount: values[0] }, Damaged { amount: values[1] }, Damaged { amount: values[2] }]);
+                        Image::signals(p, &[Some(1), Some(1), Some(3)], &payload, &columns).unwrap()
+                    }
+                };
+                let mut interpreted = image.clone();
+                p.interpret(&mut interpreted).unwrap();
+                let compiled = run_wasm(&p.wasm(), &image);
+                proptest::prop_assert_eq!(&interpreted.bytes, &compiled, "{}", p.name);
+            }
+        }
+    }
+}
+
+#[test]
+fn compiled_programs_validate() {
+    let reg = registry();
+    let lib = library(&reg);
+    for name in ["regenerate", "take_damage", "burn", "tick_counter", "steer"] {
+        for p in compile_event(name, &example(name), &lib, &reg)
+            .unwrap()
+            .processors
+        {
+            wasmparser::Validator::new()
+                .validate_all(&p.wasm())
+                .unwrap_or_else(|e| panic!("{name}: {e}"));
+        }
+    }
+}

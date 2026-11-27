@@ -9,6 +9,7 @@ mod wasm;
 
 pub use eval::EvalError;
 pub use event::compile_event;
+pub(crate) use wasm::emit_program;
 
 use crate::{Diagnostic, Graph, NodeLibrary};
 
