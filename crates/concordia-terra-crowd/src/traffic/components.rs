@@ -189,7 +189,7 @@ pub struct TrafficProblems {
 
 /// Raised on a vehicle when it stops at the end of its destination lane; delivered next tick.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Reflect)]
-#[reflect(category = "Traffic")]
+#[reflect(signal, category = "Traffic")]
 #[serde(deny_unknown_fields)]
 pub struct VehicleArrived {
     /// The lane it was sent to.
@@ -200,7 +200,7 @@ pub struct VehicleArrived {
 
 /// Raised on a vehicle once per destination it can't reach; delivered next tick.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Reflect)]
-#[reflect(category = "Traffic")]
+#[reflect(signal, category = "Traffic")]
 #[serde(deny_unknown_fields)]
 pub struct VehicleRouteFailed {
     /// The lane it was sent to.

@@ -59,7 +59,7 @@ pub struct AnimEventCues {
 /// A signal: play a cue once at the target entity (unpositioned if it has no `Transform`).
 /// Raised on tick t, it sounds on tick t + 1.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
-#[reflect(category = "Audio")]
+#[reflect(signal, category = "Audio")]
 #[serde(deny_unknown_fields)]
 pub struct PlayCue {
     /// The cue.
@@ -72,7 +72,7 @@ pub struct PlayCue {
 /// A signal: stop what the target entity started (that cue only, or everything), with the
 /// 5 ms ramp.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Reflect)]
-#[reflect(category = "Audio", default)]
+#[reflect(signal, category = "Audio", default)]
 #[serde(default, deny_unknown_fields)]
 pub struct StopCue {
     /// Only this cue (none: all of them).
@@ -96,7 +96,7 @@ pub fn register_types(registry: &mut TypeRegistry) -> Result<(), RegistryError> 
 /// does; applied the tick it is delivered and kept until the engine closes. An unknown bus or a
 /// gain out of range is warned about once and ignored.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Reflect)]
-#[reflect(category = "Audio", default)]
+#[reflect(signal, category = "Audio", default)]
 #[serde(default, deny_unknown_fields)]
 pub struct SetBusGain {
     /// The bus.

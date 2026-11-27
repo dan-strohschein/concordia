@@ -1,0 +1,63 @@
+---
+source: crates/concordia-graph/tests/format.rs
+expression: text
+---
+Graph(
+    exec: [
+        ("0193b0f2-0000-7000-8000-00000000000a", "out", "0193b0f2-0000-7000-8000-00000000000d", "in"),
+        ("0193b0f2-0000-7000-8000-00000000000d", "true", "0193b0f2-0000-7000-8000-00000000000e", "in"),
+    ],
+    id: "0193b0f2-0000-7000-8000-000000000001",
+    kind: Event,
+    layout: {
+        "0193b0f2-0000-7000-8000-00000000000a": (0.0, 0.0),
+        "0193b0f2-0000-7000-8000-00000000000d": (240.0, 0.0),
+    },
+    nodes: {
+        "0193b0f2-0000-7000-8000-00000000000a": (
+            inputs: {},
+            op: "event.on_tick",
+        ),
+        "0193b0f2-0000-7000-8000-00000000000b": (
+            inputs: {
+                "a": Link("0193b0f2-0000-7000-8000-00000000000c", "out"),
+                "b": Value(Float(2.0)),
+            },
+            op: "math.gt.f32",
+        ),
+        "0193b0f2-0000-7000-8000-00000000000c": (
+            inputs: {},
+            op: "var.get.distance",
+        ),
+        "0193b0f2-0000-7000-8000-00000000000d": (
+            inputs: {
+                "cond": Link("0193b0f2-0000-7000-8000-00000000000b", "out"),
+            },
+            op: "branch",
+        ),
+        "0193b0f2-0000-7000-8000-00000000000e": (
+            inputs: {
+                "value": Value(Float(3.5)),
+            },
+            op: "var.set.speed",
+        ),
+    },
+    signature: (
+        inputs: [],
+        outputs: [],
+        pure: false,
+    ),
+    variables: [
+        (
+            default: Some(Float(0.0)),
+            name: "distance",
+            ty: "f32",
+        ),
+        (
+            default: None,
+            name: "speed",
+            ty: "f32",
+        ),
+    ],
+    version: 1,
+)

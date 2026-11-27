@@ -27,6 +27,8 @@ pub struct TypeInfo {
     /// `#[reflect(presentation)]`: a presentation-only component (never hashed, off limits to
     /// simulation; ADR-0063).
     pub presentation: bool,
+    /// `#[reflect(signal)]`: raised and received as a signal (M4 4.9's node library).
+    pub signal: bool,
 }
 
 /// A default value as JSON: computed by a function (derived types) or stored (dynamic types).
@@ -72,6 +74,7 @@ impl TypeInfo {
             category: None,
             default: None,
             presentation: false,
+            signal: false,
         }
     }
 
@@ -85,6 +88,12 @@ impl TypeInfo {
     pub fn with_category(mut self, category: &'static str) -> Self {
         debug_assert!(!category.trim().is_empty(), "empty category");
         self.category = Some(category);
+        self
+    }
+
+    /// The same type, marked a signal.
+    pub fn with_signal(mut self) -> Self {
+        self.signal = true;
         self
     }
 
@@ -112,6 +121,7 @@ impl TypeInfo {
             category: None,
             default: None,
             presentation: false,
+            signal: false,
         }
     }
 

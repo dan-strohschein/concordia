@@ -1,0 +1,15 @@
+Graph(
+    id: "0193b0f2-0000-7000-8000-000000000112",
+    kind: Function,
+    version: 1,
+    signature: (
+        inputs: [(name: "x", ty: "f32")],
+        outputs: [(name: "y", ty: "f32")],
+        pure: true,
+    ),
+    nodes: {
+        "0193b0f2-0000-7000-8000-000000000001": (op: "graph.input", inputs: {}),
+        "0193b0f2-0000-7000-8000-000000000002": (op: "set.Health.value", inputs: {"value": Link("0193b0f2-0000-7000-8000-000000000001", "x")}),
+        "0193b0f2-0000-7000-8000-000000000003": (op: "graph.output", inputs: {"y": Link("0193b0f2-0000-7000-8000-000000000001", "x")}),
+    },
+)

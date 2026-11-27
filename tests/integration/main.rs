@@ -4,6 +4,7 @@
 
 mod canyon;
 mod gi_reference;
+mod graph_library;
 mod lamplight_content;
 mod lamplight_mirrors;
 mod lamplight_night;

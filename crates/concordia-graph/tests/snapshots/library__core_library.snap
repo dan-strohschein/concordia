@@ -1,0 +1,1086 @@
+---
+source: crates/concordia-graph/tests/library.rs
+expression: core.to_json()
+---
+{
+  "behavior.root": {
+    "category": "Behavior",
+    "docs": "A behavior tree's root.",
+    "dynamic": false,
+    "event": true,
+    "exec_in": [],
+    "exec_out": [
+      "child"
+    ],
+    "inputs": [],
+    "op": "behavior.root",
+    "outputs": [],
+    "pure": false
+  },
+  "behavior.selector": {
+    "category": "Behavior",
+    "docs": "Runs children in order until one succeeds.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [
+      "child0",
+      "child1",
+      "child2",
+      "child3"
+    ],
+    "inputs": [],
+    "op": "behavior.selector",
+    "outputs": [],
+    "pure": false
+  },
+  "behavior.sequence": {
+    "category": "Behavior",
+    "docs": "Runs children in order until one fails.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [
+      "child0",
+      "child1",
+      "child2",
+      "child3"
+    ],
+    "inputs": [],
+    "op": "behavior.sequence",
+    "outputs": [],
+    "pure": false
+  },
+  "behavior.succeed": {
+    "category": "Behavior",
+    "docs": "Succeeds at once.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [],
+    "inputs": [],
+    "op": "behavior.succeed",
+    "outputs": [],
+    "pure": false
+  },
+  "branch": {
+    "category": "Flow",
+    "docs": "Continues on `true` or `false`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [
+      "true",
+      "false"
+    ],
+    "inputs": [
+      {
+        "name": "cond",
+        "required": true,
+        "ty": "bool"
+      }
+    ],
+    "op": "branch",
+    "outputs": [],
+    "pure": false
+  },
+  "conv.f32_to_i32": {
+    "category": "Conversions",
+    "docs": "A number truncated toward zero.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "x",
+        "required": true,
+        "ty": "f32"
+      }
+    ],
+    "op": "conv.f32_to_i32",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "i32"
+      }
+    ],
+    "pure": true
+  },
+  "conv.i32_to_f32": {
+    "category": "Conversions",
+    "docs": "An integer as a number.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "x",
+        "required": true,
+        "ty": "i32"
+      }
+    ],
+    "op": "conv.i32_to_f32",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "f32"
+      }
+    ],
+    "pure": true
+  },
+  "conv.split_vec3": {
+    "category": "Conversions",
+    "docs": "A vector's components.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "v",
+        "required": true,
+        "ty": "Vec3"
+      }
+    ],
+    "op": "conv.split_vec3",
+    "outputs": [
+      {
+        "name": "x",
+        "required": false,
+        "ty": "f32"
+      },
+      {
+        "name": "y",
+        "required": false,
+        "ty": "f32"
+      },
+      {
+        "name": "z",
+        "required": false,
+        "ty": "f32"
+      }
+    ],
+    "pure": true
+  },
+  "conv.vec3": {
+    "category": "Conversions",
+    "docs": "A vector from its components.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "x",
+        "required": true,
+        "ty": "f32"
+      },
+      {
+        "name": "y",
+        "required": true,
+        "ty": "f32"
+      },
+      {
+        "name": "z",
+        "required": true,
+        "ty": "f32"
+      }
+    ],
+    "op": "conv.vec3",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "Vec3"
+      }
+    ],
+    "pure": true
+  },
+  "entity.self": {
+    "category": "Entities",
+    "docs": "The entity the graph runs on.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [],
+    "op": "entity.self",
+    "outputs": [
+      {
+        "name": "entity",
+        "required": false,
+        "ty": "EntityId"
+      }
+    ],
+    "pure": true
+  },
+  "event.on_tick": {
+    "category": "Events",
+    "docs": "Runs every simulation tick for each entity the graph runs on.",
+    "dynamic": false,
+    "event": true,
+    "exec_in": [],
+    "exec_out": [
+      "out"
+    ],
+    "inputs": [],
+    "op": "event.on_tick",
+    "outputs": [
+      {
+        "name": "entity",
+        "required": false,
+        "ty": "EntityId"
+      },
+      {
+        "name": "dt",
+        "required": false,
+        "ty": "f32"
+      }
+    ],
+    "pure": false
+  },
+  "for_each": {
+    "category": "Flow",
+    "docs": "Runs `body` once per entity of `list`, then `done`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [
+      "body",
+      "done"
+    ],
+    "inputs": [
+      {
+        "name": "list",
+        "required": true,
+        "ty": "List<EntityId>"
+      }
+    ],
+    "op": "for_each",
+    "outputs": [
+      {
+        "name": "item",
+        "required": false,
+        "ty": "EntityId"
+      }
+    ],
+    "pure": false
+  },
+  "gate": {
+    "category": "Flow",
+    "docs": "Continues only while `open`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [
+      "out"
+    ],
+    "inputs": [
+      {
+        "name": "open",
+        "required": true,
+        "ty": "bool"
+      }
+    ],
+    "op": "gate",
+    "outputs": [],
+    "pure": false
+  },
+  "graph.input": {
+    "category": "Graph",
+    "docs": "The graph's inputs (its signature).",
+    "dynamic": true,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [],
+    "op": "graph.input",
+    "outputs": [],
+    "pure": true
+  },
+  "graph.output": {
+    "category": "Graph",
+    "docs": "The graph's outputs (its signature).",
+    "dynamic": true,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [],
+    "op": "graph.output",
+    "outputs": [],
+    "pure": false
+  },
+  "logic.and": {
+    "category": "Logic",
+    "docs": "`a` and `b`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "a",
+        "required": true,
+        "ty": "bool"
+      },
+      {
+        "name": "b",
+        "required": true,
+        "ty": "bool"
+      }
+    ],
+    "op": "logic.and",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "bool"
+      }
+    ],
+    "pure": true
+  },
+  "logic.not": {
+    "category": "Logic",
+    "docs": "Not `x`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "x",
+        "required": true,
+        "ty": "bool"
+      }
+    ],
+    "op": "logic.not",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "bool"
+      }
+    ],
+    "pure": true
+  },
+  "logic.or": {
+    "category": "Logic",
+    "docs": "`a` or `b`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "a",
+        "required": true,
+        "ty": "bool"
+      },
+      {
+        "name": "b",
+        "required": true,
+        "ty": "bool"
+      }
+    ],
+    "op": "logic.or",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "bool"
+      }
+    ],
+    "pure": true
+  },
+  "math.abs": {
+    "category": "Math",
+    "docs": "|`x`|.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "x",
+        "required": true,
+        "ty": "Scalar"
+      }
+    ],
+    "op": "math.abs",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "Scalar"
+      }
+    ],
+    "pure": true
+  },
+  "math.add": {
+    "category": "Math",
+    "docs": "`a` + `b`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "a",
+        "required": true,
+        "ty": "Numeric"
+      },
+      {
+        "name": "b",
+        "required": true,
+        "ty": "Numeric"
+      }
+    ],
+    "op": "math.add",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "Numeric"
+      }
+    ],
+    "pure": true
+  },
+  "math.clamp": {
+    "category": "Math",
+    "docs": "`x` limited to [`lo`, `hi`].",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "x",
+        "required": true,
+        "ty": "Scalar"
+      },
+      {
+        "name": "lo",
+        "required": true,
+        "ty": "Scalar"
+      },
+      {
+        "name": "hi",
+        "required": true,
+        "ty": "Scalar"
+      }
+    ],
+    "op": "math.clamp",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "Scalar"
+      }
+    ],
+    "pure": true
+  },
+  "math.div": {
+    "category": "Math",
+    "docs": "`a` ÷ `b`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "a",
+        "required": true,
+        "ty": "Numeric"
+      },
+      {
+        "name": "b",
+        "required": true,
+        "ty": "Numeric"
+      }
+    ],
+    "op": "math.div",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "Numeric"
+      }
+    ],
+    "pure": true
+  },
+  "math.eq": {
+    "category": "Math",
+    "docs": "`a` = `b`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "a",
+        "required": true,
+        "ty": "Scalar"
+      },
+      {
+        "name": "b",
+        "required": true,
+        "ty": "Scalar"
+      }
+    ],
+    "op": "math.eq",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "bool"
+      }
+    ],
+    "pure": true
+  },
+  "math.ge": {
+    "category": "Math",
+    "docs": "`a` ≥ `b`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "a",
+        "required": true,
+        "ty": "Scalar"
+      },
+      {
+        "name": "b",
+        "required": true,
+        "ty": "Scalar"
+      }
+    ],
+    "op": "math.ge",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "bool"
+      }
+    ],
+    "pure": true
+  },
+  "math.gt": {
+    "category": "Math",
+    "docs": "`a` > `b`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "a",
+        "required": true,
+        "ty": "Scalar"
+      },
+      {
+        "name": "b",
+        "required": true,
+        "ty": "Scalar"
+      }
+    ],
+    "op": "math.gt",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "bool"
+      }
+    ],
+    "pure": true
+  },
+  "math.le": {
+    "category": "Math",
+    "docs": "`a` ≤ `b`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "a",
+        "required": true,
+        "ty": "Scalar"
+      },
+      {
+        "name": "b",
+        "required": true,
+        "ty": "Scalar"
+      }
+    ],
+    "op": "math.le",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "bool"
+      }
+    ],
+    "pure": true
+  },
+  "math.lerp": {
+    "category": "Math",
+    "docs": "`a` + (`b` - `a`) × `t`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "a",
+        "required": true,
+        "ty": "Numeric"
+      },
+      {
+        "name": "b",
+        "required": true,
+        "ty": "Numeric"
+      },
+      {
+        "name": "t",
+        "required": true,
+        "ty": "f32"
+      }
+    ],
+    "op": "math.lerp",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "Numeric"
+      }
+    ],
+    "pure": true
+  },
+  "math.lt": {
+    "category": "Math",
+    "docs": "`a` < `b`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "a",
+        "required": true,
+        "ty": "Scalar"
+      },
+      {
+        "name": "b",
+        "required": true,
+        "ty": "Scalar"
+      }
+    ],
+    "op": "math.lt",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "bool"
+      }
+    ],
+    "pure": true
+  },
+  "math.max": {
+    "category": "Math",
+    "docs": "The larger.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "a",
+        "required": true,
+        "ty": "Scalar"
+      },
+      {
+        "name": "b",
+        "required": true,
+        "ty": "Scalar"
+      }
+    ],
+    "op": "math.max",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "Scalar"
+      }
+    ],
+    "pure": true
+  },
+  "math.min": {
+    "category": "Math",
+    "docs": "The smaller.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "a",
+        "required": true,
+        "ty": "Scalar"
+      },
+      {
+        "name": "b",
+        "required": true,
+        "ty": "Scalar"
+      }
+    ],
+    "op": "math.min",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "Scalar"
+      }
+    ],
+    "pure": true
+  },
+  "math.mul": {
+    "category": "Math",
+    "docs": "`a` × `b`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "a",
+        "required": true,
+        "ty": "Numeric"
+      },
+      {
+        "name": "b",
+        "required": true,
+        "ty": "Numeric"
+      }
+    ],
+    "op": "math.mul",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "Numeric"
+      }
+    ],
+    "pure": true
+  },
+  "math.ne": {
+    "category": "Math",
+    "docs": "`a` ≠ `b`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "a",
+        "required": true,
+        "ty": "Scalar"
+      },
+      {
+        "name": "b",
+        "required": true,
+        "ty": "Scalar"
+      }
+    ],
+    "op": "math.ne",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "bool"
+      }
+    ],
+    "pure": true
+  },
+  "math.neg": {
+    "category": "Math",
+    "docs": "-`x`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "x",
+        "required": true,
+        "ty": "Numeric"
+      }
+    ],
+    "op": "math.neg",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "Numeric"
+      }
+    ],
+    "pure": true
+  },
+  "math.saturate": {
+    "category": "Math",
+    "docs": "Clamps to [0, 1].",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "x",
+        "required": true,
+        "ty": "f32"
+      }
+    ],
+    "op": "math.saturate",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "f32"
+      }
+    ],
+    "pure": true
+  },
+  "math.sub": {
+    "category": "Math",
+    "docs": "`a` - `b`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "a",
+        "required": true,
+        "ty": "Numeric"
+      },
+      {
+        "name": "b",
+        "required": true,
+        "ty": "Numeric"
+      }
+    ],
+    "op": "math.sub",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "Numeric"
+      }
+    ],
+    "pure": true
+  },
+  "query.each": {
+    "category": "Queries",
+    "docs": "Runs `body` once per entity that has every component in `with` and none in `without` (by name), then `done`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [
+      "body",
+      "done"
+    ],
+    "inputs": [
+      {
+        "name": "with",
+        "required": true,
+        "ty": "List<String>"
+      },
+      {
+        "name": "without",
+        "required": false,
+        "ty": "List<String>"
+      }
+    ],
+    "op": "query.each",
+    "outputs": [
+      {
+        "name": "entity",
+        "required": false,
+        "ty": "EntityId"
+      }
+    ],
+    "pure": false
+  },
+  "sequence": {
+    "category": "Flow",
+    "docs": "Runs `then0`, `then1` and `then2` in order.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [
+      "then0",
+      "then1",
+      "then2"
+    ],
+    "inputs": [],
+    "op": "sequence",
+    "outputs": [],
+    "pure": false
+  },
+  "utility.curve": {
+    "category": "Utility",
+    "docs": "A response curve of `x` (`linear`, `quadratic`, `logistic`, `inverse`), always in [0, 1].",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "x",
+        "required": true,
+        "ty": "f32"
+      },
+      {
+        "name": "curve",
+        "required": false,
+        "ty": "String"
+      }
+    ],
+    "op": "utility.curve",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "f32"
+      }
+    ],
+    "pure": true
+  },
+  "vector.distance": {
+    "category": "Vector",
+    "docs": "The distance between two points.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "a",
+        "required": true,
+        "ty": "Vec3"
+      },
+      {
+        "name": "b",
+        "required": true,
+        "ty": "Vec3"
+      }
+    ],
+    "op": "vector.distance",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "f32"
+      }
+    ],
+    "pure": true
+  },
+  "vector.dot": {
+    "category": "Vector",
+    "docs": "`a` · `b`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "a",
+        "required": true,
+        "ty": "Vec3"
+      },
+      {
+        "name": "b",
+        "required": true,
+        "ty": "Vec3"
+      }
+    ],
+    "op": "vector.dot",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "f32"
+      }
+    ],
+    "pure": true
+  },
+  "vector.length": {
+    "category": "Vector",
+    "docs": "The vector's length.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "v",
+        "required": true,
+        "ty": "Vec3"
+      }
+    ],
+    "op": "vector.length",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "f32"
+      }
+    ],
+    "pure": true
+  },
+  "vector.normalize": {
+    "category": "Vector",
+    "docs": "The vector scaled to length 1 (zero stays zero).",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "v",
+        "required": true,
+        "ty": "Vec3"
+      }
+    ],
+    "op": "vector.normalize",
+    "outputs": [
+      {
+        "name": "out",
+        "required": false,
+        "ty": "Vec3"
+      }
+    ],
+    "pure": true
+  }
+}

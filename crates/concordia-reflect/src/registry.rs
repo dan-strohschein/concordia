@@ -384,6 +384,12 @@ impl TypeRegistry {
         self.by_name.get(name).map(|&i| &self.entries[i])
     }
 
+    /// Mutable lookup by stable name (to attach type data to dynamic types).
+    pub fn get_by_name_mut(&mut self, name: &str) -> Option<&mut TypeRegistration> {
+        let index = *self.by_name.get(name)?;
+        Some(&mut self.entries[index])
+    }
+
     /// Stable names of named types, sorted.
     pub fn names(&self) -> impl Iterator<Item = &'static str> + '_ {
         self.by_name.keys().copied()
@@ -412,4 +418,14 @@ impl TypeRegistry {
             .collect();
         serde_json::json!({ "title": "Concordia type index", "types": types })
     }
+}
+
+/// Marks a registration as a signal when its type can't say so itself (a script module's
+/// signals, M4 4.9).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SignalMarker;
+
+/// Whether `registration`'s type is a signal (`#[reflect(signal)]` or a [`SignalMarker`]).
+pub fn is_signal(registration: &TypeRegistration) -> bool {
+    registration.info().signal || registration.data::<SignalMarker>().is_some()
 }

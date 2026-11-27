@@ -1,0 +1,46 @@
+Graph(
+    exec: [],
+    id: "0193b0f2-0000-7000-8000-000000000103",
+    kind: Function,
+    layout: {},
+    nodes: {
+        "0193b0f2-0000-7000-8000-000000000001": (
+            inputs: {},
+            op: "graph.input",
+        ),
+        "0193b0f2-0000-7000-8000-000000000002": (
+            inputs: {
+                "a": Link("0193b0f2-0000-7000-8000-000000000001", "a"),
+                "b": Link("0193b0f2-0000-7000-8000-000000000001", "b"),
+            },
+            op: "vector.distance",
+        ),
+        "0193b0f2-0000-7000-8000-000000000003": (
+            inputs: {
+                "distance": Link("0193b0f2-0000-7000-8000-000000000002", "out"),
+            },
+            op: "graph.output",
+        ),
+    },
+    signature: (
+        inputs: [
+            (
+                name: "a",
+                ty: "Vec3",
+            ),
+            (
+                name: "b",
+                ty: "Vec3",
+            ),
+        ],
+        outputs: [
+            (
+                name: "distance",
+                ty: "f32",
+            ),
+        ],
+        pure: true,
+    ),
+    variables: [],
+    version: 1,
+)

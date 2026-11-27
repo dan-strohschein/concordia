@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// Signal: this entity started touching (or, for sensors, overlapping) `other`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Reflect)]
-#[reflect(category = "Physics")]
+#[reflect(signal, category = "Physics")]
 #[serde(deny_unknown_fields)]
 pub struct ContactBegan {
     /// The other entity.
@@ -18,7 +18,7 @@ pub struct ContactBegan {
 
 /// Signal: this entity stopped touching (or overlapping) `other`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Reflect)]
-#[reflect(category = "Physics")]
+#[reflect(signal, category = "Physics")]
 #[serde(deny_unknown_fields)]
 pub struct ContactEnded {
     /// The other entity.

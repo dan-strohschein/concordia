@@ -440,12 +440,12 @@ impl UiSounds {
 
 /// A button fired (signal, next tick).
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, Reflect)]
-#[reflect(category = "UI")]
+#[reflect(signal, category = "UI")]
 pub struct UiPressed;
 
 /// A toggle flipped (signal).
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, Reflect)]
-#[reflect(category = "UI")]
+#[reflect(signal, category = "UI")]
 pub struct UiToggled {
     /// Its new state.
     pub on: bool,
@@ -453,7 +453,7 @@ pub struct UiToggled {
 
 /// A slider moved (signal).
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, Reflect)]
-#[reflect(category = "UI")]
+#[reflect(signal, category = "UI")]
 pub struct UiValueChanged {
     /// The new value.
     pub value: f32,
@@ -461,7 +461,7 @@ pub struct UiValueChanged {
 
 /// A dropdown option or tab was chosen (signal).
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, Reflect)]
-#[reflect(category = "UI")]
+#[reflect(signal, category = "UI")]
 pub struct UiSelected {
     /// Its index.
     pub index: u32,
@@ -469,7 +469,7 @@ pub struct UiSelected {
 
 /// Focus arrived or left (signal).
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, Reflect)]
-#[reflect(category = "UI")]
+#[reflect(signal, category = "UI")]
 pub struct UiFocusChanged {
     /// Whether it now has focus.
     pub focused: bool,

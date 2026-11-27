@@ -1,0 +1,103 @@
+---
+source: crates/concordia-graph/tests/examples.rs
+expression: all
+---
+{
+  "data_cycle": [
+    {
+      "code": "data_cycle",
+      "message": "`a` closes a loop of data links",
+      "node_id": "0193b0f2-0000-7000-8000-000000000003",
+      "pin": "a",
+      "suggestion": null
+    }
+  ],
+  "generic_unresolved": [
+    {
+      "code": "generic_unresolved",
+      "message": "`math.add` takes a Numeric type here, not bool",
+      "node_id": "0193b0f2-0000-7000-8000-000000000002",
+      "pin": "a",
+      "suggestion": null
+    }
+  ],
+  "impure_in_pure": [
+    {
+      "code": "impure_in_pure",
+      "message": "`set.Health.value` has side effects, so a pure graph can't use it",
+      "node_id": "0193b0f2-0000-7000-8000-000000000002",
+      "pin": null,
+      "suggestion": null
+    }
+  ],
+  "two_roots": [
+    {
+      "code": "kind_rule",
+      "message": "a behavior tree needs exactly one `behavior.root` (it has 2)",
+      "node_id": null,
+      "pin": null,
+      "suggestion": null
+    }
+  ],
+  "type_mismatch": [
+    {
+      "code": "type_mismatch",
+      "message": "`branch`'s `cond` expects bool but gets f32",
+      "node_id": "0193b0f2-0000-7000-8000-000000000003",
+      "pin": "cond",
+      "suggestion": null
+    }
+  ],
+  "unconnected_input": [
+    {
+      "code": "unconnected_input",
+      "message": "`math.gt` needs `b` (Scalar): link it or give it a value",
+      "node_id": "0193b0f2-0000-7000-8000-000000000002",
+      "pin": "b",
+      "suggestion": null
+    }
+  ],
+  "unknown_node": [
+    {
+      "code": "unknown_node",
+      "message": "`cond` links to a missing node 0193b0f2-0000-7000-8000-000000000063",
+      "node_id": "0193b0f2-0000-7000-8000-000000000002",
+      "pin": "cond",
+      "suggestion": null
+    }
+  ],
+  "unknown_op": [
+    {
+      "code": "unknown_op",
+      "message": "no node `math.addd` in the library",
+      "node_id": "0193b0f2-0000-7000-8000-000000000002",
+      "pin": null,
+      "suggestion": "math.add, math.abs, math.div"
+    }
+  ],
+  "unknown_pin": [
+    {
+      "code": "unknown_pin",
+      "message": "`branch` has no input `condition`",
+      "node_id": "0193b0f2-0000-7000-8000-000000000002",
+      "pin": "condition",
+      "suggestion": "cond"
+    },
+    {
+      "code": "unconnected_input",
+      "message": "`branch` needs `cond` (bool): link it or give it a value",
+      "node_id": "0193b0f2-0000-7000-8000-000000000002",
+      "pin": "cond",
+      "suggestion": null
+    }
+  ],
+  "unknown_variable": [
+    {
+      "code": "unknown_variable",
+      "message": "`var.set.helth` names no declared variable",
+      "node_id": "0193b0f2-0000-7000-8000-000000000002",
+      "pin": null,
+      "suggestion": "var.set.health"
+    }
+  ]
+}

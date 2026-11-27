@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// Raised on a skinned entity when its playback crosses a clip event; delivered next tick.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
-#[reflect(category = "Animation")]
+#[reflect(signal, category = "Animation")]
 #[serde(deny_unknown_fields)]
 pub struct AnimEvent {
     /// The event's name.

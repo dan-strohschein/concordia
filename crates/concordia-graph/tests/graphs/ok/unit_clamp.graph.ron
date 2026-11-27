@@ -1,0 +1,43 @@
+Graph(
+    exec: [],
+    id: "0193b0f2-0000-7000-8000-000000000104",
+    kind: Function,
+    layout: {},
+    nodes: {
+        "0193b0f2-0000-7000-8000-000000000001": (
+            inputs: {},
+            op: "graph.input",
+        ),
+        "0193b0f2-0000-7000-8000-000000000002": (
+            inputs: {
+                "hi": Value(Float(1.0)),
+                "lo": Value(Float(0.0)),
+                "x": Link("0193b0f2-0000-7000-8000-000000000001", "x"),
+            },
+            op: "math.clamp",
+        ),
+        "0193b0f2-0000-7000-8000-000000000003": (
+            inputs: {
+                "y": Link("0193b0f2-0000-7000-8000-000000000002", "out"),
+            },
+            op: "graph.output",
+        ),
+    },
+    signature: (
+        inputs: [
+            (
+                name: "x",
+                ty: "f32",
+            ),
+        ],
+        outputs: [
+            (
+                name: "y",
+                ty: "f32",
+            ),
+        ],
+        pure: true,
+    ),
+    variables: [],
+    version: 1,
+)

@@ -25,6 +25,7 @@ mod dynamic;
 mod error;
 mod example;
 mod finite;
+mod graph_fn;
 mod hash;
 mod impls;
 mod info;
@@ -35,7 +36,7 @@ mod validate;
 mod value;
 pub mod wire;
 
-pub use concordia_reflect_derive::Reflect;
+pub use concordia_reflect_derive::{Reflect, graph_node};
 pub use desc::{
     FieldDesc, PrimitiveDesc, RangeDesc, ShapeDesc, TypeDesc, TypeRefDesc, VariantDesc,
     VariantShapeDesc,
@@ -44,12 +45,15 @@ pub use dynamic::DynReflect;
 pub use error::ReflectError;
 pub use example::example_json;
 pub use finite::find_non_finite;
+pub use graph_fn::GraphFnInfo;
 pub use hash::canonical_hash;
 pub use info::{
     DefaultValue, FieldInfo, Primitive, Range, Shape, TypeInfo, TypeRef, VariantInfo, VariantShape,
 };
 pub use reflect::Reflect;
-pub use registry::{JsonBuilder, RegistryError, TypeRegistration, TypeRegistry};
+pub use registry::{
+    JsonBuilder, RegistryError, SignalMarker, TypeRegistration, TypeRegistry, is_signal,
+};
 pub use schema::{DRAFT, index_entry, schema_for};
 pub use validate::validate_json;
 pub use value::{DynamicValue, MigrationReport, migrate};

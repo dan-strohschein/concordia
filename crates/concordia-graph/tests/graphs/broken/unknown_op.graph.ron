@@ -1,0 +1,9 @@
+Graph(
+    id: "0193b0f2-0000-7000-8000-00000000010b",
+    kind: Event,
+    version: 1,
+    nodes: {
+        "0193b0f2-0000-7000-8000-000000000001": (op: "event.on_tick", inputs: {}),
+        "0193b0f2-0000-7000-8000-000000000002": (op: "math.addd", inputs: {"a": Value(Float(1.0)), "b": Value(Float(2.0))}),
+    },
+)

@@ -6,10 +6,21 @@ mod attrs;
 mod expand_enum;
 mod expand_struct;
 mod fields;
+mod graph_node;
 
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, parse_macro_input};
+
+/// Describes a free function for the graph node library (M4 4.9):
+/// `#[graph_node(category = "Vector", pure)]` keeps the function and adds
+/// `<fn>_graph_node() -> concordia_reflect::GraphFnInfo`. Use it through `concordia_reflect`.
+#[proc_macro_attribute]
+pub fn graph_node(args: TokenStream, item: TokenStream) -> TokenStream {
+    graph_node::expand(args.into(), item.into())
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
 
 /// Derives `concordia_reflect::Reflect`. See the `concordia-reflect` crate docs.
 #[proc_macro_derive(Reflect, attributes(reflect))]
@@ -20,7 +31,7 @@ pub fn derive_reflect(input: TokenStream) -> TokenStream {
         .into()
 }
 
-/// Builder calls for the optional type-level `category`, `default` and `presentation`.
+/// Builder calls for the optional type-level `category`, `default`, `presentation` and `signal`.
 fn extras(container: &attrs::ContainerAttrs) -> proc_macro2::TokenStream {
     let category = container
         .category
@@ -43,7 +54,8 @@ fn extras(container: &attrs::ContainerAttrs) -> proc_macro2::TokenStream {
     let presentation = container
         .presentation
         .then(|| quote! { .with_presentation() });
-    quote! { #category #default #presentation }
+    let signal = container.signal.then(|| quote! { .with_signal() });
+    quote! { #category #default #presentation #signal }
 }
 
 fn expand(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {

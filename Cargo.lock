@@ -943,6 +943,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "concordia-graph"
+version = "0.0.0"
+dependencies = [
+ "blake3",
+ "concordia-core",
+ "concordia-reflect",
+ "concordia-scene",
+ "insta",
+ "jsonschema",
+ "proptest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "uuid",
+]
+
+[[package]]
 name = "concordia-import-fbx"
 version = "0.0.0"
 dependencies = [
@@ -1593,6 +1610,7 @@ dependencies = [
  "concordia-cluster",
  "concordia-core",
  "concordia-gen",
+ "concordia-graph",
  "concordia-input",
  "concordia-mcp",
  "concordia-pathtrace",
