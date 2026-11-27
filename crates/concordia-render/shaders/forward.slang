@@ -6,6 +6,7 @@ import bindless;
 import skin;
 import material;
 import vsm;
+import light;
 
 static const uint NO_TEXTURE = 0xffffffff;
 static const uint FLAG_UNLIT = 1;
@@ -771,13 +772,6 @@ uint cluster_of(Frame* frame, float4 frag, float3 world) {
     return x + dims.x * (y + dims.y * z);
 }
 
-// Inverse-square falloff windowed to zero at the range (Karis 2013).
-float distance_attenuation(float d2, float range) {
-    float r = d2 / (range * range);
-    float w = saturate(1.0 - r * r);
-    return w * w / max(d2, 1e-4);
-}
-
 // A count as a heat color: blue at `low`, green at `mid`, red at `high` or more.
 float3 heat(float count, float low, float mid, float high) {
     float3 blue = float3(0.0, 0.1, 0.6);
@@ -812,8 +806,7 @@ float3 punctual(Frame* frame, float4 frag, float3 world, float3 n, uint4* rows, 
         float3 to_light = light.position_range.xyz - world;
         float d2 = dot(to_light, to_light);
         float3 l = to_light * rsqrt(max(d2, 1e-8));
-        float spot = saturate(dot(-l, light.direction.xyz) * light.spot.x + light.spot.y);
-        float atten = distance_attenuation(d2, light.position_range.w) * spot * spot;
+        float atten = distance_attenuation(d2, light.position_range.w) * spot_attenuation(dot(-l, light.direction.xyz), light.spot.x, light.spot.y);
         uint shadow_slot = asuint(light.spot.z);
         if (shadow_slot != 0 && atten > 0.0) { atten *= vsm_local_shadow(frame, shadow_slot - 1, world, n, l, frag.xy); }
         sum += run(frame, rows, EVAL_LIGHT, v, l, uv, 0, blend).color * light.radiance.rgb * atten;
@@ -864,8 +857,7 @@ float3 punctual_single(Frame* frame, float4 frag, float3 world, float3 n, Closur
         float3 to_light = light.position_range.xyz - world;
         float d2 = dot(to_light, to_light);
         float3 l = to_light * rsqrt(max(d2, 1e-8));
-        float spot = saturate(dot(-l, light.direction.xyz) * light.spot.x + light.spot.y);
-        float atten = distance_attenuation(d2, light.position_range.w) * spot * spot;
+        float atten = distance_attenuation(d2, light.position_range.w) * spot_attenuation(dot(-l, light.direction.xyz), light.spot.x, light.spot.y);
         uint shadow_slot = asuint(light.spot.z);
         if (shadow_slot != 0 && atten > 0.0) { atten *= vsm_local_shadow(frame, shadow_slot - 1, world, n, l, frag.xy); }
         sum += lit_single(frame, c, v, l, blend) * light.radiance.rgb * atten;
