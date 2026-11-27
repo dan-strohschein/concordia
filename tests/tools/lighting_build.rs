@@ -220,8 +220,18 @@ fn cornell(b: &mut Builder, urn: &str) -> Result<()> {
     b.block("Back", "matte_white", [0.0, 2.5, -2.6], [5.4, 5.4, 0.2])?;
     b.block("Left", "matte_red", [-2.6, 2.5, 0.0], [0.2, 5.4, 5.4])?;
     b.block("Right", "matte_green", [2.6, 2.5, 0.0], [0.2, 5.4, 5.4])?;
-    b.block("Tall block", "matte_white", [-0.9, 1.5, -0.8], [1.4, 3.0, 1.4])?;
-    b.block("Short block", "matte_white", [0.9, 0.75, 0.6], [1.4, 1.5, 1.4])?;
+    b.block(
+        "Tall block",
+        "matte_white",
+        [-0.9, 1.5, -0.8],
+        [1.4, 3.0, 1.4],
+    )?;
+    b.block(
+        "Short block",
+        "matte_white",
+        [0.9, 0.75, 0.6],
+        [1.4, 1.5, 1.4],
+    )?;
     b.place("Orb", urn, "spell_glow", [-0.6, 0.6, 1.3], [0.5, 0.5, 0.5])?;
     let rotation = Quat::from_rotation_arc(Vec3::NEG_Z, Vec3::NEG_Y);
     b.call(
@@ -276,9 +286,14 @@ fn iso_spells(b: &mut Builder, urn: &str) -> Result<()> {
             }, "actor": ACTOR}),
         )?;
     }
-    for (i, at) in [[-2.0f32, 0.5, 1.0], [2.5, 0.5, -0.5], [0.0, 0.5, 4.5], [-4.0, 0.5, -4.0]]
-        .into_iter()
-        .enumerate()
+    for (i, at) in [
+        [-2.0f32, 0.5, 1.0],
+        [2.5, 0.5, -0.5],
+        [0.0, 0.5, 4.5],
+        [-4.0, 0.5, -4.0],
+    ]
+    .into_iter()
+    .enumerate()
     {
         b.place(&format!("Orb {i}"), urn, "spell_glow", at, [0.6, 0.6, 0.6])?;
     }
