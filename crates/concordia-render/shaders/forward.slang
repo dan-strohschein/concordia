@@ -233,12 +233,33 @@ float3 vsm_tint(Frame* frame, float3 world, float3 n, uint mode) {
     return border ? hue * 0.25 : hue;
 }
 
-// A VSM caster fragment of an M1 draw (`ShadowPush`; M4 4.7).
-[shader("fragment")]
-void vsm_fs(float4 pos : SV_Position, uniform ShadowPush push) {
+// VSM page casters (M4 4.7a2): `vsm_page_vs` draws an M1 caster draw's pairs (pair `bases[draw] +
+// instance`; `units` the binned units), each placed in its page; `vsm_page_fs` keeps the nearest
+// depth there. The meshlet casters' vertex stage is `meshlet_vsm_page_vs`.
+struct VsmPagePush { uint frame; uint instances; uint indices; uint positions; uint joints; uint weights; uint pairs; uint bases; uint units; uint draw; };
+
+[shader("vertex")]
+PageVertex vsm_page_vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform VsmPagePush push) {
     Frame* frame = (Frame*)g_buffers.ptr[push.frame];
-    vsm_write(frame.vsm.y, frame.vsm.z, push.cascade, pos);
+    uint4 pair = ((uint4*)g_buffers.ptr[push.pairs])[g_buffers.ptr[push.bases][push.draw] + iid];
+    uint instance = ((uint4*)g_buffers.ptr[push.units])[pair.x * 2 + 1].z;
+    Instance* inst = ((Instance*)g_buffers.ptr[push.instances]) + instance;
+    uint v = ((uint*)g_buffers.ptr[push.indices])[vid];
+    float3 p = read3(push.positions, v);
+    if (inst.skin.y != 0) {
+        p = skin_vertex(frame.buffers.w, inst.skin.x, push.joints, push.weights, v, p, float3(0.0, 0.0, 1.0), float3(1.0, 0.0, 0.0)).position;
+    }
+    PageVertex o;
+    o.position = vsm_to_page(cascade_xform(frame, 1 + pair.y, xform(inst.model, float4(p, 1.0))), pair.z);
+    o.page = uint2(pair.w, frame.vsm.y);
+    return o;
 }
+
+[shader("fragment")]
+void vsm_page_fs(PageVertex v) {
+    vsm_write_page(v.page.y, v.page.x, v.position);
+}
+
 
 // Where the virtual shadow maps hold `world` (offset along `n`): the first level from the pixel's
 // own whose page under it is valid. Returns that level (the level count when none, or beyond max

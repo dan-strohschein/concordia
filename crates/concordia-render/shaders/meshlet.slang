@@ -459,18 +459,106 @@ void meshlet_mesh(uint lane : SV_GroupThreadID, uint group : SV_GroupID, in payl
 
 struct ShadowVertex { float4 position : SV_Position; };
 
-// A VSM caster fragment of a meshlet bucket (compute route, `MeshletPush`; M4 4.7).
-[shader("fragment")]
-void meshlet_vsm_fs(float4 pos : SV_Position, uniform MeshletPush push) {
-    Frame* frame = (Frame*)g_buffers.ptr[push.frame];
-    vsm_write(frame.vsm.y, frame.vsm.z, push.cascade, pos);
+// Binning the levels' surviving meshlets to pages (M4 4.7a2; `vsm::bin`), one 64-lane group per
+// survivor. `vsm_meshlet_ranks` numbers the survivors bucket by bucket (ranks[b]: the first of
+// bucket b; ranks[bucket_count]: all of them) and writes the groups' indirect dispatch; group `g`
+// is survivor `g`. counts: dirty pages per survivor; scanned: their exclusive sums; pairs: (slot,
+// level, page in level, physical page) in survivor order, row by row.
+struct MeshletRanksPush { uint buckets; uint args; uint bucket_count; uint ranks; uint dispatch; };
+
+[shader("compute")]
+[numthreads(1, 1, 1)]
+void meshlet_vsm_ranks(uniform MeshletRanksPush push) {
+    uint* ranks = g_buffers.ptr[push.ranks];
+    uint n = 0;
+    for (uint b = 0; b < push.bucket_count; b++) {
+        ranks[b] = n;
+        n += ((uint4*)g_buffers.ptr[push.args])[b].y;
+    }
+    ranks[push.bucket_count] = n;
+    uint* d = g_buffers.ptr[push.dispatch];
+    d[0] = min(n, 65535u);
+    d[1] = n <= 65535 ? 1 : (n + 65534) / 65535;
+    d[2] = 1;
 }
 
-// The same on the mesh-shader route (`TaskPush`).
-[shader("fragment")]
-void meshlet_vsm_mesh_fs(ShadowVertex v, uniform TaskPush push) {
+struct MeshletBinPush { uint buckets; uint bucket_count; uint ranks; uint entries; uint instances; uint meshes; uint params; uint views; uint table; uint counts; uint scanned; uint pairs; uint capacity; };
+
+// Survivor `g`'s slot, level and pages (lo.xy, hi.xy); false past the last survivor.
+bool survivor(MeshletBinPush push, uint g, out uint slot, out uint level, out int4 rect) {
+    uint* ranks = g_buffers.ptr[push.ranks];
+    slot = 0;
+    level = 0;
+    rect = int4(1, 1, 0, 0);
+    if (g >= ranks[push.bucket_count]) { return false; }
+    uint b = 0;
+    while (b + 1 < push.bucket_count && ranks[b + 1] <= g) { b++; }
+    uint4 bucket = ((uint4*)g_buffers.ptr[push.buckets])[b];
+    level = (bucket.w & 0xff) - 1;
+    slot = bucket.x + g - ranks[b];
+    uint2 entry = ((uint2*)g_buffers.ptr[push.entries])[slot];
+    Instance* inst = ((Instance*)g_buffers.ptr[push.instances]) + entry.x;
+    float4 sphere = world_sphere(inst, push.meshes, entry.y);
+    rect = vsm_sphere_rect(push.params, push.views, level, sphere.xyz, sphere.w);
+    return true;
+}
+
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void meshlet_vsm_count(uint lane : SV_GroupThreadID, uint3 group : SV_GroupID, uniform MeshletBinPush push) {
+    uint g = group.y * 65535 + group.x;
+    uint slot;
+    uint level;
+    int4 rect;
+    if (!survivor(push, g, slot, level, rect)) { return; }
+    uint n = vsm_count_due(lane, push.params, push.table, level, rect);
+    if (lane == 0) { g_buffers.ptr[push.counts][g] = n; }
+}
+
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void meshlet_vsm_emit(uint lane : SV_GroupThreadID, uint3 group : SV_GroupID, uniform MeshletBinPush push) {
+    uint g = group.y * 65535 + group.x;
+    uint slot;
+    uint level;
+    int4 rect;
+    if (!survivor(push, g, slot, level, rect)) { return; }
+    vsm_emit_due(lane, push.params, push.table, level, rect, slot, g_buffers.ptr[push.scanned][g], push.pairs, push.capacity);
+}
+
+// One `DrawIndirect` record for every kept pair (`vertices` per pair), and (pairs wanted, kept).
+struct MeshletPairsPush { uint scanned; uint total; uint args; uint totals; uint vertices; uint capacity; };
+
+[shader("compute")]
+[numthreads(1, 1, 1)]
+void meshlet_vsm_args(uniform MeshletPairsPush push) {
+    uint all = g_buffers.ptr[push.scanned][push.total];
+    uint kept = min(all, push.capacity);
+    ((uint4*)g_buffers.ptr[push.args])[0] = uint4(push.vertices, kept, 0, 0);
+    g_buffers.ptr[push.totals][0] = all;
+    g_buffers.ptr[push.totals][1] = kept;
+}
+
+// A binned meshlet's vertex placed in its page: pair `iid` names the slot (`entries`), level and
+// page. Frame first, as `vsm_page_fs` needs nothing else.
+struct MeshletPagePush { uint frame; uint instances; uint entries; uint meshes; uint pairs; };
+
+[shader("vertex")]
+PageVertex meshlet_vsm_page_vs(uint vid : SV_VertexID, uint iid : SV_InstanceID, uniform MeshletPagePush push) {
     Frame* frame = (Frame*)g_buffers.ptr[push.frame];
-    vsm_write(frame.vsm.y, frame.vsm.z, push.cascade, v.position);
+    uint4 pair = ((uint4*)g_buffers.ptr[push.pairs])[iid];
+    uint2 entry = ((uint2*)g_buffers.ptr[push.entries])[pair.x];
+    Instance* inst = ((Instance*)g_buffers.ptr[push.instances]) + entry.x;
+    MeshletAt at = locate(push.meshes, inst, entry.y);
+    PageVertex o;
+    o.page = uint2(pair.w, frame.vsm.y);
+    if (vid / 3 >= meshlet_triangles(at)) {
+        o.position = NOWHERE;
+        return o;
+    }
+    float3 p = read3(at.row_a.y, mesh_vertex(at, local_corner(at, vid)));
+    o.position = vsm_to_page(cascade_xform(frame, 1 + pair.y, xform(inst.model, float4(p, 1.0))), pair.z);
+    return o;
 }
 
 [shader("mesh")]

@@ -30,6 +30,10 @@ pub struct ShadowStats {
     pub pages_starved: u64,
     /// Meshlets drawn into the levels (each culled for its level and its pages).
     pub shadow_meshlets: u64,
+    /// Caster-page pairs drawn: each caster drawn once per page due under it (4.7a2).
+    pub page_draws: u64,
+    /// Pairs past the pair buffers' room, not drawn (their pages lose those casters' shadows).
+    pub page_draws_dropped: u64,
 }
 
 /// A frame's VSM counts and the levels' cull codes on their way back (readback buffers).
@@ -38,6 +42,8 @@ pub(crate) struct VsmReadback {
     pub(crate) counts: Buffer,
     /// The levels' cull codes and how many there are.
     pub(crate) codes: Option<(Buffer, u32)>,
+    /// Each binning's (pairs wanted, pairs kept).
+    pub(crate) totals: Vec<Buffer>,
 }
 
 impl VsmReadback {
@@ -58,6 +64,12 @@ impl VsmReadback {
                 .count() as u64,
             _ => 0,
         };
+        let (mut wanted, mut kept) = (0u64, 0u64);
+        for buffer in &self.totals {
+            let w = words_of(device, *buffer, 2)?;
+            (wanted, kept) = (wanted + u64::from(w[0]), kept + u64::from(w[1]));
+        }
+        (stats.page_draws, stats.page_draws_dropped) = (kept, wanted - kept);
         Ok(())
     }
 }

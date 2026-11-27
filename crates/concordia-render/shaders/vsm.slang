@@ -51,22 +51,111 @@ public float4 vsm_clip(uint views, uint view, float3 world) {
     return m[0] * world.x + m[1] * world.y + m[2] * world.z + m[3];
 }
 
+// The pages (lo.xy, hi.xy) of `level` under the world sphere (`c`, `r`), one texel wider, clamped
+// to the level; empty (lo > hi) when the sphere misses the level (`vsm::bin`).
+public int4 vsm_sphere_rect(uint params, uint views, uint level, float3 c, float r) {
+    VsmParams* p = vsm_params(params);
+    float2 t = vsm_texel(vsm_clip(views, 1 + level, c));
+    float rt = r / (p.choice.x * exp2(float(level))) + 1.0;
+    int2 lo = int2(floor((t - rt) / float(VSM_PAGE_TEXELS)));
+    int2 hi = int2(floor((t + rt) / float(VSM_PAGE_TEXELS)));
+    int last = int(VSM_PAGES_PER_SIDE) - 1;
+    if (any(hi < 0) || any(lo > last)) { return int4(1, 1, 0, 0); }
+    return int4(clamp(lo, int2(0, 0), int2(last, last)), clamp(hi, int2(0, 0), int2(last, last)));
+}
+
+// The physical page + 1 of page `page` (in the level) of `level` when it is due to be drawn (dirty,
+// with a physical page), else 0.
+public uint vsm_due(uint params, uint table, uint level, int2 page) {
+    uint entry = g_buffers.ptr[table][vsm_slot(level, vsm_origin(params, level) + page)];
+    return (entry & VSM_DIRTY) != 0 ? vsm_physical(entry) : 0;
+}
+
+// Binning by one 64-lane group per caster (4.7a2): the lanes walk the caster's page rect in
+// chunks of 64 pages, row by row, so pairs keep that order.
+static const uint VSM_BIN_LANES = 64;
+groupshared uint g_vsm_bin[VSM_BIN_LANES];
+
+// Pages in `rect` (0 when empty) and page `i` of it, row by row.
+uint rect_area(int4 rect) { return rect.z < rect.x || rect.w < rect.y ? 0 : uint(rect.z - rect.x + 1) * uint(rect.w - rect.y + 1); }
+int2 rect_page(int4 rect, uint i) { uint w = uint(rect.z - rect.x + 1); return int2(rect.x + int(i % w), rect.y + int(i / w)); }
+
+// Pages due to be drawn in `rect` of `level`, counted by the group (every lane gets the total).
+public uint vsm_count_due(uint lane, uint params, uint table, uint level, int4 rect) {
+    uint area = rect_area(rect);
+    uint n = 0;
+    for (uint i = lane; i < area; i += VSM_BIN_LANES) {
+        n += vsm_due(params, table, level, rect_page(rect, i)) != 0 ? 1 : 0;
+    }
+    g_vsm_bin[lane] = n;
+    GroupMemoryBarrierWithGroupSync();
+    for (uint s = VSM_BIN_LANES / 2; s > 0; s >>= 1) {
+        if (lane < s) { g_vsm_bin[lane] += g_vsm_bin[lane + s]; }
+        GroupMemoryBarrierWithGroupSync();
+    }
+    uint total = g_vsm_bin[0];
+    GroupMemoryBarrierWithGroupSync();
+    return total;
+}
+
+// Writes, as a group, the pairs (caster, level, page in the level, physical page) of `rect`'s
+// pages due to be drawn, row by row, from pair `at`; none at or past `capacity`.
+public void vsm_emit_due(uint lane, uint params, uint table, uint level, int4 rect, uint caster, uint at, uint pairs, uint capacity) {
+    uint4* out = (uint4*)g_buffers.ptr[pairs];
+    uint area = rect_area(rect);
+    for (uint base = 0; base < area; base += VSM_BIN_LANES) {
+        uint i = base + lane;
+        int2 p = int2(0, 0);
+        uint page = 0;
+        if (i < area) {
+            p = rect_page(rect, i);
+            page = vsm_due(params, table, level, p);
+        }
+        g_vsm_bin[lane] = page != 0 ? 1 : 0;
+        GroupMemoryBarrierWithGroupSync();
+        for (uint s = 1; s < VSM_BIN_LANES; s <<= 1) {
+            uint v = lane >= s ? g_vsm_bin[lane - s] : 0;
+            GroupMemoryBarrierWithGroupSync();
+            g_vsm_bin[lane] += v;
+            GroupMemoryBarrierWithGroupSync();
+        }
+        uint inclusive = g_vsm_bin[lane];
+        uint chunk = g_vsm_bin[VSM_BIN_LANES - 1];
+        GroupMemoryBarrierWithGroupSync();
+        uint idx = at + inclusive - 1;
+        if (page != 0 && idx < capacity) {
+            out[idx] = uint4(caster, level, uint(p.y) * VSM_PAGES_PER_SIDE + uint(p.x), page - 1);
+        }
+        at += chunk;
+    }
+}
+
+// `clip` (a level's orthographic clip position) placed in page `page` (in the level, row by row)
+// of a 128 × 128 pass: the level scaled by 128 about the page's centre, so the rasterizer clips to it.
+public float4 vsm_to_page(float4 clip, uint page) {
+    float2 p = float2(float(page % VSM_PAGES_PER_SIDE), float(page / VSM_PAGES_PER_SIDE));
+    float side = float(VSM_PAGES_PER_SIDE);
+    float2 centre = float2((p.x + 0.5) / side * 2.0 - 1.0, 1.0 - (p.y + 0.5) / side * 2.0);
+    return float4((clip.xy - centre * clip.w) * side, clip.z, clip.w);
+}
+
+// A caster vertex placed in its page; `page` = (physical page, parameter block) for the fragment.
+public struct PageVertex {
+    public float4 position : SV_Position;
+    public nointerpolation uint2 page : PAGE;
+};
+
 // The table entry for virtual texel `t` of `level`.
 public uint vsm_entry(uint params, uint table, uint level, int2 t) {
     int2 page = int2(floor(float2(t) / float(VSM_PAGE_TEXELS)));
     return g_buffers.ptr[table][vsm_slot(level, vsm_origin(params, level) + page)];
 }
 
-// Keeps the nearest depth of a caster fragment at virtual texel `pos.xy` of depth view `view`
-// (1 + level) in its page, when the page is allocated and due to be drawn.
-public void vsm_write(uint params, uint table, uint view, float4 pos) {
-    uint level = view - 1;
-    uint entry = vsm_entry(params, table, level, int2(pos.xy));
-    uint page = vsm_physical(entry);
-    if (page == 0 || (entry & VSM_DIRTY) == 0) return;
-    uint2 t = uint2(pos.xy) % VSM_PAGE_TEXELS;
+// Keeps the nearest depth of a caster fragment at texel `pos.xy` of physical page `page` (in
+// the pool of parameter block `params`).
+public void vsm_write_page(uint params, uint page, float4 pos) {
     uint old;
-    InterlockedMax(vsm_word(vsm_params(params), page - 1, t)[0], asuint(pos.z), old);
+    InterlockedMax(vsm_word(vsm_params(params), page, uint2(pos.xy))[0], asuint(pos.z), old);
 }
 
 // The finest level whose texels are at least the pixel's footprint × 2^bias (`level_for_footprint`).

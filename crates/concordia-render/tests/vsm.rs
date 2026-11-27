@@ -354,6 +354,18 @@ fn page_rect_culling_skips_meshlets_over_clean_pages() {
         let with = r.stats().shadows.shadow_meshlets;
         assert!(without > 0);
         assert_eq!(with, without, "{:?}", r.stats().raster_path);
+        // Per-page drawing (4.7a2): the far balls add no caster-page pairs either.
+        let pairs_far = r.stats().shadows;
+        render(&mut r, &mut near, ShadowTechnique::vsm, ViewMode::lit);
+        let pairs_near = r.stats().shadows;
+        assert!(
+            pairs_near.page_draws > 0 && pairs_near.page_draws_dropped == 0,
+            "{pairs_near:?}"
+        );
+        assert_eq!(
+            pairs_far.page_draws, pairs_near.page_draws,
+            "page_draws_follow_the_pages_drawn"
+        );
     }
 }
 

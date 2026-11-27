@@ -266,7 +266,7 @@ impl PageWork {
 }
 
 /// Compute writes of `buffers` before indirect dispatches and later shader reads.
-fn indirect_barrier(buffers: &[Buffer]) -> Command {
+pub(crate) fn indirect_barrier(buffers: &[Buffer]) -> Command {
     let written = Access {
         stages: Stages::COMPUTE,
         access: AccessFlags::SHADER_WRITE,

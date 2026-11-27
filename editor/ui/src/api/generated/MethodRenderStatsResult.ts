@@ -259,6 +259,14 @@ export interface ShadowStats {
    */
   levels: number;
   /**
+   * Caster-page pairs drawn: each caster drawn once per page due under it (4.7a2).
+   */
+  page_draws: number;
+  /**
+   * Pairs past the pair buffers' room, not drawn (their pages lose those casters' shadows).
+   */
+  page_draws_dropped: number;
+  /**
    * Requested pages that got a physical page (and were drawn).
    */
   pages_allocated: number;

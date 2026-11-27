@@ -18,7 +18,7 @@ M1 shadows the sun with three or four stabilized cascades of 2048². Near the ca
 ## Consequences
 - The frame under `vsm` gains a depth prepass (it also feeds the HZB), page marking, allocation and page rendering; CSM frames are unchanged.
 - Sharper shadows: against `sun_courtyard`'s path-traced direct-only references, VSM's FLIP is 0.50× and 0.70× CSM's.
-- **4.7a's page rendering rasterizes each level over its whole virtual extent**, so its cost grows with the casters' area in the fine levels (29.7 ms on the courtyard, 51–64 ms on the canyon, M3 Pro). Rasterizing per page (casters paired with the pages they touch) is required before VSM can be the default; see the 4.7 plan's As built.
+- **Casters are drawn per page** (4.7a2): binned on the GPU to the pages due under them and drawn one page per pair, so the cost follows the casters over needed pages, not the levels' virtual area (the courtyard's page pass fell from 29.7 ms to about 1 ms). Uncached, a dense scene still redraws every caster under its pages each frame (the canyon: 90k–330k meshlets, 11–37 ms); caching (4.7b) is required before VSM can be the default there, and a mesh-shader page path and meshlet LODs are further levers.
 - Memory: 256 MB by default for the pool, about 1 MB of page tables.
 
 ## Alternatives considered

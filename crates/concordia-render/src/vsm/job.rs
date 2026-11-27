@@ -150,59 +150,78 @@ pub(crate) fn add_page_passes(
     );
 }
 
-/// What draws a frame's VSM casters: the M1 casters on `m1_pipeline` (depth view filled per level)
-/// and one meshlet bucket per level.
+/// What draws a frame's VSM casters, one page per pair (M4 4.7a2): the levels' meshlet job (its
+/// cull runs as `vsm.cull`), the binning of its survivors and of the M1 casters (`vsm.bin`), and
+/// each draw's push constants and arguments (`vsm.render`).
 pub(crate) struct CasterDraws {
-    pub(crate) m1_pipeline: concordia_rhi::Pipeline,
-    pub(crate) m1: Vec<crate::shadow_pass::ShadowDraw>,
-    pub(crate) buckets: Vec<crate::meshlet_pass::BucketDraw>,
-    /// The levels' meshlet job (its compute cull runs as `vsm.cull`) and its entry count.
     pub(crate) cull: Option<crate::meshlet_pass::MeshletJob>,
-    pub(crate) entries: u32,
-    pub(crate) levels: u32,
+    pub(crate) meshlet_bins: Option<super::bin::MeshletBins>,
+    pub(crate) unit_bins: Option<super::bin::UnitBins>,
+    /// The page pipelines (M1 casters, meshlets).
+    pub(crate) pipelines: (concordia_rhi::Pipeline, concordia_rhi::Pipeline),
+    /// Per M1 caster draw: its push constants (`VsmPagePush`) and vertex count's record.
+    pub(crate) m1: Vec<Vec<u8>>,
+    /// The meshlet pairs' push constants (`MeshletPagePush`).
+    pub(crate) meshlet_push: Vec<u8>,
     /// The pool, written here and read by `forward`.
     pub(crate) pool: Vec<Buffer>,
+    /// Slots in the levels' meshlet plan (their cull codes are read back).
+    pub(crate) entries: u32,
 }
 
-/// `vsm.render`: per level, an attachment-less pass over the whole virtual map in which every
-/// caster fragment keeps the nearest depth in its page (pages not due to be drawn are skipped).
+/// `vsm.cull` (compute route), `vsm.bin` and `vsm.render`: a 128 × 128 attachment-less pass in
+/// which each pair's caster is drawn into its own page.
 pub(crate) fn add_render_pass(graph: &mut RenderGraph, draws: CasterDraws) {
     use concordia_rhi::{Command, RenderPassDesc};
     if let Some(job) = &draws.cull {
         job.add_named_pass(graph, "vsm.cull");
     }
-    let side = std::num::NonZeroU32::new(super::table::VIRTUAL_TEXELS)
-        .unwrap_or(std::num::NonZeroU32::MIN);
+    let mut bin: Vec<Command> = Vec::new();
+    if let Some(b) = &draws.meshlet_bins {
+        bin.extend_from_slice(b.commands());
+    }
+    if let Some(b) = &draws.unit_bins {
+        bin.extend_from_slice(b.commands());
+    }
+    graph.add_pass_recorded(
+        "vsm.bin",
+        |p| p.side_effect(),
+        Some(Box::new(move |ctx: &mut PassContext<'_>| {
+            ctx.commands.commands.extend(bin.iter().cloned());
+            Ok(())
+        })),
+    );
+    let side =
+        std::num::NonZeroU32::new(super::table::PAGE_TEXELS).unwrap_or(std::num::NonZeroU32::MIN);
     graph.add_pass_recorded(
         "vsm.render",
         |p| p.side_effect(),
         Some(Box::new(move |ctx: &mut PassContext<'_>| {
-            for level in 0..draws.levels {
-                ctx.commands.push(Command::BeginRenderPass(RenderPassDesc {
-                    colors: Vec::new(),
-                    depth: None,
-                    extent: Some([side, side]),
-                }));
-                if !draws.m1.is_empty() {
-                    ctx.commands.push(Command::SetPipeline(draws.m1_pipeline));
-                }
-                for draw in &draws.m1 {
-                    let push = crate::shadow_pass::ShadowPush {
-                        cascade: 1 + level,
-                        ..draw.push
-                    };
-                    ctx.commands.push(Command::PushConstants(push.bytes()));
-                    ctx.commands.push(Command::Draw {
-                        vertices: 0..draw.vertices,
-                        instances: 0..draw.instances,
+            ctx.commands.push(Command::BeginRenderPass(RenderPassDesc {
+                colors: Vec::new(),
+                depth: None,
+                extent: Some([side, side]),
+            }));
+            if let Some(units) = &draws.unit_bins {
+                ctx.commands.push(Command::SetPipeline(draws.pipelines.0));
+                for (d, push) in draws.m1.iter().enumerate() {
+                    ctx.commands.push(Command::PushConstants(push.clone()));
+                    ctx.commands.push(Command::DrawIndirect {
+                        args: units.args,
+                        offset: d as u64 * concordia_rhi::DRAW_INDIRECT_BYTES,
                     });
                 }
-                if let Some(bucket) = draws.buckets.get(level as usize) {
-                    ctx.commands.push(Command::SetPipeline(bucket.pipeline));
-                    ctx.commands.commands.extend(bucket.commands());
-                }
-                ctx.commands.push(Command::EndRenderPass);
             }
+            if let Some(m) = &draws.meshlet_bins {
+                ctx.commands.push(Command::SetPipeline(draws.pipelines.1));
+                ctx.commands
+                    .push(Command::PushConstants(draws.meshlet_push.clone()));
+                ctx.commands.push(Command::DrawIndirect {
+                    args: m.args,
+                    offset: 0,
+                });
+            }
+            ctx.commands.push(Command::EndRenderPass);
             ctx.commands.push(pool_written(&draws.pool));
             Ok(())
         })),

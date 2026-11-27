@@ -111,3 +111,54 @@ void vsm_clear(uint lane : SV_GroupThreadID, uint3 group : SV_GroupID, uniform C
         *vsm_word(p, group.x, uint2(i % VSM_PAGE_TEXELS, i / VSM_PAGE_TEXELS)) = 0;
     }
 }
+
+// Binning non-meshlet casters to pages (4.7a2, `vsm::bin`). units: per unit a world sphere row
+// and (draw, level, instance, 0), ordered by draw; counts: dirty pages per unit; scanned: their
+// exclusive sums; pairs: (unit, level, page in level, physical) in unit order, row by row.
+struct UnitPush { uint units; uint count; uint params; uint views; uint table; uint counts; uint scanned; uint pairs; uint capacity; };
+
+struct UnitRows { float4 sphere; uint4 at; };
+
+// One 64-lane group per unit (rows of 65535 groups).
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void vsm_unit_count(uint lane : SV_GroupThreadID, uint3 group : SV_GroupID, uniform UnitPush push) {
+    uint i = group.y * 65535 + group.x;
+    if (i >= push.count) return;
+    UnitRows u = ((UnitRows*)g_buffers.ptr[push.units])[i];
+    int4 rect = vsm_sphere_rect(push.params, push.views, u.at.y, u.sphere.xyz, u.sphere.w);
+    uint n = vsm_count_due(lane, push.params, push.table, u.at.y, rect);
+    if (lane == 0) { g_buffers.ptr[push.counts][i] = n; }
+}
+
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void vsm_unit_emit(uint lane : SV_GroupThreadID, uint3 group : SV_GroupID, uniform UnitPush push) {
+    uint i = group.y * 65535 + group.x;
+    if (i >= push.count) return;
+    UnitRows u = ((UnitRows*)g_buffers.ptr[push.units])[i];
+    int4 rect = vsm_sphere_rect(push.params, push.views, u.at.y, u.sphere.xyz, u.sphere.w);
+    vsm_emit_due(lane, push.params, push.table, u.at.y, rect, i, g_buffers.ptr[push.scanned][i], push.pairs, push.capacity);
+}
+
+// Per draw: spans (first unit, units, vertices, 0); args: a `DrawIndirect` record of its kept
+// pairs; bases: its first pair; totals: (pairs wanted, pairs kept).
+struct ArgsPush { uint spans; uint draws; uint scanned; uint args; uint bases; uint totals; uint count; uint capacity; };
+
+[shader("compute")]
+[numthreads(64, 1, 1)]
+void vsm_unit_args(uint3 id : SV_DispatchThreadID, uniform ArgsPush push) {
+    uint d = id.x;
+    uint* scanned = g_buffers.ptr[push.scanned];
+    if (d == 0) {
+        uint all = scanned[push.count];
+        g_buffers.ptr[push.totals][0] = all;
+        g_buffers.ptr[push.totals][1] = min(all, push.capacity);
+    }
+    if (d >= push.draws) return;
+    uint4 span = ((uint4*)g_buffers.ptr[push.spans])[d];
+    uint base = min(scanned[span.x], push.capacity);
+    uint end = min(scanned[span.x + span.y], push.capacity);
+    ((uint4*)g_buffers.ptr[push.args])[d] = uint4(span.z, end - base, 0, 0);
+    g_buffers.ptr[push.bases][d] = base;
+}

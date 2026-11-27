@@ -1222,6 +1222,8 @@ impl Renderer {
         let mut draws: Vec<Draw> = Vec::with_capacity(order.len());
         let mut casters: Vec<ShadowDraw> = Vec::new();
         let mut prepass_draws: Vec<ShadowDraw> = Vec::new();
+        // Each M1 caster instance's world sphere, in caster order (virtual shadow maps).
+        let mut caster_spheres = Vec::new();
         // Meshlet-path instances are culled on the GPU (M4 4.4); the CPU culls the M1 path's.
         let culled = order
             .iter()
@@ -1279,6 +1281,9 @@ impl Renderer {
                 continue;
             }
             if casts {
+                if vsm_on {
+                    caster_spheres.push(crate::vsm::world_sphere(placed.bounds, &placed.world));
+                }
                 match casters.last_mut() {
                     Some(c)
                         if c.push.indices == mesh.indices
@@ -1460,28 +1465,40 @@ impl Renderer {
                 shadow: self.pipelines.meshlet_shadow(),
             },
         };
-        let page_writer = vsm_casters.map(|c| match route {
-            crate::meshlet::Route::MeshTasks => c.mesh.unwrap_or(c.meshlets),
-            crate::meshlet::Route::ComputeIndirect => c.meshlets,
-        });
         let meshlets = MeshletJob::prepare(
             device,
             &mut up,
             &meshlet_plan,
             (tables, pipelines, passes),
-            page_writer,
+            vsm_on,
             &mut kept,
         )?;
+        // The levels' casters always take the compute route: binning reads their survivors.
+        let compute = RoutePipelines::ComputeIndirect {
+            cull: self.pipelines.cull(),
+            shadow: self.pipelines.meshlet_shadow(),
+        };
         let vsm_meshlets = match &vsm_plan {
             Some(plan) => MeshletJob::prepare(
                 device,
                 &mut up,
                 plan,
-                (tables, pipelines, crate::meshlet_pass::Passes::Single),
-                page_writer,
+                (tables, compute, crate::meshlet_pass::Passes::Single),
+                false,
                 &mut kept,
             )?,
             None => None,
+        };
+        let vsm_draws = match (vsm_casters, &vsm) {
+            (Some(c), Some(job)) => Some(self.vsm_caster_draws(
+                (device, &mut up),
+                (c, job),
+                (vsm_meshlets.clone(), vsm_plan.as_ref()),
+                (&casters, &caster_spheres),
+                [frame_i, inst_i, index(mesh_buf)?],
+                &mut kept,
+            )?),
+            _ => None,
         };
         kept.into_iter().for_each(|b| {
             frame.keep(b);
@@ -1530,19 +1547,6 @@ impl Renderer {
             )),
             false => None,
         };
-        let vsm_draws = vsm_casters
-            .zip(vsm.as_ref())
-            .map(|(c, job)| crate::vsm::CasterDraws {
-                m1_pipeline: c.m1,
-                m1: casters.clone(),
-                buckets: vsm_meshlets
-                    .as_ref()
-                    .map_or_else(Vec::new, |m| m.shadows.clone()),
-                cull: vsm_meshlets.clone(),
-                entries: vsm_plan.as_ref().map_or(0, |p| p.entries),
-                levels: job.clipmap.levels.len() as u32,
-                pool: job.pool.clone(),
-            });
         let prepass = vsm_on.then(|| {
             let (early, late) = meshlets
                 .as_ref()
@@ -1656,6 +1660,102 @@ impl Renderer {
             self.record_overflow(count);
         }
         Ok((image, overflow))
+    }
+
+    /// The frame's VSM caster draws, one page per pair (M4 4.7a2): the levels' meshlet survivors
+    /// and the M1 casters (`casters`, with each instance's world sphere in `spheres`) binned to the
+    /// pages due to be drawn; `tables` are the frame, instance and mesh tables' bindless indices.
+    #[allow(clippy::type_complexity)]
+    fn vsm_caster_draws(
+        &self,
+        (device, up): (&dyn Device, &mut Uploads),
+        (pipelines, job): (crate::pipelines::VsmCasters, &crate::vsm::VsmJob),
+        (meshlets, plan): (
+            Option<MeshletJob>,
+            Option<&crate::meshlet::MeshletPlan<BucketKey>>,
+        ),
+        (casters, spheres): (&[ShadowDraw], &[concordia_core::math::Vec4]),
+        [frame_i, inst_i, meshes_i]: [u32; 3],
+        keep: &mut Vec<Buffer>,
+    ) -> Result<crate::vsm::CasterDraws, RenderError> {
+        let index = |b: Buffer| device.buffer_index(b).map(|i| i.0);
+        let pool = self.vsm_settings.pool_pages;
+        let blocks = (job.params, job.views, index(job.work.table)?);
+        let levels = job.clipmap.levels.len() as u32;
+        let (units, spans) = crate::vsm::units_for(casters, spheres, levels);
+        let unit_bins = crate::vsm::UnitBins::prepare(
+            device,
+            up,
+            pipelines.bin,
+            (&units, &spans, pool.saturating_mul(32)),
+            blocks,
+            keep,
+        )?;
+        let meshlet_bins = match (meshlets.as_ref().and_then(MeshletJob::bin_inputs), plan) {
+            (Some(input), Some(plan)) => {
+                let vertices = plan.buckets.iter().map(|b| b.vertices).max().unwrap_or(0);
+                Some(crate::vsm::MeshletBins::prepare(
+                    device,
+                    up,
+                    pipelines.bin,
+                    (
+                        input,
+                        plan.buckets.len() as u32,
+                        pool.saturating_mul(128),
+                        vertices,
+                    ),
+                    blocks,
+                    keep,
+                )?)
+            }
+            _ => None,
+        };
+        let words = |w: &[u32]| w.iter().flat_map(|w| w.to_le_bytes()).collect::<Vec<u8>>();
+        let m1 = match &unit_bins {
+            Some(b) => {
+                let (pairs, bases, units) = (index(b.pairs)?, index(b.bases)?, index(b.units)?);
+                casters
+                    .iter()
+                    .enumerate()
+                    .map(|(d, c)| {
+                        let p = c.push;
+                        words(&[
+                            frame_i,
+                            inst_i,
+                            p.indices,
+                            p.positions,
+                            p.joints,
+                            p.weights,
+                            pairs,
+                            bases,
+                            units,
+                            d as u32,
+                        ])
+                    })
+                    .collect()
+            }
+            None => Vec::new(),
+        };
+        let meshlet_push = match &meshlet_bins {
+            Some(b) => words(&[
+                frame_i,
+                inst_i,
+                index(b.entries)?,
+                meshes_i,
+                index(b.pairs)?,
+            ]),
+            None => Vec::new(),
+        };
+        Ok(crate::vsm::CasterDraws {
+            cull: meshlets,
+            meshlet_bins,
+            unit_bins,
+            pipelines: (pipelines.m1, pipelines.meshlets),
+            m1,
+            meshlet_push,
+            pool: job.pool.clone(),
+            entries: plan.map_or(0, |p| p.entries),
+        })
     }
 
     /// Plans the frame's virtual shadow maps for the sun travelling along `dir`, seen by `view`
@@ -1951,7 +2051,9 @@ impl Renderer {
                 s.pages_allocated,
                 s.pages_starved,
                 s.shadow_meshlets,
-            ) = (0, 0, 0, 0);
+                s.page_draws,
+                s.page_draws_dropped,
+            ) = (0, 0, 0, 0, 0, 0);
         }
     }
 
@@ -2104,7 +2206,14 @@ impl Renderer {
             let codes = vsm_draws
                 .as_ref()
                 .and_then(|d| d.cull.as_ref().map(|m| (m.codes, d.entries)));
-            (job.work.counts, codes)
+            let totals: Vec<Buffer> = vsm_draws.as_ref().map_or_else(Vec::new, |d| {
+                d.meshlet_bins
+                    .iter()
+                    .map(|b| b.totals)
+                    .chain(d.unit_bins.iter().map(|b| b.totals))
+                    .collect()
+            });
+            (job.work.counts, codes, totals)
         });
         let over = match prepass {
             Some(p) => {
@@ -2230,7 +2339,7 @@ impl Renderer {
             size: clusters * 4,
         });
         let vsm_readback = match vsm_counts {
-            Some((counts, codes)) => {
+            Some((counts, codes, totals)) => {
                 let readback = |bytes: u64, label: &str| {
                     self.recycle.buffer(
                         device,
@@ -2267,9 +2376,22 @@ impl Renderer {
                     }
                     _ => None,
                 };
+                let mut pair_totals = Vec::with_capacity(totals.len());
+                for src in totals {
+                    let rb = frame.keep(readback(8, "vsm pair totals")?);
+                    list.push(Command::CopyBuffer {
+                        src,
+                        src_offset: 0,
+                        dst: rb,
+                        dst_offset: 0,
+                        size: 8,
+                    });
+                    pair_totals.push(rb);
+                }
                 Some(crate::vsm::VsmReadback {
                     counts: counts_rb,
                     codes,
+                    totals: pair_totals,
                 })
             }
             None => None,

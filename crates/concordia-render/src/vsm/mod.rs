@@ -2,6 +2,7 @@
 //! physical page pool, page marking from scene depth and GPU page allocation; CSM is the fallback.
 
 mod api;
+mod bin;
 mod clipmap;
 mod frame;
 mod gpu;
@@ -12,6 +13,7 @@ mod stats;
 mod table;
 
 pub use api::{RenderSetShadows, RenderSetShadowsParams, RenderSetShadowsResult};
+pub(crate) use bin::{BinInputs, BinPipelines, MeshletBins, UnitBins, units_for, world_sphere};
 pub use clipmap::{
     ClipLevel, Clipmap, LEVEL0_EXTENT, level_for_footprint, pixel_footprint, stable_depth_range,
     texel_world,
