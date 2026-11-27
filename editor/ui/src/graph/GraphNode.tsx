@@ -108,7 +108,15 @@ export function GraphNode({ id, data }: NodeProps<Node<NodeData>>) {
             <div key={pin.name} style={pinStyle}>
               <Handle type="target" position={Position.Left} id={handle.input(pin.name)} />
               {pin.name}
-              {!linked(pin.name) && <ConstantField node={id} pin={pin} text={literalText(data.inputs[pin.name])} />}
+              {!linked(pin.name) && (
+                // Keyed by the value: a change from elsewhere (an undo, an agent) resets the field.
+                <ConstantField
+                  key={literalText(data.inputs[pin.name])}
+                  node={id}
+                  pin={pin}
+                  text={literalText(data.inputs[pin.name])}
+                />
+              )}
               <ErrorMark node={id} pin={pin.name} messages={data.problems[pin.name]} />
             </div>
           ))}
