@@ -951,6 +951,7 @@ dependencies = [
  "concordia-reflect",
  "concordia-scene",
  "insta",
+ "jsonschema",
  "proptest",
  "serde",
  "serde_json",
