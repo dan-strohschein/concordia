@@ -2,7 +2,7 @@
 //! schemas when `[audio]` is on, none mutates the world (each is read-only to MCP), and an agent
 //! renders a cue it imported: 0.5 s of DC 0.5 is 24,000 frames at −6.0206 dBFS.
 
-mod common;
+use crate::common;
 
 use std::io::Cursor;
 

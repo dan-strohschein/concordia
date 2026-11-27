@@ -254,7 +254,7 @@ tools/templates/crate/{AGENTS.md,README.md,Cargo.toml,lib.rs}
   # Every gate = the full CI suite, then the milestone's gate binaries (tests/gates/<prefix>_*.rs).
   gate milestone: ci
       prefix=$(echo "{{milestone}}" | tr '[:upper:]' '[:lower:]' | sed 's/-/_minus/'); \
-      cargo nextest run -p concordia-tests --no-tests=fail -E "binary(/^${prefix}_/)"
+      cargo nextest run -p concordia-tests --no-tests=fail -E "binary_id(concordia-tests::integration) & test(/^${prefix}_/)"
 
   # Accept new snapshots (insta now; golden images from M1 via CONCORDIA_BLESS=1).
   bless:
@@ -313,7 +313,7 @@ tools/templates/crate/{AGENTS.md,README.md,Cargo.toml,lib.rs}
   - Artifact location: `target/wasm-fixtures/wasm32-wasip2/release/hello_guest.wasm` (under the ignored root `/target`). `wasm_fixture_path` honors `CONCORDIA_WASM_FIXTURES_DIR` to override, for unusual `CARGO_TARGET_DIR` setups.
   - Smoke check with the CLI (not part of the gate): `wasmtime run --invoke 'greet("concordia")' target/wasm-fixtures/wasm32-wasip2/release/hello_guest.wasm` will fail because `concordia:fixtures/host` is not provided by the CLI; that is expected and documents why the host test exists. Use `wasm-tools component wit` for inspection instead.
   - References (for `tests/fixtures/wasm/hello-guest/README.md`): Component Model docs (component-model.bytecodealliance.org), Wasmtime embedding docs (docs.wasmtime.dev), `wit-bindgen` README.
-- **Done criteria:** `just wasm` builds and validates the component; `cargo nextest run -p concordia-tests --test m_minus1_scaffold` passes on macOS arm64 (and on Ubuntu in CI).
+- **Done criteria:** `just wasm` builds and validates the component; `cargo nextest run -p concordia-tests --test integration m_minus1_scaffold::` passes on macOS arm64 (and on Ubuntu in CI).
 
 ### Phase -1.6: Supply-chain policy and CI
 - **Objective:** licenses and advisories enforced by `cargo-deny`; every push and PR checked on macOS arm64 and Ubuntu; DCO checked on PRs.
@@ -397,7 +397,7 @@ tools/templates/crate/{AGENTS.md,README.md,Cargo.toml,lib.rs}
 ```
 just gate M-1
 ```
-It runs `just ci` (= `just lint`, `just test`, `just deny`) and then `cargo nextest run -p concordia-tests --no-tests=fail -E 'binary(/^m_minus1_/)'`. It passes only if all of the following hold:
+It runs `just ci` (= `just lint`, `just test`, `just deny`) and then `cargo nextest run -p concordia-tests --no-tests=fail -E 'binary_id(concordia-tests::integration) & test(/^m_minus1_/)'`. It passes only if all of the following hold:
 1. **Lint:** `cargo fmt --all --check` and `cargo clippy --workspace --all-targets --all-features -- -D warnings` are clean (also for the guest on `wasm32-wasip2`).
 2. **WASM build:** `just wasm` builds `hello-guest` for `wasm32-wasip2` and `wasm-tools validate` accepts it.
 3. **Seed test:** `cargo nextest run --workspace --no-tests=fail` passes, including `concordia-core`'s `version_matches_cargo_manifest`, `name_is_concordia`, `seed_crate_links_from_integration_test`, and all `repo_hygiene` tests; `cargo test --doc --workspace` passes the `version()` doc test.
@@ -474,7 +474,7 @@ Plus, outside the command: `tools/doctor.sh` exits 0 on the dev machine, and, if
 ## Proposed convention additions
 - **Test-harness package:** `concordia-tests` (`publish = false`) rooted at `tests/`, with `autotests = false` and explicit `[[test]]` targets. Cross-crate tests in `tests/integration/<name>.rs`; gates in `tests/gates/<prefix>_<name>.rs`; shared helpers in `tests/src/lib.rs`.
 - **Gate file prefix for negative milestones:** `M-1` → `m_minus1` (rule: lowercase, `-` → `_minus`), so the gate file is `tests/gates/m_minus1_scaffold.rs`. `plans/README.md`'s `tests/gates/m<n>_*.rs` should note this.
-- **`just gate M<n>` semantics:** runs `just ci` (lint + test + deny) and then `cargo nextest run -p concordia-tests --no-tests=fail -E 'binary(/^<prefix>_/)'`. Other plans' gate recipes should extend, not replace, this.
+- **`just gate M<n>` semantics:** runs `just ci` (lint + test + deny) and then `cargo nextest run -p concordia-tests --no-tests=fail -E 'binary_id(concordia-tests::integration) & test(/^<prefix>_/)'` (one `integration` binary since 2026-11-27; before, `binary(/^<prefix>_/)`). Other plans' gate recipes should extend, not replace, this.
 - **Additional `just` recipes:** `doctor`, `fmt-check`, `wasm`, `deny`, `ci`, `new-crate <name>`.
 - **WASM test fixtures:** guest crates live in `tests/fixtures/wasm/<name>/`, each its own workspace (excluded from the root), built by `just wasm` into `target/wasm-fixtures/`; fixture WIT packages use `concordia:fixtures@0.1.0`, never `concordia:game`.
 - **Crate templates:** `tools/templates/crate/`; required crate `AGENTS.md` sections: `## Purpose`, `## Invariants`, `## How to test`, `## References`, `## Status`.

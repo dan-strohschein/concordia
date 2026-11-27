@@ -20,7 +20,7 @@ Records play sessions as input changes, checkpoint hashes and every tick's hash 
 - Files are canonical RON (`concordia-scene` document writer); reading checks the version, every hash, the per-tick hash lines and tick order. A version 0 file reads as version 1 without the fields it never recorded, and those are not compared.
 
 ## How to test
-`cargo nextest run -p concordia-replay` (needs `just wasm` for the script tests); the M1 physics replay is `cargo nextest run -p concordia-tests --test replay_m1_physics`.
+`cargo nextest run -p concordia-replay` (needs `just wasm` for the script tests); the M1 physics replay is `cargo nextest run -p concordia-tests --test integration replay_m1_physics::`.
 
 ## Common tasks
 - **Add a header field:** add it to `ReplayHeader` (doc comment), fill it in `verify::current_header`, compare it in `verify::mismatches` if a difference must refuse a run, and accept the format snapshot after review.

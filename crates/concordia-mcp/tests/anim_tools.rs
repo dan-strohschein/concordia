@@ -1,7 +1,7 @@
 //! Animation tools over MCP (M2 phase 2.4.4): `anim_inspect` is served with generated schemas when
 //! `[anim]` is on, and an agent inspects an imported character's pose in a running game.
 
-mod common;
+use crate::common;
 
 use std::path::Path;
 

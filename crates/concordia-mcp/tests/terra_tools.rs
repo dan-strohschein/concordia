@@ -1,7 +1,7 @@
 //! Terra tools over MCP (M2 phase 2.0c): generated schemas, and an agent spawning from a
 //! project template.
 
-mod common;
+use crate::common;
 
 use common::{call, connect, text};
 use concordia_api::{methods, params_schema, result_schema};

@@ -131,10 +131,10 @@ if [ -f "$out/tests.log" ]; then
 fi
 if [ -f "$out/workspace.log" ]; then
     grep -E '^ +Summary' "$out/workspace.log" | tail -1
-    # The gate binaries' results from the same run (tests/gates/m<n>_*.rs).
+    # The gates' results from the same run (tests/gates/m<n>_*.rs, modules of `integration`).
     for m in 0 1 2 3 4 5; do
-        passed=$(grep -cE "^ +PASS .*concordia-tests::m${m}_" "$out/workspace.log")
-        failing=$(grep -cE "^ +FAIL .*concordia-tests::m${m}_" "$out/workspace.log")
+        passed=$(grep -cE "^ +PASS .*concordia-tests::integration m${m}_" "$out/workspace.log")
+        failing=$(grep -cE "^ +FAIL .*concordia-tests::integration m${m}_" "$out/workspace.log")
         [ $((passed + failing)) -gt 0 ] && echo "gate M$m: $passed passed, $failing failed"
     done
 fi

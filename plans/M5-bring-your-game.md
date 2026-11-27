@@ -453,7 +453,7 @@ Principles applied: subscription-first (the engine provides tools and the agents
 - **Done criteria:** both samples (with synthetic evidence fixtures) produce snapshot-matching reports, and the gate passes in CI on the macOS runner.
 
 ## Milestone gate
-**Command:** `just gate M5`. It runs `cargo nextest run --profile gate -E 'binary(/^m5_/)'` over `tests/gates/m5_*.rs` on the macOS (Metal) CI runner. No Unity or Unreal editor is needed: inputs are `examples/unity-sample/` (YAML project), `tests/fixtures/unity/unity-sample-export/`, `tests/fixtures/unreal/sample.ixbundle/` and the committed translations.
+**Command:** `just gate M5`. It runs `cargo nextest run --profile gate -E 'binary_id(concordia-tests::integration) & test(/^m5_/)'` over `tests/gates/m5_*.rs` on the macOS (Metal) CI runner. No Unity or Unreal editor is needed: inputs are `examples/unity-sample/` (YAML project), `tests/fixtures/unity/unity-sample-export/`, `tests/fixtures/unreal/sample.ixbundle/` and the committed translations.
 
 **What it asserts:**
 1. `m5_unity_import.rs`

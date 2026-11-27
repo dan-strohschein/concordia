@@ -1,7 +1,7 @@
 //! Replay tools over MCP (M2 phase 2.8; assert_eval, M3 3.2b): generated schemas, and an agent
 //! recording, replaying and asserting over a session.
 
-mod common;
+use crate::common;
 
 use std::sync::Arc;
 

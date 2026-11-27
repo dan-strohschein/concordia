@@ -1,6 +1,6 @@
 //! Tools: 1:1 with Engine API methods, generated schemas, tool errors (M0 phase 0.7).
 
-mod common;
+use crate::common;
 
 use common::{call, connect, connect_with, options, text};
 use concordia_api::{methods, params_schema, result_schema};

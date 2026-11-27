@@ -1,23 +1,26 @@
 [profile.default]
 slow-timeout = { period = "30s", terminate-after = 4 }
 
+# concordia-tests' gates and integration tests share one binary (`integration`); a file's tests
+# are selected by their module prefix, e.g. `test(/^canyon::/)`.
+
 # Tests that may compile code themselves (trybuild cases; the M0 and M1 MCP gates when run outside a
 # workspace test build; the M3 gates, which build the fixture's module) get a longer limit;
 # everything else keeps the 2-minute hang guard.
 [[profile.default.overrides]]
-filter = "test(=derive_rejects_unsupported_input) | binary(m0_headless_mcp) | binary(m1_mcp_screenshot) | binary(m1_mcp_coverage) | binary(/^m3_/)"
+filter = "test(=derive_rejects_unsupported_input) | (binary_id(concordia-tests::integration) & test(/^(m0_headless_mcp|m1_mcp_screenshot|m1_mcp_coverage|m3_[a-z_]+)::/))"
 slow-timeout = { period = "60s", terminate-after = 10 }
 
 # The canyon (M4 4.4c) restores and imports 2 M unique triangles on a cold run, then rides two camera
 # paths on both draw paths at 22 M source triangles.
 [[profile.default.overrides]]
-filter = "binary(canyon)"
+filter = "binary_id(concordia-tests::integration) & test(/^canyon::/)"
 slow-timeout = { period = "60s", terminate-after = 10 }
 
 # The M2 gate plays and replays whole Lamplight nights in debug builds: about 5 minutes on a
 # fast machine, over 10 on CI runners.
 [[profile.default.overrides]]
-filter = "binary(m2_lamplight)"
+filter = "binary_id(concordia-tests::integration) & test(/^m2_lamplight::/)"
 slow-timeout = { period = "60s", terminate-after = 25 }
 
 # GPU timing comparisons need the GPU to themselves: the test claims every test thread so nothing

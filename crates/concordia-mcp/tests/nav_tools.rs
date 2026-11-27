@@ -1,7 +1,7 @@
 //! Navigation tools over MCP (M2 phase 2.5a): `nav_build` and `nav_path` are served with generated
 //! schemas when `[nav]` is on, and an agent builds a navmesh and asks for a path.
 
-mod common;
+use crate::common;
 
 use common::{call, connect_with, options, text};
 use concordia_api::{MethodInfo, params_schema, result_schema};

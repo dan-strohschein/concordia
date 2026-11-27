@@ -52,7 +52,7 @@ attempt_once() {
   M3S_LIVE_PROJECT="$project" M3S_LIVE_BASELINE="$base/baseline" M3S_LIVE_RESULT="$out/result.json" \
     M3S_LIVE_ENV="$out/env-names.txt" \
     cargo nextest run --workspace --manifest-path "$ROOT/Cargo.toml" \
-    --run-ignored only -E 'binary(m3s_live_check) & test(m3s_live_outcome_check)'
+    --run-ignored only -E 'binary_id(concordia-tests::integration) & test(=m3s_live_check::m3s_live_outcome_check)'
 }
 
 for n in $(seq 1 "$ATTEMPTS"); do

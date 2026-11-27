@@ -1,6 +1,6 @@
 //! MCP resources: schemas, docs and the current scene (M0 phase 0.7).
 
-mod common;
+use crate::common;
 
 use common::{call, connect};
 use rmcp::model::{ReadResourceRequestParams, ResourceContents};

@@ -1,7 +1,7 @@
 //! `concordia mcp` shares the project's engine (M3 phase 3.5b, ADR-0082): it attaches to a live
 //! engine from `.concordia/headless.json`, or hosts one and publishes that file.
 
-mod common;
+use crate::common;
 
 use std::path::Path;
 use std::time::Duration;

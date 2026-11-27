@@ -4087,7 +4087,7 @@ Refined against `main` after #69: the original "Phase 2.7: concordia-audio and c
 - Scripts see only component batches, signals and commands (`wit/concordia-game/world.wit`), never resources. Player input is the `ActionStates` resource, so **no script can read input today** (gap S1).
 - No `.cue.ron`, `.buses.ron` or `.theme.ron` file exists in the repo, and there are no built-in sounds; the sample's are the first.
 - M2's ADR block (0060–0079) is full (0064 and 0065 stay reserved for M5), so 2.10's decisions are updates to existing ADRs (S1 to ADR-0062; the gate's completion to ADR-0067).
-- `just gate-tests M2` selects `binary(/^m2_/)`; there are no `m2_*` gates yet, and `regression.yml` runs gate tests for M-1, M0, M1 and M3S only.
+- `just gate-tests M2` selects `binary(/^m2_/)` (since 2026-11-27 `binary_id(concordia-tests::integration) & test(/^m2_/)`); there are no `m2_*` gates yet, and `regression.yml` runs gate tests for M-1, M0, M1 and M3S only.
 
 #### Game design: "Lamplight" (working title; `examples/m2-lamplight`)
 - **Premise and genre:** a small third-person night-watch action game in an original harbour town. It is not an ARPG: there is no loot, no levels, no click-to-move and no isometric camera.
@@ -4421,7 +4421,7 @@ The author records pass or fail per item in the Status:
 - **G2 (found and fixed in 2.10c.1): physics didn't register its contact signals**, so scripts couldn't receive them (see the 2.10c.1 As built).
 
 **Choices:**
-- Integration tests are named `tests/integration/lamplight_*.rs`, not `m2_lamplight_*`, so `just gate-tests M2` (which selects `binary(/^m2_/)`) runs only the gate.
+- Integration tests are named `tests/integration/lamplight_*.rs`, not `m2_lamplight_*`, so `just gate-tests M2` (which selects `test(/^m2_/)` in the `integration` binary) runs only the gate.
 - Rule values, derived in the rule tests:
   - the can holds 100 oil and lighting costs 20;
   - a lamp burns 60 s on a lighting;
@@ -5173,7 +5173,7 @@ Phase order is a dependency order, but 2.3–2.8 can run in parallel once 2.1 an
 
 **Command:** `CONCORDIA_PORT_SRC=<godot-project> CONCORDIA_PORT_PROJECT=<port-project> just gate M2`
 
-which runs `cargo nextest run --test m2_port_begins` (`tests/gates/m2_port_begins.rs`). This is a **private-content gate** (see `plans/README.md`): it reads the game only through the two env vars and runs on the self-hosted runner on the author's machine, never in public CI. If either variable is unset, the gate **fails** with an explanatory message; it never skips. The gate asserts, in order:
+which runs `cargo nextest run -p concordia-tests --test integration m2_port_begins::` (`tests/gates/m2_port_begins.rs`). This is a **private-content gate** (see `plans/README.md`): it reads the game only through the two env vars and runs on the self-hosted runner on the author's machine, never in public CI. If either variable is unset, the gate **fails** with an explanatory message; it never skips. The gate asserts, in order:
 
 1. **Import is reproducible and complete for the slice.** `concordia import godot $CONCORDIA_PORT_SRC --slice opening-zone` into a temp dir produces output byte-identical to the committed port project's imported files, and the slice's unmapped report has zero `blocking` entries.
 2. **Oracle suites pass.** `cargo nextest run` over the port project's `tests/oracle` is green; for every selected suite the assertion count is ≥ the Godot baseline in `port/oracle/baseline.ron`; the enemy decision-logic suite is green in both native and WASM builds.

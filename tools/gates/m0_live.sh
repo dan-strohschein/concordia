@@ -41,7 +41,7 @@ attempt_once() {
   echo "attempt $n: project $project, artifacts $out" >&2
   M0_LIVE_PROJECT="$project" M0_LIVE_RESULT="$out/result.json" \
     cargo nextest run --workspace --manifest-path "$ROOT/Cargo.toml" \
-    --run-ignored only -E 'binary(m0_live_check) & test(m0_live_outcome_check)'
+    --run-ignored only -E 'binary_id(concordia-tests::integration) & test(=m0_live_check::m0_live_outcome_check)'
 }
 
 for n in $(seq 1 "$ATTEMPTS"); do

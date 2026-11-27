@@ -70,7 +70,7 @@ jobs:
           FILTER: ${{ inputs.filter }}
       - name: M1 gate golden on Vulkan
         if: ${{ !cancelled() && inputs.gdb == '' }}
-        run: cargo nextest run -p concordia-tests --profile ci -E 'binary(m1_physics_golden)'
+        run: cargo nextest run -p concordia-tests --profile ci -E 'binary_id(concordia-tests::integration) & test(/^m1_physics_golden::/)'
         env:
           CONCORDIA_BACKEND: vulkan
           CONCORDIA_VULKAN_VALIDATION: strict

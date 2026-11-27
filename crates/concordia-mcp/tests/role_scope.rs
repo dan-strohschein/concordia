@@ -1,6 +1,6 @@
 //! `concordia mcp` with Agent Studio: per-agent sessions, server-side scopes, budgets (M3 phase 3.5).
 
-mod common;
+use crate::common;
 
 use common::{Client, call, connect_with, options, text};
 use rmcp::model::ClientConfig;

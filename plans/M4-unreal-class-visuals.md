@@ -2253,7 +2253,7 @@ There are two parallel tracks. **Track R (rendering)** is 4.1–4.8; 4.1 comes f
 ---
 
 ## Milestone gate
-**Command:** `just gate M4`, which expands to `cargo nextest run --profile gate -E 'binary(/^m4_/)'` and must run on the **reference Mac** (a self-hosted CI runner; see `tests/perf/reference.ron`). On non-reference hardware the perf assertions report `NotReference` and the gate fails with that reason. It never passes silently.
+**Command:** `just gate M4`, which expands to `cargo nextest run --profile gate -E 'binary_id(concordia-tests::integration) & test(/^m4_/)'` and must run on the **reference Mac** (a self-hosted CI runner; see `tests/perf/reference.ron`). On non-reference hardware the perf assertions report `NotReference` and the gate fails with that reason. It never passes silently.
 
 The gate is four test binaries in `tests/gates/`:
 

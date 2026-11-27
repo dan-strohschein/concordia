@@ -4,7 +4,7 @@
 
 #![allow(
     dead_code,
-    reason = "shared by two test binaries; each uses only some helpers"
+    reason = "shared by three test modules; each uses only some helpers"
 )]
 
 use concordia_api::{Engine, EngineConfig};

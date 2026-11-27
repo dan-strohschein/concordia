@@ -66,7 +66,7 @@ the night's length and the fog, and press "Light the lamps".
 
 ## Regenerating our own files
 Run from this folder; each script rewrites its files in `assets/`, and
-`cargo nextest run -p concordia-tests --test lamplight_content` checks the result against the
+`cargo nextest run -p concordia-tests --test integration lamplight_content::` checks the result against the
 SHA-256 pins in `assets/LICENSE.md` (update the pins only after reviewing the change).
 
 ```sh

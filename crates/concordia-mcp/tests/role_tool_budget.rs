@@ -1,6 +1,6 @@
 //! Per-role tool budgets (ADR-0073): each default role's generated tool definitions stay small.
 
-mod common;
+use crate::common;
 
 use std::collections::BTreeMap;
 use std::path::Path;
