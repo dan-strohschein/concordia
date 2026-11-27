@@ -5,6 +5,7 @@
 //! tests can produce and inspect commands without a GPU. Shaders reach resources through one
 //! bindless table per device and receive only [`BindlessIndex`]es (in push constants or buffers).
 
+mod accel;
 mod barrier;
 mod caps;
 mod command;
@@ -22,6 +23,9 @@ pub mod check;
 #[cfg(feature = "conformance")]
 pub mod conformance;
 
+pub use accel::{
+    ACCEL_CAPACITY, AccelDesc, AccelInstance, TriangleGeometry, validate as validate_accel,
+};
 pub use barrier::{Access, AccessFlags, BufferBarrier, Layout, Stages, TextureBarrier};
 pub use caps::{
     Backend, CapsMask, Requirement, RhiCaps, SampleCount, TimestampGranularity, UnknownBackend,
@@ -36,7 +40,8 @@ pub use device::{Device, QueueKind, Submit};
 pub use error::RhiError;
 pub use format::Format;
 pub use handle::{
-    BindlessIndex, Buffer, Heap, Pipeline, Surface, TemporalScaler, Texture, Timeline,
+    AccelerationStructure, BindlessIndex, Buffer, Heap, Pipeline, Surface, TemporalScaler, Texture,
+    Timeline,
 };
 pub use pipeline::{
     BlendMode, ColorWrites, CompareOp, ComputePipelineDesc, CullMode, DepthState,

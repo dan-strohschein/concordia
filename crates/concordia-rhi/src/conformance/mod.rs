@@ -1,6 +1,7 @@
 //! The backend-agnostic conformance suite. Each backend instantiates it with
 //! [`conformance_tests!`](crate::conformance_tests) in its `tests/conformance.rs`.
 
+mod accel;
 mod attachmentless;
 mod cases;
 mod depth;
@@ -12,6 +13,7 @@ mod targets;
 mod temporal;
 mod util;
 
+pub use accel::*;
 pub use attachmentless::*;
 pub use cases::*;
 pub use depth::*;
@@ -96,6 +98,8 @@ macro_rules! conformance_tests {
             readback_of_frame_n_does_not_block_frame_n_plus_1_submission,
             pipeline_creation_error_is_reported_not_panicked,
             invalid_descriptors_and_stale_handles_are_errors,
+            ray_queries_hit_a_built_scene,
+            acceleration_structure_misuse_is_reported,
             static_samplers_filter_and_address_as_named,
             additive_blend_sums_overlapping_draws,
             submit_timed_reports_the_gpu_time_once,

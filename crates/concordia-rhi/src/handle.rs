@@ -36,6 +36,7 @@ handle! {
     Timeline: "A monotonically increasing GPU/CPU sync value (Metal shared event, Vulkan timeline semaphore).";
     Surface: "A presentable window surface (Metal: a `CAMetalLayer`).";
     TemporalScaler: "A device-provided temporal upscaler (MetalFX's on Apple).";
+    AccelerationStructure: "A ray-tracing acceleration structure (triangles or instances of them; M4 4.8c).";
 }
 
 /// A resource's slot in the device's bindless table; stable for the resource's lifetime.

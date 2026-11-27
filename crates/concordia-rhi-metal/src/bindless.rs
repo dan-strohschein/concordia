@@ -23,6 +23,7 @@ pub(crate) type MtlSampler = ProtocolObject<dyn MTLSamplerState>;
 pub(crate) struct Table {
     raw: Retained<MtlBuffer>,
     free: Vec<u32>,
+    capacity: u32,
 }
 
 impl Table {
@@ -31,13 +32,24 @@ impl Table {
         label: &str,
         fixed: usize,
     ) -> Result<Self, RhiError> {
-        let bytes = (BINDLESS_CAPACITY as usize + fixed) * 8;
+        Self::with_capacity(device, label, BINDLESS_CAPACITY, fixed)
+    }
+
+    /// A table of `capacity` slots (the acceleration-structure table is smaller, M4 4.8c).
+    pub(crate) fn with_capacity(
+        device: &ProtocolObject<dyn MTLDevice>,
+        label: &str,
+        capacity: u32,
+        fixed: usize,
+    ) -> Result<Self, RhiError> {
+        let bytes = (capacity as usize + fixed) * 8;
         let raw = device
             .newBufferWithLength_options(bytes, MTLResourceOptions::StorageModeShared)
             .ok_or_else(|| RhiError::OutOfMemory(format!("bindless {label} table")))?;
         Ok(Self {
             raw,
-            free: (0..BINDLESS_CAPACITY).rev().collect(),
+            capacity,
+            free: (0..capacity).rev().collect(),
         })
     }
 
@@ -48,7 +60,7 @@ impl Table {
     /// Takes a slot and writes `value` (a GPU address or resource id) into it.
     pub(crate) fn insert(&mut self, value: u64) -> Result<u32, RhiError> {
         let slot = self.free.pop().ok_or_else(|| {
-            RhiError::OutOfMemory(format!("bindless slot (capacity {BINDLESS_CAPACITY})"))
+            RhiError::OutOfMemory(format!("bindless slot (capacity {})", self.capacity))
         })?;
         self.write(slot, value);
         Ok(slot)
@@ -61,12 +73,12 @@ impl Table {
 
     /// Writes fixed entry `index` (after the slots), e.g. a static sampler's resource id.
     pub(crate) fn write_fixed(&self, index: usize, value: u64) {
-        debug_assert!((BINDLESS_CAPACITY as usize + index) * 8 < self.raw.length());
-        self.write_at(BINDLESS_CAPACITY as usize + index, value);
+        debug_assert!((self.capacity as usize + index) * 8 < self.raw.length());
+        self.write_at(self.capacity as usize + index, value);
     }
 
     fn write(&self, slot: u32, value: u64) {
-        debug_assert!(slot < BINDLESS_CAPACITY);
+        debug_assert!(slot < self.capacity);
         self.write_at(slot as usize, value);
     }
 
@@ -135,7 +147,7 @@ fn new_sampler(
 }
 
 /// An `MTLResourceID` as the 8-byte table entry.
-fn resource_id(id: objc2_metal::MTLResourceID) -> u64 {
+pub(crate) fn resource_id(id: objc2_metal::MTLResourceID) -> u64 {
     // SAFETY: MTLResourceID is #[repr(C)] around a single u64 (Apple: "an opaque 64-bit handle").
     unsafe { std::mem::transmute::<objc2_metal::MTLResourceID, u64>(id) }
 }
