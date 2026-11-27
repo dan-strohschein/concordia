@@ -14,6 +14,7 @@ mod extract;
 mod forward_pass;
 mod frame;
 mod frame_log;
+pub mod gi;
 mod gizmo;
 mod gpu;
 pub mod graph;
