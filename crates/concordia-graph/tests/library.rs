@@ -95,3 +95,18 @@ fn pin_types_parse_from_their_names() {
     assert!(PinType::parse("List<").is_err());
     assert!(PinType::parse("").is_err());
 }
+
+#[test]
+fn fields_can_be_set_and_signals_carry_their_fields() {
+    let lib = library();
+    let set = lib.get("set.Health.max").expect("a field setter");
+    assert!(!set.pure && set.exec_in == ["in"] && set.exec_out == ["out"]);
+    assert_eq!(set.input("value").unwrap().ty, PinType::F32);
+    // A signal is raised from its fields and received with them.
+    let raise = lib.get("raise.Damaged").unwrap();
+    let names: Vec<&str> = raise.inputs.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names, ["target", "amount"]);
+    assert!(raise.input("amount").unwrap().required);
+    let on = lib.get("on.Damaged").unwrap();
+    assert_eq!(on.output("amount").unwrap().ty, PinType::F32);
+}

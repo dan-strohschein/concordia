@@ -134,11 +134,11 @@ fn pin(name: &str, ty: PinType, required: bool) -> PinDef {
     }
 }
 
-fn req(name: &str, ty: PinType) -> PinDef {
+pub(crate) fn req(name: &str, ty: PinType) -> PinDef {
     pin(name, ty, true)
 }
 
-fn out(name: &str, ty: PinType) -> PinDef {
+pub(crate) fn out(name: &str, ty: PinType) -> PinDef {
     pin(name, ty, false)
 }
 
@@ -147,7 +147,7 @@ fn names(list: &[&str]) -> Vec<String> {
 }
 
 /// A pure data node.
-fn pure(
+pub(crate) fn pure(
     op: &str,
     category: &str,
     docs: &str,
@@ -169,7 +169,7 @@ fn pure(
 }
 
 /// A node with control flow.
-fn flow(
+pub(crate) fn flow(
     op: &str,
     category: &str,
     docs: &str,
@@ -462,7 +462,7 @@ fn from_fn(info: &GraphFnInfo) -> NodeDef {
     }
 }
 
-/// `get.<C>`, `set.<C>` and a getter per struct field.
+/// `get.<C>`, `set.<C>` and a getter and a setter per struct field.
 fn component_nodes(r: &TypeRegistration) -> Vec<NodeDef> {
     let info = r.info();
     let name = info.name;
@@ -486,33 +486,64 @@ fn component_nodes(r: &TypeRegistration) -> Vec<NodeDef> {
             vec![],
         ),
     ];
-    if let Shape::Struct { fields, .. } = &info.shape {
-        for f in fields {
-            nodes.push(pure(
-                &format!("get.{name}.{}", f.name),
-                category,
-                f.docs,
-                vec![entity()],
-                vec![out("value", PinType::of(&f.ty))],
-            ));
-        }
+    for (field, ty, docs) in fields(r) {
+        nodes.push(pure(
+            &format!("get.{name}.{field}"),
+            category,
+            docs,
+            vec![entity()],
+            vec![out("value", ty.clone())],
+        ));
+        nodes.push(flow(
+            &format!("set.{name}.{field}"),
+            category,
+            &format!("Sets `{name}.{field}` on `entity` (default: the graph's entity)."),
+            (&["in"], &["out"]),
+            vec![entity(), req("value", ty)],
+            vec![],
+        ));
     }
     nodes
 }
 
-/// `raise.<S>` and `on.<S>`.
+/// A signal field's pin: its name, or `field_<name>` where that is a fixed pin's name.
+fn field_pin(field: &str) -> String {
+    match ["target", "entity", "signal"].contains(&field) {
+        true => format!("field_{field}"),
+        false => field.to_owned(),
+    }
+}
+
+/// A struct's fields: (name, pin type, docs); none for other shapes.
+fn fields(r: &TypeRegistration) -> Vec<(&'static str, PinType, &'static str)> {
+    match &r.info().shape {
+        Shape::Struct { fields, .. } => fields
+            .iter()
+            .map(|f| (f.name, PinType::of(&f.ty), f.docs))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// `raise.<S>` (from the signal's fields) and `on.<S>` (with them).
 fn signal_nodes(r: &TypeRegistration) -> Vec<NodeDef> {
     let info = r.info();
     let name = info.name;
     let ty = PinType::Named(name.to_owned());
     let category = info.category.unwrap_or("Signals");
+    let mut raise_inputs = vec![req("target", PinType::EntityId)];
+    let mut on_outputs = vec![out("entity", PinType::EntityId), out("signal", ty)];
+    for (field, ty, _) in fields(r) {
+        raise_inputs.push(req(&field_pin(field), ty.clone()));
+        on_outputs.push(out(&field_pin(field), ty));
+    }
     vec![
         flow(
             &format!("raise.{name}"),
             category,
             &format!("Raises `{name}` on `target` (delivered next tick)."),
             (&["in"], &["out"]),
-            vec![req("target", PinType::EntityId), req("signal", ty.clone())],
+            raise_inputs,
             vec![],
         ),
         event(
@@ -520,7 +551,7 @@ fn signal_nodes(r: &TypeRegistration) -> Vec<NodeDef> {
             category,
             &format!("Runs when an entity receives `{name}`."),
             &["out"],
-            vec![out("entity", PinType::EntityId), out("signal", ty)],
+            on_outputs,
         ),
     ]
 }

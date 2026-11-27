@@ -70,4 +70,14 @@ fn every_reflected_component_and_signal_has_nodes() {
         "a script module's signals: {signals:?}"
     );
     assert!(components > 50, "{components}");
+    // Signal and component fields become pins: no name may collide with a fixed one.
+    for node in library.nodes() {
+        for pins in [&node.inputs, &node.outputs] {
+            let mut names: Vec<&str> = pins.iter().map(|p| p.name.as_str()).collect();
+            names.sort_unstable();
+            let before = names.len();
+            names.dedup();
+            assert_eq!(names.len(), before, "{} has duplicate pin names", node.op);
+        }
+    }
 }

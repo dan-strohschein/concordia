@@ -1,0 +1,49 @@
+Graph(
+    exec: [],
+    id: "0193b0f2-0000-7000-8000-000000000106",
+    kind: Utility,
+    layout: {},
+    nodes: {
+        "0193b0f2-0000-7000-8000-000000000001": (
+            inputs: {},
+            op: "graph.input",
+        ),
+        "0193b0f2-0000-7000-8000-000000000002": (
+            inputs: {
+                "a": Link("0193b0f2-0000-7000-8000-000000000001", "distance"),
+                "b": Value(Float(10.0)),
+            },
+            op: "math.div",
+        ),
+        "0193b0f2-0000-7000-8000-000000000003": (
+            inputs: {
+                "curve": Value(Text("inverse")),
+                "x": Link("0193b0f2-0000-7000-8000-000000000002", "out"),
+            },
+            op: "utility.curve",
+        ),
+        "0193b0f2-0000-7000-8000-000000000004": (
+            inputs: {
+                "score": Link("0193b0f2-0000-7000-8000-000000000003", "out"),
+            },
+            op: "graph.output",
+        ),
+    },
+    signature: (
+        inputs: [
+            (
+                name: "distance",
+                ty: "f32",
+            ),
+        ],
+        outputs: [
+            (
+                name: "score",
+                ty: "f32",
+            ),
+        ],
+        pure: true,
+    ),
+    variables: [],
+    version: 1,
+)

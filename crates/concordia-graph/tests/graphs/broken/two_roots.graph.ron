@@ -1,0 +1,9 @@
+Graph(
+    id: "0193b0f2-0000-7000-8000-000000000114",
+    kind: Behavior,
+    version: 1,
+    nodes: {
+        "0193b0f2-0000-7000-8000-000000000001": (op: "behavior.root", inputs: {}),
+        "0193b0f2-0000-7000-8000-000000000002": (op: "behavior.root", inputs: {}),
+    },
+)
