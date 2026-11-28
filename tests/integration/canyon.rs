@@ -1,21 +1,15 @@
 //! The M4 canyon (phase 4.4c; Phase 4.4's done criterion): `examples/m4-canyon` is made from
-//! fixed seeds and remade byte for byte, holds at least 20 M source triangles all on the meshlet
-//! path, and along its two scripted camera paths the meshlet counts are the same between runs and
-//! between the two draw paths, frame by frame, while culling never changes the image. With the own
-//! TAAU (phase 4.6's done criterion) it renders 2560 × 1440 from 1706 × 960.
+//! fixed seeds and remade byte for byte, and along its two scripted camera paths the meshlet counts
+//! are the same between runs and between the two draw paths, frame by frame. With the own TAAU
+//! (phase 4.6's done criterion) it renders 2560 × 1440 from 1706 × 960. Its triangle count and
+//! culling-hole tests are the M4 gate's (`tests/gates/m4_meshlet_geometry.rs`).
 
 use concordia_gen::canyon::{CameraKey, Canyon as Spec, Family};
 use concordia_gen::{GenContext, ProviderRegistry};
 use concordia_render::Culling;
 use concordia_tests::canyon::{
-    self, Canyon, SUITE, draw_paths, first_difference, perf_scene, renderer, without_draws,
+    self, Canyon, PATHS, draw_paths, first_difference, perf_scene, renderer, without_draws,
 };
-
-/// The two paths with the frames each test draws and the frames kept as images.
-const PATHS: [(&str, &str, u32, [u32; 3]); 2] = [
-    ("m4-canyon-ground", "canyon_ground", 32, [0, 16, 31]),
-    ("m4-canyon-overhead", "canyon_overhead", 16, [0, 8, 15]),
-];
 
 /// Every generated mesh (and the sky map) is remade from its committed recipe with exactly the recorded bytes (on
 /// any OS: the generators use no platform maths); another seed makes another rock; and the
@@ -117,18 +111,6 @@ fn canyon_is_deterministic_for_its_seeds() {
     }
 }
 
-/// The sum over instances of each mesh's triangles is at least 20,000,000, and every instance's
-/// mesh has meshlets (so all of it takes the meshlet path).
-#[test]
-fn canyon_has_at_least_20m_source_triangles() {
-    let mut loaded = Canyon::load();
-    let census = loaded.census();
-    println!("{census:?}");
-    assert!(census.triangles >= 20_000_000, "{census:?}");
-    assert!(census.without_meshlets.is_empty(), "{census:?}");
-    assert_eq!(census.instances, 320);
-}
-
 /// Along both paths, the meshlet counts of every frame are equal between two runs (fresh
 /// renderers) and between the mesh-shader and compute paths (but for the draw commands); every
 /// frame draws something, sees the whole scene as candidates, and only ever narrows it.
@@ -183,51 +165,6 @@ fn canyon_meshlet_counts_are_stable_on_both_paths() {
             }
         }
     }
-}
-
-/// At three frames of each path (with the history of a ride up to them), the culled image is the
-/// unculled one on both draw paths; the unculled images are the goldens.
-#[test]
-fn canyon_culling_matches_culling_off() {
-    use concordia_testkit::golden::{Comparison, Golden, RgbaImage, flip_score};
-    let paths = draw_paths();
-    if paths.is_empty() {
-        return;
-    }
-    let mut loaded = Canyon::load();
-    let mut missed = Vec::new();
-    let backend = concordia_rhi_select::choose_from_env(Default::default()).unwrap();
-    let rgba =
-        |i: &concordia_render::Image| RgbaImage::new(i.width, i.height, i.rgba.clone()).unwrap();
-    for (scene_name, golden, frames, keep) in PATHS {
-        let scene = perf_scene(scene_name);
-        for mask in &paths {
-            let mut on = renderer(mask, Culling::default()).unwrap();
-            let culled = loaded.ride(&mut on, &scene, frames, &keep).images;
-            let mut off = renderer(mask, Culling::OFF).unwrap();
-            let unculled = loaded.stills(&mut off, &scene, frames, &keep);
-            let path = canyon::raster_path(&on);
-            for i in keep {
-                let name = format!("{golden}_{i:03}");
-                let tolerance = Golden::from_env()
-                    .comparison_tolerance_on(Some(backend), SUITE, &name, Comparison::Culling)
-                    .unwrap()
-                    .unwrap_or_else(|| panic!("a culling entry for {name}"));
-                let score = flip_score(&rgba(&unculled[&i]), &rgba(&culled[&i])).unwrap();
-                println!("{name} on {path:?}: culling on vs off {score:?}");
-                assert!(
-                    tolerance.accepts(&score),
-                    "{name} on {path:?}: {score:?} > {tolerance:?}"
-                );
-                let checked =
-                    Golden::from_env().check_on(Some(backend), SUITE, &name, &rgba(&unculled[&i]));
-                if let Err(e) = checked {
-                    missed.push(format!("{name} on {path:?}: {e}"));
-                }
-            }
-        }
-    }
-    assert!(missed.is_empty(), "{}", missed.join("\n"));
 }
 
 /// Phase 4.6's done criterion (4.6 plan Q11): the ground path's 32 frames at 2560 × 1440 from
