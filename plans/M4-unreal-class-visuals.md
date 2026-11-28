@@ -1462,7 +1462,7 @@ Tests (the phase's, mapped): 4.11a `graph_read_attributes_nodes_to_their_last_ed
     - `native_modules_without_a_source_are_fingerprinted_by_their_description`;
     - the old native-bytes test is now `wasm_modules_are_fingerprinted_by_their_file_content`.
   - The re-blessed `m4_snuffer.replay.ron` changed only its manifest hash and the fog's fingerprint; every world hash is unchanged.
-- **Lavapipe** (`vulkan` on main: [run 46094570345](https://github.com/dan-strohschein/concordia/actions/runs/46094570345); on the branch: runs 46105061435, 46107257535 and [46110002848](https://github.com/dan-strohschein/concordia/actions/runs/46110002848)).
+- **Lavapipe** (`vulkan` on main: [run 46094570345](https://github.com/dan-strohschein/concordia/actions/runs/46094570345); on the branch: runs 46105061435, 46107257535 and 46110002848, and the final all-green [46112159048](https://github.com/dan-strohschein/concordia/actions/runs/46112159048)).
   - **Already passing on main:** the backend (125), the M1 golden, gpu-probe, the X11 window and the editor's viewport.
   - **The renderer's suite (453 tests):** 13 failed and 3 timed out on main. All pass on the branch:
     - *Occlusion (7 tests):* lavapipe resolves depth only by `sample_zero`, so with MSAA the renderer rightly skips occlusion, but the tests assumed 4×. They now run single-sample on such devices, where occlusion runs without a resolve, and skip their 4× goldens there with a note. `devices_without_depth_resolve_min_skip_occlusion` covers the MSAA case.
