@@ -74,6 +74,27 @@ impl JoltWorld {
         (id != j::CJ_NO_BODY).then_some(BodyId(id))
     }
 
+    /// Adds a soft body (the desc's arrays must outlive the call).
+    pub(crate) fn add_soft(&mut self, desc: &j::CjSoftBodyDesc) -> Option<BodyId> {
+        // SAFETY: valid world and desc; the shim validates lengths, indices and values.
+        let id = unsafe { j::cj_soft_body_add(self.0, desc) };
+        (id != j::CJ_NO_BODY).then_some(BodyId(id))
+    }
+
+    /// A soft body's vertices in world space (empty if `body` isn't one).
+    pub(crate) fn soft_positions(&self, body: BodyId) -> Vec<Vec3> {
+        // SAFETY: valid world; a null `out` with no room only counts.
+        let n = unsafe { j::cj_soft_body_positions(self.0, body.0, std::ptr::null_mut(), 0) };
+        let mut out = vec![0.0f32; 3 * n];
+        // SAFETY: `out` has room for `n` vertices.
+        unsafe { j::cj_soft_body_positions(self.0, body.0, out.as_mut_ptr(), n) };
+        out.as_chunks::<3>()
+            .0
+            .iter()
+            .map(|p| Vec3::from_array(*p))
+            .collect()
+    }
+
     pub(crate) fn remove(&mut self, body: BodyId) {
         // SAFETY: valid world; unknown ids are ignored by the shim.
         unsafe { j::cj_body_remove(self.0, body.0) };

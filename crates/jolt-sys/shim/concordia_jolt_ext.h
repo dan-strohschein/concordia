@@ -129,6 +129,30 @@ size_t cj_world_pending_events(CjWorld* world);
  * written), or 0 if the points have no hull (fewer than 4, all in a plane, not finite). */
 size_t cj_convex_hull_triangles(const float* points, uint32_t count, float* out, size_t cap);
 
+/* A soft body (M8 8.0d; the cloth solver's test reference): vertices at rest in world space,
+ * per-vertex inverse masses (0 pins a vertex), triangles (3 indices each). Stretch, shear and bend
+ * constraints come from the faces with these compliances (bend < 0: none). */
+typedef struct CjSoftBodyDesc {
+    const float* positions;
+    const float* inv_masses;
+    uint32_t vertex_count;
+    const uint32_t* faces;
+    uint32_t face_count;
+    float compliance;
+    float shear_compliance;
+    float bend_compliance;
+    uint32_t iterations;
+    float gravity_factor;
+} CjSoftBodyDesc;
+
+/* Adds a soft body; CJ_NO_BODY if the desc is invalid (no vertices, an index out of range,
+ * non-finite values). */
+uint32_t cj_soft_body_add(CjWorld* world, const CjSoftBodyDesc* desc);
+
+/* The soft body's vertex positions in world space into `out` (3 floats each, room for `cap`);
+ * returns its vertex count, or 0 if `body` isn't a soft body. */
+size_t cj_soft_body_positions(CjWorld* world, uint32_t body, float* out, size_t cap);
+
 bool cj_raycast(CjWorld* world, const float origin[3], const float dir_len[3], uint16_t layer_mask, CjRayHit* out);
 /* Serializes body state; returns the size needed (copies only if cap is large enough). */
 size_t cj_world_save(CjWorld* world, uint8_t* out, size_t cap);

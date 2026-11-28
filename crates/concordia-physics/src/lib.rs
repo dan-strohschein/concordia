@@ -12,6 +12,7 @@ mod layers;
 mod module;
 mod runtime;
 mod settings;
+mod soft;
 mod solids;
 
 pub use components::{
@@ -27,4 +28,5 @@ pub use module::{
 };
 pub use runtime::{PhysicsRuntime, RayHit, StateHash, TickReport};
 pub use settings::PhysicsSettings;
+pub use soft::{SoftReference, SoftSheet};
 pub use solids::{StaticSolid, static_solids};

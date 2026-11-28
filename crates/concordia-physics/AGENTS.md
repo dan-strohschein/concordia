@@ -29,6 +29,7 @@ Safe, deterministic rigid-body physics for Terra worlds over Jolt (via `jolt-sys
 - `ColliderShape::ConvexHull` and `::Compound` (M8 8.0a) are Jolt hulls with its default convex radius. Fewer than 4 finite points, or no volume, makes the body rejected (reported, never a panic). `hull_triangles` gives the same hull to anyone who needs its faces (navigation).
 - `ContactImpact { other, strength, point }` (M8 8.0b) goes only to entities with `ContactReports { min_strength }`. Its strength is the closing speed along the normal times the pair's reduced mass (N·s), measured by the shim when the contact is added; never for sensors. Other entities' signals, and so every existing hash, are unchanged.
 - Bodies follow their entities every tick, in sorted id order: a spawned entity gets a body with its `Velocity`; a despawned one, or one whose collider changed, loses its body. M8's splits rely on this (8.0c's tests pin it).
+- `SoftReference` and `SoftSheet` (M8 8.0d): Jolt's soft body in its own single-threaded world, the reference the cloth solver (8.8) is tested against. Not for gameplay.
 
 ## How to test
 `cargo nextest run -p concordia-physics`
