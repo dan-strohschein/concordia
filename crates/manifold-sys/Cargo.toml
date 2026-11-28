@@ -1,0 +1,24 @@
+[package]
+name = "manifold-sys"
+description = "Raw FFI to vendored Manifold (Apache-2.0) through Concordia's small C shim, plus a checked wrapper for convex clipping."
+links = "manifold"
+build = "build.rs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+thiserror.workspace = true
+
+[build-dependencies]
+cc = "1.11.2"
+
+[dev-dependencies]
+blake3.workspace = true
+proptest.workspace = true

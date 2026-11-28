@@ -946,6 +946,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "concordia-fracture"
+version = "0.0.0"
+dependencies = [
+ "blake3",
+ "concordia-core",
+ "libm",
+ "manifold-sys",
+ "proptest",
+ "serde",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "concordia-gen"
 version = "0.0.0"
 dependencies = [
@@ -3368,6 +3381,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.10",
+]
+
+[[package]]
+name = "manifold-sys"
+version = "0.0.0"
+dependencies = [
+ "blake3",
+ "cc",
+ "proptest",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
