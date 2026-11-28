@@ -131,8 +131,11 @@ impl EngineModule for AiModule {
     }
 }
 
-/// Reads and checks a `.bt.ron` tree.
+/// Reads and checks a tree: a `.bt.ron`, or a Behavior `.graph.ron` compiled to one.
 fn load_tree(engine: &Engine, path: &str) -> Result<BehaviorTree, String> {
+    if path.ends_with(".graph.ron") {
+        return load_graph_tree(engine, path);
+    }
     let file = engine
         .project_file(path, ".bt.ron")
         .map_err(|e| e.message)?;
@@ -141,6 +144,22 @@ fn load_tree(engine: &Engine, path: &str) -> Result<BehaviorTree, String> {
         concordia_scene::read_document(&text).map_err(|e| format!("{path}: {e}"))?;
     tree.validate().map_err(|e| format!("{path}: {e}"))?;
     Ok(tree)
+}
+
+/// Reads a Behavior graph and compiles it to a tree.
+fn load_graph_tree(engine: &Engine, path: &str) -> Result<BehaviorTree, String> {
+    let file = engine
+        .project_file(path, ".graph.ron")
+        .map_err(|e| e.message)?;
+    let text = std::fs::read_to_string(&file).map_err(|e| format!("{path}: {e}"))?;
+    let graph = concordia_graph::read_graph(&text).map_err(|e| format!("{path}: {e}"))?;
+    crate::compile_behavior(&graph, &concordia_graph::NodeLibrary::core()).map_err(|diagnostics| {
+        let lines: Vec<String> = diagnostics
+            .iter()
+            .map(|d| format!("{:?} at {:?}/{:?}: {}", d.code, d.node_id, d.pin, d.message))
+            .collect();
+        format!("{path}: {}", lines.join("; "))
+    })
 }
 
 fn play(engine: &Engine) -> Result<&World, ApiError> {

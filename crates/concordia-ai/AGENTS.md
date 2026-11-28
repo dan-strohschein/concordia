@@ -23,6 +23,8 @@ Runtime AI that needs no LLM (M4 4.12): a typed blackboard, event-driven behavio
 
 - LLM (4.12d): `LlmProvider` (submit/poll, never blocking), `MockLlmProvider`, `LlmService` (the world's provider and pending plans), `action_schema` (from the reflected `ai.PlannerReply`), `validate_reply`. A `Plan` task's answer is logged to `concordia_core::external::ExternalInputs` (failures too, as `!error: …`), in source order per tick; a replay plays the log back and never asks. No provider: `Plan` fails at once. `tests/deps.rs` keeps HTTP clients and model runtimes out of the default build.
 
+- Behavior graphs (4.12e): `compile_behavior` checks a Behavior `.graph.ron` and builds the same `BehaviorTree` (variables → keys, exec pins in order → children, constant inputs → parameters); `ai.Brain.tree` may name a `.graph.ron`. Utility selectors aren't graph nodes yet (backlog).
+
 ## How to test
 `cargo nextest run -p concordia-ai`
 
@@ -30,7 +32,7 @@ Runtime AI that needs no LLM (M4 4.12): a typed blackboard, event-driven behavio
 Colledanchise & Ögren, *Behavior Trees in Robotics and AI* (CRC 2018) for composite semantics; Champandard's AiGameDev articles on event-driven BTs (2007–2012) and UE's public behavior-tree documentation for abort modes (no code); Mark & Dill, "Improving AI Decision Modeling Through Utility Theory" (GDC 2010); Mark, "Building a Better Centaur: AI at Massive Scale" (GDC 2015) for the compensation factor; Graham, "An Introduction to Utility Theory" (Game AI Pro, 2013) for curves.
 
 ## Status
-M4 4.12a–d: the pure runtime, the engine module, perception and the LLM seam. Graphs on the runtime are 4.12e.
+M4 4.12a–e: the pure runtime, the engine module, perception, the LLM seam and Behavior graphs on the runtime.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

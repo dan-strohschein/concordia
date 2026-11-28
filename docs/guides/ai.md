@@ -8,6 +8,12 @@ Runtime AI that needs no LLM: brains that run behavior trees over a blackboard, 
 - Nodes: Sequence, Selector, Parallel (`All`/`One`), UtilitySelector, RandomSelector (seeded); Condition (key compared with a value; `abort`: `None`, `SelfOnly`, `Lower`), Cooldown, Loop, TimeLimit, Inverter; tasks MoveTo (`NavAgent.target`, done on `NavArrived`), Wait, PlayAnim (an `AnimGraphPlayer` trigger), FaceTarget, SetBlackboard, CastSkill (`ai.Cast`), RunGraph (`ai.Run`), Plan (below).
 - Every choice raises `ai.Decision`: assert on it with `event("ai.Decision")`, and inspect a brain with `ai.inspect` and `ai.trace`.
 
+## Behavior graphs
+- A brain can name a Behavior `.graph.ron` instead of a `.bt.ron` (`ai.Brain { tree: "ai/guard.graph.ron" }`); play start compiles it to the same tree.
+- Nodes are the `behavior.*` set in `graph_list_nodes` (one per tree node above, plus `behavior.fail`). Composites order children by `child0`–`child3`; decorators have one `child`; parameters are constant inputs (`op`: eq, ne, lt, le, gt, ge, set, unset; `abort`: none, self, lower).
+- The graph's variables are the blackboard keys (bool, i32/i64, f32, Vec3, EntityId, String). A wrong value or unknown key is a diagnostic naming the node and pin.
+- Utility selectors and their curves are written in `.bt.ron` for now.
+
 ## Perception
 - `ai.Perceiver` (sight range and cone, hearing range, memory length, eye height, factions noticed) and `ai.Faction`.
 - Sight checks line of sight through physics. Raise `ai.Noise` on a noise's source and `ai.Damaged` on a victim. `ai.Memory` decays.

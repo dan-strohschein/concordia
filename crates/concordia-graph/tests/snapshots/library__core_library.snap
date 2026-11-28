@@ -3,6 +3,287 @@ source: crates/concordia-graph/tests/library.rs
 expression: core.to_json()
 ---
 {
+  "behavior.cast": {
+    "category": "Behavior",
+    "docs": "Casts `skill` at the entity in blackboard `target_key` (raises `ai.Cast`).",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "skill",
+        "required": true,
+        "ty": "String"
+      },
+      {
+        "name": "target_key",
+        "required": true,
+        "ty": "String"
+      }
+    ],
+    "op": "behavior.cast",
+    "outputs": [],
+    "pure": false
+  },
+  "behavior.condition": {
+    "category": "Behavior",
+    "docs": "Runs its child while blackboard `key` compares (`op`: eq, ne, lt, le, gt, ge, set, unset) with `value`; `abort`: none, self or lower.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [
+      "child"
+    ],
+    "inputs": [
+      {
+        "name": "key",
+        "required": true,
+        "ty": "String"
+      },
+      {
+        "name": "op",
+        "required": false,
+        "ty": "String"
+      },
+      {
+        "name": "value",
+        "required": false,
+        "ty": "String"
+      },
+      {
+        "name": "abort",
+        "required": false,
+        "ty": "String"
+      }
+    ],
+    "op": "behavior.condition",
+    "outputs": [],
+    "pure": false
+  },
+  "behavior.cooldown": {
+    "category": "Behavior",
+    "docs": "Fails for `seconds` after its child finished.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [
+      "child"
+    ],
+    "inputs": [
+      {
+        "name": "seconds",
+        "required": true,
+        "ty": "f32"
+      }
+    ],
+    "op": "behavior.cooldown",
+    "outputs": [],
+    "pure": false
+  },
+  "behavior.face": {
+    "category": "Behavior",
+    "docs": "Turns toward the entity or point in blackboard `key`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "key",
+        "required": true,
+        "ty": "String"
+      }
+    ],
+    "op": "behavior.face",
+    "outputs": [],
+    "pure": false
+  },
+  "behavior.fail": {
+    "category": "Behavior",
+    "docs": "Fails at once.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [],
+    "inputs": [],
+    "op": "behavior.fail",
+    "outputs": [],
+    "pure": false
+  },
+  "behavior.inverter": {
+    "category": "Behavior",
+    "docs": "Swaps its child's success and failure.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [
+      "child"
+    ],
+    "inputs": [],
+    "op": "behavior.inverter",
+    "outputs": [],
+    "pure": false
+  },
+  "behavior.loop": {
+    "category": "Behavior",
+    "docs": "Runs its child `count` times (0 or absent: forever) while it succeeds.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [
+      "child"
+    ],
+    "inputs": [
+      {
+        "name": "count",
+        "required": false,
+        "ty": "i32"
+      }
+    ],
+    "op": "behavior.loop",
+    "outputs": [],
+    "pure": false
+  },
+  "behavior.move_to": {
+    "category": "Behavior",
+    "docs": "Walks to the entity or point in blackboard `key`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "key",
+        "required": true,
+        "ty": "String"
+      }
+    ],
+    "op": "behavior.move_to",
+    "outputs": [],
+    "pure": false
+  },
+  "behavior.parallel": {
+    "category": "Behavior",
+    "docs": "Runs every child at once; `policy` `all` (default: succeed when all do) or `one`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [
+      "child0",
+      "child1",
+      "child2",
+      "child3"
+    ],
+    "inputs": [
+      {
+        "name": "policy",
+        "required": false,
+        "ty": "String"
+      }
+    ],
+    "op": "behavior.parallel",
+    "outputs": [],
+    "pure": false
+  },
+  "behavior.plan": {
+    "category": "Behavior",
+    "docs": "Asks the game's LLM (opt-in) to choose one of `options` (comma-separated) for `goal` into Text `key` within `deadline_ticks` (default 60); fails otherwise.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "goal",
+        "required": true,
+        "ty": "String"
+      },
+      {
+        "name": "options",
+        "required": true,
+        "ty": "String"
+      },
+      {
+        "name": "key",
+        "required": true,
+        "ty": "String"
+      },
+      {
+        "name": "deadline_ticks",
+        "required": false,
+        "ty": "i32"
+      }
+    ],
+    "op": "behavior.plan",
+    "outputs": [],
+    "pure": false
+  },
+  "behavior.play_anim": {
+    "category": "Behavior",
+    "docs": "Fires an animation-graph `trigger`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "trigger",
+        "required": true,
+        "ty": "String"
+      }
+    ],
+    "op": "behavior.play_anim",
+    "outputs": [],
+    "pure": false
+  },
+  "behavior.random": {
+    "category": "Behavior",
+    "docs": "Runs one child picked at random (seeded); `weights` like `1, 2, 1` (default: equal).",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [
+      "child0",
+      "child1",
+      "child2",
+      "child3"
+    ],
+    "inputs": [
+      {
+        "name": "weights",
+        "required": false,
+        "ty": "String"
+      }
+    ],
+    "op": "behavior.random",
+    "outputs": [],
+    "pure": false
+  },
   "behavior.root": {
     "category": "Behavior",
     "docs": "A behavior tree's root.",
@@ -14,6 +295,26 @@ expression: core.to_json()
     ],
     "inputs": [],
     "op": "behavior.root",
+    "outputs": [],
+    "pure": false
+  },
+  "behavior.run_graph": {
+    "category": "Behavior",
+    "docs": "Asks graph module `graph` to run (raises `ai.Run`).",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "graph",
+        "required": true,
+        "ty": "String"
+      }
+    ],
+    "op": "behavior.run_graph",
     "outputs": [],
     "pure": false
   },
@@ -55,6 +356,31 @@ expression: core.to_json()
     "outputs": [],
     "pure": false
   },
+  "behavior.set_key": {
+    "category": "Behavior",
+    "docs": "Writes `value` (text, parsed by the key's type) to blackboard `key`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "key",
+        "required": true,
+        "ty": "String"
+      },
+      {
+        "name": "value",
+        "required": true,
+        "ty": "String"
+      }
+    ],
+    "op": "behavior.set_key",
+    "outputs": [],
+    "pure": false
+  },
   "behavior.succeed": {
     "category": "Behavior",
     "docs": "Succeeds at once.",
@@ -66,6 +392,48 @@ expression: core.to_json()
     "exec_out": [],
     "inputs": [],
     "op": "behavior.succeed",
+    "outputs": [],
+    "pure": false
+  },
+  "behavior.time_limit": {
+    "category": "Behavior",
+    "docs": "Fails its child after `seconds`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [
+      "child"
+    ],
+    "inputs": [
+      {
+        "name": "seconds",
+        "required": true,
+        "ty": "f32"
+      }
+    ],
+    "op": "behavior.time_limit",
+    "outputs": [],
+    "pure": false
+  },
+  "behavior.wait": {
+    "category": "Behavior",
+    "docs": "Waits `seconds`.",
+    "dynamic": false,
+    "event": false,
+    "exec_in": [
+      "in"
+    ],
+    "exec_out": [],
+    "inputs": [
+      {
+        "name": "seconds",
+        "required": true,
+        "ty": "f32"
+      }
+    ],
+    "op": "behavior.wait",
     "outputs": [],
     "pure": false
   },

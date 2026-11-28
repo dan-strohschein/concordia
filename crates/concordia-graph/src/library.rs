@@ -385,6 +385,7 @@ fn core_nodes() -> Vec<NodeDef> {
             vec![out("out", F32)],
         ),
     ];
+    nodes.extend(behavior_nodes());
     for (op, docs) in [
         ("add", "`a` + `b`."),
         ("sub", "`a` - `b`."),
@@ -434,6 +435,111 @@ fn core_nodes() -> Vec<NodeDef> {
         ));
     }
     nodes
+}
+
+/// The behavior-tree node set beyond root, sequence, selector and succeed (M4 4.12e): composites
+/// (`child0`–`child3`), decorators (one `child`) and tasks, parameters as constant inputs.
+fn behavior_nodes() -> Vec<NodeDef> {
+    use PinType::{F32, I32, String};
+    let children: &[&str] = &["child0", "child1", "child2", "child3"];
+    let composite = |op: &str, docs: &str, inputs| {
+        flow(op, "Behavior", docs, (&["in"], children), inputs, vec![])
+    };
+    let decorator = |op: &str, docs: &str, inputs| {
+        flow(op, "Behavior", docs, (&["in"], &["child"]), inputs, vec![])
+    };
+    let task =
+        |op: &str, docs: &str, inputs| flow(op, "Behavior", docs, (&["in"], &[]), inputs, vec![]);
+    let text = |name: &str| req(name, String);
+    let opt_text = |name: &str| pin(name, String, false);
+    vec![
+        composite(
+            "behavior.parallel",
+            "Runs every child at once; `policy` `all` (default: succeed when all do) or `one`.",
+            vec![opt_text("policy")],
+        ),
+        composite(
+            "behavior.random",
+            "Runs one child picked at random (seeded); `weights` like `1, 2, 1` (default: equal).",
+            vec![opt_text("weights")],
+        ),
+        decorator(
+            "behavior.condition",
+            "Runs its child while blackboard `key` compares (`op`: eq, ne, lt, le, gt, ge, set, unset) with `value`; `abort`: none, self or lower.",
+            vec![
+                text("key"),
+                opt_text("op"),
+                opt_text("value"),
+                opt_text("abort"),
+            ],
+        ),
+        decorator(
+            "behavior.cooldown",
+            "Fails for `seconds` after its child finished.",
+            vec![req("seconds", F32)],
+        ),
+        decorator(
+            "behavior.loop",
+            "Runs its child `count` times (0 or absent: forever) while it succeeds.",
+            vec![pin("count", I32, false)],
+        ),
+        decorator(
+            "behavior.time_limit",
+            "Fails its child after `seconds`.",
+            vec![req("seconds", F32)],
+        ),
+        decorator(
+            "behavior.inverter",
+            "Swaps its child's success and failure.",
+            vec![],
+        ),
+        task(
+            "behavior.move_to",
+            "Walks to the entity or point in blackboard `key`.",
+            vec![text("key")],
+        ),
+        task(
+            "behavior.wait",
+            "Waits `seconds`.",
+            vec![req("seconds", F32)],
+        ),
+        task(
+            "behavior.play_anim",
+            "Fires an animation-graph `trigger`.",
+            vec![text("trigger")],
+        ),
+        task(
+            "behavior.face",
+            "Turns toward the entity or point in blackboard `key`.",
+            vec![text("key")],
+        ),
+        task(
+            "behavior.set_key",
+            "Writes `value` (text, parsed by the key's type) to blackboard `key`.",
+            vec![text("key"), text("value")],
+        ),
+        task(
+            "behavior.cast",
+            "Casts `skill` at the entity in blackboard `target_key` (raises `ai.Cast`).",
+            vec![text("skill"), text("target_key")],
+        ),
+        task(
+            "behavior.run_graph",
+            "Asks graph module `graph` to run (raises `ai.Run`).",
+            vec![text("graph")],
+        ),
+        task(
+            "behavior.plan",
+            "Asks the game's LLM (opt-in) to choose one of `options` (comma-separated) for `goal` into Text `key` within `deadline_ticks` (default 60); fails otherwise.",
+            vec![
+                text("goal"),
+                text("options"),
+                text("key"),
+                pin("deadline_ticks", I32, false),
+            ],
+        ),
+        task("behavior.fail", "Fails at once.", vec![]),
+    ]
 }
 
 /// A `#[graph_node]` function as a node: `<category>.<name>`, output `out`.
