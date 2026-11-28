@@ -100,6 +100,10 @@ pub enum TaskKind {
         goal: String,
         /// Ticks to wait.
         deadline_ticks: u32,
+        /// The actions it may choose (the answer's schema allows only these).
+        options: Vec<String>,
+        /// The `Text` key the chosen action is written to.
+        key: String,
     },
     /// Succeed.
     Succeed,
@@ -305,6 +309,11 @@ impl BehaviorTree {
                 {
                     return fail("seconds must be finite and non-negative".into());
                 }
+                NodeKind::Task(TaskKind::Plan { options, key, .. })
+                    if options.is_empty() || self.keys.get(key) != Some(&BbType::Text) =>
+                {
+                    return fail(format!("a plan needs actions and a Text key ({key:?})"));
+                }
                 _ => {}
             }
         }
@@ -334,6 +343,7 @@ fn keys_of(kind: &NodeKind) -> Vec<&str> {
             | TaskKind::SetBlackboard { key, .. },
         ) => vec![key],
         NodeKind::Task(TaskKind::CastSkill { target_key, .. }) => vec![target_key],
+        NodeKind::Task(TaskKind::Plan { key, .. }) => vec![key],
         NodeKind::UtilitySelector { options, .. } => {
             options.iter().flat_map(|o| o.keys()).collect()
         }

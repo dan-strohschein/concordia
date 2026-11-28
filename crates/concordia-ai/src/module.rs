@@ -2,6 +2,7 @@
 //! every brain's tree when play starts, runs `ai.think`, and serves `ai.inspect` and `ai.trace`.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use concordia_api::{
     ApiError, ApiErrorKind, CallCtx, Engine, EngineModule, EntityRef, Method, MethodInfo,
@@ -13,18 +14,42 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::engine::{AiCast, AiDecision, AiRun, Trees, add_ai_processors, insert_ai_resources};
-use crate::{AiConfig, BehaviorTree, Blackboard, Brain, BtState, NodeKind};
+use crate::{
+    AiConfig, BehaviorTree, Blackboard, Brain, BtState, LlmProvider, LlmService, NodeKind,
+};
 
-/// Runtime AI for a project (`[ai]`).
-#[derive(Debug, Clone, Copy, Default)]
+/// Runtime AI for a project (`[ai]`), with an optional LLM provider the game ships (none by
+/// default: `Plan` tasks then fail at once and trees fall back).
+#[derive(Clone, Default)]
 pub struct AiModule {
     config: AiConfig,
+    provider: Option<Arc<dyn LlmProvider>>,
+}
+
+impl std::fmt::Debug for AiModule {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AiModule")
+            .field("config", &self.config)
+            .field("provider", &self.provider.is_some())
+            .finish()
+    }
 }
 
 impl AiModule {
     /// With `config`.
     pub fn new(config: AiConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            provider: None,
+        }
+    }
+
+    /// With an LLM provider for `Plan` tasks (opt-in; a game's own choice, never a developer's
+    /// subscription).
+    #[must_use]
+    pub fn with_provider(mut self, provider: Arc<dyn LlmProvider>) -> Self {
+        self.provider = Some(provider);
+        self
     }
 }
 
@@ -95,6 +120,10 @@ impl EngineModule for AiModule {
             }
         }
         world.insert_resource(Trees::with_failures(trees, failed));
+        world.insert_resource(match &self.provider {
+            Some(p) => LlmService::with_provider(p.clone()),
+            None => LlmService::default(),
+        });
         insert_ai_resources(world);
         let mut setup = PlaySetup::default();
         add_ai_processors(&mut setup.schedule, self.config);

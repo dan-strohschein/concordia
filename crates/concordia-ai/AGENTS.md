@@ -21,6 +21,8 @@ Runtime AI that needs no LLM (M4 4.12): a typed blackboard, event-driven behavio
 
 - Perception (4.12c): `ai.sense` runs before `ai.think`. Sight: `sight_per_tick` perceivers look a tick in rotation (cone around +Z, range, line of sight by `PhysicsQueries::raycast` from eye height; no physics, no occlusion); every perceiver hears `ai.Noise` (linear falloff to the noise's radius, capped by `hearing_range`) and feels `ai.Damaged`. Hostility: `notices` factions, or every faction but its own. Memory decays linearly over `memory_seconds`; the strongest entry fills `target` / `target_position` where the tree declares them.
 
+- LLM (4.12d): `LlmProvider` (submit/poll, never blocking), `MockLlmProvider`, `LlmService` (the world's provider and pending plans), `action_schema` (from the reflected `ai.PlannerReply`), `validate_reply`. A `Plan` task's answer is logged to `concordia_core::external::ExternalInputs` (failures too, as `!error: …`), in source order per tick; a replay plays the log back and never asks. No provider: `Plan` fails at once. `tests/deps.rs` keeps HTTP clients and model runtimes out of the default build.
+
 ## How to test
 `cargo nextest run -p concordia-ai`
 
@@ -28,7 +30,7 @@ Runtime AI that needs no LLM (M4 4.12): a typed blackboard, event-driven behavio
 Colledanchise & Ögren, *Behavior Trees in Robotics and AI* (CRC 2018) for composite semantics; Champandard's AiGameDev articles on event-driven BTs (2007–2012) and UE's public behavior-tree documentation for abort modes (no code); Mark & Dill, "Improving AI Decision Modeling Through Utility Theory" (GDC 2010); Mark, "Building a Better Centaur: AI at Massive Scale" (GDC 2015) for the compensation factor; Graham, "An Introduction to Utility Theory" (Game AI Pro, 2013) for curves.
 
 ## Status
-M4 4.12a–c: the pure runtime, the engine module and perception. The LLM seam and graphs are 4.12d–e.
+M4 4.12a–d: the pure runtime, the engine module, perception and the LLM seam. Graphs on the runtime are 4.12e.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

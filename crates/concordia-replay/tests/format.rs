@@ -46,7 +46,7 @@ fn tick_hashes(ticks: u64) -> Vec<String> {
 
 fn sample() -> Replay {
     Replay {
-        version: 1,
+        version: concordia_replay::FORMAT_VERSION,
         header: ReplayHeader {
             engine: "0.0.0".into(),
             platform: Some("macos-aarch64".into()),
@@ -89,6 +89,7 @@ fn sample() -> Replay {
             },
         ],
         checkpoints: vec![checkpoint(0, H1), checkpoint(60, H2), checkpoint(120, H1)],
+        external: vec![],
         hashes: tick_hashes(120),
     }
 }
@@ -110,10 +111,13 @@ fn replay_ron_roundtrip_is_byte_identical() {
 fn replay_format_rejects_unknown_major_version_bad_hashes_and_unordered_ticks() {
     let text = |replay: &Replay| write_replay(replay).unwrap();
 
-    let mut v2 = sample();
-    v2.version = 2;
-    let err = read_replay(&text(&v2)).unwrap_err();
-    assert!(matches!(err, ReplayError::Version { found: 2 }), "{err:?}");
+    let mut next = sample();
+    next.version = concordia_replay::FORMAT_VERSION + 1;
+    let err = read_replay(&text(&next)).unwrap_err();
+    assert!(
+        matches!(err, ReplayError::Version { found } if found == concordia_replay::FORMAT_VERSION + 1),
+        "{err:?}"
+    );
 
     let mut short = sample();
     short.checkpoints[1]
@@ -219,11 +223,11 @@ fn tick_hashes_must_cover_every_tick_in_full_lines() {
 /// inputs and checkpoints, with no platform, manifest hash, task or per-tick hashes (those were
 /// never recorded, so runs don't compare them).
 #[test]
-fn a_version_0_file_reads_as_version_1() {
+fn a_version_0_file_reads_as_the_current_version() {
     let text = include_str!("fixtures/v0.replay.ron");
     assert!(text.contains("version: 0"));
     let replay = read_replay(text).unwrap();
-    assert_eq!(replay.version, 1);
+    assert_eq!(replay.version, concordia_replay::FORMAT_VERSION);
     let mut want = sample();
     want.header.platform = None;
     want.header.manifest_hash = None;
@@ -233,7 +237,7 @@ fn a_version_0_file_reads_as_version_1() {
     assert_eq!(replay, want);
     let again = write_replay(&replay).unwrap();
     assert!(
-        again.contains("version: 1") && !again.contains("hashes:"),
+        again.contains("version: 2") && !again.contains("hashes:"),
         "{again}"
     );
 }
@@ -271,4 +275,34 @@ proptest::proptest! {
         let text = write_replay(&replay).unwrap();
         proptest::prop_assert_eq!(read_replay(&text).unwrap(), replay);
     }
+}
+
+#[test]
+fn version_2_records_external_outputs_and_reads_version_1() {
+    let mut r = sample();
+    r.external = vec![
+        concordia_replay::ExternalOutput {
+            tick: 12,
+            source: "llm:guard:3".into(),
+            payload: "{\"action\":\"flee\"}".into(),
+        },
+        concordia_replay::ExternalOutput {
+            tick: 40,
+            source: "llm:guard:3".into(),
+            payload: "not json".into(),
+        },
+    ];
+    let text = write_replay(&r).unwrap();
+    assert_eq!(read_replay(&text).unwrap().external, r.external);
+    // A version 1 file (no external outputs) reads as version 2.
+    let v1 = write_replay(&sample())
+        .unwrap()
+        .replace("version: 2,", "version: 1,");
+    let read = read_replay(&v1).unwrap();
+    assert_eq!(read.version, 2);
+    assert!(read.external.is_empty());
+    // Outputs must be in tick order, within the recording.
+    let mut late = r.clone();
+    late.external.reverse();
+    assert!(read_replay(&write_replay(&late).unwrap()).is_err());
 }

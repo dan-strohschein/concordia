@@ -1,5 +1,6 @@
-//! The `.replay.ron` format, version 1: a header, input changes per tick, checkpoints and every
-//! tick's world hash (ADR-0072; M3 phase 3.1a). Version 0 files are read and migrated.
+//! The `.replay.ron` format, version 2: a header, input changes per tick, external outputs
+//! (recorded LLM answers, M4 4.12d), checkpoints and every tick's world hash (ADR-0072; M3 phase
+//! 3.1a). Version 0 and 1 files are read and migrated.
 
 use std::collections::BTreeMap;
 
@@ -10,8 +11,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::ReplayError;
 
-/// The format version this crate writes (it also reads version 0).
-pub const FORMAT_VERSION: u32 = 1;
+/// The format version this crate writes (it also reads versions 0 and 1).
+pub const FORMAT_VERSION: u32 = 2;
+
+/// Version 1 (M3 3.1a): version 2 without `external`.
+pub const VERSION_1: u32 = 1;
 
 /// Hex digits kept of each tick's world hash in [`Replay::hashes`].
 pub const TICK_HASH_HEX: usize = 16;
@@ -19,11 +23,11 @@ pub const TICK_HASH_HEX: usize = 16;
 /// Ticks per line of [`Replay::hashes`].
 pub const TICKS_PER_LINE: usize = 64;
 
-/// A recorded play session (`.replay.ron`, version 1).
+/// A recorded play session (`.replay.ron`, version 2).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 #[serde(deny_unknown_fields)]
 pub struct Replay {
-    /// Format version (1).
+    /// Format version (2).
     pub version: u32,
     /// What the session ran on.
     pub header: ReplayHeader,
@@ -31,6 +35,10 @@ pub struct Replay {
     pub ticks: u64,
     /// The ticks where some action's state changed, with those actions' new states.
     pub inputs: Vec<InputChange>,
+    /// Outputs from outside the simulation applied on each tick (LLM answers), in tick order;
+    /// a run feeds them back instead of asking (D8). Omitted when none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub external: Vec<ExternalOutput>,
     /// World hashes at tick 0, every `checkpoint_every` ticks and the last tick.
     pub checkpoints: Vec<Checkpoint>,
     /// Every tick's world hash after it ran (ticks 1..=`ticks`), the first 16 hex digits each,
@@ -86,6 +94,18 @@ pub struct ReplayHeader {
     pub task: Option<String>,
 }
 
+/// One output from outside the simulation, applied on a tick (M4 4.12d).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Reflect)]
+#[serde(deny_unknown_fields)]
+pub struct ExternalOutput {
+    /// The tick it was applied on.
+    pub tick: u64,
+    /// Who asked (`llm:<entity>:<node>`).
+    pub source: String,
+    /// What came back, verbatim (validated again when replayed).
+    pub payload: String,
+}
+
 /// The actions whose state changed on one tick, and the text typed on it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 #[serde(deny_unknown_fields)]
@@ -125,11 +145,18 @@ pub fn read_replay(text: &str) -> Result<Replay, ReplayError> {
     let mut replay: Replay = concordia_scene::read_document(text)?;
     match replay.version {
         FORMAT_VERSION => {}
-        VERSION_0 => replay.version = FORMAT_VERSION,
+        VERSION_0 | VERSION_1 => replay.version = FORMAT_VERSION,
         found => return Err(ReplayError::Version { found }),
     }
     check_hash("header.scene_hash", &replay.header.scene_hash)?;
     check_order("inputs", replay.inputs.iter().map(|i| i.tick), replay.ticks)?;
+    // Several agents can be answered on one tick.
+    check_ticks(
+        "external",
+        replay.external.iter().map(|e| e.tick),
+        replay.ticks,
+        false,
+    )?;
     check_order(
         "checkpoints",
         replay.checkpoints.iter().map(|c| c.tick),
@@ -206,9 +233,20 @@ fn check_order(
     ticks_of: impl Iterator<Item = u64>,
     ticks: u64,
 ) -> Result<(), ReplayError> {
+    check_ticks(list, ticks_of, ticks, true)
+}
+
+/// Ticks in order within the recording: strictly increasing, or (`strict` false) non-decreasing.
+fn check_ticks(
+    list: &str,
+    ticks_of: impl Iterator<Item = u64>,
+    ticks: u64,
+    strict: bool,
+) -> Result<(), ReplayError> {
     let mut last: Option<u64> = None;
     for (i, tick) in ticks_of.enumerate() {
-        if last.is_some_and(|l| tick <= l) || tick > ticks {
+        let back = last.is_some_and(|l| if strict { tick <= l } else { tick < l });
+        if back || tick > ticks {
             return Err(ReplayError::Order {
                 at: format!("{list}[{i}]"),
                 tick,

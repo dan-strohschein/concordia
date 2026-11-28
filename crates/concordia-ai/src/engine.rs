@@ -4,7 +4,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroUsize;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
+
+use concordia_core::external::{ExternalInputs, ExternalRecord};
 use std::time::Instant;
 
 use concordia_anim::AnimGraphPlayer;
@@ -17,6 +19,9 @@ use concordia_scene::builtin::Transform;
 use concordia_terra::{CommandBuffer, Phase, Schedule, SystemCtx, View, World, processor};
 use serde::{Deserialize, Serialize};
 
+use crate::llm::{
+    LlmPoll, LlmRequest, LlmService, Pending, PlannerRequest, action_schema, validate_reply,
+};
 use crate::{
     BbValue, BehaviorTree, Blackboard, BtState, NodeKind, Status, TaskHost, TaskKind, Ticker,
 };
@@ -138,6 +143,12 @@ pub fn insert_ai_resources(world: &mut World) {
     if world.resource::<Trees>().is_none() {
         world.insert_resource(Trees::default());
     }
+    if world.resource::<LlmService>().is_none() {
+        world.insert_resource(LlmService::default());
+    }
+    if world.resource::<ExternalInputs>().is_none() {
+        world.insert_resource(ExternalInputs::default());
+    }
 }
 
 /// Adds `ai.sense` and then `ai.think` to `PostPhysics`.
@@ -157,6 +168,8 @@ pub fn add_ai_processors(schedule: &mut Schedule, config: AiConfig) {
             .reads_resource::<SimRng>()
             .writes_resource::<AiStats>()
             .writes_resource::<AiCursor>()
+            .reads_resource::<LlmService>()
+            .writes_resource::<ExternalInputs>()
             .run(move |view: &mut View<'_>, ctx: &SystemCtx<'_>| think(view, ctx, config)),
     );
 }
@@ -173,6 +186,10 @@ struct Shared {
     seed: u64,
     tick: u64,
     dt: f32,
+    llm: LlmService,
+    external: ExternalInputs,
+    /// External outputs applied this tick (appended to the world's log, in order, afterwards).
+    applied: Mutex<Vec<ExternalRecord>>,
 }
 
 fn think(view: &mut View<'_>, ctx: &SystemCtx<'_>, config: AiConfig) {
@@ -191,6 +208,16 @@ fn think(view: &mut View<'_>, ctx: &SystemCtx<'_>, config: AiConfig) {
                 }
             },
         );
+    }
+    let mut applied = shared
+        .applied
+        .into_inner()
+        .unwrap_or_else(PoisonError::into_inner);
+    applied.sort_by(|a, b| a.source.cmp(&b.source));
+    if let Ok(log) = view.resource_mut::<ExternalInputs>() {
+        for r in applied {
+            log.apply(r.tick, &r.source, &r.payload);
+        }
     }
     if let Ok(stats) = view.resource_mut::<AiStats>() {
         *stats = AiStats {
@@ -260,6 +287,12 @@ fn gather(view: &mut View<'_>, ctx: &SystemCtx<'_>, config: AiConfig) -> Option<
         seed,
         tick: ctx.tick.0,
         dt: ctx.dt,
+        llm: view.resource::<LlmService>().cloned().unwrap_or_default(),
+        external: view
+            .resource::<ExternalInputs>()
+            .cloned()
+            .unwrap_or_default(),
+        applied: Mutex::new(Vec::new()),
     })
 }
 
@@ -375,9 +408,102 @@ impl EngineHost<'_> {
     }
 }
 
+impl EngineHost<'_> {
+    /// Who asked (the source of the answer in the external log).
+    fn source(&self, node: u32) -> String {
+        format!("llm:{}:{node}", self.id)
+    }
+
+    /// Starts a plan: asks the provider (live), or waits for the recorded answer (replay).
+    fn submit(
+        &mut self,
+        node: u32,
+        goal: &str,
+        deadline_ticks: u32,
+        options: &[String],
+        bb: &Blackboard,
+    ) -> Status {
+        let deadline = self.shared.tick + u64::from(deadline_ticks);
+        let ticket = match (
+            &self.shared.llm.provider,
+            self.shared.external.is_playback(),
+        ) {
+            (_, true) => None,
+            (Some(provider), false) => Some(provider.submit(LlmRequest::Planner(PlannerRequest {
+                goal: goal.to_owned(),
+                observation: serde_json::to_value(bb).unwrap_or_default(),
+                action_schema: action_schema(options),
+            }))),
+            (None, false) => return Status::Failure,
+        };
+        self.shared
+            .llm
+            .pending()
+            .insert((self.id, node), Pending { ticket, deadline });
+        Status::Running
+    }
+
+    /// Checks a plan: a valid answer writes its action; an invalid, failed or late one fails.
+    fn answer(&mut self, node: u32, options: &[String], key: &str, bb: &mut Blackboard) -> Status {
+        let Some(pending) = self.shared.llm.pending().get(&(self.id, node)).copied() else {
+            return Status::Failure;
+        };
+        let source = self.source(node);
+        let tick = self.shared.tick;
+        let payload = match (pending.ticket, &self.shared.llm.provider) {
+            (None, _) => self
+                .shared
+                .external
+                .recorded(tick, &source)
+                .map(str::to_owned),
+            (Some(ticket), Some(provider)) => match provider.poll(ticket) {
+                LlmPoll::Pending => None,
+                LlmPoll::Ready(text) => Some(text),
+                LlmPoll::Failed(reason) => Some(format!("!error: {reason}")),
+            },
+            (Some(_), None) => Some("!error: no provider".to_owned()),
+        };
+        let Some(payload) = payload else {
+            if tick >= pending.deadline {
+                self.shared.llm.pending().remove(&(self.id, node));
+                tracing::warn!(target: "concordia::ai", entity = %self.id, node, "plan timed out; the tree falls back");
+                return Status::Failure;
+            }
+            return Status::Running;
+        };
+        self.shared.llm.pending().remove(&(self.id, node));
+        self.shared
+            .applied
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(ExternalRecord {
+                tick,
+                source,
+                payload: payload.clone(),
+            });
+        match validate_reply(&payload, options).map(|action| bb.set(key, BbValue::Text(action))) {
+            Ok(Ok(())) => Status::Success,
+            Ok(Err(e)) => {
+                tracing::warn!(target: "concordia::ai", entity = %self.id, node, error = %e, "plan key not written");
+                Status::Failure
+            }
+            Err(why) => {
+                tracing::warn!(target: "concordia::ai", entity = %self.id, node, %why, "invalid plan; the tree falls back");
+                Status::Failure
+            }
+        }
+    }
+}
+
 impl TaskHost for EngineHost<'_> {
-    fn start(&mut self, _: u32, task: &TaskKind, bb: &mut Blackboard) -> Status {
+    fn start(&mut self, node: u32, task: &TaskKind, bb: &mut Blackboard) -> Status {
         match task {
+            TaskKind::Plan {
+                goal,
+                deadline_ticks,
+                options,
+                ..
+            } => self.submit(node, goal, *deadline_ticks, options, bb),
             TaskKind::MoveTo { key } => match self.point(bb, key) {
                 Some(p) if self.set_nav_target(Some(p)) => Status::Running,
                 _ => Status::Failure,
@@ -426,13 +552,14 @@ impl TaskHost for EngineHost<'_> {
                 );
                 Status::Success
             }
-            // The planner (4.12d) and host-defined tasks have no engine form here.
+            // Host-defined tasks have no engine form.
             _ => Status::Failure,
         }
     }
 
-    fn update(&mut self, _: u32, task: &TaskKind, _: &mut Blackboard) -> Status {
+    fn update(&mut self, node: u32, task: &TaskKind, bb: &mut Blackboard) -> Status {
         match task {
+            TaskKind::Plan { options, key, .. } => self.answer(node, options, key, bb),
             TaskKind::MoveTo { .. } if self.shared.failed.contains(&self.id) => Status::Failure,
             TaskKind::MoveTo { .. } if self.shared.arrived.contains(&self.id) => Status::Success,
             TaskKind::MoveTo { .. } => Status::Running,
@@ -440,9 +567,15 @@ impl TaskHost for EngineHost<'_> {
         }
     }
 
-    fn abort(&mut self, _: u32, task: &TaskKind) {
-        if let TaskKind::MoveTo { .. } = task {
-            self.set_nav_target(None);
+    fn abort(&mut self, node: u32, task: &TaskKind) {
+        match task {
+            TaskKind::MoveTo { .. } => {
+                self.set_nav_target(None);
+            }
+            TaskKind::Plan { .. } => {
+                self.shared.llm.pending().remove(&(self.id, node));
+            }
+            _ => {}
         }
     }
 }
