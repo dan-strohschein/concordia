@@ -386,7 +386,7 @@ fn plain_frame(r: &mut Renderer, scene: &mut Scene, (w, h): (u32, u32)) -> Image
 }
 
 /// After 32 still frames the own TAA (1.0×) is within FLIP 0.03 of a 16× supersampled render, and
-/// at most half as far from it as no anti-aliasing (the companion, 4.6 plan Q12).
+/// at most half as far from it as no anti-aliasing (the companion, 4.6 plan Q12); 0.55× on Vulkan.
 #[test]
 fn taa_static_scene_converges_to_ssaa_reference() {
     let Some(mut r) = renderer() else { return };
@@ -406,8 +406,14 @@ fn taa_static_scene_converges_to_ssaa_reference() {
         flip(&reference, &msaa)
     );
     assert!(score.mean <= 0.03, "TAA against 16× SSAA: {score:?}");
+    // Lavapipe, Vulkan's software renderer, measured 0.52× at M4's end (author decision,
+    // 2026-11-27: 0.55× there, 0.5× on Metal).
+    let factor = match r.device().caps().backend {
+        concordia_rhi::Backend::Vulkan => 0.55,
+        _ => 0.5,
+    };
     assert!(
-        score.mean <= 0.5 * baseline.mean,
+        score.mean <= factor * baseline.mean,
         "TAA {score:?} against no AA {baseline:?}"
     );
     review("fence_ssaa", 0, &reference);
@@ -979,7 +985,8 @@ fn metalfx_exposure_change_does_not_flash() {
 }
 
 /// Switching own → MetalFX → off → own every 10 frames (40 in all) renders every frame, with the
-/// stats naming the backend that ran and each switch starting a fresh history.
+/// stats naming the backend that ran and each switch of the backend that ran starting a fresh
+/// history (without MetalFX, asking for it keeps the own resolve and its history).
 #[test]
 fn upscaler_backends_are_interchangeable_at_runtime() {
     let Some(mut r) = renderer() else { return };
@@ -994,7 +1001,10 @@ fn upscaler_backends_are_interchangeable_at_runtime() {
         (Temporal::default(), TemporalBackend::off),
         (own(Upscale::X1_5), TemporalBackend::own),
     ];
+    let mut before = None;
     for (i, (temporal, ran)) in runs.into_iter().enumerate() {
+        let switched = before != Some(ran);
+        before = Some(ran);
         r.set_temporal(temporal);
         for f in 0..10 {
             let image = scene.render(&mut r, YARD.0, YARD.1);
@@ -1002,7 +1012,7 @@ fn upscaler_backends_are_interchangeable_at_runtime() {
             assert_eq!(t.backend, ran, "run {i} frame {f}");
             assert_eq!(
                 t.reset,
-                f == 0 && ran != TemporalBackend::off,
+                f == 0 && switched && ran != TemporalBackend::off,
                 "run {i} frame {f}"
             );
             let lit = image.rgba.chunks(4).filter(|p| p[1] > 16).count();

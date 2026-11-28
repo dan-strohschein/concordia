@@ -14,7 +14,7 @@ slow-timeout = { period = "60s", terminate-after = 10 }
 # The canyon (M4 4.4c) restores and imports 2 M unique triangles on a cold run, then rides two camera
 # paths on both draw paths at 22 M source triangles.
 [[profile.default.overrides]]
-filter = "binary_id(concordia-tests::integration) & test(/^canyon::/)"
+filter = "binary_id(concordia-tests::integration) & test(/^(canyon|m4_meshlet_geometry|m4_fallbacks)::/)"
 slow-timeout = { period = "60s", terminate-after = 10 }
 
 # The M2 gate plays and replays whole Lamplight nights in debug builds: about 5 minutes on a
@@ -41,6 +41,12 @@ retries = 2
 [[profile.default.overrides]]
 filter = "test(=moving_shadow_does_not_ghost_under_taa)"
 slow-timeout = { period = "60s", terminate-after = 6 }
+
+# VSM's pool and eviction tests sort and evict thousands of pages; on lavapipe (Vulkan's CPU
+# renderer, M4's end) they run past the 2-minute guard.
+[[profile.default.overrides]]
+filter = "package(concordia-render) & test(/eviction_takes_the_oldest_first_and_is_deterministic|physical_pool_exhaustion_degrades_to_coarser_level_not_artifacts|auto_mover_draws_only_into_dynamic_pages/)"
+slow-timeout = { period = "60s", terminate-after = 15 }
 
 # Blessing a path-traced reference (`just bless-reference`) traces for minutes at full quality.
 [[profile.default.overrides]]

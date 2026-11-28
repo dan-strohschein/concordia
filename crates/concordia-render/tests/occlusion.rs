@@ -2,7 +2,8 @@
 //! last frame, the HZB is built from its depth, and pass 2 draws whatever else isn't hidden. It
 //! never loses geometry (occlusion on against off, on both draw paths: camera cuts, a moving
 //! occluder, the first frame), culls the hidden city, and devices without min depth resolves skip
-//! it when they draw with MSAA.
+//! it when they draw with MSAA. Such devices (lavapipe) run the occlusion tests single-sample, and
+//! skip their goldens, which show 4× MSAA.
 
 mod common;
 use common::{M1, Scene, assert_culling_agrees, golden_in, meshlet_renderers, with_meshlets};
@@ -102,6 +103,23 @@ fn city(view: (Vec3, Vec3), msaa: Msaa) -> Shot {
     }
 }
 
+/// The MSAA the occlusion tests draw with: 4× (what the goldens show) where the device resolves
+/// min depth, else single-sample, where occlusion needs no resolve.
+fn msaa_for(r: &Renderer) -> Msaa {
+    match r.device().caps().depth_resolve_min {
+        true => Msaa::X4,
+        false => Msaa::Off,
+    }
+}
+
+/// Whether a frame drawn with `msaa` is compared with the suite's (4× MSAA) goldens.
+fn has_goldens(msaa: Msaa, test: &str) -> bool {
+    if msaa != Msaa::X4 {
+        println!("{test}: goldens skipped (single-sample: no min depth resolve on this device)");
+    }
+    msaa == Msaa::X4
+}
+
 /// `shot` on `r` with occlusion off, then with it on.
 fn on_and_off(r: &mut Renderer, shot: &mut Shot) -> (Image, Image) {
     r.set_culling(NO_OCCLUSION);
@@ -145,6 +163,10 @@ fn compute_path(r: &Renderer) -> bool {
 fn split_forward_pass_matches_the_single_pass() {
     for mut r in meshlet_renderers() {
         for msaa in [Msaa::X4, Msaa::Off] {
+            if msaa == Msaa::X4 && msaa_for(&r) == Msaa::Off {
+                // devices_without_depth_resolve_min_skip_occlusion covers MSAA here.
+                continue;
+            }
             let mut shot = city(BACK, msaa);
             let (off, on) = on_and_off(&mut r, &mut shot);
             let what = format!("{msaa:?} {:?}: occlusion on vs off", r.stats().raster_path);
@@ -199,7 +221,8 @@ fn devices_without_depth_resolve_min_skip_occlusion() {
 #[test]
 fn occlusion_culls_at_least_90_percent_in_occluded_city_scene() {
     for mut r in meshlet_renderers() {
-        let mut shot = city(FRONT, Msaa::X4);
+        let msaa = msaa_for(&r);
+        let mut shot = city(FRONT, msaa);
         let (off, _) = on_and_off(&mut r, &mut shot);
         let on = shot.scene.render(&mut r, SIZE.0, SIZE.1);
         let m = r.stats().meshlets;
@@ -211,7 +234,9 @@ fn occlusion_culls_at_least_90_percent_in_occluded_city_scene() {
         );
         assert_eq!(m.meshlets, m.drawn_early + m.drawn_late);
         assert_culling_agrees(SUITE, "occluded_city", (&off, &on), "frame 2");
-        golden_in(SUITE, "occluded_city", &off);
+        if has_goldens(msaa, "occluded city") {
+            golden_in(SUITE, "occluded_city", &off);
+        }
     }
 }
 
@@ -221,7 +246,7 @@ fn occlusion_culls_at_least_90_percent_in_occluded_city_scene() {
 fn first_frame_draws_everything_in_pass_two() {
     for mut r in meshlet_renderers() {
         r.set_cull_readback(true);
-        let mut shot = city(BACK, Msaa::X4);
+        let mut shot = city(BACK, msaa_for(&r));
         let _ = shot.scene.render(&mut r, SIZE.0, SIZE.1);
         let first = r.stats().meshlets;
         assert_eq!(first.drawn_early, 0, "{first:?}");
@@ -248,9 +273,10 @@ fn first_frame_draws_everything_in_pass_two() {
 #[test]
 fn two_pass_occlusion_has_no_false_negatives_on_camera_cut() {
     for mut r in meshlet_renderers() {
+        let msaa = msaa_for(&r);
         let mut goldens = Vec::new();
         for (from, to, name) in [(FRONT, BACK, "camera_cut"), (BACK, FRONT, "occluded_city")] {
-            let mut shot = city(to, Msaa::X4);
+            let mut shot = city(to, msaa);
             r.set_culling(NO_OCCLUSION);
             let off = shot.scene.render(&mut r, SIZE.0, SIZE.1);
             r.set_culling(Culling::default());
@@ -268,9 +294,11 @@ fn two_pass_occlusion_has_no_false_negatives_on_camera_cut() {
                 goldens.push(off);
             }
         }
-        goldens
-            .iter()
-            .for_each(|g| golden_in(SUITE, "camera_cut", g));
+        if has_goldens(msaa, "camera cut") {
+            goldens
+                .iter()
+                .for_each(|g| golden_in(SUITE, "camera_cut", g));
+        }
     }
 }
 
@@ -282,7 +310,8 @@ fn two_pass_occlusion_has_no_false_negatives_with_moving_occluder() {
     let offs = meshlet_renderers();
     for (mut on, mut off) in renderers.into_iter().zip(offs) {
         off.set_culling(NO_OCCLUSION);
-        let mut shot = field();
+        let msaa = msaa_for(&on);
+        let mut shot = field(msaa);
         let mut late = 0;
         let mut goldens = Vec::new();
         for frame in 0..120u32 {
@@ -296,26 +325,30 @@ fn two_pass_occlusion_has_no_false_negatives_with_moving_occluder() {
             let want = shot.scene.render(&mut off, SIZE.0, SIZE.1);
             let got = shot.scene.render(&mut on, SIZE.0, SIZE.1);
             late += on.stats().meshlets.drawn_late;
-            let name = match frame {
-                0 => "moving_occluder_000",
-                60 => "moving_occluder_060",
-                119 => "moving_occluder_119",
-                _ => "moving_occluder",
+            // Frames between the goldens share the middle golden's culling tolerance.
+            let (name, golden) = match frame {
+                0 => ("moving_occluder_000", true),
+                60 => ("moving_occluder_060", true),
+                119 => ("moving_occluder_119", true),
+                _ => ("moving_occluder_060", false),
             };
             let what = format!("{:?} frame {frame}", on.stats().raster_path);
             assert_culling_agrees(SUITE, name, (&want, &got), &what);
-            if name != "moving_occluder" {
+            if golden {
                 goldens.push((name, want));
             }
         }
         assert!(late > 0, "balls the wall uncovers are drawn in pass 2");
         let goldens: Vec<(&str, &Image)> = goldens.iter().map(|(n, i)| (*n, i)).collect();
-        common::assert_goldens_in(SUITE, &goldens);
+        if has_goldens(msaa, "moving occluder") {
+            common::assert_goldens_in(SUITE, &goldens);
+        }
     }
 }
 
-/// Twenty-four dense meshlet balls on a ground, a wall in front of them (moved by the test), a sun.
-fn field() -> Shot {
+/// Twenty-four dense meshlet balls on a ground, a wall in front of them (moved by the test), a sun;
+/// the camera draws with `msaa`.
+fn field(msaa: Msaa) -> Shot {
     let mut scene = Scene::new();
     let ball = scene.assets.insert_mesh(
         "ball",
@@ -359,7 +392,7 @@ fn field() -> Shot {
     let camera = scene.camera(
         Vec3::new(0.0, 2.0, 2.0),
         Vec3::new(0.0, 1.0, -12.0),
-        camera(Msaa::X4),
+        camera(msaa),
     );
     Shot {
         scene,
@@ -374,7 +407,8 @@ fn field() -> Shot {
 #[test]
 fn occlusion_and_hzb_view_modes_golden() {
     for mut r in meshlet_renderers() {
-        let mut shot = field();
+        let msaa = msaa_for(&r);
+        let mut shot = field(msaa);
         let mut images = Vec::new();
         for mode in [ViewMode::occlusion, ViewMode::hzb] {
             for (frame, x) in [(0, -6.0), (1, 2.0)] {
@@ -395,7 +429,9 @@ fn occlusion_and_hzb_view_modes_golden() {
         let names = ["view_occlusion", "view_hzb"];
         let goldens: Vec<(&str, &Image)> =
             images.iter().zip(names).map(|((_, i), n)| (n, i)).collect();
-        common::assert_goldens_in(SUITE, &goldens);
+        if has_goldens(msaa, "occlusion and hzb views") {
+            common::assert_goldens_in(SUITE, &goldens);
+        }
     }
 }
 

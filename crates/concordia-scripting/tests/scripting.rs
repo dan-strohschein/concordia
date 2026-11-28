@@ -462,13 +462,14 @@ fn every_backend_runs_the_sample_logic_to_identical_hashes() {
     }
 }
 
+/// A WASM module is fingerprinted by its file's content: an identical reload keeps it, a new
+/// build changes it.
 #[test]
-fn scripts_fingerprint_each_loaded_file_by_its_content() {
-    let library = format!("scripts/conformance.{}", std::env::consts::DLL_EXTENSION);
+fn wasm_modules_are_fingerprinted_by_their_file_content() {
     let mut p = Project::conformance(
-        ScriptKind::Native,
-        &library,
-        native_fixture("conformance_guest"),
+        ScriptKind::Wasm,
+        "scripts/conformance.wasm",
+        wasm_fixture("conformance_guest"),
         None,
     );
     let prints = p.engine.fingerprints();
@@ -480,9 +481,9 @@ fn scripts_fingerprint_each_loaded_file_by_its_content() {
             print.name.as_str(),
             print.kind.as_str()
         ),
-        ("scripts", "conformance", "native")
+        ("scripts", "conformance", "wasm")
     );
-    let bytes = std::fs::read(p.dir.path().join(&library)).unwrap();
+    let bytes = std::fs::read(p.dir.path().join("scripts/conformance.wasm")).unwrap();
     assert_eq!(print.hash, blake3::hash(&bytes).to_hex().to_string());
 
     p.ok("script.reload", json!({}));
@@ -493,8 +494,8 @@ fn scripts_fingerprint_each_loaded_file_by_its_content() {
     );
     place(
         p.dir.path(),
-        &library,
-        &native_fixture("conformance_guest_v2"),
+        "scripts/conformance.wasm",
+        &wasm_fixture("conformance_guest_v2"),
     );
     p.ok("script.reload", json!({"module": "conformance"}));
     assert_ne!(
@@ -504,23 +505,72 @@ fn scripts_fingerprint_each_loaded_file_by_its_content() {
     );
 }
 
+/// A native module is fingerprinted by its description and its source folder, not by its
+/// library's bytes, which differ between builds of the same source (author decision,
+/// 2026-11-27): another build keeps it, a source edit changes it.
 #[test]
-fn linked_modules_are_fingerprinted_by_their_description() {
-    use concordia_script_guest::Module;
-    let p = Project::new(
+fn native_modules_are_fingerprinted_by_source_and_description_not_bytes() {
+    let rel = format!("scripts/wanderers.{}", std::env::consts::DLL_EXTENSION);
+    let original =
+        concordia_tests::repo_root().join("examples/m2-scripting/scripts/wanderers/src/lib.rs");
+    let mut p = Project::new(
         1,
-        |_| Vec::new(),
-        |m| m.link::<wanderers::Wanderers>(),
+        |dir| {
+            place(dir, &rel, &native_fixture("wanderers"));
+            place(dir, "src/lib.rs", &original);
+            vec![ScriptEntry {
+                kind: ScriptKind::Native,
+                path: dir.join("scripts/wanderers"),
+                source: Some(dir.join("src")),
+            }]
+        },
+        |m| m,
         None,
     );
-    let prints = p.engine.fingerprints();
-    assert_eq!(prints.len(), 1, "{prints:?}");
-    let desc = serde_json::to_vec(&wanderers::Wanderers::describe()).unwrap();
+    let print = p.engine.fingerprints()[0].clone();
     assert_eq!(
-        (prints[0].name.as_str(), prints[0].kind.as_str()),
-        ("wanderers", "linked")
+        (print.name.as_str(), print.kind.as_str()),
+        ("wanderers", "native")
     );
-    assert_eq!(prints[0].hash, blake3::hash(&desc).to_hex().to_string());
+    let library = p.dir.path().join(&rel);
+    let mut bytes = std::fs::read(&library).unwrap();
+    let built = blake3::hash(&bytes).to_hex().to_string();
+    assert_ne!(print.hash, built, "not the library's bytes");
+
+    bytes.extend_from_slice(b"\0another build of the same source");
+    std::fs::write(&library, &bytes).unwrap();
+    p.ok("script.reload", json!({"module": "wanderers"}));
+    assert_eq!(
+        p.engine.fingerprints()[0].hash,
+        print.hash,
+        "another build of the same source keeps it"
+    );
+
+    let source = p.dir.path().join("src/lib.rs");
+    let text = std::fs::read_to_string(&source).unwrap();
+    std::fs::write(&source, text + "\n// edited\n").unwrap();
+    p.ok("script.reload", json!({"module": "wanderers"}));
+    assert_ne!(
+        p.engine.fingerprints()[0].hash,
+        print.hash,
+        "a source edit changes it"
+    );
+}
+
+/// Without a source folder, a native module is fingerprinted by its description alone: another
+/// build keeps it.
+#[test]
+fn native_modules_without_a_source_are_fingerprinted_by_their_description() {
+    let rel = format!("scripts/wanderers.{}", std::env::consts::DLL_EXTENSION);
+    let mut p = Project::conformance(ScriptKind::Native, &rel, native_fixture("wanderers"), None);
+    let print = p.engine.fingerprints()[0].hash.clone();
+    let library = p.dir.path().join(&rel);
+    let mut bytes = std::fs::read(&library).unwrap();
+    assert_ne!(print, blake3::hash(&bytes).to_hex().to_string());
+    bytes.extend_from_slice(b"\0another build");
+    std::fs::write(&library, &bytes).unwrap();
+    p.ok("script.reload", json!({"module": "wanderers"}));
+    assert_eq!(p.engine.fingerprints()[0].hash, print);
 }
 
 /// A graph module (M4 4.10b): counts ticks in a variable and moves up by dt (× `bonus` in v2).

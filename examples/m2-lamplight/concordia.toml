@@ -52,3 +52,5 @@ path = "build/lamplight_rules.wasm"
 [[scripts.module]]
 kind = "native"
 path = "build/lamplight_fog"
+# Checked for hidden state before every load; with the description, the module's fingerprint.
+source = "scripts/lamplight-fog/src"

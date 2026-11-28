@@ -624,6 +624,8 @@ fn vulkan_workflow_runs_the_backend_on_lavapipe_on_demand() {
             // 2026-11-25: the lavapipe setup is one action; the render suite runs in shards.
             "uses: ./.github/actions/lavapipe",
             "--partition hash:${{ matrix.shard }}/3",
+            // M4's gate, fallback (c): the canyon's gate view on Vulkan against the Metal golden.
+            "m4_fallbacks::vulkan_matches_the_metal_golden",
         ],
     );
     assert_contains_all(
@@ -661,6 +663,8 @@ fn regression_workflow_covers_the_full_suite_on_demand() {
             "just gate-tests M0",
             "just gate-tests M1",
             "just gate-tests M3S",
+            "just gate-tests M3",
+            "just gate-tests M4",
             "pnpm e2e",
             "editor/src-tauri/Cargo.toml",
         ],

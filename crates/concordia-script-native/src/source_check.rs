@@ -74,11 +74,8 @@ const STATE_MACROS: [&str; 2] = ["thread_local", "lazy_static"];
 
 /// Checks every `.rs` file under `dir` (sorted, so findings come in a stable order).
 pub fn check_module_source(dir: &Path) -> Result<(), SourceCheckError> {
-    let mut files = Vec::new();
-    collect_rust_files(dir, &mut files)?;
-    files.sort();
     let mut findings = Vec::new();
-    for path in files {
+    for path in module_source_files(dir)? {
         let unreadable = |message: String| SourceCheckError::Unreadable {
             path: path.clone(),
             message,
@@ -90,6 +87,14 @@ pub fn check_module_source(dir: &Path) -> Result<(), SourceCheckError> {
         true => Ok(()),
         false => Err(SourceCheckError::HiddenState(findings)),
     }
+}
+
+/// Every `.rs` file under a module's source folder, sorted (what the check and fingerprints read).
+pub fn module_source_files(dir: &Path) -> Result<Vec<PathBuf>, SourceCheckError> {
+    let mut files = Vec::new();
+    collect_rust_files(dir, &mut files)?;
+    files.sort();
+    Ok(files)
 }
 
 fn collect_rust_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), SourceCheckError> {

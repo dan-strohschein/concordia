@@ -265,10 +265,17 @@ mod tests {
                 label: "depth".into(),
             })
             .unwrap();
-        let mut up = Uploads::new();
         let bytes: Vec<u8> = depth.iter().flat_map(|d| d.to_le_bytes()).collect();
-        let staging = up.buffer(device, &bytes, "depth values").unwrap();
-        up.flush(device).unwrap();
+        // A copy source: Vulkan checks the usage (Metal doesn't).
+        let staging = device
+            .create_buffer(&BufferDesc {
+                size: NonZeroU64::new(bytes.len() as u64).unwrap(),
+                usage: BufferUsage::COPY_SRC,
+                memory: MemoryLocation::Upload,
+                label: "depth values".into(),
+            })
+            .unwrap();
+        device.write_buffer(staging, 0, &bytes).unwrap();
         test_gpu::run_commands(
             device,
             [Command::CopyBufferToTexture {
@@ -287,6 +294,7 @@ mod tests {
         test_gpu::run_commands(device, hzb.commands(pipeline, (index, buffer)));
         let words = test_gpu::download(device, hzb.buffer, u64::from(hzb.layout.texels()) * 4);
         device.destroy_texture(texture);
+        device.destroy_buffer(staging);
         words.into_iter().map(f32::from_bits).collect()
     }
 
