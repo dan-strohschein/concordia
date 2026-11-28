@@ -1,7 +1,51 @@
 # M8: Advanced physics (destruction and GPU garments)
-Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Needs refinement after M2** · Estimated effort: ~20 weeks (range 16–26), author plus agents
+Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · Estimated effort: ~20 weeks (range 16–26), author plus agents
 
 > Outline plan with phase breakdowns and test lists. Refine when M2 lands: the skinning data layout (8.7, 8.10), the mesh import path for garments, and M3's replay format if caches build on it (8.6).
+
+## Refinement after M4 (2026-11-27; Q1–Q8 approved by the author the same day)
+The plan predates M2. Checked against `main` after M4; the phases below stand, with the changes and proposals here. Q1–Q8 were my recommendations; the author approved all eight as written.
+
+### What exists (findings)
+- **Physics.**
+  - `jolt-sys` binds world create/step/save/restore, body add/remove/state/move-kinematic, contact events (who and whether a sensor, **no impulse**), raycasts (now skipping sensors, M4 4.13a) and characters.
+  - `concordia-physics` colliders are box, sphere, capsule and cylinder only. **No convex hull, compound or soft-body shapes are bound,** though vendored Jolt v5.7 has `ConvexHullShape`, `StaticCompoundShape`, `MutableCompoundShape` and soft bodies.
+  - Bodies are made by `sync_bodies` from components; nothing splits a body during play.
+- **Rendering.**
+  - GPU compute on Metal and Vulkan through the RHI, with Slang.
+  - GPU skinning (`skinning.rs`, `skin.slang`).
+  - Meshlets with GPU culling and instanced draws (M4 4.3–4.4); meshopt (simplification); `concordia-bvh`; per-pass GPU timing; FLIP goldens and the path tracer.
+- **Everything else.**
+  - Replay format 2 (M4 4.12d) with per-tick checkpoints and an external-output list.
+  - Terra signals and observers.
+  - The graph node library (get/set for any reflected component, so fields become graph-scriptable for free).
+  - The editor's panel and engine-drawn overlay patterns (M2, M4 4.11), and MCP tool generation.
+- **Out of date in this plan:**
+  - Open question 1 (start destruction before M2) no longer applies.
+  - The skinning layout and replay format it waited for exist.
+  - M12's rigs don't exist yet, so garments follow the skinned pose as M2 draws it (8.7's note stands).
+
+### Decisions (approved)
+- **Q1: a physics groundwork phase, 8.0, before 8.1.** It binds and exposes:
+  - convex hull and compound colliders (`ColliderShape::ConvexHull`, `::Compound`; mutable compound for splitting);
+  - contact impulse and point in `ContactBegan`, and a per-contact strength signal;
+  - adding and removing bodies mid-play deterministically (sorted, between steps);
+  - Jolt soft bodies, test-only, as 8.8's oracle.
+
+  Tests first; every existing physics replay and golden unchanged.
+- **Q2: how meshes are cut (ADR-0180).** Run the planned spike in 8.1, leaning towards binding `manifold` (Apache-2.0) behind a new `manifold-sys` crate (the `jolt-sys` pattern, vendored under `third_party/`). Our own exact-predicate cutter is the fallback if the binding is too heavy or not deterministic across platforms.
+- **Q3: where caches live (ADR-0181).** In the DDC, rebuilt from the `.breakable.ron` recipe plus a recorded replay of the collapse, since text stays the source of truth. A committed binary only by an explicit `destruction.export`. Caches reuse replay format 2's checkpoint machinery rather than a second recording system.
+- **Q4: authority (ADR-0183).**
+  - Gameplay destruction is CPU only, on Jolt: deterministic, replayable, hashed.
+  - GPU cloth is cosmetic by default: not hashed, with a deterministic mode for tests.
+  - GPU-only cosmetic debris goes to the backlog.
+- **Q5: two tracks, like M4.** Destruction (8.0–8.6) first; garments (8.7–8.10) can start once 8.0 lands, since they need only the soft-body oracle and skinning; 8.11 joins them.
+- **Q6: a proving ground.** A small original example, `examples/m8-quarry`: a stone wall on an anchored base, a projectile launcher and a caped character on an M2 walk clip. It is generated from seeds like the canyon (recipes committed, meshes in the DDC), so the gate needs no port content.
+- **Q7: the agent demo** (gate item 5) runs scripted through the Engine API in CI, as M3's Studio loop did, plus a live run on the author's subscription recorded in the As built.
+- **Q8: perf.** Destruction's 120 Hz bench and cloth's 1.5 ms per character are asserted on the reference machine, under P1's rule from M7 (perf runs alone, after the budgets are recalibrated). They are recorded, not gated, if M8 runs before M7's recalibration.
+
+### Effort, revised
+About **18 weeks (15–23)**, down from 20: rendering, instancing, compute and replay groundwork already exist, but 8.0 is new (about 1.5 weeks). The cutter (8.1), the solver (8.8) and weight painting (8.10, needs visual design) remain the large items.
 
 ## Goal & context
 Bring Chaos-class physics to Concordia **on top of Jolt**, not instead of it:
