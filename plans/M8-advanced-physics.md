@@ -91,6 +91,7 @@ The plan predates M2. Checked against `main` after M4; the phases below stand, w
 - **Test log:**
   - `manifold-sys`'s clip tests were first run after the shim existed, so they weren't seen failing first.
   - The fracture tests were written first and run against a stub that returns no pieces: 7 of 8 failed. `every_piece_is_closed_and_manifold` passed on the stub because it found no pieces to check. All 8 then passed with the cutter.
+  - `pieces_are_the_same_bytes_on_every_platform` pins a blake3 of every pattern's output, taken on macOS (ARM). Linux CI (x86) only lints, so this pin is first checked on Linux at the next regression run.
   - Checks: fmt, clippy, cargo deny licenses.
 
 ### Effort, revised
