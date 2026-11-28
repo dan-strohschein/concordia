@@ -13,6 +13,7 @@ workspace = true
 
 [dependencies]
 concordia-api.workspace = true
+concordia-assets.workspace = true
 concordia-core.workspace = true
 concordia-fracture.workspace = true
 concordia-physics.workspace = true
@@ -26,5 +27,10 @@ uuid.workspace = true
 
 [dev-dependencies]
 concordia-app.workspace = true
+criterion.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
+
+[[bench]]
+name = "destruction"
+harness = false

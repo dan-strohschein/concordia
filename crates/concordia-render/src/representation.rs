@@ -82,6 +82,7 @@ impl RenderWorld {
             cameras: self.cameras.clone(),
             poses: self.poses.clone(),
             skins: Vec::new(),
+            pieces: self.pieces.clone(),
         };
         out.build_skins();
         out
@@ -128,8 +129,8 @@ impl RenderWorld {
         matrix.w_axis.truncate()
     }
 
-    /// Palettes for the poses that still deform a draw; draws whose pose doesn't fit its skeleton
-    /// use their bind mesh.
+    /// Palettes for the poses and pieces that still deform a draw; draws whose pose doesn't fit
+    /// its skeleton use their bind mesh.
     fn build_skins(&mut self) {
         let needed: BTreeSet<EntityId> = self.draws.iter().filter_map(|d| d.skin).collect();
         self.skins = self
@@ -137,7 +138,14 @@ impl RenderWorld {
             .iter()
             .filter(|p| needed.contains(&p.entity))
             .filter_map(SkinView::of)
+            .chain(
+                self.pieces
+                    .iter()
+                    .filter(|p| needed.contains(&p.entity))
+                    .cloned(),
+            )
             .collect();
+        self.skins.sort_by_key(|s| s.entity);
         let skins = &self.skins;
         for draw in &mut self.draws {
             if let Some(owner) = draw.skin

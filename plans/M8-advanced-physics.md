@@ -1,5 +1,5 @@
 # M8: Advanced physics (destruction and GPU garments)
-Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · **Phase 8.0 done** (8.0a–d: hull and compound colliders, contact impacts, mid-play bodies, the soft-body reference) · **8.5a done** (debris budget) · **Phase 8.4 done** (fields: strain, crumble, anchor, kill, force, impulse, sleep, disable) · **8.3 done** (breaking on Jolt) · **8.2 done** (connection graph, cluster levels) · **Phase 8.1 done** (8.1a–c: Manifold cutter and five patterns; hulls and interior UVs; `.breakable.ron` and `fracture.generate`) · Estimated effort: ~20 weeks (range 16–26), author plus agents
+Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · **Phase 8.0 done** (8.0a–d: hull and compound colliders, contact impacts, mid-play bodies, the soft-body reference) · **Phase 8.5 done** (8.5a debris budget; 8.5b pieces drawn as two instanced draws per breakable, the broken-wall golden, the bench; distance LOD and the bench's numbers deferred) · **Phase 8.4 done** (fields: strain, crumble, anchor, kill, force, impulse, sleep, disable) · **8.3 done** (breaking on Jolt) · **8.2 done** (connection graph, cluster levels) · **Phase 8.1 done** (8.1a–c: Manifold cutter and five patterns; hulls and interior UVs; `.breakable.ron` and `fracture.generate`) · Estimated effort: ~20 weeks (range 16–26), author plus agents
 
 > Outline plan with phase breakdowns and test lists. Refine when M2 lands: the skinning data layout (8.7, 8.10), the mesh import path for garments, and M3's replay format if caches build on it (8.6).
 
@@ -225,6 +225,33 @@ The plan predates M2. Checked against `main` after M4; the phases below stand, w
 - **Test log:**
   - The three `debris` tests were written first. They failed against an empty debris pass, then passed.
   - **Contract consumers:** app, MCP and Studio (350 with destruction).
+  - **Checks:** fmt, clippy.
+
+**8.5b** (done; **Phase 8.5 done**, apart from distance LOD and the bench's numbers): drawing the pieces.
+- **Baked meshes (`concordia-fracture`):** `piece_mesh` puts one slot's triangles of every piece into one mesh: flat normals, tangents along the interior UVs, interior UVs from `interior_uvs` (surface faces still zeros). Each vertex sits on joint = its piece, weight 1. `piece_mesh_ref` names it from the pieces' DDC key (`#mesh/surface`, `#mesh/interior`).
+- **Derived meshes (`concordia-assets`):** `AssetDb::insert_derived_mesh` holds them; `load_mesh` returns them, so the renderer's existing asset path ships them. `[destruction]` bakes and registers both meshes per recipe at play start.
+- **`PieceRenderer { meshes, pieces, shown }`** (`concordia-assets`, reflected): the render-facing component destruction maintains. A breakable's first tick swaps its `MeshRenderer` for one: the surface with that material, the interior with the recipe's `interior_material` (else the same). Each part split off copies it, showing its own pieces. Render never sees `Fragment`; simulation never reads `PieceRenderer`.
+- **Rendering:** a `PieceRenderer` extracts as a skinned draw per mesh, with the entity's own palette: identity for shown pieces, zero for the rest. No `AnimLibrary` is needed (`SkinView::skeleton` is now optional). Bounds skip zero matrices. Every part of a breakable shares the two meshes, so it is **two instanced draws**, however many pieces and parts. Opaque draws now sort culled instances after visible ones in their group, so parts out of view don't split the run.
+- **Fixed on the way:** `Crumble` and `destruction.crumble` set damage to the strength cast to `f32`. Where that rounded down, the bond never became due: the 2,000-brick wall crumbled into 114 parts, not 2,000. `breaking_damage` takes the least `f32` that reaches the strength.
+- **The bench:** `cargo bench -p concordia-destruction --bench destruction`. A 50 × 40 brick wall (2,000 pieces, built by hand, since the cutter stops at 1,024 cells), bottom row anchored, crumbles at 120 Hz with 8 threads. `wall_breaks` times the 3 ticks in which it splits into 2,000 bodies; `debris_falls` times the next second. It was compiled and run once (`-- --test`); **the numbers are recorded later on a quiet reference machine** (Q8).
+- **Not done:**
+  - **Distance LOD** (far clusters break at a coarser level) needs cluster levels at runtime, which nothing uses yet. Not small, so it moves to the backlog with them.
+  - **Palette cost:** each part uploads one matrix per piece of its breakable, so palettes grow with parts × pieces (2,000 single-brick parts would be 4 M matrices a frame; the debris budget caps parts at 512 by default). A follow-up worth taking before 8.11's perf targets: one palette per breakable (each piece's matrix = its part's transform), which would also make a breakable one instance.
+  - Surface UVs and normals of the source mesh are still not carried through the cut.
+- **What the tests show:**
+  - baked meshes hold every triangle of their slot in piece order, on their piece's joint, with outward normals, in-face tangents and the pieces' interior UVs; one piece has no interior mesh; refs are stable per key;
+  - derived meshes load by reference, must validate and never shadow built-ins;
+  - a `PieceRenderer` draws each mesh skinned by a palette of its pieces;
+  - 4 or 32 pieces, whole or split into one part per piece, are 2 draw calls, and parts out of view don't split them;
+  - a split part draws only its own pieces (pixels);
+  - fragments carry the right `PieceRenderer` through set-up and splits, and `[destruction]` bakes meshes the `AssetDb` loads;
+  - **a broken-wall golden** (`tests/golden/destruction/broken_wall.png`, self-blessed under the M8 grant): a 3 × 2 m wall of 26 bricks strained open through the Engine API, a brief force field pushing the loose bricks out, drawn in 3 calls (ground, surface, interior).
+- **Test log:**
+  - The fracture `meshes` tests (4), the assets `derived_meshes` tests (3), the render `pieces` tests (first 3), the destruction `drawing` tests (3) and the module test were written first. Each failed against a stub or the missing wiring for its own reason (no mesh, nothing stored or registered, no draws, no `PieceRenderer`), then passed.
+  - `parts_out_of_view_do_not_split_the_instanced_draw` was written after the golden showed 5 draw calls with culled parts. It failed against the old sort, then passed.
+  - `breaking_damage_reaches_the_strength_however_it_rounds` failed against the old cast (`20000.000000004` became `20000`), then passed.
+  - **The golden came after the code.** Its first run failed only because no golden existed. The first blessed image looked whole: the loose bricks rest in their sockets, so a force field now pushes them out. Then it differed between runs: entity ids came from the clock, so Jolt created bodies in a different order. Deterministic ids fixed that, and it passes repeatedly.
+  - **Contract consumers:** editor schemas regenerated (`PieceRenderer`), editor UI 128 tests; render, assets, destruction, fracture, app, API, MCP and Studio (1,011; the glTF goldens first failed only because this worktree lacked `just gltf-assets`); `concordia-tests` filtered to render, golden, Lamplight, showcase and M4 (67). `editor/src-tauri/Cargo.lock` was already missing `concordia-fracture`, `concordia-destruction` and `manifold-sys` on main; it is refreshed here, and `cargo deny` passes for both locks.
   - **Checks:** fmt, clippy.
 
 ### Effort, revised

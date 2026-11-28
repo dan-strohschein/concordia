@@ -1,0 +1,16 @@
+Tolerances(
+    backends: {
+        "vulkan": (
+            default: Some((
+                mean: 0.025,
+                p99: 0.25,
+            )),
+            goldens: {},
+        ),
+    },
+    default: (
+        mean: 0.01,
+        p99: 0.25,
+    ),
+    goldens: {},
+)

@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use concordia_anim::{AnimLibrary, Pose, Skeleton};
-use concordia_assets::{AssetRef, MeshRenderer, Skinned};
+use concordia_assets::{AssetRef, MeshRenderer, PieceRenderer, Skinned};
 use concordia_core::id::EntityId;
 use concordia_core::math::{Mat4, Vec3};
 use concordia_scene::builtin::{Parent, Transform, world_transform, world_transforms};
@@ -61,8 +61,17 @@ pub struct SkinView {
     pub palette: Vec<Mat4>,
     /// Each joint's matrix in the entity's space ([`Skeleton::entity_space`]; the skeleton overlay).
     pub joints: Vec<Mat4>,
-    /// The skeleton (joint names and parents).
-    pub skeleton: Arc<Skeleton>,
+    /// The skeleton (joint names and parents); none for rigid pieces.
+    pub skeleton: Option<Arc<Skeleton>>,
+}
+
+/// An entity's rigid pieces (`PieceRenderer`, M8 8.5b): a draw per mesh, skinned by `skin`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PieceItems {
+    /// One per mesh, each deformed by the entity's own palette.
+    pub draws: Vec<DrawItem>,
+    /// The palette: identity for the pieces shown, zero (collapsed) for the rest.
+    pub skin: SkinView,
 }
 
 /// A light.
@@ -141,6 +150,8 @@ pub struct RenderWorld {
     pub poses: Vec<PoseView>,
     /// Posed characters as drawn (palettes), in entity-id order.
     pub skins: Vec<SkinView>,
+    /// Rigid pieces' palettes (`PieceRenderer`), in entity-id order.
+    pub pieces: Vec<SkinView>,
 }
 
 impl RenderWorld {
@@ -165,6 +176,10 @@ impl RenderWorld {
         for item in items {
             out.poses.extend(item.pose);
             out.draws.extend(item.draw);
+            if let Some(pieces) = item.pieces {
+                out.draws.extend(pieces.draws);
+                out.pieces.push(pieces.skin);
+            }
             out.lights.extend(item.light);
             out.punctual.extend(item.punctual);
             if out.environment.is_none() {
@@ -178,10 +193,11 @@ impl RenderWorld {
 
     /// Draws whose posed entity isn't extracted (removed) use their bind mesh.
     fn drop_missing_poses(&mut self) {
-        let poses = &self.poses;
+        let (poses, pieces) = (&self.poses, &self.pieces);
         for draw in &mut self.draws {
             if let Some(owner) = draw.skin
                 && poses.binary_search_by_key(&owner, |p| p.entity).is_err()
+                && pieces.binary_search_by_key(&owner, |p| p.entity).is_err()
             {
                 draw.skin = None;
             }
@@ -209,6 +225,8 @@ pub struct EntityItems {
     pub camera: Option<CameraView>,
     /// Its pose, when it is a posed character.
     pub pose: Option<PoseView>,
+    /// Its rigid pieces, when it has a `PieceRenderer` showing any.
+    pub pieces: Option<PieceItems>,
     /// Its `Parent`, if any.
     pub parent: Option<EntityId>,
 }
@@ -276,7 +294,7 @@ impl SkinView {
             world: pose.world,
             palette: pose.skeleton.skin_matrices(&joints),
             joints,
-            skeleton: pose.skeleton.clone(),
+            skeleton: Some(pose.skeleton.clone()),
         })
     }
 }
@@ -313,6 +331,61 @@ fn pose_owner(world: &World, entity: EntityId) -> Option<EntityId> {
         at = world.get::<Parent>(id).map(|p| p.0);
     }
     None
+}
+
+/// The most pieces one palette holds (joint indices are 16-bit).
+const MAX_PIECES: u32 = 1 << 16;
+
+/// `r`'s draws and palette, or `None` when it shows nothing or holds too many pieces.
+fn piece_items(
+    world: &World,
+    entity: EntityId,
+    matrix: Mat4,
+    r: &PieceRenderer,
+) -> Option<PieceItems> {
+    if r.pieces > MAX_PIECES {
+        tracing::debug!(target: "concordia::render", %entity, pieces = r.pieces, "too many pieces to draw");
+        return None;
+    }
+    let palette = piece_palette(r.pieces, &r.shown);
+    if r.meshes.is_empty() || !palette.contains(&Mat4::IDENTITY) {
+        return None;
+    }
+    let draws = r
+        .meshes
+        .iter()
+        .map(|m| DrawItem {
+            entity,
+            world: matrix,
+            mesh: m.mesh.clone(),
+            material: m.material.clone(),
+            cast_shadows: m.cast_shadows,
+            mobility: m.mobility,
+            skin: Some(entity),
+            representation: None,
+            instanced: false,
+            sim_lod: sim_lod_of(world, entity),
+        })
+        .collect();
+    let skin = SkinView {
+        entity,
+        world: matrix,
+        palette,
+        joints: Vec::new(),
+        skeleton: None,
+    };
+    Some(PieceItems { draws, skin })
+}
+
+/// One matrix per piece: identity when shown, zero otherwise (indices past `count` are ignored).
+fn piece_palette(count: u32, shown: &[u32]) -> Vec<Mat4> {
+    let mut palette = vec![Mat4::ZERO; count as usize];
+    for &p in shown {
+        if let Some(m) = palette.get_mut(p as usize) {
+            *m = Mat4::IDENTITY;
+        }
+    }
+    palette
 }
 
 impl EntityItems {
@@ -380,6 +453,9 @@ impl EntityItems {
                 camera: camera.clone(),
             }),
             pose: pose_view(world, entity, matrix),
+            pieces: world
+                .get::<PieceRenderer>(entity)
+                .and_then(|r| piece_items(world, entity, matrix, r)),
             parent: world.get::<Parent>(entity).map(|p| p.0),
         }
     }

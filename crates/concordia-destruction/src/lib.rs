@@ -4,6 +4,7 @@
 mod components;
 mod error;
 mod fields;
+mod looks;
 mod methods;
 mod module;
 mod prepared;
@@ -17,5 +18,5 @@ pub use methods::{
     ApplyStrainParams, BondsResult, CrumbleParams, DestructionApplyStrain, DestructionCrumble,
 };
 pub use module::DestructionModule;
-pub use source::{BreakableSource, Loaded, MemorySource};
+pub use source::{BreakableSource, Loaded, MemorySource, PieceLooks};
 pub use system::{DestructionSettings, destruction_system};

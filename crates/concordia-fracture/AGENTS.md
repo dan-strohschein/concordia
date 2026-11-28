@@ -8,6 +8,7 @@ Fracture authoring: a closed mesh cut into pieces by a seeded pattern of convex 
 - `Pattern`: `Uniform`, `Clustered`, `Radial` (Voronoi), `Slices`, `Bricks`; `Pattern::cells(&Bounds, seed) -> Vec<Cell>`
 - `Fracture { pieces }`, `Piece { cell, positions, triangles, materials, volume }`, `Slot { Surface, Interior }`, `Bounds`, `MAX_CELLS`
 - `Piece::centre_of_mass()`, `Piece::collider()` (a `ColliderShape::ConvexHull` of its vertices, relative to the centre of mass), `Piece::interior_uvs(metres_per_tile)` (per triangle corner)
+- `piece_mesh(&Fracture, Slot, metres_per_tile) -> Option<MeshData>` (M8 8.5b): one slot's triangles of every piece as one mesh, three vertices per triangle (flat normals, tangents along the interior UVs' u axis), each on joint = its piece with weight 1; interior UVs from `interior_uvs`, surface zeros; `None` without any. `piece_mesh_ref(key, Slot)`: its reference, `asset:<UUIDv5 of the pieces' DDC key>#mesh/surface` or `#mesh/interior`.
 - `weld(&Mesh)`: vertices at bit-identical positions merged (imported meshes split them along seams)
 - `Breakable { source, pattern, seed, metres_per_tile, interior_material }` (`.breakable.ron`, `EXTENSION`, `FRACTURE_VERSION`); `pieces(&Breakable, &mut AssetDb, &Ddc) -> Stored { fracture, key, cached }`, `cache_key`
 - `structure(&Fracture, &StructureSpec) -> Structure { pieces: Vec<PieceMass>, edges: Vec<Edge>, levels: Vec<Level { clusters, edges }> }`; `StructureSpec { density, strength, levels: Vec<ClusterLevel { grouping, damage_threshold }>, edges: Vec<EdgeOverride> }`, `Grouping { KMeans { clusters }, Manual { groups } }` (in `Breakable::structure`)
@@ -39,7 +40,7 @@ Fracture authoring: a closed mesh cut into pieces by a seeded pattern of convex 
 - Voronoi fracture as convex-cell clipping: Müller, Chentanez and Kim, "Real Time Dynamic Fracture with Volumetric Approximate Convex Decompositions" (SIGGRAPH 2013); the generalised winding number used by the tests: Jacobson, Kavan and Sorkine-Hornung (SIGGRAPH 2013).
 
 ## Status
-M8 8.1a: the five patterns and the cutter. 8.1b: centre of mass, hull colliders and interior UVs per piece. 8.1c: welding, `.breakable.ron`, the DDC store and `fracture.generate` / `fracture.inspect`. Studio roles get the fracture tools in 8.10. 8.2: the connection graph, cluster levels, mass and damage thresholds.
+M8 8.1a: the five patterns and the cutter. 8.1b: centre of mass, hull colliders and interior UVs per piece. 8.1c: welding, `.breakable.ron`, the DDC store and `fracture.generate` / `fracture.inspect`. Studio roles get the fracture tools in 8.10. 8.2: the connection graph, cluster levels, mass and damage thresholds. 8.5b: the pieces baked into one surface and one interior mesh (`piece_mesh`, `piece_mesh_ref`).
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

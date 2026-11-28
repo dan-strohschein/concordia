@@ -95,7 +95,7 @@ fn skinned(
     if mesh.joint_count == 0 || mesh.joint_count > count {
         return None;
     }
-    let bounds = skinned_bounds(bounds.get(&draw.mesh)?, &pose.palette)?;
+    let bounds = visible_bounds(bounds.get(&draw.mesh)?, &pose.palette)?;
     Some(Placement {
         world: pose.world,
         bounds,
@@ -103,6 +103,21 @@ fn skinned(
         prev_first,
         pose: None,
     })
+}
+
+/// The skinned bounds of the joints a zero matrix doesn't hide (rigid pieces a part doesn't hold;
+/// an affine skinning matrix is never zero). All hidden: an empty box at the origin.
+fn visible_bounds(boxes: &JointBounds, palette: &[Mat4]) -> Option<(Vec3, Vec3)> {
+    let hidden = |j: usize| palette.get(j) == Some(&Mat4::ZERO);
+    if !(0..boxes.len()).any(hidden) {
+        return skinned_bounds(boxes, palette);
+    }
+    let visible: JointBounds = boxes
+        .iter()
+        .enumerate()
+        .map(|(j, b)| b.filter(|_| !hidden(j)))
+        .collect();
+    skinned_bounds(&visible, palette).or(Some((Vec3::ZERO, Vec3::ZERO)))
 }
 
 /// Every palette's matrices as rows, then each last-frame palette `history` has (of the same
@@ -162,7 +177,7 @@ mod tests {
             world: Mat4::IDENTITY,
             palette: vec![Mat4::from_translation(Vec3::new(x, 0.0, 0.0)); joints],
             joints: Vec::new(),
-            skeleton: std::sync::Arc::new(skeleton),
+            skeleton: Some(std::sync::Arc::new(skeleton)),
         }
     }
 

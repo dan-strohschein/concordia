@@ -6,10 +6,11 @@ Destruction at runtime: a fractured breakable (`concordia-fracture`) is one Jolt
 ## Public entry points
 - Components: `Breakable { recipe, anchors, impact_radius }` (authored, with a `Transform` and a `RigidBody`), `Fragment { recipe, anchors, impact_radius, pieces, damage, broken }` (runtime)
 - `destruction_system(Arc<dyn BreakableSource>, DestructionSettings { breaks_per_tick, max_debris, debris_lifetime, min_debris_volume })`: the `destruction.break` system for `PostPhysics`
-- `BreakableSource` (`load(recipe) -> Arc<Loaded { fracture, structure }>`), `MemorySource` (`with(recipe, loaded)`)
+- `BreakableSource` (`load(recipe) -> Arc<Loaded { fracture, structure, looks }>`), `MemorySource` (`with(recipe, loaded)`); `PieceLooks { surface, interior, interior_material }`: how the pieces are drawn (none: not drawn)
 - `Field { shape: FieldShape { Sphere, Box, Plane, Everywhere }, falloff: Falloff { None, Linear, InverseSquare }, effect: FieldEffect { Strain, Crumble, Anchor, Kill, Force, Impulse, Sleep, Disable }, magnitude, duration }` (an ordinary component, placed by its `Transform`), `FieldAge` (play-only), `Field::weight`
 - Methods (play only): `destruction.crumble {entity}` and `destruction.apply_strain {center, radius, amount}` → `{bonds}`
-- `DestructionModule` (`[destruction] breaks_per_tick`): registers the components; at play start loads every recipe the play world's breakables name (`concordia_fracture::load`, then `structure`), and schedules the system
+- `DestructionModule` (`[destruction] breaks_per_tick`): registers the components; at play start loads every recipe the play world's breakables name (`concordia_fracture::load`, then `structure`), bakes its pieces into a surface and an interior mesh (`concordia_fracture::piece_mesh`) held by the `AssetDb` (`insert_derived_mesh`, under `piece_mesh_ref`), and schedules the system
+- Bench: `cargo bench -p concordia-destruction --bench destruction` (a 2,000-brick wall crumbling at 120 Hz: `wall_breaks`, `debris_falls`)
 
 ## Invariants
 - A breakable becomes a fragment on its first play tick: a `ColliderShape::Compound` of its pieces' hulls (mesh space = body space), `RigidBody.mass` from the structure, `ContactReports { min_strength: 0 }`; static if it holds an anchored cell.
@@ -37,7 +38,8 @@ Destruction at runtime: a fractured breakable (`concordia-fracture`) is one Jolt
   - past `debris_lifetime` (when that is set) it is removed;
   - below `min_debris_volume` it loses its `Collider`, so it has no body;
   - past `max_debris`, the oldest go first (ties: lower id).
-- Fields and the methods only add damage; bonds break in `break_bonds`, under the budget.
+- Fields and the methods only add damage; bonds break in `break_bonds`, under the budget. `Crumble` and `destruction.crumble` set damage to `breaking_damage(strength)`, the least `f32` that reaches the `f64` strength.
+- Drawing (8.5b): when the recipe has `looks`, a breakable's first tick swaps its `MeshRenderer` for a `PieceRenderer` (`concordia-assets`) of the baked meshes: the surface with the `MeshRenderer`'s material (the default without one), the interior with the recipe's `interior_material` (else the same). Every part split off copies it, showing its own pieces. The renderer never sees `Fragment`, and the simulation never reads `PieceRenderer`.
 - Cluster levels and their damage thresholds aren't used at runtime yet.
 
 ## How to test
@@ -54,7 +56,7 @@ Destruction at runtime: a fractured breakable (`concordia-fracture`) is one Jolt
 - Müller, Chentanez and Kim, "Real Time Dynamic Fracture with Volumetric Approximate Convex Decompositions" (SIGGRAPH 2013); Jolt Physics documentation (compound shapes, contact listeners).
 
 ## Status
-M8 8.3: breakables, strain, the break budget, splits with momentum, anchors, the `[destruction]` module. 8.4a: fields (strain, crumble, anchor, kill), `destruction.crumble` and `destruction.apply_strain`. 8.5a: the debris budget, lifetime and small-debris collision. 8.4b: force, impulse, sleep and disable through `concordia-physics`'s `Impulse`, `Sleep` and `PhysicsDisabled`.
+M8 8.3: breakables, strain, the break budget, splits with momentum, anchors, the `[destruction]` module. 8.4a: fields (strain, crumble, anchor, kill), `destruction.crumble` and `destruction.apply_strain`. 8.5a: the debris budget, lifetime and small-debris collision. 8.4b: force, impulse, sleep and disable through `concordia-physics`'s `Impulse`, `Sleep` and `PhysicsDisabled`. 8.5b: fragments drawn as rigid pieces of two shared meshes (2 instanced draws per breakable), the `destruction` bench, `breaking_damage` (crumble reached only bonds whose strength rounded up in `f32`). Distance LOD (coarser breaking far away) waits for cluster levels at runtime.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

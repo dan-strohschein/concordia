@@ -3,6 +3,7 @@
 //! `test(/^m<n>_/)`. `bless_reference` stays its own (release-only) binary.
 
 mod canyon;
+mod destruction_golden;
 mod graph_library;
 mod lamplight_content;
 mod lamplight_mirrors;

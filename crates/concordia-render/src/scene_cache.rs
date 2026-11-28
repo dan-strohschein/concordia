@@ -196,6 +196,12 @@ fn blend(before: &EntityItems, now: &EntityItems, alpha: f32) -> EntityItems {
             b.pose = pose;
         }
     }
+    if let (Some(a), Some(b)) = (&before.pieces, &mut out.pieces) {
+        b.skin.world = lerp_matrix(a.skin.world, b.skin.world, alpha);
+        for draw in &mut b.draws {
+            draw.world = b.skin.world;
+        }
+    }
     if let (Some(a), Some(b)) = (&before.camera, &mut out.camera) {
         b.world = lerp_matrix(a.world, b.world, alpha);
     }

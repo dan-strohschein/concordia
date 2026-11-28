@@ -164,7 +164,9 @@ impl State {
                 .get::<RigidBody>(id)
                 .cloned()
                 .unwrap_or_else(RigidBody::dynamic);
-            if let Err(e) = attach(world, id, &p, fragment, body) {
+            let count = fragment.pieces.len() as u32;
+            let drawn = crate::looks::draw_whole(world, id, p.loaded.looks.as_ref(), count);
+            if let Err(e) = drawn.and_then(|()| attach(world, id, &p, fragment, body)) {
                 tracing::warn!(target: "concordia::destruction", %id, error = %e, "breakable skipped");
             }
         }
@@ -327,8 +329,8 @@ fn apply_fields(
                     .any(|&q| field.weight(at, world_point(p.centre(q))) > 0.0)
                 {
                     for &k in &bonds {
-                        let strength = p.loaded.structure.edges[k].strength as f32;
-                        f.damage[k] = f.damage[k].max(strength);
+                        let due = breaking_damage(p.loaded.structure.edges[k].strength);
+                        f.damage[k] = f.damage[k].max(due);
                     }
                 }
             }
@@ -352,6 +354,17 @@ fn apply_fields(
         }
     }
     Some(f)
+}
+
+/// The least damage that breaks a bond of `strength` (bonds break once damage, widened to
+/// `f64`, reaches it).
+pub(crate) fn breaking_damage(strength: f64) -> f32 {
+    let nearest = strength as f32;
+    if f64::from(nearest) < strength {
+        nearest.next_up()
+    } else {
+        nearest
+    }
 }
 
 /// What fields do to a fragment's body this tick.
@@ -465,6 +478,7 @@ fn split(
         .cloned()
         .unwrap_or_else(RigidBody::dynamic);
     let (_, whole) = p.mass_and_centre(&fragment.pieces);
+    let drawn = world.get::<concordia_assets::PieceRenderer>(id).cloned();
     world.despawn(id)?;
     for pieces in parts {
         let part = Fragment {
@@ -474,6 +488,7 @@ fn split(
         let child = child_id(id, part.pieces[0]);
         world.spawn_with_id(child)?;
         world.insert(child, t)?;
+        crate::looks::draw_part(world, child, drawn.as_ref(), &part.pieces)?;
         let (_, centre) = p.mass_and_centre(&part.pieces);
         let still = anchored(p, &part);
         let velocity = match still {
@@ -546,4 +561,27 @@ fn child_id(parent: EntityId, lowest: u32) -> EntityId {
     name.extend(lowest.to_le_bytes());
     let uuid = uuid::Uuid::new_v5(&parent.as_uuid(), &name);
     EntityId::try_from_uuid(uuid).unwrap_or(parent)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::breaking_damage;
+
+    #[test]
+    fn breaking_damage_reaches_the_strength_however_it_rounds() {
+        for strength in [
+            100.0,
+            20_000.000_000_004,
+            0.1,
+            1.0e-3 + 1.0e-12,
+            3.3e7 + 0.5,
+        ] {
+            let damage = breaking_damage(strength);
+            assert!(f64::from(damage) >= strength, "{strength}: {damage}");
+            assert!(
+                f64::from(damage) - strength <= strength * 1.0e-6,
+                "and barely above"
+            );
+        }
+    }
 }

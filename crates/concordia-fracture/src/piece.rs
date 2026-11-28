@@ -86,7 +86,7 @@ impl Piece {
 
 /// Two tangent axes for a face normal, the same for either side of the face: the normal is
 /// flipped so its largest component is positive.
-fn basis(normal: Vec3) -> (Vec3, Vec3) {
+pub(crate) fn basis(normal: Vec3) -> (Vec3, Vec3) {
     let n = normal.normalize_or_zero();
     let a = n.abs();
     let largest = if a.x >= a.y && a.x >= a.z {
