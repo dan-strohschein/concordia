@@ -16,6 +16,8 @@ The playtest assertion language as text and as a tree: parse with column spans, 
 - Seconds become whole ticks at the project rate, or the check fails (no silent rounding).
 - No `unsafe`; public functions never panic.
 
+- A field path's component is its longest registered dotted prefix (`lamplight.Lamplighter.can`); `check` returns the path with the component joined (M4 4.13a).
+
 ## How to test
 `cargo nextest run -p concordia-assert`
 

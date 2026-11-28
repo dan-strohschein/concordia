@@ -41,6 +41,15 @@ the night's length and the fog, and press "Light the lamps".
   lamps, the wisps, the can and the fog.
 - Burn and spirit numbers rise in the world over the wisps and the fountain.
 
+## The Snuffer (M4 4.13a)
+`scenes/harbour_watch.scene.ron` is the town with Lamplight's first enemy. The Snuffer is a shade from the harbour fog that hunts the lamplighter to put out their can. It waits at its post on the harbour street, (0, 0, 26).
+- **Senses:** it sees 10 m in a 120° cone and hears 8 m (`ai.Perceiver`). It forgets the lamplighter 3 s after losing them.
+- **Brain:** a Behavior graph, `ai/snuffer.graph.ron`, which the engine compiles to a behavior tree at play start. The tree is:
+  - **Hunt**, while it knows where the lamplighter is (`Condition target set`, aborting lower branches): walk to them, face them, then `Selector [ Cooldown 2 s → Cast snuff, Wait 0.25 s ]`. The selector keeps the cooldown from ending the hunt.
+  - **Return**, otherwise: set `home` to the post, walk there, wait 3 s.
+- **Rules:** a `snuff` cast within 1.6 m takes 25 oil from the can, never below 0, and raises `lamplight.Snuffed`. A cast from further away does nothing.
+- Rebuild the scene with `python3 -I examples/m2-lamplight/tools/build_harbour_watch.py <concordia>`, after `build_town.py`.
+
 ## Layout
 - `concordia.toml`: the project (input, physics, navigation, assets, animation, audio, UI,
   rendering, replay and the two script modules).

@@ -123,6 +123,23 @@ fn a_brain_moves_its_agent_and_waits_for_arrival() {
     );
 }
 
+/// Navigation raises `NavArrived` only on reaching a target, so an agent already within its
+/// arrival distance would wait forever (found by the Snuffer, 4.13a): such a MoveTo succeeds at once.
+#[test]
+fn moving_to_where_the_agent_already_is_succeeds_at_once() {
+    let mut s = setup(&[("walker.bt.ron", walker())], AiConfig::default());
+    let mut bb = Blackboard::for_tree(&walker());
+    bb.set("goal", BbValue::Vec3([0.3, 0.0, 0.2])).unwrap();
+    let e = s.agent("walker.bt.ron", bb);
+    s.world.insert(e, NavAgent::default()).unwrap();
+    s.step(2, 1);
+    assert_eq!(
+        s.world.get::<Blackboard>(e).unwrap().get("done"),
+        Some(&BbValue::Bool(true)),
+        "0.36 m away, inside the default 0.5 m"
+    );
+}
+
 #[test]
 fn moving_without_a_nav_agent_fails_the_task() {
     let mut s = setup(&[("walker.bt.ron", walker())], AiConfig::default());

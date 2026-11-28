@@ -170,6 +170,16 @@ pub struct NavArrived {
     pub partial: bool,
 }
 
+/// The AI runtime's `ai.Cast` signal (raised on the caster).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "ai.Cast", default)]
+pub struct AiCast {
+    /// The skill.
+    pub skill: String,
+    /// Its target, if the key held one.
+    pub target: Option<EntityId>,
+}
+
 /// The engine's `ContactBegan` signal.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Reflect)]
 #[reflect(name = "ContactBegan")]

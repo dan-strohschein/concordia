@@ -15,7 +15,7 @@ use concordia_script_guest::{
 };
 use lamplight_types::body::{Body, Stride};
 use lamplight_types::engine::{
-    AnimEvent, AnimGraphPlayer, AudioEmitter, CharacterMotion, ContactBegan, ContactEnded,
+    AiCast, AnimEvent, AnimGraphPlayer, AudioEmitter, CharacterMotion, ContactBegan, ContactEnded,
     InputActions, NavArrived, PointLight, Transform, UiText, VehicleState,
 };
 use lamplight_types::night::{NewNight, NightTick};
@@ -188,6 +188,30 @@ pub struct Number {
     pub ticks_left: u32,
 }
 
+/// A Snuffer (M4 4.13a): a shade from the harbour fog that snuffs the lamplighter's can. Its brain
+/// is an `ai.Brain`; this marks whose `snuff` casts the rules carry out.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "lamplight.Snuffer", default)]
+pub struct Snuffer;
+
+/// Signal: a Snuffer at `at` cast `snuff` at this lamplighter.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "lamplight.Snuff", default)]
+pub struct Snuff {
+    /// Where the Snuffer stood.
+    pub at: Vec3,
+}
+
+/// Signal: a snuff landed on this lamplighter, taking `amount` oil.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "lamplight.Snuffed", default)]
+pub struct Snuffed {
+    /// Oil taken.
+    pub amount: f32,
+    /// Where the Snuffer stood.
+    pub at: Vec3,
+}
+
 /// Signal: the body's `lit` event fired (on its walker).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, Reflect)]
 #[reflect(name = "lamplight.Reached", default)]
@@ -345,6 +369,7 @@ impl Module for Lamplight {
                 describe_type::<Readout>(),
                 describe_type::<Records>(),
                 describe_type::<RecordRow>(),
+                describe_type::<Snuffer>(),
             ],
             signals: vec![
                 describe_type::<Stride>(),
@@ -361,6 +386,8 @@ impl Module for Lamplight {
                 describe_type::<Setting>(),
                 describe_type::<Command>(),
                 describe_type::<Ended>(),
+                describe_type::<Snuff>(),
+                describe_type::<Snuffed>(),
             ],
             traits: Vec::new(),
             processors: vec![
@@ -373,8 +400,14 @@ impl Module for Lamplight {
                     .receives::<Reached>()
                     .receives::<Lit>()
                     .receives::<Refill>()
+                    .receives::<Snuff>()
                     .receives::<NewNight>()
                     .after("input.actions")
+                    .build(),
+                processor("lamplight.snuffers", Phase::PostPhysics)
+                    .with::<Snuffer>()
+                    .reads::<Transform>()
+                    .receives::<AiCast>()
                     .build(),
                 processor("lamplight.body", Phase::PrePhysics)
                     .reads::<Body>()
@@ -496,6 +529,7 @@ impl Module for Lamplight {
             "lamplight.sliders" => screens::sliders(ctx),
             "lamplight.buttons" => screens::buttons(ctx),
             "lamplight.chase" => world::chase(ctx),
+            "lamplight.snuffers" => world::snuffers(ctx),
             other => Err(format!("unknown processor {other}")),
         }
     }

@@ -17,6 +17,13 @@ Compiled gameplay graphs as script modules (M4 4.10b, J1): an Event `.graph.ron`
 ## How to test
 `cargo nextest run -p concordia-graph-script`
 
+## Common tasks
+- A new engine-backed node: register it in `engine_library` and lower it in the compiler, with an interpreter/WASM cross-check.
+
+## Don'ts
+- Don't run a graph without its fuel limit.
+- Don't drop a graph's variables on hot reload; migrate them through reflect.
+
 ## References
 ADR-0062 (the column protocol); the 4.10 plan's J1–J15. No engine source consulted.
 

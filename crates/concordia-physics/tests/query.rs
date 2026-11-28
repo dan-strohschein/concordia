@@ -53,6 +53,24 @@ fn raycast_respects_layer_filter() {
     );
 }
 
+/// Sensors are trigger volumes, not surfaces: rays pass through them (found by the Snuffer in
+/// M4 4.13a, whose sight was blocked by a lamp's light).
+#[test]
+fn raycasts_pass_through_sensors() {
+    let mut sim = Sim::new();
+    let mut trigger = Collider::new(ColliderShape::Sphere { radius: 3.0 });
+    trigger.is_sensor = true;
+    sim.spawn(Vec3::new(0.0, 0.0, -5.0), RigidBody::fixed(), trigger);
+    let behind = sim.ball(Vec3::new(0.0, 0.0, -12.0), 1.0);
+    sim.step(1);
+    let ray = Ray::new(Vec3::ZERO, Vec3::NEG_Z).unwrap();
+    let hit = sim
+        .physics
+        .raycast(&ray, 100.0, LayerMask::ALL)
+        .expect("hit");
+    assert_eq!(hit.entity, behind, "{hit:?}");
+}
+
 #[test]
 fn ortho_pointer_ray_picks_ground_point() {
     let mut sim = Sim::new();

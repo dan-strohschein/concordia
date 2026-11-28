@@ -1,0 +1,123 @@
+Graph(
+    exec: [
+        ("0193c4a0-5e1f-7000-8000-000000000001", "child", "0193c4a0-5e1f-7000-8000-000000000002", "in"),
+        ("0193c4a0-5e1f-7000-8000-000000000002", "child0", "0193c4a0-5e1f-7000-8000-000000000003", "in"),
+        ("0193c4a0-5e1f-7000-8000-000000000002", "child1", "0193c4a0-5e1f-7000-8000-000000000009", "in"),
+        ("0193c4a0-5e1f-7000-8000-000000000003", "child", "0193c4a0-5e1f-7000-8000-000000000004", "in"),
+        ("0193c4a0-5e1f-7000-8000-000000000004", "child0", "0193c4a0-5e1f-7000-8000-000000000005", "in"),
+        ("0193c4a0-5e1f-7000-8000-000000000004", "child1", "0193c4a0-5e1f-7000-8000-000000000006", "in"),
+        ("0193c4a0-5e1f-7000-8000-000000000004", "child2", "0193c4a0-5e1f-7000-8000-00000000000d", "in"),
+        ("0193c4a0-5e1f-7000-8000-000000000007", "child", "0193c4a0-5e1f-7000-8000-000000000008", "in"),
+        ("0193c4a0-5e1f-7000-8000-000000000009", "child0", "0193c4a0-5e1f-7000-8000-00000000000a", "in"),
+        ("0193c4a0-5e1f-7000-8000-000000000009", "child1", "0193c4a0-5e1f-7000-8000-00000000000b", "in"),
+        ("0193c4a0-5e1f-7000-8000-000000000009", "child2", "0193c4a0-5e1f-7000-8000-00000000000c", "in"),
+        ("0193c4a0-5e1f-7000-8000-00000000000d", "child0", "0193c4a0-5e1f-7000-8000-000000000007", "in"),
+        ("0193c4a0-5e1f-7000-8000-00000000000d", "child1", "0193c4a0-5e1f-7000-8000-00000000000e", "in"),
+    ],
+    id: "0193c4a0-5e1f-7000-8000-000000000100",
+    kind: Behavior,
+    layout: {},
+    nodes: {
+        "0193c4a0-5e1f-7000-8000-000000000001": (
+            inputs: {},
+            op: "behavior.root",
+        ),
+        "0193c4a0-5e1f-7000-8000-000000000002": (
+            inputs: {},
+            op: "behavior.selector",
+        ),
+        "0193c4a0-5e1f-7000-8000-000000000003": (
+            inputs: {
+                "abort": Value(Text("lower")),
+                "key": Value(Text("target")),
+                "op": Value(Text("set")),
+            },
+            op: "behavior.condition",
+        ),
+        "0193c4a0-5e1f-7000-8000-000000000004": (
+            inputs: {},
+            op: "behavior.sequence",
+        ),
+        "0193c4a0-5e1f-7000-8000-000000000005": (
+            inputs: {
+                "key": Value(Text("target_position")),
+            },
+            op: "behavior.move_to",
+        ),
+        "0193c4a0-5e1f-7000-8000-000000000006": (
+            inputs: {
+                "key": Value(Text("target")),
+            },
+            op: "behavior.face",
+        ),
+        "0193c4a0-5e1f-7000-8000-000000000007": (
+            inputs: {
+                "seconds": Value(Float(2.0)),
+            },
+            op: "behavior.cooldown",
+        ),
+        "0193c4a0-5e1f-7000-8000-000000000008": (
+            inputs: {
+                "skill": Value(Text("snuff")),
+                "target_key": Value(Text("target")),
+            },
+            op: "behavior.cast",
+        ),
+        "0193c4a0-5e1f-7000-8000-000000000009": (
+            inputs: {},
+            op: "behavior.sequence",
+        ),
+        "0193c4a0-5e1f-7000-8000-00000000000a": (
+            inputs: {
+                "key": Value(Text("home")),
+                "value": Value(Text("0, 0, 26")),
+            },
+            op: "behavior.set_key",
+        ),
+        "0193c4a0-5e1f-7000-8000-00000000000b": (
+            inputs: {
+                "key": Value(Text("home")),
+            },
+            op: "behavior.move_to",
+        ),
+        "0193c4a0-5e1f-7000-8000-00000000000c": (
+            inputs: {
+                "seconds": Value(Float(3.0)),
+            },
+            op: "behavior.wait",
+        ),
+        "0193c4a0-5e1f-7000-8000-00000000000d": (
+            inputs: {},
+            op: "behavior.selector",
+        ),
+        "0193c4a0-5e1f-7000-8000-00000000000e": (
+            inputs: {
+                "seconds": Value(Float(0.25)),
+            },
+            op: "behavior.wait",
+        ),
+    },
+    signature: (
+        inputs: [],
+        outputs: [],
+        pure: false,
+    ),
+    variables: [
+        (
+            default: None,
+            name: "target",
+            ty: "EntityId",
+        ),
+        (
+            default: None,
+            name: "target_position",
+            ty: "Vec3",
+        ),
+        (
+            default: None,
+            name: "home",
+            ty: "Vec3",
+        ),
+    ],
+    version: 1,
+)

@@ -30,12 +30,56 @@ pub fn check(
     registry: &TypeRegistry,
     rate_hz: u32,
 ) -> Result<Assertion, TypeError> {
+    let pred = dotted(&assertion.pred, registry);
     let checker = Checker { registry };
-    checker.pred(&assertion.pred)?;
+    checker.pred(&pred)?;
     Ok(Assertion {
         temporal: temporal(&assertion.temporal, rate_hz)?,
-        pred: assertion.pred.clone(),
+        pred,
     })
+}
+
+/// `p` with each field path's component taken as its longest registered dotted prefix
+/// (`lamplight.Lamplighter.can` names `lamplight.Lamplighter`, then `can`).
+fn dotted(p: &Pred, registry: &TypeRegistry) -> Pred {
+    let pair = |a: &Pred, b: &Pred| (Box::new(dotted(a, registry)), Box::new(dotted(b, registry)));
+    match p {
+        Pred::And(a, b) => {
+            let (a, b) = pair(a, b);
+            Pred::And(a, b)
+        }
+        Pred::Or(a, b) => {
+            let (a, b) = pair(a, b);
+            Pred::Or(a, b)
+        }
+        Pred::Not(a) => Pred::Not(Box::new(dotted(a, registry))),
+        Pred::Cmp { lhs, op, rhs } => Pred::Cmp {
+            lhs: dotted_expr(lhs, registry),
+            op: *op,
+            rhs: dotted_expr(rhs, registry),
+        },
+        Pred::Is(e) => Pred::Is(dotted_expr(e, registry)),
+    }
+}
+
+fn dotted_expr(e: &Expr, registry: &TypeRegistry) -> Expr {
+    let Expr::Field { quant, sel, path } = e else {
+        return e.clone();
+    };
+    let split = (1..path.len())
+        .rev()
+        .find(|&n| registry.schema_for(&path[..=n].join(".")).is_some());
+    let path = match split {
+        Some(n) => std::iter::once(path[..=n].join("."))
+            .chain(path[n + 1..].iter().cloned())
+            .collect(),
+        None => path.clone(),
+    };
+    Expr::Field {
+        quant: *quant,
+        sel: sel.clone(),
+        path,
+    }
 }
 
 fn temporal(t: &Temporal, rate: u32) -> Result<Temporal, TypeError> {

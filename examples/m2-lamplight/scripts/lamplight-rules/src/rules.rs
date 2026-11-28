@@ -114,6 +114,17 @@ pub fn can_refill(distance: f32, speed: f32, cooldown: f32, can: f32) -> bool {
     distance <= REFILL_REACH && speed.abs() <= STOPPED && cooldown <= 0.0 && can < CAN_MAX
 }
 
+/// How close a Snuffer must be to snuff the can (m).
+pub const SNUFF_REACH: f32 = 1.6;
+/// Oil one snuff takes.
+pub const SNUFF_COST: f32 = 25.0;
+
+/// The oil a `snuff` from `distance` takes from a can holding `can`, if it lands.
+pub fn snuff(can: f32, distance: f32) -> Option<f32> {
+    let lands = distance.is_finite() && distance <= SNUFF_REACH && can > 0.0;
+    lands.then(|| SNUFF_COST.min(can))
+}
+
 /// The phase a command moves the night to from `phase`, if it applies there.
 pub fn next_phase(phase: &str, action: &str) -> Option<&'static str> {
     use lamplight_types::night::{LOST, PAUSED, PLAYING, TITLE, WON};

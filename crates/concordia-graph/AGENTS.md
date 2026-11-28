@@ -28,6 +28,11 @@ Text-first gameplay graphs (M4 4.9, D6): the `.graph.ron` format, the node libra
 - **Add a core node:** add it to `core_nodes()` in `src/library.rs` and review the core snapshot.
 - **Add a diagnostic:** a `Code` variant, the pass that finds it (`src/check/`), and a broken example graph.
 
+## Don'ts
+- Don't let layout reach the semantic hash or compiled output.
+- Don't hand-write node definitions that the registry can generate (get/set, raise/on).
+- Don't let the WASM emitter and the interpreter disagree: every IR change gets a cross-check test.
+
 ## References
 Unreal's public Blueprint documentation for UX expectations only (no code). Type checking follows the usual bidirectional approach (annotated signatures and variables, inference inward). Cytron et al. 1991 (SSA form) for the IR; the WebAssembly core specification (numeric semantics) for the interpreter and emitter. No engine source consulted.
 

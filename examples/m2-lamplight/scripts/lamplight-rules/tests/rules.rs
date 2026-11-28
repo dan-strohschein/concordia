@@ -185,3 +185,27 @@ fn the_hud_clock_and_the_fog_choices() {
     assert_eq!(result_line("won"), "Dawn came. The town held.");
     assert_eq!(result_line("lost"), "The fog took the square.");
 }
+
+/// The Snuffer (M4 4.13a, N3): a `snuff` within 1.6 m drains 25 oil, never below 0; from further
+/// away, nothing.
+#[test]
+fn a_snuff_in_reach_drains_twenty_five_oil_and_never_below_zero() {
+    assert_eq!(rules::snuff(100.0, 1.0), Some(25.0));
+    assert_eq!(rules::snuff(100.0, rules::SNUFF_REACH), Some(25.0));
+    assert_eq!(
+        rules::snuff(10.0, 0.5),
+        Some(10.0),
+        "only what is in the can"
+    );
+    assert_eq!(
+        rules::snuff(0.0, 0.5),
+        None,
+        "an empty can has nothing to lose"
+    );
+    assert_eq!(rules::snuff(100.0, rules::SNUFF_REACH + 0.01), None);
+    assert_eq!(
+        rules::snuff(100.0, f32::NAN),
+        None,
+        "a bad distance does nothing"
+    );
+}

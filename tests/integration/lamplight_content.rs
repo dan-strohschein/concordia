@@ -380,8 +380,8 @@ fn anim_graphs_and_cues_validate() {
     let materials = text_files(".material.ron");
     assert_eq!(
         materials.len(),
-        5,
-        "cobbles, glass, cloth, wisp, wagon paint"
+        6,
+        "cobbles, glass, cloth, wisp, wagon paint, the Snuffer (M4 4.13a)"
     );
     for (path, text) in &materials {
         let material = concordia_assets::read_material(text)
