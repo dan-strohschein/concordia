@@ -950,6 +950,7 @@ name = "concordia-fracture"
 version = "0.0.0"
 dependencies = [
  "concordia-core",
+ "concordia-physics",
  "libm",
  "manifold-sys",
  "proptest",

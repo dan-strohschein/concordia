@@ -13,6 +13,7 @@ workspace = true
 
 [dependencies]
 concordia-core.workspace = true
+concordia-physics.workspace = true
 libm.workspace = true
 manifold-sys.workspace = true
 serde.workspace = true
