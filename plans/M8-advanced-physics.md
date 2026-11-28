@@ -1,10 +1,10 @@
 # M8: Advanced physics (destruction and GPU garments)
-Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refinement proposed after M4 (2026-11-27), awaiting the author's decisions Q1–Q8** · Estimated effort: ~20 weeks (range 16–26), author plus agents
+Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · Estimated effort: ~20 weeks (range 16–26), author plus agents
 
 > Outline plan with phase breakdowns and test lists. Refine when M2 lands: the skinning data layout (8.7, 8.10), the mesh import path for garments, and M3's replay format if caches build on it (8.6).
 
-## Refinement after M4 (2026-11-27, proposed; awaiting the author's decisions)
-The plan predates M2. Checked against `main` after M4; the phases below stand, with the changes and proposals here. **Nothing in this section is approved yet:** Q1–Q8 are my recommendations, for the author to accept or change.
+## Refinement after M4 (2026-11-27; Q1–Q8 approved by the author the same day)
+The plan predates M2. Checked against `main` after M4; the phases below stand, with the changes and proposals here. Q1–Q8 were my recommendations; the author approved all eight as written.
 
 ### What exists (findings)
 - **Physics.**
@@ -25,7 +25,7 @@ The plan predates M2. Checked against `main` after M4; the phases below stand, w
   - The skinning layout and replay format it waited for exist.
   - M12's rigs don't exist yet, so garments follow the skinned pose as M2 draws it (8.7's note stands).
 
-### Proposed decisions
+### Decisions (approved)
 - **Q1: a physics groundwork phase, 8.0, before 8.1.** It binds and exposes:
   - convex hull and compound colliders (`ColliderShape::ConvexHull`, `::Compound`; mutable compound for splitting);
   - contact impulse and point in `ContactBegan`, and a per-contact strength signal;
