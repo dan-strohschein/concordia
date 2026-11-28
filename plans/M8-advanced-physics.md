@@ -1,5 +1,5 @@
 # M8: Advanced physics (destruction and GPU garments)
-Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · **Phase 8.0 done** (8.0a–d: hull and compound colliders, contact impacts, mid-play bodies, the soft-body reference) · **8.2 done** (connection graph, cluster levels) · **Phase 8.1 done** (8.1a–c: Manifold cutter and five patterns; hulls and interior UVs; `.breakable.ron` and `fracture.generate`) · Estimated effort: ~20 weeks (range 16–26), author plus agents
+Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · **Phase 8.0 done** (8.0a–d: hull and compound colliders, contact impacts, mid-play bodies, the soft-body reference) · **8.3 done** (breaking on Jolt) · **8.2 done** (connection graph, cluster levels) · **Phase 8.1 done** (8.1a–c: Manifold cutter and five patterns; hulls and interior UVs; `.breakable.ron` and `fracture.generate`) · Estimated effort: ~20 weeks (range 16–26), author plus agents
 
 > Outline plan with phase breakdowns and test lists. Refine when M2 lands: the skinning data layout (8.7, 8.10), the mesh import path for garments, and M3's replay format if caches build on it (8.6).
 
@@ -146,6 +146,27 @@ The plan predates M2. Checked against `main` after M4; the phases below stand, w
 - **Test log:**
   - The tests were written first, and run against a stub before the code: 6 of 7 failed. The round-trip test doesn't use `structure`.
   - One expected value of mine was wrong: a cut across x is a 1 × 1 face whatever the slice thickness. I fixed the test, not the code.
+  - **Checks:** fmt, clippy.
+
+**8.3** (done): breaking at runtime (S1–S8 above).
+- **New crate `concordia-destruction`:**
+  - the components `Breakable` and `Fragment`;
+  - the `destruction.break` system;
+  - `BreakableSource` and `MemorySource`;
+  - `[destruction] breaks_per_tick` (`DestructionModule`), which loads recipes when play starts through `concordia_fracture::load`. That loader is new, and `fracture.inspect` now uses it too.
+- **What the tests show:**
+  - an unstrained breakable stays one compound body, with the structure's mass;
+  - a weak blow leaves damage but no break;
+  - a blow on the middle cut splits exactly there, and a second blow finds nothing more to break;
+  - each part moves as it did inside the whole (v + ω × r, same ω), and linear momentum is kept. Angular momentum follows from the parts moving rigidly with the same ω, so the test doesn't measure it separately;
+  - anchored parts stay static while the loose half falls;
+  - a budget of one break per tick spreads three breaks over three ticks;
+  - poses and pieces are identical at 1, 2 and 8 threads and on a rerun;
+  - through the Engine API, a fractured slab falls, breaks on the ground in play, and the edit world's slab is untouched.
+- **Test log:**
+  - **Not test-first:** I wrote the `breaking` tests before the code, but first ran them after the system existed, and all 7 passed. Run against a no-op system, all 7 failed.
+  - The engine test also passed on its first run. With the system left out of the play schedule, it failed.
+  - **Contract consumers:** app, API, MCP and Studio tests (471 passed, including the fracture crate's). The editor schemas are unchanged, since their project has no `[destruction]`.
   - **Checks:** fmt, clippy.
 
 ### Effort, revised
@@ -303,6 +324,18 @@ Bring Chaos-class physics to Concordia **on top of Jolt**, not instead of it:
   - `destruction_hash_is_identical_at_1_2_and_8_threads`
   - `break_budget_defers_excess_breaks_to_later_ticks`
   - `edit_world_is_never_broken` (ADR-0032)
+- **8.3 refinement (2026-11-28; my calls under the M8 autonomy grant):**
+  - **S1:** a new crate, `concordia-destruction`, with a `[destruction]` module that runs only in play.
+  - **S2:** `Breakable { recipe, anchors, impact_radius }` is authored on an entity that has a `Transform` and a `RigidBody`. When play starts, the entity becomes one body: a compound of its pieces' hulls, with its mass from the structure. It also gets a `Fragment { pieces, damage, broken }`, which lives in the world, so it is hashed and saved with play state.
+  - **S3:** pieces and structure come through a `BreakableSource` trait. The project's source reads `.breakable.ron` and the DDC; tests use an in-memory one.
+  - **S4: strain.** A `ContactImpact` on a fragment damages each of its internal edges by the impact's strength × (1 − d / `impact_radius`). Here d is the distance from the impact to the midpoint of the edge's two piece centres. An edge breaks when its damage reaches its strength.
+  - **S5: splitting.** Union-find over the unbroken internal edges.
+    - Each component becomes a new entity whose id is derived from its parent and its lowest cell, so ids don't depend on threads or order.
+    - It keeps the parent's transform, so body space stays mesh space.
+    - Its velocity is the parent's at the component's centre of mass (v + ω × r), so momentum is conserved.
+  - **S6:** components holding an anchored cell are static; the rest become dynamic.
+  - **S7:** at most `breaks_per_tick` edges break per tick (default 64), sorted by fragment then edge. The rest break on later ticks.
+  - **S8:** cluster levels and their damage thresholds aren't used at runtime yet; fields (8.4) use them. In 8.3 the whole breakable starts as one cluster.
 
 ### Phase 8.4: Fields
 - **Objective:** a region of space that applies an effect, for designers and agents.

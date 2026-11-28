@@ -281,6 +281,13 @@ impl Project {
         if self.manifest.fracture.is_some() {
             modules.push(Arc::new(concordia_fracture::FractureModule));
         }
+        if let Some(d) = &self.manifest.destruction {
+            modules.push(Arc::new(concordia_destruction::DestructionModule::new(
+                concordia_destruction::DestructionSettings {
+                    breaks_per_tick: d.breaks_per_tick.get(),
+                },
+            )));
+        }
         if self.manifest.replay.is_some() {
             modules.push(Arc::new(
                 ReplayModule::new().with_factory(Arc::new(other_engine)),
