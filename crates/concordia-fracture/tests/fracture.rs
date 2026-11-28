@@ -120,6 +120,20 @@ fn same_seed_same_pieces_byte_for_byte() {
     assert_ne!(seeded(7), seeded(8), "the seed matters");
 }
 
+/// The bytes of every pattern's pieces for seed 7, pinned so another platform (Linux CI, x86)
+/// proves it cuts the same (ADR-0180). Regenerate only for a deliberate change to the cutter.
+const PINNED: &str = "321e84ce77667cd20c4ed98a643006754dd28efe127b5d5e82812767310ccd51";
+
+#[test]
+fn pieces_are_the_same_bytes_on_every_platform() {
+    let mut all = Vec::new();
+    for pattern in patterns() {
+        all.extend(bytes(&fracture(&ell(), &pattern, 7).unwrap()));
+    }
+    let hash = blake3::hash(&all).to_hex().to_string();
+    assert_eq!(hash, PINNED, "the cutter's output changed");
+}
+
 #[test]
 fn pieces_partition_the_volume() {
     for (mesh, volume) in [(slab(), 2.0), (ell(), 3.0)] {
