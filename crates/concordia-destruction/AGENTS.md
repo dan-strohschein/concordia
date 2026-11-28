@@ -7,7 +7,7 @@ Destruction at runtime: a fractured breakable (`concordia-fracture`) is one Jolt
 - Components: `Breakable { recipe, anchors, impact_radius }` (authored, with a `Transform` and a `RigidBody`), `Fragment { recipe, anchors, impact_radius, pieces, damage, broken }` (runtime)
 - `destruction_system(Arc<dyn BreakableSource>, DestructionSettings { breaks_per_tick })`: the `destruction.break` system for `PostPhysics`
 - `BreakableSource` (`load(recipe) -> Arc<Loaded { fracture, structure }>`), `MemorySource` (`with(recipe, loaded)`)
-- `Field { shape: FieldShape { Sphere, Box, Plane, Everywhere }, falloff: Falloff { None, Linear, InverseSquare }, effect: FieldEffect { Strain, Crumble, Anchor, Kill }, magnitude, duration }` (an ordinary component, placed by its `Transform`), `FieldAge` (play-only), `Field::weight`
+- `Field { shape: FieldShape { Sphere, Box, Plane, Everywhere }, falloff: Falloff { None, Linear, InverseSquare }, effect: FieldEffect { Strain, Crumble, Anchor, Kill, Force, Impulse, Sleep, Disable }, magnitude, duration }` (an ordinary component, placed by its `Transform`), `FieldAge` (play-only), `Field::weight`
 - Methods (play only): `destruction.crumble {entity}` and `destruction.apply_strain {center, radius, amount}` → `{bonds}`
 - `DestructionModule` (`[destruction] breaks_per_tick`): registers the components; at play start loads every recipe the play world's breakables name (`concordia_fracture::load`, then `structure`), and schedules the system
 
@@ -27,7 +27,11 @@ Destruction at runtime: a fractured breakable (`concordia-fracture`) is one Jolt
   - `Anchor` adds the covered cells to the fragment's anchors and makes it static.
   - `Kill` despawns debris (fragments without a `Breakable`) whose centre of mass is inside.
 
-  A field with a duration ages in `FieldAge` and leaves the play world when it ends.
+  - `Force` adds magnitude × weight × dt as an `Impulse` at the fragment's centre of mass, and `Impulse` adds magnitude × weight once, on the field's first tick. Both push away from the field's centre, or along its normal for a plane.
+  - `Sleep` sends `Sleep`.
+  - `Disable` holds `PhysicsDisabled` while the fragment is covered.
+
+  Every field ages in `FieldAge`; one with a duration leaves the play world when it ends.
 - Fields and the methods only add damage; bonds break in `break_bonds`, under the budget.
 - Cluster levels and their damage thresholds aren't used at runtime yet.
 
@@ -45,7 +49,7 @@ Destruction at runtime: a fractured breakable (`concordia-fracture`) is one Jolt
 - Müller, Chentanez and Kim, "Real Time Dynamic Fracture with Volumetric Approximate Convex Decompositions" (SIGGRAPH 2013); Jolt Physics documentation (compound shapes, contact listeners).
 
 ## Status
-M8 8.3: breakables, strain, the break budget, splits with momentum, anchors, the `[destruction]` module. 8.4a: fields (strain, crumble, anchor, kill), `destruction.crumble` and `destruction.apply_strain`. Next (8.4b): force, impulse, sleep and disable, which need a velocity or impulse call into Jolt for live bodies.
+M8 8.3: breakables, strain, the break budget, splits with momentum, anchors, the `[destruction]` module. 8.4a: fields (strain, crumble, anchor, kill), `destruction.crumble` and `destruction.apply_strain`. 8.4b: force, impulse, sleep and disable through `concordia-physics`'s `Impulse`, `Sleep` and `PhysicsDisabled`.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

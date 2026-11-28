@@ -221,3 +221,29 @@ impl ContactReports {
         }
     }
 }
+
+/// A one-shot push on a dynamic body (M8 8.4b): applied at the start of the next physics step,
+/// then removed. Velocity is read only when a body is made, so this is how to push a live one.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Physics", default)]
+#[serde(deny_unknown_fields)]
+pub struct Impulse {
+    /// Linear impulse at the centre of mass (N·s).
+    pub linear: Vec3,
+    /// Angular impulse (N·m·s).
+    pub angular: Vec3,
+}
+
+/// A one-shot request to put a body to sleep at the next physics step (M8 8.4b); removed once
+/// done. A contact or an impulse wakes it again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Physics", default)]
+#[serde(deny_unknown_fields)]
+pub struct Sleep {}
+
+/// Takes the entity's body out of the physics world while present (M8 8.4b); removing it puts
+/// the body back where it was, with its `Velocity`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Physics", default)]
+#[serde(deny_unknown_fields)]
+pub struct PhysicsDisabled {}

@@ -118,6 +118,10 @@ uint32_t cj_body_add(CjWorld* world, const CjBodyDesc* desc);
 void cj_body_remove(CjWorld* world, uint32_t body);
 bool cj_body_state(CjWorld* world, uint32_t body, CjBodyState* out);
 void cj_body_move_kinematic(CjWorld* world, uint32_t body, const float position[3], const float rotation[4], float dt);
+/// Adds a linear impulse at the body's centre of mass and an angular impulse, and wakes it (M8 8.4b; dynamic bodies only; non-finite input is ignored).
+void cj_body_add_impulse(CjWorld* world, uint32_t body, const float linear[3], const float angular[3]);
+/// Wakes (true) or puts to sleep (false) a body (M8 8.4b).
+void cj_body_set_active(CjWorld* world, uint32_t body, bool active);
 /* Returns Jolt's EPhysicsUpdateError bits (0 = ok). */
 uint32_t cj_world_step(CjWorld* world, float dt, int32_t collision_steps);
 /* Copies up to cap pending begin/end events into out (unordered), removes them, and returns how many were copied. */

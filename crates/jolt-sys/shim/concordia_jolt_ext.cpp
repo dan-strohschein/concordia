@@ -4,6 +4,7 @@
 #include "concordia_jolt_ext.h"
 
 #include <algorithm>
+#include <cmath>
 #include <atomic>
 #include <map>
 #include <mutex>
@@ -446,6 +447,25 @@ bool cj_body_state(CjWorld* world, uint32_t body, CjBodyState* out) {
 void cj_body_move_kinematic(CjWorld* world, uint32_t body, const float position[3], const float rotation[4], float dt) {
     if (world == nullptr || body == CJ_NO_BODY || !(dt > 0.0f)) return;
     world->system.GetBodyInterface().MoveKinematic(BodyID(body), vec3(position), quat(rotation), dt);
+}
+
+void cj_body_add_impulse(CjWorld* world, uint32_t body, const float linear[3], const float angular[3]) {
+    if (world == nullptr || body == CJ_NO_BODY || linear == nullptr || angular == nullptr) return;
+    for (int i = 0; i < 3; ++i)
+        if (!std::isfinite(linear[i]) || !std::isfinite(angular[i])) return;
+    BodyInterface& bodies = world->system.GetBodyInterface();
+    if (bodies.GetMotionType(BodyID(body)) != EMotionType::Dynamic) return;
+    bodies.AddImpulse(BodyID(body), vec3(linear));
+    bodies.AddAngularImpulse(BodyID(body), vec3(angular));
+}
+
+void cj_body_set_active(CjWorld* world, uint32_t body, bool active) {
+    if (world == nullptr || body == CJ_NO_BODY) return;
+    BodyInterface& bodies = world->system.GetBodyInterface();
+    if (active)
+        bodies.ActivateBody(BodyID(body));
+    else
+        bodies.DeactivateBody(BodyID(body));
 }
 
 uint32_t cj_world_step(CjWorld* world, float dt, int32_t collision_steps) {

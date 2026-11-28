@@ -70,6 +70,9 @@ impl EngineModule for PhysicsModule {
         register_component::<ContactBegan>(registry)?;
         register_component::<ContactImpact>(registry)?;
         register_component::<crate::ContactReports>(registry)?;
+        register_component::<crate::Impulse>(registry)?;
+        register_component::<crate::Sleep>(registry)?;
+        register_component::<crate::PhysicsDisabled>(registry)?;
         register_component::<ContactEnded>(registry)
     }
 

@@ -1,5 +1,5 @@
 # M8: Advanced physics (destruction and GPU garments)
-Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · **Phase 8.0 done** (8.0a–d: hull and compound colliders, contact impacts, mid-play bodies, the soft-body reference) · **8.4a done** (fields: strain, crumble, anchor, kill) · **8.3 done** (breaking on Jolt) · **8.2 done** (connection graph, cluster levels) · **Phase 8.1 done** (8.1a–c: Manifold cutter and five patterns; hulls and interior UVs; `.breakable.ron` and `fracture.generate`) · Estimated effort: ~20 weeks (range 16–26), author plus agents
+Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · **Phase 8.0 done** (8.0a–d: hull and compound colliders, contact impacts, mid-play bodies, the soft-body reference) · **Phase 8.4 done** (fields: strain, crumble, anchor, kill, force, impulse, sleep, disable) · **8.3 done** (breaking on Jolt) · **8.2 done** (connection graph, cluster levels) · **Phase 8.1 done** (8.1a–c: Manifold cutter and five patterns; hulls and interior UVs; `.breakable.ron` and `fracture.generate`) · Estimated effort: ~20 weeks (range 16–26), author plus agents
 
 > Outline plan with phase breakdowns and test lists. Refine when M2 lands: the skinning data layout (8.7, 8.10), the mesh import path for garments, and M3's replay format if caches build on it (8.6).
 
@@ -187,6 +187,29 @@ The plan predates M2. Checked against `main` after M4; the phases below stand, w
   - The two engine tests were written before the methods but first run after they existed: fields as undoable components, and agents crumbling and straining a slab.
   - The breaking tests' harness moved to `tests/common` for reuse.
   - **Contract consumers:** app, API, MCP and Studio (453 passed with destruction).
+  - **Checks:** fmt, clippy.
+
+**8.4b** (done; **Phase 8.4 done**, apart from cloth reading force fields, which waits for 8.9): pushing live bodies.
+- **`jolt-sys`:** `cj_body_add_impulse` and `cj_body_set_active`; bindings regenerated.
+- **`concordia-physics`:** `Impulse` (one-shot, dynamic only), `Sleep` (one-shot) and `PhysicsDisabled` (body out of the world while present). They are applied in entity order after the body sync.
+- **Field effects:**
+  - `Force`: an impulse of magnitude × weight × dt each tick;
+  - `Impulse`: magnitude × weight once, on the field's first tick;
+  - `Sleep` and `Disable`.
+
+  Pushes act at the fragment's centre of mass, away from the field's centre or along a plane's normal. Every field now ages in `FieldAge`, so a field knows its first tick.
+- **What the tests show:**
+  - an impulse changes velocity once by impulse / mass, and is consumed;
+  - an angular impulse spins;
+  - a sleep request stops a moving body;
+  - a disabled body leaves the world and returns, falling;
+  - a force field accelerates the slab steadily (1 m/s² on 2000 kg);
+  - an impulse field kicks it once;
+  - sleep and disable fields act on what they cover.
+- **Test log:**
+  - The physics `pushes` tests were written first and first run after the runtime code. With the runtime ignoring the components, all four failed.
+  - The four new field tests failed against unhandled effects, then passed.
+  - **Contract consumers:** editor schemas regenerated (`Impulse`, `Sleep`, `PhysicsDisabled`); editor UI 128 tests; jolt-sys, physics, destruction, nav, API, app, MCP, Studio and scene (607); the physics, replay and gate integration tests.
   - **Checks:** fmt, clippy.
 
 ### Effort, revised

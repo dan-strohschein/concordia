@@ -70,6 +70,15 @@ pub enum FieldEffect {
     Anchor,
     /// Removes debris (parts already split off) whose centre of mass is inside it.
     Kill,
+    /// Pushes what it covers with `magnitude` newtons, every tick, away from its centre (along
+    /// the normal for a plane).
+    Force,
+    /// Kicks what it covers with `magnitude` N·s once, on its first tick, the same way.
+    Impulse,
+    /// Puts what it covers to sleep (a contact or a push wakes it).
+    Sleep,
+    /// Takes what it covers out of physics while it lasts.
+    Disable,
 }
 
 /// How long a field has acted in play.

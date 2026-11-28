@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {},
+  "description": "Takes the entity's body out of the physics world while present (M8 8.4b); removing it puts\nthe body back where it was, with its `Velocity`.",
+  "properties": {},
+  "title": "PhysicsDisabled",
+  "type": "object",
+  "x-concordia-category": "Physics",
+  "x-concordia-type": "PhysicsDisabled"
+}

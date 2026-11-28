@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "angular": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "linear": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "description": "A one-shot push on a dynamic body (M8 8.4b): applied at the start of the next physics step,\nthen removed. Velocity is read only when a body is made, so this is how to push a live one.",
+  "properties": {
+    "angular": {
+      "description": "Angular impulse (N·m·s).\n\n3D vector as [x, y, z].",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array",
+      "x-concordia-widget": "vec3"
+    },
+    "linear": {
+      "description": "Linear impulse at the centre of mass (N·s).\n\n3D vector as [x, y, z].",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array",
+      "x-concordia-widget": "vec3"
+    }
+  },
+  "required": [
+    "linear",
+    "angular"
+  ],
+  "title": "Impulse",
+  "type": "object",
+  "x-concordia-category": "Physics",
+  "x-concordia-type": "Impulse"
+}

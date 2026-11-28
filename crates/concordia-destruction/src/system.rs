@@ -6,7 +6,8 @@ use std::sync::Arc;
 
 use concordia_core::id::{EntityId, TypedId};
 use concordia_physics::{
-    BodyKind, Collider, ColliderShape, ContactImpact, ContactReports, RigidBody,
+    BodyKind, Collider, ColliderShape, ContactImpact, ContactReports, Impulse, PhysicsDisabled,
+    RigidBody, Sleep,
 };
 use concordia_scene::builtin::{Transform, Velocity};
 use concordia_terra::{SystemCtx, World, system};
@@ -14,7 +15,7 @@ use concordia_terra::{SystemCtx, World, system};
 use crate::prepared::Prepared;
 use concordia_core::math::Vec3;
 
-use crate::{Breakable, BreakableSource, Field, FieldAge, FieldEffect, Fragment};
+use crate::{Breakable, BreakableSource, Field, FieldAge, FieldEffect, FieldShape, Fragment};
 
 /// Runtime limits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -133,19 +134,19 @@ impl State {
                 continue;
             };
             let debris = world.get::<Breakable>(id).is_none();
-            match apply_fields(&p, &fields, fragment.clone(), &t, debris, dt) {
-                None => {
-                    let _ = world.despawn(id);
+            let Some(next) = apply_fields(&p, &fields, fragment.clone(), &t, debris, dt) else {
+                let _ = world.despawn(id);
+                continue;
+            };
+            let pushes = pushes(&p, &fields, &next, &t, dt);
+            if next != fragment {
+                let pinned = !anchored(&p, &fragment) && anchored(&p, &next);
+                let _ = world.insert(id, next);
+                if pinned {
+                    pin(world, id);
                 }
-                Some(next) if next != fragment => {
-                    let pinned = !anchored(&p, &fragment) && anchored(&p, &next);
-                    let _ = world.insert(id, next);
-                    if pinned {
-                        pin(world, id);
-                    }
-                }
-                Some(_) => {}
             }
+            pushes.apply(world, id);
         }
     }
 
@@ -217,8 +218,11 @@ impl State {
     }
 }
 
+/// A field acting this tick: where it is, and whether this is its first tick.
+type Acting = (Field, Transform, bool);
+
 /// Fields that act this tick, in id order; expired ones leave the play world.
-fn active_fields(world: &mut World, dt: f32) -> Vec<(Field, Transform)> {
+fn active_fields(world: &mut World, dt: f32) -> Vec<Acting> {
     let mut all = Vec::new();
     if let Ok(mut q) = world.query::<(&Field, &Transform)>() {
         q.for_each(world, |id, (f, t)| all.push((id, f.clone(), *t)));
@@ -226,20 +230,19 @@ fn active_fields(world: &mut World, dt: f32) -> Vec<(Field, Transform)> {
     all.sort_by_key(|(id, ..)| *id);
     let mut active = Vec::new();
     for (id, f, t) in all {
-        if f.duration > 0.0 {
-            let age = world.get::<FieldAge>(id).copied().unwrap_or_default();
-            if age.seconds >= f.duration {
-                let _ = world.despawn(id);
-                continue;
-            }
-            let _ = world.insert(
-                id,
-                FieldAge {
-                    seconds: age.seconds + dt,
-                },
-            );
+        let age = world.get::<FieldAge>(id).copied();
+        let seconds = age.map_or(0.0, |a| a.seconds);
+        if f.duration > 0.0 && seconds >= f.duration {
+            let _ = world.despawn(id);
+            continue;
         }
-        active.push((f, t));
+        let _ = world.insert(
+            id,
+            FieldAge {
+                seconds: seconds + dt,
+            },
+        );
+        active.push((f, t, age.is_none()));
     }
     active
 }
@@ -247,7 +250,7 @@ fn active_fields(world: &mut World, dt: f32) -> Vec<(Field, Transform)> {
 /// One fragment under every field: its new state, or `None` if a kill field removes it.
 fn apply_fields(
     p: &Prepared,
-    fields: &[(Field, Transform)],
+    fields: &[Acting],
     mut f: Fragment,
     t: &Transform,
     debris: bool,
@@ -258,7 +261,7 @@ fn apply_fields(
         .internal_bonds(&f.pieces)
         .filter(|k| f.broken.binary_search(&(*k as u32)).is_err())
         .collect();
-    for (field, at) in fields {
+    for (field, at, _) in fields {
         match field.effect {
             FieldEffect::Strain => {
                 for &k in &bonds {
@@ -293,9 +296,62 @@ fn apply_fields(
                     return None;
                 }
             }
+            _ => {}
         }
     }
     Some(f)
+}
+
+/// What fields do to a fragment's body this tick.
+#[derive(Default)]
+struct Pushes {
+    impulse: Vec3,
+    sleep: bool,
+    disable: bool,
+}
+
+/// The fragment's pushes from force, impulse, sleep and disable fields, at its centre of mass.
+fn pushes(p: &Prepared, fields: &[Acting], f: &Fragment, t: &Transform, dt: f32) -> Pushes {
+    let (_, centre) = p.mass_and_centre(&f.pieces);
+    let com = t.translation + t.rotation * centre;
+    let mut out = Pushes::default();
+    for (field, at, first) in fields {
+        let w = field.weight(at, com);
+        if w <= 0.0 {
+            continue;
+        }
+        let away = match &field.shape {
+            FieldShape::Plane { normal } => (at.rotation * *normal).normalize_or_zero(),
+            _ => (com - at.translation).normalize_or_zero(),
+        };
+        match field.effect {
+            FieldEffect::Force => out.impulse += away * field.magnitude * w * dt,
+            FieldEffect::Impulse if *first => out.impulse += away * field.magnitude * w,
+            FieldEffect::Sleep => out.sleep = true,
+            FieldEffect::Disable => out.disable = true,
+            _ => {}
+        }
+    }
+    out
+}
+
+impl Pushes {
+    fn apply(self, world: &mut World, id: EntityId) {
+        if self.impulse != Vec3::ZERO {
+            let mut impulse = world.get::<Impulse>(id).copied().unwrap_or_default();
+            impulse.linear += self.impulse;
+            let _ = world.insert(id, impulse);
+        }
+        if self.sleep {
+            let _ = world.insert(id, Sleep {});
+        }
+        let disabled = world.get::<PhysicsDisabled>(id).is_some();
+        if self.disable && !disabled {
+            let _ = world.insert(id, PhysicsDisabled {});
+        } else if !self.disable && disabled {
+            let _ = world.remove::<PhysicsDisabled>(id);
+        }
+    }
 }
 
 /// Makes a newly anchored fragment static and still.

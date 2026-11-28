@@ -17,7 +17,7 @@ mod solids;
 
 pub use components::{
     BodyKind, CharacterController, CharacterMotion, Collider, ColliderShape, ContactReports,
-    RigidBody,
+    Impulse, PhysicsDisabled, RigidBody, Sleep,
 };
 pub use error::PhysicsError;
 pub use events::{ContactBegan, ContactEnded, ContactImpact};

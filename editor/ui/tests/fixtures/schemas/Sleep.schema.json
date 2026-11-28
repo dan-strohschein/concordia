@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {},
+  "description": "A one-shot request to put a body to sleep at the next physics step (M8 8.4b); removed once\ndone. A contact or an impulse wakes it again.",
+  "properties": {},
+  "title": "Sleep",
+  "type": "object",
+  "x-concordia-category": "Physics",
+  "x-concordia-type": "Sleep"
+}
