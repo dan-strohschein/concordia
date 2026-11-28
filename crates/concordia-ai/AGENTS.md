@@ -25,8 +25,19 @@ Runtime AI that needs no LLM (M4 4.12): a typed blackboard, event-driven behavio
 
 - Behavior graphs (4.12e): `compile_behavior` checks a Behavior `.graph.ron` and builds the same `BehaviorTree` (variables → keys, exec pins in order → children, constant inputs → parameters); `ai.Brain.tree` may name a `.graph.ron`. Utility selectors aren't graph nodes yet (backlog).
 
+- MoveTo succeeds at once when the agent already stands within its arrival distance (navigation raises `NavArrived` only on reaching a target; 4.13a).
+
 ## How to test
 `cargo nextest run -p concordia-ai`
+
+## Common tasks
+- A new task kind: add it to `TaskKind` (with validation in `bt.rs`), carry it out in `EngineHost` (`engine.rs`), and add its `behavior.*` node to the graph library and `compile_behavior`.
+- A new sense: add it to `perception.rs`'s sensing and `Sense`, with a test in `tests/perception.rs`.
+
+## Don'ts
+- Don't block the sim thread on an LLM: providers are submitted to and polled; a late answer fails its task.
+- Don't add a model runtime or network client to the default build (`tests/deps.rs` checks).
+- Don't apply commands inside the parallel brain loop; defer them so results don't depend on thread count.
 
 ## References
 Colledanchise & Ögren, *Behavior Trees in Robotics and AI* (CRC 2018) for composite semantics; Champandard's AiGameDev articles on event-driven BTs (2007–2012) and UE's public behavior-tree documentation for abort modes (no code); Mark & Dill, "Improving AI Decision Modeling Through Utility Theory" (GDC 2010); Mark, "Building a Better Centaur: AI at Massive Scale" (GDC 2015) for the compensation factor; Graham, "An Introduction to Utility Theory" (Game AI Pro, 2013) for curves.

@@ -1650,6 +1650,7 @@ name = "concordia-tests"
 version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
+ "concordia-ai",
  "concordia-api",
  "concordia-app",
  "concordia-assets",

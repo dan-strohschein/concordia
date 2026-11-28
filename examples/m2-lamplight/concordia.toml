@@ -37,6 +37,9 @@ buses = "audio/lamplight.buses.ron"
 
 [render]
 
+# Brains (M4 4.13a): the Snuffer in scenes/harbour_watch.scene.ron.
+[ai]
+
 [replay]
 
 # Gameplay modules: the rules as WASM, the fog as a native library (hot-reloaded in the gate).

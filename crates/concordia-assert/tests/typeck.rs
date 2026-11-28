@@ -27,15 +27,42 @@ impl Default for Health {
     }
 }
 
+/// A module's component (dotted, like `lamplight.Lamplighter`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(name = "game.Oil", default)]
+struct Oil {
+    /// In the can.
+    can: f32,
+}
+
 fn registry() -> TypeRegistry {
     let mut r = TypeRegistry::new();
     concordia_scene::builtin::register(&mut r).unwrap();
     r.register::<Health>().unwrap();
+    r.register::<Oil>().unwrap();
     r
 }
 
 fn checked(text: &str) -> Result<Assertion, TypeError> {
     check(&parse(text).unwrap(), &registry(), 60)
+}
+
+/// Module components have dotted names: the longest registered prefix of a field path is the
+/// component (found by the Snuffer's assertions, M4 4.13a), and the checked path names it whole.
+#[test]
+fn dotted_component_names_resolve_in_field_paths() {
+    let a = checked(r#"never: name("hero").game.Oil.can < 0"#).unwrap();
+    let Pred::Cmp {
+        lhs: Expr::Field { path, .. },
+        ..
+    } = &a.pred
+    else {
+        panic!("{a:?}");
+    };
+    assert_eq!(path, &["game.Oil".to_owned(), "can".to_owned()]);
+    assert_eq!(a.to_string(), r#"never: name("hero").game.Oil.can < 0"#);
+    let e = checked(r#"never: name("hero").game.Oil.cann < 0"#).unwrap_err();
+    assert!(e.to_string().contains("can"), "{e}");
 }
 
 /// `Helth` is one edit from `Health`; `curent` one from `current`.

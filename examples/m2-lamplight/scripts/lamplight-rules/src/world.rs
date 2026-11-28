@@ -6,16 +6,16 @@ use concordia_script_guest::math::{atan2f, cosf, sinf};
 use concordia_script_guest::{EntityId, RunCtx};
 use lamplight_types::body::{Body, Stride};
 use lamplight_types::engine::{
-    AnimEvent, AnimGraphPlayer, AudioEmitter, CharacterMotion, ContactBegan, ContactEnded, Ease,
-    InputActions, NavArrived, PlayCue, PointLight, PropertyTween, Transform, Transition, Tweens,
-    UiText, VehicleState,
+    AiCast, AnimEvent, AnimGraphPlayer, AudioEmitter, CharacterMotion, ContactBegan, ContactEnded,
+    Ease, InputActions, NavArrived, PlayCue, PointLight, PropertyTween, Transform, Transition,
+    Tweens, UiText, VehicleState,
 };
 use lamplight_types::night::{self, NewNight, NightTick};
 
 use crate::rules::{self, Outcome};
 use crate::{
     Chase, Command, Ended, Kindle, Lamp, Lamplighter, Lit, Night, Number, Popped, Reached, Refill,
-    Scorch, Setting, SpiritLost, Wagon, Where, Wisp,
+    Scorch, Setting, Snuff, Snuffed, SpiritLost, Wagon, Where, Wisp,
 };
 
 /// The graph parameter the walk blend reads.
@@ -80,6 +80,22 @@ pub(crate) fn walk(ctx: &mut RunCtx<'_>) -> Result<(), String> {
             lighters[i].can = rules::CAN_MAX;
         }
     }
+    for (id, snuff) in ctx.signals::<Snuff>()? {
+        let Some(i) = row(&ids, id) else { continue };
+        let me = transforms[i].translation;
+        let (dx, dz) = (me.x - snuff.at.x, me.z - snuff.at.z);
+        let distance = (dx * dx + dz * dz).sqrt();
+        if let Some(amount) = rules::snuff(lighters[i].can, distance) {
+            lighters[i].can -= amount;
+            ctx.signal(
+                id,
+                &Snuffed {
+                    amount,
+                    at: snuff.at,
+                },
+            )?;
+        }
+    }
     let reached: Vec<EntityId> = ctx
         .signals::<Reached>()?
         .into_iter()
@@ -129,6 +145,25 @@ pub(crate) fn walk(ctx: &mut RunCtx<'_>) -> Result<(), String> {
     ctx.write(&lighters)?;
     ctx.write(&transforms)?;
     ctx.write(&motions)
+}
+
+/// Snuffers: each `snuff` a Snuffer casts goes to its target with where the Snuffer stands.
+pub(crate) fn snuffers(ctx: &mut RunCtx<'_>) -> Result<(), String> {
+    let ids = ctx.ids().to_vec();
+    let transforms: Vec<Transform> = ctx.read()?;
+    for (caster, cast) in ctx.signals::<AiCast>()? {
+        let (Some(i), Some(target), true) = (row(&ids, caster), cast.target, cast.skill == "snuff")
+        else {
+            continue;
+        };
+        ctx.signal(
+            target,
+            &Snuff {
+                at: transforms[i].translation,
+            },
+        )?;
+    }
+    Ok(())
 }
 
 /// A walker's body: takes its `Stride` into the graph, and tells the walker when `lit` fires.

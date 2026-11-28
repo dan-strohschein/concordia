@@ -40,6 +40,7 @@ tokio.workspace = true
 toml.workspace = true
 
 [dev-dependencies]
+concordia-ai.workspace = true
 concordia-graph.workspace = true
 lamplight-types = { path = "../examples/m2-lamplight/scripts/lamplight-types" }
 concordia-audio.workspace = true

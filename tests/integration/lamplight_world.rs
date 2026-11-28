@@ -24,6 +24,11 @@ pub struct Night {
 impl Night {
     /// The town on a fresh copy of the example, with both modules built, the night `phase`.
     pub fn new(phase: &str) -> Self {
+        Self::in_scene(phase, "scenes/town.scene.ron")
+    }
+
+    /// Like [`Night::new`], on `scene`.
+    pub fn in_scene(phase: &str, scene: &str) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         concordia_tests::copy_example("m2-lamplight", root).unwrap();
@@ -47,10 +52,15 @@ impl Night {
             session,
             tick: 0,
         };
-        night.ok("scene.open", json!({"path": "scenes/town.scene.ron"}));
+        night.ok("scene.open", json!({"path": scene}));
         let id = night.one("lamplight.Night", "edit").0;
         night.patch(&id, "lamplight.Night", json!({"phase": phase}));
         night
+    }
+
+    /// The project's copy.
+    pub fn root(&self) -> &std::path::Path {
+        self._dir.path()
     }
 
     pub fn ok(&mut self, method: &str, params: Value) -> Value {

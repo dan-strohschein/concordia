@@ -18,6 +18,7 @@ fn mirrors() -> Vec<&'static TypeInfo> {
         mirror::AnimEvent::type_info(),
         mirror::NavAgent::type_info(),
         mirror::NavArrived::type_info(),
+        mirror::AiCast::type_info(),
         mirror::ContactBegan::type_info(),
         mirror::ContactEnded::type_info(),
         mirror::PointLight::type_info(),

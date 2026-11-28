@@ -24,6 +24,8 @@ Safe, deterministic rigid-body physics for Terra worlds over Jolt (via `jolt-sys
 - Invalid bodies are skipped and reported in `TickReport::rejected` (the module logs each once); public APIs never panic.
 - Only `src/jolt.rs` contains `unsafe`; each block has a `// SAFETY:` comment.
 
+- Raycasts skip sensors (trigger volumes, not surfaces) and characters' inner bodies (M4 4.13a; the shim's query body filter).
+
 ## How to test
 `cargo nextest run -p concordia-physics`
 

@@ -251,11 +251,13 @@ EMotionType motion(CjMotion m) {
 
 }  // namespace
 
-/// Skips characters' inner bodies in queries (they exist for sensors only).
+/// Skips characters' inner bodies (they exist for sensors only) and sensors (trigger volumes, not
+/// surfaces) in queries.
 class NotInner final : public BodyFilter {
 public:
     explicit NotInner(const ContactLog& contacts) : mContacts(contacts) {}
     bool ShouldCollide(const BodyID& id) const override { return !mContacts.IsInner(id); }
+    bool ShouldCollideLocked(const Body& body) const override { return !body.IsSensor(); }
 
 private:
     const ContactLog& mContacts;

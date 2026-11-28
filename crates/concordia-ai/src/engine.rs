@@ -397,6 +397,15 @@ impl EngineHost<'_> {
         }
     }
 
+    /// Whether the agent already stands within its arrival distance of `p` (navigation would
+    /// never raise `NavArrived` for it).
+    fn already_at(&self, p: Vec3) -> bool {
+        match (self.nav.as_ref(), self.own) {
+            (Some(nav), Some(own)) => nav.near(own.translation, p, nav.target_desired_distance),
+            _ => false,
+        }
+    }
+
     fn set_nav_target(&mut self, target: Option<Vec3>) -> bool {
         let Some(nav) = self.nav.as_mut() else {
             return false;
@@ -505,6 +514,7 @@ impl TaskHost for EngineHost<'_> {
                 ..
             } => self.submit(node, goal, *deadline_ticks, options, bb),
             TaskKind::MoveTo { key } => match self.point(bb, key) {
+                Some(p) if self.already_at(p) => Status::Success,
                 Some(p) if self.set_nav_target(Some(p)) => Status::Running,
                 _ => Status::Failure,
             },
