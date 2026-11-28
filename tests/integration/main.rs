@@ -8,6 +8,7 @@ mod graph_library;
 mod lamplight_content;
 mod lamplight_mirrors;
 mod lamplight_night;
+mod lamplight_showcase;
 mod lamplight_snuffer;
 mod lamplight_town;
 mod lamplight_ui;
