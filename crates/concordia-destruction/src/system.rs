@@ -10,24 +10,35 @@ use concordia_physics::{
     RigidBody, Sleep,
 };
 use concordia_scene::builtin::{Transform, Velocity};
-use concordia_terra::{SystemCtx, World, system};
+use concordia_terra::{SystemCtx, Without, World, system};
 
 use crate::prepared::Prepared;
 use concordia_core::math::Vec3;
 
-use crate::{Breakable, BreakableSource, Field, FieldAge, FieldEffect, FieldShape, Fragment};
+use crate::{
+    Breakable, BreakableSource, DebrisAge, Field, FieldAge, FieldEffect, FieldShape, Fragment,
+};
 
 /// Runtime limits.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DestructionSettings {
     /// The most bonds that break in one tick; the rest wait for later ticks.
     pub breaks_per_tick: u32,
+    /// The most debris (parts split off) alive at once; past it, the oldest go first.
+    pub max_debris: u32,
+    /// Seconds debris lives (0: for ever).
+    pub debris_lifetime: f32,
+    /// Debris smaller than this (m³) loses its collision.
+    pub min_debris_volume: f32,
 }
 
 impl Default for DestructionSettings {
     fn default() -> Self {
         Self {
             breaks_per_tick: 64,
+            max_debris: 512,
+            debris_lifetime: 0.0,
+            min_debris_volume: 0.0,
         }
     }
 }
@@ -62,6 +73,47 @@ impl State {
         self.fields(world, dt);
         self.damage(world);
         self.break_bonds(world);
+        self.debris(world, dt);
+    }
+
+    /// Ages debris, removes what is past its lifetime or over budget, drops small debris' collision.
+    fn debris(&mut self, world: &mut World, dt: f32) {
+        let mut debris = Vec::new();
+        if let Ok(mut q) = world.query_filtered::<&Fragment, Without<Breakable>>() {
+            q.for_each(world, |id, f| debris.push((id, f.clone())));
+        }
+        debris.sort_by_key(|(id, _)| *id);
+        let mut alive: Vec<(f32, EntityId)> = Vec::new();
+        for (id, f) in debris {
+            let age = world.get::<DebrisAge>(id).map_or(0.0, |a| a.seconds + dt);
+            let s = self.settings;
+            if s.debris_lifetime > 0.0 && age >= s.debris_lifetime {
+                let _ = world.despawn(id);
+                continue;
+            }
+            let _ = world.insert(id, DebrisAge { seconds: age });
+            if s.min_debris_volume > 0.0
+                && let Some(p) = self.prepared(&f.recipe)
+            {
+                let volume: f64 = f
+                    .pieces
+                    .iter()
+                    .map(|&q| p.loaded.fracture.pieces[q as usize].volume)
+                    .sum();
+                if volume < f64::from(s.min_debris_volume) {
+                    let _ = world.remove::<Collider>(id);
+                }
+            }
+            alive.push((age, id));
+        }
+        // Over budget: the oldest go first (ties: lower id first).
+        let excess = alive
+            .len()
+            .saturating_sub(self.settings.max_debris as usize);
+        alive.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+        for (_, id) in alive.into_iter().take(excess) {
+            let _ = world.despawn(id);
+        }
     }
 
     fn prepared(&mut self, recipe: &str) -> Option<Arc<Prepared>> {

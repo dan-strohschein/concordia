@@ -285,6 +285,9 @@ impl Project {
             modules.push(Arc::new(concordia_destruction::DestructionModule::new(
                 concordia_destruction::DestructionSettings {
                     breaks_per_tick: d.breaks_per_tick.get(),
+                    max_debris: d.max_debris,
+                    debris_lifetime: d.debris_lifetime.max(0.0),
+                    min_debris_volume: d.min_debris_volume.max(0.0),
                 },
             )));
         }

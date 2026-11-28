@@ -1,5 +1,5 @@
 # M8: Advanced physics (destruction and GPU garments)
-Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · **Phase 8.0 done** (8.0a–d: hull and compound colliders, contact impacts, mid-play bodies, the soft-body reference) · **Phase 8.4 done** (fields: strain, crumble, anchor, kill, force, impulse, sleep, disable) · **8.3 done** (breaking on Jolt) · **8.2 done** (connection graph, cluster levels) · **Phase 8.1 done** (8.1a–c: Manifold cutter and five patterns; hulls and interior UVs; `.breakable.ron` and `fracture.generate`) · Estimated effort: ~20 weeks (range 16–26), author plus agents
+Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · **Phase 8.0 done** (8.0a–d: hull and compound colliders, contact impacts, mid-play bodies, the soft-body reference) · **8.5a done** (debris budget) · **Phase 8.4 done** (fields: strain, crumble, anchor, kill, force, impulse, sleep, disable) · **8.3 done** (breaking on Jolt) · **8.2 done** (connection graph, cluster levels) · **Phase 8.1 done** (8.1a–c: Manifold cutter and five patterns; hulls and interior UVs; `.breakable.ron` and `fracture.generate`) · Estimated effort: ~20 weeks (range 16–26), author plus agents
 
 > Outline plan with phase breakdowns and test lists. Refine when M2 lands: the skinning data layout (8.7, 8.10), the mesh import path for garments, and M3's replay format if caches build on it (8.6).
 
@@ -210,6 +210,21 @@ The plan predates M2. Checked against `main` after M4; the phases below stand, w
   - The physics `pushes` tests were written first and first run after the runtime code. With the runtime ignoring the components, all four failed.
   - The four new field tests failed against unhandled effects, then passed.
   - **Contract consumers:** editor schemas regenerated (`Impulse`, `Sleep`, `PhysicsDisabled`); editor UI 128 tests; jolt-sys, physics, destruction, nav, API, app, MCP, Studio and scene (607); the physics, replay and gate integration tests. At first 55 of 56 passed: the Lamplight showcase failed only because this worktree had never built Lamplight's modules (`just lamplight-build`), and it failed the same way on main. Once they were built, all 40 Lamplight tests passed.
+  - **Checks:** fmt, clippy.
+
+**8.5a** (done): debris.
+- **Debris** is a fragment without a `Breakable`, meaning a part that split off.
+- **`DestructionSettings`** (and `[destruction]`) gain `max_debris` (default 512), `debris_lifetime` (0: for ever) and `min_debris_volume`.
+- **Each tick, after breaking:**
+  - debris ages in `DebrisAge`;
+  - debris past its lifetime is removed;
+  - debris below the minimum volume drops its `Collider`, so it has no body;
+  - past the budget, the oldest go first.
+- **Not done yet:** turning small debris into particles waits for M11's particles. For now it keeps its fragment, without collision.
+- **Moved to 8.5b:** instanced rendering of pieces (one draw per breakable), distance LOD, the broken-wall golden and the bench. Sleeping is already covered by `Sleep`.
+- **Test log:**
+  - The three `debris` tests were written first. They failed against an empty debris pass, then passed.
+  - **Contract consumers:** app, MCP and Studio (350 with destruction).
   - **Checks:** fmt, clippy.
 
 ### Effort, revised
