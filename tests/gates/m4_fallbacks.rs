@@ -2,8 +2,8 @@
 //! canyon's gate view (the overhead path's frame 8, VSM on) renders within mean FLIP 0.01 of the
 //! full-caps image: (a) without mesh shaders (the compute meshlet path), (b) without ray queries
 //! and acceleration structures (probe GI on the software BVH; GI is on for this case, since it is
-//! what they serve). (c) On a Vulkan device, the same view matches the Metal golden within its
-//! tolerance; on Metal it says so and skips (Vulkan runs on lavapipe in CI at M4's end).
+//! what they serve). (c) The same view matches its golden, `canyon_gate_view` (VSM on, blessed on
+//! Metal), within the backend's tolerance: on Vulkan (lavapipe in CI) that is the Metal image.
 //! Validation errors fail renders when CONCORDIA_VULKAN_VALIDATION=strict. Perf isn't asserted.
 
 use concordia_render::Culling;
@@ -94,24 +94,18 @@ fn fallback_without_ray_queries_matches_full_caps() {
     within("no ray queries", &full, &image);
 }
 
+/// The gate view's own golden: the canyon's `canyon_overhead_*` goldens draw CSM, the gate view
+/// draws VSM (M4's end found the old comparison off by its shadow edges, FLIP 0.019).
 #[test]
 fn vulkan_matches_the_metal_golden() {
     let Ok(backend) = concordia_rhi_select::choose_from_env(Default::default()) else {
         return;
     };
-    if backend != concordia_rhi::Backend::Vulkan {
-        println!("m4_fallbacks vulkan: skipped on {backend:?} (lavapipe in CI at M4's end)");
-        return;
-    }
     let mut loaded = Canyon::load();
-    let image = gate_view(&mut loaded, &CapsMask::default(), false).expect("a Vulkan device");
-    let (_, _, keep) = VIEW;
+    let Some(image) = gate_view(&mut loaded, &CapsMask::default(), false) else {
+        return;
+    };
     Golden::from_env()
-        .check_on(
-            Some(backend),
-            SUITE,
-            &format!("canyon_overhead_{keep:03}"),
-            &image,
-        )
+        .check_on(Some(backend), SUITE, "canyon_gate_view", &image)
         .unwrap_or_else(|e| panic!("{e}"));
 }
