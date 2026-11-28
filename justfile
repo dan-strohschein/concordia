@@ -165,11 +165,11 @@ clean-builds:
 prune-builds:
     rm -rf target/debug/incremental target/release target/golden-review target/perf editor/src-tauri/target/debug/incremental
     @if [ -d target ]; then python3 -I tools/disk/sweep.py target; fi
-    @df -g / | awk 'NR==2 {print $4 " GB free"}'
+    @df -g target/ 2>/dev/null | awk 'NR==2 {print $4 " GB free on the disk holding target/"}'
 
 # Free space and the size of the build folders
 disk:
-    @df -g / | awk 'NR==2 {print $4 " GB free"}'
+    @df -g target/ 2>/dev/null | awk 'NR==2 {print $4 " GB free on the disk holding target/"}'
     @du -sh target target/debug target/debug/build target/debug/incremental target/release 2>/dev/null || true
 
 # Download the pinned Slang toolchain into target/toolchain/slang/ (prints its directory)

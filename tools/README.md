@@ -8,6 +8,7 @@ Developer scripts (`doctor.sh`), crate templates, and exporter plugins (M5).
   each source change leaves one behind; `--dry-run` lists, `--days N`; tests in
   `python3 -I tools/disk/sweep_test.py`). The next debug build recompiles only what changed.
   `just clean-builds` only when pruning is not enough.
+- **Building on an external drive:** `target/` may be a symlink to a folder on another disk. Every recipe and test path (`target/wasm-fixtures`, `target/golden-review`, …) keeps working. Move it with Cargo idle: `mv target /Volumes/<drive>/concordia-target && ln -s /Volumes/<drive>/concordia-target target`. Use APFS (not exFAT). `guard.sh` then measures that drive and stops builds while it's unplugged.
 - `disk/guard.sh`: a Claude Code `PreToolUse` hook (register it in your git-ignored
   `.claude/settings.local.json` under `Bash`, command `"$CLAUDE_PROJECT_DIR"/tools/disk/guard.sh`).
   Below 30 GB free (`DISK_STOP_GB`) it blocks cargo and `just` build commands and says why; below
