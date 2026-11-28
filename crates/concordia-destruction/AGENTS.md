@@ -5,7 +5,7 @@ Destruction at runtime: a fractured breakable (`concordia-fracture`) is one Jolt
 
 ## Public entry points
 - Components: `Breakable { recipe, anchors, impact_radius }` (authored, with a `Transform` and a `RigidBody`), `Fragment { recipe, anchors, impact_radius, pieces, damage, broken }` (runtime)
-- `destruction_system(Arc<dyn BreakableSource>, DestructionSettings { breaks_per_tick })`: the `destruction.break` system for `PostPhysics`
+- `destruction_system(Arc<dyn BreakableSource>, DestructionSettings { breaks_per_tick, max_debris, debris_lifetime, min_debris_volume })`: the `destruction.break` system for `PostPhysics`
 - `BreakableSource` (`load(recipe) -> Arc<Loaded { fracture, structure }>`), `MemorySource` (`with(recipe, loaded)`)
 - `Field { shape: FieldShape { Sphere, Box, Plane, Everywhere }, falloff: Falloff { None, Linear, InverseSquare }, effect: FieldEffect { Strain, Crumble, Anchor, Kill, Force, Impulse, Sleep, Disable }, magnitude, duration }` (an ordinary component, placed by its `Transform`), `FieldAge` (play-only), `Field::weight`
 - Methods (play only): `destruction.crumble {entity}` and `destruction.apply_strain {center, radius, amount}` → `{bonds}`
@@ -32,6 +32,11 @@ Destruction at runtime: a fractured breakable (`concordia-fracture`) is one Jolt
   - `Disable` holds `PhysicsDisabled` while the fragment is covered.
 
   Every field ages in `FieldAge`; one with a duration leaves the play world when it ends.
+- Debris is every fragment without a `Breakable` (parts split off). After breaking, each tick:
+  - it ages in `DebrisAge`;
+  - past `debris_lifetime` (when that is set) it is removed;
+  - below `min_debris_volume` it loses its `Collider`, so it has no body;
+  - past `max_debris`, the oldest go first (ties: lower id).
 - Fields and the methods only add damage; bonds break in `break_bonds`, under the budget.
 - Cluster levels and their damage thresholds aren't used at runtime yet.
 
@@ -49,7 +54,7 @@ Destruction at runtime: a fractured breakable (`concordia-fracture`) is one Jolt
 - Müller, Chentanez and Kim, "Real Time Dynamic Fracture with Volumetric Approximate Convex Decompositions" (SIGGRAPH 2013); Jolt Physics documentation (compound shapes, contact listeners).
 
 ## Status
-M8 8.3: breakables, strain, the break budget, splits with momentum, anchors, the `[destruction]` module. 8.4a: fields (strain, crumble, anchor, kill), `destruction.crumble` and `destruction.apply_strain`. 8.4b: force, impulse, sleep and disable through `concordia-physics`'s `Impulse`, `Sleep` and `PhysicsDisabled`.
+M8 8.3: breakables, strain, the break budget, splits with momentum, anchors, the `[destruction]` module. 8.4a: fields (strain, crumble, anchor, kill), `destruction.crumble` and `destruction.apply_strain`. 8.5a: the debris budget, lifetime and small-debris collision. 8.4b: force, impulse, sleep and disable through `concordia-physics`'s `Impulse`, `Sleep` and `PhysicsDisabled`.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

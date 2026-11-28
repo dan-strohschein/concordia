@@ -36,3 +36,12 @@ pub struct Fragment {
     /// Bonds that broke, ascending.
     pub broken: Vec<u32>,
 }
+
+/// How long a piece of debris (a part split off a breakable) has lived, in play.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Physics", default)]
+#[serde(deny_unknown_fields)]
+pub struct DebrisAge {
+    /// Seconds since it split off.
+    pub seconds: f32,
+}

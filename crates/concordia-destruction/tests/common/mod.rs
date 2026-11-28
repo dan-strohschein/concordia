@@ -88,6 +88,8 @@ pub struct Run {
     pub anchors: Vec<u32>,
     pub radius: f32,
     pub breaks_per_tick: u32,
+    /// The debris settings (`breaks_per_tick` comes from the field above).
+    pub debris: DestructionSettings,
     pub velocity: Velocity,
     pub blows: Vec<Blow>,
     /// Spawns more entities (fields) after the slab.
@@ -102,6 +104,7 @@ impl Default for Run {
             anchors: Vec::new(),
             radius: 0.3,
             breaks_per_tick: 64,
+            debris: DestructionSettings::default(),
             velocity: Velocity::default(),
             blows: Vec::new(),
             setup: None,
@@ -223,6 +226,7 @@ pub fn run(r: &Run, ticks: u32) -> World {
             source(),
             DestructionSettings {
                 breaks_per_tick: r.breaks_per_tick,
+                ..r.debris
             },
         ),
     );

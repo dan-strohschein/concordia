@@ -31,6 +31,7 @@ impl EngineModule for DestructionModule {
         register_component::<Breakable>(registry)?;
         register_component::<crate::Field>(registry)?;
         register_component::<crate::FieldAge>(registry)?;
+        register_component::<crate::DebrisAge>(registry)?;
         register_component::<Fragment>(registry)
     }
 

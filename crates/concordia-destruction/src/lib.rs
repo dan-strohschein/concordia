@@ -10,7 +10,7 @@ mod prepared;
 mod source;
 mod system;
 
-pub use components::{Breakable, Fragment};
+pub use components::{Breakable, DebrisAge, Fragment};
 pub use error::DestructionError;
 pub use fields::{Falloff, Field, FieldAge, FieldEffect, FieldShape};
 pub use methods::{

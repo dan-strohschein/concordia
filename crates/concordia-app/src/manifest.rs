@@ -62,12 +62,21 @@ pub struct Manifest {
 pub struct DestructionSection {
     /// The most bonds that break in one tick (at least 1; default 64).
     pub breaks_per_tick: std::num::NonZeroU32,
+    /// The most debris alive at once (default 512).
+    pub max_debris: u32,
+    /// Seconds debris lives (0, the default: for ever).
+    pub debris_lifetime: f32,
+    /// Debris smaller than this many m³ loses its collision (default 0).
+    pub min_debris_volume: f32,
 }
 
 impl Default for DestructionSection {
     fn default() -> Self {
         Self {
             breaks_per_tick: std::num::NonZeroU32::new(64).unwrap_or(std::num::NonZeroU32::MIN),
+            max_debris: 512,
+            debris_lifetime: 0.0,
+            min_debris_volume: 0.0,
         }
     }
 }
