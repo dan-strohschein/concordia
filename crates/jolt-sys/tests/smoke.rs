@@ -312,3 +312,84 @@ fn convex_hull_triangles_keep_the_points_position() {
         assert!(d.iter().all(|c| (c.abs() - 0.5).abs() < 1e-3), "{v:?}");
     }
 }
+
+/// An n × n sheet of `spacing` in the XY plane hanging from its top row (inverse mass 0).
+fn sheet(n: u32, spacing: f32) -> (Vec<f32>, Vec<f32>, Vec<u32>) {
+    let mut positions = Vec::new();
+    let mut inv = Vec::new();
+    for row in 0..n {
+        for col in 0..n {
+            positions.extend([col as f32 * spacing, 5.0 - row as f32 * spacing, 0.0]);
+            inv.push(if row == 0 { 0.0 } else { 1.0 });
+        }
+    }
+    let mut faces = Vec::new();
+    for row in 0..n - 1 {
+        for col in 0..n - 1 {
+            let i = row * n + col;
+            faces.extend([i, i + n, i + 1, i + 1, i + n, i + n + 1]);
+        }
+    }
+    (positions, inv, faces)
+}
+
+/// Jolt's soft body (M8 8.0d, the cloth solver's test reference): a sheet pinned along its top
+/// edge hangs below it, its pinned row never moves, and nothing explodes.
+#[test]
+fn a_pinned_soft_sheet_hangs_from_its_top_row() {
+    j::init().unwrap();
+    let (positions, inv, faces) = sheet(11, 0.1);
+    let desc = j::CjSoftBodyDesc {
+        positions: positions.as_ptr(),
+        inv_masses: inv.as_ptr(),
+        vertex_count: 121,
+        faces: faces.as_ptr(),
+        face_count: (faces.len() / 3) as u32,
+        compliance: 0.0,
+        shear_compliance: 0.0,
+        bend_compliance: -1.0,
+        iterations: 8,
+        gravity_factor: 1.0,
+    };
+    // SAFETY: one thread; the desc's arrays outlive the calls; `out` has room for 121 vertices.
+    unsafe {
+        let world = j::cj_world_create(&world_desc());
+        let id = j::cj_soft_body_add(world, &desc);
+        assert_ne!(id, j::CJ_NO_BODY);
+        for _ in 0..180 {
+            j::cj_world_step(world, 1.0 / 60.0, 1);
+        }
+        let mut out = vec![0.0f32; 3 * 121];
+        assert_eq!(
+            j::cj_soft_body_positions(world, id, out.as_mut_ptr(), 121),
+            121
+        );
+        j::cj_world_destroy(world);
+        assert!(out.iter().all(|x| x.is_finite()), "no NaN");
+        for col in 0..11usize {
+            let top = &out[3 * col..3 * col + 3];
+            assert!(
+                (top[1] - 5.0).abs() < 1e-4 && (top[0] - col as f32 * 0.1).abs() < 1e-4,
+                "pinned {top:?}"
+            );
+            let bottom = &out[3 * (110 + col)..3 * (110 + col) + 3];
+            assert!(
+                bottom[1] < 4.05 && bottom[1] > 3.9,
+                "the bottom row hangs about 1 m below: {bottom:?}"
+            );
+        }
+        let mut bad = desc;
+        bad.vertex_count = 0;
+        assert_eq!(
+            j::cj_soft_body_add(std::ptr::null_mut(), &desc),
+            j::CJ_NO_BODY
+        );
+        let world = j::cj_world_create(&world_desc());
+        assert_eq!(
+            j::cj_soft_body_add(world, &bad),
+            j::CJ_NO_BODY,
+            "no vertices"
+        );
+        j::cj_world_destroy(world);
+    }
+}

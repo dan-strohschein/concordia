@@ -1,5 +1,5 @@
 # M8: Advanced physics (destruction and GPU garments)
-Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · **8.0a–c done** (hull and compound colliders, contact impacts, mid-play bodies) · Estimated effort: ~20 weeks (range 16–26), author plus agents
+Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · **Phase 8.0 done** (8.0a–d: hull and compound colliders, contact impacts, mid-play bodies, the soft-body reference) · Estimated effort: ~20 weeks (range 16–26), author plus agents
 
 > Outline plan with phase breakdowns and test lists. Refine when M2 lands: the skinning data layout (8.7, 8.10), the mesh import path for garments, and M3's replay format if caches build on it (8.6).
 
@@ -69,6 +69,13 @@ The plan predates M2. Checked against `main` after M4; the phases below stand, w
 **8.0c** (done): bodies changing mid-play.
 - `midplay` tests pin what M2 built: spawned pieces carry the whole body's momentum, and a mid-play split hashes the same at 1, 2 and 8 threads and on a rerun.
 - **Test log:** these passed once my test was right; they prove, rather than drive, the existing mechanism. The first failure was mine: I forgot the bodies' default linear damping (one tick of 0.05/s).
+
+**8.0d** (done; **Phase 8.0 done**): Jolt's soft body as the cloth reference.
+- **`jolt-sys`:** `cj_soft_body_add` and `cj_soft_body_positions`.
+- **`concordia-physics`:** `SoftReference` and `SoftSheet`, which own their own Jolt world.
+- **What the tests show:** a sheet pinned along its top row hangs about 1 m below it, stays finite, and repeats exactly.
+- **Rejected as errors:** no faces, an index out of range, a degenerate face, mismatched lengths, and NaN. Jolt only asserts against degenerate faces, and its asserts are compiled out, so the shim checks them itself.
+- **Test log:** the smoke test failed to link first, and the physics test failed to compile first (no types); both then passed.
 
 ### Effort, revised
 About **18 weeks (15–23)**, down from 20: rendering, instancing, compute and replay groundwork already exist, but 8.0 is new (about 1.5 weeks). The cutter (8.1), the solver (8.8) and weight painting (8.10, needs visual design) remain the large items.

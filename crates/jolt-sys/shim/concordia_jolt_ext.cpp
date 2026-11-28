@@ -31,6 +31,9 @@
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include <Jolt/Physics/PhysicsSystem.h>
+#include <Jolt/Physics/SoftBody/SoftBodyCreationSettings.h>
+#include <Jolt/Physics/SoftBody/SoftBodyMotionProperties.h>
+#include <Jolt/Physics/SoftBody/SoftBodySharedSettings.h>
 #include <Jolt/Physics/StateRecorderImpl.h>
 #include <Jolt/RegisterTypes.h>
 
@@ -480,6 +483,59 @@ size_t cj_convex_hull_triangles(const float* points, uint32_t count, float* out,
         }
     }
     return total;
+}
+
+namespace {
+bool finite(float x) { return std::abs(x) < 1.0e9f; }
+}  // namespace
+
+uint32_t cj_soft_body_add(CjWorld* world, const CjSoftBodyDesc* d) {
+    if (world == nullptr || d == nullptr || d->vertex_count == 0 || d->positions == nullptr ||
+        d->inv_masses == nullptr || d->faces == nullptr || d->face_count == 0 || d->iterations == 0)
+        return CJ_NO_BODY;
+    if (!finite(d->compliance) || d->compliance < 0.0f || !finite(d->shear_compliance) ||
+        d->shear_compliance < 0.0f || !finite(d->bend_compliance) || !finite(d->gravity_factor))
+        return CJ_NO_BODY;
+    Ref<SoftBodySharedSettings> shared = new SoftBodySharedSettings;
+    for (uint32_t i = 0; i < d->vertex_count; ++i) {
+        const float* p = d->positions + 3 * size_t(i);
+        float inv = d->inv_masses[i];
+        if (!finite(p[0]) || !finite(p[1]) || !finite(p[2]) || !(inv >= 0.0f) || !finite(inv)) return CJ_NO_BODY;
+        shared->mVertices.push_back(SoftBodySharedSettings::Vertex(Float3(p[0], p[1], p[2]), Float3(0, 0, 0), inv));
+    }
+    for (uint32_t f = 0; f < d->face_count; ++f) {
+        const uint32_t* v = d->faces + 3 * size_t(f);
+        if (v[0] >= d->vertex_count || v[1] >= d->vertex_count || v[2] >= d->vertex_count) return CJ_NO_BODY;
+        if (v[0] == v[1] || v[1] == v[2] || v[0] == v[2]) return CJ_NO_BODY;  // degenerate
+        shared->AddFace(SoftBodySharedSettings::Face(v[0], v[1], v[2]));
+    }
+    float bend = d->bend_compliance < 0.0f ? FLT_MAX : d->bend_compliance;
+    SoftBodySharedSettings::VertexAttributes attributes(d->compliance, d->shear_compliance, bend);
+    shared->CreateConstraints(&attributes, 1, d->bend_compliance < 0.0f ? SoftBodySharedSettings::EBendType::None
+                                                                     : SoftBodySharedSettings::EBendType::Distance);
+    shared->Optimize();
+    SoftBodyCreationSettings settings(shared, RVec3::sZero(), Quat::sIdentity(), object_layer(0, true));
+    settings.mNumIterations = d->iterations;
+    settings.mGravityFactor = d->gravity_factor;
+    BodyID id = world->system.GetBodyInterface().CreateAndAddSoftBody(settings, EActivation::Activate);
+    return id.IsInvalid() ? CJ_NO_BODY : id.GetIndexAndSequenceNumber();
+}
+
+size_t cj_soft_body_positions(CjWorld* world, uint32_t body, float* out, size_t cap) {
+    if (world == nullptr || body == CJ_NO_BODY) return 0;
+    BodyLockRead lock(world->system.GetBodyLockInterface(), BodyID(body));
+    if (!lock.Succeeded() || !lock.GetBody().IsSoftBody()) return 0;
+    const Body& b = lock.GetBody();
+    const auto* motion = static_cast<const SoftBodyMotionProperties*>(b.GetMotionProperties());
+    RMat44 com = b.GetCenterOfMassTransform();
+    const auto& vertices = motion->GetVertices();
+    for (size_t i = 0; out != nullptr && i < vertices.size() && i < cap; ++i) {
+        Vec3 p = Vec3(com * vertices[i].mPosition);
+        out[3 * i] = p.GetX();
+        out[3 * i + 1] = p.GetY();
+        out[3 * i + 2] = p.GetZ();
+    }
+    return vertices.size();
 }
 
 bool cj_raycast(CjWorld* world, const float origin[3], const float dir_len[3], uint16_t layer_mask, CjRayHit* out) {

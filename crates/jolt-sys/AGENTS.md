@@ -35,6 +35,8 @@ M1 phase 1.7a (world, bodies, events, raycasts, state, characters exposed for 1.
 - Two new shapes: `CJ_SHAPE_CONVEX_HULL` and `CJ_SHAPE_COMPOUND` (static compound of hulls, `points` split by `part_ends`). Hulls with no volume are rejected.
 - `cj_convex_hull_triangles` returns a hull's faces, placed at its centre of mass, since Jolt keeps hulls around it.
 
+M8 8.0d: `cj_soft_body_add` (vertices, inverse masses, triangles, compliances; constraints from Jolt's `CreateConstraints`; degenerate faces rejected) and `cj_soft_body_positions`.
+
 M8 8.0b: a started `CjContactEvent` carries `strength` (closing speed along the normal times the reduced mass) and the first contact `point`.
 
 ## Engineering rules
