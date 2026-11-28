@@ -6,8 +6,11 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use concordia_input::{ActionStates, TypedText};
 use concordia_terra::{EcsError, SimClock, World};
 
+use concordia_core::external::ExternalInputs;
+
 use crate::format::{
-    Checkpoint, FORMAT_VERSION, InputChange, Replay, ReplayHeader, TICK_HASH_HEX, TICKS_PER_LINE,
+    Checkpoint, ExternalOutput, FORMAT_VERSION, InputChange, Replay, ReplayHeader, TICK_HASH_HEX,
+    TICKS_PER_LINE,
 };
 
 /// Input changes and checkpoints of one recording.
@@ -19,6 +22,9 @@ pub(crate) struct Recording {
     pub(crate) file: PathBuf,
     last: Option<ActionStates>,
     inputs: Vec<InputChange>,
+    /// External outputs applied (LLM answers), and how many of the world's log were taken.
+    external: Vec<ExternalOutput>,
+    external_seen: usize,
     checkpoints: Vec<Checkpoint>,
     /// Each tick's world hash prefix, ticks 1, 2, … in order.
     ticks: Vec<String>,
@@ -41,6 +47,8 @@ impl Recording {
             file,
             last: None,
             inputs: Vec::new(),
+            external: Vec::new(),
+            external_seen: 0,
             checkpoints: Vec::new(),
             ticks: Vec::new(),
             stills,
@@ -51,12 +59,16 @@ impl Recording {
     /// Takes the action states before tick 0 and the tick-0 checkpoint.
     pub(crate) fn begin(&mut self, world: &World) {
         self.last = world.resource::<ActionStates>().cloned();
+        self.external_seen = world
+            .resource::<ExternalInputs>()
+            .map_or(0, |l| l.applied.len());
         self.checkpoint(world);
     }
 
     /// Records the tick just simulated: its input changes, its hash, and a checkpoint when due.
     pub(crate) fn after_tick(&mut self, world: &World) {
         self.note_inputs(world);
+        self.note_external(world);
         self.note_state(world);
     }
 
@@ -78,6 +90,21 @@ impl Recording {
             }
             self.last = Some(now.clone());
         }
+    }
+
+    /// External outputs applied since the last tick (the world logs them as they apply).
+    fn note_external(&mut self, world: &World) {
+        let Some(log) = world.resource::<ExternalInputs>() else {
+            return;
+        };
+        for r in log.applied.iter().skip(self.external_seen) {
+            self.external.push(ExternalOutput {
+                tick: r.tick,
+                source: r.source.clone(),
+                payload: r.payload.clone(),
+            });
+        }
+        self.external_seen = log.applied.len();
     }
 
     /// The hash of the tick just simulated, and a checkpoint when one is due.
@@ -138,6 +165,7 @@ impl Recording {
             header: self.header,
             ticks,
             inputs: self.inputs,
+            external: self.external,
             checkpoints: self.checkpoints,
             hashes: self
                 .ticks

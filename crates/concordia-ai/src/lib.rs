@@ -4,6 +4,7 @@
 mod blackboard;
 mod bt;
 mod engine;
+mod llm;
 mod module;
 mod perception;
 mod tick;
@@ -16,6 +17,10 @@ pub use bt::{
 pub use engine::{
     AiCast, AiConfig, AiCursor, AiDecision, AiRun, AiStats, Brain, THINK, Trees, add_ai_processors,
     insert_ai_resources,
+};
+pub use llm::{
+    DialogueRequest, LlmPoll, LlmProvider, LlmRequest, LlmService, LlmTicket, MockLlmProvider,
+    MockReply, PlannerReply, PlannerRequest, action_schema, validate_reply,
 };
 pub use module::{
     AiInspect, AiInspectParams, AiInspectResult, AiModule, AiTrace, AiTraceParams, AiTraceResult,

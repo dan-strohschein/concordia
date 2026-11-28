@@ -86,5 +86,5 @@ Replay(
         ),
     ],
     ticks: 120,
-    version: 1,
+    version: 2,
 )

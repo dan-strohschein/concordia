@@ -208,3 +208,113 @@ fn perception_sight_respects_cone_range_and_occlusion() {
         "the wall hides the thief: {walled}"
     );
 }
+
+fn planner_tree() -> BehaviorTree {
+    let keys = BTreeMap::from([("plan".into(), concordia_ai::BbType::Text)]);
+    BehaviorTree::build(
+        keys,
+        Spec::new(NodeKind::Sequence).children(vec![
+            Spec::new(NodeKind::Task(TaskKind::Plan {
+                goal: "patrol or rest".into(),
+                deadline_ticks: 30,
+                options: vec!["patrol".into(), "rest".into()],
+                key: "plan".into(),
+            })),
+            Spec::new(NodeKind::Task(TaskKind::Wait { seconds: 1e6 })),
+        ]),
+    )
+    .unwrap()
+}
+
+fn planner_engine(
+    dir: &std::path::Path,
+    provider: Option<Arc<dyn concordia_ai::LlmProvider>>,
+) -> (Engine, concordia_core::id::SessionId) {
+    let mut config = EngineConfig::new(dir);
+    config.deterministic_ids = Some(7);
+    config.journal.sync = false;
+    let ai = match provider {
+        Some(p) => AiModule::default().with_provider(p),
+        None => AiModule::default(),
+    };
+    config.modules = vec![
+        Arc::new(concordia_replay::ReplayModule::new()),
+        Arc::new(ai),
+    ];
+    let mut engine = Engine::new(config).unwrap();
+    let s = engine.open_session();
+    engine
+        .call(
+            s,
+            "session.open",
+            json!({"client": "test", "actor": "agent:test"}),
+        )
+        .unwrap();
+    (engine, s)
+}
+
+#[test]
+fn replay_reproduces_llm_decisions_without_provider() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("ai")).unwrap();
+    std::fs::write(
+        dir.path().join("ai/planner.bt.ron"),
+        concordia_scene::write_document(&planner_tree()).unwrap(),
+    )
+    .unwrap();
+    // Record with a scripted model.
+    let mock = Arc::new(concordia_ai::MockLlmProvider::new(vec![
+        concordia_ai::MockReply::ready(4, r#"{"action": "rest"}"#),
+    ]));
+    let (mut live, s) = planner_engine(dir.path(), Some(mock.clone()));
+    let ok = |e: &mut Engine, m: &str, p: Value| {
+        e.call(s, m, p.clone())
+            .unwrap_or_else(|err| panic!("{m} {p}: {err:?}"))
+    };
+    ok(
+        &mut live,
+        "scene.new",
+        json!({"path": "scenes/a.scene.ron", "name": "A"}),
+    );
+    let agent = ok(
+        &mut live,
+        "entity.spawn",
+        json!({"components": {"ai.Brain": {"tree": "ai/planner.bt.ron"}}}),
+    )["id"]
+        .clone();
+    ok(&mut live, "scene.save", json!({}));
+    ok(
+        &mut live,
+        "replay.record",
+        json!({"path": "tests/replays/plan.replay.ron"}),
+    );
+    ok(&mut live, "sim.step", json!({"ticks": 20}));
+    ok(&mut live, "replay.record", json!({"action": "stop"}));
+    let planned = ok(
+        &mut live,
+        "component.get",
+        json!({"entity": agent, "component": "ai.Blackboard", "world": "play"}),
+    )["value"]["values"]["plan"]
+        .clone();
+    assert_eq!(planned, json!({"Text": "rest"}));
+    assert_eq!(mock.requests().len(), 1);
+    let text = std::fs::read_to_string(dir.path().join("tests/replays/plan.replay.ron")).unwrap();
+    assert!(
+        text.contains("external:") && text.contains("rest"),
+        "the answer is recorded:\n{text}"
+    );
+    drop(live);
+    // Run it with no provider at all: the recorded answer is fed back on its tick.
+    let (mut offline, s2) = planner_engine(dir.path(), None);
+    offline
+        .call(s2, "scene.open", json!({"path": "scenes/a.scene.ron"}))
+        .unwrap();
+    let run = offline
+        .call(
+            s2,
+            "replay.run",
+            json!({"path": "tests/replays/plan.replay.ron"}),
+        )
+        .unwrap();
+    assert_eq!(run["ok"], true, "{run}");
+}

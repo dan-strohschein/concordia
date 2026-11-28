@@ -32,6 +32,17 @@ pub(crate) fn prepare(engine: &mut Engine, replay: &Replay) -> Result<Vec<Mismat
         )
     })?;
     let world = engine.restart_play(Some(rate))?;
+    // Recorded external outputs (LLM answers) replace asking again (D8).
+    world.insert_resource(concordia_core::external::ExternalInputs::playing(
+        replay
+            .external
+            .iter()
+            .map(|e| concordia_core::external::ExternalRecord {
+                tick: e.tick,
+                source: e.source.clone(),
+                payload: e.payload.clone(),
+            }),
+    ));
     if replay.inputs.is_empty() {
         return Ok(found);
     }

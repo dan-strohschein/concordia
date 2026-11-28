@@ -673,6 +673,7 @@ dependencies = [
  "concordia-nav",
  "concordia-physics",
  "concordia-reflect",
+ "concordia-replay",
  "concordia-scene",
  "concordia-terra",
  "proptest",

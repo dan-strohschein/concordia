@@ -25,8 +25,8 @@ pub use assert_method::{
 pub use diff::{ReplayDiff, compare_replays};
 pub use error::ReplayError;
 pub use format::{
-    Checkpoint, FORMAT_VERSION, InputChange, Replay, ReplayHeader, TICK_HASH_HEX, TICKS_PER_LINE,
-    read_replay, write_replay,
+    Checkpoint, ExternalOutput, FORMAT_VERSION, InputChange, Replay, ReplayHeader, TICK_HASH_HEX,
+    TICKS_PER_LINE, VERSION_1, read_replay, write_replay,
 };
 pub use methods::{
     Divergence, FieldDiff, Mismatch, RecordAction, ReplayRecord, ReplayRecordParams,
