@@ -1,5 +1,5 @@
 # M8: Advanced physics (destruction and GPU garments)
-Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · **Phase 8.0 done** (8.0a–d: hull and compound colliders, contact impacts, mid-play bodies, the soft-body reference) · **8.3 done** (breaking on Jolt) · **8.2 done** (connection graph, cluster levels) · **Phase 8.1 done** (8.1a–c: Manifold cutter and five patterns; hulls and interior UVs; `.breakable.ron` and `fracture.generate`) · Estimated effort: ~20 weeks (range 16–26), author plus agents
+Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · **Phase 8.0 done** (8.0a–d: hull and compound colliders, contact impacts, mid-play bodies, the soft-body reference) · **8.4a done** (fields: strain, crumble, anchor, kill) · **8.3 done** (breaking on Jolt) · **8.2 done** (connection graph, cluster levels) · **Phase 8.1 done** (8.1a–c: Manifold cutter and five patterns; hulls and interior UVs; `.breakable.ron` and `fracture.generate`) · Estimated effort: ~20 weeks (range 16–26), author plus agents
 
 > Outline plan with phase breakdowns and test lists. Refine when M2 lands: the skinning data layout (8.7, 8.10), the mesh import path for garments, and M3's replay format if caches build on it (8.6).
 
@@ -167,6 +167,26 @@ The plan predates M2. Checked against `main` after M4; the phases below stand, w
   - **Not test-first:** I wrote the `breaking` tests before the code, but first ran them after the system existed, and all 7 passed. Run against a no-op system, all 7 failed.
   - The engine test also passed on its first run. With the system left out of the play schedule, it failed.
   - **Contract consumers:** app, API, MCP and Studio tests (471 passed, including the fracture crate's). The editor schemas are unchanged, since their project has no `[destruction]`.
+  - **Checks:** fmt, clippy.
+
+**8.4a** (done): fields, part one.
+- **`Field`** is an ordinary component: undoable, edited like any other, placed by its entity's `Transform`.
+  - Shapes: sphere, box, plane, everywhere.
+  - Falloffs: none, linear (over a sphere's radius or a box's half diagonal), and 1 / (1 + d²).
+  - Optional duration.
+- **Effects:**
+  - `Strain`: magnitude per second.
+  - `Crumble`: breaks every bond of what it touches.
+  - `Anchor`: pins the covered pieces, so their fragment becomes static.
+  - `Kill`: removes debris; the intact breakable is never debris.
+- **When they act:** at one fixed point of `destruction.break` (after setup, before impacts, in id order).
+- **Methods:** `destruction.crumble {entity}` and `destruction.apply_strain {center, radius, amount}` for agents, play only. They answer "nothing is playing" otherwise.
+- **Split into 8.4b:** `force`, `impulse`, `sleep` and `disable`. The physics runtime only reads `Velocity` when it creates a body, so these need a new shim call that sets velocity or adds an impulse on a live Jolt body. Cloth reading force fields stays with 8.9.
+- **Test log:**
+  - The six `fields` tests were written first and failed against an empty field pass, then passed.
+  - The two engine tests were written before the methods but first run after they existed: fields as undoable components, and agents crumbling and straining a slab.
+  - The breaking tests' harness moved to `tests/common` for reuse.
+  - **Contract consumers:** app, API, MCP and Studio (453 passed with destruction).
   - **Checks:** fmt, clippy.
 
 ### Effort, revised

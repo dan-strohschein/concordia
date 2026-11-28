@@ -52,6 +52,11 @@ impl Prepared {
         self.loaded.structure.pieces[piece as usize].mass
     }
 
+    /// A piece's centre of mass (mesh space).
+    pub fn centre(&self, piece: u32) -> Vec3 {
+        centre_of(&self.loaded, piece)
+    }
+
     /// The pieces' total mass and centre of mass.
     pub fn mass_and_centre(&self, pieces: &[u32]) -> (f64, Vec3) {
         let mass: f64 = pieces.iter().map(|&p| self.mass(p)).sum();
