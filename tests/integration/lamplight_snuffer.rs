@@ -106,12 +106,54 @@ fn the_snuffer_graph_is_canonical_and_compiles() {
     assert_eq!(tree.keys.len(), 3, "{:?}", tree.keys);
 }
 
+/// The cast node of `ai/snuffer.graph.ron`.
+const CAST_NODE: &str = "0193c4a0-5e1f-7000-8000-000000000008";
+
+/// N9: an agent edits the Snuffer's graph over the Engine API (what MCP's `graph_apply` calls);
+/// the edit is attributed in the command log and is what plays (a cast renamed away from `snuff`
+/// takes no oil); undoing it restores the file byte for byte.
+#[test]
+fn graph_authored_over_mcp_is_used_in_play() {
+    let (mut n, _) = harbour();
+    n.place_lamplighter([POST[0], 0.0, POST[2] - 5.0]);
+    let path = n.root().join("ai/snuffer.graph.ron");
+    let before = std::fs::read(&path).unwrap();
+    let applied = n.ok(
+        "graph.apply",
+        json!({"path": "ai/snuffer.graph.ron", "actor": "agent:gameplay-programmer#1",
+            "edits": [{"SetValue": {"node": CAST_NODE, "pin": "skill", "value": {"Text": "whisper"}}}]}),
+    );
+    assert_eq!(applied["ok"], true, "{applied}");
+    let history = n.ok("txn.history", json!({}));
+    let last = history["entries"]
+        .as_array()
+        .and_then(|e| e.last())
+        .cloned()
+        .unwrap_or_default();
+    assert_eq!(last["actor"], "agent:gameplay-programmer#1", "{history}");
+
+    n.step(10 * 60);
+    let walker = n.one("lamplight.Lamplighter", "play").0;
+    let can = n.play(&walker, "lamplight.Lamplighter")["can"]
+        .as_f64()
+        .unwrap();
+    assert_eq!(can, 100.0, "the edited graph plays: a whisper takes no oil");
+
+    n.ok("sim.stop", json!({}));
+    n.ok("txn.undo", json!({"actor": "agent:gameplay-programmer#1"}));
+    assert_eq!(
+        std::fs::read(&path).unwrap(),
+        before,
+        "undo restores the graph byte for byte"
+    );
+}
+
 /// The committed replay (N6): 40 s on the harbour street. The lamplighter walks south into the
 /// Snuffer's sight (S held 1.6 s), stands while it closes and snuffs, then walks east (D held
 /// 10 s), faster than it; it loses them about 20 s in and is back at its post by about 29 s.
 const REPLAY: &str = "tests/replays/m4_snuffer.replay.ron";
-const REPLAY_TICKS: u32 = 2400;
-const SCRIPT: [(u64, &str, bool); 4] = [
+pub const REPLAY_TICKS: u32 = 2400;
+pub const SCRIPT: [(u64, &str, bool); 4] = [
     (0, "S", true),
     (96, "S", false),
     (576, "D", true),

@@ -29,6 +29,15 @@ impl Night {
 
     /// Like [`Night::new`], on `scene`.
     pub fn in_scene(phase: &str, scene: &str) -> Self {
+        Self::in_scene_with(phase, scene, Vec::new())
+    }
+
+    /// Like [`Night::in_scene`], with `extra` engine modules after the project's.
+    pub fn in_scene_with(
+        phase: &str,
+        scene: &str,
+        extra: Vec<std::sync::Arc<dyn concordia_api::EngineModule>>,
+    ) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         concordia_tests::copy_example("m2-lamplight", root).unwrap();
@@ -44,6 +53,7 @@ impl Night {
         let mut config = EngineConfig::new(root);
         config.deterministic_ids = Some(5);
         config.modules = project.modules().unwrap();
+        config.modules.extend(extra);
         let mut engine = Engine::new(config).unwrap();
         let session = engine.open_session();
         let mut night = Self {
@@ -56,6 +66,11 @@ impl Night {
         let id = night.one("lamplight.Night", "edit").0;
         night.patch(&id, "lamplight.Night", json!({"phase": phase}));
         night
+    }
+
+    /// The engine.
+    pub fn engine(&self) -> &Engine {
+        &self.engine
     }
 
     /// The project's copy.
