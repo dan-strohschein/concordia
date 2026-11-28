@@ -20,6 +20,9 @@ pub enum FractureError {
     /// The piece's collision hull couldn't be built.
     #[error("no collision hull: {0}")]
     Hull(String),
+    /// Reading or writing the derived-data cache failed.
+    #[error("derived-data cache: {0}")]
+    Io(String),
     /// The cutter failed.
     #[error("the cutter failed")]
     Cutter,

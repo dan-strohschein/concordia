@@ -278,6 +278,9 @@ impl Project {
         if let Some(gen_config) = &self.manifest.generators {
             modules.push(Arc::new(concordia_gen::GenModule::new(gen_config)));
         }
+        if self.manifest.fracture.is_some() {
+            modules.push(Arc::new(concordia_fracture::FractureModule));
+        }
         if self.manifest.replay.is_some() {
             modules.push(Arc::new(
                 ReplayModule::new().with_factory(Arc::new(other_engine)),

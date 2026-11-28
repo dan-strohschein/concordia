@@ -746,6 +746,7 @@ dependencies = [
  "concordia-assets",
  "concordia-audio",
  "concordia-core",
+ "concordia-fracture",
  "concordia-gen",
  "concordia-import-fbx",
  "concordia-import-gltf",
@@ -950,12 +951,20 @@ name = "concordia-fracture"
 version = "0.0.0"
 dependencies = [
  "blake3",
+ "concordia-api",
+ "concordia-app",
+ "concordia-assets",
+ "concordia-command",
  "concordia-core",
  "concordia-physics",
+ "concordia-reflect",
+ "concordia-scene",
  "libm",
  "manifold-sys",
  "proptest",
  "serde",
+ "serde_json",
+ "tempfile",
  "thiserror 2.0.21",
 ]
 
