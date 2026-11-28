@@ -754,6 +754,17 @@ mod tests {
         proj * Mat4::from_rotation_translation(rotation, eye).inverse()
     }
 
+    /// Places the grid so the camera at `eye`, looking along `dir`, sees meshlet 0 straight down its
+    /// over-long (1, 1, 0) axis: without the cutoff-of-1 rule, the cone test would reject it.
+    fn behind_the_long_axis(mesh: &concordia_cluster::MeshletMesh, eye: Vec3, dir: Vec3) -> Mat4 {
+        let dir = dir.normalize();
+        let axis = Vec3::new(1.0, 1.0, 0.0).normalize();
+        let center = Vec3::from_array(mesh.meshlets[0].bounds.center);
+        Mat4::from_translation(eye + dir * 30.0)
+            * Mat4::from_quat(concordia_core::math::Quat::from_rotation_arc(axis, dir))
+            * Mat4::from_translation(-center)
+    }
+
     /// Every rule of the GPU's `cull` against the CPU reference, slot by slot: the camera seeing
     /// the grid's back from below an edge (frustum and cone), a cascade with a caster beyond its
     /// near plane, scaled, mirrored and stretched instances, and a meshlet whose cutoff of 1
@@ -798,6 +809,7 @@ mod tests {
                 * Mat4::from_translation(Vec3::new(-16.0, 0.0, 0.0)),
             Mat4::from_scale(Vec3::new(1.0, 1.01, 1.0)),
             Mat4::from_translation(Vec3::new(0.0, 0.0, 20.0)),
+            behind_the_long_axis(&mesh, eye, Vec3::new(0.1, 0.0, 1.0)),
         ];
         let key = |m| Some((Pipeline::from_raw(0, 0), m));
         let draws: Vec<_> = (0..models.len() as u32)
@@ -854,6 +866,9 @@ mod tests {
                     at(0.0)
                 );
                 seen.insert((instance, bucket, gpu));
+                if instance == 5 && m == 0 && plan.buckets[bucket as usize].view == 0 {
+                    assert_eq!(gpu, CullCode::Drawn, "a cutoff of 1 never culls");
+                }
             }
         }
         for (instance, bucket, code) in [

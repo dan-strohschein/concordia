@@ -725,6 +725,7 @@ impl Renderer {
             Output::Readback => 0,
         };
         self.retire(keep)?;
+        let retired = self.stats.meshlets;
         let allocated = self.recycle.created();
         let mut frame = FrameResources::default();
         // Representation LOD is this camera's choice for this frame only (ADR-0076, E2).
@@ -747,6 +748,15 @@ impl Renderer {
             &mut frame,
         );
         self.leave_view();
+        if let Output::Surface { .. } = output {
+            // A presented frame's culling arrives when it retires: report the latest retired one.
+            let drawn = self.stats.meshlets;
+            self.stats.meshlets = crate::MeshletCounts {
+                indirect_draws: drawn.indirect_draws,
+                mesh_draws: drawn.mesh_draws,
+                ..retired
+            };
+        }
         self.frames += 1;
         self.stats.allocations = self.recycle.created() - allocated;
         match result {

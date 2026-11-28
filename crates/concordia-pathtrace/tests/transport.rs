@@ -156,6 +156,36 @@ fn white_furnace(name: &str, backend: &Backend, mu: f32) {
 }
 
 /// The view direction from the shaded point toward the camera in the disk and light tests.
+/// Between two facing, glowing grey planes (albedo ½, emission 1 nit, no sky) the radiance is the
+/// geometric series 1 + ½ + ¼ + … = 2: every bounce counts, so Russian roulette must stay unbiased
+/// (M4's end: the mutation sweep found the white furnace only reaches one bounce).
+#[test]
+fn pathtrace_multiple_bounces_sum_to_the_geometric_series() {
+    let glow = Slab {
+        base_color: [0.5, 0.5, 0.5, 1.0],
+        specular: 0.0,
+        roughness: 1.0,
+        emissive: [1.0; 3],
+        ..Slab::default()
+    };
+    let mut b = SceneBuilder::new();
+    let plane = b.mesh(&quad(10_000.0)).unwrap();
+    let mat = b.material(&material(glow)).unwrap();
+    b.instance(plane, Mat4::IDENTITY, mat);
+    let facing_down = Mat4::from_translation(Vec3::new(0.0, 10.0, 0.0))
+        * Mat4::from_rotation_x(std::f32::consts::PI);
+    b.instance(plane, facing_down, mat);
+    let (world, camera) = ortho(Vec3::ZERO, Vec3::Y, 0.5);
+    b.camera(world, &camera);
+    let scene = b.build().unwrap();
+    for (name, backend) in backends() {
+        let got = mean(&render(&scene, &settings(16, 512, 64), &backend).unwrap());
+        for c in got.to_array() {
+            assert!((c - 2.0).abs() <= 0.04, "{name}: {got} against 2");
+        }
+    }
+}
+
 fn view() -> Vec3 {
     Vec3::new(0.9, 0.436, 0.0).normalize()
 }
