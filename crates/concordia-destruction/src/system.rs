@@ -12,7 +12,9 @@ use concordia_scene::builtin::{Transform, Velocity};
 use concordia_terra::{SystemCtx, World, system};
 
 use crate::prepared::Prepared;
-use crate::{Breakable, BreakableSource, Fragment};
+use concordia_core::math::Vec3;
+
+use crate::{Breakable, BreakableSource, Field, FieldAge, FieldEffect, Fragment};
 
 /// Runtime limits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,7 +44,7 @@ pub fn destruction_system(
     };
     system(
         "destruction.break",
-        move |world: &mut World, _: &SystemCtx<'_>| state.tick(world),
+        move |world: &mut World, ctx: &SystemCtx<'_>| state.tick(world, ctx.dt),
     )
 }
 
@@ -54,8 +56,9 @@ struct State {
 }
 
 impl State {
-    fn tick(&mut self, world: &mut World) {
+    fn tick(&mut self, world: &mut World, dt: f32) {
         self.set_up(world);
+        self.fields(world, dt);
         self.damage(world);
         self.break_bonds(world);
     }
@@ -110,6 +113,38 @@ impl State {
                 .unwrap_or_else(RigidBody::dynamic);
             if let Err(e) = attach(world, id, &p, fragment, body) {
                 tracing::warn!(target: "concordia::destruction", %id, error = %e, "breakable skipped");
+            }
+        }
+    }
+
+    /// Fields act on fragments, before impacts and in id order, at the same point every tick.
+    fn fields(&mut self, world: &mut World, dt: f32) {
+        let fields = active_fields(world, dt);
+        if fields.is_empty() {
+            return;
+        }
+        let mut fragments = Vec::new();
+        if let Ok(mut q) = world.query::<(&Fragment, &Transform)>() {
+            q.for_each(world, |id, (f, t)| fragments.push((id, f.clone(), *t)));
+        }
+        fragments.sort_by_key(|(id, ..)| *id);
+        for (id, fragment, t) in fragments {
+            let Some(p) = self.prepared(&fragment.recipe) else {
+                continue;
+            };
+            let debris = world.get::<Breakable>(id).is_none();
+            match apply_fields(&p, &fields, fragment.clone(), &t, debris, dt) {
+                None => {
+                    let _ = world.despawn(id);
+                }
+                Some(next) if next != fragment => {
+                    let pinned = !anchored(&p, &fragment) && anchored(&p, &next);
+                    let _ = world.insert(id, next);
+                    if pinned {
+                        pin(world, id);
+                    }
+                }
+                Some(_) => {}
             }
         }
     }
@@ -180,6 +215,96 @@ impl State {
             }
         }
     }
+}
+
+/// Fields that act this tick, in id order; expired ones leave the play world.
+fn active_fields(world: &mut World, dt: f32) -> Vec<(Field, Transform)> {
+    let mut all = Vec::new();
+    if let Ok(mut q) = world.query::<(&Field, &Transform)>() {
+        q.for_each(world, |id, (f, t)| all.push((id, f.clone(), *t)));
+    }
+    all.sort_by_key(|(id, ..)| *id);
+    let mut active = Vec::new();
+    for (id, f, t) in all {
+        if f.duration > 0.0 {
+            let age = world.get::<FieldAge>(id).copied().unwrap_or_default();
+            if age.seconds >= f.duration {
+                let _ = world.despawn(id);
+                continue;
+            }
+            let _ = world.insert(
+                id,
+                FieldAge {
+                    seconds: age.seconds + dt,
+                },
+            );
+        }
+        active.push((f, t));
+    }
+    active
+}
+
+/// One fragment under every field: its new state, or `None` if a kill field removes it.
+fn apply_fields(
+    p: &Prepared,
+    fields: &[(Field, Transform)],
+    mut f: Fragment,
+    t: &Transform,
+    debris: bool,
+    dt: f32,
+) -> Option<Fragment> {
+    let world_point = |local: Vec3| t.translation + t.rotation * local;
+    let bonds: Vec<usize> = p
+        .internal_bonds(&f.pieces)
+        .filter(|k| f.broken.binary_search(&(*k as u32)).is_err())
+        .collect();
+    for (field, at) in fields {
+        match field.effect {
+            FieldEffect::Strain => {
+                for &k in &bonds {
+                    let w = field.weight(at, world_point(p.bond_centre[k]));
+                    f.damage[k] += field.magnitude * w * dt;
+                }
+            }
+            FieldEffect::Crumble => {
+                if f.pieces
+                    .iter()
+                    .any(|&q| field.weight(at, world_point(p.centre(q))) > 0.0)
+                {
+                    for &k in &bonds {
+                        let strength = p.loaded.structure.edges[k].strength as f32;
+                        f.damage[k] = f.damage[k].max(strength);
+                    }
+                }
+            }
+            FieldEffect::Anchor => {
+                for &q in &f.pieces {
+                    if field.weight(at, world_point(p.centre(q))) > 0.0 {
+                        let cell = p.loaded.fracture.pieces[q as usize].cell;
+                        if let Err(i) = f.anchors.binary_search(&cell) {
+                            f.anchors.insert(i, cell);
+                        }
+                    }
+                }
+            }
+            FieldEffect::Kill => {
+                let (_, centre) = p.mass_and_centre(&f.pieces);
+                if debris && field.weight(at, world_point(centre)) > 0.0 {
+                    return None;
+                }
+            }
+        }
+    }
+    Some(f)
+}
+
+/// Makes a newly anchored fragment static and still.
+fn pin(world: &mut World, id: EntityId) {
+    if let Some(mut body) = world.get::<RigidBody>(id).cloned() {
+        body.kind = BodyKind::Static;
+        let _ = world.insert(id, body);
+    }
+    let _ = world.insert(id, Velocity::default());
 }
 
 /// Gives `id` the fragment's body: a compound of its pieces with their mass, static if anchored.

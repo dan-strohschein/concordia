@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use concordia_api::{ApiError, ApiErrorKind, Engine, EngineModule, PlaySetup};
+use concordia_api::{ApiError, ApiErrorKind, Engine, EngineModule, MethodInfo, PlaySetup};
 use concordia_reflect::{RegistryError, TypeRegistry};
 use concordia_terra::{Phase, Schedule, World, register_component};
 
@@ -29,7 +29,16 @@ impl EngineModule for DestructionModule {
 
     fn register_types(&self, registry: &mut TypeRegistry) -> Result<(), RegistryError> {
         register_component::<Breakable>(registry)?;
+        register_component::<crate::Field>(registry)?;
+        register_component::<crate::FieldAge>(registry)?;
         register_component::<Fragment>(registry)
+    }
+
+    fn methods(&self) -> Vec<MethodInfo> {
+        vec![
+            MethodInfo::of::<crate::DestructionCrumble>(),
+            MethodInfo::of::<crate::DestructionApplyStrain>(),
+        ]
     }
 
     /// Loads every recipe the play world's breakables name, then schedules `destruction.break`.
@@ -50,14 +59,15 @@ impl EngineModule for DestructionModule {
                 }
             }
         }
+        let source: Arc<dyn crate::BreakableSource> = Arc::new(source);
         let mut schedule = Schedule::new();
         schedule.add_in(
             Phase::PostPhysics,
-            destruction_system(Arc::new(source), self.settings),
+            destruction_system(source.clone(), self.settings),
         );
         Ok(PlaySetup {
             schedule,
-            state: None,
+            state: Some(Box::new(crate::methods::PlayLibrary(source))),
         })
     }
 }

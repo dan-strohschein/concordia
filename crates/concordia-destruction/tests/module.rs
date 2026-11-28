@@ -119,3 +119,74 @@ fn a_breakable_breaks_in_play_and_edit_world_is_never_broken() {
     assert!(rig.component(&slab, "Fragment", "edit").is_none());
     assert!(rig.component(&slab, "Collider", "edit").is_none());
 }
+
+#[test]
+fn fields_are_ordinary_components_editable_and_undoable() {
+    let mut rig = Rig::new();
+    rig.ok(
+        "scene.new",
+        json!({"path": "scenes/test.scene.ron", "name": "Test", "actor": ACTOR}),
+    );
+    let field = json!({"shape": {"Sphere": {"radius": 2.0}}, "falloff": "Linear",
+                       "effect": "Strain", "magnitude": 50.0, "duration": 0.0});
+    let id = rig.ok(
+        "entity.spawn",
+        json!({"components": {"Field": field}, "actor": ACTOR}),
+    )["id"]
+        .clone();
+    rig.ok(
+        "component.patch",
+        json!({"entity": id, "component": "Field", "patch": {"magnitude": 500.0}, "actor": ACTOR}),
+    );
+    let magnitude =
+        |rig: &mut Rig| rig.component(&id, "Field", "edit").unwrap()["value"]["magnitude"].clone();
+    assert_eq!(magnitude(&mut rig), json!(500.0));
+    rig.ok("txn.undo", json!({"actor": ACTOR}));
+    assert_eq!(
+        magnitude(&mut rig),
+        json!(50.0),
+        "undo restores the authored field"
+    );
+}
+
+#[test]
+fn agents_crumble_and_strain_breakables_in_play() {
+    let mut rig = Rig::new();
+    let slab = rig.scene();
+    // Not yet playing: nothing to break.
+    let err = rig
+        .call("destruction.crumble", json!({"entity": slab}))
+        .unwrap_err();
+    assert_eq!(
+        err.kind,
+        concordia_api::ApiErrorKind::InvalidParams,
+        "{err:?}"
+    );
+    rig.ok("sim.step", json!({"ticks": 2}));
+    let out = rig.ok("destruction.crumble", json!({"entity": slab}));
+    assert_eq!(out["bonds"], 1, "the two halves share one bond");
+    rig.ok("sim.step", json!({"ticks": 1}));
+    assert!(
+        rig.component(&slab, "Fragment", "play").is_none(),
+        "crumbled"
+    );
+    // apply_strain reaches only bonds within its radius.
+    let mut rig = Rig::new();
+    let slab = rig.scene();
+    rig.ok("sim.step", json!({"ticks": 2}));
+    let far = rig.ok(
+        "destruction.apply_strain",
+        json!({"center": [50.0, 3.0, 0.0], "radius": 1.0, "amount": 1000.0}),
+    );
+    assert_eq!(far["bonds"], 0);
+    let near = rig.ok(
+        "destruction.apply_strain",
+        json!({"center": [0.0, 3.0, 0.0], "radius": 1.0, "amount": 1000.0}),
+    );
+    assert_eq!(near["bonds"], 1);
+    rig.ok("sim.step", json!({"ticks": 1}));
+    assert!(
+        rig.component(&slab, "Fragment", "play").is_none(),
+        "strained apart"
+    );
+}
