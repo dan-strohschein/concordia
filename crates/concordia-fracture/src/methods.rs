@@ -7,7 +7,9 @@ use concordia_core::ddc::Ddc;
 use concordia_reflect::Reflect;
 use serde::{Deserialize, Serialize};
 
-use crate::{Breakable, EXTENSION, Fracture, FractureError, Pattern, Slot, Stored, pieces};
+use crate::{
+    Breakable, EXTENSION, Fracture, FractureError, Pattern, Slot, Stored, StructureSpec, pieces,
+};
 
 /// Fracture a mesh into pieces from a seeded pattern and write the recipe as a `.breakable.ron` (e.g. {"mesh": "asset:<id>#mesh/Mesh/0", "pattern": {"Uniform": {"cells": 12}}, "seed": 1, "path": "breakables/wall.breakable.ron"}). Patterns: Uniform {cells}, Clustered {clusters, per_cluster, spread}, Radial {impact, cells, falloff}, Slices {normal, count}, Bricks {size}. The pieces are derived data in the DDC; the recipe is one undoable edit.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
@@ -29,6 +31,8 @@ pub struct FractureGenerateParams {
     pub metres_per_tile: Option<f32>,
     /// The interior faces' material (default: the source's).
     pub interior_material: Option<String>,
+    /// Density, bond strength, cluster levels and edge overrides (default: stone, no levels).
+    pub structure: Option<StructureSpec>,
     /// Who is fracturing (required; logged).
     pub actor: Option<Actor>,
 }
@@ -100,6 +104,7 @@ impl Method for FractureGenerate {
             seed: p.seed.unwrap_or(0),
             metres_per_tile: p.metres_per_tile.unwrap_or(1.0),
             interior_material: p.interior_material,
+            structure: p.structure.unwrap_or_default(),
         };
         if !(recipe.metres_per_tile.is_finite() && recipe.metres_per_tile > 0.0) {
             return Err(

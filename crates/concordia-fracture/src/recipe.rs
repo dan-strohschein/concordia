@@ -3,7 +3,7 @@
 use concordia_reflect::Reflect;
 use serde::{Deserialize, Serialize};
 
-use crate::Pattern;
+use crate::{Pattern, StructureSpec};
 
 /// A breakable's file extension.
 pub const EXTENSION: &str = ".breakable.ron";
@@ -25,4 +25,6 @@ pub struct Breakable {
     pub metres_per_tile: f32,
     /// The interior faces' material ("asset:<id>" or "builtin:material/…"); none uses the source's.
     pub interior_material: Option<String>,
+    /// What holds the pieces together: density, bond strength, cluster levels and overrides.
+    pub structure: StructureSpec,
 }
