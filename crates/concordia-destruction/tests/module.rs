@@ -190,3 +190,35 @@ fn agents_crumble_and_strain_breakables_in_play() {
         "strained apart"
     );
 }
+
+#[test]
+fn in_play_breakables_draw_their_baked_pieces() {
+    let mut rig = Rig::new();
+    let slab = rig.scene();
+    let look = json!({"mesh": "builtin:mesh/cube", "material": "builtin:material/default"});
+    rig.ok(
+        "component.set",
+        json!({"entity": slab, "component": "MeshRenderer", "value": look, "actor": ACTOR}),
+    );
+    rig.ok("sim.step", json!({"ticks": 2}));
+    let drawn = rig.component(&slab, "PieceRenderer", "play").unwrap()["value"].clone();
+    assert_eq!(drawn["pieces"], 2);
+    assert_eq!(drawn["shown"], json!([0, 1]));
+    assert!(rig.component(&slab, "MeshRenderer", "play").is_none());
+    assert!(
+        rig.component(&slab, "MeshRenderer", "edit").is_some(),
+        "the edit world keeps its mesh"
+    );
+    let meshes = drawn["meshes"].as_array().unwrap().clone();
+    assert_eq!(meshes.len(), 2, "surface and interior: {drawn}");
+    let db = rig.engine.state_mut::<concordia_assets::AssetDb>().unwrap();
+    for m in meshes {
+        assert_eq!(m["material"], "builtin:material/default");
+        let reference = m["mesh"].as_str().unwrap().parse().unwrap();
+        let mesh = db.load_mesh(&reference).unwrap();
+        assert!(
+            mesh.joints.iter().all(|j| j[0] < 2),
+            "on the pieces' joints"
+        );
+    }
+}

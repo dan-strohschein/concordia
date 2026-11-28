@@ -1,6 +1,7 @@
 //! Fracture authoring (M8 8.1, ADR-0180): a closed mesh cut into pieces by a seeded pattern of
 //! convex cells, each clipped through Manifold (`manifold-sys`).
 
+mod bake;
 mod bounds;
 mod cut;
 mod error;
@@ -13,6 +14,7 @@ mod store;
 mod structure;
 mod weld;
 
+pub use bake::{piece_mesh, piece_mesh_ref};
 pub use bounds::Bounds;
 pub use cut::{Fracture, Piece, Slot, fracture};
 pub use error::FractureError;

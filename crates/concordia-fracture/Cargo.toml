@@ -24,6 +24,7 @@ libm.workspace = true
 manifold-sys.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+uuid = { workspace = true, features = ["v5"] }
 
 [dev-dependencies]
 concordia-app.workspace = true

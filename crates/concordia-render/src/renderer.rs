@@ -2148,8 +2148,9 @@ impl Renderer {
             || self.environments.holds(reference)
     }
 
-    /// Instance and material blocks plus the draw order: opaque draws (culled pipelines first, then
-    /// entity id), then blended draws back to front by the view depth of their bounds' center.
+    /// Instance and material blocks plus the draw order: opaque draws (by pipeline, material and
+    /// mesh, the culled after the visible, then entity id), then blended draws back to front by the
+    /// view depth of their bounds' center.
     fn instance_data(
         &self,
         world: &RenderWorld,
@@ -2184,13 +2185,15 @@ impl Renderer {
                 .z
         };
         order.sort_by(|a, b| match (a.blend, b.blend) {
-            // Opaque: grouped by pipeline, material and mesh (so repeats instance), then entity.
+            // Opaque: grouped by pipeline, material and mesh (so repeats instance), culled last
+            // (so the visible ones stay one run), then entity.
             (false, false) => {
                 let key = |d: &DrawOrder| {
                     (
                         d.double_sided,
                         d.material,
                         &world.draws[d.item].mesh,
+                        !d.visible,
                         d.item,
                     )
                 };

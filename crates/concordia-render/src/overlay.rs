@@ -337,7 +337,10 @@ fn skeleton_lines(out: &mut Vec<f32>, projector: &Projector, skin: &crate::SkinV
         let m = skin.world * skin.joints[j];
         projector.project(m.transform_point3(Vec3::ZERO))
     };
-    for (j, joint) in skin.skeleton.joints().iter().enumerate() {
+    let Some(skeleton) = &skin.skeleton else {
+        return;
+    };
+    for (j, joint) in skeleton.joints().iter().enumerate() {
         let Some(p) = at(j) else { continue };
         if let Some(q) = joint.parent.and_then(at) {
             line(out, q, p, 2.0 * scale, color);

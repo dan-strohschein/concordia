@@ -213,6 +213,20 @@ pub struct MeshRenderer {
     pub mobility: Mobility,
 }
 
+/// Draws rigid pieces of shared meshes (a broken breakable's parts, M8 8.5b): each vertex's
+/// first joint is its piece, and only the pieces in `shown` appear.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Rendering", default)]
+#[serde(deny_unknown_fields)]
+pub struct PieceRenderer {
+    /// The meshes, each with its material (a breakable's surface and interior).
+    pub meshes: Vec<MeshRenderer>,
+    /// How many pieces the meshes hold.
+    pub pieces: u32,
+    /// The pieces drawn, ascending.
+    pub shown: Vec<u32>,
+}
+
 /// How a mesh moves, a hint for virtual shadow maps' cache (M4 4.7b). A wrong hint never
 /// changes the picture, only the cost.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect)]

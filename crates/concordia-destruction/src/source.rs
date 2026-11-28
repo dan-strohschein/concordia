@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use concordia_assets::AssetRef;
 use concordia_fracture::{Fracture, Structure};
 
 use crate::DestructionError;
@@ -14,6 +15,19 @@ pub struct Loaded {
     pub fracture: Fracture,
     /// Bonds, masses and cluster levels.
     pub structure: Structure,
+    /// How its pieces are drawn (none: not drawn, as without a renderer).
+    pub looks: Option<PieceLooks>,
+}
+
+/// How a breakable's pieces are drawn: its baked meshes and the interior's material (M8 8.5b).
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct PieceLooks {
+    /// Every piece's surface faces (none: there are none).
+    pub surface: Option<AssetRef>,
+    /// Every piece's interior faces (none: there are none, as with one piece).
+    pub interior: Option<AssetRef>,
+    /// The interior's material; none uses the breakable's own.
+    pub interior_material: Option<AssetRef>,
 }
 
 /// Loads breakables by recipe path.

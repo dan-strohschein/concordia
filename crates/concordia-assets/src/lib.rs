@@ -32,7 +32,7 @@ pub use anim_graph_importer::AnimGraphImporter;
 pub use builtin::{Builtin, BuiltinAsset};
 pub use data::{
     AlphaMode, CameraData, Channel, ChannelPath, ClipData, ClipEvent, Interpolation, LightData,
-    MeshData, MeshRenderer, Mobility, SkinData, Skinned, TextureData, TextureFormat,
+    MeshData, MeshRenderer, Mobility, PieceRenderer, SkinData, Skinned, TextureData, TextureFormat,
     validate_events,
 };
 pub use db::{AssetDb, AssetInfo, ImportReport, prefab_doc};
@@ -62,13 +62,14 @@ pub use reference::AssetRef;
 pub use sidecar::{Provenance, Sidecar};
 pub use source::AssetSource;
 
-/// Registers the asset components (`MeshRenderer`, `Skinned`) and the `Material` and `AnimGraph`
-/// types (for `schema.get`).
+/// Registers the asset components (`MeshRenderer`, `Skinned`, `PieceRenderer`) and the
+/// `Material` and `AnimGraph` types (for `schema.get`).
 pub fn register_types(
     registry: &mut concordia_reflect::TypeRegistry,
 ) -> Result<(), concordia_reflect::RegistryError> {
     concordia_terra::register_component::<MeshRenderer>(registry)?;
     concordia_terra::register_component::<Skinned>(registry)?;
+    concordia_terra::register_component::<PieceRenderer>(registry)?;
     registry.register::<Material>()?;
     registry.register::<AnimGraph>().map(|_| ())
 }

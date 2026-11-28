@@ -67,8 +67,8 @@ impl Method for DestructionCrumble {
         let mut bonds = 0;
         let open: Vec<usize> = open_bonds(&prepared, &f).collect();
         for k in open {
-            let strength = prepared.loaded.structure.edges[k].strength as f32;
-            f.damage[k] = f.damage[k].max(strength);
+            let due = crate::system::breaking_damage(prepared.loaded.structure.edges[k].strength);
+            f.damage[k] = f.damage[k].max(due);
             bonds += 1;
         }
         world.insert(p.entity, f).map_err(internal)?;

@@ -7,7 +7,12 @@ use concordia_api::{ApiError, ApiErrorKind, Engine, EngineModule, MethodInfo, Pl
 use concordia_reflect::{RegistryError, TypeRegistry};
 use concordia_terra::{Phase, Schedule, World, register_component};
 
-use crate::{Breakable, DestructionSettings, Fragment, Loaded, MemorySource, destruction_system};
+use concordia_assets::{AssetDb, AssetRef};
+use concordia_fracture::Slot;
+
+use crate::{
+    Breakable, DestructionSettings, Fragment, Loaded, MemorySource, PieceLooks, destruction_system,
+};
 
 /// Breaks the play world's breakables; the edit world is never touched (ADR-0032).
 #[derive(Debug, Clone, Copy, Default)]
@@ -77,8 +82,49 @@ fn load(engine: &mut Engine, path: &str) -> Result<Loaded, ApiError> {
     let (recipe, stored) = concordia_fracture::load(engine, path)?;
     let structure = concordia_fracture::structure(&stored.fracture, &recipe.structure)
         .map_err(|e| ApiError::new(ApiErrorKind::InvalidParams, format!("{path}: {e}")))?;
+    let looks = bake(engine, &recipe, &stored).unwrap_or_else(|e| {
+        tracing::warn!(target: "concordia::destruction", path, error = %e, "breakable not drawn");
+        None
+    });
     Ok(Loaded {
         fracture: stored.fracture,
         structure,
+        looks,
     })
+}
+
+/// Bakes the pieces into one surface and one interior mesh and hands them to the asset database,
+/// under references derived from the pieces' DDC key. `None` without an asset database.
+fn bake(
+    engine: &mut Engine,
+    recipe: &concordia_fracture::Breakable,
+    stored: &concordia_fracture::Stored,
+) -> Result<Option<PieceLooks>, String> {
+    let Some(db) = engine.state_mut::<AssetDb>() else {
+        return Ok(None);
+    };
+    let mut mesh = |slot: Slot| -> Result<Option<AssetRef>, String> {
+        let Some(data) =
+            concordia_fracture::piece_mesh(&stored.fracture, slot, recipe.metres_per_tile)
+                .map_err(|e| e.to_string())?
+        else {
+            return Ok(None);
+        };
+        let reference = concordia_fracture::piece_mesh_ref(&stored.key, slot);
+        db.insert_derived_mesh(reference.clone(), data)
+            .map_err(|e| e.to_string())?;
+        Ok(Some(reference))
+    };
+    let (surface, interior) = (mesh(Slot::Surface)?, mesh(Slot::Interior)?);
+    let interior_material = recipe
+        .interior_material
+        .as_deref()
+        .map(str::parse::<AssetRef>)
+        .transpose()
+        .map_err(|e| format!("interior_material: {e}"))?;
+    Ok(Some(PieceLooks {
+        surface,
+        interior,
+        interior_material,
+    }))
 }

@@ -953,12 +953,14 @@ version = "0.0.0"
 dependencies = [
  "concordia-api",
  "concordia-app",
+ "concordia-assets",
  "concordia-core",
  "concordia-fracture",
  "concordia-physics",
  "concordia-reflect",
  "concordia-scene",
  "concordia-terra",
+ "criterion",
  "serde",
  "serde_json",
  "tempfile",
@@ -987,6 +989,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",
+ "uuid",
 ]
 
 [[package]]

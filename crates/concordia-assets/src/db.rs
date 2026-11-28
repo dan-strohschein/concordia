@@ -74,6 +74,8 @@ pub struct AssetDb {
     memory: ArtifactMemory,
     /// The project's values for import settings importers declare as `null`.
     setting_defaults: BTreeMap<String, serde_json::Value>,
+    /// Meshes made at runtime from other derived data (`insert_derived_mesh`).
+    derived_meshes: BTreeMap<AssetRef, MeshData>,
 }
 
 /// An artifact's kind and bytes.
@@ -150,6 +152,7 @@ impl AssetDb {
             records: BTreeMap::new(),
             generations: BTreeMap::new(),
             keys: BTreeMap::new(),
+            derived_meshes: BTreeMap::new(),
             memory: ArtifactMemory::default(),
             setting_defaults: BTreeMap::new(),
         };
@@ -454,8 +457,29 @@ impl AssetDb {
         match Builtin::of(reference) {
             Some(BuiltinAsset::Mesh(m)) => Ok(m),
             Some(_) => Err(AssetError::Decode(format!("{reference} is not a mesh"))),
-            None => self.load_as(reference, AssetKind::Mesh),
+            None => match self.derived_meshes.get(reference) {
+                Some(mesh) => Ok(mesh.clone()),
+                None => self.load_as(reference, AssetKind::Mesh),
+            },
         }
+    }
+
+    /// Holds `mesh` under `reference`, a mesh made at runtime from other derived data.
+    /// It must be valid and may not shadow a built-in; content-keyed references stay valid, since
+    /// the renderer never re-sends a reference it holds.
+    pub fn insert_derived_mesh(
+        &mut self,
+        reference: AssetRef,
+        mesh: MeshData,
+    ) -> Result<(), AssetError> {
+        if matches!(reference, AssetRef::Builtin { .. }) {
+            return Err(AssetError::Decode(format!(
+                "{reference} is a built-in reference; a derived mesh needs its own"
+            )));
+        }
+        mesh.validate()?;
+        self.derived_meshes.insert(reference, mesh);
+        Ok(())
     }
 
     /// A material (imported or built-in).

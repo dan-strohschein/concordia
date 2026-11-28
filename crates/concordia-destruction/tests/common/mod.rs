@@ -6,12 +6,13 @@ use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
+use concordia_assets::AssetRef;
 use concordia_core::id::{DeterministicIdGen, EntityId};
 use concordia_core::jobs::JobSystem;
 use concordia_core::math::Vec3;
 use concordia_core::time::TickRate;
 use concordia_destruction::{
-    Breakable, DestructionSettings, Fragment, Loaded, MemorySource, destruction_system,
+    Breakable, DestructionSettings, Fragment, Loaded, MemorySource, PieceLooks, destruction_system,
 };
 use concordia_fracture::{Mesh, Pattern, StructureSpec, fracture, structure};
 use concordia_physics::{
@@ -48,7 +49,37 @@ pub fn slab() -> Mesh {
     }
 }
 
+/// The slab's baked meshes, as a loaded recipe names them.
+pub fn looks() -> PieceLooks {
+    let r = |sub: &str| {
+        format!("asset:0193a1c2-7e40-7000-8000-0000000000d1#mesh/{sub}")
+            .parse()
+            .unwrap()
+    };
+    PieceLooks {
+        surface: Some(r("surface")),
+        interior: Some(r("interior")),
+        interior_material: Some(interior_material()),
+    }
+}
+
+/// The recipe's `interior_material`.
+pub fn interior_material() -> AssetRef {
+    "asset:0193a1c2-7e40-7000-8000-0000000000e2"
+        .parse()
+        .unwrap()
+}
+
 pub fn source() -> Arc<MemorySource> {
+    loaded(Some(looks()))
+}
+
+/// The slab loaded without baked meshes (no renderer).
+pub fn source_without_looks() -> Arc<MemorySource> {
+    loaded(None)
+}
+
+fn loaded(looks: Option<PieceLooks>) -> Arc<MemorySource> {
     let f = fracture(
         &slab(),
         &Pattern::Slices {
@@ -70,6 +101,7 @@ pub fn source() -> Arc<MemorySource> {
         Loaded {
             fracture: f,
             structure: s,
+            looks,
         },
     ))
 }
@@ -120,6 +152,11 @@ pub fn root() -> EntityId {
 
 /// Runs `ticks` ticks of physics plus destruction and returns the world.
 pub fn run(r: &Run, ticks: u32) -> World {
+    run_with(r, ticks, source())
+}
+
+/// [`run`] with the slab loaded from `source`.
+pub fn run_with(r: &Run, ticks: u32, source: Arc<MemorySource>) -> World {
     let mut settings = PhysicsSettings::default();
     if !r.gravity {
         settings.gravity = Vec3::ZERO;
@@ -223,7 +260,7 @@ pub fn run(r: &Run, ticks: u32) -> World {
     schedule.add_in(
         Phase::PostPhysics,
         destruction_system(
-            source(),
+            source,
             DestructionSettings {
                 breaks_per_tick: r.breaks_per_tick,
                 ..r.debris

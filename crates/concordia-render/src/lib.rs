@@ -65,8 +65,8 @@ pub use cull::{CullCode, CullView, Culling};
 pub use cull_stats::CulledMeshlet;
 pub use error::RenderError;
 pub use extract::{
-    CameraView, DrawItem, EntityItems, LightView, PoseView, PunctualKind, PunctualLight,
-    RenderWorld, SkinView,
+    CameraView, DrawItem, EntityItems, LightView, PieceItems, PoseView, PunctualKind,
+    PunctualLight, RenderWorld, SkinView,
 };
 pub use frame::DrawPush;
 pub use hzb::HzbPush;

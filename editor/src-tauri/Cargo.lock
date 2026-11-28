@@ -693,6 +693,8 @@ dependencies = [
  "concordia-assets",
  "concordia-audio",
  "concordia-core",
+ "concordia-destruction",
+ "concordia-fracture",
  "concordia-gen",
  "concordia-import-fbx",
  "concordia-import-gltf",
@@ -824,6 +826,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "concordia-destruction"
+version = "0.0.0"
+dependencies = [
+ "concordia-api",
+ "concordia-assets",
+ "concordia-core",
+ "concordia-fracture",
+ "concordia-physics",
+ "concordia-reflect",
+ "concordia-scene",
+ "concordia-terra",
+ "serde",
+ "thiserror 2.0.21",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "concordia-editor"
 version = "0.0.0"
 dependencies = [
@@ -852,6 +872,25 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "x11rb",
+]
+
+[[package]]
+name = "concordia-fracture"
+version = "0.0.0"
+dependencies = [
+ "blake3",
+ "concordia-api",
+ "concordia-assets",
+ "concordia-command",
+ "concordia-core",
+ "concordia-physics",
+ "concordia-reflect",
+ "concordia-scene",
+ "libm",
+ "manifold-sys",
+ "serde",
+ "thiserror 2.0.21",
+ "uuid",
 ]
 
 [[package]]
@@ -3662,6 +3701,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.10",
+]
+
+[[package]]
+name = "manifold-sys"
+version = "0.0.0"
+dependencies = [
+ "cc",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
