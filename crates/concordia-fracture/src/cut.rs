@@ -1,11 +1,12 @@
 //! Cutting a mesh into its pattern's cells.
 
 use manifold_sys::safe::{Mesh, clip_convex};
+use serde::{Deserialize, Serialize};
 
 use crate::{Bounds, FractureError, Pattern};
 
 /// Which material a triangle uses.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum Slot {
     /// The source mesh's own surface.
@@ -15,7 +16,7 @@ pub enum Slot {
 }
 
 /// One piece of a fractured mesh: closed, manifold and not empty.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Piece {
     /// The index of the pattern cell it came from.
     pub cell: u32,
@@ -30,7 +31,7 @@ pub struct Piece {
 }
 
 /// A mesh cut into pieces, in cell order.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Fracture {
     /// The pieces; cells that miss the mesh make none.
     pub pieces: Vec<Piece>,

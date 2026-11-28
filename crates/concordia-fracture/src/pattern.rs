@@ -2,6 +2,7 @@
 //! bricks. Only arithmetic, `sqrt` and `libm` are used, so the cells are the same on every platform.
 
 use concordia_core::rng::SimRng;
+use concordia_reflect::Reflect;
 use manifold_sys::safe::Plane;
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +12,7 @@ use crate::{Bounds, FractureError};
 pub const MAX_CELLS: u32 = 1024;
 
 /// How a mesh is divided.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 pub enum Pattern {
     /// Voronoi cells around `cells` sites spread evenly over the bounds.
     Uniform {

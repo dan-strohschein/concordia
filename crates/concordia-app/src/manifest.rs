@@ -48,7 +48,15 @@ pub struct Manifest {
     /// `[ui]`; UI components, `ui.inspect` and the UI pass exist only if this section exists
     /// (images, fonts and themes load through `[assets]`).
     pub ui: Option<UiSection>,
+    /// `[fracture]`; `fracture.generate` and `fracture.inspect` exist only if this section exists
+    /// (meshes load through `[assets]`; M8 8.1).
+    pub fracture: Option<FractureSection>,
 }
+
+/// `[fracture]` (no settings yet; ADR-0180).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct FractureSection {}
 
 /// `[ui]` (no settings yet; ADR-0060).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

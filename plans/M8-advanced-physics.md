@@ -1,5 +1,5 @@
 # M8: Advanced physics (destruction and GPU garments)
-Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · **Phase 8.0 done** (8.0a–d: hull and compound colliders, contact impacts, mid-play bodies, the soft-body reference) · **8.1a–b done** (Manifold cutter, five patterns; hulls and interior UVs) · Estimated effort: ~20 weeks (range 16–26), author plus agents
+Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · **Phase 8.0 done** (8.0a–d: hull and compound colliders, contact impacts, mid-play bodies, the soft-body reference) · **Phase 8.1 done** (8.1a–c: Manifold cutter and five patterns; hulls and interior UVs; `.breakable.ron` and `fracture.generate`) · Estimated effort: ~20 weeks (range 16–26), author plus agents
 
 > Outline plan with phase breakdowns and test lists. Refine when M2 lands: the skinning data layout (8.7, 8.10), the mesh import path for garments, and M3's replay format if caches build on it (8.6).
 
@@ -101,6 +101,34 @@ The plan predates M2. Checked against `main` after M4; the phases below stand, w
 - **Not yet:** the source mesh's own UVs and normals carried through the cut. Surface faces get zeros until rendering needs them (8.5).
 - **What the tests show:** every vertex is within Jolt's 1 mm hull tolerance of its hull, concave pieces included; the collider sits around the centre of mass; the UVs on both sides of a cut agree, scale with `metres_per_tile`, and a bad scale is an error.
 - **Test log:** the four `pieces` tests were written first and failed against stubs, each for its own reason; they then passed.
+
+**8.1c** (done; **Phase 8.1 done**): the recipe and the Engine API.
+- **`.breakable.ron`** (`Breakable`) is the recipe:
+  - its fields: source mesh reference, pattern, seed, metres per UV unit, optional interior material;
+  - canonical text through `concordia-scene`;
+  - cluster levels and strengths join it in 8.2.
+- **The pieces are derived data in the DDC**, keyed by:
+  - the recipe's canonical text;
+  - a blake3 of the source mesh's data;
+  - `FRACTURE_VERSION`.
+
+  They are rebuilt from the recipe when the key is missing. ADR-0181 (8.6) is still owed for collapse caches.
+- **`[fracture]`** adds `FractureModule`:
+  - `fracture.generate` loads the mesh through the asset database, welds it and cuts it, caches the pieces, then writes the recipe as one undoable document edit;
+  - `fracture.inspect` summarises the pieces and says whether they came from the cache.
+- **Welding:** imported meshes split vertices along hard edges and seams, so their vertices are welded by position before cutting.
+- **Studio roles** get the fracture tools with the rest of M8's MCP tooling, in 8.10.
+- **What the tests show:**
+  - a generated box fractures into pieces that keep its volume;
+  - the recipe reads back canonically;
+  - the pieces come from the DDC, and rebuild to the same pieces once it's deleted;
+  - undo and redo remove and restore the recipe;
+  - each bad field is named, and nothing is written.
+- **Test log:**
+  - **Not test-first:** I wrote the `generate` tests before the code, but first ran them after the module existed. Two of my test assumptions were then wrong: mutating methods need an open scene, and a missing actor is the engine's `ActorRequired`.
+  - The `weld` tests were checked against an identity stub (both failed), then passed.
+  - **Contract consumers:** app, MCP and Studio tests (346 passed). The editor schemas are unchanged, since their project has no `[fracture]`.
+  - **Checks:** fmt, clippy.
 
 ### Effort, revised
 About **18 weeks (15–23)**, down from 20: rendering, instancing, compute and replay groundwork already exist, but 8.0 is new (about 1.5 weeks). The cutter (8.1), the solver (8.8) and weight painting (8.10, needs visual design) remain the large items.
