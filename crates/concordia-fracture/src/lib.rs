@@ -10,6 +10,7 @@ mod pattern;
 mod piece;
 mod recipe;
 mod store;
+mod structure;
 mod weld;
 
 pub use bounds::Bounds;
@@ -24,4 +25,8 @@ pub use module::FractureModule;
 pub use pattern::{Cell, MAX_CELLS, Pattern};
 pub use recipe::{Breakable, EXTENSION, FRACTURE_VERSION};
 pub use store::{Stored, cache_key, pieces};
+pub use structure::{
+    Cluster, ClusterLevel, Edge, EdgeOverride, Grouping, Level, PieceMass, Structure,
+    StructureSpec, structure,
+};
 pub use weld::weld;

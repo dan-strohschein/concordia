@@ -1,5 +1,5 @@
 # M8: Advanced physics (destruction and GPU garments)
-Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · **Phase 8.0 done** (8.0a–d: hull and compound colliders, contact impacts, mid-play bodies, the soft-body reference) · **Phase 8.1 done** (8.1a–c: Manifold cutter and five patterns; hulls and interior UVs; `.breakable.ron` and `fracture.generate`) · Estimated effort: ~20 weeks (range 16–26), author plus agents
+Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · **Phase 8.0 done** (8.0a–d: hull and compound colliders, contact impacts, mid-play bodies, the soft-body reference) · **8.2 done** (connection graph, cluster levels) · **Phase 8.1 done** (8.1a–c: Manifold cutter and five patterns; hulls and interior UVs; `.breakable.ron` and `fracture.generate`) · Estimated effort: ~20 weeks (range 16–26), author plus agents
 
 > Outline plan with phase breakdowns and test lists. Refine when M2 lands: the skinning data layout (8.7, 8.10), the mesh import path for garments, and M3's replay format if caches build on it (8.6).
 
@@ -128,6 +128,24 @@ The plan predates M2. Checked against `main` after M4; the phases below stand, w
   - **Not test-first:** I wrote the `generate` tests before the code, but first ran them after the module existed. Two of my test assumptions were then wrong: mutating methods need an open scene, and a missing actor is the engine's `ActorRequired`.
   - The `weld` tests were checked against an identity stub (both failed), then passed.
   - **Contract consumers:** app, MCP and Studio tests (346 passed). The editor schemas are unchanged, since their project has no `[fracture]`.
+  - **Checks:** fmt, clippy.
+
+**8.2** (done): cluster levels and the connection graph.
+- **`structure(fracture, spec)`:**
+  - **Bonds:** an edge per pair of pieces whose interior faces lie on one plane facing each other. The area is their overlap, by polygon clipping in the plane, so a brick touching two bricks above gets two edges. Strength is area × the spec's `strength`, unless an edge override replaces it.
+  - **Mass** per piece and per cluster comes from `density`, with mass-weighted centres.
+  - **Cluster levels:** each groups the level below by k-means, which starts from farthest points (no randomness), or by a hand-made grouping. Each level has a damage threshold. A level's bonds sum the piece bonds that cross between its clusters.
+- **`.breakable.ron`** gains `structure: StructureSpec` (density, strength, levels, edge overrides). `fracture.generate` takes it as an optional `structure`, defaulting to stone with no levels.
+- **What the tests show:**
+  - slices form a chain, and a running bond has exactly its seven touching pairs;
+  - strength scales with contact area, and an override replaces it (either order);
+  - each cluster's mass is the sum of its pieces' (on the L, 6000 kg at 2000 kg/m³), and the top cluster's centre is the L's centroid;
+  - a manual grouping's level edge joins its two halves;
+  - the spec round-trips canonically;
+  - bad specs are errors.
+- **Test log:**
+  - The tests were written first, and run against a stub before the code: 6 of 7 failed. The round-trip test doesn't use `structure`.
+  - One expected value of mine was wrong: a cut across x is a 1 × 1 face whatever the slice thickness. I fixed the test, not the code.
   - **Checks:** fmt, clippy.
 
 ### Effort, revised

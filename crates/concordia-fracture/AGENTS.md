@@ -10,6 +10,7 @@ Fracture authoring: a closed mesh cut into pieces by a seeded pattern of convex 
 - `Piece::centre_of_mass()`, `Piece::collider()` (a `ColliderShape::ConvexHull` of its vertices, relative to the centre of mass), `Piece::interior_uvs(metres_per_tile)` (per triangle corner)
 - `weld(&Mesh)`: vertices at bit-identical positions merged (imported meshes split them along seams)
 - `Breakable { source, pattern, seed, metres_per_tile, interior_material }` (`.breakable.ron`, `EXTENSION`, `FRACTURE_VERSION`); `pieces(&Breakable, &mut AssetDb, &Ddc) -> Stored { fracture, key, cached }`, `cache_key`
+- `structure(&Fracture, &StructureSpec) -> Structure { pieces: Vec<PieceMass>, edges: Vec<Edge>, levels: Vec<Level { clusters, edges }> }`; `StructureSpec { density, strength, levels: Vec<ClusterLevel { grouping, damage_threshold }>, edges: Vec<EdgeOverride> }`, `Grouping { KMeans { clusters }, Manual { groups } }` (in `Breakable::structure`)
 - `FractureModule` (`[fracture]`, needs `[assets]`): `fracture.generate {mesh, pattern, seed, path, metres_per_tile, interior_material, actor}` → `{path, pieces, cache_key}`; `fracture.inspect {path}` → `{recipe, pieces, cache_key, cached}`
 
 ## Invariants
@@ -20,6 +21,8 @@ Fracture authoring: a closed mesh cut into pieces by a seeded pattern of convex 
 - A piece's collider is in piece space: its body sits at the piece's centre of mass. Concave pieces get their convex hull (convex decomposition is later work).
 - The recipe is the source of truth; the pieces are derived data in the DDC, keyed by the recipe's canonical text, a blake3 of the source mesh's encoded data and `FRACTURE_VERSION`, and rebuilt when missing. Bump `FRACTURE_VERSION` whenever the cutter's output changes.
 - `fracture.generate` cuts before it writes, so a bad request writes nothing; the recipe is one `EditOp::Document` edit (undoable, by its actor), as `graph.apply`'s are. Like every mutating method it needs an actor and an open scene.
+- Two pieces are bonded where their interior faces lie on one plane facing each other; the bond's area is their overlap (polygon clipping in the plane), its strength area × `strength` unless overridden. Piece edges are named by cell, `a < b`, sorted.
+- Cluster levels are deterministic: k-means starts from farthest points (no randomness, ties to the lower index) and is mass-weighted; clusters are ordered by their lowest piece. A level's bonds are the sums of the piece bonds that cross between its clusters.
 - Interior UVs are a world-space planar projection whose basis ignores which side of the face it is, so both sides of a cut line up. Surface faces get zeros until source attributes are carried through the cut.
 
 ## How to test
@@ -36,7 +39,7 @@ Fracture authoring: a closed mesh cut into pieces by a seeded pattern of convex 
 - Voronoi fracture as convex-cell clipping: Müller, Chentanez and Kim, "Real Time Dynamic Fracture with Volumetric Approximate Convex Decompositions" (SIGGRAPH 2013); the generalised winding number used by the tests: Jacobson, Kavan and Sorkine-Hornung (SIGGRAPH 2013).
 
 ## Status
-M8 8.1a: the five patterns and the cutter. 8.1b: centre of mass, hull colliders and interior UVs per piece. 8.1c: welding, `.breakable.ron`, the DDC store and `fracture.generate` / `fracture.inspect`. Studio roles get the fracture tools in 8.10.
+M8 8.1a: the five patterns and the cutter. 8.1b: centre of mass, hull colliders and interior UVs per piece. 8.1c: welding, `.breakable.ron`, the DDC store and `fracture.generate` / `fracture.inspect`. Studio roles get the fracture tools in 8.10. 8.2: the connection graph, cluster levels, mass and damage thresholds.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.
