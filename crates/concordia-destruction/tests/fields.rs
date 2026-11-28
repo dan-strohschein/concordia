@@ -208,3 +208,98 @@ fn a_field_with_a_duration_stops_acting_when_it_expires() {
     let damage = world.get::<Fragment>(root()).unwrap().damage[1];
     assert!((40.0..=70.0).contains(&damage), "{damage}");
 }
+
+/// The slab's x velocity and position after `ticks` with one field at x = −2 (so pushes point +x).
+fn pushed(effect: FieldEffect, ticks: u32) -> (f32, f32) {
+    let r = Run {
+        setup: Some(match effect {
+            FieldEffect::Force => |w: &mut World| {
+                field(
+                    w,
+                    Vec3::new(-2.0, 3.5, 0.5),
+                    sphere(10.0, Falloff::None, FieldEffect::Force, 2000.0),
+                )
+            },
+            _ => |w: &mut World| {
+                field(
+                    w,
+                    Vec3::new(-2.0, 3.5, 0.5),
+                    sphere(10.0, Falloff::None, FieldEffect::Impulse, 1000.0),
+                )
+            },
+        } as fn(&mut World)),
+        ..Run::default()
+    };
+    let world = run(&r, ticks);
+    let v = world
+        .get::<concordia_scene::builtin::Velocity>(root())
+        .unwrap()
+        .linear;
+    (v.x, world.get::<Transform>(root()).unwrap().translation.x)
+}
+
+#[test]
+fn force_field_pushes_steadily_away_from_its_centre() {
+    // 2000 N on 2000 kg: 1 m/s², so about 0.5 m/s after half a second.
+    let (v30, _) = pushed(FieldEffect::Force, 31);
+    let (v60, x60) = pushed(FieldEffect::Force, 61);
+    assert!((v30 - 0.5).abs() < 0.05, "{v30}");
+    assert!((v60 - 1.0).abs() < 0.05, "it keeps pushing: {v60}");
+    assert!(x60 > 0.2, "{x60}");
+}
+
+#[test]
+fn impulse_field_kicks_once() {
+    // 1000 N·s on 2000 kg: 0.5 m/s, once.
+    let (v10, _) = pushed(FieldEffect::Impulse, 10);
+    let (v40, _) = pushed(FieldEffect::Impulse, 40);
+    assert!((v10 - 0.5).abs() < 0.02, "{v10}");
+    assert!((v40 - v10).abs() < 1e-3, "only once: {v10} then {v40}");
+}
+
+#[test]
+fn sleep_field_stops_what_it_covers() {
+    let r = Run {
+        velocity: concordia_scene::builtin::Velocity {
+            linear: Vec3::new(1.0, 0.0, 0.0),
+            angular: Vec3::ZERO,
+        },
+        setup: Some(|w| {
+            field(
+                w,
+                on_bond(1.0),
+                sphere(10.0, Falloff::None, FieldEffect::Sleep, 1.0),
+            );
+        }),
+        ..Run::default()
+    };
+    let world = run(&r, 20);
+    let v = world
+        .get::<concordia_scene::builtin::Velocity>(root())
+        .unwrap()
+        .linear;
+    assert_eq!(v, Vec3::ZERO, "asleep");
+}
+
+#[test]
+fn disable_field_takes_what_it_covers_out_of_physics() {
+    let r = Run {
+        gravity: true,
+        setup: Some(|w| {
+            field(
+                w,
+                on_bond(1.0),
+                sphere(10.0, Falloff::None, FieldEffect::Disable, 1.0),
+            );
+        }),
+        ..Run::default()
+    };
+    let world = run(&r, 60);
+    assert!(
+        world
+            .get::<concordia_physics::PhysicsDisabled>(root())
+            .is_some()
+    );
+    let y = world.get::<Transform>(root()).unwrap().translation.y;
+    assert!((y - START.y).abs() < 0.01, "it didn't fall: {y}");
+}

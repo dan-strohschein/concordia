@@ -123,6 +123,17 @@ impl JoltWorld {
         unsafe { j::cj_body_move_kinematic(self.0, body.0, p.as_ptr(), r.as_ptr(), dt) };
     }
 
+    pub(crate) fn add_impulse(&mut self, body: BodyId, linear: Vec3, angular: Vec3) {
+        let (l, a) = (linear.to_array(), angular.to_array());
+        // SAFETY: valid world; arrays live for the call.
+        unsafe { j::cj_body_add_impulse(self.0, body.0, l.as_ptr(), a.as_ptr()) };
+    }
+
+    pub(crate) fn set_active(&mut self, body: BodyId, active: bool) {
+        // SAFETY: valid world.
+        unsafe { j::cj_body_set_active(self.0, body.0, active) };
+    }
+
     pub(crate) fn step(&mut self, dt: f32) -> Result<(), PhysicsError> {
         // SAFETY: valid world.
         match unsafe { j::cj_world_step(self.0, dt, 1) } {

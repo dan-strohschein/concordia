@@ -10,10 +10,10 @@ use concordia_scene::builtin::{Transform, Velocity};
 use concordia_terra::World;
 use jolt_sys as j;
 
-use crate::components::ContactReports;
 use crate::components::{
     BodyKind, CharacterController, CharacterMotion, Collider, ColliderShape, RigidBody,
 };
+use crate::components::{ContactReports, Impulse, PhysicsDisabled, Sleep};
 use crate::error::PhysicsError;
 use crate::events::{ContactBegan, ContactEnded, ContactImpact};
 use crate::jolt::{BodyId, JoltCharacter, JoltWorld};
@@ -101,6 +101,7 @@ impl PhysicsRuntime {
     pub fn tick(&mut self, world: &mut World, dt: f32) -> Result<TickReport, PhysicsError> {
         let mut rejected = self.sync_bodies(world, Some(dt));
         rejected.extend(self.sync_characters(world));
+        self.apply_requests(world);
         self.jolt.step(dt)?;
         self.move_characters(world, dt);
         self.write_back(world);
@@ -199,6 +200,27 @@ impl PhysicsRuntime {
             }
         }
         rejected
+    }
+
+    /// One-shot `Impulse` and `Sleep` requests, in entity order; each is removed once seen.
+    fn apply_requests(&mut self, world: &mut World) {
+        for entity in world.entity_ids_sorted() {
+            if let Some(impulse) = world.get::<Impulse>(entity).copied() {
+                if let Some(tracked) = self.bodies.get(&entity)
+                    && tracked.source.body.kind == BodyKind::Dynamic
+                {
+                    self.jolt
+                        .add_impulse(tracked.id, impulse.linear, impulse.angular);
+                }
+                let _ = world.remove::<Impulse>(entity);
+            }
+            if world.get::<Sleep>(entity).is_some() {
+                if let Some(tracked) = self.bodies.get(&entity) {
+                    self.jolt.set_active(tracked.id, false);
+                }
+                let _ = world.remove::<Sleep>(entity);
+            }
+        }
     }
 
     fn drive_kinematic(&mut self, id: BodyId, source: &Source, t: &Transform, dt: Option<f32>) {
@@ -364,6 +386,9 @@ impl PhysicsRuntime {
 }
 
 pub(crate) fn source_of(world: &World, id: EntityId) -> Option<(Transform, Source)> {
+    if world.get::<PhysicsDisabled>(id).is_some() {
+        return None;
+    }
     let t = *world.get::<Transform>(id)?;
     let body = world.get::<RigidBody>(id)?.clone();
     let collider = world.get::<Collider>(id)?.clone();

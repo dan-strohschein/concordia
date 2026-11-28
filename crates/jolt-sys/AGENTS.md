@@ -37,6 +37,8 @@ M1 phase 1.7a (world, bodies, events, raycasts, state, characters exposed for 1.
 
 M8 8.0d: `cj_soft_body_add` (vertices, inverse masses, triangles, compliances; constraints from Jolt's `CreateConstraints`; degenerate faces rejected) and `cj_soft_body_positions`.
 
+M8 8.4b: `cj_body_add_impulse` (dynamic bodies only; non-finite input ignored) and `cj_body_set_active`; bindings regenerated.
+
 M8 8.0b: a started `CjContactEvent` carries `strength` (closing speed along the normal times the reduced mass) and the first contact `point`.
 
 ## Engineering rules
