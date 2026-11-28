@@ -746,6 +746,7 @@ dependencies = [
  "concordia-assets",
  "concordia-audio",
  "concordia-core",
+ "concordia-destruction",
  "concordia-fracture",
  "concordia-gen",
  "concordia-import-fbx",
@@ -943,6 +944,26 @@ dependencies = [
  "thiserror 2.0.21",
  "tracing",
  "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "concordia-destruction"
+version = "0.0.0"
+dependencies = [
+ "concordia-api",
+ "concordia-app",
+ "concordia-core",
+ "concordia-fracture",
+ "concordia-physics",
+ "concordia-reflect",
+ "concordia-scene",
+ "concordia-terra",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
  "uuid",
 ]
 

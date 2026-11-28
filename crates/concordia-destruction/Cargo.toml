@@ -1,0 +1,30 @@
+[package]
+name = "concordia-destruction"
+description = "Concordia destruction at runtime: fractured breakables as Jolt bodies that strain under impacts and split into their connected parts, deterministically."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+concordia-api.workspace = true
+concordia-core.workspace = true
+concordia-fracture.workspace = true
+concordia-physics.workspace = true
+concordia-reflect.workspace = true
+concordia-scene.workspace = true
+concordia-terra.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+concordia-app.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true

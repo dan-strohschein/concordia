@@ -19,7 +19,7 @@ pub use error::FractureError;
 pub use manifold_sys::safe::Mesh;
 pub use methods::{
     FractureGenerate, FractureGenerateParams, FractureGenerateResult, FractureInspect,
-    FractureInspectParams, FractureInspectResult, PieceSummary,
+    FractureInspectParams, FractureInspectResult, PieceSummary, load,
 };
 pub use module::FractureModule;
 pub use pattern::{Cell, MAX_CELLS, Pattern};

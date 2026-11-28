@@ -76,6 +76,7 @@ recast-sys = { path = "crates/recast-sys" }
 meshopt-sys = { path = "crates/meshopt-sys" }
 manifold-sys = { path = "crates/manifold-sys" }
 concordia-fracture = { path = "crates/concordia-fracture" }
+concordia-destruction = { path = "crates/concordia-destruction" }
 concordia-cluster = { path = "crates/concordia-cluster" }
 bitflags = "2.13"
 blake3 = "1.8"

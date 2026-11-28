@@ -141,11 +141,7 @@ impl Method for FractureInspect {
         _: &CallCtx,
         p: FractureInspectParams,
     ) -> Result<FractureInspectResult, ApiError> {
-        let text = read(engine, &p.path)?
-            .ok_or_else(|| invalid(format!("no breakable at {}", p.path)).at("/path"))?;
-        let recipe: Breakable = concordia_scene::read_document(&text)
-            .map_err(|e| invalid(format!("{}: {e}", p.path)).at("/path"))?;
-        let stored = cut(engine, &recipe)?;
+        let (recipe, stored) = load(engine, &p.path)?;
         Ok(FractureInspectResult {
             recipe,
             pieces: summary(&stored.fracture),
@@ -153,6 +149,16 @@ impl Method for FractureInspect {
             cached: stored.cached,
         })
     }
+}
+
+/// The recipe at `path` and its pieces (from the DDC, or cut again and cached).
+pub fn load(engine: &mut Engine, path: &str) -> Result<(Breakable, Stored), ApiError> {
+    let text = read(engine, path)?
+        .ok_or_else(|| invalid(format!("no breakable at {path}")).at("/path"))?;
+    let recipe: Breakable = concordia_scene::read_document(&text)
+        .map_err(|e| invalid(format!("{path}: {e}")).at("/path"))?;
+    let stored = cut(engine, &recipe)?;
+    Ok((recipe, stored))
 }
 
 fn invalid(message: impl Into<String>) -> ApiError {

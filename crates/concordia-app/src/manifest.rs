@@ -51,6 +51,25 @@ pub struct Manifest {
     /// `[fracture]`; `fracture.generate` and `fracture.inspect` exist only if this section exists
     /// (meshes load through `[assets]`; M8 8.1).
     pub fracture: Option<FractureSection>,
+    /// `[destruction]`; breakables break in play only if this section exists (recipes load
+    /// through `[fracture]`'s store and `[assets]`; bodies need `[physics]`; M8 8.3).
+    pub destruction: Option<DestructionSection>,
+}
+
+/// `[destruction]` (ADR-0180).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct DestructionSection {
+    /// The most bonds that break in one tick (at least 1; default 64).
+    pub breaks_per_tick: std::num::NonZeroU32,
+}
+
+impl Default for DestructionSection {
+    fn default() -> Self {
+        Self {
+            breaks_per_tick: std::num::NonZeroU32::new(64).unwrap_or(std::num::NonZeroU32::MIN),
+        }
+    }
 }
 
 /// `[fracture]` (no settings yet; ADR-0180).
