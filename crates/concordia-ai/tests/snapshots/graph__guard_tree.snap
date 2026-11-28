@@ -1,0 +1,65 @@
+---
+source: crates/concordia-ai/tests/graph.rs
+expression: tree
+---
+{
+  "keys": {
+    "mood": "Text",
+    "target": "Entity",
+    "target_position": "Vec3"
+  },
+  "nodes": [
+    {
+      "kind": "Selector",
+      "end": 6
+    },
+    {
+      "kind": {
+        "Condition": {
+          "key": "target",
+          "op": "IsSet",
+          "value": "None",
+          "abort": "Lower"
+        }
+      },
+      "end": 3
+    },
+    {
+      "kind": {
+        "Task": {
+          "MoveTo": {
+            "key": "target_position"
+          }
+        }
+      },
+      "end": 3
+    },
+    {
+      "kind": "Sequence",
+      "end": 6
+    },
+    {
+      "kind": {
+        "Task": {
+          "Wait": {
+            "seconds": 2.0
+          }
+        }
+      },
+      "end": 5
+    },
+    {
+      "kind": {
+        "Task": {
+          "SetBlackboard": {
+            "key": "mood",
+            "value": {
+              "Text": "bored"
+            }
+          }
+        }
+      },
+      "end": 6
+    }
+  ]
+}

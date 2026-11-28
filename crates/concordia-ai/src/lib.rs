@@ -1,6 +1,7 @@
 //! Runtime AI without an LLM (M4 4.12): a typed blackboard, event-driven behavior trees in a flat
 //! array, and utility scoring. Deterministic: randomness only from the caller's seeded RNG.
 
+mod behavior_graph;
 mod blackboard;
 mod bt;
 mod engine;
@@ -10,6 +11,7 @@ mod perception;
 mod tick;
 mod utility;
 
+pub use behavior_graph::compile_behavior;
 pub use blackboard::{BbType, BbValue, Blackboard, BlackboardError};
 pub use bt::{
     Abort, BehaviorTree, BtNode, CmpOp, NodeKind, ParallelPolicy, Spec, TaskKind, TreeError,
