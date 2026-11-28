@@ -5,6 +5,7 @@ mod bounds;
 mod cut;
 mod error;
 mod pattern;
+mod piece;
 
 pub use bounds::Bounds;
 pub use cut::{Fracture, Piece, Slot, fracture};

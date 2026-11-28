@@ -7,12 +7,15 @@ Fracture authoring: a closed mesh cut into pieces by a seeded pattern of convex 
 - `fracture(&Mesh, &Pattern, seed) -> Result<Fracture, FractureError>`
 - `Pattern`: `Uniform`, `Clustered`, `Radial` (Voronoi), `Slices`, `Bricks`; `Pattern::cells(&Bounds, seed) -> Vec<Cell>`
 - `Fracture { pieces }`, `Piece { cell, positions, triangles, materials, volume }`, `Slot { Surface, Interior }`, `Bounds`, `MAX_CELLS`
+- `Piece::centre_of_mass()`, `Piece::collider()` (a `ColliderShape::ConvexHull` of its vertices, relative to the centre of mass), `Piece::interior_uvs(metres_per_tile)` (per triangle corner)
 
 ## Invariants
 - The same mesh, pattern and seed give the same bytes. Patterns use `SimRng`, arithmetic, `sqrt` and `libm` only (no platform trigonometry).
 - Pieces are closed, manifold and not empty, in cell order; their volumes sum to the source's.
 - Neighbouring cells share each cutting plane exactly negated, so pieces meet without gaps.
 - Every bad input (empty, open, non-finite mesh; zero or too many cells; out-of-range parameters) is a `FractureError`, never a panic.
+- A piece's collider is in piece space: its body sits at the piece's centre of mass. Concave pieces get their convex hull (convex decomposition is later work).
+- Interior UVs are a world-space planar projection whose basis ignores which side of the face it is, so both sides of a cut line up. Surface faces get zeros until source attributes are carried through the cut.
 
 ## How to test
 `cargo nextest run -p concordia-fracture`
@@ -28,7 +31,7 @@ Fracture authoring: a closed mesh cut into pieces by a seeded pattern of convex 
 - Voronoi fracture as convex-cell clipping: Müller, Chentanez and Kim, "Real Time Dynamic Fracture with Volumetric Approximate Convex Decompositions" (SIGGRAPH 2013); the generalised winding number used by the tests: Jacobson, Kavan and Sorkine-Hornung (SIGGRAPH 2013).
 
 ## Status
-M8 8.1a: the five patterns and the cutter. Next (8.1b): hulls per piece, interior UVs, `fracture.generate` and `.breakable.ron`.
+M8 8.1a: the five patterns and the cutter. 8.1b: centre of mass, hull colliders and interior UVs per piece. Next (8.1c): `.breakable.ron` and `fracture.generate`.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

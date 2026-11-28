@@ -1,5 +1,5 @@
 # M8: Advanced physics (destruction and GPU garments)
-Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · **Phase 8.0 done** (8.0a–d: hull and compound colliders, contact impacts, mid-play bodies, the soft-body reference) · **8.1a done** (Manifold cutter, five patterns) · Estimated effort: ~20 weeks (range 16–26), author plus agents
+Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · **Phase 8.0 done** (8.0a–d: hull and compound colliders, contact impacts, mid-play bodies, the soft-body reference) · **8.1a–b done** (Manifold cutter, five patterns; hulls and interior UVs) · Estimated effort: ~20 weeks (range 16–26), author plus agents
 
 > Outline plan with phase breakdowns and test lists. Refine when M2 lands: the skinning data layout (8.7, 8.10), the mesh import path for garments, and M3's replay format if caches build on it (8.6).
 
@@ -93,6 +93,14 @@ The plan predates M2. Checked against `main` after M4; the phases below stand, w
   - The fracture tests were written first and run against a stub that returns no pieces: 7 of 8 failed. `every_piece_is_closed_and_manifold` passed on the stub because it found no pieces to check. All 8 then passed with the cutter.
   - `pieces_are_the_same_bytes_on_every_platform` pins a blake3 of every pattern's output, taken on macOS (ARM). Linux CI (x86) only lints, so this pin is first checked on Linux at the next regression run.
   - Checks: fmt, clippy, cargo deny licenses.
+
+**8.1b** (done): what a piece needs for play.
+- `Piece::centre_of_mass` (uniform density).
+- `Piece::collider`: a `ColliderShape::ConvexHull` of the piece's vertices, relative to its centre of mass. Concave pieces get their hull; convex decomposition (CoACD or V-HACD) moves to the backlog until a test needs it.
+- `Piece::interior_uvs(metres_per_tile)`: a planar projection in world space, so both sides of a cut line up.
+- **Not yet:** the source mesh's own UVs and normals carried through the cut. Surface faces get zeros until rendering needs them (8.5).
+- **What the tests show:** every vertex is within Jolt's 1 mm hull tolerance of its hull, concave pieces included; the collider sits around the centre of mass; the UVs on both sides of a cut agree, scale with `metres_per_tile`, and a bad scale is an error.
+- **Test log:** the four `pieces` tests were written first and failed against stubs, each for its own reason; they then passed.
 
 ### Effort, revised
 About **18 weeks (15–23)**, down from 20: rendering, instancing, compute and replay groundwork already exist, but 8.0 is new (about 1.5 weeks). The cutter (8.1), the solver (8.8) and weight painting (8.10, needs visual design) remain the large items.

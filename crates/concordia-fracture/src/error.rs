@@ -14,6 +14,12 @@ pub enum FractureError {
     /// The pattern's parameters are out of range.
     #[error("invalid pattern: {0}")]
     InvalidPattern(String),
+    /// A parameter is out of range.
+    #[error("invalid parameter: {0}")]
+    InvalidParameter(String),
+    /// The piece's collision hull couldn't be built.
+    #[error("no collision hull: {0}")]
+    Hull(String),
     /// The cutter failed.
     #[error("the cutter failed")]
     Cutter,
