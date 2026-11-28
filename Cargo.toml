@@ -74,6 +74,7 @@ jolt-sys = { path = "crates/jolt-sys" }
 ufbx-sys = { path = "crates/ufbx-sys" }
 recast-sys = { path = "crates/recast-sys" }
 meshopt-sys = { path = "crates/meshopt-sys" }
+manifold-sys = { path = "crates/manifold-sys" }
 concordia-cluster = { path = "crates/concordia-cluster" }
 bitflags = "2.13"
 blake3 = "1.8"

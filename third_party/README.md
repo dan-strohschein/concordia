@@ -6,6 +6,7 @@ Vendored permissively licensed C/C++ sources, each with its LICENSE file and a V
 | `ufbx/` | ufbx/ufbx | v0.23.1 | MIT (or Unlicense) |
 | `recastnavigation/` | recastnavigation/recastnavigation | v1.6.0 | zlib |
 | `meshoptimizer/` | zeux/meshoptimizer | v1.3 | MIT |
+| `manifold/` | elalish/manifold | v3.5.5 (core only) | Apache-2.0 |
 
 Downloaded (not vendored) toolchains, pinned with SHA-256:
 

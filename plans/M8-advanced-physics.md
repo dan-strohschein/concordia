@@ -1,5 +1,5 @@
 # M8: Advanced physics (destruction and GPU garments)
-Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · **Phase 8.0 done** (8.0a–d: hull and compound colliders, contact impacts, mid-play bodies, the soft-body reference) · Estimated effort: ~20 weeks (range 16–26), author plus agents
+Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · **Phase 8.0 done** (8.0a–d: hull and compound colliders, contact impacts, mid-play bodies, the soft-body reference) · **8.1a done** (Manifold cutter, five patterns) · Estimated effort: ~20 weeks (range 16–26), author plus agents
 
 > Outline plan with phase breakdowns and test lists. Refine when M2 lands: the skinning data layout (8.7, 8.10), the mesh import path for garments, and M3's replay format if caches build on it (8.6).
 
@@ -76,6 +76,22 @@ The plan predates M2. Checked against `main` after M4; the phases below stand, w
 - **What the tests show:** a sheet pinned along its top row hangs about 1 m below it, stays finite, and repeats exactly.
 - **Rejected as errors:** no faces, an index out of range, a degenerate face, mismatched lengths, and NaN. Jolt only asserts against degenerate faces, and its asserts are compiled out, so the shim checks them itself.
 - **Test log:** the smoke test failed to link first, and the physics test failed to compile first (no types); both then passed.
+
+**8.1a** (done): the cutter and the patterns (ADR-0180).
+- **`manifold-sys`:** Manifold v3.5.5's core (Apache-2.0), vendored under `third_party/manifold` and built with `cc`: sequential, no fused multiply-add, no cross sections. A C shim exposes one operation, `cm_clip_convex`, which clips a closed mesh by a convex cell and marks the cut faces. Hand-written bindings, checked by a header hash, and a checked wrapper, `safe::clip_convex`.
+- **`concordia-fracture`:** `fracture(mesh, pattern, seed)`. The patterns are `Uniform`, `Clustered` and `Radial` (Voronoi cells from bisector planes), `Slices` and `Bricks` (running bond). Pieces come with a material slot per triangle (`Surface` or `Interior`); cells that miss the mesh make no piece. At most 1,024 cells.
+- **What the tests show:**
+  - on a box and a concave L-prism, the pieces' volumes sum to the source's within 1e-4;
+  - no point is in two pieces (sampled with the generalised winding number);
+  - every piece is closed and manifold;
+  - cut faces, and only those, are interior;
+  - the same seed gives the same bytes;
+  - bad meshes and patterns are errors.
+- **Moved to 8.1b:** `hull_contains_its_piece` (hulls per piece through `concordia-physics`), interior UVs, `fracture.generate` and `.breakable.ron`.
+- **Test log:**
+  - `manifold-sys`'s clip tests were first run after the shim existed, so they weren't seen failing first.
+  - The fracture tests were written first and run against a stub that returns no pieces: 7 of 8 failed. `every_piece_is_closed_and_manifold` passed on the stub because it found no pieces to check. All 8 then passed with the cutter.
+  - Checks: fmt, clippy, cargo deny licenses.
 
 ### Effort, revised
 About **18 weeks (15–23)**, down from 20: rendering, instancing, compute and replay groundwork already exist, but 8.0 is new (about 1.5 weeks). The cutter (8.1), the solver (8.8) and weight painting (8.10, needs visual design) remain the large items.
