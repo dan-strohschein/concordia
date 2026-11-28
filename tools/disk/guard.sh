@@ -2,7 +2,8 @@
 # Claude Code PreToolUse hook: stops heavy cargo/just commands when the disk is nearly full.
 # Reads the hook's JSON on stdin. Below DISK_STOP_GB free it blocks (exit 2, reason on stderr);
 # below DISK_WARN_GB free, or with target/ over DISK_TARGET_WARN_GB, it lets the command run and
-# tells the agent to prune first.
+# tells the agent to prune first. Free space is measured on the disk that holds target/, which may
+# be a symlink to an external drive; a symlinked target/ whose drive is missing stops builds.
 set -u
 STOP=${DISK_STOP_GB:-30}
 WARN=${DISK_WARN_GB:-40}
@@ -37,10 +38,20 @@ target_gb() {
   fi
 }
 
-free=$(df -g / | awk 'NR==2 {print $4}')
+repo=${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}
+disk=/
+if [ -L "$repo/target" ]; then
+  disk=$(readlink "$repo/target")
+  if [ ! -d "$disk" ]; then
+    echo "Blocked: target/ points to $disk, which isn't there. Plug in its drive (or remove the target link to build on the internal disk), then retry." >&2
+    exit 2
+  fi
+  disk=$(cd "$disk" && pwd -P)
+fi
+free=$(df -g "$disk" | awk 'NR==2 {print $4}')
 [ -n "$free" ] || exit 0
 if [ "$free" -lt "$STOP" ]; then
-  echo "Blocked: only ${free} GB free on / (the stop line is ${STOP} GB). Run 'just prune-builds' (or 'just clean-builds' if that is not enough), then retry." >&2
+  echo "Blocked: only ${free} GB free on the disk holding ${disk} (the stop line is ${STOP} GB). Run 'just prune-builds' (or 'just clean-builds' if that is not enough), then retry." >&2
   exit 2
 fi
 size=$(target_gb)
