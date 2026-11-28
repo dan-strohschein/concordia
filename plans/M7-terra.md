@@ -1,5 +1,5 @@
 # M7: Terra (large-scale entity simulation)
-Status: Phase 7.0 done (2026-11-18). **ADR-0067: phases 7.1–7.6 and the basic crowd and traffic work of 7.7 moved to M2** (2.0, 2.0b, 2.0c, 2.4b, 2.5); the `terra.*` tools arrive with them. M7 keeps large-scale performance, AI-driven crowd and traffic behavior (after M4) and its gate (7.9), planned after M4 · Depends on: M0 (ECS), M1 (render instancing), M2 (nav and Detour crowds), M4 (runtime AI, virtualized geometry) · Detail level: **Needs refinement after M4** · Estimated effort: ~12 weeks (range 10–16) after 7.0, author plus agents
+Status: Phase 7.0 done (2026-11-18). **ADR-0067: phases 7.1–7.6 and the basic crowd and traffic work of 7.7 moved to M2** (2.0, 2.0b, 2.0c, 2.4b, 2.5); the `terra.*` tools arrive with them. M7 keeps large-scale performance, AI-driven crowd and traffic behavior (after M4) and its gate (7.9), planned after M4 · Depends on: M0 (ECS), M1 (render instancing), M2 (nav and Detour crowds), M4 (runtime AI, virtualized geometry) · Detail level: **Needs refinement after M4** (decisions P1–P2 recorded 2026-11-27) · Estimated effort: ~12 weeks (range 10–16) after 7.0, author plus agents
 
 > Outline plan. Phase 7.0 (the rename) is small and fully specified; phases 7.1–7.9 are refined when M4 lands, because representation and behavior depend on M1/M4 rendering and M4 runtime AI.
 
@@ -40,6 +40,16 @@ crates/concordia-terra-sim/    templates and traits, processing phases, LOD, sig
 crates/concordia-terra-crowd/  crowd and traffic over concordia-nav
 crates/concordia-api/          terra.* methods
 ```
+
+## Author's decisions before the refinement (2026-11-27)
+The full refinement (findings against the code, sub-phases, tests) comes next; these two decisions frame it.
+- **P1: performance is M7's core.** The gate's "100,000 agents at 60 Hz" stays a real, asserted budget, which ends the M4-era deferral of heavy perf work for this milestone.
+  - M7 opens with a small phase that recalibrates the reference machine's budgets (M4's D1 recalibration, deferred until now).
+  - Perf runs never share the machine with other heavy work (for example a regression run).
+- **P2: crowds think in groups.** A group of pedestrians is steered by one brain (an M4 behavior tree over a group blackboard); a crowd is many groups. Each member keeps only a small per-agent state (its place in the group, its own avoidance and arrival).
+  - **`group_size`** (members per group) is configurable. With a default of 100, 1,000 pedestrians make 10 groups of 100 (the author's example) and 100,000 make 1,000 groups, about the cost of M4's 500-agent brain test.
+  - **Groups form by place** (spawner and neighbourhood), not by list order, so a group moves as a believable cluster.
+  - **A few hundred "important" agents** (named characters, anything the player engages) keep a full per-entity brain: thinking LOD, alongside simulation LOD.
 
 ## Phases
 
