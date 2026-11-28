@@ -425,7 +425,7 @@ Replay(
     header: (
         checkpoint_every: 600,
         engine: "0.0.0",
-        manifest_hash: Some("0eec2972e833d59971e51a1172c6a8bd8689470717cc3a7c326f24a0bbe3f2ba"),
+        manifest_hash: Some("c306bcf3e56b96b870f5c92d1424da85fb689480bd47c97a0ef725316549d1ce"),
         modules: [
             (
                 hash: "ace834a56da92303cb06ca921457c21a5024e03aed8703c52b046088920837a4",
@@ -440,7 +440,7 @@ Replay(
                 name: "lamplight",
             ),
             (
-                hash: "3ff5ca2a9b33b3280542d3246a9c6b3d6c07a97cec6dbd1e0ed68ee4bba2eec8",
+                hash: "8b8e8002364715a9773c50ee11ed17a64d1d21df2d359e58ac5630f177f4b30b",
                 kind: "native",
                 module: "scripts",
                 name: "fog",

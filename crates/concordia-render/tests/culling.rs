@@ -185,6 +185,52 @@ const ROW_SIZE: (u32, u32) = (320, 180);
 const ROW_EYE: Vec3 = Vec3::new(0.0, 2.5, 7.0);
 const ROW_TARGET: Vec3 = Vec3::new(0.0, 1.0, 0.0);
 
+/// Presented frames (a window's viewport) report their meshlet culling like offscreen ones: the
+/// counts arrive when each frame retires (M4's end: the mutation sweep found nothing read them).
+#[test]
+fn presented_frames_report_their_meshlet_culling() {
+    use concordia_render::{RenderRequest, RenderWorld};
+    for mut r in renderers() {
+        let mut c = row(ROW_EYE, ROW_TARGET);
+        let layer = common::test_surface();
+        // SAFETY: the layer outlives the surface, which the renderer releases when dropped.
+        let surface = unsafe { r.create_surface(layer.target) }.unwrap();
+        let rw = RenderWorld::extract(&c.scene.world);
+        let request = RenderRequest {
+            camera: None,
+            view: None,
+            width: ROW_SIZE.0,
+            height: ROW_SIZE.1,
+            overlays: None,
+            view_mode: Default::default(),
+            debug: Vec::new(),
+            ui: Default::default(),
+        };
+        for _ in 0..6 {
+            r.present(&rw, &mut c.scene.assets, &request, surface)
+                .unwrap();
+        }
+        let presented = r.stats().meshlets;
+        let _ = c.scene.render(&mut r, ROW_SIZE.0, ROW_SIZE.1);
+        let offscreen = r.stats().meshlets;
+        assert!(presented.after_cone > 0, "{presented:?}");
+        let before_occlusion = |m: concordia_render::MeshletCounts| {
+            (
+                m.meshlets,
+                m.candidates,
+                m.after_instance_frustum,
+                m.after_frustum,
+                m.after_cone,
+            )
+        };
+        assert_eq!(
+            before_occlusion(presented),
+            before_occlusion(offscreen),
+            "presented {presented:?}, offscreen {offscreen:?}"
+        );
+    }
+}
+
 #[test]
 fn frustum_culling_matches_culling_off() {
     for mut r in renderers() {

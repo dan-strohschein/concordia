@@ -75,6 +75,13 @@ jobs:
           CONCORDIA_BACKEND: vulkan
           CONCORDIA_VULKAN_VALIDATION: strict
           CONCORDIA_GOLDEN_KEEP: "1"
+      - name: M4 gate's fallback (c) on Vulkan (the canyon's gate view against the Metal golden)
+        if: ${{ !cancelled() && inputs.gdb == '' }}
+        run: cargo nextest run -p concordia-tests --profile lavapipe -E 'binary_id(concordia-tests::integration) & test(=m4_fallbacks::vulkan_matches_the_metal_golden)'
+        env:
+          CONCORDIA_BACKEND: vulkan
+          CONCORDIA_VULKAN_VALIDATION: strict
+          CONCORDIA_GOLDEN_KEEP: "1"
       - name: gpu-probe on Vulkan
         if: ${{ !cancelled() && inputs.gdb == '' }}
         run: cargo run -q -p concordia-cli -- gpu-probe --backend vulkan --require-m1
@@ -119,7 +126,7 @@ jobs:
       - uses: ./.github/actions/lavapipe
       - name: Renderer on Vulkan (shard ${{ matrix.shard }} of the render suite)
         run: >-
-          cargo nextest run -p concordia-render --profile ci --no-fail-fast
+          cargo nextest run -p concordia-render --profile lavapipe --no-fail-fast
           --partition hash:${{ matrix.shard }}/3 -E "$RENDER_FILTER"
         env:
           CONCORDIA_BACKEND: vulkan

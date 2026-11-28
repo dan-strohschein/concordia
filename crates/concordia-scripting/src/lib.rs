@@ -10,6 +10,7 @@
 //!   play world, all or nothing.
 
 mod config;
+mod fingerprint;
 mod graph_api;
 mod module;
 mod reload;

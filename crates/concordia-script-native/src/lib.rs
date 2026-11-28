@@ -16,4 +16,6 @@ mod backend;
 mod source_check;
 
 pub use backend::{NativeBackend, NativeModule};
-pub use source_check::{Finding, SourceCheckError, check_module_source, check_source};
+pub use source_check::{
+    Finding, SourceCheckError, check_module_source, check_source, module_source_files,
+};

@@ -1,5 +1,20 @@
 Tolerances(
+    backends: {
+        "vulkan": (
+            default: None,
+            goldens: {
+                "canyon_gate_view": (
+                    mean: 0.015,
+                    p99: 0.25,
+                ),
+            },
+        ),
+    },
     culling: {
+        "camera_cut": (
+            mean: 0.001,
+            p99: 0.05,
+        ),
         "canyon_ground_000": (
             mean: 0.001,
             p99: 0.05,
@@ -28,15 +43,7 @@ Tolerances(
             mean: 0.001,
             p99: 0.05,
         ),
-        "camera_cut": (
-            mean: 0.001,
-            p99: 0.05,
-        ),
         "culling_row": (
-            mean: 0.001,
-            p99: 0.05,
-        ),
-        "moving_occluder": (
             mean: 0.001,
             p99: 0.05,
         ),

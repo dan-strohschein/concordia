@@ -12,6 +12,7 @@ use concordia_script_native::{NativeBackend, check_module_source};
 use concordia_script_wasm::{WasmBackend, WasmConfig};
 
 use crate::config::{ScriptEntry, ScriptKind, ScriptsConfig};
+use crate::fingerprint::native_fingerprint;
 
 /// Where a loaded module comes from.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -137,6 +138,15 @@ impl Scripts {
                     });
                 }
                 let module = self.load_file(entry)?;
+                let hash = match entry.kind {
+                    // A native library's bytes differ between builds of one source (ADR-0072).
+                    ScriptKind::Native => {
+                        let desc = module.describe().map_err(|e| format!("describe: {e}"))?;
+                        let json = serde_json::to_vec(&desc).map_err(|e| e.to_string())?;
+                        native_fingerprint(&json, entry.source.as_deref())?
+                    }
+                    _ => hash,
+                };
                 Ok(Build {
                     module,
                     hash,
