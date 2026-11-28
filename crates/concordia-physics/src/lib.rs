@@ -15,10 +15,12 @@ mod settings;
 mod solids;
 
 pub use components::{
-    BodyKind, CharacterController, CharacterMotion, Collider, ColliderShape, RigidBody,
+    BodyKind, CharacterController, CharacterMotion, Collider, ColliderShape, ContactReports,
+    RigidBody,
 };
 pub use error::PhysicsError;
-pub use events::{ContactBegan, ContactEnded};
+pub use events::{ContactBegan, ContactEnded, ContactImpact};
+pub use jolt::hull_triangles;
 pub use layers::{LayerMask, PhysicsLayer};
 pub use module::{
     PhysicsModule, PhysicsQueries, PhysicsRaycast, RaycastHit, RaycastParams, RaycastResult,

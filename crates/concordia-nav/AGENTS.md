@@ -32,6 +32,8 @@ Navigation (M2 phase 2.5, ADR-0077): navmeshes built with Recast from the static
 - `nav.click` reads `ActionStates`, `PhysicsQueries` and `NavMeshes`. When the click fires (`just_pressed`, or `pressed` with `hold`), it takes the ray's nearest physics hit, snaps it onto the agent's navmesh (`nearest_point`) and writes `NavAgent.target`; a miss changes nothing. Bad action names or kinds, layers or reach warn once per agent and the component is ignored. It runs after input sampling by registration order (input's module comes first).
 - Recast rules the tests rely on: the walkable surface of a floor is up to one `cell_height` above it (a span is at least one cell tall); a face exactly on a cell boundary belongs to one side only (fixtures put floor edges inside a cell); erosion keeps the cell diagonal to a blocked corner; contours are exact to the cell when `edge_max_error` < 0.7. Detour's A* runs over portal midpoints, so path shapes are pinned on single-tile fixtures.
 
+- Hull and compound colliders are sources through `concordia_physics::hull_triangles` (the physics hull), already wound outward per part. `outward` measures from the shape's origin, which only fits shapes centred on it (M8 8.0a).
+
 ## How to test
 `cargo nextest run -p concordia-nav` (`tests/build.rs`, `tests/query.rs`, `tests/api.rs`; `tests/agents.rs` on a rig without physics, where a test system moves each `Transform` by its velocity so ticks are hand-computable; `tests/agents_physics.rs` with Jolt characters; every expected value is derived in the files' headers). The guest test is `concordia-app`'s `tests/nav_guest.rs` (needs `just wasm`). The GPU golden of the debug layer is `concordia-app`'s `tests/nav.rs`; the MCP tools are `concordia-mcp`'s `tests/nav_tools.rs`.
 

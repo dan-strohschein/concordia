@@ -31,7 +31,11 @@ Raw FFI to Jolt Physics through Concordia's C++ shim (`shim/concordia_jolt_ext.{
 - Jolt Physics (MIT), vendored; Jolt documentation and samples (jrouwe.github.io/JoltPhysics); Jorrit Rouwé, "Architecting Jolt Physics for Horizon Forbidden West" (GDC 2022).
 
 ## Status
-M1 phase 1.7a (world, bodies, events, raycasts, state, characters exposed for 1.7b). M2 phase 2.10a: `CjCharacterDesc::user`; characters get an inner body for sensors, which the contact listener's `OnContactValidate` keeps away from non-sensors and raycasts and character moves skip (`NotInner`); bindings regenerated.
+M1 phase 1.7a (world, bodies, events, raycasts, state, characters exposed for 1.7b). M2 phase 2.10a: `CjCharacterDesc::user`; characters get an inner body for sensors, which the contact listener's `OnContactValidate` keeps away from non-sensors and raycasts and character moves skip (`NotInner`); bindings regenerated. M8 8.0a:
+- Two new shapes: `CJ_SHAPE_CONVEX_HULL` and `CJ_SHAPE_COMPOUND` (static compound of hulls, `points` split by `part_ends`). Hulls with no volume are rejected.
+- `cj_convex_hull_triangles` returns a hull's faces, placed at its centre of mass, since Jolt keeps hulls around it.
+
+M8 8.0b: a started `CjContactEvent` carries `strength` (closing speed along the normal times the reduced mass) and the first contact `point`.
 
 ## Engineering rules
 These apply to every change, by humans and agents alike.

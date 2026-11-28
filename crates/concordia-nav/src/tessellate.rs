@@ -2,7 +2,7 @@
 //! byte-identical wherever the arithmetic is IEEE).
 
 use concordia_core::math::Vec3;
-use concordia_physics::ColliderShape;
+use concordia_physics::{ColliderShape, hull_triangles};
 
 /// Steps around a circle.
 pub const SEGMENTS: usize = 16;
@@ -32,6 +32,18 @@ pub fn unit(k: usize) -> (f32, f32) {
 /// A shape's triangles in local space, facing outward.
 pub(crate) fn triangles(shape: &ColliderShape) -> Vec<[Vec3; 3]> {
     let raw = match *shape {
+        // Hulls are Jolt's own (the hull physics collides with), already wound outward per part
+        // (a compound's parts aren't centred on the origin `outward` measures from). An invalid
+        // one, which physics rejects too, adds nothing.
+        ColliderShape::ConvexHull { ref points } => {
+            return hull_triangles(points).unwrap_or_default();
+        }
+        ColliderShape::Compound { ref parts } => {
+            return parts
+                .iter()
+                .flat_map(|p| hull_triangles(p).unwrap_or_default())
+                .collect();
+        }
         ColliderShape::Box { half_extents } => cuboid(half_extents),
         ColliderShape::Cylinder {
             half_height,

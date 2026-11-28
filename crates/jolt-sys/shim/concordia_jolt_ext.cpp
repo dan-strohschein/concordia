@@ -25,9 +25,11 @@
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
+#include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
 #include <Jolt/Physics/Collision/Shape/CylinderShape.h>
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Physics/StateRecorderImpl.h>
 #include <Jolt/RegisterTypes.h>
@@ -142,7 +144,10 @@ public:
                               : ValidateResult::AcceptAllContactsForThisBodyPair;
     }
 
-    void OnContactAdded(const Body& b1, const Body& b2, const ContactManifold&, ContactSettings&) override {
+    void OnContactAdded(const Body& b1, const Body& b2, const ContactManifold& m, ContactSettings&) override {
+        float strength = 0.0f;
+        Vec3 point = Vec3(m.GetWorldSpaceContactPointOn1(0));
+        if (!b1.IsSensor() && !b2.IsSensor()) strength = Strength(b1, b2, m.mWorldSpaceNormal, point);
         std::lock_guard<std::mutex> lock(mMutex);
         auto key = Key(b1.GetID(), b2.GetID());
         Pair& pair = mPairs[key];
@@ -151,8 +156,23 @@ public:
             pair.a = first ? b1.GetUserData() : b2.GetUserData();
             pair.b = first ? b2.GetUserData() : b1.GetUserData();
             pair.sensor = b1.IsSensor() || b2.IsSensor();
-            mEvents.push_back({pair.a, pair.b, true, pair.sensor});
+            CjContactEvent e{pair.a, pair.b, true, pair.sensor, strength, {}};
+            point.StoreFloat3(reinterpret_cast<Float3*>(e.point));
+            mEvents.push_back(e);
         }
+    }
+
+    /// Closing speed at `point` along `normal` (from b1 to b2) times the reduced mass: the
+    /// impulse that stops the approach.
+    static float Strength(const Body& b1, const Body& b2, Vec3 normal, Vec3 point) {
+        auto inverse_mass = [](const Body& b) {
+            return b.IsDynamic() ? b.GetMotionProperties()->GetInverseMass() : 0.0f;
+        };
+        float inv = inverse_mass(b1) + inverse_mass(b2);
+        if (!(inv > 0.0f)) return 0.0f;
+        Vec3 relative = b1.GetPointVelocity(RVec3(point)) - b2.GetPointVelocity(RVec3(point));
+        float closing = relative.Dot(normal);
+        return closing > 0.0f ? closing / inv : 0.0f;
     }
 
     void OnContactRemoved(const SubShapeIDPair& shapes) override {
@@ -160,7 +180,7 @@ public:
         auto it = mPairs.find(Key(shapes.GetBody1ID(), shapes.GetBody2ID()));
         if (it == mPairs.end()) return;
         if (--it->second.count == 0) {
-            mEvents.push_back({it->second.a, it->second.b, false, it->second.sensor});
+            mEvents.push_back({it->second.a, it->second.b, false, it->second.sensor, 0.0f, {}});
             mPairs.erase(it);
         }
     }
@@ -214,6 +234,41 @@ void store(QuatArg q, float out[4]) {
 
 bool positive(float x) { return x > 0.0f && x < 1.0e6f; }
 
+/// The convex hull of points [begin, end) (3 floats each), or null if they have none.
+RefConst<Shape> make_hull(const float* points, uint32_t begin, uint32_t end) {
+    if (points == nullptr || end < begin + 4) return nullptr;
+    Array<Vec3> cloud;
+    cloud.reserve(end - begin);
+    for (uint32_t i = begin; i < end; ++i) {
+        const float* p = points + 3 * size_t(i);
+        if (!(std::abs(p[0]) < 1.0e6f && std::abs(p[1]) < 1.0e6f && std::abs(p[2]) < 1.0e6f)) return nullptr;
+        cloud.push_back(Vec3(p[0], p[1], p[2]));
+    }
+    ConvexHullShapeSettings settings(cloud, cDefaultConvexRadius);
+    ShapeSettings::ShapeResult result = settings.Create();
+    // A flat or collinear cloud makes a hull with no volume (and no mass): not a solid.
+    if (result.HasError() || !(result.Get()->GetVolume() > 1.0e-9f)) return nullptr;
+    return result.Get();
+}
+
+/// A static compound of the hulls `part_ends` splits `points` into, or null if any is invalid.
+RefConst<Shape> make_compound(const CjBodyDesc& d) {
+    if (d.part_ends == nullptr || d.part_count == 0) return nullptr;
+    StaticCompoundShapeSettings settings;
+    uint32_t begin = 0;
+    for (uint32_t i = 0; i < d.part_count; ++i) {
+        uint32_t end = d.part_ends[i];
+        if (end > d.point_count) return nullptr;
+        RefConst<Shape> part = make_hull(d.points, begin, end);
+        if (part == nullptr) return nullptr;
+        settings.AddShape(Vec3::sZero(), Quat::sIdentity(), part);
+        begin = end;
+    }
+    ShapeSettings::ShapeResult result = settings.Create();
+    if (result.HasError()) return nullptr;
+    return result.Get();
+}
+
 RefConst<Shape> make_shape(const CjBodyDesc& d) {
     RefConst<Shape> base;
     switch (d.shape) {
@@ -232,6 +287,14 @@ RefConst<Shape> make_shape(const CjBodyDesc& d) {
         case CJ_SHAPE_CYLINDER:
             if (!positive(d.dims[0]) || !positive(d.dims[1])) return nullptr;
             base = new CylinderShape(d.dims[0], d.dims[1], std::min(0.05f, std::min(d.dims[0], d.dims[1])) * 0.5f);
+            break;
+        case CJ_SHAPE_CONVEX_HULL:
+            base = make_hull(d.points, 0, d.point_count);
+            if (base == nullptr) return nullptr;
+            break;
+        case CJ_SHAPE_COMPOUND:
+            base = make_compound(d);
+            if (base == nullptr) return nullptr;
             break;
         default:
             return nullptr;
@@ -393,6 +456,31 @@ size_t cj_world_drain_events(CjWorld* world, CjContactEvent* out, size_t cap) {
 }
 
 size_t cj_world_pending_events(CjWorld* world) { return world == nullptr ? 0 : world->contacts.Pending(); }
+
+size_t cj_convex_hull_triangles(const float* points, uint32_t count, float* out, size_t cap) {
+    RefConst<Shape> hull = make_hull(points, 0, count);
+    if (hull == nullptr) return 0;
+    Shape::GetTrianglesContext context;
+    // Jolt keeps a hull around its centre of mass and places triangles relative to it.
+    hull->GetTrianglesStart(context, AABox::sBiggest(), hull->GetCenterOfMass(), Quat::sIdentity(), Vec3::sOne());
+    std::vector<Float3> corners(3 * Shape::cGetTrianglesMinTrianglesRequested);
+    size_t total = 0;
+    for (;;) {
+        int n = hull->GetTrianglesNext(context, Shape::cGetTrianglesMinTrianglesRequested, corners.data());
+        if (n <= 0) break;
+        for (int t = 0; t < n; ++t, ++total) {
+            if (out == nullptr || total >= cap) continue;
+            for (int k = 0; k < 3; ++k) {
+                const Float3& c = corners[3 * size_t(t) + k];
+                float* o = out + 9 * total + 3 * k;
+                o[0] = c.x;
+                o[1] = c.y;
+                o[2] = c.z;
+            }
+        }
+    }
+    return total;
+}
 
 bool cj_raycast(CjWorld* world, const float origin[3], const float dir_len[3], uint16_t layer_mask, CjRayHit* out) {
     if (world == nullptr || out == nullptr) return false;

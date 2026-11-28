@@ -120,6 +120,8 @@ impl JoltWorld {
                 b: 0,
                 started: false,
                 sensor: false,
+                strength: 0.0,
+                point: [0.0; 3],
             };
             pending
         ];
@@ -200,4 +202,27 @@ impl JoltCharacter {
         unsafe { j::cj_character_position(self.0, out.as_mut_ptr()) };
         Vec3::from_array(out)
     }
+}
+
+/// The triangles of the convex hull of `points`, as Jolt builds it for a `ConvexHull` collider.
+pub fn hull_triangles(points: &[Vec3]) -> Result<Vec<[Vec3; 3]>, PhysicsError> {
+    j::init().map_err(|e| PhysicsError::World(e.to_string()))?;
+    let flat: Vec<f32> = points.iter().flat_map(|p| p.to_array()).collect();
+    let count =
+        u32::try_from(points.len()).map_err(|_| PhysicsError::Hull("too many points".into()))?;
+    // SAFETY: `flat` holds 3 floats per point; a null `out` with no room only counts.
+    let n = unsafe { j::cj_convex_hull_triangles(flat.as_ptr(), count, std::ptr::null_mut(), 0) };
+    if n == 0 {
+        return Err(PhysicsError::Hull(format!("{} points", points.len())));
+    }
+    let mut out = vec![0.0f32; 9 * n];
+    // SAFETY: `out` has room for `n` triangles of 9 floats.
+    let written = unsafe { j::cj_convex_hull_triangles(flat.as_ptr(), count, out.as_mut_ptr(), n) };
+    debug_assert_eq!(written, n);
+    Ok(out
+        .as_chunks::<9>()
+        .0
+        .iter()
+        .map(|t| [0, 3, 6].map(|k| Vec3::new(t[k], t[k + 1], t[k + 2])))
+        .collect())
 }

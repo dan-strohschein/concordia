@@ -10,11 +10,12 @@ use concordia_scene::builtin::{Transform, Velocity};
 use concordia_terra::World;
 use jolt_sys as j;
 
+use crate::components::ContactReports;
 use crate::components::{
     BodyKind, CharacterController, CharacterMotion, Collider, ColliderShape, RigidBody,
 };
 use crate::error::PhysicsError;
-use crate::events::{ContactBegan, ContactEnded};
+use crate::events::{ContactBegan, ContactEnded, ContactImpact};
 use crate::jolt::{BodyId, JoltCharacter, JoltWorld};
 use crate::layers::LayerMask;
 use crate::settings::PhysicsSettings;
@@ -216,11 +217,16 @@ impl PhysicsRuntime {
         validate(&source, t)?;
         let user = self.next_user;
         let velocity = world.get::<Velocity>(entity).copied().unwrap_or_default();
-        let desc = body_desc(user, t, &source, &velocity);
+        let geometry = Geometry::of(&source.collider.shape);
+        let desc = body_desc(user, t, &source, &velocity, &geometry);
         let id = self
             .jolt
             .add(&desc)
-            .ok_or_else(|| "Jolt rejected the body (world full?)".to_owned())?;
+            .ok_or_else(|| match geometry.points.is_empty() {
+                true => "Jolt rejected the body (world full?)".to_owned(),
+                false => "Jolt rejected the body (a hull with no volume, or the world is full)"
+                    .to_owned(),
+            })?;
         self.next_user += 1;
         self.users.insert(user, entity);
         self.bodies.insert(entity, Tracked { id, source });
@@ -323,22 +329,34 @@ impl PhysicsRuntime {
 
     /// Raises this step's contact changes as signals on both entities, in `(a, b)` id order.
     fn raise_contacts(&mut self, world: &mut World) {
-        let mut contacts: Vec<(EntityId, EntityId, bool, bool)> = self
+        let mut contacts: Vec<(EntityId, EntityId, bool, bool, f32, Vec3)> = self
             .jolt
             .drain_events()
             .into_iter()
             .filter_map(|e| {
                 let (x, y) = (*self.users.get(&e.a)?, *self.users.get(&e.b)?);
-                Some((x.min(y), x.max(y), e.started, e.sensor))
+                let point = Vec3::from_array(e.point);
+                Some((x.min(y), x.max(y), e.started, e.sensor, e.strength, point))
             })
             .collect();
-        contacts.sort();
-        for (a, b, started, sensor) in contacts {
+        contacts.sort_by_key(|c| (c.0, c.1, c.2, c.3));
+        for (a, b, started, sensor, strength, point) in contacts {
             for (on, other) in [(a, b), (b, a)] {
-                if started {
-                    world.signal(on, ContactBegan { other, sensor });
-                } else {
+                if !started {
                     world.signal(on, ContactEnded { other, sensor });
+                    continue;
+                }
+                world.signal(on, ContactBegan { other, sensor });
+                let reports = world.get::<ContactReports>(on).copied();
+                if reports.is_some_and(|r| !sensor && strength >= r.min_strength) {
+                    world.signal(
+                        on,
+                        ContactImpact {
+                            other,
+                            strength,
+                            point,
+                        },
+                    );
                 }
             }
         }
@@ -360,6 +378,40 @@ pub(crate) fn source_of(world: &World, id: EntityId) -> Option<(Transform, Sourc
     ))
 }
 
+/// Points that can make a hull: at least 4, all finite (Jolt rejects flat ones).
+fn hull(name: &str, points: &[Vec3]) -> Result<(), String> {
+    match points.len() >= 4 && points.iter().all(|p| p.is_finite()) {
+        true => Ok(()),
+        false => Err(format!(
+            "{name} needs at least 4 finite points, got {}",
+            points.len()
+        )),
+    }
+}
+
+/// A collider's points flattened for the shim (kept alive while Jolt reads them).
+#[derive(Default)]
+struct Geometry {
+    points: Vec<f32>,
+    part_ends: Vec<u32>,
+}
+
+impl Geometry {
+    fn of(shape: &ColliderShape) -> Self {
+        let mut g = Self::default();
+        let parts: &[Vec<Vec3>] = match shape {
+            ColliderShape::ConvexHull { points } => std::slice::from_ref(points),
+            ColliderShape::Compound { parts } => parts,
+            _ => &[],
+        };
+        for part in parts {
+            g.points.extend(part.iter().flat_map(|p| p.to_array()));
+            g.part_ends.push((g.points.len() / 3) as u32);
+        }
+        g
+    }
+}
+
 pub(crate) fn validate(source: &Source, t: &Transform) -> Result<(), String> {
     let positive = |name: &str, x: f32| match x.is_finite() && x > 0.0 {
         true => Ok(()),
@@ -379,6 +431,14 @@ pub(crate) fn validate(source: &Source, t: &Transform) -> Result<(), String> {
             half_height,
             radius,
         } => positive("half_height", *half_height).and(positive("radius", *radius)),
+        ColliderShape::ConvexHull { points } => hull("convex hull", points),
+        ColliderShape::Compound { parts } if parts.is_empty() => {
+            Err("a compound needs at least one part".to_owned())
+        }
+        ColliderShape::Compound { parts } => parts
+            .iter()
+            .enumerate()
+            .try_for_each(|(i, p)| hull(&format!("compound part {i}"), p)),
     }?;
     if source.collider.layer.index().is_none() {
         return Err(format!(
@@ -392,23 +452,35 @@ pub(crate) fn validate(source: &Source, t: &Transform) -> Result<(), String> {
     Ok(())
 }
 
-fn body_desc(user: u64, t: &Transform, s: &Source, v: &Velocity) -> j::CjBodyDesc {
-    let (shape, dims) = match s.collider.shape {
+fn body_desc(user: u64, t: &Transform, s: &Source, v: &Velocity, g: &Geometry) -> j::CjBodyDesc {
+    let (shape, dims) = match &s.collider.shape {
         ColliderShape::Box { half_extents } => {
             (j::CjShapeKind::CJ_SHAPE_BOX, half_extents.to_array())
         }
-        ColliderShape::Sphere { radius } => (j::CjShapeKind::CJ_SHAPE_SPHERE, [radius, 0.0, 0.0]),
+        ColliderShape::Sphere { radius } => (j::CjShapeKind::CJ_SHAPE_SPHERE, [*radius, 0.0, 0.0]),
+        ColliderShape::ConvexHull { .. } => (j::CjShapeKind::CJ_SHAPE_CONVEX_HULL, [0.0; 3]),
+        ColliderShape::Compound { .. } => (j::CjShapeKind::CJ_SHAPE_COMPOUND, [0.0; 3]),
         ColliderShape::Capsule {
             half_height,
             radius,
-        } => (j::CjShapeKind::CJ_SHAPE_CAPSULE, [half_height, radius, 0.0]),
+        } => (
+            j::CjShapeKind::CJ_SHAPE_CAPSULE,
+            [*half_height, *radius, 0.0],
+        ),
         ColliderShape::Cylinder {
             half_height,
             radius,
         } => (
             j::CjShapeKind::CJ_SHAPE_CYLINDER,
-            [half_height, radius, 0.0],
+            [*half_height, *radius, 0.0],
         ),
+    };
+    let ptr = |v: &[f32]| {
+        if v.is_empty() {
+            std::ptr::null()
+        } else {
+            v.as_ptr()
+        }
     };
     let motion = match s.body.kind {
         BodyKind::Static => j::CjMotion::CJ_MOTION_STATIC,
@@ -434,5 +506,15 @@ fn body_desc(user: u64, t: &Transform, s: &Source, v: &Velocity) -> j::CjBodyDes
         linear_damping: s.body.linear_damping,
         angular_damping: s.body.angular_damping,
         gravity_scale: s.body.gravity_scale,
+        points: ptr(&g.points),
+        point_count: (g.points.len() / 3) as u32,
+        part_ends: match &s.collider.shape {
+            ColliderShape::Compound { .. } => g.part_ends.as_ptr(),
+            _ => std::ptr::null(),
+        },
+        part_count: match &s.collider.shape {
+            ColliderShape::Compound { .. } => g.part_ends.len() as u32,
+            _ => 0,
+        },
     }
 }

@@ -110,6 +110,73 @@
             "Cylinder"
           ],
           "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The convex hull of points in body space (at least 4, not all in a plane; M8 8.0a).",
+          "properties": {
+            "ConvexHull": {
+              "additionalProperties": false,
+              "properties": {
+                "points": {
+                  "description": "The points.",
+                  "items": {
+                    "description": "3D vector as [x, y, z].",
+                    "items": {
+                      "type": "number"
+                    },
+                    "maxItems": 3,
+                    "minItems": 3,
+                    "type": "array"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "points"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "ConvexHull"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Several convex hulls as one body (a fractured piece's cluster; M8 8.0a).",
+          "properties": {
+            "Compound": {
+              "additionalProperties": false,
+              "properties": {
+                "parts": {
+                  "description": "Each part's points, in body space.",
+                  "items": {
+                    "items": {
+                      "description": "3D vector as [x, y, z].",
+                      "items": {
+                        "type": "number"
+                      },
+                      "maxItems": 3,
+                      "minItems": 3,
+                      "type": "array"
+                    },
+                    "type": "array"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "parts"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "Compound"
+          ],
+          "type": "object"
         }
       ],
       "title": "ColliderShape",
