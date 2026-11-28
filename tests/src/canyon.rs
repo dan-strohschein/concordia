@@ -21,6 +21,11 @@ use concordia_terra::World;
 
 /// The golden suite of the canyon's images.
 pub const SUITE: &str = "m4_culling";
+/// The two camera paths: perf scene, golden prefix, frames drawn and frames kept as images.
+pub const PATHS: [(&str, &str, u32, [u32; 3]); 2] = [
+    ("m4-canyon-ground", "canyon_ground", 32, [0, 16, 31]),
+    ("m4-canyon-overhead", "canyon_overhead", 16, [0, 8, 15]),
+];
 /// The test image size (as the rest of `m4_culling`).
 pub const SIZE: (u32, u32) = (320, 180);
 /// The perf scenes' near and far planes (`concordia perf run`'s).

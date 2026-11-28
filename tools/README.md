@@ -19,7 +19,7 @@ Developer scripts (`doctor.sh`), crate templates, and exporter plugins (M5).
 - Fewer test binaries (2026-11-27): each links the whole engine (about 200 MB), so
   `concordia-tests`, `concordia-app` and `concordia-mcp` build one `integration` binary each
   (`tests/integration/main.rs`, `tests/main.rs`); a file's tests are `<file>::<test>`
-  (`--test integration vsm_reference::`). Only `bless_reference` keeps its own release-only binary.
+  (`--test integration m4_lighting_quality::`). Only `bless_reference` keeps its own release-only binary.
   `repo_hygiene` fails if a test file is in no binary.
 - Leaks: the M3 gates' fixture builds (`target/m3-fixture/<sources hash>/`) drop other sources
   versions' builds unused for an hour; `just mutants` removes its worktrees and their target

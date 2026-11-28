@@ -15,9 +15,9 @@ use serde_json::{Value, json};
 use world::Night;
 
 /// The Snuffer's post on the harbour street (its `home`).
-const POST: [f64; 3] = [0.0, 0.0, 26.0];
+pub(crate) const POST: [f64; 3] = [0.0, 0.0, 26.0];
 
-fn harbour() -> (Night, String) {
+pub(crate) fn harbour() -> (Night, String) {
     let mut n = Night::in_scene("playing", "scenes/harbour_watch.scene.ron");
     let snuffer = n.named("Snuffer").0;
     (n, snuffer)
@@ -107,51 +107,12 @@ fn the_snuffer_graph_is_canonical_and_compiles() {
 }
 
 /// The cast node of `ai/snuffer.graph.ron`.
-const CAST_NODE: &str = "0193c4a0-5e1f-7000-8000-000000000008";
-
-/// N9: an agent edits the Snuffer's graph over the Engine API (what MCP's `graph_apply` calls);
-/// the edit is attributed in the command log and is what plays (a cast renamed away from `snuff`
-/// takes no oil); undoing it restores the file byte for byte.
-#[test]
-fn graph_authored_over_mcp_is_used_in_play() {
-    let (mut n, _) = harbour();
-    n.place_lamplighter([POST[0], 0.0, POST[2] - 5.0]);
-    let path = n.root().join("ai/snuffer.graph.ron");
-    let before = std::fs::read(&path).unwrap();
-    let applied = n.ok(
-        "graph.apply",
-        json!({"path": "ai/snuffer.graph.ron", "actor": "agent:gameplay-programmer#1",
-            "edits": [{"SetValue": {"node": CAST_NODE, "pin": "skill", "value": {"Text": "whisper"}}}]}),
-    );
-    assert_eq!(applied["ok"], true, "{applied}");
-    let history = n.ok("txn.history", json!({}));
-    let last = history["entries"]
-        .as_array()
-        .and_then(|e| e.last())
-        .cloned()
-        .unwrap_or_default();
-    assert_eq!(last["actor"], "agent:gameplay-programmer#1", "{history}");
-
-    n.step(10 * 60);
-    let walker = n.one("lamplight.Lamplighter", "play").0;
-    let can = n.play(&walker, "lamplight.Lamplighter")["can"]
-        .as_f64()
-        .unwrap();
-    assert_eq!(can, 100.0, "the edited graph plays: a whisper takes no oil");
-
-    n.ok("sim.stop", json!({}));
-    n.ok("txn.undo", json!({"actor": "agent:gameplay-programmer#1"}));
-    assert_eq!(
-        std::fs::read(&path).unwrap(),
-        before,
-        "undo restores the graph byte for byte"
-    );
-}
+pub(crate) const CAST_NODE: &str = "0193c4a0-5e1f-7000-8000-000000000008";
 
 /// The committed replay (N6): 40 s on the harbour street. The lamplighter walks south into the
 /// Snuffer's sight (S held 1.6 s), stands while it closes and snuffs, then walks east (D held
 /// 10 s), faster than it; it loses them about 20 s in and is back at its post by about 29 s.
-const REPLAY: &str = "tests/replays/m4_snuffer.replay.ron";
+pub(crate) const REPLAY: &str = "tests/replays/m4_snuffer.replay.ron";
 pub const REPLAY_TICKS: u32 = 2400;
 pub const SCRIPT: [(u64, &str, bool); 4] = [
     (0, "S", true),
@@ -162,7 +123,7 @@ pub const SCRIPT: [(u64, &str, bool); 4] = [
 
 /// The playtest assertions over the replay (N6). A snuff is raised on the tick after the cast, so
 /// "within reach" allows the Snuffer's step since (1.6 m + 0.2).
-pub const SNUFFER_ASSERTIONS: [&str; 5] = [
+pub(crate) const SNUFFER_ASSERTIONS: [&str; 5] = [
     r#"within 600 ticks: event("lamplight.Snuffed")"#,
     r#"at 660 ticks: name("Lamplighter").lamplight.Lamplighter.can <= 50"#,
     r#"never: name("Lamplighter").lamplight.Lamplighter.can < 0"#,
@@ -171,38 +132,12 @@ pub const SNUFFER_ASSERTIONS: [&str; 5] = [
 ];
 
 /// The harbour with the committed replay copied into the project.
-fn with_committed() -> Night {
+pub(crate) fn with_committed() -> Night {
     let (n, _) = harbour();
     let to = n.root().join(REPLAY);
     std::fs::create_dir_all(to.parent().unwrap()).unwrap();
     std::fs::copy(concordia_tests::repo_root().join(REPLAY), to).unwrap();
     n
-}
-
-#[test]
-fn the_committed_snuffer_replay_verifies_on_its_platform() {
-    let mut n = with_committed();
-    let text = std::fs::read_to_string(n.root().join(REPLAY)).unwrap();
-    let here = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
-    let run = match text.contains(&here) {
-        true => n.ok("replay.run", json!({"path": REPLAY})),
-        false => n.ok(
-            "replay.run",
-            json!({"path": REPLAY, "mode": "resimulate", "force": true}),
-        ),
-    };
-    assert_eq!(run["ok"], true, "{run}");
-    assert_eq!(run["ticks"], REPLAY_TICKS);
-}
-
-#[test]
-fn the_snuffer_replay_assertions_pass() {
-    let mut n = with_committed();
-    let checked = n.ok(
-        "assert.eval",
-        json!({"source": "replay", "path": REPLAY, "assertions": SNUFFER_ASSERTIONS}),
-    );
-    assert_eq!(checked["ok"], true, "{checked:#}");
 }
 
 /// Records the committed replay anew and writes it into the repository. Run by hand after an

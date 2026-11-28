@@ -335,7 +335,7 @@ const OWN_PARTS: [&str; 4] = ["ai.Brain", "ai.BtState", "twin.SnufferTwin", "@si
 
 /// A 40 s harbour night on the committed replay's inputs, the Snuffer thought for by the graph
 /// brain or (`twin`) by the Rust twin.
-fn night(twin: bool) -> crate::lamplight_world::Night {
+pub(crate) fn night(twin: bool) -> crate::lamplight_world::Night {
     use crate::lamplight_world::{ACTOR, Night};
     let extra: Vec<Arc<dyn EngineModule>> = vec![Arc::new(TwinModule)];
     let mut n = Night::in_scene_with("playing", "scenes/harbour_watch.scene.ron", extra);
@@ -353,7 +353,9 @@ fn night(twin: bool) -> crate::lamplight_world::Night {
 }
 
 /// The world's digest parts, less each brain's own.
-fn parts(n: &crate::lamplight_world::Night) -> std::collections::BTreeMap<String, String> {
+pub(crate) fn parts(
+    n: &crate::lamplight_world::Night,
+) -> std::collections::BTreeMap<String, String> {
     let digest = n
         .engine()
         .world(concordia_api::WorldSel::play)
@@ -366,26 +368,4 @@ fn parts(n: &crate::lamplight_world::Night) -> std::collections::BTreeMap<String
         .filter(|(name, _)| !OWN_PARTS.contains(&name.as_str()))
         .map(|(name, h)| (name, h.to_string()))
         .collect()
-}
-
-#[test]
-fn graph_brain_matches_rust_brain_per_tick() {
-    let (mut graph, mut rust) = (night(false), night(true));
-    for tick in 1..=crate::lamplight_snuffer::REPLAY_TICKS {
-        graph.step(1);
-        rust.step(1);
-        let (g, r) = (parts(&graph), parts(&rust));
-        let differ: BTreeSet<&String> = g
-            .keys()
-            .chain(r.keys())
-            .filter(|k| g.get(*k) != r.get(*k))
-            .collect();
-        assert!(differ.is_empty(), "tick {tick}: {differ:?} differ");
-    }
-    // Both brains really acted: the lamplighter was snuffed.
-    let walker = graph.one("lamplight.Lamplighter", "play").0;
-    let can = graph.play(&walker, "lamplight.Lamplighter")["can"]
-        .as_f64()
-        .unwrap();
-    assert!(can <= 50.0, "{can}");
 }

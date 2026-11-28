@@ -3,7 +3,6 @@
 //! `test(/^m<n>_/)`. `bless_reference` stays its own (release-only) binary.
 
 mod canyon;
-mod gi_reference;
 mod graph_library;
 mod lamplight_content;
 mod lamplight_mirrors;
@@ -47,10 +46,17 @@ mod m3s_studio_sync;
 mod m3s_task_board;
 #[path = "../gates/m3s_team_questions.rs"]
 mod m3s_team_questions;
+#[path = "../gates/m4_fallbacks.rs"]
+mod m4_fallbacks;
+#[path = "../gates/m4_graph_enemy.rs"]
+mod m4_graph_enemy;
+#[path = "../gates/m4_lighting_quality.rs"]
+mod m4_lighting_quality;
+#[path = "../gates/m4_meshlet_geometry.rs"]
+mod m4_meshlet_geometry;
 #[path = "../gates/m_minus1_scaffold.rs"]
 mod m_minus1_scaffold;
 mod reference_blessing;
 mod replay_m1_physics;
 mod repo_hygiene;
 mod snuffer_twin;
-mod vsm_reference;
