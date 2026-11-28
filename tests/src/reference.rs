@@ -132,15 +132,40 @@ pub fn render_with(
     if let Some(scene) = scene {
         file.scene = Some(scene.to_owned());
     }
-    let mut session = Session::open(&file)?;
-    session.call("render.set_shadows", json!({"technique": technique}))?;
     // GI is set explicitly (off unless asked), so direct-only references measure direct light
     // whatever the project's default.
-    session.call(
-        "render.set_gi",
-        gi.unwrap_or_else(|| json!({"technique": "off"})),
-    )?;
-    Ok((session.screenshot(&file)?, reference))
+    let calls = [
+        ("render.set_shadows", json!({"technique": technique})),
+        (
+            "render.set_gi",
+            gi.unwrap_or_else(|| json!({"technique": "off"})),
+        ),
+    ];
+    let (image, _) = render_configured(&file, &calls)?;
+    Ok((image, reference))
+}
+
+/// `file`'s view rendered after the setting `calls` (method, params), and each call's result
+/// (M4 4.13c: the showcase turns VSM, GI and TAA on together).
+pub fn render_configured(
+    file: &ReferenceFile,
+    calls: &[(&str, Value)],
+) -> Result<(RgbaImage, Vec<Value>), String> {
+    let mut session = Session::open(file)?;
+    let results = calls
+        .iter()
+        .map(|(method, params)| session.call(method, params.clone()))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok((session.screenshot(file)?, results))
+}
+
+/// Reference `name`'s file and blessed image from the golden store at `golden`.
+pub fn reference_of(name: &str, golden: &Path) -> Result<(ReferenceFile, RgbaImage), String> {
+    let store = Golden::new(golden.to_path_buf(), golden.join("../review"), false, false);
+    let file = store.reference(name).map_err(fail)?;
+    let png = std::fs::read(golden.join(SUITE).join(format!("{name}.png")))
+        .map_err(|e| fail(format!("{name}.png: {e}")))?;
+    Ok((file, RgbaImage::from_png(&png).map_err(fail)?))
 }
 
 /// The view as `capture.screenshot` and `capture.reference` take it (None: the scene camera).

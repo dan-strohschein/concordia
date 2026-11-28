@@ -3,10 +3,10 @@ Material(
     double_sided: false,
     nodes: {
         "smoke": Slab((
-            base_color: (0.03, 0.03, 0.05, 1.0),
+            base_color: (0.015, 0.015, 0.025, 1.0),
             base_color_texture: None,
-            emissive: (0.9, 0.25, 0.08),
-            emissive_strength: 0.35,
+            emissive: (0.9, 0.3, 0.1),
+            emissive_strength: 0.015,
             emissive_texture: None,
             fuzz: None,
             haze: None,
