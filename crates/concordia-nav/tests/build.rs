@@ -641,3 +641,64 @@ fn navmesh_is_cached_in_the_ddc() {
         "and stored again"
     );
 }
+
+/// Convex hull and compound colliders (M8 8.0a) are navmesh sources like the primitives: a hull
+/// of a box's corners, or a compound of two such hulls, carves what the boxes carve.
+#[test]
+fn hull_and_compound_colliders_are_navmesh_sources() {
+    let corners = |c: Vec3, h: Vec3| -> Vec<Vec3> {
+        (0..8)
+            .map(|i| {
+                c + Vec3::new(
+                    if i & 1 == 0 { -h.x } else { h.x },
+                    if i & 2 == 0 { -h.y } else { h.y },
+                    if i & 4 == 0 { -h.z } else { h.z },
+                )
+            })
+            .collect()
+    };
+    // Faces mid-cell (±1.1), so float noise in the hull can't move them across a cell boundary.
+    let half = Vec3::new(1.1, 1.0, 1.1);
+    let area = |shape: Option<ColliderShape>| {
+        let mut level = floor(10.0);
+        match shape {
+            Some(shape) => {
+                level.body(
+                    Vec3::new(0.0, 1.0, 0.0),
+                    Quat::IDENTITY,
+                    BodyKind::Static,
+                    Collider::new(shape),
+                );
+            }
+            None => {
+                level.block(Vec3::ZERO, half, Quat::IDENTITY);
+                level.block(Vec3::new(4.0, 0.0, 0.0), half, Quat::IDENTITY);
+            }
+        }
+        ground_area(&level.build())
+    };
+    let boxes = area(None);
+    let compound = area(Some(ColliderShape::Compound {
+        parts: vec![
+            corners(Vec3::ZERO, half),
+            corners(Vec3::new(4.0, 0.0, 0.0), half),
+        ],
+    }));
+    assert!(
+        (boxes - compound).abs() < 0.01,
+        "boxes {boxes}, compound {compound}"
+    );
+    let one_box = {
+        let mut level = floor(10.0);
+        level.block(Vec3::ZERO, half, Quat::IDENTITY);
+        ground_area(&level.build())
+    };
+    let hull = area(Some(ColliderShape::ConvexHull {
+        points: corners(Vec3::ZERO, half),
+    }));
+    assert!((one_box - hull).abs() < 0.01, "box {one_box}, hull {hull}");
+    assert!(
+        hull < ground_area(&floor(10.0).build()) - 1.0,
+        "the hull carves the floor"
+    );
+}

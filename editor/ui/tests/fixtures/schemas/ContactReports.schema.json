@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "default": {
+    "min_strength": 0.0
+  },
+  "description": "Asks for [`crate::ContactImpact`] signals on this entity for contacts that begin at least\n`min_strength` hard (N·s; M8 8.0b). Breakables use it; nothing else pays for it.",
+  "properties": {
+    "min_strength": {
+      "description": "The weakest impact reported (N·s, at least 0).",
+      "maximum": 100000.0,
+      "minimum": 0.0,
+      "type": "number"
+    }
+  },
+  "required": [
+    "min_strength"
+  ],
+  "title": "ContactReports",
+  "type": "object",
+  "x-concordia-category": "Physics",
+  "x-concordia-type": "ContactReports"
+}

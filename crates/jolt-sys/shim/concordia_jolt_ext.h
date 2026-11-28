@@ -39,6 +39,8 @@ typedef enum CjShapeKind {
     CJ_SHAPE_SPHERE = 1,   /* dims[0] = radius */
     CJ_SHAPE_CAPSULE = 2,  /* dims[0] = half height of the cylinder part, dims[1] = radius */
     CJ_SHAPE_CYLINDER = 3, /* dims[0] = half height, dims[1] = radius */
+    CJ_SHAPE_CONVEX_HULL = 4, /* points (x, y, z) in body space, point_count of them */
+    CJ_SHAPE_COMPOUND = 5,    /* convex hulls: part i is points [part_ends[i-1], part_ends[i]) */
 } CjShapeKind;
 
 typedef enum CjMotion {
@@ -66,6 +68,10 @@ typedef struct CjBodyDesc {
     float linear_damping;
     float angular_damping;
     float gravity_scale;
+    const float* points;       /* CONVEX_HULL and COMPOUND: 3 floats per point (else null) */
+    uint32_t point_count;
+    const uint32_t* part_ends; /* COMPOUND: increasing end indices into points (else null) */
+    uint32_t part_count;
 } CjBodyDesc;
 
 typedef struct CjBodyState {
@@ -80,6 +86,10 @@ typedef struct CjContactEvent {
     uint64_t b;
     bool started; /* false: ended */
     bool sensor;
+    /* Started only: closing speed along the normal times the pair's reduced mass (N s), and the
+     * first contact point (world space). */
+    float strength;
+    float point[3];
 } CjContactEvent;
 
 typedef struct CjRayHit {
@@ -114,6 +124,11 @@ uint32_t cj_world_step(CjWorld* world, float dt, int32_t collision_steps);
 size_t cj_world_drain_events(CjWorld* world, CjContactEvent* out, size_t cap);
 size_t cj_world_pending_events(CjWorld* world);
 /* Nearest hit along origin + t * dir_len for t in [0, 1] on layers in layer_mask. */
+/* The triangles of the convex hull of `count` points (3 floats each), 9 floats per triangle into
+ * `out` (room for `cap` triangles). Returns the hull's triangle count (only the first `cap` are
+ * written), or 0 if the points have no hull (fewer than 4, all in a plane, not finite). */
+size_t cj_convex_hull_triangles(const float* points, uint32_t count, float* out, size_t cap);
+
 bool cj_raycast(CjWorld* world, const float origin[3], const float dir_len[3], uint16_t layer_mask, CjRayHit* out);
 /* Serializes body state; returns the size needed (copies only if cap is large enough). */
 size_t cj_world_save(CjWorld* world, uint8_t* out, size_t cap);

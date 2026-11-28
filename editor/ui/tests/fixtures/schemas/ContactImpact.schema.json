@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Signal: a contact with `other` began this hard (M8 8.0b): the closing speed along the contact\nnormal times the pair's reduced mass, in N·s, at `point` (world space). Raised only on\nentities with [`crate::ContactReports`] whose threshold it meets, and never for sensors.",
+  "properties": {
+    "other": {
+      "description": "The other entity.\n\nStable entity id (UUID string).",
+      "format": "uuid",
+      "type": "string"
+    },
+    "point": {
+      "description": "Where the contact began.\n\n3D vector as [x, y, z].",
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 3,
+      "minItems": 3,
+      "type": "array",
+      "x-concordia-widget": "vec3"
+    },
+    "strength": {
+      "description": "How hard (N·s).",
+      "type": "number"
+    }
+  },
+  "required": [
+    "other",
+    "strength",
+    "point"
+  ],
+  "title": "ContactImpact",
+  "type": "object",
+  "x-concordia-category": "Physics",
+  "x-concordia-type": "ContactImpact"
+}

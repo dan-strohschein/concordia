@@ -104,6 +104,16 @@ pub enum ColliderShape {
         /// Radius.
         radius: f32,
     },
+    /// The convex hull of points in body space (at least 4, not all in a plane; M8 8.0a).
+    ConvexHull {
+        /// The points.
+        points: Vec<Vec3>,
+    },
+    /// Several convex hulls as one body (a fractured piece's cluster; M8 8.0a).
+    Compound {
+        /// Each part's points, in body space.
+        parts: Vec<Vec<Vec3>>,
+    },
 }
 
 /// The shape a rigid body collides with. `Transform.scale` does not scale it.
@@ -187,4 +197,27 @@ impl Default for CharacterController {
 pub struct CharacterMotion {
     /// Meters per second.
     pub velocity: Vec3,
+}
+
+/// Asks for [`crate::ContactImpact`] signals on this entity for contacts that begin at least
+/// `min_strength` hard (N·s; M8 8.0b). Breakables use it; nothing else pays for it.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, Reflect)]
+#[reflect(category = "Physics", default)]
+#[serde(deny_unknown_fields)]
+pub struct ContactReports {
+    /// The weakest impact reported (N·s, at least 0).
+    #[reflect(range(min = 0.0, max = 100000.0))]
+    pub min_strength: f32,
+}
+
+impl ContactReports {
+    /// Reports impacts at least `min_strength` hard; it must be finite and not negative.
+    pub fn new(min_strength: f32) -> Result<Self, crate::PhysicsError> {
+        match min_strength.is_finite() && min_strength >= 0.0 {
+            true => Ok(Self { min_strength }),
+            false => Err(crate::PhysicsError::Invalid(format!(
+                "min_strength must be finite and at least 0, got {min_strength}"
+            ))),
+        }
+    }
 }

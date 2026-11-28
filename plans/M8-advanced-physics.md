@@ -1,5 +1,5 @@
 # M8: Advanced physics (destruction and GPU garments)
-Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · Estimated effort: ~20 weeks (range 16–26), author plus agents
+Status: Planned (ADR-0012) · Depends on: M1 (Jolt, physics module, RHI compute, Slang), M2 (skeletal animation and skinning, mesh import) · Destruction phases 8.1–8.6 may start right after M1; garment phases 8.7–8.10 need M2 · Detail level: **Refined after M4 (2026-11-27; Q1–Q8 approved)** · **8.0a–c done** (hull and compound colliders, contact impacts, mid-play bodies) · Estimated effort: ~20 weeks (range 16–26), author plus agents
 
 > Outline plan with phase breakdowns and test lists. Refine when M2 lands: the skinning data layout (8.7, 8.10), the mesh import path for garments, and M3's replay format if caches build on it (8.6).
 
@@ -43,6 +43,32 @@ The plan predates M2. Checked against `main` after M4; the phases below stand, w
 - **Q6: a proving ground.** A small original example, `examples/m8-quarry`: a stone wall on an anchored base, a projectile launcher and a caped character on an M2 walk clip. It is generated from seeds like the canyon (recipes committed, meshes in the DDC), so the gate needs no port content.
 - **Q7: the agent demo** (gate item 5) runs scripted through the Engine API in CI, as M3's Studio loop did, plus a live run on the author's subscription recorded in the As built.
 - **Q8: perf.** Destruction's 120 Hz bench and cloth's 1.5 ms per character are asserted on the reference machine, under P1's rule from M7 (perf runs alone, after the budgets are recalibrated). They are recorded, not gated, if M8 runs before M7's recalibration.
+
+### As built
+**8.0a** (`m8/8.0-physics-groundwork`, done): convex hull and compound colliders.
+- **`jolt-sys`:** `CJ_SHAPE_CONVEX_HULL` and `CJ_SHAPE_COMPOUND` (Jolt `ConvexHullShape` with the default convex radius; `StaticCompoundShape` of hulls), plus `cj_convex_hull_triangles`.
+- **`concordia-physics`:** `ColliderShape::ConvexHull { points }` and `::Compound { parts }`, validated (at least 4 finite points; a hull with no volume is rejected and reported). `hull_triangles` exposes the hull's faces.
+- **`concordia-nav`:** hull and compound colliders are navmesh sources, through the physics hull.
+- **Editor:** schemas and TypeScript types regenerated.
+- **Bugs found on the way, each pinned by a test:**
+  - Jolt builds a zero-volume hull from flat points (NaN mass), so the shim now checks volume.
+  - Jolt keeps hulls around their centre of mass, so the triangles must be placed there; without that, an off-origin hull's triangles came back centred.
+  - Navigation's `outward` orients triangles from the shape's origin, which flips the faces of a compound's off-centre parts, so hulls skip it.
+- **Test log:**
+  - The jolt-sys smoke tests failed first: link error, then rejection and recentring.
+  - The physics `shapes` tests and the navmesh test failed first: no variants, then the wrong area, which led to the two navigation bugs above.
+  - One fixture of mine needed hull faces mid-cell; a face on a cell boundary goes to one side only (the file's own rule).
+  - Contract consumers: API, MCP, app, scene, crowds and reflect; editor schemas.
+  - Checks: fmt, clippy (workspace).
+
+**8.0b** (done): contact impacts.
+- **Opt-in:** `ContactReports { min_strength }` gives `ContactImpact { other, strength, point }` signals. Existing scenes raise the same signals as before, so no replay or golden changed.
+- **Strength:** the closing speed along the normal times the pair's reduced mass, taken in the shim's `OnContactAdded`. A 2 kg ball dropped 5 m measures 19.75 N·s against the expected 19.81.
+- **Test log:** the `impacts` tests failed to compile first (no types), then passed. The measured value was printed to confirm it.
+
+**8.0c** (done): bodies changing mid-play.
+- `midplay` tests pin what M2 built: spawned pieces carry the whole body's momentum, and a mid-play split hashes the same at 1, 2 and 8 threads and on a rerun.
+- **Test log:** these passed once my test was right; they prove, rather than drive, the existing mechanism. The first failure was mine: I forgot the bodies' default linear damping (one tick of 0.05/s).
 
 ### Effort, revised
 About **18 weeks (15–23)**, down from 20: rendering, instancing, compute and replay groundwork already exist, but 8.0 is new (about 1.5 weeks). The cutter (8.1), the solver (8.8) and weight painting (8.10, needs visual design) remain the large items.

@@ -52,6 +52,22 @@ export type ColliderShape =
          */
         radius: number;
       };
+    }
+  | {
+      ConvexHull: {
+        /**
+         * The points.
+         */
+        points: [number, number, number][];
+      };
+    }
+  | {
+      Compound: {
+        /**
+         * Each part's points, in body space.
+         */
+        parts: [number, number, number][][];
+      };
     };
 
 /**
