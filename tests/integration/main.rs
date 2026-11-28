@@ -51,4 +51,5 @@ mod m_minus1_scaffold;
 mod reference_blessing;
 mod replay_m1_physics;
 mod repo_hygiene;
+mod snuffer_twin;
 mod vsm_reference;

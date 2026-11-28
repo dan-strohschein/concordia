@@ -24,9 +24,9 @@ filter = "binary_id(concordia-tests::integration) & test(/^m2_lamplight::/)"
 slow-timeout = { period = "60s", terminate-after = 25 }
 
 # The Snuffer's 40 s replay (M4 4.13a) runs about a minute alone in a debug build, longer
-# beside the rest of the suite.
+# beside the rest of the suite; its Rust twin (4.13b) runs two such nights in lockstep.
 [[profile.default.overrides]]
-filter = "binary_id(concordia-tests::integration) & test(/^lamplight_snuffer::/)"
+filter = "binary_id(concordia-tests::integration) & test(/^(lamplight_snuffer|snuffer_twin)::/)"
 slow-timeout = { period = "60s", terminate-after = 8 }
 
 # GPU timing comparisons need the GPU to themselves: the test claims every test thread so nothing
