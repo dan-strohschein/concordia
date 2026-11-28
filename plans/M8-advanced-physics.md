@@ -209,7 +209,7 @@ The plan predates M2. Checked against `main` after M4; the phases below stand, w
 - **Test log:**
   - The physics `pushes` tests were written first and first run after the runtime code. With the runtime ignoring the components, all four failed.
   - The four new field tests failed against unhandled effects, then passed.
-  - **Contract consumers:** editor schemas regenerated (`Impulse`, `Sleep`, `PhysicsDisabled`); editor UI 128 tests; jolt-sys, physics, destruction, nav, API, app, MCP, Studio and scene (607); the physics, replay and gate integration tests.
+  - **Contract consumers:** editor schemas regenerated (`Impulse`, `Sleep`, `PhysicsDisabled`); editor UI 128 tests; jolt-sys, physics, destruction, nav, API, app, MCP, Studio and scene (607); the physics, replay and gate integration tests. At first 55 of 56 passed: the Lamplight showcase failed only because this worktree had never built Lamplight's modules (`just lamplight-build`), and it failed the same way on main. Once they were built, all 40 Lamplight tests passed.
   - **Checks:** fmt, clippy.
 
 ### Effort, revised
